@@ -33,12 +33,6 @@ impl Capability for TestMathCapability {
         Some("Testing")
     }
 
-    fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            "You have access to math tools. Use them for calculations: add, subtract, multiply, divide.",
-        )
-    }
-
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![
             Box::new(AddTool),
@@ -296,10 +290,9 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_has_system_prompt() {
+    fn test_capability_no_system_prompt() {
         let cap = TestMathCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("math tools"));
+        assert!(cap.system_prompt_addition().is_none());
     }
 
     #[test]

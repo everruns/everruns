@@ -42,19 +42,7 @@ impl Capability for SessionSqlDatabaseCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You have access to session-scoped SQL databases. Use these tools to create tables, insert data, and query data using standard SQLite SQL syntax.
-
-**Tools:**
-- `sql_execute`: Create tables, insert/update/delete data. Auto-creates the database if needed.
-- `sql_query`: Run SELECT queries. Returns columns and rows as JSON.
-- `sql_schema`: Inspect database schema (tables, columns, types).
-
-**Guidelines:**
-- Database names must be alphanumeric with underscores (e.g., "analytics", "user_data")
-- Use `sql_schema` to inspect existing tables before querying
-- Results are limited to 1000 rows per query
-- Databases are session-scoped and isolated
-- Standard SQLite SQL syntax is supported"#,
+            r#"Database names must be alphanumeric with underscores. Results limited to 1000 rows per query. Standard SQLite SQL syntax."#,
         )
     }
 
@@ -395,10 +383,8 @@ mod tests {
     fn test_capability_has_system_prompt() {
         let cap = SessionSqlDatabaseCapability;
         let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("sql_execute"));
-        assert!(prompt.contains("sql_query"));
-        assert!(prompt.contains("sql_schema"));
         assert!(prompt.contains("SQLite"));
+        assert!(prompt.contains("1000 rows"));
     }
 
     #[test]

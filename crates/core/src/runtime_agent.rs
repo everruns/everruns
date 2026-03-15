@@ -454,11 +454,11 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&["test_math".to_string()], &registry, &test_ctx())
+            .with_capabilities(&["session_file_system".to_string()], &registry, &test_ctx())
             .await
             .build();
 
-        assert!(runtime_agent.system_prompt.contains("math tools"));
+        assert!(runtime_agent.system_prompt.contains("/workspace"));
         // Base prompt wrapped in <system-prompt> tags
         assert!(runtime_agent.system_prompt.contains("<system-prompt>"));
         assert!(
@@ -539,8 +539,8 @@ mod tests {
             "Should include File System capability in XML tags"
         );
         assert!(
-            runtime_agent.system_prompt.contains("read_file"),
-            "Should include File System system prompt (mentions read_file tool)"
+            runtime_agent.system_prompt.contains("/workspace"),
+            "Should include File System system prompt (mentions workspace root)"
         );
         // Should also include Sample Data's contribution in XML tags
         assert!(
@@ -729,8 +729,8 @@ mod tests {
             usage: None,
         };
 
-        // Session adds test_math capability (additive — has system prompt addition)
-        let session_capability_ids = vec!["test_math".to_string()];
+        // Session adds stateless_todo_list capability (additive — has system prompt addition)
+        let session_capability_ids = vec!["stateless_todo_list".to_string()];
 
         let runtime_agent = RuntimeAgentBuilder::new()
             .with_agent(&agent, &registry, &test_ctx())
@@ -744,15 +744,15 @@ mod tests {
         assert!(runtime_agent.tools.len() >= 2);
         let tool_names: Vec<&str> = runtime_agent.tools.iter().map(|t| t.name()).collect();
         assert!(tool_names.contains(&"get_current_time"));
-        assert!(tool_names.contains(&"add"));
+        assert!(tool_names.contains(&"write_todos"));
 
         // System prompt should contain both capability additions and agent prompt
         assert!(runtime_agent.system_prompt.contains("Agent prompt."));
-        assert!(runtime_agent.system_prompt.contains("math tools"));
+        assert!(runtime_agent.system_prompt.contains("Task Management"));
         assert!(
             runtime_agent
                 .system_prompt
-                .contains("<capability id=\"test_math\">")
+                .contains("<capability id=\"stateless_todo_list\">")
         );
         // Base prompt should be wrapped in <system-prompt> tags (no double wrapping)
         let system_prompt_count = runtime_agent

@@ -61,11 +61,7 @@ fn workspace_path(path: &str) -> String {
 pub struct SkillsCapability;
 
 /// Static skills system prompt (used by sync callers and as fallback)
-const SKILLS_SYSTEM_PROMPT: &str = "You have access to an agent skills system. Skills are instruction packages \
-that can be discovered from the session filesystem.\n\n\
-Skills location: `/workspace/.agents/skills/{skill-name}/SKILL.md`\n\n\
-Use `list_skills` to discover available skills. When a skill is relevant to the \
-user's task, use `activate_skill` to load its full instructions into your context. \
+const SKILLS_SYSTEM_PROMPT: &str = "Skills location: `/workspace/.agents/skills/{skill-name}/SKILL.md`. \
 Only activate skills that are relevant to the current task.";
 
 #[async_trait]
@@ -717,8 +713,6 @@ mod tests {
         let prompt = cap.system_prompt_addition().unwrap();
 
         assert!(prompt.contains("/workspace/.agents/skills/"));
-        assert!(prompt.contains("list_skills"));
-        assert!(prompt.contains("activate_skill"));
     }
 
     #[test]
@@ -1175,8 +1169,10 @@ mod tests {
 
         // System prompt should include skills capability section
         assert!(
-            runtime_agent.system_prompt.contains("list_skills"),
-            "System prompt should mention list_skills tool"
+            runtime_agent
+                .system_prompt
+                .contains("/workspace/.agents/skills/"),
+            "System prompt should mention skills path"
         );
         assert!(
             runtime_agent
@@ -1241,7 +1237,7 @@ mod tests {
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(result.contains("<capability id=\"skills\">"));
-        assert!(result.contains("list_skills"));
+        assert!(result.contains("/workspace/.agents/skills/"));
         // No "Available skills:" section
         assert!(!result.contains("Available skills:"));
     }
@@ -1259,7 +1255,7 @@ mod tests {
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(result.contains("<capability id=\"skills\">"));
-        assert!(result.contains("list_skills"));
+        assert!(result.contains("/workspace/.agents/skills/"));
         // No "Available skills:" section (dir doesn't exist)
         assert!(!result.contains("Available skills:"));
     }

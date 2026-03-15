@@ -63,25 +63,7 @@ impl Capability for SubagentCapability {
     }
 }
 
-const SUBAGENT_SYSTEM_PROMPT: &str = r#"You can delegate tasks to subagents that run in their own context window.
-
-## Tools
-
-- `spawn_subagent`: Create a named subagent to handle a specific task.
-  - Foreground (default): blocks until the subagent completes and returns its result.
-  - Each subagent has a human-readable name (e.g. "Test Runner", "Auth Explorer").
-  - Names must be unique within the current session.
-
-- `get_subagents`: List all subagents or get detailed status of a specific one.
-  - No arguments: returns all subagents with status summary.
-  - With name_or_id: returns detailed status and result of that subagent.
-
-- `message_subagent`: Send a message to a subagent by name or ID.
-  - Running subagent: injects message as steering (subagent sees it on next turn).
-  - Completed/failed subagent: resumes with the message as new input.
-  - With cancel=true: delivers message then gracefully stops the subagent.
-
-## When to use subagents
+const SUBAGENT_SYSTEM_PROMPT: &str = r#"Delegate tasks to subagents running in their own context window.
 
 - Move noisy/verbose work off the main conversation (test runs, large searches).
 - Run independent tasks in parallel (multiple spawn_subagent calls in one response).

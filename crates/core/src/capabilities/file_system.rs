@@ -109,26 +109,7 @@ impl Capability for FileSystemCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You have access to file system tools for working with the session workspace. Each session has its own isolated workspace stored in the database.
-
-**Workspace Location:** `/workspace`
-
-All session files are stored under `/workspace`. This is the root of your persistent storage.
-
-Available tools:
-- `read_file`: Read the content of a file by path
-- `write_file`: Create a new file or update existing file content
-- `list_directory`: List files and directories at a given path
-- `grep_files`: Search file contents using regex patterns
-- `delete_file`: Delete a file or directory
-- `stat_file`: Get metadata about a file (size, dates, etc.)
-
-Best practices:
-- All paths should start with `/workspace` (e.g., `/workspace/myfile.txt`)
-- Use `list_directory` with path `/workspace` to explore the workspace
-- Use `stat_file` to check if a file exists before reading/writing
-- Use `grep_files` to search across multiple files efficiently
-- Directories are created automatically when writing files"#,
+            r#"Session workspace root: `/workspace`. All file paths must start with `/workspace`. Directories are created automatically when writing files."#,
         )
     }
 
@@ -865,9 +846,7 @@ mod tests {
     fn test_capability_has_system_prompt() {
         let cap = FileSystemCapability;
         let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("read_file"));
-        assert!(prompt.contains("write_file"));
-        assert!(prompt.contains("list_directory"));
+        assert!(prompt.contains("/workspace"));
     }
 
     #[test]

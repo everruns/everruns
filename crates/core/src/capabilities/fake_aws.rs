@@ -698,29 +698,7 @@ impl Capability for FakeAwsCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You have access to AWS infrastructure management tools. All AWS data is stored in /aws/ directory.
-
-Available tools:
-- `aws_list_ec2_instances`: List all EC2 instances with their status
-- `aws_create_ec2_instance`: Launch a new EC2 instance
-- `aws_stop_ec2_instance`: Stop a running EC2 instance
-- `aws_list_rds_databases`: List RDS database instances
-- `aws_create_rds_database`: Create a new RDS database
-- `aws_list_s3_buckets`: List all S3 buckets
-- `aws_create_s3_bucket`: Create a new S3 bucket
-- `aws_list_iam_users`: List IAM users and their permissions
-- `aws_create_iam_user`: Create a new IAM user
-- `aws_list_security_groups`: List security groups and rules
-- `aws_get_cloudwatch_metrics`: Get CloudWatch metrics for resources
-
-Data structure:
-- /aws/ec2_instances.json - EC2 instance records
-- /aws/rds_databases.json - RDS database records
-- /aws/s3_buckets.json - S3 bucket records
-- /aws/iam_users.json - IAM user records
-- /aws/security_groups.json - Security group records
-
-API calls have realistic latency. All mutations are persisted."#,
+            "AWS data is stored in /aws/ (ec2_instances.json, rds_databases.json, s3_buckets.json, iam_users.json, security_groups.json). API calls have realistic latency.",
         )
     }
 

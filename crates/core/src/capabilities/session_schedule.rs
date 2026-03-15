@@ -44,17 +44,7 @@ impl Capability for SessionScheduleCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You can schedule future tasks within this session:
-
-- `create_schedule`: Schedule work to happen later. Provide a `description` of what to do, and either:
-  - `scheduled_at` (ISO 8601 datetime) for a one-shot task, or
-  - `cron_expression` (standard 5-field cron) for recurring tasks.
-  Optional: `timezone` (IANA timezone, default UTC).
-- `cancel_schedule`: Cancel a schedule by its `schedule_id`.
-- `list_schedules`: List all schedules for this session.
-
-When a schedule fires, you will receive a message with the task description and should execute it.
-Maximum 5 active schedules per session."#,
+            "When a schedule fires, you will receive a message with the task description and should execute it. Maximum 5 active schedules per session.",
         )
     }
 

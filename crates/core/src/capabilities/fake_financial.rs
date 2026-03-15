@@ -50,22 +50,7 @@ impl Capability for FakeFinancialCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"You have access to financial management tools. All financial data is stored in /finance/ directory.
-
-Available tools:
-- `finance_list_transactions`: List financial transactions (filter by type/category)
-- `finance_create_transaction`: Record a new transaction (income/expense)
-- `finance_get_balance`: Get current account balances
-- `finance_list_budgets`: List budgets by category
-- `finance_create_budget`: Create or update a budget
-- `finance_get_expense_report`: Generate expense report by period
-- `finance_get_revenue_report`: Generate revenue report by period
-- `finance_forecast_cash_flow`: Forecast cash flow for upcoming months
-
-Data structure:
-- /finance/transactions.json - Transaction records
-- /finance/budgets.json - Budget definitions
-- /finance/accounts.json - Account balances"#,
+            "Financial data is stored in /finance/ (transactions.json, budgets.json, accounts.json).",
         )
     }
 
