@@ -18,10 +18,7 @@ interface ArchiveFilterProps {
   onShowArchivedChange: (show: boolean) => void;
 }
 
-export function ArchiveFilter({
-  showArchived,
-  onShowArchivedChange,
-}: ArchiveFilterProps) {
+export function ArchiveFilter({ showArchived, onShowArchivedChange }: ArchiveFilterProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className={cn(buttonVariants({ variant: "outline" }), "gap-1.5")}>

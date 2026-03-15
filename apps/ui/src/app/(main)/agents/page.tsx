@@ -61,10 +61,7 @@ export default function AgentsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Agents</h1>
         <div className="flex items-center gap-2">
-          <ArchiveFilter
-            showArchived={showArchived}
-            onShowArchivedChange={setShowArchived}
-          />
+          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
           <input
             type="file"
             ref={fileInputRef}

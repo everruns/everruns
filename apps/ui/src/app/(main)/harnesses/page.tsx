@@ -28,10 +28,7 @@ export default function HarnessesPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Harnesses</h1>
         <div className="flex items-center gap-2">
-          <ArchiveFilter
-            showArchived={showArchived}
-            onShowArchivedChange={setShowArchived}
-          />
+          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
           <Link href="/harnesses/new">
             <Button variant="accent">
               <Plus className="w-4 h-4 mr-2" />
