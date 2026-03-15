@@ -604,6 +604,35 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
             metadata,
         };
 
+        // Log request details for debugging LLM errors.
+        // Debug level: shape (model, tool count, input size, flags).
+        // Trace level: full serialized body for deep debugging.
+        {
+            let tool_count = request.tools.as_ref().map_or(0, |t| t.len());
+            let input_count = request.input.len();
+            let has_instructions = request.instructions.is_some();
+            let has_reasoning = request.reasoning.is_some();
+            let has_previous_response = request.previous_response_id.is_some();
+            tracing::debug!(
+                model = %request.model,
+                input_items = input_count,
+                tool_count = tool_count,
+                has_instructions = has_instructions,
+                has_reasoning = has_reasoning,
+                has_previous_response = has_previous_response,
+                api_url = %self.api_url,
+                "OpenResponsesDriver: sending request"
+            );
+            if tracing::enabled!(tracing::Level::TRACE)
+                && let Ok(body) = serde_json::to_string(&request)
+            {
+                tracing::trace!(
+                    request_body = %body,
+                    "OpenResponsesDriver: full request body"
+                );
+            }
+        }
+
         // Retry loop for rate limit (429) and transient errors
         let mut retry_metadata = RetryMetadata::default();
         let mut last_error: Option<String> = None;
@@ -908,7 +937,17 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                                 existing_reason
                                                     .unwrap_or_else(|| "stop".to_string())
                                             }
-                                            "failed" => "error".to_string(),
+                                            "failed" => {
+                                                let error_detail = response_obj
+                                                    .get("error")
+                                                    .map(|e| e.to_string())
+                                                    .unwrap_or_else(|| "no error detail".into());
+                                                tracing::warn!(
+                                                    response_error = %error_detail,
+                                                    "OpenResponsesDriver: response completed with 'failed' status (fallback parser)"
+                                                );
+                                                "error".to_string()
+                                            }
                                             "cancelled" => "stop".to_string(),
                                             _ => "stop".to_string(),
                                         };
@@ -952,13 +991,29 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                     }
 
                                     Some("error") => {
-                                        // Error event
+                                        // Error event (fallback JSON path)
+                                        let error_code = json
+                                            .get("error")
+                                            .and_then(|e| e.get("code"))
+                                            .and_then(|c| c.as_str())
+                                            .unwrap_or("unknown");
                                         let error_msg = json
                                             .get("error")
                                             .and_then(|e| e.get("message"))
                                             .and_then(|m| m.as_str())
                                             .unwrap_or("Unknown error");
-                                        Ok(LlmStreamEvent::Error(error_msg.to_string()))
+                                        tracing::warn!(
+                                            error_code = error_code,
+                                            error_message = error_msg,
+                                            raw_error = %json.get("error").unwrap_or(&json),
+                                            "OpenResponsesDriver: received streaming error event (fallback parser)"
+                                        );
+                                        let formatted = if error_code != "unknown" {
+                                            format!("{}: {}", error_code, error_msg)
+                                        } else {
+                                            error_msg.to_string()
+                                        };
+                                        Ok(LlmStreamEvent::Error(formatted))
                                     }
 
                                     _ => {
@@ -1136,7 +1191,14 @@ fn handle_streaming_event(
                     let existing = finish_reason.lock().unwrap().clone();
                     existing.unwrap_or_else(|| "stop".to_string())
                 }
-                types::ResponseStatus::Failed => "error".to_string(),
+                types::ResponseStatus::Failed => {
+                    tracing::warn!(
+                        response_id = %response.id,
+                        error = ?response.error,
+                        "OpenResponsesDriver: response completed with 'failed' status"
+                    );
+                    "error".to_string()
+                }
                 types::ResponseStatus::Cancelled => "stop".to_string(),
                 _ => "stop".to_string(),
             };
@@ -1173,8 +1235,13 @@ fn handle_streaming_event(
             let msg = if let Some(code) = &error.code {
                 format!("{}: {}", code, error.message)
             } else {
-                error.message
+                error.message.clone()
             };
+            tracing::warn!(
+                error_code = error.code.as_deref().unwrap_or("none"),
+                error_message = %error.message,
+                "OpenResponsesDriver: received streaming error event from provider"
+            );
             LlmStreamEvent::Error(msg)
         }
 
