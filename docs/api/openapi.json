@@ -4754,6 +4754,41 @@
           }
         }
       },
+      "CompactionReason": {
+        "type": "string",
+        "description": "Reason why compaction was triggered.",
+        "enum": [
+          "proactive_budget",
+          "request_too_large",
+          "manual"
+        ]
+      },
+      "CompactionStepData": {
+        "type": "object",
+        "description": "A single step in a compaction cascade.",
+        "required": [
+          "strategy",
+          "messages_after",
+          "duration_ms"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Duration of this step in milliseconds.",
+            "minimum": 0
+          },
+          "messages_after": {
+            "type": "integer",
+            "description": "Number of messages after this step.",
+            "minimum": 0
+          },
+          "strategy": {
+            "type": "string",
+            "description": "Strategy used in this step."
+          }
+        }
+      },
       "ContentPart": {
         "oneOf": [
           {
@@ -4873,6 +4908,69 @@
           }
         ],
         "description": "A part of message content - can be text, image, image_file, tool_call, or tool_result\n\nThis is the canonical content part type used across the system.\nAPI layer enables the \"openapi\" feature to add ToSchema derive."
+      },
+      "ContextCompactedData": {
+        "type": "object",
+        "description": "Data for context.compacted event (compaction completed).",
+        "required": [
+          "strategy_used",
+          "messages_before",
+          "messages_after",
+          "duration_ms"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total duration of all compaction steps in milliseconds.",
+            "minimum": 0
+          },
+          "messages_after": {
+            "type": "integer",
+            "description": "Number of messages after compaction.",
+            "minimum": 0
+          },
+          "messages_before": {
+            "type": "integer",
+            "description": "Number of messages before compaction.",
+            "minimum": 0
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompactionStepData"
+            },
+            "description": "Individual steps in the cascade."
+          },
+          "strategy_used": {
+            "type": "string",
+            "description": "Combined strategy description (e.g., \"observation_masking+native\")."
+          }
+        }
+      },
+      "ContextCompactingData": {
+        "type": "object",
+        "description": "Data for context.compacting event (compaction starting).",
+        "required": [
+          "reason",
+          "strategy",
+          "messages_before"
+        ],
+        "properties": {
+          "messages_before": {
+            "type": "integer",
+            "description": "Number of messages before compaction.",
+            "minimum": 0
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CompactionReason",
+            "description": "Why compaction was triggered."
+          },
+          "strategy": {
+            "type": "string",
+            "description": "Strategy requested (may differ from strategy_used in the completed event)."
+          }
+        }
       },
       "Controls": {
         "type": "object",
@@ -5662,6 +5760,12 @@
           },
           {
             "$ref": "#/components/schemas/SubagentEventData"
+          },
+          {
+            "$ref": "#/components/schemas/ContextCompactingData"
+          },
+          {
+            "$ref": "#/components/schemas/ContextCompactedData"
           }
         ],
         "title": "EventData",
