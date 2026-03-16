@@ -405,7 +405,7 @@ function ToolActivityRow({
     <div
       className={cn(
         "animate-tool-row-in py-2 transition-all duration-300",
-        isRunning && "border-l-2 border-l-accent bg-[hsl(var(--accent)/0.06)] pl-2",
+        isRunning && "border-l border-l-accent/70 bg-[hsl(var(--accent)/0.05)] pl-2.5",
       )}
     >
       <div className="flex items-start gap-2">

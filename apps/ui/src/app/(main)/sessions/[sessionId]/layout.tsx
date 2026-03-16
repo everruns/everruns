@@ -300,10 +300,10 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b bg-background/90 p-4">
+      <div className="border-b border-border/70 bg-background/80 px-4 py-3 backdrop-blur-[1px]">
         <Link
           href="/sessions"
-          className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-2"
+          className="mb-1.5 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="icon-sharp mr-2 h-4 w-4" />
           Back to Sessions

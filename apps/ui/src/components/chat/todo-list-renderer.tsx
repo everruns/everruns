@@ -93,8 +93,8 @@ function TodoItemRow({ todo, isActive }: { todo: TodoItem; isActive?: boolean })
   return (
     <div
       className={cn(
-        "flex items-start gap-2 py-1.5 transition-all duration-300",
-        isInProgress && "border-l-2 border-l-accent bg-[hsl(var(--accent)/0.08)] pl-2",
+        "animate-chat-row-in flex items-start gap-2 py-1.5 transition-all duration-300",
+        isInProgress && "border-l border-l-accent/70 bg-[hsl(var(--accent)/0.07)] pl-2.5",
         !isInProgress && "pl-[10px]",
       )}
     >

@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
@@ -9,8 +7,7 @@ import { ImageAttachments } from "@/components/chat/image-attachments";
 import type { Event, ToolCompletedData } from "@/lib/api/types";
 import type { ToolCallContent } from "@/components/chat/tool-call-utils";
 import type { PendingImage } from "@/lib/api/images";
-
-const isDev = process.env.NODE_ENV === "development";
+import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 
 const infoEvent: Event = {
   id: "evt-chat-components",
@@ -24,7 +21,12 @@ const infoEvent: Event = {
       session_id: "session-chat-components",
       sequence: 1,
       role: "agent",
-      content: [{ type: "text", text: "Components now follow the canonical chat style." }],
+      content: [
+        {
+          type: "text",
+          text: "Components now follow the canonical chat style.",
+        },
+      ],
       tool_call_id: null,
       created_at: "2026-03-07T21:45:00Z",
       metadata: { model: "kimi-k2.5", reasoning_effort: "medium" },
@@ -36,8 +38,16 @@ const infoEvent: Event = {
 
 const toolCalls: ToolCallContent[] = [
   { id: "component-list", name: "list_files", arguments: { path: "." } },
-  { id: "component-read", name: "read_file", arguments: { path: "/workspace/AGENTS.md" } },
-  { id: "component-search", name: "search_web", arguments: { query: "chat ui reference" } },
+  {
+    id: "component-read",
+    name: "read_file",
+    arguments: { path: "/workspace/AGENTS.md" },
+  },
+  {
+    id: "component-search",
+    name: "search_web",
+    arguments: { query: "chat ui reference" },
+  },
 ];
 
 const toolResults = new Map<string, ToolCompletedData>([
@@ -68,7 +78,8 @@ const pendingImages: PendingImage[] = [
     tempId: "pending-1",
     file: null,
     uploadPromise: null,
-    imageId: "img-uploaded-1",
+    // Dev fixtures stay self-contained: no backend image record exists here.
+    imageId: null,
     filename: "layout.png",
     previewUrl:
       "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23ece7db' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%230a1636' font-size='10'%3EPNG%3C/text%3E%3C/svg%3E",
@@ -107,96 +118,64 @@ function Section({
 }
 
 export default function DevChatComponentsPage() {
-  if (!isDev) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="mt-2 text-muted-foreground">Page not found</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background bg-brand-dots px-4 py-8">
-      <div className="mx-auto max-w-6xl">
-        <Link
-          href="/dev"
-          className="mb-6 inline-flex items-center gap-2 border border-border bg-card px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/35 hover:text-foreground"
+    <DevPageShell
+      eyebrow="Chat Components"
+      title="Canonical component gallery"
+      description="These are the chat-specific primitives used by the runtime chat surface."
+    >
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Section
+          title="Message Info"
+          description="Metadata affordance for user and assistant messages."
         >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Developer Tools
-        </Link>
-
-        <div className="mb-8 max-w-2xl space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-            Chat Components
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            Canonical component gallery
-          </h1>
-          <p className="text-sm leading-6 text-muted-foreground">
-            These are the chat-specific primitives in the style now used by the main application.
-          </p>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Section
-            title="Message Info"
-            description="Metadata affordance for user and assistant messages."
-          >
-            <div className="flex items-center justify-between border border-border bg-background px-4 py-3">
-              <div className="text-sm text-foreground">
-                Components now follow the canonical chat style.
-              </div>
-              <MessageInfoIcon event={infoEvent} />
+          <div className="flex items-center justify-between border border-border bg-background px-4 py-3">
+            <div className="text-sm text-foreground">
+              Components now follow the canonical chat style.
             </div>
-          </Section>
+            <MessageInfoIcon event={infoEvent} />
+          </div>
+        </Section>
 
-          <Section
-            title="Attachments"
-            description="Pending image attachments now use the same sharp surface treatment."
-          >
-            <ImageAttachments images={pendingImages} onRemove={() => undefined} />
-          </Section>
+        <Section
+          title="Attachments"
+          description="Pending image attachments now use the same runtime treatment."
+        >
+          <ImageAttachments images={pendingImages} onRemove={() => undefined} />
+        </Section>
 
-          <Section
-            title="Tool Activity"
-            description="Grouped execution cards used inline in transcripts."
-          >
-            <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResults} />
-          </Section>
+        <Section
+          title="Tool Activity"
+          description="Grouped execution cards used inline in transcripts."
+        >
+          <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResults} />
+        </Section>
 
-          <Section
-            title="Execution Plan"
-            description="Persistent todo card for long-running turns."
-          >
-            <TodoListRenderer
-              arguments={{
-                todos: [
-                  {
-                    content: "Read current implementation",
-                    activeForm: "Reading current implementation",
-                    status: "completed",
-                  },
-                  {
-                    content: "Apply canonical styling",
-                    activeForm: "Applying canonical styling",
-                    status: "in_progress",
-                  },
-                  {
-                    content: "Verify main routes",
-                    activeForm: "Verifying main routes",
-                    status: "pending",
-                  },
-                ],
-              }}
-              isExecuting
-            />
-          </Section>
-        </div>
+        <Section title="Execution Plan" description="Persistent todo card for long-running turns.">
+          <TodoListRenderer
+            arguments={{
+              todos: [
+                {
+                  content: "Read current implementation",
+                  activeForm: "Reading current implementation",
+                  status: "completed",
+                },
+                {
+                  content: "Apply canonical styling",
+                  activeForm: "Applying canonical styling",
+                  status: "in_progress",
+                },
+                {
+                  content: "Verify main routes",
+                  activeForm: "Verifying main routes",
+                  status: "pending",
+                },
+              ],
+            }}
+            isExecuting
+          />
+        </Section>
       </div>
-    </div>
+    </DevPageShell>
   );
 }

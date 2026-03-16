@@ -8,7 +8,6 @@ import {
   ArrowRight,
   Star,
   FileText,
-  Palette,
   Gauge,
   FileCode,
 } from "lucide-react";
@@ -17,12 +16,6 @@ import {
 const isDev = process.env.NODE_ENV === "development";
 
 const devPages = [
-  {
-    title: "Chat UI Styles",
-    description: "Compare chat styling variants: current, flat, minimal, minimal with icon",
-    href: "/dev/chat-styles",
-    icon: Palette,
-  },
   {
     title: "Chat Components",
     description: "Chat-specific: messages, tool calls, todo lists, image attachments",
