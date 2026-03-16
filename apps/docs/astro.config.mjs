@@ -59,6 +59,10 @@ export default defineConfig({
         },
         {
           tag: "meta",
+          attrs: { name: "twitter:site", content: "@everrunshq" },
+        },
+        {
+          tag: "meta",
           attrs: {
             property: "og:image",
             content: "https://docs.everruns.com/og-image.png",
