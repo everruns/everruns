@@ -89,6 +89,10 @@ export default defineConfig({
                   label: "Features",
                   autogenerate: { directory: "features" },
                 },
+                {
+                  label: "Advanced",
+                  autogenerate: { directory: "advanced" },
+                },
               ],
             },
             {
