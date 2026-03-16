@@ -5,6 +5,10 @@ node_modules/
 dist/
 .astro/
 
+# Generated OG social card images (rebuilt by prebuild script)
+public/og/
+public/og-image.png
+
 # Environment
 .env
 .env.*
