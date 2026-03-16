@@ -2,6 +2,7 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
 import starlightSidebarTopics from "starlight-sidebar-topics";
+import apiSidebarFix from "./plugins/api-sidebar-fix.ts";
 import sitemapEnhance from "./integrations/sitemap-enhance.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -199,6 +200,7 @@ export default defineConfig({
             exclude: ["/", "/api/**"],
           },
         ),
+        apiSidebarFix(),
       ],
       editLink: {
         baseUrl: "https://github.com/everruns/everruns/edit/main/apps/docs/",
