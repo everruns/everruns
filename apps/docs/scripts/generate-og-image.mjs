@@ -179,15 +179,32 @@ async function generateApiCards() {
 
 // ─── 3. Per-doc-page cards ──────────────────────────────────────────────────
 
-function docPageSvg(title, description, breadcrumb) {
-  const titleLines = wrapText(truncate(title, 60), 30);
-  const descLines = description ? wrapText(truncate(description, 160), 50) : [];
+// Hero image area: right 480px of 1200px card (with 20px gutter).
+const HERO_AREA = { x: 680, y: 80, w: 480, h: 480 };
+// Text area max-width when hero is present vs absent.
+const TEXT_MAX_CHARS_HERO = 24;
+const TEXT_MAX_CHARS_FULL = 30;
+
+function docPageSvg(title, description, breadcrumb, hasHero) {
+  const maxChars = hasHero ? TEXT_MAX_CHARS_HERO : TEXT_MAX_CHARS_FULL;
+  const maxDescChars = hasHero ? 36 : 50;
+  const titleLines = wrapText(truncate(title, 60), maxChars);
+  const descLines = description ? wrapText(truncate(description, 160), maxDescChars) : [];
+
+  // When hero present, add a subtle vertical separator and dim overlay on right
+  const heroOverlay = hasHero
+    ? `
+  <!-- Hero area: dark overlay so composited image blends with card -->
+  <rect x="${HERO_AREA.x}" y="${HERO_AREA.y}" width="${HERO_AREA.w}" height="${HERO_AREA.h}" rx="12" fill="#0D1630" stroke="#1a2744" stroke-width="1"/>
+  <line x1="${HERO_AREA.x - 20}" y1="80" x2="${HERO_AREA.x - 20}" y2="560" stroke="#D4A43A" stroke-width="1" opacity="0.15"/>`
+    : "";
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   ${BG}
   ${LOGO_SMALL}
   <text x="140" y="62" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="500" fill="#A0A0A0">Everruns</text>
   ${breadcrumb ? `<text x="260" y="62" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="400" fill="#D4A43A">${escXml(breadcrumb)}</text>` : ""}
+  ${heroOverlay}
 
   <!-- Title -->
   ${titleLines.map((line, i) => `<text x="60" y="${180 + i * 64}" font-family="system-ui, -apple-system, sans-serif" font-size="56" font-weight="600" fill="#FFFFFF">${escXml(line)}</text>`).join("\n  ")}
@@ -200,6 +217,82 @@ function docPageSvg(title, description, breadcrumb) {
 </svg>`;
 }
 
+/**
+ * Resolve a hero image path from a doc file.
+ * Checks (in order):
+ *   1. Frontmatter `hero: <relative-path>` field
+ *   2. First markdown image `![...](path)` in the body (like the Daytona page)
+ * Returns absolute path or null.
+ */
+function resolveHeroImage(filePath, frontmatter, body) {
+  // 1. Explicit frontmatter field
+  const heroFm = frontmatter.match(/^hero:\s*["']?(.+?)["']?\s*$/m);
+  if (heroFm) {
+    const resolved = path.resolve(path.dirname(filePath), heroFm[1]);
+    if (existsSync(resolved)) return resolved;
+  }
+
+  // 2. First ![alt](path) in body (skip http URLs)
+  const imgMatch = body.match(/!\[.*?\]\(([^)]+)\)/);
+  if (imgMatch && !imgMatch[1].startsWith("http")) {
+    const resolved = path.resolve(path.dirname(filePath), imgMatch[1]);
+    if (existsSync(resolved)) return resolved;
+    // Also try under docs/images/ relative to the doc's directory section
+    const fromImages = path.resolve(path.dirname(filePath), "../images", path.basename(path.dirname(filePath)), imgMatch[1]);
+    if (existsSync(fromImages)) return fromImages;
+  }
+
+  return null;
+}
+
+/**
+ * Prepare a hero image buffer: resize to fit the hero area, pad with
+ * transparent background, and add rounded corners via SVG mask.
+ */
+async function prepareHeroImage(heroPath) {
+  const { w, h } = HERO_AREA;
+  const padding = 32; // inner padding
+  const innerW = w - padding * 2;
+  const innerH = h - padding * 2;
+
+  // Read image and get metadata
+  const img = sharp(heroPath);
+  const meta = await img.metadata();
+
+  // Determine if the image is very wide (banner/logo) vs. square/tall
+  const aspectRatio = (meta.width || 1) / (meta.height || 1);
+
+  let resized;
+  if (aspectRatio > 2.5) {
+    // Very wide image (like a logo banner): fit width, center vertically
+    resized = await img
+      .resize(innerW, innerH, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png()
+      .toBuffer();
+  } else {
+    // Normal/square image: cover the area nicely
+    resized = await img
+      .resize(innerW, innerH, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png()
+      .toBuffer();
+  }
+
+  // Create rounded-corner mask
+  const radius = 8;
+  const mask = Buffer.from(
+    `<svg width="${innerW}" height="${innerH}">
+      <rect x="0" y="0" width="${innerW}" height="${innerH}" rx="${radius}" ry="${radius}" fill="white"/>
+    </svg>`
+  );
+
+  const masked = await sharp(resized)
+    .composite([{ input: await sharp(mask).resize(innerW, innerH).png().toBuffer(), blend: "dest-in" }])
+    .png()
+    .toBuffer();
+
+  return { buffer: masked, left: HERO_AREA.x + padding, top: HERO_AREA.y + padding };
+}
+
 async function generateDocCards() {
   // Scan markdown docs for frontmatter
   const docsDir = path.join(repoRoot, "docs");
@@ -209,6 +302,8 @@ async function generateDocCards() {
   }
 
   let count = 0;
+  let heroCount = 0;
+  const tasks = [];
 
   function scanDir(dir, prefix) {
     const entries = readdirSync(dir, { withFileTypes: true });
@@ -224,17 +319,20 @@ async function generateDocCards() {
           : entry.name.replace(/\.(md|mdx)$/, "");
         // Skip index files mapped to directory slug
         const finalSlug = slug.replace(/\/index$/, "");
-        processDocFile(fullPath, finalSlug);
+        tasks.push({ filePath: fullPath, slug: finalSlug });
         count++;
       }
     }
   }
 
-  function processDocFile(filePath, slug) {
+  scanDir(docsDir, "");
+
+  for (const { filePath, slug } of tasks) {
     const content = readFileSync(filePath, "utf8");
     const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-    if (!fmMatch) return;
+    if (!fmMatch) continue;
     const fm = fmMatch[1];
+    const body = content.slice(fmMatch[0].length);
     const title = fm.match(/^title:\s*["']?(.+?)["']?\s*$/m)?.[1] || slug;
     const description = fm.match(/^description:\s*["']?(.+?)["']?\s*$/m)?.[1] || "";
 
@@ -244,12 +342,29 @@ async function generateDocCards() {
       ? parts.slice(0, -1).map((p) => p.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())).join(" › ")
       : "";
 
-    const svg = docPageSvg(title, description, breadcrumb);
+    // Detect hero image
+    const heroPath = resolveHeroImage(filePath, fm, body);
+    const hasHero = !!heroPath;
+
+    const svg = docPageSvg(title, description, breadcrumb, hasHero);
     const outPath = path.join(root, `public/og/${slug}.png`);
-    svgToPng(svg, outPath);
+    mkdirSync(path.dirname(outPath), { recursive: true });
+
+    if (hasHero) {
+      // Composite: render SVG base, then overlay hero image on right side
+      const basePng = await sharp(Buffer.from(svg)).resize(1200, 630).png().toBuffer();
+      const hero = await prepareHeroImage(heroPath);
+      await sharp(basePng)
+        .composite([{ input: hero.buffer, left: hero.left, top: hero.top }])
+        .png()
+        .toFile(outPath);
+      heroCount++;
+    } else {
+      await svgToPng(svg, outPath);
+    }
   }
 
-  scanDir(docsDir, "");
+  console.log(`    (${heroCount} with hero images)`);
   return count;
 }
 
