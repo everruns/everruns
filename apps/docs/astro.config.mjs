@@ -52,6 +52,30 @@ export default defineConfig({
             content: "xzTq83UYKYRkoPnxWzaF5uS1gJ6wVoY_cP5oEBRe9IM",
           },
         },
+        // Twitter / Open Graph social card
+        {
+          tag: "meta",
+          attrs: { name: "twitter:card", content: "summary_large_image" },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image",
+            content: "https://docs.everruns.com/og-image.png",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:image:width", content: "1200" },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:image:height", content: "630" },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:image:alt", content: "Everruns — Durable Agentic Harness Engine" },
+        },
       ],
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/everruns/everruns" },
