@@ -14,10 +14,6 @@
 
 import type { StarlightPlugin } from "@astrojs/starlight/types";
 
-// The Reference topic is at this index in the topics config array.
-// Must match the position in astro.config.mjs starlightSidebarTopics() call.
-const REFERENCE_TOPIC_INDEX = 4;
-
 export default function apiSidebarFix(): StarlightPlugin {
   return {
     name: "api-sidebar-fix",
