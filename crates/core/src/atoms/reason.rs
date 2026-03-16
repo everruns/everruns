@@ -884,6 +884,140 @@ where
         let mut compaction_info: Option<LlmCompactionInfo> = None;
         let mut llm_messages_for_call = llm_messages.clone();
 
+        // 13b. Proactive compaction: check token budget BEFORE calling the LLM.
+        // This avoids the latency of a RequestTooLarge round-trip.
+        if let Some(ref config) = compaction_config {
+            let context_window = crate::llm_model_profiles::get_model_profile(
+                &model_with_provider.provider_type,
+                &model_with_provider.model,
+            )
+            .and_then(|p| p.limits.map(|l| l.context as usize))
+            .unwrap_or(128_000);
+
+            if crate::capabilities::should_compact_proactively(
+                &llm_messages_for_call,
+                config,
+                context_window,
+            ) {
+                use crate::capabilities::{
+                    CompactionStrategy, aggressive_trim, apply_observation_masking,
+                    estimate_total_tokens,
+                };
+                use crate::events::{
+                    CompactionReason, CompactionStepData, ContextCompactedData,
+                    ContextCompactingData,
+                };
+
+                let messages_before = llm_messages_for_call.len();
+                let cascade_start = Instant::now();
+                let mut strategies_used: Vec<String> = Vec::new();
+                let mut steps: Vec<CompactionStepData> = Vec::new();
+
+                tracing::info!(
+                    session_id = %session_id,
+                    strategy = %config.strategy,
+                    messages = messages_before,
+                    "ReasonAtom: proactive compaction triggered (budget threshold exceeded)"
+                );
+
+                // Emit context.compacting event
+                let _ = self
+                    .event_emitter
+                    .emit(EventRequest::new(
+                        session_id,
+                        streaming_event_context.clone(),
+                        ContextCompactingData {
+                            reason: CompactionReason::ProactiveBudget,
+                            strategy: config.strategy.to_string(),
+                            messages_before,
+                        },
+                    ))
+                    .await;
+
+                let run_masking = matches!(
+                    config.strategy,
+                    CompactionStrategy::Auto | CompactionStrategy::ObservationMasking
+                );
+
+                // Step 1: Observation masking (free)
+                if run_masking {
+                    let step_start = Instant::now();
+                    let conversation_msgs = if has_system_prompt {
+                        &llm_messages_for_call[1..]
+                    } else {
+                        &llm_messages_for_call[..]
+                    };
+
+                    let masking_result =
+                        apply_observation_masking(conversation_msgs, &config.observation_masking);
+
+                    if masking_result.masked_count > 0 {
+                        let mut new_messages = Vec::new();
+                        if has_system_prompt {
+                            new_messages.push(llm_messages_for_call[0].clone());
+                        }
+                        new_messages.extend(masking_result.messages);
+                        llm_messages_for_call = new_messages;
+
+                        let step_duration = step_start.elapsed().as_millis() as u64;
+                        strategies_used.push("observation_masking".to_string());
+                        steps.push(CompactionStepData {
+                            strategy: "observation_masking".to_string(),
+                            messages_after: llm_messages_for_call.len(),
+                            duration_ms: step_duration,
+                        });
+                    }
+                }
+
+                // Step 2: If still over budget after masking, apply aggressive trim
+                let budget_tokens = (context_window as f32 * config.budget_percent) as usize;
+                if estimate_total_tokens(&llm_messages_for_call) > budget_tokens {
+                    let step_start = Instant::now();
+                    llm_messages_for_call =
+                        aggressive_trim(&llm_messages_for_call, budget_tokens, has_system_prompt);
+
+                    let step_duration = step_start.elapsed().as_millis() as u64;
+                    strategies_used.push("aggressive_trim".to_string());
+                    steps.push(CompactionStepData {
+                        strategy: "aggressive_trim".to_string(),
+                        messages_after: llm_messages_for_call.len(),
+                        duration_ms: step_duration,
+                    });
+                }
+
+                let cascade_duration = cascade_start.elapsed().as_millis() as u64;
+                let messages_after = llm_messages_for_call.len();
+
+                if !strategies_used.is_empty() {
+                    let strategy_used = strategies_used.join("+");
+
+                    let _ = self
+                        .event_emitter
+                        .emit(EventRequest::new(
+                            session_id,
+                            streaming_event_context.clone(),
+                            ContextCompactedData {
+                                strategy_used: strategy_used.clone(),
+                                messages_before,
+                                messages_after,
+                                duration_ms: cascade_duration,
+                                steps,
+                            },
+                        ))
+                        .await;
+
+                    tracing::info!(
+                        session_id = %session_id,
+                        strategy = %strategy_used,
+                        messages_before,
+                        messages_after,
+                        duration_ms = cascade_duration,
+                        "ReasonAtom: proactive compaction completed"
+                    );
+                }
+            }
+        }
+
         // 14. Process stream with batched output.message.delta emissions
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
@@ -1179,6 +1313,37 @@ where
                                     );
                                 }
                             }
+                        }
+                    }
+
+                    // Step 4: Aggressive trim (last resort — drop oldest messages)
+                    // Only run if previous strategies didn't reduce context enough.
+                    // Use a generous target (half the estimated original size).
+                    if strategies_used.is_empty()
+                        || llm_messages_for_call.len() > messages_before / 2
+                    {
+                        use crate::capabilities::aggressive_trim;
+                        let step_start = Instant::now();
+                        // Target: keep roughly half the messages by token budget
+                        let estimated_total =
+                            crate::capabilities::estimate_total_tokens(&llm_messages_for_call);
+                        let target = estimated_total / 2;
+                        let trimmed =
+                            aggressive_trim(&llm_messages_for_call, target, has_system_prompt);
+                        if trimmed.len() < llm_messages_for_call.len() {
+                            llm_messages_for_call = trimmed;
+                            let step_duration = step_start.elapsed().as_millis() as u64;
+                            strategies_used.push("aggressive_trim".to_string());
+                            steps.push(CompactionStepData {
+                                strategy: "aggressive_trim".to_string(),
+                                messages_after: llm_messages_for_call.len(),
+                                duration_ms: step_duration,
+                            });
+                            tracing::info!(
+                                session_id = %session_id,
+                                messages_after = llm_messages_for_call.len(),
+                                "ReasonAtom: aggressive trim applied (last resort)"
+                            );
                         }
                     }
 

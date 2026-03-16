@@ -733,6 +733,17 @@ export interface ContextCompactedData {
   steps: CompactionStepData[];
 }
 
+/** Per-session compaction metrics */
+export interface SessionCompactionMetrics {
+  compaction_count: number;
+  total_messages_saved: number;
+  strategy_counts: Record<string, number>;
+  total_duration_ms: number;
+}
+
+/** Memory tier classification */
+export type MemoryTier = "hot" | "warm" | "cold";
+
 /** Union type for all event data types */
 export type EventData =
   | InputMessageData

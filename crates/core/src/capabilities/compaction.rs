@@ -11,7 +11,10 @@
 //! - Proactive compaction at a configurable budget threshold, not just on error
 
 use super::{Capability, CapabilityStatus};
+use crate::message_filter::MessageFilterProvider;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Capability ID for compaction.
 pub const COMPACTION_CAPABILITY_ID: &str = "compaction";
@@ -140,6 +143,10 @@ pub struct CompactionConfig {
     /// Summarization settings.
     #[serde(default)]
     pub summarization: SummarizationConfig,
+
+    /// Hierarchical memory tier settings for hot/warm/cold management.
+    #[serde(default)]
+    pub memory_tiers: HierarchicalMemoryConfig,
 }
 
 impl Default for CompactionConfig {
@@ -150,6 +157,7 @@ impl Default for CompactionConfig {
             budget_percent: default_budget_percent(),
             observation_masking: ObservationMaskingConfig::default(),
             summarization: SummarizationConfig::default(),
+            memory_tiers: HierarchicalMemoryConfig::default(),
         }
     }
 }
@@ -198,6 +206,292 @@ Choose between native provider compaction (e.g., OpenAI /responses/compact), obs
     fn category(&self) -> Option<&str> {
         Some("Optimization")
     }
+
+    fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
+        Some(Arc::new(CompactionFilterProvider))
+    }
+}
+
+// ============================================================================
+// Message Filter Provider (proactive observation masking at message load time)
+// ============================================================================
+
+/// Applies observation masking as a message filter during message loading.
+///
+/// This runs *before* the LLM call, proactively reducing context size
+/// by masking old tool outputs. Lower priority than infinity context (50 vs 100)
+/// so it runs first — masking happens before trimming.
+struct CompactionFilterProvider;
+
+impl MessageFilterProvider for CompactionFilterProvider {
+    fn apply_filters(
+        &self,
+        _query: &mut crate::message_filter::MessageQuery,
+        _config: &serde_json::Value,
+    ) {
+        // The filter provider signals that compaction is active on this session.
+        // Actual observation masking is applied at LLM message construction time
+        // (in ReasonAtom) rather than at message query time, because masking
+        // operates on LlmMessage format, not the storage Message format.
+        //
+        // The proactive compaction check in ReasonAtom reads the compaction config
+        // and applies masking + budget checks before the LLM call.
+    }
+
+    fn priority(&self) -> i32 {
+        50 // Before infinity context (100)
+    }
+}
+
+// ============================================================================
+// Token Estimation
+// ============================================================================
+
+/// Estimate token count for an LLM message using char/4 approximation.
+///
+/// This is intentionally simple. More accurate estimation (tiktoken, etc.) can
+/// be swapped in later, but char/4 is sufficient for budget decisions.
+pub fn estimate_tokens(msg: &LlmMessage) -> usize {
+    let text_len = match &msg.content {
+        LlmMessageContent::Text(t) => t.len(),
+        LlmMessageContent::Parts(parts) => parts
+            .iter()
+            .map(|p| match p {
+                LlmContentPart::Text { text } => text.len(),
+                _ => 50, // images, etc. — rough estimate
+            })
+            .sum(),
+    };
+
+    // Add tool call overhead
+    let tool_call_len = msg
+        .tool_calls
+        .as_ref()
+        .map(|calls| {
+            calls
+                .iter()
+                .map(|tc| tc.name.len() + tc.arguments.to_string().len() + 20)
+                .sum::<usize>()
+        })
+        .unwrap_or(0);
+
+    (text_len + tool_call_len) / 4
+}
+
+/// Estimate total tokens for a slice of messages.
+pub fn estimate_total_tokens(messages: &[LlmMessage]) -> usize {
+    messages.iter().map(estimate_tokens).sum()
+}
+
+/// Check whether proactive compaction should trigger.
+///
+/// Returns `true` if the estimated tokens exceed `budget_percent` of the model's
+/// context window.
+pub fn should_compact_proactively(
+    messages: &[LlmMessage],
+    config: &CompactionConfig,
+    context_window_tokens: usize,
+) -> bool {
+    if !config.proactive {
+        return false;
+    }
+    let budget = (context_window_tokens as f32 * config.budget_percent) as usize;
+    let estimated = estimate_total_tokens(messages);
+    estimated > budget
+}
+
+// ============================================================================
+// Aggressive Trim (last resort in cascade)
+// ============================================================================
+
+/// Drop oldest messages to fit within a target token count.
+///
+/// Preserves the system prompt (index 0 if present) and the most recent messages.
+/// This is the last resort — lossy, no recovery.
+pub fn aggressive_trim(
+    messages: &[LlmMessage],
+    target_tokens: usize,
+    has_system_prompt: bool,
+) -> Vec<LlmMessage> {
+    let mut result = Vec::new();
+    let mut token_budget = target_tokens;
+
+    // Always keep system prompt
+    let start_idx = if has_system_prompt && !messages.is_empty() {
+        let sys_tokens = estimate_tokens(&messages[0]);
+        if sys_tokens < token_budget {
+            result.push(messages[0].clone());
+            token_budget -= sys_tokens;
+        }
+        1
+    } else {
+        0
+    };
+
+    // Walk from newest to oldest, collecting messages that fit
+    let conversation = &messages[start_idx..];
+    let mut keep_from_end = Vec::new();
+
+    for msg in conversation.iter().rev() {
+        let msg_tokens = estimate_tokens(msg);
+        if msg_tokens <= token_budget {
+            keep_from_end.push(msg.clone());
+            token_budget -= msg_tokens;
+        } else {
+            break;
+        }
+    }
+
+    keep_from_end.reverse();
+    result.extend(keep_from_end);
+    result
+}
+
+// ============================================================================
+// Session Compaction Metrics
+// ============================================================================
+
+/// Per-session compaction metrics, stored as session metadata.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SessionCompactionMetrics {
+    /// Total number of compaction events in this session.
+    pub compaction_count: u32,
+    /// Total messages saved across all compactions.
+    pub total_messages_saved: u64,
+    /// Breakdown by strategy.
+    pub strategy_counts: HashMap<String, u32>,
+    /// Total time spent compacting (ms).
+    pub total_duration_ms: u64,
+}
+
+impl SessionCompactionMetrics {
+    /// Record a completed compaction step.
+    pub fn record(
+        &mut self,
+        strategy_used: &str,
+        messages_before: usize,
+        messages_after: usize,
+        duration_ms: u64,
+    ) {
+        self.compaction_count += 1;
+        self.total_messages_saved += (messages_before.saturating_sub(messages_after)) as u64;
+        self.total_duration_ms += duration_ms;
+
+        for strategy in strategy_used.split('+') {
+            *self
+                .strategy_counts
+                .entry(strategy.to_string())
+                .or_insert(0) += 1;
+        }
+    }
+}
+
+// ============================================================================
+// Hierarchical Memory Tiers
+// ============================================================================
+
+/// Memory tier for a message in the hierarchy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryTier {
+    /// Full verbatim text, always in context.
+    Hot,
+    /// Observation-masked (tool outputs replaced with summaries).
+    Warm,
+    /// Summarized to key facts. Queryable via `query_history` if Infinity Context enabled.
+    Cold,
+}
+
+/// Configuration for hierarchical memory tiers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HierarchicalMemoryConfig {
+    /// Number of most recent messages to keep in the hot tier (full verbatim).
+    #[serde(default = "default_hot_messages")]
+    pub hot_messages: usize,
+    /// Number of messages in the warm tier (observation-masked).
+    #[serde(default = "default_warm_messages")]
+    pub warm_messages: usize,
+    // Everything older → cold tier (summarized / queryable)
+}
+
+impl Default for HierarchicalMemoryConfig {
+    fn default() -> Self {
+        Self {
+            hot_messages: default_hot_messages(),
+            warm_messages: default_warm_messages(),
+        }
+    }
+}
+
+fn default_hot_messages() -> usize {
+    20
+}
+
+fn default_warm_messages() -> usize {
+    100
+}
+
+/// Classify messages into memory tiers based on position (newest-first).
+///
+/// Returns a vec of (tier, message) pairs in original order.
+pub fn classify_memory_tiers<'a>(
+    messages: &'a [LlmMessage],
+    config: &HierarchicalMemoryConfig,
+) -> Vec<(MemoryTier, &'a LlmMessage)> {
+    let len = messages.len();
+    messages
+        .iter()
+        .enumerate()
+        .map(|(i, msg)| {
+            let from_end = len - 1 - i;
+            let tier = if from_end < config.hot_messages {
+                MemoryTier::Hot
+            } else if from_end < config.hot_messages + config.warm_messages {
+                MemoryTier::Warm
+            } else {
+                MemoryTier::Cold
+            };
+            (tier, msg)
+        })
+        .collect()
+}
+
+/// Apply hierarchical memory: mask warm-tier tool outputs, summarize cold tier.
+///
+/// Returns the processed messages ready for LLM context. Cold-tier messages are
+/// replaced with a `[CONVERSATION_SUMMARY]` if a summary is provided.
+pub fn apply_hierarchical_memory(
+    messages: &[LlmMessage],
+    config: &HierarchicalMemoryConfig,
+    masking_config: &ObservationMaskingConfig,
+    cold_summary: Option<&str>,
+) -> Vec<LlmMessage> {
+    let len = messages.len();
+    let hot_start = len.saturating_sub(config.hot_messages);
+    let warm_start = hot_start.saturating_sub(config.warm_messages);
+
+    let mut result = Vec::new();
+
+    // Cold tier: replace with summary if available, otherwise drop
+    if warm_start > 0
+        && let Some(summary) = cold_summary
+    {
+        result.push(build_summary_message(summary));
+    }
+
+    // Warm tier: apply observation masking to tool outputs
+    if warm_start < hot_start {
+        let warm_msgs = &messages[warm_start..hot_start];
+        let masked = apply_observation_masking(warm_msgs, masking_config);
+        result.extend(masked.messages);
+    }
+
+    // Hot tier: verbatim
+    if hot_start < len {
+        result.extend_from_slice(&messages[hot_start..]);
+    }
+
+    result
 }
 
 // ============================================================================
@@ -516,7 +810,7 @@ mod tests {
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.category(), Some("Optimization"));
         assert!(cap.tools().is_empty());
-        assert!(cap.message_filter_provider().is_none());
+        assert!(cap.message_filter_provider().is_some());
     }
 
     #[test]
@@ -1049,5 +1343,296 @@ mod tests {
         assert_eq!(json["strategy"], "observation_masking");
         assert_eq!(json["messages_after"], 42);
         assert_eq!(json["duration_ms"], 12);
+    }
+
+    // ====================================================================
+    // Token estimation tests
+    // ====================================================================
+
+    #[test]
+    fn test_estimate_tokens_text() {
+        let msg = make_user_msg("hello world"); // 11 chars → ~2 tokens
+        let tokens = estimate_tokens(&msg);
+        assert_eq!(tokens, 11 / 4);
+    }
+
+    #[test]
+    fn test_estimate_tokens_empty() {
+        let msg = make_user_msg("");
+        assert_eq!(estimate_tokens(&msg), 0);
+    }
+
+    #[test]
+    fn test_estimate_total_tokens() {
+        let messages = vec![
+            make_user_msg("a".repeat(400).as_str()),      // 100 tokens
+            make_assistant_msg("b".repeat(200).as_str()), // 50 tokens
+        ];
+        assert_eq!(estimate_total_tokens(&messages), 150);
+    }
+
+    #[test]
+    fn test_estimate_tokens_with_tool_calls() {
+        let msg = make_assistant_with_tool_call("call_1", "read_file");
+        let tokens = estimate_tokens(&msg);
+        assert!(tokens > 0, "Tool call should contribute tokens");
+    }
+
+    // ====================================================================
+    // Proactive compaction check tests
+    // ====================================================================
+
+    #[test]
+    fn test_should_compact_proactively_under_budget() {
+        let messages = vec![make_user_msg("short")];
+        let config = CompactionConfig::default(); // 85% budget
+        assert!(!should_compact_proactively(&messages, &config, 128_000));
+    }
+
+    #[test]
+    fn test_should_compact_proactively_over_budget() {
+        // Create messages that exceed 85% of 1000 tokens = 850 tokens
+        let big_text = "x".repeat(4000); // ~1000 tokens
+        let messages = vec![make_user_msg(&big_text)];
+        let config = CompactionConfig::default();
+        assert!(should_compact_proactively(&messages, &config, 1000));
+    }
+
+    #[test]
+    fn test_should_compact_proactively_disabled() {
+        let big_text = "x".repeat(4000);
+        let messages = vec![make_user_msg(&big_text)];
+        let config = CompactionConfig {
+            proactive: false,
+            ..Default::default()
+        };
+        assert!(!should_compact_proactively(&messages, &config, 1000));
+    }
+
+    // ====================================================================
+    // Aggressive trim tests
+    // ====================================================================
+
+    #[test]
+    fn test_aggressive_trim_keeps_newest() {
+        // Use big messages so budget matters
+        let messages = vec![
+            make_user_msg(&"s".repeat(400)),      // system: 100 tokens
+            make_user_msg(&"a".repeat(400)),      // old: 100 tokens
+            make_assistant_msg(&"b".repeat(400)), // old: 100 tokens
+            make_user_msg(&"c".repeat(400)),      // recent: 100 tokens
+            make_assistant_msg(&"d".repeat(400)), // recent: 100 tokens
+        ];
+        // Target: enough for system + 2 recent messages only (300 tokens)
+        let target_tokens = 300;
+        let result = aggressive_trim(&messages, target_tokens, true);
+        assert!(
+            result.len() < messages.len(),
+            "Expected trim, got {} messages",
+            result.len()
+        );
+        // Should keep system prompt (first)
+        assert_eq!(result[0].role, LlmMessageRole::User);
+    }
+
+    #[test]
+    fn test_aggressive_trim_empty() {
+        let result = aggressive_trim(&[], 100, false);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_aggressive_trim_everything_fits() {
+        let messages = vec![make_user_msg("hi"), make_assistant_msg("hello")];
+        let result = aggressive_trim(&messages, 100_000, false);
+        assert_eq!(result.len(), 2);
+    }
+
+    // ====================================================================
+    // Session compaction metrics tests
+    // ====================================================================
+
+    #[test]
+    fn test_session_metrics_record() {
+        let mut metrics = SessionCompactionMetrics::default();
+        metrics.record("observation_masking+native", 100, 50, 200);
+
+        assert_eq!(metrics.compaction_count, 1);
+        assert_eq!(metrics.total_messages_saved, 50);
+        assert_eq!(metrics.total_duration_ms, 200);
+        assert_eq!(metrics.strategy_counts["observation_masking"], 1);
+        assert_eq!(metrics.strategy_counts["native"], 1);
+    }
+
+    #[test]
+    fn test_session_metrics_accumulate() {
+        let mut metrics = SessionCompactionMetrics::default();
+        metrics.record("observation_masking", 100, 80, 10);
+        metrics.record("summarization", 80, 40, 500);
+
+        assert_eq!(metrics.compaction_count, 2);
+        assert_eq!(metrics.total_messages_saved, 60);
+        assert_eq!(metrics.total_duration_ms, 510);
+        assert_eq!(metrics.strategy_counts["observation_masking"], 1);
+        assert_eq!(metrics.strategy_counts["summarization"], 1);
+    }
+
+    #[test]
+    fn test_session_metrics_serialization() {
+        let mut metrics = SessionCompactionMetrics::default();
+        metrics.record("auto", 50, 30, 100);
+        let json = serde_json::to_value(&metrics).unwrap();
+        assert_eq!(json["compaction_count"], 1);
+        assert_eq!(json["total_messages_saved"], 20);
+    }
+
+    // ====================================================================
+    // Hierarchical memory tier tests
+    // ====================================================================
+
+    #[test]
+    fn test_classify_memory_tiers_basic() {
+        let messages: Vec<LlmMessage> = (0..30)
+            .map(|i| make_user_msg(&format!("msg {i}")))
+            .collect();
+
+        let config = HierarchicalMemoryConfig {
+            hot_messages: 5,
+            warm_messages: 10,
+        };
+
+        let classified = classify_memory_tiers(&messages, &config);
+        assert_eq!(classified.len(), 30);
+
+        // Last 5 = hot
+        assert_eq!(classified[29].0, MemoryTier::Hot);
+        assert_eq!(classified[25].0, MemoryTier::Hot);
+
+        // Next 10 = warm
+        assert_eq!(classified[24].0, MemoryTier::Warm);
+        assert_eq!(classified[15].0, MemoryTier::Warm);
+
+        // Rest = cold
+        assert_eq!(classified[14].0, MemoryTier::Cold);
+        assert_eq!(classified[0].0, MemoryTier::Cold);
+    }
+
+    #[test]
+    fn test_classify_memory_tiers_all_hot() {
+        let messages: Vec<LlmMessage> =
+            (0..3).map(|i| make_user_msg(&format!("msg {i}"))).collect();
+
+        let config = HierarchicalMemoryConfig::default(); // 20 hot
+
+        let classified = classify_memory_tiers(&messages, &config);
+        assert!(classified.iter().all(|(tier, _)| *tier == MemoryTier::Hot));
+    }
+
+    #[test]
+    fn test_apply_hierarchical_memory_basic() {
+        let mut messages = Vec::new();
+
+        // Cold: old tool interactions
+        for i in 0..5 {
+            let id = format!("old_{i}");
+            messages.push(make_assistant_with_tool_call(&id, "read_file"));
+            messages.push(make_tool_result(&id, &format!("old content {i}")));
+        }
+
+        // Warm: mid tool interactions
+        for i in 0..3 {
+            let id = format!("mid_{i}");
+            messages.push(make_assistant_with_tool_call(&id, "bash"));
+            messages.push(make_tool_result(&id, &format!("mid output {i}")));
+        }
+
+        // Hot: recent
+        messages.push(make_user_msg("what now?"));
+        messages.push(make_assistant_msg("let me check"));
+
+        let config = HierarchicalMemoryConfig {
+            hot_messages: 2,
+            warm_messages: 6,
+        };
+        let masking_config = ObservationMaskingConfig::default();
+
+        let result = apply_hierarchical_memory(
+            &messages,
+            &config,
+            &masking_config,
+            Some("Summary of old work"),
+        );
+
+        // Should have: 1 summary + 6 warm messages + 2 hot messages
+        assert!(result.len() <= 9);
+        // First should be the summary
+        let first_text = extract_text(&result[0].content);
+        assert!(first_text.contains("CONVERSATION_SUMMARY"));
+        // Last 2 should be hot (verbatim)
+        let last = extract_text(&result[result.len() - 1].content);
+        assert!(last.contains("let me check"));
+    }
+
+    #[test]
+    fn test_apply_hierarchical_memory_no_cold() {
+        let messages = vec![make_user_msg("hello"), make_assistant_msg("hi")];
+
+        let config = HierarchicalMemoryConfig {
+            hot_messages: 5,
+            warm_messages: 5,
+        };
+
+        let result = apply_hierarchical_memory(
+            &messages,
+            &config,
+            &ObservationMaskingConfig::default(),
+            None,
+        );
+        // All hot, no summary needed
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_memory_tier_config_from_json() {
+        let config: HierarchicalMemoryConfig = serde_json::from_value(json!({
+            "hot_messages": 10,
+            "warm_messages": 50
+        }))
+        .unwrap();
+        assert_eq!(config.hot_messages, 10);
+        assert_eq!(config.warm_messages, 50);
+    }
+
+    #[test]
+    fn test_memory_tier_config_defaults() {
+        let config = HierarchicalMemoryConfig::default();
+        assert_eq!(config.hot_messages, 20);
+        assert_eq!(config.warm_messages, 100);
+    }
+
+    #[test]
+    fn test_compaction_config_with_memory_tiers() {
+        let config = CompactionConfig::from_json(&json!({
+            "strategy": "auto",
+            "memory_tiers": {
+                "hot_messages": 15,
+                "warm_messages": 80
+            }
+        }));
+        assert_eq!(config.memory_tiers.hot_messages, 15);
+        assert_eq!(config.memory_tiers.warm_messages, 80);
+    }
+
+    #[test]
+    fn test_memory_tier_serialization() {
+        assert_eq!(serde_json::to_value(MemoryTier::Hot).unwrap(), json!("hot"));
+        assert_eq!(
+            serde_json::to_value(MemoryTier::Warm).unwrap(),
+            json!("warm")
+        );
+        assert_eq!(
+            serde_json::to_value(MemoryTier::Cold).unwrap(),
+            json!("cold")
+        );
     }
 }

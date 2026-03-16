@@ -62,6 +62,51 @@ import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 
+/** Expandable compaction divider — click to see cascade details. */
+function CompactionDivider({ data }: { data: import("@/lib/api/types").ContextCompactedData }) {
+  const [expanded, setExpanded] = useState(false);
+  const saved = data.messages_before - data.messages_after;
+
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full cursor-pointer items-center gap-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground sm:text-sm"
+      >
+        <div className="h-px flex-1 bg-border" />
+        <span className="whitespace-nowrap">
+          Context compacted · {data.messages_before} → {data.messages_after} messages
+          {data.strategy_used !== "none" && ` · ${data.strategy_used}`}
+        </span>
+        <span className="text-[10px]">{expanded ? "▲" : "▼"}</span>
+        <div className="h-px flex-1 bg-border" />
+      </button>
+      {expanded && (
+        <div className="mx-auto max-w-md rounded-md border bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
+          <div className="space-y-1">
+            <div>
+              <span className="font-medium">Saved:</span> {saved} messages in {data.duration_ms}ms
+            </div>
+            {data.steps.length > 0 && (
+              <div>
+                <span className="font-medium">Cascade steps:</span>
+                <ol className="mt-1 list-inside list-decimal space-y-0.5">
+                  {data.steps.map((step, i) => (
+                    <li key={i}>
+                      {step.strategy} → {step.messages_after} messages ({step.duration_ms}ms)
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ChatPanel() {
   const {
     agentId,
@@ -576,21 +621,7 @@ export function ChatPanel() {
 
               if (event.type === "context.compacted") {
                 const compactedData = event.data as import("@/lib/api/types").ContextCompactedData;
-                return (
-                  <div
-                    key={event.id}
-                    className="flex items-center gap-4 py-2 text-xs font-medium text-muted-foreground sm:text-sm"
-                  >
-                    <div className="h-px flex-1 bg-border" />
-                    <span className="whitespace-nowrap">
-                      Context compacted · {compactedData.messages_before} →{" "}
-                      {compactedData.messages_after} messages
-                      {compactedData.strategy_used !== "none" &&
-                        ` · ${compactedData.strategy_used}`}
-                    </span>
-                    <div className="h-px flex-1 bg-border" />
-                  </div>
-                );
+                return <CompactionDivider key={event.id} data={compactedData} />;
               }
 
               if (event.type === "act.started") {
