@@ -73,6 +73,7 @@ pub use crate::capability_types::{
 
 mod agent_instructions;
 pub mod attach_skill;
+pub mod compaction;
 mod current_time;
 mod fake_aws;
 mod fake_crm;
@@ -109,6 +110,14 @@ pub use attach_skill::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillInstructions,
     SkillMeta, SkillSource, discover_skills_from_entries, is_skill_capability,
     parse_skill_capability_id, skill_capability_id,
+};
+pub use compaction::{
+    COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
+    CompactionStrategy, HierarchicalMemoryConfig, MaskingSummaryFormat, MemoryTier,
+    ObservationMaskingConfig, ObservationMaskingResult, SessionCompactionMetrics,
+    SummarizationConfig, aggressive_trim, apply_hierarchical_memory, apply_observation_masking,
+    build_summarization_prompt, build_summary_message, classify_memory_tiers, estimate_tokens,
+    estimate_total_tokens, format_messages_for_summarization, should_compact_proactively,
 };
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
 pub use fake_aws::{
@@ -531,6 +540,7 @@ impl CapabilityRegistry {
         registry.register(VirtualBashCapability);
         registry.register(SessionScheduleCapability);
         registry.register(InfinityContextCapability);
+        registry.register(CompactionCapability);
 
         // OpenAI tool_search (deferred tool loading, all environments)
         registry.register(OpenAiToolSearchCapability::new());
@@ -1196,6 +1206,7 @@ mod tests {
             "virtual_bash",
             "session_schedule",
             "infinity_context",
+            "compaction",
             "openai_tool_search",
             "skills",
             "subagents",
