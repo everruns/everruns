@@ -69,8 +69,12 @@ Each markdown file must include YAML frontmatter:
 ---
 title: Page Title
 description: Brief description for SEO and search
+hero: ../images/section/visual.png  # Optional: hero image for social card
 ---
 ```
+
+- `title` and `description` are required
+- `hero` is optional — relative path to an image that will be composited into the page's OG social card (see [Social Card Images](#social-card-images-og-images))
 
 ### Design Requirements
 
@@ -217,6 +221,43 @@ No internal links should produce 404 errors.
 - Links to internal specs (`specs/*.md`) should use absolute GitHub URLs since specs aren't published as docs pages
 - The `starlight-openapi` plugin does not generate individual schema pages — do not link to `/api/schemas/{SchemaName}`
 
+#### Social Card Images (OG Images)
+
+Every page gets a per-page Open Graph image for rich link previews on Twitter, Slack, Discord, etc. Images are generated at prebuild time by `apps/docs/scripts/generate-og-image.mjs` and output to `public/og/`.
+
+**Three card types:**
+
+| Type | Path | Content |
+|------|------|---------|
+| API operation | `public/og/api/operations/{operationId}.png` | Method badge, path, description, curl example |
+| Doc page | `public/og/{slug}.png` | Title, breadcrumb, description |
+| Fallback | `public/og-image.png` | Generic Everruns branded card |
+
+**Hero images on doc pages:**
+
+Doc pages can include a hero image (screenshot, diagram, logo) that gets composited into the right half of the OG card. Detection order:
+
+1. **Frontmatter `hero` field** (preferred): `hero: ../images/path/to/image.png`
+2. **First markdown image**: The first `![...](path)` in the page body (e.g. `![Daytona Integration](daytona.png)`)
+
+When a hero is detected, the card layout shifts to a split view: text on the left, hero image on the right. Pages without a hero image use the full-width text layout.
+
+**Adding hero images to new pages:**
+
+When creating or editing a doc page that has a visual asset (integration logo, architecture diagram, UI screenshot), add it as a hero so the social card is richer:
+
+```yaml
+---
+title: My Feature
+description: What this feature does
+hero: ../images/features/my-feature-screenshot.png
+---
+```
+
+Place images under `docs/images/{section}/` (e.g. `docs/images/integrations/`, `docs/images/features/`).
+
+**Generated files are gitignored** — `public/og/` and `public/og-image.png` are rebuilt on every `npm run build` (via the `prebuild` script). Only the generation script and source images are committed.
+
 #### Route Middleware (`apps/docs/src/routeData.ts`)
 
 SEO improvements for auto-generated pages are handled by Starlight route middleware:
@@ -224,6 +265,7 @@ SEO improvements for auto-generated pages are handled by Starlight route middlew
 1. Strips `METHOD /path - ` prefix from API operation titles for shorter `<title>` tags
 2. Generates per-page meta descriptions for API reference pages that lack frontmatter descriptions
 3. Updates `og:title` and `og:description` to match
+4. Sets per-page `og:image` pointing to the pre-generated social card PNG for the current page
 
 ### Sitemap Requirements
 
