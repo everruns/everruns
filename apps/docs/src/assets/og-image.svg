@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <!-- Background gradient -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0A1636"/>
+      <stop offset="100%" stop-color="#060D1F"/>
+    </linearGradient>
+
+    <!-- Dot pattern -->
+    <pattern id="dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1" fill="#D4A43A" opacity="0.10"/>
+    </pattern>
+
+    <!-- Logo gradients (from logo.svg) -->
+    <linearGradient id="gTop" gradientUnits="userSpaceOnUse" x1="256" y1="94" x2="256" y2="284">
+      <stop offset="0.00" stop-color="#0A1636"/>
+      <stop offset="0.70" stop-color="#0A1636"/>
+      <stop offset="1.00" stop-color="#D4A43A"/>
+    </linearGradient>
+    <linearGradient id="gLeft" gradientUnits="userSpaceOnUse" x1="70" y1="374" x2="256" y2="284">
+      <stop offset="0.00" stop-color="#081C3F"/>
+      <stop offset="0.70" stop-color="#081C3F"/>
+      <stop offset="1.00" stop-color="#D4A43A"/>
+    </linearGradient>
+    <linearGradient id="gRight" gradientUnits="userSpaceOnUse" x1="442" y1="374" x2="256" y2="284">
+      <stop offset="0.00" stop-color="#0B1233"/>
+      <stop offset="0.70" stop-color="#0B1233"/>
+      <stop offset="1.00" stop-color="#D4A43A"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#dots)"/>
+
+  <!-- Logo rings (scaled and positioned left-center) -->
+  <g transform="translate(100, 115) scale(0.78)" fill="none" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="256" cy="214" r="120" stroke="url(#gTop)"/>
+    <circle cx="186" cy="309" r="120" stroke="url(#gLeft)"/>
+    <circle cx="326" cy="309" r="120" stroke="url(#gRight)"/>
+  </g>
+
+  <!-- Title -->
+  <text x="560" y="270" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="600" fill="#FFFFFF">Everruns</text>
+
+  <!-- Tagline -->
+  <text x="560" y="330" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="400" fill="#A0A0A0">Durable Agentic Harness Engine</text>
+
+  <!-- URL -->
+  <text x="560" y="420" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="400" fill="#D4A43A">docs.everruns.com</text>
+
+  <!-- Bottom accent line -->
+  <rect x="0" y="620" width="1200" height="10" fill="#D4A43A" opacity="0.6"/>
+</svg>
