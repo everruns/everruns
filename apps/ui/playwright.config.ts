@@ -1,4 +1,7 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices } from "@playwright/test";
+
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:9100";
+const useExternalServer = !!process.env.PLAYWRIGHT_BASE_URL;
 
 /**
  * Playwright configuration for UI e2e tests.
@@ -9,8 +12,8 @@ import { defineConfig, devices } from '@playwright/test';
  *   npm run e2e:headed   # Run in headed mode
  */
 export default defineConfig({
-  testDir: './e2e',
-  outputDir: './e2e/test-results',
+  testDir: "./e2e",
+  outputDir: "./e2e/test-results",
 
   // Run tests in parallel
   fullyParallel: true,
@@ -25,39 +28,36 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
 
   // Reporter to use
-  reporter: [
-    ['html', { outputFolder: './e2e/playwright-report' }],
-    ['list'],
-  ],
+  reporter: [["html", { outputFolder: "./e2e/playwright-report" }], ["list"]],
 
   // Shared settings for all projects
   use: {
     // Base URL to use in actions like `await page.goto('/')`
-    baseURL: 'http://localhost:9100',
+    baseURL,
 
     // Collect trace when retrying the failed test
-    trace: 'on-first-retry',
+    trace: "on-first-retry",
 
     // Take screenshot on failure
-    screenshot: 'only-on-failure',
+    screenshot: "only-on-failure",
   },
 
   // Configure projects for browsers
   projects: [
     {
-      name: 'chromium',
+      name: "chromium",
       use: {
-        ...devices['Desktop Chrome'],
+        ...devices["Desktop Chrome"],
         // Use older chromium that works in restricted environments
         launchOptions: {
           executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH,
           args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-gpu',
-            '--disable-software-rasterizer',
-            '--disable-dev-shm-usage',
-            '--single-process',
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--disable-dev-shm-usage",
+            "--single-process",
           ],
         },
       },
@@ -65,10 +65,12 @@ export default defineConfig({
   ],
 
   // Run local dev server before starting tests
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:9100',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  webServer: useExternalServer
+    ? undefined
+    : {
+        command: "npm run dev",
+        url: baseURL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120 * 1000,
+      },
 });

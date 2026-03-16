@@ -43,8 +43,8 @@ export default function GlobalChatPage() {
 
   return (
     <div className="flex h-full flex-col bg-background bg-brand-dots">
-      <div className="flex items-center justify-between border-b border-border px-6 py-4">
-        <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight">
+      <div className="flex items-center justify-between border-b border-border/70 bg-background/70 px-6 py-3.5 backdrop-blur-[1px]">
+        <h1 className="flex items-center gap-3 text-xl font-semibold tracking-tight">
           Chat
           <ExperimentalPageBadge />
         </h1>

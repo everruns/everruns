@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import {
-  ArrowLeft,
   Bot,
   Brain,
   CalendarClock,
@@ -17,8 +15,8 @@ import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import type { Event, ToolCompletedData } from "@/lib/api/types";
 import type { ToolCallContent } from "@/components/chat/tool-call-utils";
-
-const isDev = process.env.NODE_ENV === "development";
+import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
+import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 
 const activeToolCalls: ToolCallContent[] = [
   {
@@ -183,7 +181,10 @@ const scheduledInputEvent: Event = {
       sequence: 1,
       role: "user",
       content: [
-        { type: "text", text: "Can you inspect this project and sketch the rewrite steps?" },
+        {
+          type: "text",
+          text: "Can you inspect this project and sketch the rewrite steps?",
+        },
       ],
       tool_call_id: null,
       created_at: "2026-03-07T21:20:00Z",
@@ -204,7 +205,12 @@ const rewriteInputEvent: Event = {
       session_id: "session-dev-tool-activity",
       sequence: 2,
       role: "user",
-      content: [{ type: "text", text: "Rewrite it so it supports a rock collection instead." }],
+      content: [
+        {
+          type: "text",
+          text: "Rewrite it so it supports a rock collection instead.",
+        },
+      ],
       tool_call_id: null,
       created_at: "2026-03-07T21:21:00Z",
     },
@@ -242,207 +248,177 @@ const agentPlanningEvent: Event = {
 };
 
 export default function ToolActivityDevPage() {
-  if (!isDev) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="mt-2 text-muted-foreground">Page not found</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background bg-brand-dots px-4 py-8">
-      <div className="mx-auto max-w-6xl">
-        <Link
-          href="/dev"
-          className="mb-6 inline-flex items-center gap-2 border border-border bg-card px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/35 hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Developer Tools
-        </Link>
-
-        <div className="mb-8 max-w-2xl space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-            Tool Activity
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            Minimal execution states
-          </h1>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Sharper, quieter, closer to the final chat surface.
-          </p>
-        </div>
-
-        <div className="mx-auto max-w-5xl">
-          <div className="overflow-hidden border border-border bg-card">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
-                  Everruns Chat
-                </div>
-                <div className="mt-1 text-sm font-medium text-foreground">
-                  Tool activity preview
-                </div>
+    <DevPageShell
+      eyebrow="Tool Activity"
+      title="Minimal execution states"
+      description="Preview the same quieter transcript treatment used by the runtime chat."
+      widthClassName="max-w-6xl"
+    >
+      <div className="mx-auto max-w-5xl">
+        <div className="overflow-hidden border border-border bg-card">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.24em] text-muted-foreground">
+                Everruns Chat
               </div>
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                <span className="inline-flex h-2 w-2 bg-accent" />
-                Preview
-              </div>
+              <div className="mt-1 text-sm font-medium text-foreground">Tool activity preview</div>
             </div>
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+              <span className="inline-flex h-2 w-2 bg-accent" />
+              Preview
+            </div>
+          </div>
 
-            <div className="min-h-[760px] bg-background/80">
-              <div className="flex flex-col">
-                <div className="flex-1 space-y-6 px-4 py-5 sm:px-6">
-                  <div className="flex justify-end">
-                    <div className="max-w-[78%] border-r-2 border-r-accent bg-[hsl(var(--accent)/0.1)] px-4 py-3 text-sm text-foreground">
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                          <CalendarClock className="h-3 w-3" />
-                          Scheduled
-                        </div>
-                        <MessageInfoIcon event={scheduledInputEvent} />
+          <div className="min-h-[760px] bg-background/80">
+            <div className="flex flex-col">
+              <div className="flex-1 space-y-6 px-4 py-5 sm:px-6">
+                <div className="flex justify-end">
+                  <div className={chatSurfaceStyles.userMessage}>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                        <CalendarClock className="h-3 w-3" />
+                        Scheduled
                       </div>
-                      Can you inspect this project and sketch the rewrite steps?
+                      <MessageInfoIcon event={scheduledInputEvent} />
                     </div>
-                  </div>
-
-                  <div className="flex items-start gap-3">
-                    <div className="mt-1 flex h-6 w-6 items-center justify-center border border-border bg-primary text-primary-foreground">
-                      <Bot className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="flex-1 space-y-3">
-                      <div className="flex items-start gap-2">
-                        <p className="flex-1 border-l-2 border-l-primary bg-card px-4 py-3 text-sm leading-7 text-foreground">
-                          I&apos;m checking the codebase shape first, then I&apos;ll summarize the
-                          likely rewrite path.
-                        </p>
-                        <MessageInfoIcon event={agentPlanningEvent} />
-                      </div>
-                      <ToolActivityGroup
-                        toolCalls={activeToolCalls}
-                        toolResultsMap={activeToolResults}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <div className="max-w-[78%] border-r-2 border-r-accent bg-[hsl(var(--accent)/0.1)] px-4 py-3 text-sm text-foreground">
-                      <div className="mb-1 flex items-center justify-end">
-                        <MessageInfoIcon event={rewriteInputEvent} />
-                      </div>
-                      Rewrite it so it supports a rock collection instead.
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3">
-                    <div className="mt-1 flex h-6 w-6 items-center justify-center border border-border bg-primary text-primary-foreground">
-                      <Bot className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="flex-1 space-y-3">
-                      <ToolActivityGroup
-                        toolCalls={completedToolCalls}
-                        toolResultsMap={completedToolResults}
-                      />
-                      <TodoListRenderer arguments={{ todos: planTodos }} isExecuting />
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3">
-                    <div className="mt-1 flex h-6 w-6 items-center justify-center border border-border bg-primary text-primary-foreground">
-                      <Bot className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="flex-1">
-                      <ToolActivityGroup
-                        toolCalls={clientToolCalls}
-                        toolResultsMap={new Map()}
-                        mode="client"
-                      />
-                    </div>
+                    Can you inspect this project and sketch the rewrite steps?
                   </div>
                 </div>
 
-                <div className="border-t border-border bg-muted/30 p-4">
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    <div className="border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
-                      architecture.png
+                <div className={chatSurfaceStyles.agentMessageRow}>
+                  <div className={chatSurfaceStyles.agentIcon}>
+                    <Bot className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <p className={chatSurfaceStyles.agentMessage}>
+                        I&apos;m checking the codebase shape first, then I&apos;ll summarize the
+                        likely rewrite path.
+                      </p>
+                      <MessageInfoIcon event={agentPlanningEvent} />
                     </div>
-                    <div className="border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
-                      schema-draft.png
+                    <ToolActivityGroup
+                      toolCalls={activeToolCalls}
+                      toolResultsMap={activeToolResults}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <div className={chatSurfaceStyles.userMessage}>
+                    <div className="mb-1 flex items-center justify-end">
+                      <MessageInfoIcon event={rewriteInputEvent} />
+                    </div>
+                    Rewrite it so it supports a rock collection instead.
+                  </div>
+                </div>
+
+                <div className={chatSurfaceStyles.agentMessageRow}>
+                  <div className={chatSurfaceStyles.agentIcon}>
+                    <Bot className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <ToolActivityGroup
+                      toolCalls={completedToolCalls}
+                      toolResultsMap={completedToolResults}
+                    />
+                    <TodoListRenderer arguments={{ todos: planTodos }} isExecuting />
+                  </div>
+                </div>
+
+                <div className={chatSurfaceStyles.agentMessageRow}>
+                  <div className={chatSurfaceStyles.agentIcon}>
+                    <Bot className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="flex-1">
+                    <ToolActivityGroup
+                      toolCalls={clientToolCalls}
+                      toolResultsMap={new Map()}
+                      mode="client"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className={chatSurfaceStyles.composerSection}>
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <div className="border border-border/70 bg-card/85 px-2 py-1 text-xs text-muted-foreground shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
+                    architecture.png
+                  </div>
+                  <div className="border border-border/70 bg-card/85 px-2 py-1 text-xs text-muted-foreground shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
+                    schema-draft.png
+                  </div>
+                </div>
+
+                <div className={chatSurfaceStyles.composerInputShell}>
+                  <div className="absolute bottom-full left-0 right-0 border border-border/70 bg-card/95 p-1 shadow-[0_1px_0_hsl(var(--background)/0.9)]">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-foreground"
+                    >
+                      <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="font-mono text-xs">/ship</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        Run the shipping workflow
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-muted-foreground"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="font-mono text-xs">/process-issues</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        Batch-process open issues
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="px-4 py-3.5 text-sm text-foreground">
+                    Type a message or <span className="font-mono">/</span> for commands...
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    <button
+                      type="button"
+                      className={`inline-flex items-center justify-center ${chatSurfaceStyles.composerIconButton}`}
+                      aria-label="Attach images"
+                    >
+                      <ImagePlus className="icon-sharp h-4 w-4" />
+                    </button>
+                    <div className={chatSurfaceStyles.composerControlChip}>
+                      <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                        Model
+                      </span>
+                      <span className="text-sm text-foreground">Kimi K2.5</span>
+                    </div>
+                    <div className={chatSurfaceStyles.composerControlChip}>
+                      <Brain className="icon-sharp h-3.5 w-3.5" />
+                      <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                        Reasoning
+                      </span>
+                      <span className="text-sm text-foreground">Default</span>
                     </div>
                   </div>
 
-                  <div className="relative border border-border bg-background">
-                    <div className="absolute bottom-full left-0 right-0 border border-border bg-card p-1">
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-foreground"
-                      >
-                        <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="font-mono text-xs">/ship</span>
-                        <span className="truncate text-xs text-muted-foreground">
-                          Run the shipping workflow
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-muted-foreground"
-                      >
-                        <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="font-mono text-xs">/process-issues</span>
-                        <span className="truncate text-xs text-muted-foreground">
-                          Batch-process open issues
-                        </span>
-                      </button>
-                    </div>
-
-                    <div className="px-4 py-5 text-sm text-foreground">
-                      Type a message or <span className="font-mono">/</span> for commands...
-                    </div>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-                      <button
-                        type="button"
-                        className="inline-flex h-10 w-10 items-center justify-center border border-border bg-background"
-                        aria-label="Attach images"
-                      >
-                        <ImagePlus className="icon-sharp h-4 w-4" />
-                      </button>
-                      <div className="inline-flex h-10 items-center gap-2 border border-border bg-background px-3">
-                        <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                          Model
-                        </span>
-                        <span className="text-sm text-foreground">Kimi K2.5</span>
-                      </div>
-                      <div className="inline-flex h-10 items-center gap-2 border border-border bg-background px-3">
-                        <Brain className="icon-sharp h-3.5 w-3.5" />
-                        <span className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                          Reasoning
-                        </span>
-                        <span className="text-sm text-foreground">Default</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="inline-flex h-10 w-10 items-center justify-center border border-destructive/30 bg-destructive/[0.08] text-destructive"
-                        aria-label="Cancel current turn"
-                      >
-                        <StopCircle className="icon-sharp h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex h-10 w-10 items-center justify-center bg-primary text-primary-foreground"
-                        aria-label="Send message"
-                      >
-                        <Send className="icon-sharp h-4 w-4" />
-                      </button>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className={`inline-flex items-center justify-center ${chatSurfaceStyles.composerDangerButton}`}
+                      aria-label="Cancel current turn"
+                    >
+                      <StopCircle className="icon-sharp h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      className={`inline-flex items-center justify-center ${chatSurfaceStyles.composerSubmitButton} bg-primary text-primary-foreground`}
+                      aria-label="Send message"
+                    >
+                      <Send className="icon-sharp h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -450,6 +426,6 @@ export default function ToolActivityDevPage() {
           </div>
         </div>
       </div>
-    </div>
+    </DevPageShell>
   );
 }

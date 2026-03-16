@@ -19,7 +19,7 @@ export function ImageAttachments({ images, onRemove }: ImageAttachmentsProps) {
   if (images.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2 border border-border bg-background px-3 py-3">
+    <div className="animate-chat-surface-in flex flex-wrap gap-3">
       {images.map((img) => (
         <ImageAttachmentItem key={img.tempId} image={img} onRemove={onRemove} />
       ))}
@@ -37,35 +37,34 @@ function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
   const displayUrl = image.imageId ? getThumbnailUrl(image.imageId) : image.previewUrl;
 
   return (
-    <div className="relative group">
-      <div className="h-20 w-20 overflow-hidden border border-border bg-muted/20">
+    <div className="group relative w-[88px]">
+      <div className="relative flex aspect-square items-center justify-center overflow-hidden border border-border/70 bg-card shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
         {image.status === "error" ? (
-          <div className="flex h-full w-full flex-col items-center justify-center p-1 text-destructive">
-            <AlertCircle className="w-6 h-6 mb-1" />
-            <span className="text-[10px] text-center line-clamp-2">{image.error || "Error"}</span>
+          <div className="flex h-full w-full flex-col items-center justify-center p-2 text-destructive">
+            <AlertCircle className="mb-1 h-6 w-6" />
+            <span className="line-clamp-2 text-center text-[10px]">{image.error || "Error"}</span>
           </div>
         ) : (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={displayUrl} alt={image.filename} className="w-full h-full object-cover" />
+            <img src={displayUrl} alt={image.filename} className="h-full w-full object-cover" />
             {image.status === "uploading" && (
-              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                <Loader2 className="w-6 h-6 text-white animate-spin" />
+              <div className="absolute inset-0 flex items-center justify-center bg-background/72 backdrop-blur-[1px]">
+                <Loader2 className="h-6 w-6 animate-spin text-primary/80" />
               </div>
             )}
           </>
         )}
       </div>
-      {/* Remove button - monochrome style */}
       <button
         type="button"
-        className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center border border-border bg-background opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted"
+        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center border border-border/80 bg-background opacity-0 transition-opacity group-hover:opacity-100 hover:bg-muted"
         onClick={() => onRemove(image.tempId)}
+        aria-label={`Remove ${image.filename}`}
       >
-        <X className="w-3 h-3 text-muted-foreground" />
+        <X className="h-3 w-3 text-muted-foreground" />
       </button>
-      {/* Filename tooltip */}
-      <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[10px] px-1 py-0.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="mt-1 truncate text-[11px] text-muted-foreground" title={image.filename}>
         {image.filename}
       </div>
     </div>
@@ -102,12 +101,12 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
           <img
             src={thumbnailUrl}
             alt={filename || "Image"}
-            className="max-h-[200px] max-w-[200px] border border-border hover:opacity-90 transition-opacity"
+            className="max-h-[200px] max-w-[200px] border border-border/70 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)] transition-opacity hover:opacity-90"
             title={filename || "Click to view full size"}
           />
         </button>
         {filename && (
-          <span className="text-xs text-muted-foreground mt-1 block truncate max-w-[200px]">
+          <span className="mt-1 block max-w-[200px] truncate text-xs text-muted-foreground">
             {filename}
           </span>
         )}
@@ -153,10 +152,10 @@ export function MessageImage({ imageId, filename }: MessageImageProps) {
  */
 export function ImagePlaceholder({ filename }: { filename?: string }) {
   return (
-    <div className="inline-flex h-20 w-20 flex-col items-center justify-center border border-border bg-muted/20">
-      <ImageIcon className="w-6 h-6 text-muted-foreground" />
+    <div className="inline-flex h-20 w-20 flex-col items-center justify-center border border-border/70 bg-card shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
+      <ImageIcon className="h-6 w-6 text-muted-foreground" />
       {filename && (
-        <span className="text-[10px] text-muted-foreground mt-1 truncate max-w-[70px]">
+        <span className="mt-1 max-w-[70px] truncate text-[10px] text-muted-foreground">
           {filename}
         </span>
       )}

@@ -18,20 +18,17 @@ interface StreamingMessageProps {
 export function StreamingMessage({ text, className }: StreamingMessageProps) {
   return (
     <div className={cn("relative", className)}>
-      {/* Streaming indicator badge */}
-      <div className="absolute -top-2 -right-2 flex items-center gap-1 bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+      <div className="mb-2 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-primary/75">
+        <span className="relative flex h-1.5 w-1.5">
+          <span className="absolute inline-flex h-full w-full animate-ping bg-primary/55" />
+          <span className="relative inline-flex h-1.5 w-1.5 bg-primary" />
         </span>
         Generating
       </div>
 
-      {/* Streaming text content with markdown + OpenUI rendering */}
-      <div className="pt-4">
+      <div>
         <MessageContent text={text} isStreaming={true} />
-        {/* Blinking cursor to indicate more content coming */}
-        <span className="inline-block w-0.5 h-4 ml-0.5 bg-primary/70 animate-pulse align-text-bottom" />
+        <span className="ml-1 inline-block h-4 w-px animate-pulse bg-primary/55 align-text-bottom" />
       </div>
     </div>
   );

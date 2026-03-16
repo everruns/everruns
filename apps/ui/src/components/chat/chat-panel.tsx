@@ -59,6 +59,8 @@ import { useLlmModels, useImageAttachments, useSessionCommands } from "@/hooks";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
 import { useMutation } from "@tanstack/react-query";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
+import { cn } from "@/lib/utils";
+import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 
 export function ChatPanel() {
   const {
@@ -532,7 +534,10 @@ export function ChatPanel() {
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="relative flex-1 overflow-y-auto bg-background bg-brand-dots px-4 py-5 sm:px-6"
+        className={cn(
+          "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-4 py-5 sm:px-6",
+          !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-end",
+        )}
       >
         {eventsLoading ? (
           <div className="space-y-4">
@@ -541,11 +546,13 @@ export function ChatPanel() {
             <Skeleton className="h-20 w-2/3" />
           </div>
         ) : chatEvents.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
-            <div className="border border-border bg-card px-10 py-10">
-              <Bot className="mx-auto mb-4 h-10 w-10 opacity-50" />
+          <div className="flex flex-col items-center justify-end text-center text-muted-foreground">
+            <div className={chatSurfaceStyles.emptyStateCard}>
+              <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center border border-border/70 bg-background text-muted-foreground">
+                <Bot className="h-5 w-5 opacity-65" />
+              </div>
               <p className="text-lg font-medium text-foreground">No messages yet</p>
-              <p className="mt-1 text-sm">Send a message to start the conversation</p>
+              <p className="mt-1 text-sm">Start with a prompt, screenshot, or slash command.</p>
             </div>
           </div>
         ) : (
@@ -676,7 +683,7 @@ export function ChatPanel() {
                   {(textContent || images.length > 0) && (
                     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                       {isUser ? (
-                        <div className="max-w-[78%] border-r-2 border-r-accent bg-[hsl(var(--accent)/0.1)] px-4 py-3 text-sm text-foreground">
+                        <div className={chatSurfaceStyles.userMessage}>
                           {isScheduleTriggered && (
                             <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
                               <CalendarClock className="h-3 w-3" />
@@ -702,12 +709,12 @@ export function ChatPanel() {
                           </div>
                         </div>
                       ) : (
-                        <div className="flex w-full items-start gap-3 pr-2">
-                          <div className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center border border-border bg-primary text-primary-foreground">
+                        <div className={chatSurfaceStyles.agentMessageRow}>
+                          <div className={chatSurfaceStyles.agentIcon}>
                             <Bot className="h-3.5 w-3.5" />
                           </div>
                           <div className="flex flex-1 items-start gap-2">
-                            <div className="flex-1 space-y-2 border-l-2 border-l-primary bg-card px-4 py-3">
+                            <div className={chatSurfaceStyles.agentMessage}>
                               {textContent && <MessageContent text={textContent} />}
                               {images.length > 0 && (
                                 <div className="mt-2 flex flex-wrap gap-2">
@@ -743,11 +750,11 @@ export function ChatPanel() {
 
         {(isThinking || streamingText) && (
           <div className="mt-6 flex justify-start">
-            <div className="flex w-full items-start gap-3 pr-2">
-              <div className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center border border-border bg-primary text-primary-foreground">
+            <div className={chatSurfaceStyles.agentMessageRow}>
+              <div className={chatSurfaceStyles.agentIcon}>
                 <Bot className="h-3.5 w-3.5" />
               </div>
-              <div className="flex-1 border-l-2 border-l-primary bg-card px-4 py-3">
+              <div className={chatSurfaceStyles.agentMessage}>
                 {streamingIteration && streamingIteration > 1 && (
                   <div className="mb-1 text-xs text-muted-foreground">
                     Iteration {streamingIteration}
@@ -772,7 +779,7 @@ export function ChatPanel() {
               scrollToBottom("smooth");
               setHasNewMessages(false);
             }}
-            className="sticky bottom-3 left-1/2 z-10 mx-auto flex -translate-x-1/2 items-center gap-1.5 border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-md transition-colors hover:bg-accent"
+            className={chatSurfaceStyles.floatingNotice}
           >
             <ArrowDown className="h-3 w-3" />
             New messages
@@ -780,7 +787,7 @@ export function ChatPanel() {
         )}
       </div>
 
-      <div className="bg-muted/30 p-4 sm:p-5">
+      <div className={chatSurfaceStyles.composerSection}>
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
             ref={fileInputRef}
@@ -794,9 +801,10 @@ export function ChatPanel() {
           {hasImages && <ImageAttachments images={pendingImages} onRemove={removeImage} />}
 
           <div
-            className={`relative border border-border bg-background transition-colors ${
-              isDraggingOver ? "bg-[hsl(var(--accent)/0.08)] ring-1 ring-accent" : ""
-            }`}
+            className={cn(
+              chatSurfaceStyles.composerInputShell,
+              isDraggingOver && "bg-[hsl(var(--accent)/0.07)] ring-1 ring-accent/60",
+            )}
             onDragOver={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -858,7 +866,7 @@ export function ChatPanel() {
                 }
               }}
               placeholder={inputPlaceholder}
-              className="min-h-[120px] max-h-[260px] w-full resize-none border-0 bg-transparent px-4 py-4 text-sm shadow-none focus-visible:ring-0"
+              className={chatSurfaceStyles.composerTextarea}
             />
           </div>
 
@@ -868,14 +876,14 @@ export function ChatPanel() {
                 type="button"
                 variant="outline"
                 size="icon-lg"
-                className="h-10 w-10 border-border bg-background"
+                className={chatSurfaceStyles.composerIconButton}
                 onClick={() => fileInputRef.current?.click()}
                 title="Attach images (PNG, JPEG, GIF, WebP)"
               >
                 <ImagePlus className="icon-sharp h-4 w-4" />
               </Button>
 
-              <div className="flex h-10 items-center gap-2 border border-border bg-background px-3">
+              <div className={chatSurfaceStyles.composerControlChip}>
                 <span className="shrink-0 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
                   Model
                 </span>
@@ -904,7 +912,7 @@ export function ChatPanel() {
               </div>
 
               {supportsReasoning && reasoningEffortConfig && (
-                <div className="flex h-10 items-center gap-2 border border-border bg-background px-3">
+                <div className={chatSurfaceStyles.composerControlChip}>
                   <Brain className="icon-sharp h-3.5 w-3.5 text-muted-foreground" />
                   <span className="shrink-0 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
                     Reasoning
@@ -940,7 +948,7 @@ export function ChatPanel() {
                   type="button"
                   size="icon-lg"
                   variant="destructive"
-                  className="h-10 w-10 border border-destructive/30 bg-destructive/[0.08] text-destructive shadow-none hover:bg-destructive/[0.14]"
+                  className={chatSurfaceStyles.composerDangerButton}
                   disabled={cancelCurrentTurn.isPending}
                   onClick={() => cancelCurrentTurn.mutate()}
                   title="Cancel current turn"
@@ -956,7 +964,7 @@ export function ChatPanel() {
               <Button
                 type="submit"
                 size="icon-lg"
-                className="h-10 w-10"
+                className={chatSurfaceStyles.composerSubmitButton}
                 disabled={!canSubmit}
                 title={isUploading ? "Uploading images..." : undefined}
               >
