@@ -11,7 +11,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -19,6 +18,8 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
+import { useEffect } from "react";
+import { useMountEffect } from "@/hooks/use-mount-effect";
 import { useAuth } from "@/providers/auth-provider";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useNotifications } from "@/hooks/use-notifications";
@@ -139,17 +140,16 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     });
   }, [notificationsQuery.data, isEnabled]);
 
-  useEffect(() => {
-    lastUpdatedAtRef.current = state.rawNotifications.reduce<string | undefined>(
-      (latest, current) => {
-        if (!latest) return current.updated_at;
-        return new Date(current.updated_at) > new Date(latest) ? current.updated_at : latest;
-      },
-      undefined,
-    );
-  }, [state.rawNotifications]);
+  // Derive latest updated_at inline — avoids an extra render cycle via useEffect.
+  lastUpdatedAtRef.current = state.rawNotifications.reduce<string | undefined>(
+    (latest, current) => {
+      if (!latest) return current.updated_at;
+      return new Date(current.updated_at) > new Date(latest) ? current.updated_at : latest;
+    },
+    undefined,
+  );
 
-  useEffect(() => {
+  useMountEffect(() => {
     if (typeof document === "undefined") return;
 
     const updateVisibility = () => setIsVisible(document.visibilityState === "visible");
@@ -166,19 +166,13 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("blur", onBlur);
     };
-  }, []);
+  });
 
-  useEffect(() => {
-    activeTargetKeyRef.current = activeTargetKey;
-  }, [activeTargetKey]);
-
-  useEffect(() => {
-    isVisibleRef.current = isVisible;
-  }, [isVisible]);
-
-  useEffect(() => {
-    isFocusedRef.current = isFocused;
-  }, [isFocused]);
+  // Keep refs in sync — assigned inline during render so SSE callbacks
+  // always read the latest values without requiring effect round-trips.
+  activeTargetKeyRef.current = activeTargetKey;
+  isVisibleRef.current = isVisible;
+  isFocusedRef.current = isFocused;
 
   const enqueueToast = useCallback((notification: Notification) => {
     if (toastIdsRef.current.has(notification.id)) return;

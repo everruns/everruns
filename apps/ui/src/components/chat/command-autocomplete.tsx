@@ -30,10 +30,12 @@ export function CommandAutocomplete({
       cmd.name.toLowerCase().includes(query) || cmd.description.toLowerCase().includes(query),
   );
 
-  // Reset selection when filter changes
-  useEffect(() => {
+  // Reset selection when filter changes — derived inline, no effect needed.
+  const prevQueryRef = useRef(query);
+  if (prevQueryRef.current !== query) {
+    prevQueryRef.current = query;
     setSelectedIndex(0);
-  }, [query]);
+  }
 
   // Scroll selected item into view
   useEffect(() => {
