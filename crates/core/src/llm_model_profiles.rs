@@ -170,6 +170,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 16_384,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image, Modality::Audio],
@@ -201,6 +202,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 16_384,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -232,6 +234,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 100_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -263,6 +266,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 65_536,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text],
@@ -294,6 +298,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 100_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -325,6 +330,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 100_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text],
@@ -356,6 +362,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 100_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -387,6 +394,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 100_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -418,6 +426,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 100_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -450,6 +459,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 16_384,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -481,6 +491,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 16_384,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -512,6 +523,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 16_384,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -545,6 +557,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -576,6 +589,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 64_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -607,6 +621,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 64_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -638,6 +653,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -669,6 +685,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -701,6 +718,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -732,6 +750,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -763,6 +782,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 100_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -795,6 +815,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -827,6 +848,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 400_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -858,6 +880,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 400_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -889,6 +912,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 400_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -921,6 +945,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 400_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -953,6 +978,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 1_050_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -984,6 +1010,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 1_050_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1016,6 +1043,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1047,6 +1075,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 128_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1078,6 +1107,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 16_384,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1110,6 +1140,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 100_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1141,6 +1172,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 100_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1172,6 +1204,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 32_768,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text],
@@ -1213,6 +1246,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 1_000_000,
                 input: None,
                 output: 128_000,
+                max_media: Some(600),
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1244,6 +1278,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 64_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1276,6 +1311,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 64_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1307,6 +1343,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 64_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1338,6 +1375,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 16_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1370,6 +1408,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 32_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1402,6 +1441,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 64_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1433,6 +1473,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 32_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1465,6 +1506,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 64_000, // Extended output with thinking
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1497,6 +1539,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 8_192,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1528,6 +1571,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 8_192,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1559,6 +1603,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 4_096,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1590,6 +1635,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 4_096,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1621,6 +1667,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 200_000,
                 input: None,
                 output: 4_096,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
@@ -1684,6 +1731,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 1_048_576,
                 input: None,
                 output: 65_536,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![
@@ -1720,6 +1768,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 1_048_576,
                 input: None,
                 output: 65_536,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![
@@ -1756,6 +1805,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 1_048_576,
                 input: None,
                 output: 8_192,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![
@@ -1792,6 +1842,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 2_097_152,
                 input: None,
                 output: 8_192,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![
@@ -1828,6 +1879,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 1_048_576,
                 input: None,
                 output: 8_192,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![
@@ -1872,6 +1924,7 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
                 context: 128_000,
                 input: None,
                 output: 64_000,
+                max_media: None,
             }),
             modalities: Some(LlmModelModalities {
                 input: vec![Modality::Text, Modality::Image],
