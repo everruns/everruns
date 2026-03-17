@@ -11,6 +11,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -18,7 +19,6 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
-import { useEffect } from "react";
 import { useMountEffect } from "@/hooks/use-mount-effect";
 import { useAuth } from "@/providers/auth-provider";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
