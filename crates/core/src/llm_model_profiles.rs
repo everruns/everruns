@@ -1210,7 +1210,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 cache_read: Some(0.50),
             }),
             limits: Some(LlmModelLimits {
-                context: 200_000,
+                context: 1_000_000,
                 input: None,
                 output: 128_000,
             }),
@@ -2388,7 +2388,7 @@ mod tests {
         assert!(profile.structured_output);
 
         let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 200_000);
+        assert_eq!(limits.context, 1_000_000);
         assert_eq!(limits.output, 128_000);
 
         let cost = profile.cost.unwrap();
