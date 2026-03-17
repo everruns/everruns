@@ -209,6 +209,9 @@ pub struct LlmModelLimits {
     pub input: Option<i32>,
     /// Maximum output tokens
     pub output: i32,
+    /// Maximum images or PDF pages per request
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub max_media: Option<i32>,
 }
 
 /// Modality type (text, image, audio, video)
@@ -410,6 +413,7 @@ mod tests {
             context: 200_000,
             input: None,
             output: 64_000,
+            max_media: None,
         };
         let json = serde_json::to_value(&limits).unwrap();
         assert!(!json.as_object().unwrap().contains_key("input"));
@@ -421,6 +425,7 @@ mod tests {
             context: 200_000,
             input: Some(150_000),
             output: 64_000,
+            max_media: None,
         };
         let json = serde_json::to_value(&limits).unwrap();
         assert_eq!(json["input"], 150_000);

@@ -1022,6 +1022,8 @@ export interface LlmModelLimits {
   input?: number;
   /** Maximum output tokens */
   output: number;
+  /** Maximum images or PDF pages per request */
+  max_media?: number;
 }
 
 /** Modality type */
