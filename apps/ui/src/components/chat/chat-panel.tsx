@@ -318,11 +318,10 @@ export function ChatPanel() {
     }
   }, [modelSelectionStorageKey]);
 
-  useEffect(() => {
-    if (!hasCommands && showCommands) {
-      setShowCommands(false);
-    }
-  }, [hasCommands, showCommands]);
+  // Derived guard: if commands disappear while dropdown is open, close it inline
+  if (!hasCommands && showCommands) {
+    setShowCommands(false);
+  }
 
   const selectedModel = useMemo(
     () => llmModels.find((model) => model.id === selectedModelId),

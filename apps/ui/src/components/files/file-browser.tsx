@@ -129,12 +129,10 @@ export function FileBrowser({
   const createDir = useCreateDirectory();
   const deleteFile = useDeleteFile();
 
-  // Update loaded dirs when root files change
-  useEffect(() => {
-    if (rootFiles) {
-      setLoadedDirs((prev) => new Map(prev).set("/workspace", rootFiles));
-    }
-  }, [rootFiles]);
+  // Sync root files into loadedDirs inline — no effect needed for derived state.
+  if (rootFiles && loadedDirs.get("/workspace") !== rootFiles) {
+    setLoadedDirs((prev) => new Map(prev).set("/workspace", rootFiles));
+  }
 
   // Auto-refresh when Workspace tab becomes active (component remounts on tab switch)
   useEffect(() => {
