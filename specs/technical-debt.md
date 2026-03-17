@@ -239,7 +239,37 @@ Files over 2,000 lines (non-test):
 
 ---
 
-## 10. UI Technical Debt (LOW)
+## 10. Overcomplicated Patterns (MEDIUM)
+
+### 10a. `ReasonAtom<H, A, S, M, P, E>` — 6 generic type parameters
+
+**File:** `crates/core/src/atoms/reason.rs` (lines 217–239, 1,990 lines total)
+
+```rust
+pub struct ReasonAtom<H, A, S, M, P, E>
+where
+    H: HarnessStore, A: AgentStore, S: SessionStore,
+    M: MessageRetriever, P: LlmProviderStore, E: EventEmitter,
+```
+
+Three impl blocks repeat the same 6-parameter signature (lines 241, 306, 533). Adding a new dependency means modifying every impl block. Should use a dependency injection container or a single `trait ReasonDeps: HarnessStore + AgentStore + ...` supertrait.
+
+### 10b. `Option<Option<T>>` anti-pattern — 7 fields across 3 files
+
+**Files:**
+- `crates/server/src/storage/models.rs` lines 87–89: `UpdateOrganizationSettings` with `Option<Option<ModelId>>`, `Option<Option<HarnessId>>` × 2
+- `crates/server/src/storage/models.rs` line 1055: `UpdateSessionScheduleRow` with `Option<Option<DateTime<Utc>>>`
+- `crates/durable/src/persistence/store.rs` lines 1128–1142: `UpdateSchedule` with 5 `Option<Option<T>>` fields
+
+Semantics: `None` = unchanged, `Some(None)` = clear, `Some(Some(v))` = set. Confusing to read and error-prone. Should use `enum UpdateField<T> { Unchanged, Clear, Set(T) }`.
+
+### 10c. 40+ Config/Settings structs with no unified pattern
+
+Each subsystem defines its own config type (`AuthConfig`, `ServerConfig`, `WorkerPoolConfig`, `CompactionConfig`, `ProviderConfig`, `LlmCallConfig`, etc.). No shared configuration loading, validation, or composition pattern. Low urgency but increases onboarding friction.
+
+---
+
+## 11. UI Technical Debt (LOW)
 
 | File | Lines | Issue |
 |------|-------|-------|
