@@ -3,6 +3,11 @@
 // This module provides model profiles based on models.dev structure.
 // Profiles are matched by provider_type + model_id.
 //
+// IMPORTANT: Never guess or extrapolate profile data (pricing, limits, capabilities).
+// Always source from https://github.com/sst/models.dev/tree/dev/providers
+// and cross-reference with official provider documentation. If a model is not
+// yet listed on models.dev, wait until the data is available before adding it.
+//
 // NOTE: Currently only includes profiles for selected models.
 // Additional model profiles can be added as needed by extending the match arms.
 //
@@ -989,68 +994,6 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: true,
         }),
 
-        "gpt-5.4-mini" => Some(LlmModelProfile {
-            name: "GPT-5.4 mini".into(),
-            family: "gpt-5.4-mini".into(),
-            release_date: Some("2026-03-05".into()),
-            last_updated: Some("2026-03-05".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: Some("2025-12-31".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(LlmModelCost {
-                input: 0.40,
-                output: 3.00,
-                cache_read: Some(0.04),
-            }),
-            limits: Some(LlmModelLimits {
-                context: 1_050_000,
-                input: None,
-                output: 128_000,
-            }),
-            modalities: Some(LlmModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_gpt52()),
-            tool_search: true,
-            supports_phases: true,
-        }),
-
-        "gpt-5.4-nano" => Some(LlmModelProfile {
-            name: "GPT-5.4 nano".into(),
-            family: "gpt-5.4-nano".into(),
-            release_date: Some("2026-03-05".into()),
-            last_updated: Some("2026-03-05".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: Some("2025-12-31".into()),
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            cost: Some(LlmModelCost {
-                input: 0.08,
-                output: 0.60,
-                cache_read: Some(0.008),
-            }),
-            limits: Some(LlmModelLimits {
-                context: 1_050_000,
-                input: None,
-                output: 128_000,
-            }),
-            modalities: Some(LlmModelModalities {
-                input: vec![Modality::Text, Modality::Image],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_gpt52()),
-            tool_search: true,
-            supports_phases: true,
-        }),
-
         "gpt-5.4-pro" => Some(LlmModelProfile {
             name: "GPT-5.4 Pro".into(),
             family: "gpt-5.4-pro".into(),
@@ -2007,8 +1950,6 @@ fn normalize_model_id(model_id: &str) -> &str {
     let patterns = [
         // GPT-5.4 models
         "gpt-5.4-pro",
-        "gpt-5.4-nano",
-        "gpt-5.4-mini",
         "gpt-5.4",
         // GPT-5.3 models
         "gpt-5.3-codex",
@@ -2409,50 +2350,6 @@ mod tests {
     }
 
     #[test]
-    fn test_gpt54_mini_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-mini").unwrap();
-        assert_eq!(profile.name, "GPT-5.4 mini");
-        assert_eq!(profile.family, "gpt-5.4-mini");
-        assert!(profile.reasoning);
-        assert!(profile.tool_call);
-        assert!(profile.structured_output);
-
-        let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 1_050_000);
-        assert_eq!(limits.output, 128_000);
-
-        let cost = profile.cost.unwrap();
-        assert!((cost.input - 0.40).abs() < f64::EPSILON);
-        assert!((cost.output - 3.00).abs() < f64::EPSILON);
-        assert!((cost.cache_read.unwrap() - 0.04).abs() < f64::EPSILON);
-
-        assert!(profile.supports_phases);
-        assert!(profile.tool_search);
-    }
-
-    #[test]
-    fn test_gpt54_nano_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-nano").unwrap();
-        assert_eq!(profile.name, "GPT-5.4 nano");
-        assert_eq!(profile.family, "gpt-5.4-nano");
-        assert!(profile.reasoning);
-        assert!(profile.tool_call);
-        assert!(profile.structured_output);
-
-        let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 1_050_000);
-        assert_eq!(limits.output, 128_000);
-
-        let cost = profile.cost.unwrap();
-        assert!((cost.input - 0.08).abs() < f64::EPSILON);
-        assert!((cost.output - 0.60).abs() < f64::EPSILON);
-        assert!((cost.cache_read.unwrap() - 0.008).abs() < f64::EPSILON);
-
-        assert!(profile.supports_phases);
-        assert!(profile.tool_search);
-    }
-
-    #[test]
     fn test_gpt54_versioned() {
         let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-2026-03-05").unwrap();
         assert_eq!(profile.name, "GPT-5.4");
@@ -2480,8 +2377,6 @@ mod tests {
         assert_eq!(normalize_model_id("gpt-5.4"), "gpt-5.4");
         assert_eq!(normalize_model_id("gpt-5.4-2026-03-05"), "gpt-5.4");
         assert_eq!(normalize_model_id("gpt-5.4-pro"), "gpt-5.4-pro");
-        assert_eq!(normalize_model_id("gpt-5.4-mini"), "gpt-5.4-mini");
-        assert_eq!(normalize_model_id("gpt-5.4-nano"), "gpt-5.4-nano");
     }
 
     // GPT-4.1 model tests

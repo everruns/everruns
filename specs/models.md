@@ -214,7 +214,9 @@ Key design points:
 
 Read-only metadata describing model capabilities, costs, and limits. Computed at runtime (not stored in database).
 
-**Data Source:** https://models.dev/api.json
+**Data Source:** https://github.com/sst/models.dev/tree/dev/providers, cross-referenced with official provider documentation.
+
+**IMPORTANT:** Never guess or extrapolate profile data (pricing, limits, capabilities). Always source from models.dev and official docs. If a model is not yet listed, wait until the data is available before adding a profile.
 
 See `crates/core/src/llm_models.rs` for `LlmModelProfile`, `LlmModelCost`, `LlmModelLimits`, and `ReasoningEffortConfig` types.
 
