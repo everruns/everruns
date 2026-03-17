@@ -1,6 +1,6 @@
 ---
 name: maintenance
-description: Goal-oriented repository maintenance and release-readiness work. Use when the user asks for maintenance, release prep, repo health review, dependency refreshes, spec/docs alignment, test gap review, or general cleanup without prescribing an exact sequence.
+description: Goal-oriented repository maintenance and release-readiness work. Use when the user asks for maintenance, release prep, repo health review, dependency refreshes, spec/docs alignment, test gap review, technical debt analysis, or general cleanup without prescribing an exact sequence.
 user-invocable: true
 ---
 
@@ -22,6 +22,7 @@ Use this skill when the task is about repo maintenance rather than a single feat
 - test coverage gaps
 - threat-model or security hygiene review
 - performance review of recently changed code
+- technical debt analysis and issue tracking
 - AGENTS/skills/command hygiene
 
 ## Required Outcomes
@@ -92,6 +93,17 @@ Goal: recent changes do not introduce obvious scale or latency regressions.
 Good evidence:
 - query shape, pagination, indexes, batching, and background job cost reviewed where relevant
 - no unbounded list paths or easy N+1 regressions in touched code
+
+### Technical Debt Analysis
+
+Goal: structural debt is identified, quantified, and tracked before it compounds into development friction or bugs.
+
+Good evidence:
+- god objects, duplicated logic, and boilerplate patterns identified with line counts and file locations
+- severity assessed (critical/high/medium/low) based on active harm vs. friction
+- concrete Linear issues created for each finding with actionable scope
+- hacks, shortcuts, and open vulnerabilities surfaced with code references
+- large files (>2K lines non-test) catalogued with the structural reason they grew
 
 ### Repo Workflow Hygiene
 
