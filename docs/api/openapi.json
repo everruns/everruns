@@ -7927,6 +7927,14 @@
             "format": "int32",
             "description": "Maximum input tokens (if different from context - output)"
           },
+          "max_media": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum images or PDF pages per request"
+          },
           "output": {
             "type": "integer",
             "format": "int32",
