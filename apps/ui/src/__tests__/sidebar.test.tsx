@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Sidebar } from "@/components/layout/sidebar";
 import type { SidebarConfig, NavigationSection } from "@/components/layout/sidebar";
 import { Settings, Zap } from "lucide-react";
@@ -39,19 +39,21 @@ jest.mock("@/providers/auth-provider", () => ({
 }));
 
 // Mock org provider
+const mockSetCurrentOrg = jest.fn();
 jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({
     currentOrg: { public_id: "org-123", name: "Test Org" },
     organizations: [{ public_id: "org-123", name: "Test Org" }],
     isLoading: false,
-    setCurrentOrg: jest.fn(),
+    setCurrentOrg: mockSetCurrentOrg,
   }),
 }));
 
 // Mock organizations hooks
+const mockMutateAsync = jest.fn();
 jest.mock("@/hooks/use-organizations", () => ({
   useCreateOrganization: () => ({
-    mutateAsync: jest.fn(),
+    mutateAsync: mockMutateAsync,
     isPending: false,
     isError: false,
     error: null,
@@ -338,5 +340,68 @@ describe("Sidebar with config", () => {
     const withConfigLinks = withConfig.querySelectorAll("a");
     const withoutConfigLinks = withoutConfig.querySelectorAll("a");
     expect(withConfigLinks.length).toBe(withoutConfigLinks.length);
+  });
+});
+
+describe("Create Organisation dialog", () => {
+  beforeEach(() => {
+    mockPathname.mockReturnValue("/dashboard");
+    mockPush.mockClear();
+    mockMutateAsync.mockClear();
+    mockSetCurrentOrg.mockClear();
+  });
+
+  it("redirects to setup page after successful org creation", async () => {
+    mockMutateAsync.mockResolvedValue({
+      id: "org_new123",
+      name: "New Org",
+    });
+
+    render(<Sidebar />);
+
+    // Open the org dropdown
+    const orgTrigger = screen.getByText("Test Org");
+    fireEvent.click(orgTrigger);
+
+    // Click "Create Organisation"
+    const createBtn = screen.getByText("Create Organisation");
+    fireEvent.click(createBtn);
+
+    // Fill in the org name
+    const input = screen.getByPlaceholderText("Organisation name");
+    fireEvent.change(input, { target: { value: "New Org" } });
+
+    // Submit the form
+    const submitBtn = screen.getByRole("button", { name: "Create" });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({ name: "New Org" });
+      expect(mockSetCurrentOrg).toHaveBeenCalledWith({
+        public_id: "org_new123",
+        name: "New Org",
+        role: "owner",
+      });
+      expect(mockPush).toHaveBeenCalledWith("/orgs/org_new123/setup");
+    });
+  });
+
+  it("does not redirect when org creation is cancelled", () => {
+    render(<Sidebar />);
+
+    // Open the org dropdown
+    const orgTrigger = screen.getByText("Test Org");
+    fireEvent.click(orgTrigger);
+
+    // Click "Create Organisation"
+    const createBtn = screen.getByText("Create Organisation");
+    fireEvent.click(createBtn);
+
+    // Click Cancel
+    const cancelBtn = screen.getByRole("button", { name: "Cancel" });
+    fireEvent.click(cancelBtn);
+
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 });
