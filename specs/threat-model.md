@@ -966,8 +966,8 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 - `specs/llm-drivers.md` — LLM provider abstraction
 - `specs/durable-execution-engine.md` — Workflow engine and worker communication
 - `specs/scheduled-tasks.md` — Cron-based task scheduling
-- `crates/core/specs/otel-observability.md` — OpenTelemetry tracing
-- `crates/core/specs/braintrust-integration.md` — Braintrust event forwarding
+- `specs/otel-observability.md` — OpenTelemetry tracing
+- `specs/braintrust-integration.md` — Braintrust event forwarding
 - `specs/apis.md` — HTTP API endpoints and error handling
 - `specs/capabilities.md` — Agent capabilities system
 - `specs/bashkit-requirements.md` — Bashkit integration requirements

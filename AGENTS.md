@@ -98,6 +98,8 @@ Always make sure you are working on top of latest main from remote.
 - `specs/fail-rs-testing.md` - Failure injection testing with fail-rs
 - `specs/authentication.md` - Authentication modes and OAuth
 - `specs/integrations.md` - **Integration specs index** (links to specs co-located with their crates)
+- `specs/braintrust-integration.md` - Braintrust observability
+- `specs/otel-observability.md` - OpenTelemetry Gen-AI semantic convention tracing
 - `specs/encryption.md` - Envelope encryption for sensitive data
 - `specs/session-filesystem.md` - Per-session virtual filesystem
 - `specs/usage-tracking.md` - LLM token usage tracking

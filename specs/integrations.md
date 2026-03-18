@@ -24,14 +24,12 @@ Embedded in the server crate.
 | User Connections | [`crates/server/specs/user-connections.md`](../crates/server/specs/user-connections.md) | OAuth/API-key connections to GitHub, GitLab, Bitbucket, Daytona for repo and sandbox access. |
 | Valkey Cache | [`crates/server/specs/cache.md`](../crates/server/specs/cache.md) | Distributed rate limiting via Valkey; in-process caching via `moka`. |
 
-## Core Integrations (`crates/core/specs/`)
-
-Embedded in the core crate.
+## Observability (`specs/`)
 
 | Integration | Spec | Summary |
 |---|---|---|
-| Braintrust | [`crates/core/specs/braintrust-integration.md`](../crates/core/specs/braintrust-integration.md) | LLM observability — sends agentic loop events to Braintrust project logs. |
-| OpenTelemetry | [`crates/core/specs/otel-observability.md`](../crates/core/specs/otel-observability.md) | Gen-AI semantic convention tracing for full agentic execution lifecycle. |
+| Braintrust | [`specs/braintrust-integration.md`](braintrust-integration.md) | LLM observability — sends agentic loop events to Braintrust project logs. |
+| OpenTelemetry | [`specs/otel-observability.md`](otel-observability.md) | Gen-AI semantic convention tracing for full agentic execution lifecycle. |
 
 ## Build Infrastructure
 
