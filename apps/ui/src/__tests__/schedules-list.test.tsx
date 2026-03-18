@@ -534,9 +534,7 @@ describe("SchedulesPage", () => {
     });
 
     it("displays error message when schedule creation fails", async () => {
-      const mockCreateMutate = jest.fn().mockRejectedValue(
-        new Error("API Error: 400 Bad Request"),
-      );
+      const mockCreateMutate = jest.fn().mockRejectedValue(new Error("API Error: 400 Bad Request"));
       mockUseCreateSchedule.mockReturnValue({
         mutateAsync: mockCreateMutate,
         isPending: false,
@@ -596,9 +594,7 @@ describe("SchedulesPage", () => {
     });
 
     it("does not close dialog when creation fails", async () => {
-      const mockCreateMutate = jest.fn().mockRejectedValue(
-        new Error("Server error"),
-      );
+      const mockCreateMutate = jest.fn().mockRejectedValue(new Error("Server error"));
       mockUseCreateSchedule.mockReturnValue({
         mutateAsync: mockCreateMutate,
         isPending: false,
