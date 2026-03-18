@@ -261,6 +261,7 @@ function CreateOrganizationDialog({
   const [name, setName] = useState("");
   const createOrg = useCreateOrganization();
   const { setCurrentOrg } = useOrg();
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -271,6 +272,8 @@ function CreateOrganizationDialog({
     setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
     setName("");
     onOpenChange(false);
+    // Redirect to the setup page for the new org
+    router.push(`/orgs/${org.id}/setup`);
   };
 
   return (
