@@ -1,6 +1,6 @@
 ---
 title: Fake AWS
-description: Demo capability with simulated AWS infrastructure management tools
+description: Demo capability with simulated AWS infrastructure management tools. Use this built-in demo to test agent workflows with mock EC2, S3, and Lambda operations.
 ---
 
 | | |

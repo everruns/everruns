@@ -1,6 +1,6 @@
 ---
 title: Storage
-description: Key/value storage and encrypted secret storage within a session
+description: Key/value storage and encrypted secret storage scoped to a session. Agents can persist state, cache results, and store sensitive data securely across turns.
 ---
 
 | | |

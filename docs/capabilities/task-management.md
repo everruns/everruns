@@ -1,6 +1,6 @@
 ---
 title: Task Management
-description: Structured task lists for tracking multi-step work progress
+description: Structured task lists for tracking multi-step work progress. Agents can create, update, and complete tasks to organize complex workflows within a session.
 ---
 
 | | |

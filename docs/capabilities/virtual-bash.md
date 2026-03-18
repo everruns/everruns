@@ -1,6 +1,6 @@
 ---
 title: Virtual Bash
-description: Sandboxed bash command execution in an isolated environment
+description: Sandboxed Bash command execution in an isolated environment. Agents can run shell commands safely with process isolation, timeouts, and output capture.
 ---
 
 | | |

@@ -1,6 +1,6 @@
 ---
 title: Fake Warehouse
-description: Demo capability with simulated warehouse management tools
+description: Demo capability with simulated warehouse management tools. Use this built-in demo to test agent workflows with mock inventory, orders, and shipping operations.
 ---
 
 | | |

@@ -1,6 +1,6 @@
 ---
 title: Agent Skills
-description: Discover and activate portable instruction packages from the session workspace
+description: Discover and activate portable skill packages from the session workspace. Agents gain specialized knowledge and workflows by loading skill definitions at runtime.
 ---
 
 | | |

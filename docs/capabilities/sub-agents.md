@@ -1,6 +1,6 @@
 ---
 title: Sub Agents
-description: Spawn and manage subagents for parallel task execution in isolated context windows.
+description: Spawn and manage subagents for parallel task execution in isolated context windows. Orchestrate multi-agent workflows with message passing and lifecycle control.
 ---
 
 | | |

@@ -1,6 +1,6 @@
 ---
 title: Daytona
-description: Cloud sandbox environments for secure code execution with Daytona
+description: Integrate Daytona cloud sandbox environments for secure, isolated code execution. Configure API keys, workspace templates, and session-scoped sandbox lifecycle.
 ---
 
 ![Daytona Integration](daytona.png)

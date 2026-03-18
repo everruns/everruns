@@ -1,6 +1,6 @@
 ---
 title: Session
-description: Read and update current session metadata, including titles, agent information, and other session-scoped context for active conversations.
+description: Read and update current session metadata — titles, agent information, and session-scoped context. Agents can inspect and modify their own session during execution.
 ---
 
 | | |

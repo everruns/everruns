@@ -1,6 +1,6 @@
 ---
 title: AGENTS.md
-description: Dynamic project instructions from AGENTS.md in the session workspace
+description: Dynamic project instructions loaded from AGENTS.md files in the session workspace. Agents inherit coding style, tool preferences, and workflow rules automatically.
 ---
 
 | | |

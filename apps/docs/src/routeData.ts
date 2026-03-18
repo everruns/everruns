@@ -143,7 +143,7 @@ function deriveDescription(slug: string, title: string): string {
 
   // API overview page
   if (slug === "api") {
-    return "Complete API reference for Everruns, including endpoints, schemas, and authentication";
+    return "Complete REST API reference for Everruns, including all endpoints, request and response schemas, authentication, and interactive usage examples.";
   }
 
   // API schema pages

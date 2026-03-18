@@ -1,6 +1,6 @@
 ---
 title: Braintrust
-description: LLM observability, evaluation, and trace visualization with Braintrust
+description: LLM observability, evaluation, and trace visualization with Braintrust. Monitor agent performance, inspect tool call chains, and compare model outputs over time.
 ---
 
 <img src="/images/observability/braintrust-logo.png" alt="Braintrust" width="64" style="float: right; margin-left: 16px;" />

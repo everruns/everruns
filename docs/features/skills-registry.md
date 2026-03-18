@@ -1,6 +1,6 @@
 ---
 title: Skills Registry
-description: API-managed skill registry for creating, uploading, and sharing skills across your organization
+description: API-managed skill registry for creating, uploading, and sharing portable instruction packages across your organization with versioning and search support.
 ---
 
 The Skills Registry provides API endpoints for managing organization-wide skills. Registry skills persist across sessions and can be assigned to any agent as capabilities.

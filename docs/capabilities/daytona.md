@@ -1,6 +1,6 @@
 ---
 title: Daytona
-description: Run code in isolated cloud sandboxes with Daytona, including command execution, file access, and session-scoped environments.
+description: Run code in isolated Daytona cloud sandboxes with secure command execution, file access, and session-scoped environments for safe multi-tenant agent workloads.
 ---
 
 | | |

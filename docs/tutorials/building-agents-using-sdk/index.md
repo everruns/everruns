@@ -1,6 +1,6 @@
 ---
 title: "Building Agents Using the Everruns SDK"
-description: "A hands-on guide to building, running, and orchestrating AI agents with the everruns-sdk Python package"
+description: "A hands-on guide to building, running, and orchestrating AI agents with the everruns-sdk Python package. Covers setup, tools, streaming, and multi-agent patterns."
 ---
 
 import { Tabs, TabItem } from "@astrojs/starlight/components";

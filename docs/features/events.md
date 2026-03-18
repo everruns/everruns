@@ -1,6 +1,6 @@
 ---
 title: Events
-description: Real-time event streaming for session observability
+description: Real-time SSE event streaming for full session observability. Monitor agent execution, tool calls, token usage, and all lifecycle events as they happen.
 ---
 
 Events are the core communication protocol in Everruns. They provide real-time visibility into session execution via Server-Sent Events (SSE) streaming.

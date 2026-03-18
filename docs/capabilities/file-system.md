@@ -1,6 +1,6 @@
 ---
 title: File System
-description: Read, write, search, and manage files in an isolated per-session workspace
+description: Read, write, search, and manage files in an isolated per-session workspace. Agents get sandboxed file access with glob, grep, and directory operations.
 ---
 
 | | |
