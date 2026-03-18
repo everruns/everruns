@@ -8,9 +8,9 @@ user-invocable: true
 
 Goal: resolve open Linear issues from the **OSS** project by shipping one merged PR per issue, with full `/ship` quality.
 
-This skill implements [`specs/linear-issues.md`](../../../specs/linear-issues.md). Keep operational guidance here. Keep design intent and constraints in the spec.
-
 This skill is outcome-oriented. Do not blindly walk a fixed checklist. Start from the issue backlog, pick the highest-value work, and drive each issue to a merged PR.
+
+See [`specs/issue-tracking.md`](../../../specs/issue-tracking.md) for project scope and prerequisites.
 
 ## When To Use
 
@@ -38,9 +38,15 @@ Use this skill when the user asks to:
 
 3. **Sequential merging prevents conflicts.**
    - After merging each PR, rebase remaining open PRs onto updated `main` before merging the next.
+   - When multiple PRs touch `Cargo.toml` workspace deps, the second merge can create duplicate key errors — rebase catches this.
    - Never merge a PR whose CI ran against a stale base.
 
-4. **A summary report is delivered.**
+4. **Extensive test coverage.**
+   - **Unit tests:** test changed function/module directly; cover happy path, error cases, edge cases; for bug fixes, test must fail without fix; for features, cover all acceptance criteria.
+   - **Integration tests:** test through service layer or API boundary; verify side effects (database state, events emitted); test adjacent component interaction; for API changes, test request validation, response shape, error codes.
+   - **Test naming:** `test_{function}_{scenario}_{expected}` (e.g., `test_create_agent_duplicate_name_returns_conflict`); tests must be deterministic and independent.
+
+5. **A summary report is delivered.**
    - Issues completed (with PR links)
    - Issues skipped (with reasons)
    - Issues that failed (with error details)
@@ -101,4 +107,5 @@ Always add a Linear comment explaining why.
 - Max 5 issues in parallel
 - No batch PRs — one PR per issue
 - No partial fixes — fully resolve or skip
-- See `specs/linear-issues.md` for full design rationale
+- No manual deployment steps (CI/CD handles deployment)
+- No backward compatibility shims (internal code, just change it)

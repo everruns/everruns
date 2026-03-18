@@ -120,7 +120,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/xml-prompt-formatting.md` - XML tags for system prompt structure
 - `specs/skills-registry.md` - Agent Skills registry (agentskills.io format)
 - `specs/commands.md` - Slash commands system (system + skill commands)
-- `specs/linear-issues.md` - Linear issue processing workflow
+- `specs/issue-tracking.md` - Issue tracking (Linear, OSS project)
 - `specs/daytona.md` - Daytona cloud sandbox integration
 - `specs/brave-search.md` - Brave Search web search integration
 - `specs/duckduckgo.md` - DuckDuckGo instant answer search integration
