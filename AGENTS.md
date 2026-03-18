@@ -137,7 +137,7 @@ Always make sure you are working on top of latest main from remote.
 
 ### Test Cases
 
-`test_cases/` - manual test cases by feature. Format in `specs/test-cases.md`.
+`test_cases/` - manual test cases by feature. Format in `specs/test-cases.md`. Use [`/manual-ui-testing`](.claude/skills/manual-ui-testing/SKILL.md) to execute UI test cases with `agent-browser`.
 
 ### Local Dev
 
