@@ -4,11 +4,11 @@
 
 This specification defines the workflow for processing Linear issues using coding agents. Each open issue is picked up, fixed with extensive test coverage, documented, and shipped as an individual PR that is merged when CI is green.
 
-Executable workflow: `/process-issues` command (`.claude/commands/process-issues.md`).
+Executable workflow: `/process-issues` skill (`.claude/skills/process-issues/SKILL.md`).
 
 ## Project Scope
 
-This repository manages issues in the **OSS** project within the Everruns Linear workspace. All new issues for this repo should be created in the OSS project. The `/process-issues` command queries the OSS project by default.
+This repository manages issues in the **OSS** project within the Everruns Linear workspace. All new issues for this repo should be created in the OSS project. The `/process-issues` skill queries the OSS project by default.
 
 - **Linear workspace:** Everruns
 - **Team:** EVE
@@ -24,7 +24,7 @@ This repository manages issues in the **OSS** project within the Everruns Linear
 
 ### Workflow Summary
 
-Each issue follows: pick up → analyze → branch → implement → ship → close. The `/process-issues` command orchestrates this, delegating each issue's shipping to the invokable [`ship` skill](../.claude/skills/ship/SKILL.md). **Every PR must satisfy the full `/ship` outcomes**: the goal is met, validation matches risk, relevant artifacts are updated, CI is green, and the PR is merged safely. No shortcuts — partial quality checks or skipping required outcomes is not acceptable.
+Each issue follows: pick up → analyze → branch → implement → ship → close. The `/process-issues` skill orchestrates this, delegating each issue's shipping to the invokable [`ship` skill](../.claude/skills/ship/SKILL.md). **Every PR must satisfy the full `/ship` outcomes**: the goal is met, validation matches risk, relevant artifacts are updated, CI is green, and the PR is merged safely. No shortcuts — partial quality checks or skipping required outcomes is not acceptable.
 
 **Concurrency:** process up to 5 issues in parallel.
 
