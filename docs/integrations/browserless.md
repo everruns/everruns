@@ -1,6 +1,6 @@
 ---
 title: Browserless
-description: Cloud browser automation for screenshots, scraping, and testing with Browserless
+description: Integrate Browserless for cloud browser automation — screenshots, scraping, and testing. Configure API keys, connection pooling, and headless Chrome for agents.
 ---
 
 Everruns integrates with [Browserless](https://www.browserless.io/) to provide cloud-based browser automation. Agents can navigate web pages, take screenshots, read DOM content, scrape structured data, and interact with UI elements (click, type, keyboard, mouse, touch).

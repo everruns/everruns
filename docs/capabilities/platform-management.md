@@ -1,6 +1,6 @@
 ---
 title: Platform Management
-description: Programmatic management of harnesses, agents, and sessions
+description: Programmatic management of harnesses, agents, and sessions from within a running session. Agents can create, list, update, and delete platform resources via tools.
 ---
 
 | | |

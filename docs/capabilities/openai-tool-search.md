@@ -1,6 +1,6 @@
 ---
 title: OpenAI Tool Search
-description: Deferred tool loading for agents with many tools, reducing token usage on OpenAI GPT-5.4+ models
+description: Deferred tool loading for agents with many tools, reducing prompt token usage on OpenAI GPT-5.4+ models. Tools are loaded on demand based on semantic search.
 sidebar:
   order: 90
 ---

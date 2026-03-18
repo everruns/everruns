@@ -1,6 +1,6 @@
 ---
 title: Schedules
-description: Schedule one-shot and recurring tasks within a session
+description: Schedule one-shot and recurring cron-based tasks within a session. Agents can set timers, run periodic checks, and automate follow-up actions on a schedule.
 ---
 
 | | |

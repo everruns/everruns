@@ -1,6 +1,6 @@
 ---
 title: Event Reference
-description: Complete reference for all Everruns event types, including input, output, tool, and lifecycle events emitted during execution.
+description: Complete reference for all Everruns event types — input, output, tool, lifecycle, and error events emitted during execution. Includes schemas and SSE examples.
 ---
 
 This page documents all event types in the Everruns event protocol.

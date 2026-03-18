@@ -1,6 +1,6 @@
 ---
 title: SQL Database
-description: Session-scoped SQLite databases for structured data storage and querying
+description: Session-scoped SQLite databases for structured data storage and querying. Agents can create tables, run SQL queries, and persist relational data per session.
 ---
 
 | | |

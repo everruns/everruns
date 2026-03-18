@@ -1,6 +1,6 @@
 ---
 title: Browserless
-description: Cloud browser automation for screenshots, DOM reading, scraping, and interactions
+description: Cloud browser automation for screenshots, DOM reading, scraping, and page interactions. Agents browse the web headlessly using Browserless cloud infrastructure.
 ---
 
 | | |

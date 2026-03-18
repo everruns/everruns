@@ -1,6 +1,6 @@
 ---
 title: Bashkit
-description: Sandboxed virtual Bash interpreter for multi-tenant agent environments.
+description: Sandboxed virtual Bash interpreter for multi-tenant agent environments. Run shell commands safely with process isolation, filesystem limits, and timeouts.
 ---
 
 [Bashkit](https://github.com/everruns/bashkit) is a virtual Bash interpreter written in Rust. It provides sandboxed, in-process execution with no real filesystem access by default — purpose-built for running untrusted bash scripts in multi-tenant agent environments.

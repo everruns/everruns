@@ -1,6 +1,6 @@
 ---
 title: Concepts
-description: Learn the core Everruns entities, runtime relationships, and execution model across harnesses, agents, sessions, turns, and events.
+description: Learn the core Everruns entities and execution model — harnesses, agents, sessions, turns, events, and capabilities, and how they all relate at runtime.
 ---
 
 This page describes the core entities in Everruns and how they relate to each other, organized into three layers: the high-level execution model, session internals, and settings.

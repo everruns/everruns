@@ -1,6 +1,6 @@
 ---
 title: Fake CRM
-description: Demo capability with simulated CRM and customer support tools
+description: Demo capability with simulated CRM and customer support tools. Use this built-in demo to test agent workflows with mock contacts, tickets, and customer data.
 ---
 
 | | |

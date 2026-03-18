@@ -1,6 +1,6 @@
 ---
 title: Harnesses
-description: Pre-configured environments that define base capabilities for sessions
+description: Pre-configured environments that define base capabilities, tools, and execution settings for agent sessions. Built-in and custom harness types available.
 ---
 
 A harness defines the base environment for sessions — the system prompt, default model, and capabilities that every session starts with. Think of a harness as a "starter kit" that agents and sessions build on top of.

@@ -1,6 +1,6 @@
 ---
 title: Authentication Configuration
-description: Configuring and managing authentication for Everruns
+description: Configure authentication for Everruns, including API key setup, OAuth integration, token validation, and multi-tenant access control for production deployments.
 ---
 
 ## Overview

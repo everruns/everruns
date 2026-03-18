@@ -1,6 +1,6 @@
 ---
 title: Brave Search
-description: Give agents live web search with Brave Search, including ranked results, freshness filters, pagination, and source attribution.
+description: Give agents live web search with Brave Search — ranked results, freshness filters, pagination, source attribution, and safe search. Requires a Brave API key.
 ---
 
 Everruns integrates with [Brave Search](https://brave.com/search/api/) to give agents full web search capabilities. Agents can search the web and get relevant results including titles, URLs, and descriptions — perfect for research, fact-checking, and finding current information.

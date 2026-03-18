@@ -1,6 +1,6 @@
 ---
 title: Admin Container
-description: Tools for checking migration status, key rotation, and other administrative tasks
+description: Admin container tools for checking database migration status, rotating encryption keys, running diagnostics, and performing operational maintenance tasks.
 ---
 
 The admin container provides tools for key rotation, migration status checks, and other administrative tasks in production environments.

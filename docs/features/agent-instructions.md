@@ -1,6 +1,6 @@
 ---
 title: AGENTS.md
-description: Provide project-level instructions to agents via AGENTS.md
+description: Provide project-level instructions to agents via AGENTS.md files. Define coding style, tool preferences, and workflow rules that agents follow automatically.
 ---
 
 The **AGENTS.md** capability reads an `AGENTS.md` file from the session workspace and automatically includes it in the agent's system prompt on every turn. This gives you a simple, standard way to provide project-level context — coding conventions, style guides, build instructions, or any other guidance — to your agents.

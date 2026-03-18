@@ -1,6 +1,6 @@
 ---
 title: Infinity Context
-description: Keep long conversations manageable by trimming live prompt history and querying older messages on demand
+description: Keep long conversations manageable by trimming live prompt history and querying older messages on demand. Unlimited conversation length for complex agent tasks.
 sidebar:
   order: 85
 ---

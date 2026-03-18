@@ -31,7 +31,7 @@ export default defineConfig({
     starlight({
       title: "Everruns",
       description:
-        "Documentation for Everruns, a durable agentic harness engine for AI agents",
+        "Documentation for Everruns, a durable agentic harness engine for AI agents. Guides for deploying, configuring, and building agent applications with the API.",
       routeMiddleware: "./src/routeData.ts",
       logo: {
         src: "./src/assets/logo.svg",
