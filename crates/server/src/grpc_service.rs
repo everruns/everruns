@@ -1106,10 +1106,10 @@ impl WorkerService for WorkerServiceImpl {
         let internal_caller = everruns_core::Caller::internal(req.org_id);
 
         // Validate status value
-        let valid_statuses = ["started", "active", "idle"];
+        let valid_statuses = ["started", "active", "idle", "waiting_for_tool_results"];
         if !valid_statuses.contains(&req.status.as_str()) {
             return Err(Status::invalid_argument(format!(
-                "Invalid status '{}'. Must be one of: started, active, idle",
+                "Invalid status '{}'. Must be one of: started, active, idle, waiting_for_tool_results",
                 req.status
             )));
         }
