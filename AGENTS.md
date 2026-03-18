@@ -35,7 +35,7 @@ All cloud secrets are in Doppler (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB
 
 ### Linear
 
-We use [Linear](https://linear.app) for issue tracking (project: **OSS**, team: **EVE**). MCP server configured in `.mcp.json`. Token (`LINEAR_API_KEY`) is in Doppler. Use [`/process-issues`](.claude/commands/process-issues.md) to batch-process open issues (up to 5 in parallel). All issues for this repo belong to the OSS project.
+We use [Linear](https://linear.app) for issue tracking (project: **OSS**, team: **EVE**). MCP server configured in `.mcp.json`. Token (`LINEAR_API_KEY`) is in Doppler. Use [`/process-issues`](.claude/skills/process-issues/SKILL.md) to process open issues (one PR per issue, up to 5 in parallel). All issues for this repo belong to the OSS project.
 
 For GitHub CLI, map token explicitly:
 
@@ -120,7 +120,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/xml-prompt-formatting.md` - XML tags for system prompt structure
 - `specs/skills-registry.md` - Agent Skills registry (agentskills.io format)
 - `specs/commands.md` - Slash commands system (system + skill commands)
-- `specs/linear-issues.md` - Linear issue processing workflow
+- `specs/issue-tracking.md` - Issue tracking (Linear, OSS project)
 - `specs/daytona.md` - Daytona cloud sandbox integration
 - `specs/brave-search.md` - Brave Search web search integration
 - `specs/duckduckgo.md` - DuckDuckGo instant answer search integration
