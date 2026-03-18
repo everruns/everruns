@@ -27,7 +27,7 @@ Verify that the research agent completes a full research workflow: receives a qu
      -d '{
        "name": "Research Agent",
        "system_prompt": "You are an expert research analyst. Use web_fetch to gather information and save findings to files using the filesystem.",
-       "capabilities": ["web_fetch", "stateless_todo_list", "session_file_system"]
+       "capabilities": [{"ref": "web_fetch"}, {"ref": "stateless_todo_list"}, {"ref": "session_file_system"}]
      }'
    ```
    Save `agent_id` from response.
