@@ -30,13 +30,13 @@ Relevant references:
 
 ## Required Outcomes
 
-Every shipped change must satisfy these outcomes:
+**Every shipped change MUST satisfy ALL of these outcomes. These are mandatory requirements, not optional suggestions. Do not skip or weaken any requirement.**
 
 1. Safe branch state: no shipping from `main` or `master`; working tree clean before final push; rebased onto the latest `origin/main` before merge.
 2. Goal achieved with evidence: the requested behavior is implemented and validated with proof that matches the risk.
 3. Merge-ready code: touched code is reviewed for avoidable complexity plus security and performance risk, and issues found during that review are addressed or explicitly blocked.
 4. Synced artifacts: only the affected artifacts are updated, including specs, threat model, docs, OpenAPI, test cases, and agent instructions when relevant.
-5. Runtime confidence: smoke tests or live verification supplement builds and automated tests when the risk surface justifies it.
+5. Smoke test impacted functionality: always smoke test the flows affected by the change end-to-end. This is mandatory, not conditional on risk assessment. Docs-only or config-only changes that do not affect runtime behavior may skip smoke testing with explicit justification.
 6. Safe merge: the PR uses the repo template, CI is green, review comments are resolved, and merge happens with squash only.
 
 ## Constraints

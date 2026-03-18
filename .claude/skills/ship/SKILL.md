@@ -22,6 +22,8 @@ Use this skill when the user asks to:
 
 ## Required Outcomes
 
+**ALL outcomes below are MANDATORY. These are not suggestions — do not skip or weaken any requirement.**
+
 1. The branch state is safe.
    - Do not ship from `main` or `master`.
    - The working tree must be clean before the final push.
@@ -36,11 +38,12 @@ Use this skill when the user asks to:
    - Fix issues you find and refresh the evidence.
 4. Relevant artifacts stay in sync.
    - Update only the artifacts affected by the change: `specs/`, `specs/threat-model.md`, `AGENTS.md`, `test_cases/`, `apps/docs/`, and OpenAPI exports when applicable.
-5. Runtime confidence matches the change.
-   - Use smoke tests when static checks or automated tests are not enough.
+5. Smoke test impacted functionality.
+   - **Always** smoke test the flows affected by the change end-to-end. This is mandatory, not conditional on risk assessment.
    - Prefer `just start-dev --no-watch` for fast checks.
    - Use `just start-all --no-watch` when database, migration, infra, or API integration risk exists.
    - Stop any servers you started.
+   - Docs-only or config-only changes that do not affect runtime behavior may skip smoke testing with explicit justification.
 6. The PR is mergeable and merged safely.
    - Push the branch.
    - Create or update the PR with `.github/pull_request_template.md`.
