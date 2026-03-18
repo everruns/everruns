@@ -233,17 +233,20 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
   const [targetName, setTargetName] = useState("");
   const [targetInput, setTargetInput] = useState("{}");
   const [enabled, setEnabled] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const createMutation = useCreateSchedule();
 
   const handleSubmit = async () => {
     if (!name || !cronExpression || !targetName) return;
 
+    setErrorMessage(null);
+
     let input: Record<string, unknown> = {};
     try {
       input = JSON.parse(targetInput);
     } catch {
-      alert("Invalid JSON in target input");
+      setErrorMessage("Invalid JSON in target input");
       return;
     }
 
@@ -263,7 +266,8 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
       await createMutation.mutateAsync(request);
       onClose();
     } catch (err) {
-      console.error("Failed to create schedule:", err);
+      const message = err instanceof Error ? err.message : "Failed to create schedule";
+      setErrorMessage(message);
     }
   };
 
@@ -346,8 +350,13 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
           <Label htmlFor="enabled">Enable schedule immediately</Label>
         </div>
       </div>
+      {errorMessage && (
+        <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3">
+          <p className="text-sm text-destructive">{errorMessage}</p>
+        </div>
+      )}
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={onClose} disabled={createMutation.isPending}>
           Cancel
         </Button>
         <Button
