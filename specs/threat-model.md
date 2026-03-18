@@ -971,10 +971,10 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 - `specs/apis.md` — HTTP API endpoints and error handling
 - `specs/capabilities.md` — Agent capabilities system
 - `specs/bashkit-requirements.md` — Bashkit integration requirements
-- `specs/daytona.md` — Daytona cloud sandbox integration
+- `integrations/daytona/SPEC.md` — Daytona cloud sandbox integration
 - `specs/client-side-tools.md` — Client-side tools for API/SDK consumers
 - `specs/apps.md` — Apps system (agent deployment to channels)
-- `specs/slack-integration.md` — Slack bot integration
-- `specs/brave-search.md` — Brave Search web search integration
+- `crates/server/specs/slack-integration.md` — Slack bot integration
+- `integrations/brave-search/SPEC.md` — Brave Search web search integration
 - `specs/infinity-context.md` — Unlimited conversation length via context management
 - [fetchkit v0.1.2 source](https://crates.io/crates/fetchkit) — SSRF protection (resolve-then-check, DNS pinning, DnsPolicy), URL prefix blocking, fetch options, fetcher registry
