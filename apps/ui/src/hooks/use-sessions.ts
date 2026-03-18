@@ -205,6 +205,7 @@ const SSE_EVENT_TYPES = [
   "act.completed",
   "tool.started",
   "tool.completed",
+  "tool.call_requested",
   "llm.generation",
   "session.started",
   "session.activated",
@@ -212,6 +213,7 @@ const SSE_EVENT_TYPES = [
   "reason.thinking.started",
   "reason.thinking.delta",
   "reason.thinking.completed",
+  "context.compacted",
 ];
 
 /** Default page size for paginated event loading */
