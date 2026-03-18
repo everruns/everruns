@@ -76,6 +76,9 @@ Goal: new or changed attack surface is understood, and mitigations/docs match re
 Good evidence:
 - threat model updated when behavior or trust boundaries changed
 - obvious gaps in auth, validation, secret handling, or data exposure were reviewed
+- [GitHub Security Overview](https://github.com/everruns/everruns/security) checked for advisories
+- [Dependabot alerts](https://github.com/everruns/everruns/security/dependabot) reviewed and triaged
+- [Secret scanning alerts](https://github.com/everruns/everruns/security/secret-scanning?query=is%3Aopen+results%3Ageneric) reviewed — no open generic secret leaks
 
 ### Test And Runtime Confidence
 
@@ -125,6 +128,8 @@ Pick only what matches the task:
 - `cd apps/ui && npm run lint && npm run build`
 - `cd apps/docs && npm run build`
 - `./scripts/export-openapi.sh`
+- `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh api repos/everruns/everruns/dependabot/alerts --jq "[.[] | select(.state==\"open\")] | length"'` — open Dependabot alert count
+- `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh api repos/everruns/everruns/secret-scanning/alerts --jq "[.[] | select(.state==\"open\")] | length"'` — open secret scanning alert count
 
 ## Deliverable
 
