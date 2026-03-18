@@ -32,14 +32,15 @@ function McpServerCard({
   server,
   canDestroy,
   onDelete,
+  onArchive,
   onSetApiKey,
 }: {
   server: McpServer;
   canDestroy: boolean;
   onDelete: (server: McpServer) => void;
+  onArchive: (server: McpServer) => void;
   onSetApiKey: (server: McpServer) => void;
 }) {
-  const updateServer = useUpdateMcpServer(server.id);
   const isArchived = server.status === "archived";
   const isDeleted = server.status === "deleted";
 
@@ -85,13 +86,8 @@ function McpServerCard({
             {server.api_key_set ? "Update Key" : "Set Key"}
           </Button>
           {!isArchived && !isDeleted && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => updateServer.mutate({ status: "archived" })}
-              disabled={updateServer.isPending}
-            >
-              {updateServer.isPending ? "Archiving..." : "Archive"}
+            <Button variant="outline" size="sm" onClick={() => onArchive(server)}>
+              Archive
             </Button>
           )}
           {isArchived && canDestroy && (
@@ -261,6 +257,47 @@ function SetApiKeyDialog({
   );
 }
 
+function ArchiveConfirmDialog({
+  server,
+  open,
+  onOpenChange,
+}: {
+  server: McpServer | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const updateServer = useUpdateMcpServer(server?.id || "");
+
+  const handleArchive = async () => {
+    if (!server) return;
+    await updateServer.mutateAsync({ status: "archived" });
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Archive MCP Server</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to archive the MCP server{" "}
+            <span className="font-medium">{server?.name}</span>? Archived servers will no longer be
+            available to agents.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleArchive} disabled={updateServer.isPending}>
+            {updateServer.isPending ? "Archiving..." : "Archive"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function McpServerCardSkeleton() {
   return (
     <Card>
@@ -292,6 +329,7 @@ export default function McpServersPage() {
   const [addServerOpen, setAddServerOpen] = useState(false);
   const [apiKeyServer, setApiKeyServer] = useState<McpServer | null>(null);
   const [pendingDeleteServer, setPendingDeleteServer] = useState<McpServer | null>(null);
+  const [pendingArchiveServer, setPendingArchiveServer] = useState<McpServer | null>(null);
 
   const handleDeleteServer = async () => {
     if (!pendingDeleteServer) return;
@@ -350,6 +388,7 @@ export default function McpServersPage() {
               server={server}
               canDestroy={canDestroy}
               onDelete={setPendingDeleteServer}
+              onArchive={setPendingArchiveServer}
               onSetApiKey={setApiKeyServer}
             />
           ))}
@@ -358,6 +397,11 @@ export default function McpServersPage() {
 
       {/* Dialogs */}
       <AddMcpServerDialog open={addServerOpen} onOpenChange={setAddServerOpen} />
+      <ArchiveConfirmDialog
+        server={pendingArchiveServer}
+        open={pendingArchiveServer !== null}
+        onOpenChange={(open) => !open && setPendingArchiveServer(null)}
+      />
       <SetApiKeyDialog
         server={apiKeyServer}
         open={apiKeyServer !== null}

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import McpServersPage from "@/app/(main)/mcp-servers/page";
 
 const mockUseMcpServers = jest.fn();
@@ -103,5 +103,50 @@ describe("McpServersPage", () => {
     render(<McpServersPage />);
 
     expect(screen.getByText(/Failed to load MCP servers/)).toBeInTheDocument();
+  });
+
+  it("shows confirmation dialog when clicking Archive", () => {
+    render(<McpServersPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+
+    expect(screen.getByText("Archive MCP Server")).toBeInTheDocument();
+    expect(screen.getByText(/Are you sure you want to archive the MCP server/)).toBeInTheDocument();
+  });
+
+  it("does not archive when cancel is clicked in the confirmation dialog", () => {
+    const mockMutateAsync = jest.fn();
+    mockUseUpdateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+    });
+
+    render(<McpServersPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+
+    const dialog = screen.getByRole("dialog");
+    const cancelButton = within(dialog).getByRole("button", { name: "Cancel" });
+    fireEvent.click(cancelButton);
+
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("archives server when confirmed in the dialog", () => {
+    const mockMutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+    });
+
+    render(<McpServersPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+
+    const dialog = screen.getByRole("dialog");
+    const archiveButton = within(dialog).getByRole("button", { name: "Archive" });
+    fireEvent.click(archiveButton);
+
+    expect(mockMutateAsync).toHaveBeenCalledWith({ status: "archived" });
   });
 });
