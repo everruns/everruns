@@ -92,6 +92,12 @@ impl SkillService {
         if !parsed.user_invocable {
             metadata_map.insert("user_invocable".to_string(), serde_json::Value::Bool(false));
         }
+        if parsed.disable_model_invocation {
+            metadata_map.insert(
+                "disable_model_invocation".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
         let metadata = serde_json::to_value(&metadata_map)?;
 
         let input = CreateSkillRow {
@@ -154,6 +160,12 @@ impl SkillService {
         let mut metadata_map = parsed.metadata.clone();
         if !parsed.user_invocable {
             metadata_map.insert("user_invocable".to_string(), serde_json::Value::Bool(false));
+        }
+        if parsed.disable_model_invocation {
+            metadata_map.insert(
+                "disable_model_invocation".to_string(),
+                serde_json::Value::Bool(true),
+            );
         }
         let metadata = serde_json::to_value(&metadata_map)?;
 
@@ -374,6 +386,12 @@ impl SkillService {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
+        // disable_model_invocation defaults to false; only true if explicitly set
+        let disable_model_invocation = metadata
+            .get("disable_model_invocation")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         Skill {
             id: row.id,
             name: row.name.clone(),
@@ -386,6 +404,7 @@ impl SkillService {
             status: SkillStatus::from(row.status.as_str()),
             version: row.version.clone(),
             user_invocable,
+            disable_model_invocation,
             created_at: row.created_at,
             updated_at: row.updated_at,
             archived_at: row.archived_at,

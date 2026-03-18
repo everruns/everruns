@@ -102,6 +102,9 @@ pub struct Skill {
     /// Whether this skill appears as a /slash command for users
     #[serde(default = "default_true")]
     pub user_invocable: bool,
+    /// Whether the model is prevented from auto-invoking this skill
+    #[serde(default)]
+    pub disable_model_invocation: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -131,6 +134,8 @@ pub struct ParsedSkillMd {
     pub instructions: String,
     /// Whether this skill appears as a /slash command for users (default: true)
     pub user_invocable: bool,
+    /// Whether the model is prevented from auto-invoking this skill (default: false)
+    pub disable_model_invocation: bool,
 }
 
 /// YAML frontmatter structure
@@ -147,6 +152,9 @@ struct SkillFrontmatter {
     /// Whether this skill appears as a /slash command (default: true)
     #[serde(rename = "user-invocable", default = "default_true")]
     user_invocable: bool,
+    /// Whether the model is prevented from auto-invoking this skill (default: false)
+    #[serde(rename = "disable-model-invocation", default)]
+    disable_model_invocation: bool,
 }
 
 fn default_true() -> bool {
@@ -262,6 +270,7 @@ pub fn parse_skill_md(content: &str) -> Result<ParsedSkillMd, Vec<String>> {
         version,
         instructions: body,
         user_invocable: fm.user_invocable,
+        disable_model_invocation: fm.disable_model_invocation,
     })
 }
 
@@ -275,6 +284,13 @@ pub fn validate_skill_md(content: &str) -> SkillValidationResult {
                 warnings.push(format!(
                     "Instructions exceed 500 lines ({line_count} lines). Consider splitting into references."
                 ));
+            }
+            if !parsed.user_invocable && parsed.disable_model_invocation {
+                warnings.push(
+                    "Skill is unreachable: user-invocable is false and disable-model-invocation is true. \
+                     Neither users nor the model can invoke this skill."
+                        .to_string(),
+                );
             }
             SkillValidationResult {
                 valid: true,
@@ -517,6 +533,56 @@ Instructions.
 "#;
         let parsed = parse_skill_md(content).unwrap();
         assert!(!parsed.user_invocable);
+    }
+
+    #[test]
+    fn test_parse_disable_model_invocation_default_false() {
+        let content = r#"---
+name: my-skill
+description: A skill without disable-model-invocation field.
+---
+
+Instructions.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert!(
+            !parsed.disable_model_invocation,
+            "disable_model_invocation should default to false"
+        );
+    }
+
+    #[test]
+    fn test_parse_disable_model_invocation_true() {
+        let content = r#"---
+name: manual-only
+description: A skill that cannot be auto-invoked by the model.
+disable-model-invocation: true
+---
+
+Instructions.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert!(parsed.disable_model_invocation);
+        assert!(parsed.user_invocable); // default true
+    }
+
+    #[test]
+    fn test_validate_warns_unreachable_skill() {
+        let content = r#"---
+name: unreachable
+description: Neither user nor model can invoke.
+user-invocable: false
+disable-model-invocation: true
+---
+
+Instructions.
+"#;
+        let result = validate_skill_md(content);
+        assert!(result.valid);
+        assert!(
+            result.warnings.iter().any(|w| w.contains("unreachable")),
+            "Should warn about unreachable skill"
+        );
     }
 
     #[test]
