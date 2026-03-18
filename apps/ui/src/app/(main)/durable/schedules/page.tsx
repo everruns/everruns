@@ -266,8 +266,7 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
       await createMutation.mutateAsync(request);
       onClose();
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to create schedule";
+      const message = err instanceof Error ? err.message : "Failed to create schedule";
       setErrorMessage(message);
     }
   };
