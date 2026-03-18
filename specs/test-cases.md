@@ -8,7 +8,21 @@ Manual test case documentation format and organization.
 
 ### Location
 
-`test_cases/` organized by feature. Each feature has its own folder.
+`test_cases/` split by target into `api/` and `ui/` subfolders, then organized by feature.
+
+```
+test_cases/
+├── api/          # HTTP API tests (curl, jq assertions)
+│   ├── agents/
+│   ├── sessions/
+│   ├── ...
+└── ui/           # Browser/UI tests (navigation, form input, clicks)
+    ├── admin_login/
+    ├── mcp_servers/
+    ├── ...
+```
+
+A feature may have test cases in both `api/` and `ui/` (e.g. `global_search`, `scheduled_tasks`).
 
 ### Format
 
