@@ -490,6 +490,162 @@ describe("SchedulesPage", () => {
         expect(mockCreateMutate).toHaveBeenCalled();
       });
     });
+
+    it("sends correct request shape to API on submit", async () => {
+      const mockCreateMutate = jest.fn().mockResolvedValue({
+        id: "sched_new",
+        name: "My Schedule",
+      });
+      mockUseCreateSchedule.mockReturnValue({
+        mutateAsync: mockCreateMutate,
+        isPending: false,
+      });
+
+      render(<SchedulesPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole("button", { name: /New Schedule/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+      });
+
+      const nameInput = document.getElementById("name") as HTMLInputElement;
+      fireEvent.change(nameInput, { target: { value: "My Schedule" } });
+
+      const targetNameInput = document.getElementById("targetName") as HTMLInputElement;
+      fireEvent.change(targetNameInput, { target: { value: "my-workflow" } });
+
+      const submitButton = screen.getByRole("button", { name: /Create Schedule/i });
+      fireEvent.click(submitButton);
+
+      await waitFor(() => {
+        expect(mockCreateMutate).toHaveBeenCalledWith({
+          name: "My Schedule",
+          description: undefined,
+          cron_expression: "0 * * * * * *",
+          target: {
+            type: "workflow",
+            name: "my-workflow",
+            input: {},
+          },
+          enabled: true,
+        });
+      });
+    });
+
+    it("displays error message when schedule creation fails", async () => {
+      const mockCreateMutate = jest.fn().mockRejectedValue(
+        new Error("API Error: 400 Bad Request"),
+      );
+      mockUseCreateSchedule.mockReturnValue({
+        mutateAsync: mockCreateMutate,
+        isPending: false,
+      });
+
+      render(<SchedulesPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole("button", { name: /New Schedule/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+      });
+
+      const nameInput = document.getElementById("name") as HTMLInputElement;
+      fireEvent.change(nameInput, { target: { value: "Test Schedule" } });
+
+      const targetNameInput = document.getElementById("targetName") as HTMLInputElement;
+      fireEvent.change(targetNameInput, { target: { value: "test-workflow" } });
+
+      const submitButton = screen.getByRole("button", { name: /Create Schedule/i });
+      fireEvent.click(submitButton);
+
+      await waitFor(() => {
+        expect(screen.getByText("API Error: 400 Bad Request")).toBeInTheDocument();
+      });
+    });
+
+    it("displays error for invalid JSON in target input", async () => {
+      mockUseCreateSchedule.mockReturnValue({
+        mutateAsync: jest.fn(),
+        isPending: false,
+      });
+
+      render(<SchedulesPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole("button", { name: /New Schedule/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+      });
+
+      const nameInput = document.getElementById("name") as HTMLInputElement;
+      fireEvent.change(nameInput, { target: { value: "Test Schedule" } });
+
+      const targetNameInput = document.getElementById("targetName") as HTMLInputElement;
+      fireEvent.change(targetNameInput, { target: { value: "test-workflow" } });
+
+      const targetInputField = document.getElementById("targetInput") as HTMLTextAreaElement;
+      fireEvent.change(targetInputField, { target: { value: "not valid json" } });
+
+      const submitButton = screen.getByRole("button", { name: /Create Schedule/i });
+      fireEvent.click(submitButton);
+
+      await waitFor(() => {
+        expect(screen.getByText("Invalid JSON in target input")).toBeInTheDocument();
+      });
+    });
+
+    it("does not close dialog when creation fails", async () => {
+      const mockCreateMutate = jest.fn().mockRejectedValue(
+        new Error("Server error"),
+      );
+      mockUseCreateSchedule.mockReturnValue({
+        mutateAsync: mockCreateMutate,
+        isPending: false,
+      });
+
+      render(<SchedulesPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole("button", { name: /New Schedule/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+      });
+
+      const nameInput = document.getElementById("name") as HTMLInputElement;
+      fireEvent.change(nameInput, { target: { value: "Test Schedule" } });
+
+      const targetNameInput = document.getElementById("targetName") as HTMLInputElement;
+      fireEvent.change(targetNameInput, { target: { value: "test-workflow" } });
+
+      const submitButton = screen.getByRole("button", { name: /Create Schedule/i });
+      fireEvent.click(submitButton);
+
+      await waitFor(() => {
+        expect(screen.getByText("Server error")).toBeInTheDocument();
+      });
+
+      // Dialog should still be open
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("disables Cancel button while creation is pending", async () => {
+      mockUseCreateSchedule.mockReturnValue({
+        mutateAsync: jest.fn().mockImplementation(() => new Promise(() => {})),
+        isPending: true,
+      });
+
+      render(<SchedulesPage />, { wrapper });
+
+      fireEvent.click(screen.getByRole("button", { name: /New Schedule/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+      });
+
+      const cancelButton = screen.getByRole("button", { name: /Cancel/i });
+      expect(cancelButton).toBeDisabled();
+    });
   });
 
   // ============================================
