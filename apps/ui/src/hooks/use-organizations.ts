@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createOrganization, getOrganization, updateOrganization } from "@/lib/api/organizations";
 import { queryKeys } from "@/lib/query-keys";
+import { authKeys } from "@/hooks/use-auth";
 import type { UpdateOrganizationRequest } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
@@ -29,10 +30,17 @@ export function useCreateOrganization() {
 
   return useMutation({
     mutationFn: createOrganization,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
-      // Refresh user's org list so the new org appears in the dropdown
-      queryClient.invalidateQueries({ queryKey: queryKeys.users.me() });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all }),
+        // Refresh user's org list so the new org appears in the sidebar dropdown.
+        // The org list is sourced from the auth user query (["auth", "user"]),
+        // not queryKeys.users.me, so we must invalidate authKeys.user().
+        // Awaiting ensures the org list is up-to-date before mutateAsync resolves,
+        // preventing race conditions where setCurrentOrg runs before the new org
+        // appears in the organizations array (which would reset to the old org).
+        queryClient.invalidateQueries({ queryKey: authKeys.user() }),
+      ]);
     },
   });
 }
@@ -51,8 +59,8 @@ export function useUpdateOrganization() {
           queryKey: queryKeys.organizations.detail(org),
         });
       }
-      // Also invalidate auth session to refresh user's org list
-      queryClient.invalidateQueries({ queryKey: queryKeys.users.me() });
+      // Refresh auth user query so the sidebar org dropdown reflects updates
+      queryClient.invalidateQueries({ queryKey: authKeys.user() });
     },
   });
 }
