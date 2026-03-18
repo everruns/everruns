@@ -86,11 +86,7 @@ function McpServerCard({
             {server.api_key_set ? "Update Key" : "Set Key"}
           </Button>
           {!isArchived && !isDeleted && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onArchive(server)}
-            >
+            <Button variant="outline" size="sm" onClick={() => onArchive(server)}>
               Archive
             </Button>
           )}
@@ -285,18 +281,15 @@ function ArchiveConfirmDialog({
           <DialogTitle>Archive MCP Server</DialogTitle>
           <DialogDescription>
             Are you sure you want to archive the MCP server{" "}
-            <span className="font-medium">{server?.name}</span>? Archived
-            servers will no longer be available to agents.
+            <span className="font-medium">{server?.name}</span>? Archived servers will no longer be
+            available to agents.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            onClick={handleArchive}
-            disabled={updateServer.isPending}
-          >
+          <Button onClick={handleArchive} disabled={updateServer.isPending}>
             {updateServer.isPending ? "Archiving..." : "Archive"}
           </Button>
         </DialogFooter>

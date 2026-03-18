@@ -111,9 +111,7 @@ describe("McpServersPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
     expect(screen.getByText("Archive MCP Server")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Are you sure you want to archive the MCP server/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Are you sure you want to archive the MCP server/)).toBeInTheDocument();
   });
 
   it("does not archive when cancel is clicked in the confirmation dialog", () => {
