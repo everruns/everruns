@@ -14,6 +14,7 @@ import {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -78,6 +79,9 @@ export function OrgProvider({ children }: OrgProviderProps) {
   const { user, isLoading: authLoading } = useAuth();
   const [currentOrg, setCurrentOrgState] = useState<OrganizationMembership | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  // Track explicit org selection to prevent useEffect from resetting it
+  // before the organizations list catches up (e.g. after creating a new org).
+  const explicitOrgRef = useRef<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -117,8 +121,18 @@ export function OrgProvider({ children }: OrgProviderProps) {
 
     // If current org is null or no longer valid, set to default
     if (!currentOrg || !organizations.find((org) => org.public_id === currentOrg.public_id)) {
+      // If the user explicitly selected this org (e.g. just created it),
+      // skip the reset — the organizations list hasn't caught up yet.
+      if (currentOrg && explicitOrgRef.current === currentOrg.public_id) {
+        return;
+      }
       const defaultOrg = organizations.find((org) => org.public_id === DEFAULT_ORG_PUBLIC_ID);
       setCurrentOrgState(defaultOrg ?? organizations[0]);
+    } else {
+      // Org found in list — clear the explicit flag since we're in sync.
+      if (explicitOrgRef.current === currentOrg?.public_id) {
+        explicitOrgRef.current = null;
+      }
     }
   }, [organizations, currentOrg, isInitialized]);
 
@@ -134,6 +148,9 @@ export function OrgProvider({ children }: OrgProviderProps) {
 
   const setCurrentOrg = useCallback(
     (org: OrganizationMembership) => {
+      // Mark as explicitly selected so the sync effect doesn't reset it
+      // before the organizations list is refreshed.
+      explicitOrgRef.current = org.public_id;
       setCurrentOrgState(org);
       localStorage.setItem(STORAGE_KEY, org.public_id);
       // Set server-side cookie via API
