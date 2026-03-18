@@ -966,15 +966,15 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 - `specs/llm-drivers.md` — LLM provider abstraction
 - `specs/durable-execution-engine.md` — Workflow engine and worker communication
 - `specs/scheduled-tasks.md` — Cron-based task scheduling
-- `specs/otel-observability.md` — OpenTelemetry tracing
-- `specs/braintrust-integration.md` — Braintrust event forwarding
+- `crates/core/specs/otel-observability.md` — OpenTelemetry tracing
+- `crates/core/specs/braintrust-integration.md` — Braintrust event forwarding
 - `specs/apis.md` — HTTP API endpoints and error handling
 - `specs/capabilities.md` — Agent capabilities system
 - `specs/bashkit-requirements.md` — Bashkit integration requirements
-- `specs/daytona.md` — Daytona cloud sandbox integration
+- `integrations/daytona/SPEC.md` — Daytona cloud sandbox integration
 - `specs/client-side-tools.md` — Client-side tools for API/SDK consumers
 - `specs/apps.md` — Apps system (agent deployment to channels)
-- `specs/slack-integration.md` — Slack bot integration
-- `specs/brave-search.md` — Brave Search web search integration
+- `crates/server/specs/slack-integration.md` — Slack bot integration
+- `integrations/brave-search/SPEC.md` — Brave Search web search integration
 - `specs/infinity-context.md` — Unlimited conversation length via context management
 - [fetchkit v0.1.2 source](https://crates.io/crates/fetchkit) — SSRF protection (resolve-then-check, DNS pinning, DnsPolicy), URL prefix blocking, fetch options, fetcher registry

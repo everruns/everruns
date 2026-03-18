@@ -2,7 +2,7 @@
 //
 // Full-featured OTel integration following Gen-AI semantic conventions.
 // See: https://opentelemetry.io/docs/specs/semconv/gen-ai/
-// See: specs/otel-observability.md for full specification.
+// See: crates/core/specs/otel-observability.md for full specification.
 //
 // Traces the complete agentic execution lifecycle (13 event types):
 // - turn.started/completed/failed/cancelled → gen_ai.invoke_agent root span

@@ -13,7 +13,7 @@ Everruns provides native OpenTelemetry (OTel) tracing for the complete agentic e
 - **Gen-AI Client Spans**: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/
 - **Gen-AI Events**: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-events/
 - **Attribute Registry**: https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/
-- **Internal Braintrust Spec**: `specs/braintrust-integration.md` (reference for event hierarchy)
+- **Internal Braintrust Spec**: `crates/core/specs/braintrust-integration.md` (reference for event hierarchy)
 
 ## Requirements
 

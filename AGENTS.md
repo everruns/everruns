@@ -76,7 +76,7 @@ Always make sure you are working on top of latest main from remote.
 
 ### Specs
 
-`specs/` contains feature specifications. New code should comply with these or propose changes.
+`specs/` contains feature specifications. New code should comply with these or propose changes. Integration specs live alongside their crates (`integrations/*/SPEC.md`, `crates/*/specs/`); see `specs/integrations.md` for the full index.
 
 **Spec content principle:** Specs capture *design intent, rationale, and constraints* — the "why" and "what", not exhaustive "how". Don't duplicate what's readable from code (struct fields, enum variants, exact API shapes, SQL DDL). Instead, link to the source file. Example: "See `crates/core/src/models/agent.rs` for full field list." This keeps specs maintainable and prevents drift.
 
@@ -97,7 +97,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/scheduled-tasks.md` - Cron-based scheduled tasks for durable engine
 - `specs/fail-rs-testing.md` - Failure injection testing with fail-rs
 - `specs/authentication.md` - Authentication modes and OAuth
-- `specs/user-connections.md` - User connections (GitHub, GitLab) for repo access
+- `specs/integrations.md` - **Integration specs index** (links to specs co-located with their crates)
 - `specs/encryption.md` - Envelope encryption for sensitive data
 - `specs/session-filesystem.md` - Per-session virtual filesystem
 - `specs/usage-tracking.md` - LLM token usage tracking
@@ -108,8 +108,6 @@ Always make sure you are working on top of latest main from remote.
 - `specs/permissions.md` - Fine-grained permissions model (policies, rules, `#[policy]` macro)
 - `specs/release-process.md` - Release workflow with CHANGELOG.md
 - `specs/id-schema.md` - Standardized prefixed ID format
-- `specs/braintrust-integration.md` - Braintrust observability
-- `specs/otel-observability.md` - OpenTelemetry Gen-AI semantic convention tracing
 - `specs/test-cases.md` - Manual test case format
 - `specs/session-sqldb.md` - Session-scoped SQL databases (SQLite over PostgreSQL VFS)
 - `specs/threat-model.md` - Security threat model with stable IDs and mitigations
@@ -121,22 +119,15 @@ Always make sure you are working on top of latest main from remote.
 - `specs/skills-registry.md` - Agent Skills registry (agentskills.io format)
 - `specs/commands.md` - Slash commands system (system + skill commands)
 - `specs/issue-tracking.md` - Issue tracking (Linear, OSS project)
-- `specs/daytona.md` - Daytona cloud sandbox integration
-- `specs/brave-search.md` - Brave Search web search integration
-- `specs/duckduckgo.md` - DuckDuckGo instant answer search integration
 - `specs/harness-types.md` - Built-in harness types (Base, Generic)
 - `specs/client-side-tools.md` - Client-side tools for API/SDK consumers
 - `specs/infinity-context.md` - Unlimited conversation length via context management
 - `specs/compaction.md` - Context compaction capability, strategy selection, events, and UI
 - `specs/load-testing.md` - End-to-end load testing framework and benchmarking process
 - `specs/apps.md` - Apps system (agent deployment to distribution channels)
-- `specs/slack-integration.md` - Slack bot integration (app-scoped webhook, session routing)
 - `specs/notifications.md` - Generic user notifications (bell, toast, future channels)
 - `specs/feature-flags.md` - Feature flags system (env vars, deployment grade, UI gating)
 - `specs/tool-search.md` - OpenAI tool_search deferred tool loading capability
-- `specs/cache.md` - Caching strategy and distributed rate limiting (Valkey)
-- `specs/sccache.md` - Shared compile cache (sccache with S3 backend)
-- `specs/browserless.md` - Browserless browser automation integration
 - `specs/subagents.md` - Subagent orchestration (spawn, message, cancel child sessions)
 - `specs/subagent-architecture-analysis.md` - Subagent architecture analysis across top coding agents
 - `specs/toolkit-library-contract.md` - Convention for external toolkit libraries (bashkit, fetchkit, etc.)
