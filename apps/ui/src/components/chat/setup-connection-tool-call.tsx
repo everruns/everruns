@@ -83,10 +83,8 @@ export function SetupConnectionToolCall({
     return (
       <div
         className={cn(
-          "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm",
-          wasSuccess
-            ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-400"
-            : "border-border bg-muted/30 text-muted-foreground",
+          "flex items-center gap-2 px-3 py-1.5 text-sm",
+          wasSuccess ? "text-green-700 dark:text-green-400" : "text-muted-foreground",
         )}
       >
         {wasSuccess ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
