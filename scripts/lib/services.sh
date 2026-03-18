@@ -170,7 +170,7 @@ if [ -n "${UI_DEV_ARGS:-}" ]; then
 fi
 
 run_ui_dev() {
-  PORT="$UI_PORT" ./node_modules/.bin/next dev --port "$UI_PORT" "${ui_dev_args[@]}"
+  PORT="$UI_PORT" ./node_modules/.bin/next dev --port "$UI_PORT" ${ui_dev_args[@]+"${ui_dev_args[@]}"}
 }
 
 run_ui_start() {
