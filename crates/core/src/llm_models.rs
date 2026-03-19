@@ -196,6 +196,27 @@ pub struct LlmModelCost {
     /// Cached read cost per million tokens (USD), if supported
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_read: Option<f64>,
+    /// Tiered pricing that applies above certain context thresholds.
+    /// When present, the base cost fields apply up to the tier threshold,
+    /// and each tier's costs apply for tokens beyond that threshold.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cost_tiers: Vec<CostTier>,
+}
+
+/// A pricing tier that activates above a context token threshold.
+/// For example, OpenAI charges higher rates for prompts exceeding 200K tokens.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct CostTier {
+    /// Context token threshold above which this tier applies
+    pub above_tokens: i32,
+    /// Input cost per million tokens (USD) for this tier
+    pub input: f64,
+    /// Output cost per million tokens (USD) for this tier
+    pub output: f64,
+    /// Cached read cost per million tokens (USD) for this tier, if supported
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read: Option<f64>,
 }
 
 /// Token limits for the model
@@ -223,6 +244,7 @@ pub enum Modality {
     Image,
     Audio,
     Video,
+    Pdf,
 }
 
 /// Model modalities for input and output
@@ -283,6 +305,9 @@ pub struct LlmModelProfile {
     pub name: String,
     /// Model family (e.g., "gpt-4o", "claude-3-5-sonnet")
     pub family: String,
+    /// Short human-readable description of the model's strengths and intended use
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// Release date (YYYY-MM-DD format)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub release_date: Option<String>,

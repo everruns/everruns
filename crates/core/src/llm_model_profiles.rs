@@ -15,8 +15,8 @@
 // Cross-referenced with official Anthropic and OpenAI documentation
 
 use crate::llm_models::{
-    LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmProviderType, Modality,
-    ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
+    CostTier, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmProviderType,
+    Modality, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
 
 // Helper functions for creating reasoning effort configurations
@@ -157,6 +157,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-4o" => Some(LlmModelProfile {
             name: "GPT-4o".into(),
             family: "gpt-4o".into(),
+            description: None,
             release_date: Some("2024-05-13".into()),
             last_updated: Some("2024-11-20".into()),
             attachment: true,
@@ -170,6 +171,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 2.50,
                 output: 10.00,
                 cache_read: Some(1.25),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -189,6 +191,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-4o-mini" => Some(LlmModelProfile {
             name: "GPT-4o mini".into(),
             family: "gpt-4o-mini".into(),
+            description: None,
             release_date: Some("2024-07-18".into()),
             last_updated: Some("2024-07-18".into()),
             attachment: true,
@@ -202,6 +205,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 0.15,
                 output: 0.60,
                 cache_read: Some(0.075),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -221,6 +225,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "o1" => Some(LlmModelProfile {
             name: "o1".into(),
             family: "o1".into(),
+            description: None,
             release_date: Some("2024-12-17".into()),
             last_updated: Some("2024-12-17".into()),
             attachment: true,
@@ -234,6 +239,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 15.00,
                 output: 60.00,
                 cache_read: Some(7.50),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -253,6 +259,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "o1-mini" => Some(LlmModelProfile {
             name: "o1-mini".into(),
             family: "o1-mini".into(),
+            description: None,
             release_date: Some("2024-09-12".into()),
             last_updated: Some("2024-09-12".into()),
             attachment: false,
@@ -266,6 +273,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 3.00,
                 output: 12.00,
                 cache_read: Some(1.50),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -285,6 +293,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "o1-pro" => Some(LlmModelProfile {
             name: "o1-pro".into(),
             family: "o1-pro".into(),
+            description: None,
             release_date: Some("2025-03-19".into()),
             last_updated: Some("2025-03-19".into()),
             attachment: true,
@@ -298,6 +307,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 150.00,
                 output: 600.00,
                 cache_read: None,
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -317,6 +327,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "o3-mini" => Some(LlmModelProfile {
             name: "o3-mini".into(),
             family: "o3-mini".into(),
+            description: None,
             release_date: Some("2025-01-31".into()),
             last_updated: Some("2025-01-31".into()),
             attachment: false,
@@ -330,6 +341,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.10,
                 output: 4.40,
                 cache_read: Some(0.55),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -349,6 +361,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "o3" => Some(LlmModelProfile {
             name: "o3".into(),
             family: "o3".into(),
+            description: None,
             release_date: Some("2025-04-16".into()),
             last_updated: Some("2025-04-16".into()),
             attachment: true,
@@ -362,6 +375,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 2.00,
                 output: 8.00,
                 cache_read: Some(1.00),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -381,6 +395,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "o3-pro" => Some(LlmModelProfile {
             name: "o3 Pro".into(),
             family: "o3-pro".into(),
+            description: None,
             release_date: Some("2025-06-10".into()),
             last_updated: Some("2025-06-10".into()),
             attachment: true,
@@ -394,6 +409,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 20.00,
                 output: 80.00,
                 cache_read: None,
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -413,6 +429,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "o4-mini" => Some(LlmModelProfile {
             name: "o4 mini".into(),
             family: "o4-mini".into(),
+            description: None,
             release_date: Some("2025-04-16".into()),
             last_updated: Some("2025-04-16".into()),
             attachment: true,
@@ -426,6 +443,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.10,
                 output: 4.40,
                 cache_read: Some(0.55),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -446,6 +464,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-4.1" => Some(LlmModelProfile {
             name: "GPT-4.1".into(),
             family: "gpt-4.1".into(),
+            description: None,
             release_date: Some("2025-04-14".into()),
             last_updated: Some("2025-04-14".into()),
             attachment: true,
@@ -459,6 +478,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 2.00,
                 output: 8.00,
                 cache_read: Some(1.00),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -478,6 +498,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-4.1-mini" => Some(LlmModelProfile {
             name: "GPT-4.1 mini".into(),
             family: "gpt-4.1-mini".into(),
+            description: None,
             release_date: Some("2025-04-14".into()),
             last_updated: Some("2025-04-14".into()),
             attachment: true,
@@ -491,6 +512,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 0.40,
                 output: 1.60,
                 cache_read: Some(0.20),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -510,6 +532,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-4.1-nano" => Some(LlmModelProfile {
             name: "GPT-4.1 nano".into(),
             family: "gpt-4.1-nano".into(),
+            description: None,
             release_date: Some("2025-04-14".into()),
             last_updated: Some("2025-04-14".into()),
             attachment: true,
@@ -523,6 +546,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 0.10,
                 output: 0.40,
                 cache_read: Some(0.05),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -544,6 +568,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5" => Some(LlmModelProfile {
             name: "GPT-5".into(),
             family: "gpt-5".into(),
+            description: None,
             release_date: Some("2025-08-07".into()),
             last_updated: Some("2025-08-07".into()),
             attachment: true,
@@ -557,6 +582,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.125),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -576,6 +602,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5-mini" => Some(LlmModelProfile {
             name: "GPT-5 mini".into(),
             family: "gpt-5-mini".into(),
+            description: None,
             release_date: Some("2025-08-13".into()),
             last_updated: Some("2025-08-13".into()),
             attachment: true,
@@ -589,6 +616,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 0.25,
                 output: 2.00,
                 cache_read: Some(0.025),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -608,6 +636,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5-nano" => Some(LlmModelProfile {
             name: "GPT-5 nano".into(),
             family: "gpt-5-nano".into(),
+            description: None,
             release_date: Some("2025-08-13".into()),
             last_updated: Some("2025-08-13".into()),
             attachment: true,
@@ -621,6 +650,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 0.05,
                 output: 0.40,
                 cache_read: Some(0.005),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -640,6 +670,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5-pro" => Some(LlmModelProfile {
             name: "GPT-5 Pro".into(),
             family: "gpt-5-pro".into(),
+            description: None,
             release_date: Some("2025-08-07".into()),
             last_updated: Some("2025-08-07".into()),
             attachment: true,
@@ -653,6 +684,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 15.00,
                 output: 60.00,
                 cache_read: None,
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -672,6 +704,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5-codex" => Some(LlmModelProfile {
             name: "GPT-5 Codex".into(),
             family: "gpt-5-codex".into(),
+            description: None,
             release_date: Some("2025-08-07".into()),
             last_updated: Some("2025-08-07".into()),
             attachment: true,
@@ -685,6 +718,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.125),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -705,6 +739,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.1" => Some(LlmModelProfile {
             name: "GPT-5.1".into(),
             family: "gpt-5.1".into(),
+            description: None,
             release_date: Some("2025-11-13".into()),
             last_updated: Some("2025-11-13".into()),
             attachment: true,
@@ -718,6 +753,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.50,
                 output: 12.00,
                 cache_read: Some(0.15),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -737,6 +773,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.1-codex" => Some(LlmModelProfile {
             name: "GPT-5.1 Codex".into(),
             family: "gpt-5.1-codex".into(),
+            description: None,
             release_date: Some("2025-11-13".into()),
             last_updated: Some("2025-11-13".into()),
             attachment: true,
@@ -750,6 +787,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.50,
                 output: 12.00,
                 cache_read: Some(0.15),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -769,6 +807,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.1-codex-mini" => Some(LlmModelProfile {
             name: "GPT-5.1 Codex mini".into(),
             family: "gpt-5.1-codex-mini".into(),
+            description: None,
             release_date: Some("2025-11-13".into()),
             last_updated: Some("2025-11-13".into()),
             attachment: true,
@@ -782,6 +821,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 0.30,
                 output: 2.40,
                 cache_read: Some(0.03),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -802,6 +842,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.1-codex-max" => Some(LlmModelProfile {
             name: "GPT-5.1 Codex max".into(),
             family: "gpt-5.1-codex-max".into(),
+            description: None,
             release_date: Some("2025-11-13".into()),
             last_updated: Some("2025-11-13".into()),
             attachment: true,
@@ -815,6 +856,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 3.00,
                 output: 24.00,
                 cache_read: Some(0.30),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -835,6 +877,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.2" => Some(LlmModelProfile {
             name: "GPT-5.2".into(),
             family: "gpt-5.2".into(),
+            description: None,
             release_date: Some("2025-12-11".into()),
             last_updated: Some("2025-12-11".into()),
             attachment: true,
@@ -848,6 +891,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 400_000,
@@ -867,6 +911,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.2-pro" => Some(LlmModelProfile {
             name: "GPT-5.2 Pro".into(),
             family: "gpt-5.2-pro".into(),
+            description: None,
             release_date: Some("2025-12-11".into()),
             last_updated: Some("2025-12-11".into()),
             attachment: true,
@@ -880,6 +925,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 21.00,
                 output: 168.00,
                 cache_read: None,
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 400_000,
@@ -899,6 +945,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.2-codex" => Some(LlmModelProfile {
             name: "GPT-5.2 Codex".into(),
             family: "gpt-5.2-codex".into(),
+            description: None,
             release_date: Some("2025-12-11".into()),
             last_updated: Some("2025-12-11".into()),
             attachment: true,
@@ -912,6 +959,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 400_000,
@@ -932,6 +980,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.3-codex" => Some(LlmModelProfile {
             name: "GPT-5.3 Codex".into(),
             family: "gpt-5.3-codex".into(),
+            description: None,
             release_date: Some("2026-02-05".into()),
             last_updated: Some("2026-02-05".into()),
             attachment: true,
@@ -945,6 +994,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 400_000,
@@ -961,16 +1011,19 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        // GPT-5.4 models: 1.05M context, native computer use, released 2026-03-05
+        // GPT-5.4 family: reasoning models with 1.05M context, tool_search, native phases.
+        // Released 2026-03-05 (5.4, 5.4-pro), 2026-03-17 (5.4-mini, 5.4-nano).
+        // 5.4 and 5.4-pro have tiered pricing above 200K context tokens.
         "gpt-5.4" => Some(LlmModelProfile {
             name: "GPT-5.4".into(),
             family: "gpt-5.4".into(),
+            description: Some("Flagship reasoning model with 1M+ context. Best for complex multi-step tasks, code generation, and deep analysis.".into()),
             release_date: Some("2026-03-05".into()),
             last_updated: Some("2026-03-05".into()),
             attachment: true,
             reasoning: true,
             temperature: false,
-            knowledge: Some("2025-12-31".into()),
+            knowledge: Some("2025-08-31".into()),
             tool_call: true,
             structured_output: true,
             open_weights: false,
@@ -978,9 +1031,83 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 2.50,
                 output: 15.00,
                 cache_read: Some(0.25),
+                cost_tiers: vec![CostTier {
+                    above_tokens: 200_000,
+                    input: 5.00,
+                    output: 22.50,
+                    cache_read: Some(0.50),
+                }],
             }),
             limits: Some(LlmModelLimits {
                 context: 1_050_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_gpt52()),
+            tool_search: true,
+            supports_phases: true,
+        }),
+
+        "gpt-5.4-mini" => Some(LlmModelProfile {
+            name: "GPT-5.4 mini".into(),
+            family: "gpt-5.4-mini".into(),
+            description: Some("Fast, cost-effective reasoning model. Balances strong performance with low latency for everyday tasks.".into()),
+            release_date: Some("2026-03-17".into()),
+            last_updated: Some("2026-03-17".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: Some("2025-08-31".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 0.75,
+                output: 4.50,
+                cache_read: Some(0.075),
+                cost_tiers: vec![],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 400_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_gpt52()),
+            tool_search: true,
+            supports_phases: true,
+        }),
+
+        "gpt-5.4-nano" => Some(LlmModelProfile {
+            name: "GPT-5.4 nano".into(),
+            family: "gpt-5.4-nano".into(),
+            description: Some("Smallest and cheapest GPT-5.4 variant. Ideal for high-volume, latency-sensitive workloads.".into()),
+            release_date: Some("2026-03-17".into()),
+            last_updated: Some("2026-03-17".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: Some("2025-08-31".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 0.20,
+                output: 1.25,
+                cache_read: Some(0.02),
+                cost_tiers: vec![],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 400_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
@@ -997,19 +1124,26 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.4-pro" => Some(LlmModelProfile {
             name: "GPT-5.4 Pro".into(),
             family: "gpt-5.4-pro".into(),
+            description: Some("Extended-thinking variant for the hardest problems. Trades speed for deeper reasoning on math, science, and complex code.".into()),
             release_date: Some("2026-03-05".into()),
             last_updated: Some("2026-03-05".into()),
             attachment: true,
             reasoning: true,
             temperature: false,
-            knowledge: Some("2025-12-31".into()),
+            knowledge: Some("2025-08-31".into()),
             tool_call: true,
-            structured_output: true,
+            structured_output: false,
             open_weights: false,
             cost: Some(LlmModelCost {
                 input: 30.00,
                 output: 180.00,
                 cache_read: None,
+                cost_tiers: vec![CostTier {
+                    above_tokens: 200_000,
+                    input: 60.00,
+                    output: 270.00,
+                    cache_read: None,
+                }],
             }),
             limits: Some(LlmModelLimits {
                 context: 1_050_000,
@@ -1030,6 +1164,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5-chat-latest" => Some(LlmModelProfile {
             name: "GPT-5 Chat".into(),
             family: "gpt-5".into(),
+            description: None,
             release_date: Some("2025-08-07".into()),
             last_updated: Some("2025-08-07".into()),
             attachment: true,
@@ -1043,6 +1178,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.125),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -1062,6 +1198,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.1-chat-latest" => Some(LlmModelProfile {
             name: "GPT-5.1 Chat".into(),
             family: "gpt-5.1".into(),
+            description: None,
             release_date: Some("2025-11-13".into()),
             last_updated: Some("2025-11-13".into()),
             attachment: true,
@@ -1075,6 +1212,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.50,
                 output: 12.00,
                 cache_read: Some(0.15),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -1094,6 +1232,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gpt-5.2-chat-latest" => Some(LlmModelProfile {
             name: "GPT-5.2 Chat".into(),
             family: "gpt-5.2".into(),
+            description: None,
             release_date: Some("2025-12-11".into()),
             last_updated: Some("2025-12-11".into()),
             attachment: true,
@@ -1107,6 +1246,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -1127,6 +1267,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "o3-deep-research" => Some(LlmModelProfile {
             name: "o3 Deep Research".into(),
             family: "o3".into(),
+            description: None,
             release_date: Some("2025-04-16".into()),
             last_updated: Some("2025-04-16".into()),
             attachment: true,
@@ -1140,6 +1281,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 2.00,
                 output: 8.00,
                 cache_read: Some(1.00),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1159,6 +1301,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "o4-mini-deep-research" => Some(LlmModelProfile {
             name: "o4 mini Deep Research".into(),
             family: "o4-mini".into(),
+            description: None,
             release_date: Some("2025-04-16".into()),
             last_updated: Some("2025-04-16".into()),
             attachment: true,
@@ -1172,6 +1315,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.10,
                 output: 4.40,
                 cache_read: Some(0.55),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1191,6 +1335,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
         "o1-preview" => Some(LlmModelProfile {
             name: "o1 Preview".into(),
             family: "o1".into(),
+            description: None,
             release_date: Some("2024-09-12".into()),
             last_updated: Some("2024-09-12".into()),
             attachment: false,
@@ -1204,6 +1349,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 15.00,
                 output: 60.00,
                 cache_read: Some(7.50),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -1233,6 +1379,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-opus-4-6" => Some(LlmModelProfile {
             name: "Claude Opus 4.6".into(),
             family: "claude-opus-4-6".into(),
+            description: None,
             release_date: Some("2026-02-05".into()),
             last_updated: Some("2026-02-05".into()),
             attachment: true,
@@ -1246,6 +1393,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 5.00,
                 output: 25.00,
                 cache_read: Some(0.50),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 1_000_000,
@@ -1265,6 +1413,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-sonnet-4-6" => Some(LlmModelProfile {
             name: "Claude Sonnet 4.6".into(),
             family: "claude-sonnet-4-6".into(),
+            description: None,
             release_date: Some("2026-02-17".into()),
             last_updated: Some("2026-02-17".into()),
             attachment: true,
@@ -1278,6 +1427,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1298,6 +1448,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-opus-4-5" => Some(LlmModelProfile {
             name: "Claude Opus 4.5".into(),
             family: "claude-opus-4-5".into(),
+            description: None,
             release_date: Some("2025-11-24".into()),
             last_updated: Some("2025-11-24".into()),
             attachment: true,
@@ -1311,6 +1462,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 5.00,
                 output: 25.00,
                 cache_read: Some(0.50),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1330,6 +1482,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-sonnet-4-5" => Some(LlmModelProfile {
             name: "Claude Sonnet 4.5".into(),
             family: "claude-sonnet-4-5".into(),
+            description: None,
             release_date: Some("2025-09-29".into()),
             last_updated: Some("2025-09-29".into()),
             attachment: true,
@@ -1343,6 +1496,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1362,6 +1516,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-haiku-4-5" => Some(LlmModelProfile {
             name: "Claude Haiku 4.5".into(),
             family: "claude-haiku-4-5".into(),
+            description: None,
             release_date: Some("2025-10-15".into()),
             last_updated: Some("2025-10-15".into()),
             attachment: true,
@@ -1375,6 +1530,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.00,
                 output: 5.00,
                 cache_read: Some(0.10),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1395,6 +1551,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-opus-4-1" => Some(LlmModelProfile {
             name: "Claude Opus 4.1".into(),
             family: "claude-opus-4-1".into(),
+            description: None,
             release_date: Some("2025-08-05".into()),
             last_updated: Some("2025-08-05".into()),
             attachment: true,
@@ -1408,6 +1565,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 15.00,
                 output: 75.00,
                 cache_read: Some(1.50),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1428,6 +1586,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-sonnet-4" => Some(LlmModelProfile {
             name: "Claude Sonnet 4".into(),
             family: "claude-sonnet-4".into(),
+            description: None,
             release_date: Some("2025-05-14".into()),
             last_updated: Some("2025-05-14".into()),
             attachment: true,
@@ -1441,6 +1600,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1460,6 +1620,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-opus-4" => Some(LlmModelProfile {
             name: "Claude Opus 4".into(),
             family: "claude-opus-4".into(),
+            description: None,
             release_date: Some("2025-05-14".into()),
             last_updated: Some("2025-05-14".into()),
             attachment: true,
@@ -1473,6 +1634,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 15.00,
                 output: 75.00,
                 cache_read: Some(1.50),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1493,6 +1655,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-3-7-sonnet" => Some(LlmModelProfile {
             name: "Claude 3.7 Sonnet".into(),
             family: "claude-3-7-sonnet".into(),
+            description: None,
             release_date: Some("2025-02-19".into()),
             last_updated: Some("2025-02-19".into()),
             attachment: true,
@@ -1506,6 +1669,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1526,6 +1690,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-3-5-sonnet" => Some(LlmModelProfile {
             name: "Claude 3.5 Sonnet".into(),
             family: "claude-3-5-sonnet".into(),
+            description: None,
             release_date: Some("2024-06-20".into()),
             last_updated: Some("2024-10-22".into()),
             attachment: true,
@@ -1539,6 +1704,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1558,6 +1724,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-3-5-haiku" => Some(LlmModelProfile {
             name: "Claude 3.5 Haiku".into(),
             family: "claude-3-5-haiku".into(),
+            description: None,
             release_date: Some("2024-10-22".into()),
             last_updated: Some("2024-10-22".into()),
             attachment: true,
@@ -1571,6 +1738,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.00,
                 output: 5.00,
                 cache_read: Some(0.10),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1590,6 +1758,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-3-opus" => Some(LlmModelProfile {
             name: "Claude 3 Opus".into(),
             family: "claude-3-opus".into(),
+            description: None,
             release_date: Some("2024-02-29".into()),
             last_updated: Some("2024-02-29".into()),
             attachment: true,
@@ -1603,6 +1772,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 15.00,
                 output: 75.00,
                 cache_read: Some(1.50),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1622,6 +1792,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-3-sonnet" => Some(LlmModelProfile {
             name: "Claude 3 Sonnet".into(),
             family: "claude-3-sonnet".into(),
+            description: None,
             release_date: Some("2024-02-29".into()),
             last_updated: Some("2024-02-29".into()),
             attachment: true,
@@ -1635,6 +1806,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1654,6 +1826,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
         "claude-3-haiku" => Some(LlmModelProfile {
             name: "Claude 3 Haiku".into(),
             family: "claude-3-haiku".into(),
+            description: None,
             release_date: Some("2024-03-07".into()),
             last_updated: Some("2024-03-07".into()),
             attachment: true,
@@ -1667,6 +1840,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 0.25,
                 output: 1.25,
                 cache_read: Some(0.03),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 200_000,
@@ -1718,6 +1892,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gemini-2.5-pro" => Some(LlmModelProfile {
             name: "Gemini 2.5 Pro".into(),
             family: "gemini-2.5-pro".into(),
+            description: None,
             release_date: Some("2025-03-25".into()),
             last_updated: Some("2025-06-05".into()),
             attachment: true,
@@ -1731,6 +1906,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.31),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 1_048_576,
@@ -1755,6 +1931,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gemini-2.5-flash" => Some(LlmModelProfile {
             name: "Gemini 2.5 Flash".into(),
             family: "gemini-2.5-flash".into(),
+            description: None,
             release_date: Some("2025-04-17".into()),
             last_updated: Some("2025-06-12".into()),
             attachment: true,
@@ -1768,6 +1945,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 0.15,
                 output: 0.60,
                 cache_read: Some(0.0375),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 1_048_576,
@@ -1792,6 +1970,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gemini-2.0-flash" => Some(LlmModelProfile {
             name: "Gemini 2.0 Flash".into(),
             family: "gemini-2.0-flash".into(),
+            description: None,
             release_date: Some("2025-02-05".into()),
             last_updated: Some("2025-02-05".into()),
             attachment: true,
@@ -1805,6 +1984,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 0.10,
                 output: 0.40,
                 cache_read: Some(0.025),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 1_048_576,
@@ -1829,6 +2009,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gemini-1.5-pro" => Some(LlmModelProfile {
             name: "Gemini 1.5 Pro".into(),
             family: "gemini-1.5-pro".into(),
+            description: None,
             release_date: Some("2024-02-15".into()),
             last_updated: Some("2024-09-24".into()),
             attachment: true,
@@ -1842,6 +2023,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 1.25,
                 output: 5.00,
                 cache_read: Some(0.31),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 2_097_152,
@@ -1866,6 +2048,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
         "gemini-1.5-flash" => Some(LlmModelProfile {
             name: "Gemini 1.5 Flash".into(),
             family: "gemini-1.5-flash".into(),
+            description: None,
             release_date: Some("2024-05-24".into()),
             last_updated: Some("2024-09-24".into()),
             attachment: true,
@@ -1879,6 +2062,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 0.075,
                 output: 0.30,
                 cache_read: Some(0.01875),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 1_048_576,
@@ -1911,6 +2095,7 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
         "llmsim-default" | "llmsim" => Some(LlmModelProfile {
             name: "LlmSim Default".into(),
             family: "llmsim".into(),
+            description: None,
             release_date: Some("2025-01-01".into()),
             last_updated: Some("2025-01-01".into()),
             attachment: true,
@@ -1924,6 +2109,7 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
                 input: 0.00, // Free for testing
                 output: 0.00,
                 cache_read: Some(0.00),
+                cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
                 context: 128_000,
@@ -1950,6 +2136,8 @@ fn normalize_model_id(model_id: &str) -> &str {
     let patterns = [
         // GPT-5.4 models
         "gpt-5.4-pro",
+        "gpt-5.4-nano",
+        "gpt-5.4-mini",
         "gpt-5.4",
         // GPT-5.3 models
         "gpt-5.3-codex",
@@ -2316,12 +2504,67 @@ mod tests {
         assert!((cost.output - 15.00).abs() < f64::EPSILON);
         assert!((cost.cache_read.unwrap() - 0.25).abs() < f64::EPSILON);
 
+        // Tiered pricing above 200K tokens
+        assert_eq!(cost.cost_tiers.len(), 1);
+        let tier = &cost.cost_tiers[0];
+        assert_eq!(tier.above_tokens, 200_000);
+        assert!((tier.input - 5.00).abs() < f64::EPSILON);
+        assert!((tier.output - 22.50).abs() < f64::EPSILON);
+        assert!((tier.cache_read.unwrap() - 0.50).abs() < f64::EPSILON);
+
+        assert!(profile.description.is_some());
         assert!(profile.supports_phases);
+        assert!(profile.tool_search);
 
         // gpt-5.4: default none, supports none/low/medium/high/xhigh
         let effort = profile.reasoning_effort.unwrap();
         assert_eq!(effort.default, ReasoningEffort::None);
         assert_eq!(effort.values.len(), 5);
+    }
+
+    #[test]
+    fn test_gpt54_mini_profile() {
+        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-mini").unwrap();
+        assert_eq!(profile.name, "GPT-5.4 mini");
+        assert_eq!(profile.family, "gpt-5.4-mini");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+        assert!(profile.structured_output);
+        assert!(profile.tool_search);
+        assert!(profile.supports_phases);
+        assert!(profile.description.is_some());
+
+        let limits = profile.limits.unwrap();
+        assert_eq!(limits.context, 400_000);
+        assert_eq!(limits.output, 128_000);
+
+        let cost = profile.cost.unwrap();
+        assert!((cost.input - 0.75).abs() < f64::EPSILON);
+        assert!((cost.output - 4.50).abs() < f64::EPSILON);
+        assert!((cost.cache_read.unwrap() - 0.075).abs() < f64::EPSILON);
+        assert!(cost.cost_tiers.is_empty()); // No tiered pricing
+    }
+
+    #[test]
+    fn test_gpt54_nano_profile() {
+        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-nano").unwrap();
+        assert_eq!(profile.name, "GPT-5.4 nano");
+        assert_eq!(profile.family, "gpt-5.4-nano");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+        assert!(profile.tool_search);
+        assert!(profile.supports_phases);
+        assert!(profile.description.is_some());
+
+        let limits = profile.limits.unwrap();
+        assert_eq!(limits.context, 400_000);
+        assert_eq!(limits.output, 128_000);
+
+        let cost = profile.cost.unwrap();
+        assert!((cost.input - 0.20).abs() < f64::EPSILON);
+        assert!((cost.output - 1.25).abs() < f64::EPSILON);
+        assert!((cost.cache_read.unwrap() - 0.02).abs() < f64::EPSILON);
+        assert!(cost.cost_tiers.is_empty()); // No tiered pricing
     }
 
     #[test]
@@ -2331,6 +2574,8 @@ mod tests {
         assert_eq!(profile.family, "gpt-5.4-pro");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
+        assert!(!profile.structured_output); // Not supported for pro
+        assert!(profile.description.is_some());
 
         let limits = profile.limits.unwrap();
         assert_eq!(limits.context, 1_050_000);
@@ -2340,6 +2585,13 @@ mod tests {
         assert!((cost.input - 30.00).abs() < f64::EPSILON);
         assert!((cost.output - 180.00).abs() < f64::EPSILON);
         assert!(cost.cache_read.is_none());
+
+        // Tiered pricing above 200K tokens
+        assert_eq!(cost.cost_tiers.len(), 1);
+        let tier = &cost.cost_tiers[0];
+        assert_eq!(tier.above_tokens, 200_000);
+        assert!((tier.input - 60.00).abs() < f64::EPSILON);
+        assert!((tier.output - 270.00).abs() < f64::EPSILON);
 
         assert!(profile.supports_phases);
 
@@ -2353,6 +2605,13 @@ mod tests {
     fn test_gpt54_versioned() {
         let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-2026-03-05").unwrap();
         assert_eq!(profile.name, "GPT-5.4");
+    }
+
+    #[test]
+    fn test_gpt54_mini_versioned() {
+        let profile =
+            get_model_profile(&LlmProviderType::Openai, "gpt-5.4-mini-2026-03-17").unwrap();
+        assert_eq!(profile.name, "GPT-5.4 mini");
     }
 
     #[test]
@@ -2377,6 +2636,16 @@ mod tests {
         assert_eq!(normalize_model_id("gpt-5.4"), "gpt-5.4");
         assert_eq!(normalize_model_id("gpt-5.4-2026-03-05"), "gpt-5.4");
         assert_eq!(normalize_model_id("gpt-5.4-pro"), "gpt-5.4-pro");
+        assert_eq!(normalize_model_id("gpt-5.4-mini"), "gpt-5.4-mini");
+        assert_eq!(
+            normalize_model_id("gpt-5.4-mini-2026-03-17"),
+            "gpt-5.4-mini"
+        );
+        assert_eq!(normalize_model_id("gpt-5.4-nano"), "gpt-5.4-nano");
+        assert_eq!(
+            normalize_model_id("gpt-5.4-nano-2026-03-17"),
+            "gpt-5.4-nano"
+        );
     }
 
     // GPT-4.1 model tests

@@ -1012,6 +1012,20 @@ export interface LlmModelCost {
   output: number;
   /** Cached read cost per million tokens, if supported */
   cache_read?: number;
+  /** Tiered pricing above certain context thresholds */
+  cost_tiers?: CostTier[];
+}
+
+/** A pricing tier that activates above a context token threshold */
+export interface CostTier {
+  /** Context token threshold above which this tier applies */
+  above_tokens: number;
+  /** Input cost per million tokens (USD) for this tier */
+  input: number;
+  /** Output cost per million tokens (USD) for this tier */
+  output: number;
+  /** Cached read cost per million tokens (USD) for this tier, if supported */
+  cache_read?: number;
 }
 
 /** Token limits for the model */
@@ -1027,7 +1041,7 @@ export interface LlmModelLimits {
 }
 
 /** Modality type */
-export type Modality = "text" | "image" | "audio" | "video";
+export type Modality = "text" | "image" | "audio" | "video" | "pdf";
 
 /** Model modalities for input and output */
 export interface LlmModelModalities {
@@ -1065,6 +1079,8 @@ export interface LlmModelProfile {
   name: string;
   /** Model family (e.g., "gpt-4o", "claude-3-5-sonnet") */
   family: string;
+  /** Short human-readable description of the model's strengths and intended use */
+  description?: string;
   /** Release date (YYYY-MM-DD format) */
   release_date?: string;
   /** Last updated date (YYYY-MM-DD format) */

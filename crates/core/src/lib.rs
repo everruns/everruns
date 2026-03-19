@@ -223,9 +223,9 @@ pub use leased_resource::{
 };
 pub use llm_model_profiles::get_model_profile;
 pub use llm_models::{
-    LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmModelSource,
-    LlmModelStatus, LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality,
-    ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
+    CostTier, LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile,
+    LlmModelSource, LlmModelStatus, LlmModelWithProvider, LlmProviderStatus, LlmProviderType,
+    Modality, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
 pub use mcp_server::{
     McpContent, McpError, McpServer, McpServerStatus, McpServerTransportType, McpToolCallParams,
