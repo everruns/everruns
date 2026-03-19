@@ -95,7 +95,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-AUTH-004 | Weak password | Medium | Minimum 8 characters enforced; Argon2id hashing | MITIGATED |
 | TM-AUTH-005 | API key exposure in transit | High | HTTPS required in production; keys prefixed `evr_` for scanning | MITIGATED |
 | TM-AUTH-006 | API key brute force | Medium | Keys stored as SHA-256 hashes; 128-bit entropy makes brute force infeasible | MITIGATED |
-| TM-AUTH-007 | OAuth state fixation | High | State parameter generated but NOT validated in callback (`routes.rs:508-525` has TODO) | **OPEN** |
+| TM-AUTH-007 | OAuth state fixation | High | State generated in `oauth_redirect`, stored in HttpOnly/Secure/SameSite=Lax cookie (`oauth_state`), validated and consumed (single-use) in `oauth_callback`; mismatch or missing cookie returns 401 | MITIGATED |
 | TM-AUTH-008 | Session fixation via cookie | Medium | New tokens issued on login; HTTP-only, SameSite=Lax cookies | MITIGATED |
 | TM-AUTH-009 | Refresh token theft | High | Stored hashed in DB; HTTP-only cookie; revocable | MITIGATED |
 | TM-AUTH-010 | Admin password in env var | Low | Limited to admin mode; documented risk; shell history exposure possible | **ACCEPTED** |
