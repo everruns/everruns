@@ -27,6 +27,7 @@ Relevant references:
 - [`specs/code-organization.md`](./code-organization.md)
 - [`specs/commands.md`](./commands.md)
 - [`specs/skills-registry.md`](./skills-registry.md)
+- [`specs/issue-tracking.md`](./issue-tracking.md)
 - [GitHub Security Overview](https://github.com/everruns/everruns/security)
 - [Dependabot Alerts](https://github.com/everruns/everruns/security/dependabot)
 - [Secret Scanning Alerts](https://github.com/everruns/everruns/security/secret-scanning?query=is%3Aopen+results%3Ageneric)
@@ -46,6 +47,7 @@ Before a release, maintenance should cover:
 - areas changed since the last release
 - historically fragile or high-risk surfaces
 - release artifacts affected by those changes
+- Linear issues already marked `In Progress` but left stale long enough to signal execution drift; use 2 days without meaningful progress as the default review threshold unless the task sets a stricter bar
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
 
 A full-repo sweep is not mandatory if the evidence is already strong. The bar is confidence, not checklist completion theater.
