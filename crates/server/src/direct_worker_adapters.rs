@@ -14,7 +14,7 @@ use everruns_core::capabilities::{
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-use everruns_core::traits::ResolvedImage;
+use everruns_core::traits::{ModelWithProvider, ResolvedImage};
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EventData, Harness, HarnessStatus,
@@ -23,7 +23,7 @@ use everruns_core::{
 };
 use everruns_worker::create_driver_registry;
 use everruns_worker::mcp_executor::McpServerInfo;
-use everruns_worker::worker_adapters::{ModelWithProvider, TurnContext, WorkerAdapters};
+use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;

@@ -13,12 +13,12 @@ use everruns_core::error::Result;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-use everruns_core::traits::{ImageResolver, LeasedResourceStore, ResolvedImage};
+use everruns_core::traits::{ImageResolver, LeasedResourceStore, ModelWithProvider, ResolvedImage};
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 use everruns_core::{
-    Agent, DriverRegistry, Harness, LlmProviderType, Message, Session, ToolDefinition, ToolRegistry,
+    Agent, DriverRegistry, Harness, Message, Session, ToolDefinition, ToolRegistry,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -290,15 +290,6 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 // Supporting Types
 // =============================================================================
 
-/// Model with provider configuration
-#[derive(Debug, Clone)]
-pub struct ModelWithProvider {
-    pub model: String,
-    pub provider_type: LlmProviderType,
-    pub api_key: Option<String>,
-    pub base_url: Option<String>,
-}
-
 /// Turn context loaded in one batched call
 #[derive(Debug, Clone)]
 pub struct TurnContext {
@@ -437,27 +428,14 @@ impl<A: WorkerAdapters> everruns_core::traits::LlmProviderStore for AdapterLlmPr
     async fn get_model_with_provider(
         &self,
         model_id: ModelId,
-    ) -> Result<Option<everruns_core::traits::ModelWithProvider>> {
-        let result = self
-            .adapters
+    ) -> Result<Option<ModelWithProvider>> {
+        self.adapters
             .get_model_with_provider(self.org_id, model_id.uuid())
-            .await?;
-        Ok(result.map(|m| everruns_core::traits::ModelWithProvider {
-            model: m.model,
-            provider_type: m.provider_type,
-            api_key: m.api_key,
-            base_url: m.base_url,
-        }))
+            .await
     }
 
-    async fn get_default_model(&self) -> Result<Option<everruns_core::traits::ModelWithProvider>> {
-        let result = self.adapters.get_default_model(self.org_id).await?;
-        Ok(result.map(|m| everruns_core::traits::ModelWithProvider {
-            model: m.model,
-            provider_type: m.provider_type,
-            api_key: m.api_key,
-            base_url: m.base_url,
-        }))
+    async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
+        self.adapters.get_default_model(self.org_id).await
     }
 }
 
