@@ -114,6 +114,30 @@ pub struct Skill {
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
+/// Skill execution context mode.
+///
+/// Determines whether the skill runs inline in the current session
+/// or in an isolated subagent context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[derive(Default)]
+pub enum SkillContext {
+    /// Run inline in the current session (default)
+    #[default]
+    Inline,
+    /// Run in an isolated subagent session
+    Fork,
+}
+
+impl std::fmt::Display for SkillContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SkillContext::Inline => write!(f, "inline"),
+            SkillContext::Fork => write!(f, "fork"),
+        }
+    }
+}
+
 /// Parsed SKILL.md content
 #[derive(Debug, Clone)]
 pub struct ParsedSkillMd {
@@ -139,6 +163,10 @@ pub struct ParsedSkillMd {
     pub disable_model_invocation: bool,
     /// Hint string for autocomplete (e.g., "<issue-number>")
     pub argument_hint: Option<String>,
+    /// Execution context: inline (default) or fork (subagent)
+    pub context: SkillContext,
+    /// Subagent type when context is fork (e.g., "Explore", "Plan"). Default: "general-purpose"
+    pub agent: Option<String>,
 }
 
 /// YAML frontmatter structure
@@ -161,6 +189,10 @@ struct SkillFrontmatter {
     /// Hint string shown in autocomplete for expected arguments
     #[serde(rename = "argument-hint")]
     argument_hint: Option<String>,
+    /// Execution context: "fork" runs in isolated subagent, absent/other = inline
+    context: Option<String>,
+    /// Subagent type when context is fork (e.g., "Explore", "Plan")
+    agent: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -257,6 +289,23 @@ pub fn parse_skill_md(content: &str) -> Result<ParsedSkillMd, Vec<String>> {
         errors.push("argument-hint: exceeds 128 character limit".to_string());
     }
 
+    // Parse context field
+    let context = match fm.context.as_deref() {
+        Some("fork") => SkillContext::Fork,
+        Some("inline") | None => SkillContext::Inline,
+        Some(other) => {
+            errors.push(format!(
+                "context: invalid value \"{other}\", must be \"fork\" or \"inline\""
+            ));
+            SkillContext::Inline
+        }
+    };
+
+    // Validate agent field only meaningful with context: fork
+    if fm.agent.is_some() && context != SkillContext::Fork {
+        errors.push("agent: field is only meaningful when context is \"fork\"".to_string());
+    }
+
     if body.len() > 100 * 1024 {
         errors.push("instructions: exceeds 100 KB limit".to_string());
     }
@@ -284,6 +333,8 @@ pub fn parse_skill_md(content: &str) -> Result<ParsedSkillMd, Vec<String>> {
         user_invocable: fm.user_invocable,
         disable_model_invocation: fm.disable_model_invocation,
         argument_hint: fm.argument_hint,
+        context,
+        agent: fm.agent,
     })
 }
 
@@ -302,6 +353,12 @@ pub fn validate_skill_md(content: &str) -> SkillValidationResult {
                 warnings.push(
                     "Skill is unreachable: user-invocable is false and disable-model-invocation is true. \
                      Neither users nor the model can invoke this skill."
+                        .to_string(),
+                );
+            }
+            if parsed.context == SkillContext::Fork && parsed.agent.is_none() {
+                warnings.push(
+                    "context: fork without agent field — will use default \"general-purpose\" agent."
                         .to_string(),
                 );
             }
@@ -879,6 +936,131 @@ Body.
 "#;
         let parsed = parse_skill_md(content).unwrap();
         assert!(parsed.argument_hint.is_none());
+    }
+
+    // ========================================================================
+    // context and agent frontmatter tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_context_fork() {
+        let content = r#"---
+name: deep-research
+description: Research a topic thoroughly.
+context: fork
+---
+
+Research $ARGUMENTS.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert_eq!(parsed.context, SkillContext::Fork);
+        assert!(parsed.agent.is_none());
+    }
+
+    #[test]
+    fn test_parse_context_fork_with_agent() {
+        let content = r#"---
+name: explore-code
+description: Explore codebase.
+context: fork
+agent: Explore
+---
+
+Explore $ARGUMENTS.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert_eq!(parsed.context, SkillContext::Fork);
+        assert_eq!(parsed.agent.as_deref(), Some("Explore"));
+    }
+
+    #[test]
+    fn test_parse_context_inline_explicit() {
+        let content = r#"---
+name: my-skill
+description: A skill.
+context: inline
+---
+
+Body.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert_eq!(parsed.context, SkillContext::Inline);
+    }
+
+    #[test]
+    fn test_parse_context_default_inline() {
+        let content = r#"---
+name: my-skill
+description: A skill.
+---
+
+Body.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert_eq!(parsed.context, SkillContext::Inline);
+        assert!(parsed.agent.is_none());
+    }
+
+    #[test]
+    fn test_parse_context_invalid_value() {
+        let content = r#"---
+name: my-skill
+description: A skill.
+context: parallel
+---
+
+Body.
+"#;
+        let err = parse_skill_md(content).unwrap_err();
+        assert!(err.iter().any(|e| e.contains("context: invalid value")));
+    }
+
+    #[test]
+    fn test_parse_agent_without_fork_is_error() {
+        let content = r#"---
+name: my-skill
+description: A skill.
+agent: Explore
+---
+
+Body.
+"#;
+        let err = parse_skill_md(content).unwrap_err();
+        assert!(
+            err.iter()
+                .any(|e| e.contains("agent: field is only meaningful"))
+        );
+    }
+
+    #[test]
+    fn test_validate_warns_fork_without_agent() {
+        let content = r#"---
+name: my-skill
+description: A skill.
+context: fork
+---
+
+Body.
+"#;
+        let result = validate_skill_md(content);
+        assert!(result.valid);
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("general-purpose"))
+        );
+    }
+
+    #[test]
+    fn test_skill_context_display() {
+        assert_eq!(SkillContext::Inline.to_string(), "inline");
+        assert_eq!(SkillContext::Fork.to_string(), "fork");
+    }
+
+    #[test]
+    fn test_skill_context_default() {
+        assert_eq!(SkillContext::default(), SkillContext::Inline);
     }
 
     // ========================================================================

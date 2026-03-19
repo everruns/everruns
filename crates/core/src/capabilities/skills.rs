@@ -491,6 +491,13 @@ impl Tool for ActivateSkillFromVfsTool {
                     "description": parsed.description,
                 });
 
+                // Include context and agent fields for fork-mode skills
+                if parsed.context == crate::skill::SkillContext::Fork {
+                    result["context"] = serde_json::json!("fork");
+                    result["agent"] =
+                        serde_json::json!(parsed.agent.as_deref().unwrap_or("general-purpose"));
+                }
+
                 if !bundled_files.is_empty() {
                     result["bundled_files"] = serde_json::json!(bundled_files);
                 }
@@ -1126,6 +1133,87 @@ mod tests {
                 let paths: Vec<&str> = bundled.iter().map(|f| f.as_str().unwrap()).collect();
                 assert!(paths.contains(&"/workspace/.agents/skills/data-tool/README.md"));
                 // scripts/run.py is nested so won't be a direct child
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_activate_skill_with_context_fork() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        fs.add_file(
+            session_id,
+            "/.agents/skills/research/SKILL.md",
+            "---\nname: research\ndescription: Deep research.\ncontext: fork\nagent: Explore\n---\n\nResearch the topic.",
+        );
+
+        let context = ToolContext::with_file_store(session_id, fs);
+        let tool = ActivateSkillFromVfsTool;
+
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "research"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                assert_eq!(val["skill"], "research");
+                assert_eq!(val["context"], "fork");
+                assert_eq!(val["agent"], "Explore");
+                // Instructions are still included (caller decides how to use them)
+                let instructions = val["instructions"].as_str().unwrap();
+                assert!(instructions.contains("Research the topic"));
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_activate_skill_fork_default_agent() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        fs.add_file(
+            session_id,
+            "/.agents/skills/analyze/SKILL.md",
+            "---\nname: analyze\ndescription: Analyze code.\ncontext: fork\n---\n\nAnalyze the code.",
+        );
+
+        let context = ToolContext::with_file_store(session_id, fs);
+        let tool = ActivateSkillFromVfsTool;
+
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "analyze"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                assert_eq!(val["context"], "fork");
+                assert_eq!(val["agent"], "general-purpose");
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_activate_skill_inline_no_context_field() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        fs.add_file(
+            session_id,
+            "/.agents/skills/inline-skill/SKILL.md",
+            &valid_skill_md("inline-skill", "An inline skill"),
+        );
+
+        let context = ToolContext::with_file_store(session_id, fs);
+        let tool = ActivateSkillFromVfsTool;
+
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "inline-skill"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                assert_eq!(val["skill"], "inline-skill");
+                // No context or agent fields for inline skills
+                assert!(val.get("context").is_none());
+                assert!(val.get("agent").is_none());
             }
             other => panic!("Expected Success, got: {:?}", other),
         }
