@@ -5,6 +5,7 @@
 // with optional bundled scripts, references, and assets.
 
 use chrono::{DateTime, Utc};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -488,6 +489,136 @@ pub fn expand_skill_arguments(content: &str, raw_args: &str) -> String {
     result
 }
 
+// ============================================================================
+// Dynamic Context Injection: !`command` preprocessing
+// ============================================================================
+
+/// Result of executing a shell command during skill preprocessing.
+pub struct CommandResult {
+    pub stdout: String,
+    pub exit_code: i32,
+}
+
+/// Trait for executing shell commands during skill preprocessing.
+///
+/// Commands in `!`...`` syntax are executed before the skill content
+/// is sent to the model, replacing each placeholder with command output.
+#[async_trait::async_trait]
+pub trait CommandExecutor: Send + Sync {
+    async fn execute_command(&self, command: &str) -> CommandResult;
+}
+
+/// Default executor using `tokio::process::Command` with bash.
+pub struct ProcessCommandExecutor {
+    /// Timeout per command in seconds (default: 30).
+    pub timeout_secs: u64,
+}
+
+impl Default for ProcessCommandExecutor {
+    fn default() -> Self {
+        Self { timeout_secs: 30 }
+    }
+}
+
+#[async_trait::async_trait]
+impl CommandExecutor for ProcessCommandExecutor {
+    async fn execute_command(&self, command: &str) -> CommandResult {
+        let timeout = std::time::Duration::from_secs(self.timeout_secs);
+        let child = tokio::process::Command::new("bash")
+            .arg("-c")
+            .arg(command)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn();
+
+        let child = match child {
+            Ok(c) => c,
+            Err(_) => {
+                return CommandResult {
+                    stdout: String::new(),
+                    exit_code: -1,
+                };
+            }
+        };
+
+        match tokio::time::timeout(timeout, child.wait_with_output()).await {
+            Ok(Ok(output)) => CommandResult {
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                exit_code: output.status.code().unwrap_or(-1),
+            },
+            Ok(Err(_)) => CommandResult {
+                stdout: String::new(),
+                exit_code: -1,
+            },
+            Err(_) => CommandResult {
+                stdout: format!(
+                    "[Command timed out after {}s: {command}]",
+                    self.timeout_secs
+                ),
+                exit_code: -1,
+            },
+        }
+    }
+}
+
+/// Preprocess `!`command`` placeholders in skill content.
+///
+/// Each `!`command`` is executed via the provided executor and replaced with
+/// its stdout. Multiple commands are executed concurrently.
+///
+/// Substitution pipeline order (caller is responsible for prior steps):
+/// 1. `$ARGUMENTS` / `$N` substitution (sync)
+/// 2. `${SESSION_ID}` / `${SKILL_DIR}` env substitution (sync)
+/// 3. `!`command`` preprocessing (async) — this function
+pub async fn preprocess_command_injections(
+    content: &str,
+    executor: &dyn CommandExecutor,
+) -> String {
+    let re = Regex::new(r"!`([^`]+)`").unwrap();
+
+    // Collect all matches (command text + byte range)
+    let matches: Vec<(String, std::ops::Range<usize>)> = re
+        .captures_iter(content)
+        .map(|cap| {
+            let full = cap.get(0).unwrap();
+            let cmd = cap[1].to_string();
+            (cmd, full.start()..full.end())
+        })
+        .collect();
+
+    if matches.is_empty() {
+        return content.to_string();
+    }
+
+    // Execute all commands concurrently
+    let futures: Vec<_> = matches
+        .iter()
+        .map(|(cmd, _)| executor.execute_command(cmd))
+        .collect();
+    let results = futures::future::join_all(futures).await;
+
+    // Replace matches in reverse order to preserve byte offsets
+    let mut result = content.to_string();
+    for ((cmd, range), cmd_result) in matches.iter().zip(results.iter()).rev() {
+        let replacement = if cmd_result.exit_code != 0 && cmd_result.stdout.starts_with('[') {
+            // Timeout or spawn failure — message is already formatted
+            cmd_result.stdout.clone()
+        } else if cmd_result.exit_code != 0 {
+            format!(
+                "[Command failed: {} (exit code {})]",
+                cmd, cmd_result.exit_code
+            )
+        } else if cmd_result.stdout.is_empty() {
+            "[No output]".to_string()
+        } else {
+            cmd_result.stdout.trim_end().to_string()
+        };
+        result.replace_range(range.clone(), &replacement);
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -842,5 +973,126 @@ Body.
     fn test_split_skill_args_extra_whitespace() {
         let args = split_skill_args("  a   b  ");
         assert_eq!(args, vec!["a", "b"]);
+    }
+
+    // ========================================================================
+    // preprocess_command_injections tests
+    // ========================================================================
+
+    /// Mock executor for testing command injection preprocessing.
+    struct MockExecutor {
+        responses: std::collections::HashMap<String, CommandResult>,
+    }
+
+    impl MockExecutor {
+        fn new() -> Self {
+            Self {
+                responses: std::collections::HashMap::new(),
+            }
+        }
+
+        fn add_response(&mut self, cmd: &str, stdout: &str, exit_code: i32) {
+            self.responses.insert(
+                cmd.to_string(),
+                CommandResult {
+                    stdout: stdout.to_string(),
+                    exit_code,
+                },
+            );
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl CommandExecutor for MockExecutor {
+        async fn execute_command(&self, command: &str) -> CommandResult {
+            self.responses
+                .get(command)
+                .map(|r| CommandResult {
+                    stdout: r.stdout.clone(),
+                    exit_code: r.exit_code,
+                })
+                .unwrap_or(CommandResult {
+                    stdout: String::new(),
+                    exit_code: 127,
+                })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_preprocess_single_command() {
+        let mut exec = MockExecutor::new();
+        exec.add_response("echo hello", "hello\n", 0);
+
+        let content = "Output: !`echo hello`";
+        let result = preprocess_command_injections(content, &exec).await;
+        assert_eq!(result, "Output: hello");
+    }
+
+    #[tokio::test]
+    async fn test_preprocess_multiple_commands() {
+        let mut exec = MockExecutor::new();
+        exec.add_response("git status", "clean\n", 0);
+        exec.add_response("date", "2026-03-19\n", 0);
+
+        let content = "Status: !`git status`\nDate: !`date`";
+        let result = preprocess_command_injections(content, &exec).await;
+        assert_eq!(result, "Status: clean\nDate: 2026-03-19");
+    }
+
+    #[tokio::test]
+    async fn test_preprocess_command_failure() {
+        let mut exec = MockExecutor::new();
+        exec.add_response("bad-cmd", "error output\n", 1);
+
+        let content = "Result: !`bad-cmd`";
+        let result = preprocess_command_injections(content, &exec).await;
+        assert_eq!(result, "Result: [Command failed: bad-cmd (exit code 1)]");
+    }
+
+    #[tokio::test]
+    async fn test_preprocess_empty_output() {
+        let mut exec = MockExecutor::new();
+        exec.add_response("true", "", 0);
+
+        let content = "Result: !`true`";
+        let result = preprocess_command_injections(content, &exec).await;
+        assert_eq!(result, "Result: [No output]");
+    }
+
+    #[tokio::test]
+    async fn test_preprocess_no_commands() {
+        let exec = MockExecutor::new();
+
+        let content = "No commands here. Just `code` and text.";
+        let result = preprocess_command_injections(content, &exec).await;
+        assert_eq!(result, content);
+    }
+
+    #[tokio::test]
+    async fn test_preprocess_preserves_regular_backticks() {
+        let mut exec = MockExecutor::new();
+        exec.add_response("echo hi", "hi\n", 0);
+
+        let content = "Use `code` and !`echo hi` here.";
+        let result = preprocess_command_injections(content, &exec).await;
+        assert_eq!(result, "Use `code` and hi here.");
+    }
+
+    #[tokio::test]
+    async fn test_preprocess_with_process_executor() {
+        let exec = ProcessCommandExecutor::default();
+
+        let content = "Result: !`echo hello world`";
+        let result = preprocess_command_injections(content, &exec).await;
+        assert_eq!(result, "Result: hello world");
+    }
+
+    #[tokio::test]
+    async fn test_preprocess_command_not_found() {
+        let exec = MockExecutor::new(); // No responses registered
+
+        let content = "Result: !`unknown-cmd`";
+        let result = preprocess_command_injections(content, &exec).await;
+        assert!(result.contains("[Command failed: unknown-cmd"));
     }
 }

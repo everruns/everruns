@@ -21,7 +21,7 @@ async-trait.workspace = true
 
 # Async runtime
 # Note: "rt" is needed for tokio::spawn in event listener isolation
-tokio = { workspace = true, features = ["sync", "rt"] }
+tokio = { workspace = true, features = ["sync", "rt", "process", "time"] }
 tokio-stream.workspace = true
 futures.workspace = true
 
