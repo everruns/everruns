@@ -220,6 +220,10 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                         "name": {
                             "type": "string",
                             "description": "The skill directory name (e.g., 'pdf-processing')"
+                        },
+                        "arguments": {
+                            "type": "string",
+                            "description": "Optional arguments to pass to the skill for $ARGUMENTS substitution"
                         }
                     },
                     "required": ["name"]
@@ -378,6 +382,10 @@ impl Tool for ActivateSkillFromVfsTool {
                 "name": {
                     "type": "string",
                     "description": "The skill directory name (e.g., 'pdf-processing')"
+                },
+                "arguments": {
+                    "type": "string",
+                    "description": "Optional arguments to pass to the skill for $ARGUMENTS substitution"
                 }
             },
             "required": ["name"]
@@ -405,6 +413,11 @@ impl Tool for ActivateSkillFromVfsTool {
                 return ToolExecutionResult::tool_error("Missing required parameter: name");
             }
         };
+
+        let skill_args = arguments
+            .get("arguments")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
 
         // Validate name (prevent path traversal)
         if name.contains("..") || name.contains('/') || name.contains('\\') {
@@ -447,10 +460,11 @@ impl Tool for ActivateSkillFromVfsTool {
         let content = file.content.as_deref().unwrap_or("");
         match crate::skill::parse_skill_md(content) {
             Ok(parsed) => {
-                let instructions = format!(
-                    "<skill name=\"{}\">\n{}\n</skill>",
-                    parsed.name, parsed.instructions
-                );
+                // Apply argument substitution
+                let expanded =
+                    crate::skill::expand_skill_arguments(&parsed.instructions, skill_args);
+                let instructions =
+                    format!("<skill name=\"{}\">\n{}\n</skill>", parsed.name, expanded);
 
                 // List bundled files in the skill directory
                 let skill_dir = format!("{}/{}", SKILLS_PATH, name);
