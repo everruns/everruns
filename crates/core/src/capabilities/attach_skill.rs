@@ -59,6 +59,9 @@ pub struct SkillMeta {
     /// Whether this skill appears as a /slash command for users
     #[serde(default = "default_true")]
     pub user_invocable: bool,
+    /// Whether the model is prevented from auto-invoking this skill
+    #[serde(default)]
+    pub disable_model_invocation: bool,
 }
 
 fn default_true() -> bool {
@@ -104,6 +107,8 @@ pub struct AttachSkillCapability {
     files: Vec<(String, String)>,
     /// Whether this skill is user-invocable as a /slash command
     user_invocable: bool,
+    /// Whether the model is prevented from auto-invoking this skill
+    disable_model_invocation: bool,
 }
 
 impl AttachSkillCapability {
@@ -118,7 +123,15 @@ impl AttachSkillCapability {
         instructions: String,
         files: Vec<(String, String)>,
     ) -> Self {
-        Self::from_registry_with_invocable(skill_id, name, description, instructions, files, true)
+        Self::from_registry_with_options(
+            skill_id,
+            name,
+            description,
+            instructions,
+            files,
+            true,
+            false,
+        )
     }
 
     pub fn from_registry_with_invocable(
@@ -129,8 +142,33 @@ impl AttachSkillCapability {
         files: Vec<(String, String)>,
         user_invocable: bool,
     ) -> Self {
-        let skill_md_content =
-            reconstruct_skill_md(&name, &description, &instructions, user_invocable);
+        Self::from_registry_with_options(
+            skill_id,
+            name,
+            description,
+            instructions,
+            files,
+            user_invocable,
+            false,
+        )
+    }
+
+    pub fn from_registry_with_options(
+        skill_id: Uuid,
+        name: String,
+        description: String,
+        instructions: String,
+        files: Vec<(String, String)>,
+        user_invocable: bool,
+        disable_model_invocation: bool,
+    ) -> Self {
+        let skill_md_content = reconstruct_skill_md(
+            &name,
+            &description,
+            &instructions,
+            user_invocable,
+            disable_model_invocation,
+        );
 
         Self {
             capability_id: skill_capability_id(skill_id),
@@ -139,6 +177,7 @@ impl AttachSkillCapability {
             skill_md_content,
             files,
             user_invocable,
+            disable_model_invocation,
         }
     }
 
@@ -150,6 +189,11 @@ impl AttachSkillCapability {
     /// Whether this skill is user-invocable as a /slash command
     pub fn user_invocable(&self) -> bool {
         self.user_invocable
+    }
+
+    /// Whether the model is prevented from auto-invoking this skill
+    pub fn disable_model_invocation(&self) -> bool {
+        self.disable_model_invocation
     }
 
     /// Build mount points for the skill directory.
@@ -217,6 +261,7 @@ fn reconstruct_skill_md(
     description: &str,
     instructions: &str,
     user_invocable: bool,
+    disable_model_invocation: bool,
 ) -> String {
     // Quote description to handle YAML-special characters (:, #, etc.)
     let safe_description = format!("\"{}\"", description.replace('"', "\\\""));
@@ -225,8 +270,13 @@ fn reconstruct_skill_md(
     } else {
         "user-invocable: false\n".to_string()
     };
+    let model_invocation_line = if disable_model_invocation {
+        "disable-model-invocation: true\n".to_string()
+    } else {
+        String::new()
+    };
     format!(
-        "---\nname: {name}\ndescription: {safe_description}\n{invocable_line}---\n\n{instructions}"
+        "---\nname: {name}\ndescription: {safe_description}\n{invocable_line}{model_invocation_line}---\n\n{instructions}"
     )
 }
 
@@ -247,6 +297,7 @@ pub fn discover_skills_from_entries(
                     description: parsed.description.clone(),
                     source: SkillSource::Filesystem { path: path.clone() },
                     user_invocable: parsed.user_invocable,
+                    disable_model_invocation: parsed.disable_model_invocation,
                 };
                 let instructions = SkillInstructions {
                     instructions: parsed.instructions,
@@ -437,6 +488,7 @@ mod tests {
             "A test skill",
             "# Instructions\nDo the thing.",
             true,
+            false,
         );
 
         // Should be parseable by parse_skill_md
@@ -454,6 +506,7 @@ mod tests {
             "Description with: colons and \"quotes\"",
             "# Body",
             true,
+            false,
         );
 
         let parsed = crate::skill::parse_skill_md(&content).unwrap();
@@ -466,11 +519,48 @@ mod tests {
 
     #[test]
     fn test_reconstruct_skill_md_not_invocable() {
-        let content = reconstruct_skill_md("bg-skill", "Background context", "# Body", false);
+        let content =
+            reconstruct_skill_md("bg-skill", "Background context", "# Body", false, false);
 
         let parsed = crate::skill::parse_skill_md(&content).unwrap();
         assert_eq!(parsed.name, "bg-skill");
         assert!(!parsed.user_invocable);
+    }
+
+    #[test]
+    fn test_reconstruct_skill_md_disable_model_invocation() {
+        let content = reconstruct_skill_md("manual-skill", "Manual only", "# Body", true, true);
+
+        let parsed = crate::skill::parse_skill_md(&content).unwrap();
+        assert_eq!(parsed.name, "manual-skill");
+        assert!(parsed.user_invocable);
+        assert!(parsed.disable_model_invocation);
+    }
+
+    #[test]
+    fn test_reconstruct_skill_md_both_flags() {
+        let content = reconstruct_skill_md("both-flags", "Both flags set", "# Body", false, true);
+
+        let parsed = crate::skill::parse_skill_md(&content).unwrap();
+        assert!(!parsed.user_invocable);
+        assert!(parsed.disable_model_invocation);
+    }
+
+    #[test]
+    fn test_attach_skill_with_disable_model_invocation() {
+        let skill_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let cap = AttachSkillCapability::from_registry_with_options(
+            skill_id,
+            "manual-skill".to_string(),
+            "Manual only".to_string(),
+            "# Instructions".to_string(),
+            vec![],
+            true,
+            true,
+        );
+
+        assert_eq!(cap.name(), "manual-skill");
+        assert!(cap.user_invocable());
     }
 
     #[test]
@@ -494,6 +584,7 @@ mod tests {
                 skill_id: "abc".to_string(),
             },
             user_invocable: true,
+            disable_model_invocation: false,
         };
 
         let json = serde_json::to_string(&meta).unwrap();

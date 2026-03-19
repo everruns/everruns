@@ -7473,6 +7473,10 @@
                   "type": "string",
                   "example": "Extract text and tables from PDF files."
                 },
+                "disable_model_invocation": {
+                  "type": "boolean",
+                  "description": "Whether the model is prevented from auto-invoking this skill"
+                },
                 "id": {
                   "type": "string",
                   "example": "skill_01933b5a00007000800000000000001"
@@ -10020,6 +10024,10 @@
           "description": {
             "type": "string",
             "example": "Extract text and tables from PDF files."
+          },
+          "disable_model_invocation": {
+            "type": "boolean",
+            "description": "Whether the model is prevented from auto-invoking this skill"
           },
           "id": {
             "type": "string",

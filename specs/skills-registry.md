@@ -28,7 +28,21 @@ description: What this skill does and when to use it.  # 1-1024 chars
 ---
 ```
 
-Optional frontmatter: `license`, `compatibility`, `metadata` (key-value map), `allowed-tools` (experimental), `user-invocable` (Everruns command visibility extension; see [`specs/commands.md`](./commands.md)).
+Optional frontmatter: `license`, `compatibility`, `metadata` (key-value map), `allowed-tools` (experimental), `user-invocable` (Everruns command visibility extension; see [`specs/commands.md`](./commands.md)), `disable-model-invocation` (prevents the model from auto-invoking the skill; see below).
+
+#### Invocation Control Fields
+
+Two independent boolean frontmatter fields control who can invoke a skill:
+
+| Frontmatter | User can invoke (/) | Model can invoke | In system prompt |
+|---|---|---|---|
+| *(defaults)* | Yes | Yes | Description listed |
+| `disable-model-invocation: true` | Yes | No | Description **not** listed |
+| `user-invocable: false` | No | Yes | Description listed |
+| Both set | No | No | **Unreachable** (validation warning) |
+
+- `user-invocable: false` — hides from `/` autocomplete menu (background knowledge only)
+- `disable-model-invocation: true` — prevents the model from seeing the skill in its system prompt, so it cannot auto-invoke it. The skill is still invocable via explicit `/name` slash command.
 
 **Progressive disclosure** is core to the design:
 1. **Discovery** (~100 tokens): Only name + description loaded at startup

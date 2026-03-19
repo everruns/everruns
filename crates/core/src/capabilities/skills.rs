@@ -145,6 +145,7 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                         parsed.name,
                         parsed.description,
                         parsed.user_invocable,
+                        parsed.disable_model_invocation,
                     ));
                 }
             }
@@ -153,10 +154,17 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
         let mut prompt = String::from(SKILLS_SYSTEM_PROMPT);
 
         if !discovered_skills.is_empty() {
-            let total = discovered_skills.len();
-            prompt.push_str("\n\nAvailable skills:\n");
-            for (name, description, user_invocable) in
-                discovered_skills.iter().take(MAX_SKILLS_IN_PROMPT)
+            // Filter out skills where disable_model_invocation is true
+            let model_visible_skills: Vec<_> = discovered_skills
+                .iter()
+                .filter(|(_, _, _, disable_model)| !disable_model)
+                .collect();
+            let total = model_visible_skills.len();
+            if total > 0 {
+                prompt.push_str("\n\nAvailable skills:\n");
+            }
+            for (name, description, user_invocable, _) in
+                model_visible_skills.iter().take(MAX_SKILLS_IN_PROMPT)
             {
                 let desc = truncate_description(description, MAX_DESCRIPTION_CHARS);
                 let invocable_hint = if *user_invocable { " (/{name})" } else { "" };
@@ -318,6 +326,7 @@ impl Tool for ListSkillsTool {
                             "path": workspace_path(&skill_md_path),
                             "version": parsed.version,
                             "user_invocable": parsed.user_invocable,
+                            "disable_model_invocation": parsed.disable_model_invocation,
                         }));
                     }
                     Err(errors) => {
@@ -1648,6 +1657,43 @@ mod tests {
             }
             other => panic!("Expected Success, got: {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn test_contribution_excludes_disable_model_invocation_skills() {
+        let cap = SkillsCapability;
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+
+        // Normal skill
+        store.add_file(
+            session_id,
+            "/.agents/skills/normal-skill/SKILL.md",
+            &valid_skill_md("normal-skill", "A normal skill"),
+        );
+
+        // Skill with disable-model-invocation: true
+        store.add_file(
+            session_id,
+            "/.agents/skills/manual-skill/SKILL.md",
+            "---\nname: manual-skill\ndescription: Manual only skill\ndisable-model-invocation: true\n---\n\n# Instructions\nManual only.",
+        );
+
+        let ctx = SystemPromptContext {
+            session_id,
+            locale: None,
+            file_store: Some(store),
+        };
+
+        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(
+            result.contains("normal-skill"),
+            "Normal skill should appear"
+        );
+        assert!(
+            !result.contains("manual-skill"),
+            "Skill with disable-model-invocation should not appear in system prompt"
+        );
     }
 
     #[tokio::test]
