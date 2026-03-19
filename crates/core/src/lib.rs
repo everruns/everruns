@@ -262,8 +262,9 @@ pub use typed_id::{
 // Permissions re-exports
 pub use permissions::{
     Caller, DefaultPermissionResolver, Permission, PermissionResolver, Policy,
-    PolicyConfigResponse, PolicyError, ResourceConfigResponse, Rule, evaluate_policies,
-    evaluate_policies_with, role_has_permission, role_permissions,
+    PolicyConfigResponse, PolicyError, ResourceConfigResponse, Rule, SkillPermissionAction,
+    SkillPermissionPattern, SkillPermissionRule, check_skill_permission, evaluate_policies,
+    evaluate_policies_with, parse_skill_permission_rule, role_has_permission, role_permissions,
 };
 
 // URL validation re-exports
