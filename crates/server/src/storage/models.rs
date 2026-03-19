@@ -5,6 +5,7 @@ use everruns_core::{
     AgentId, EventId, HarnessId, ImageId, LeasedResourceId, McpServerId, MessageId, ModelId,
     NotificationId, ProviderId, ScheduleId, SessionId, SkillId,
 };
+use everruns_durable::UpdateField;
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -84,9 +85,9 @@ pub struct OrganizationSettingsRow {
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateOrganizationSettings {
-    pub default_model_id: Option<Option<ModelId>>,
-    pub default_harness_id: Option<Option<HarnessId>>,
-    pub base_harness_id: Option<Option<HarnessId>>,
+    pub default_model_id: UpdateField<ModelId>,
+    pub default_harness_id: UpdateField<HarnessId>,
+    pub base_harness_id: UpdateField<HarnessId>,
 }
 
 /// Input for creating an organization member
@@ -1052,7 +1053,7 @@ pub struct CreateSessionScheduleRow {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateSessionScheduleRow {
     pub enabled: Option<bool>,
-    pub next_trigger_at: Option<Option<DateTime<Utc>>>,
+    pub next_trigger_at: UpdateField<DateTime<Utc>>,
     pub last_triggered_at: Option<DateTime<Utc>>,
     pub trigger_count_increment: bool,
 }
@@ -1154,5 +1155,5 @@ pub struct UpdateApp {
     pub channel_type: Option<String>,
     pub channel_config: Option<serde_json::Value>,
     pub status: Option<String>,
-    pub published_at: Option<Option<DateTime<Utc>>>,
+    pub published_at: UpdateField<DateTime<Utc>>,
 }

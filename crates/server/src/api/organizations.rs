@@ -16,6 +16,7 @@ use everruns_core::{
     BuiltInHarnessDefinition, DEFAULT_ORG_ID, OrgRole, Organization, generate_org_public_id,
     validate_org_public_id,
 };
+use everruns_durable::UpdateField;
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 use serde::{Deserialize, Serialize};
@@ -424,9 +425,12 @@ pub async fn update_organization(
             .patch_organization_settings(
                 org_row.org_id,
                 UpdateOrganizationSettings {
-                    default_model_id: default_model_id.map(Some),
-                    default_harness_id: default_harness_id.map(Some),
-                    base_harness_id: base_harness_id.map(Some),
+                    default_model_id: default_model_id
+                        .map_or(UpdateField::Unchanged, UpdateField::Set),
+                    default_harness_id: default_harness_id
+                        .map_or(UpdateField::Unchanged, UpdateField::Set),
+                    base_harness_id: base_harness_id
+                        .map_or(UpdateField::Unchanged, UpdateField::Set),
                 },
             )
             .await

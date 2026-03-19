@@ -8,6 +8,7 @@ use anyhow::Result;
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, HarnessId};
 use everruns_core::{App, AppId, AppStatus, Caller, ChannelType, Permission, Policy, Rule};
+use everruns_durable::UpdateField;
 use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -183,7 +184,7 @@ impl AppService {
             channel_type: req.channel_type.map(|ct| ct.to_string()),
             channel_config: req.channel_config,
             status: req.status.map(|s| s.to_string()),
-            published_at: None,
+            published_at: UpdateField::Unchanged,
         };
 
         let row = self
@@ -235,7 +236,7 @@ impl AppService {
 
         let input = UpdateApp {
             status: Some("published".to_string()),
-            published_at: Some(Some(Utc::now())),
+            published_at: UpdateField::Set(Utc::now()),
             ..Default::default()
         };
 

@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::update_field::UpdateField;
 use crate::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
 
 /// Default snapshot interval: save a snapshot every N events.
@@ -1128,18 +1129,18 @@ pub struct CreateScheduleRow {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateSchedule {
     pub name: Option<String>,
-    pub description: Option<Option<String>>,
+    pub description: UpdateField<String>,
     pub cron_expression: Option<String>,
     pub timezone: Option<String>,
     pub target_type: Option<ScheduleTargetType>,
     pub target_name: Option<String>,
     pub target_input: Option<serde_json::Value>,
     pub enabled: Option<bool>,
-    pub max_concurrent: Option<Option<u32>>,
+    pub max_concurrent: UpdateField<u32>,
     pub catch_up_missed: Option<bool>,
-    pub max_catch_up: Option<Option<u32>>,
-    pub retry_policy: Option<Option<serde_json::Value>>,
-    pub next_trigger_at: Option<Option<DateTime<Utc>>>,
+    pub max_catch_up: UpdateField<u32>,
+    pub retry_policy: UpdateField<serde_json::Value>,
+    pub next_trigger_at: UpdateField<DateTime<Utc>>,
 }
 
 /// Filter for listing schedules

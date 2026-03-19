@@ -12,6 +12,7 @@ use crate::storage::{
 };
 use anyhow::{Context, Result};
 use everruns_core::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
+use everruns_durable::UpdateField;
 use uuid::Uuid;
 
 /// Well-known seed IDs for default org harnesses (backward compat)
@@ -244,26 +245,21 @@ pub async fn sync_org_harness_settings_with_definitions(
         .map(|h| h.id);
 
     let default_harness_id = if needs_default {
-        default_harness_name
-            .map(|name| {
-                default_harness_id
-                    .context(format!("missing built-in {name} harness during org init"))
-                    .map(Some)
-            })
-            .transpose()?
+        let name = default_harness_name.context("missing default harness name during org init")?;
+        UpdateField::Set(
+            default_harness_id
+                .context(format!("missing built-in {name} harness during org init"))?,
+        )
     } else {
-        None
+        UpdateField::Unchanged
     };
     let base_harness_id = if needs_base {
-        base_harness_name
-            .map(|name| {
-                base_harness_id
-                    .context(format!("missing built-in {name} harness during org init"))
-                    .map(Some)
-            })
-            .transpose()?
+        let name = base_harness_name.context("missing base harness name during org init")?;
+        UpdateField::Set(
+            base_harness_id.context(format!("missing built-in {name} harness during org init"))?,
+        )
     } else {
-        None
+        UpdateField::Unchanged
     };
 
     db.patch_organization_settings(
@@ -479,8 +475,8 @@ mod tests {
         db.patch_organization_settings(
             org2.org_id,
             UpdateOrganizationSettings {
-                default_harness_id: Some(Some(chat_id)),
-                base_harness_id: Some(Some(chat_id)),
+                default_harness_id: UpdateField::Set(chat_id),
+                base_harness_id: UpdateField::Set(chat_id),
                 ..Default::default()
             },
         )

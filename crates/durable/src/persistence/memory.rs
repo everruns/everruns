@@ -1316,9 +1316,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         if let Some(name) = update.name {
             state.row.name = name;
         }
-        if let Some(description) = update.description {
-            state.row.description = description;
-        }
+        update.description.apply(&mut state.row.description);
         if let Some(cron_expression) = update.cron_expression {
             state.row.cron_expression = cron_expression;
         }
@@ -1337,21 +1335,13 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         if let Some(enabled) = update.enabled {
             state.row.enabled = enabled;
         }
-        if let Some(max_concurrent) = update.max_concurrent {
-            state.row.max_concurrent = max_concurrent;
-        }
+        update.max_concurrent.apply(&mut state.row.max_concurrent);
         if let Some(catch_up_missed) = update.catch_up_missed {
             state.row.catch_up_missed = catch_up_missed;
         }
-        if let Some(max_catch_up) = update.max_catch_up {
-            state.row.max_catch_up = max_catch_up;
-        }
-        if let Some(retry_policy) = update.retry_policy {
-            state.row.retry_policy = retry_policy;
-        }
-        if let Some(next_trigger_at) = update.next_trigger_at {
-            state.row.next_trigger_at = next_trigger_at;
-        }
+        update.max_catch_up.apply(&mut state.row.max_catch_up);
+        update.retry_policy.apply(&mut state.row.retry_policy);
+        update.next_trigger_at.apply(&mut state.row.next_trigger_at);
         state.row.updated_at = Utc::now();
         Ok(())
     }

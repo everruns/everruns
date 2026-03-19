@@ -8,6 +8,7 @@ use everruns_core::{
     ScheduleId, SessionId,
     session_schedule::{MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule},
 };
+use everruns_durable::UpdateField;
 use std::sync::Arc;
 
 use crate::storage::backend::StorageBackend;
@@ -122,7 +123,7 @@ impl SessionScheduleService {
                 row.scheduled_at,
                 &row.timezone,
             )?;
-            input.next_trigger_at = Some(next);
+            input.next_trigger_at = UpdateField::from_option(next);
         }
 
         let row = self
@@ -156,7 +157,7 @@ impl SessionScheduleService {
 
         let input = UpdateSessionScheduleRow {
             enabled: if is_recurring { None } else { Some(false) },
-            next_trigger_at: Some(next_trigger),
+            next_trigger_at: UpdateField::from_option(next_trigger),
             last_triggered_at: Some(Utc::now()),
             trigger_count_increment: true,
         };
