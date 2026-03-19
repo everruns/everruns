@@ -545,7 +545,9 @@ where
                 .input
                 .get("iteration")
                 .and_then(|v| v.as_u64())
-                .unwrap_or(1) as u32;
+                .and_then(|raw| u32::try_from(raw).ok())
+                .filter(|&it| it > 0)
+                .unwrap_or(1);
 
             // Create DurableTurnInput from ActInput context
             let turn_input = DurableTurnInput {

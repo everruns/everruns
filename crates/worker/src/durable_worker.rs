@@ -748,7 +748,9 @@ impl DurableWorker {
                     .input
                     .get("iteration")
                     .and_then(|v| v.as_u64())
-                    .unwrap_or(1) as u32;
+                    .and_then(|raw| u32::try_from(raw).ok())
+                    .filter(|&it| it > 0)
+                    .unwrap_or(1);
                 let turn_input = DurableTurnInput {
                     org_id: act_task_input.org_id,
                     session_id: act_task_input.act_input.context.session_id,
