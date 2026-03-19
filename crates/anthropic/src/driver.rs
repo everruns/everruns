@@ -1210,6 +1210,23 @@ struct AnthropicModelCapabilities {
     batch: Option<CapabilitySupport>,
 }
 
+/// Normalize Anthropic model ID to a family base name by stripping trailing
+/// date suffix (e.g., "claude-opus-4-5-20251101" -> "claude-opus-4-5").
+fn normalize_anthropic_id(model_id: &str) -> &str {
+    // Anthropic date suffixes are always -YYYYMMDD (8 digits after a dash)
+    if model_id.len() > 9 {
+        let suffix_start = model_id.len() - 9; // "-YYYYMMDD" is 9 chars
+        let (base, suffix) = model_id.split_at(suffix_start);
+        if suffix.starts_with('-')
+            && suffix[1..].len() == 8
+            && suffix[1..].chars().all(|c| c.is_ascii_digit())
+        {
+            return base;
+        }
+    }
+    model_id
+}
+
 impl AnthropicModelInfo {
     /// Build an `LlmModelProfile` from the API-provided metadata.
     ///
@@ -1231,10 +1248,14 @@ impl AnthropicModelInfo {
             _ => None,
         };
 
-        // Determine if model supports image input (implies attachment support)
+        // Determine if model supports image/PDF input (implies attachment support)
         let image_input = caps
             .and_then(|c| c.image_input.as_ref())
             .is_some_and(|c| c.supported);
+        let pdf_input = caps
+            .and_then(|c| c.pdf_input.as_ref())
+            .is_some_and(|c| c.supported);
+        let supports_attachments = image_input || pdf_input;
 
         // Build modalities from capabilities
         let modalities = {
@@ -1265,14 +1286,14 @@ impl AnthropicModelInfo {
 
         LlmModelProfile {
             name: self.display_name.clone(),
-            family: self.id.clone(),
+            family: normalize_anthropic_id(&self.id).to_string(),
             release_date: self
                 .created_at
                 .as_ref()
                 .and_then(|s| s.get(..10))
                 .map(|s| s.to_string()),
             last_updated: None,
-            attachment: image_input,
+            attachment: supports_attachments,
             reasoning,
             temperature: true, // All Claude models support temperature
             knowledge: None,   // Not available from API
@@ -1820,5 +1841,113 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             error
         ));
+    }
+
+    // ========================================================================
+    // Model ID normalization tests
+    // ========================================================================
+
+    #[test]
+    fn test_normalize_anthropic_id_strips_date_suffix() {
+        assert_eq!(
+            normalize_anthropic_id("claude-opus-4-5-20251101"),
+            "claude-opus-4-5"
+        );
+        assert_eq!(
+            normalize_anthropic_id("claude-sonnet-4-6-20260217"),
+            "claude-sonnet-4-6"
+        );
+    }
+
+    #[test]
+    fn test_normalize_anthropic_id_preserves_base_ids() {
+        assert_eq!(normalize_anthropic_id("claude-opus-4-5"), "claude-opus-4-5");
+        assert_eq!(
+            normalize_anthropic_id("claude-3-5-sonnet"),
+            "claude-3-5-sonnet"
+        );
+    }
+
+    // ========================================================================
+    // Discovered profile construction tests
+    // ========================================================================
+
+    #[test]
+    fn test_to_discovered_profile_basic() {
+        let info = AnthropicModelInfo {
+            id: "claude-sonnet-4-6-20260217".into(),
+            display_name: "Claude Sonnet 4.6".into(),
+            created_at: Some("2026-02-17T00:00:00Z".into()),
+            max_input_tokens: Some(200_000),
+            max_tokens: Some(64_000),
+            capabilities: None,
+        };
+
+        let profile = info.to_discovered_profile();
+        assert_eq!(profile.name, "Claude Sonnet 4.6");
+        assert_eq!(profile.family, "claude-sonnet-4-6");
+        assert!(profile.limits.is_some());
+        let limits = profile.limits.unwrap();
+        assert_eq!(limits.context, 200_000);
+        assert_eq!(limits.output, 64_000);
+        assert!(profile.cost.is_none()); // Never from API
+    }
+
+    #[test]
+    fn test_to_discovered_profile_with_capabilities() {
+        let info = AnthropicModelInfo {
+            id: "claude-opus-4-6-20260205".into(),
+            display_name: "Claude Opus 4.6".into(),
+            created_at: None,
+            max_input_tokens: Some(1_000_000),
+            max_tokens: Some(128_000),
+            capabilities: Some(AnthropicModelCapabilities {
+                image_input: Some(CapabilitySupport { supported: true }),
+                pdf_input: Some(CapabilitySupport { supported: true }),
+                structured_outputs: Some(CapabilitySupport { supported: true }),
+                thinking: Some(ThinkingCapability {
+                    supported: true,
+                    types: Some(ThinkingTypes {
+                        enabled: Some(CapabilitySupport { supported: true }),
+                        adaptive: Some(CapabilitySupport { supported: true }),
+                    }),
+                }),
+                effort: Some(EffortCapability {
+                    supported: true,
+                    low: Some(CapabilitySupport { supported: true }),
+                    medium: Some(CapabilitySupport { supported: true }),
+                    high: Some(CapabilitySupport { supported: true }),
+                    max: Some(CapabilitySupport { supported: true }),
+                }),
+                ..Default::default()
+            }),
+        };
+
+        let profile = info.to_discovered_profile();
+        assert!(profile.attachment); // image + PDF
+        assert!(profile.reasoning);
+        assert!(profile.structured_output);
+        assert!(profile.reasoning_effort.is_some());
+        let effort = profile.reasoning_effort.unwrap();
+        assert_eq!(effort.values.len(), 4); // low, medium, high, max
+    }
+
+    #[test]
+    fn test_to_discovered_profile_pdf_only_is_attachment() {
+        let info = AnthropicModelInfo {
+            id: "claude-test".into(),
+            display_name: "Test".into(),
+            created_at: None,
+            max_input_tokens: None,
+            max_tokens: None,
+            capabilities: Some(AnthropicModelCapabilities {
+                image_input: Some(CapabilitySupport { supported: false }),
+                pdf_input: Some(CapabilitySupport { supported: true }),
+                ..Default::default()
+            }),
+        };
+
+        let profile = info.to_discovered_profile();
+        assert!(profile.attachment, "PDF-only should still be attachment");
     }
 }
