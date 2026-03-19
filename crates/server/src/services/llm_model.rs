@@ -11,8 +11,8 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_core::{
-    Caller, LlmModel, LlmModelSource, LlmModelStatus, LlmModelWithProvider, LlmProviderType,
-    Permission, Policy, Rule, get_model_profile,
+    Caller, LlmModel, LlmModelProfile, LlmModelSource, LlmModelStatus, LlmModelWithProvider,
+    LlmProviderType, Permission, Policy, Rule, get_model_profile,
 };
 use everruns_macros::policy;
 use std::sync::Arc;
@@ -314,8 +314,22 @@ impl LlmModelService {
         let provider_type: LlmProviderType =
             row.provider_type.parse().unwrap_or(LlmProviderType::Openai);
 
-        // Look up profile based on provider_type and model_id (readonly, not from DB)
-        let profile = get_model_profile(&provider_type, &row.model_id);
+        // Look up hardcoded profile, then try discovered profile from provider_metadata.
+        // Hardcoded profiles take precedence (they have cost data), but discovered
+        // profiles fill gaps for models without hardcoded entries.
+        let hardcoded = get_model_profile(&provider_type, &row.model_id);
+        let profile = if hardcoded.is_some() {
+            // Merge: hardcoded base with discovered limits/capabilities as fallback
+            let discovered = Self::extract_discovered_profile(row);
+            match (hardcoded, discovered) {
+                (Some(h), Some(d)) => Some(Self::merge_profiles(h, d)),
+                (Some(h), None) => Some(h),
+                _ => unreachable!(),
+            }
+        } else {
+            // No hardcoded profile — use discovered if available
+            Self::extract_discovered_profile(row)
+        };
 
         LlmModelWithProvider {
             id: row.id,
@@ -335,6 +349,39 @@ impl LlmModelService {
             provider_name: row.provider_name.clone(),
             provider_type,
             profile,
+        }
+    }
+
+    /// Extract the discovered profile from provider_metadata JSON.
+    fn extract_discovered_profile(row: &LlmModelWithProviderRow) -> Option<LlmModelProfile> {
+        let metadata = row.provider_metadata.as_ref()?;
+        let profile_val = metadata.get("discovered_profile")?;
+        serde_json::from_value(profile_val.clone()).ok()
+    }
+
+    /// Merge a hardcoded profile with a discovered profile.
+    /// Hardcoded values take precedence; discovered values fill gaps.
+    fn merge_profiles(hardcoded: LlmModelProfile, discovered: LlmModelProfile) -> LlmModelProfile {
+        LlmModelProfile {
+            // Hardcoded always wins for curated fields
+            name: hardcoded.name,
+            family: hardcoded.family,
+            release_date: hardcoded.release_date.or(discovered.release_date),
+            last_updated: hardcoded.last_updated.or(discovered.last_updated),
+            attachment: hardcoded.attachment,
+            reasoning: hardcoded.reasoning,
+            temperature: hardcoded.temperature,
+            knowledge: hardcoded.knowledge, // Not available from API
+            tool_call: hardcoded.tool_call,
+            structured_output: hardcoded.structured_output,
+            open_weights: hardcoded.open_weights,
+            cost: hardcoded.cost, // Never from API
+            // Limits: prefer hardcoded, fall back to discovered (API is authoritative for limits)
+            limits: hardcoded.limits.or(discovered.limits),
+            modalities: hardcoded.modalities.or(discovered.modalities),
+            reasoning_effort: hardcoded.reasoning_effort.or(discovered.reasoning_effort),
+            tool_search: hardcoded.tool_search,
+            supports_phases: hardcoded.supports_phases,
         }
     }
 }

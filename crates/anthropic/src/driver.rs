@@ -765,14 +765,18 @@ impl LlmDriver for AnthropicLlmDriver {
         let discovered: Vec<DiscoveredModel> = models_response
             .data
             .into_iter()
-            .map(|m| DiscoveredModel {
-                model_id: m.id,
-                display_name: Some(m.display_name),
-                created_at: m
-                    .created_at
-                    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                    .map(|dt| dt.with_timezone(&chrono::Utc)),
-                owned_by: Some("anthropic".to_string()),
+            .map(|m| {
+                let profile = Some(m.to_discovered_profile());
+                DiscoveredModel {
+                    model_id: m.id,
+                    display_name: Some(m.display_name),
+                    created_at: m
+                        .created_at
+                        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                        .map(|dt| dt.with_timezone(&chrono::Utc)),
+                    owned_by: Some("anthropic".to_string()),
+                    discovered_profile: profile,
+                }
             })
             .collect();
 
@@ -1120,6 +1124,9 @@ struct AnthropicModelsResponse {
 }
 
 /// Individual model info from Anthropic's models API
+///
+/// Includes structured capabilities and token limits returned by the
+/// `/v1/models` endpoint, used to build `LlmModelProfile` at discovery time.
 #[derive(Debug, Deserialize)]
 struct AnthropicModelInfo {
     /// Model identifier (e.g., "claude-opus-4-5-20251101")
@@ -1129,6 +1136,265 @@ struct AnthropicModelInfo {
     /// ISO 8601 timestamp when the model was created
     #[serde(default)]
     created_at: Option<String>,
+    /// Maximum input context window size in tokens
+    #[serde(default)]
+    max_input_tokens: Option<u32>,
+    /// Maximum output tokens
+    #[serde(default)]
+    max_tokens: Option<u32>,
+    /// Model capabilities
+    #[serde(default)]
+    capabilities: Option<AnthropicModelCapabilities>,
+}
+
+/// Capability support flag from Anthropic's models API
+#[derive(Debug, Deserialize, Default)]
+struct CapabilitySupport {
+    #[serde(default)]
+    supported: bool,
+}
+
+/// Effort capability with per-level support
+#[derive(Debug, Deserialize, Default)]
+struct EffortCapability {
+    #[serde(default)]
+    supported: bool,
+    #[serde(default)]
+    low: Option<CapabilitySupport>,
+    #[serde(default)]
+    medium: Option<CapabilitySupport>,
+    #[serde(default)]
+    high: Option<CapabilitySupport>,
+    #[serde(default)]
+    max: Option<CapabilitySupport>,
+}
+
+/// Thinking capability with type configurations
+#[derive(Debug, Deserialize, Default)]
+struct ThinkingCapability {
+    #[serde(default)]
+    supported: bool,
+    #[serde(default)]
+    types: Option<ThinkingTypes>,
+}
+
+/// Supported thinking type configurations
+#[derive(Debug, Deserialize, Default)]
+#[allow(dead_code)] // Fields deserialized from API; stored as metadata
+struct ThinkingTypes {
+    #[serde(default)]
+    enabled: Option<CapabilitySupport>,
+    #[serde(default)]
+    adaptive: Option<CapabilitySupport>,
+}
+
+/// Model capabilities from Anthropic's models API
+#[derive(Debug, Deserialize, Default)]
+#[allow(dead_code)] // Fields deserialized from API; not all used yet but stored as metadata
+struct AnthropicModelCapabilities {
+    #[serde(default)]
+    image_input: Option<CapabilitySupport>,
+    #[serde(default)]
+    pdf_input: Option<CapabilitySupport>,
+    #[serde(default)]
+    structured_outputs: Option<CapabilitySupport>,
+    #[serde(default)]
+    thinking: Option<ThinkingCapability>,
+    #[serde(default)]
+    effort: Option<EffortCapability>,
+    #[serde(default)]
+    citations: Option<CapabilitySupport>,
+    #[serde(default)]
+    code_execution: Option<CapabilitySupport>,
+    #[serde(default)]
+    batch: Option<CapabilitySupport>,
+}
+
+impl AnthropicModelInfo {
+    /// Build an `LlmModelProfile` from the API-provided metadata.
+    ///
+    /// This profile contains limits and capability flags discovered from the API.
+    /// Cost data is NOT available from the API and remains in hardcoded profiles.
+    fn to_discovered_profile(&self) -> everruns_core::llm_models::LlmModelProfile {
+        use everruns_core::llm_models::*;
+
+        let caps = self.capabilities.as_ref();
+
+        // Build token limits from API fields
+        let limits = match (self.max_input_tokens, self.max_tokens) {
+            (Some(input), Some(output)) => Some(LlmModelLimits {
+                context: input as i32,
+                input: None,
+                output: output as i32,
+                max_media: None,
+            }),
+            _ => None,
+        };
+
+        // Determine if model supports image input (implies attachment support)
+        let image_input = caps
+            .and_then(|c| c.image_input.as_ref())
+            .is_some_and(|c| c.supported);
+
+        // Build modalities from capabilities
+        let modalities = {
+            let mut input_mods = vec![Modality::Text];
+            if image_input {
+                input_mods.push(Modality::Image);
+            }
+            Some(LlmModelModalities {
+                input: input_mods,
+                output: vec![Modality::Text],
+            })
+        };
+
+        // Build reasoning effort config from thinking + effort capabilities
+        let reasoning = caps
+            .and_then(|c| c.thinking.as_ref())
+            .is_some_and(|t| t.supported);
+
+        let reasoning_effort = if reasoning {
+            self.build_reasoning_effort(caps)
+        } else {
+            None
+        };
+
+        let structured_output = caps
+            .and_then(|c| c.structured_outputs.as_ref())
+            .is_some_and(|c| c.supported);
+
+        LlmModelProfile {
+            name: self.display_name.clone(),
+            family: self.id.clone(),
+            release_date: self
+                .created_at
+                .as_ref()
+                .and_then(|s| s.get(..10))
+                .map(|s| s.to_string()),
+            last_updated: None,
+            attachment: image_input,
+            reasoning,
+            temperature: true, // All Claude models support temperature
+            knowledge: None,   // Not available from API
+            tool_call: true,   // All Claude models support tool use
+            structured_output,
+            open_weights: false,
+            cost: None, // Not available from API; hardcoded profiles provide this
+            limits,
+            modalities,
+            reasoning_effort,
+            tool_search: false,
+            supports_phases: false,
+        }
+    }
+
+    fn build_reasoning_effort(
+        &self,
+        caps: Option<&AnthropicModelCapabilities>,
+    ) -> Option<everruns_core::llm_models::ReasoningEffortConfig> {
+        use everruns_core::llm_models::*;
+
+        let thinking = caps?.thinking.as_ref()?;
+        if !thinking.supported {
+            return None;
+        }
+
+        let types = thinking.types.as_ref();
+        let supports_adaptive = types
+            .and_then(|t| t.adaptive.as_ref())
+            .is_some_and(|c| c.supported);
+
+        // Check effort capability for supported levels
+        let effort_cap = caps?.effort.as_ref();
+        let effort_supported = effort_cap.is_some_and(|e| e.supported);
+
+        if !effort_supported {
+            // Thinking supported but no effort levels — basic extended thinking
+            return Some(ReasoningEffortConfig {
+                values: vec![
+                    ReasoningEffortValue {
+                        value: ReasoningEffort::Low,
+                        name: "Low (1K tokens)".into(),
+                    },
+                    ReasoningEffortValue {
+                        value: ReasoningEffort::Medium,
+                        name: "Medium (4K tokens)".into(),
+                    },
+                    ReasoningEffortValue {
+                        value: ReasoningEffort::High,
+                        name: "High (16K tokens)".into(),
+                    },
+                    ReasoningEffortValue {
+                        value: ReasoningEffort::Xhigh,
+                        name: "Extra High (32K tokens)".into(),
+                    },
+                ],
+                default: ReasoningEffort::Medium,
+            });
+        }
+
+        // Build effort values from per-level support flags
+        let ec = effort_cap.unwrap();
+        let mut values = Vec::new();
+
+        if ec.low.as_ref().is_some_and(|c| c.supported) {
+            let name = if supports_adaptive {
+                "Low"
+            } else {
+                "Low (1K tokens)"
+            };
+            values.push(ReasoningEffortValue {
+                value: ReasoningEffort::Low,
+                name: name.into(),
+            });
+        }
+        if ec.medium.as_ref().is_some_and(|c| c.supported) {
+            let name = if supports_adaptive {
+                "Medium"
+            } else {
+                "Medium (4K tokens)"
+            };
+            values.push(ReasoningEffortValue {
+                value: ReasoningEffort::Medium,
+                name: name.into(),
+            });
+        }
+        if ec.high.as_ref().is_some_and(|c| c.supported) {
+            let name = if supports_adaptive {
+                "High"
+            } else {
+                "High (16K tokens)"
+            };
+            values.push(ReasoningEffortValue {
+                value: ReasoningEffort::High,
+                name: name.into(),
+            });
+        }
+        if ec.max.as_ref().is_some_and(|c| c.supported) {
+            let name = if supports_adaptive {
+                "Max"
+            } else {
+                "Extra High (32K tokens)"
+            };
+            values.push(ReasoningEffortValue {
+                value: ReasoningEffort::Xhigh,
+                name: name.into(),
+            });
+        }
+
+        if values.is_empty() {
+            return None;
+        }
+
+        // Default: High for adaptive, Medium for budget-based
+        let default = if supports_adaptive {
+            ReasoningEffort::High
+        } else {
+            ReasoningEffort::Medium
+        };
+
+        Some(ReasoningEffortConfig { values, default })
+    }
 }
 
 // ============================================================================
