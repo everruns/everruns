@@ -311,9 +311,9 @@ impl DurableWorker {
             // Send heartbeat if interval has passed
             if last_heartbeat.elapsed() >= heartbeat_interval {
                 let mut store = self.store.lock().await;
-                // TODO: track actual current_load
+                let current_load = self.in_flight.load(Ordering::SeqCst) as u32;
                 if let Err(e) = store
-                    .heartbeat_worker(&self.config.worker_id, 0, true)
+                    .heartbeat_worker(&self.config.worker_id, current_load, true)
                     .await
                 {
                     debug!("Failed to send worker heartbeat: {}", e);
