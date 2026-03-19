@@ -116,12 +116,12 @@ impl EventService {
         // Validate event type consistency
         Self::validate_event_type_consistency(&request)?;
 
-        // Log streaming/generation events at info level (temporary for debugging)
+        // Log high-frequency streaming/generation events at debug level
         if request.event_type == "output.message.started"
             || request.event_type == "output.message.delta"
             || request.event_type == "llm.generation"
         {
-            tracing::info!(
+            tracing::debug!(
                 session_id = %request.session_id,
                 event_type = %request.event_type,
                 "EventService: storing event"
