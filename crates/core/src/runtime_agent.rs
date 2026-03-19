@@ -12,7 +12,8 @@
 
 use crate::agent::Agent;
 use crate::capabilities::{
-    CapabilityRegistry, SystemPromptContext, collect_capabilities, resolve_dependencies,
+    CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
+    resolve_capability_configs,
 };
 use crate::harness::Harness;
 use crate::llm_driver_registry::ToolSearchConfig;
@@ -111,14 +112,8 @@ impl RuntimeAgentBuilder {
         registry: &CapabilityRegistry,
         ctx: &SystemPromptContext,
     ) -> Self {
-        let capability_ids: Vec<String> = harness
-            .capabilities
-            .iter()
-            .map(|cap| cap.capability_id().to_string())
-            .collect();
-
         self.system_prompt(&harness.system_prompt)
-            .with_capabilities(&capability_ids, registry, ctx)
+            .with_capability_configs(&harness.capabilities, registry, ctx)
             .await
     }
 
@@ -144,15 +139,9 @@ impl RuntimeAgentBuilder {
         registry: &CapabilityRegistry,
         ctx: &SystemPromptContext,
     ) -> Self {
-        let capability_ids: Vec<String> = agent
-            .capabilities
-            .iter()
-            .map(|cap| cap.capability_id().to_string())
-            .collect();
-
         let mut builder = self
             .system_prompt(&agent.system_prompt)
-            .with_capabilities(&capability_ids, registry, ctx)
+            .with_capability_configs(&agent.capabilities, registry, ctx)
             .await;
 
         // Add agent-level client-side tools
@@ -177,21 +166,35 @@ impl RuntimeAgentBuilder {
     /// * `registry` - The capability registry containing implementations
     /// * `ctx` - Session context for dynamic prompt resolution
     pub async fn with_capabilities(
-        mut self,
+        self,
         capability_ids: &[String],
         registry: &CapabilityRegistry,
         ctx: &SystemPromptContext,
     ) -> Self {
-        // Resolve dependencies first (dependencies come before dependents)
-        let resolved_ids = match resolve_dependencies(capability_ids, registry) {
-            Ok(resolved) => resolved.resolved_ids,
+        let capability_configs: Vec<crate::AgentCapabilityConfig> = capability_ids
+            .iter()
+            .map(|id| crate::AgentCapabilityConfig::new(id.clone()))
+            .collect();
+        self.with_capability_configs(&capability_configs, registry, ctx)
+            .await
+    }
+
+    /// Apply capability configs to this builder, preserving per-capability configuration.
+    pub async fn with_capability_configs(
+        mut self,
+        capability_configs: &[crate::AgentCapabilityConfig],
+        registry: &CapabilityRegistry,
+        ctx: &SystemPromptContext,
+    ) -> Self {
+        let resolved_configs = match resolve_capability_configs(capability_configs, registry) {
+            Ok(resolved) => resolved,
             Err(e) => {
                 tracing::warn!("Failed to resolve capability dependencies: {}", e);
-                capability_ids.to_vec()
+                capability_configs.to_vec()
             }
         };
 
-        let collected = collect_capabilities(&resolved_ids, registry, ctx).await;
+        let collected = collect_capabilities_with_configs(&resolved_configs, registry, ctx).await;
 
         // Apply system prompt additions (prepend to existing, wrap base in XML tags)
         if let Some(prefix) = collected.system_prompt_prefix() {

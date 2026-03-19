@@ -9,6 +9,7 @@
 use crate::api::common::Pagination;
 use crate::errors::ResourceNotFoundError;
 use crate::org_init::BASE_HARNESS_ID;
+use crate::services::harness::resolve_effective_harness;
 use crate::services::session_file::{CreateFileInput, SessionFileService};
 use crate::storage::{
     StorageBackend,
@@ -94,6 +95,9 @@ impl SessionService {
         if harness.status != "active" {
             anyhow::bail!("Archived or deleted harnesses cannot be assigned");
         }
+        let effective_harness = resolve_effective_harness(self.db.as_ref(), org_id, harness_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
         let agent = if let Some(aid) = agent_id {
             let agent = self
                 .db
@@ -117,7 +121,7 @@ impl SessionService {
                 agent
                     .as_ref()
                     .and_then(|a| a.default_model_id)
-                    .or(harness.default_model_id)
+                    .or(effective_harness.default_model_id)
             });
 
         // Serialize capabilities to JSON for storage
@@ -255,12 +259,9 @@ impl SessionService {
         agent_id: Option<Uuid>,
     ) -> Result<Vec<InitialFile>> {
         let mut files = self
-            .db
-            .get_harness(org_id, HarnessId::from_uuid(harness_id))
+            .resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
             .await?
-            .map(|row| {
-                serde_json::from_value::<Vec<InitialFile>>(row.initial_files).unwrap_or_default()
-            })
+            .map(|harness| harness.initial_files)
             .unwrap_or_default();
 
         if let Some(agent_id) = agent_id
@@ -565,17 +566,21 @@ impl SessionService {
         let mut capability_ids = Vec::new();
 
         if self
-            .db
-            .get_harness(org_id, HarnessId::from_uuid(harness_id))
+            .resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
             .await?
             .is_some()
         {
             capability_ids.extend(
-                self.db
-                    .get_harness_capabilities(harness_id)
+                self.resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
                     .await?
-                    .into_iter()
-                    .map(|row| row.capability_id),
+                    .map(|harness| {
+                        harness
+                            .capabilities
+                            .into_iter()
+                            .map(|cap| cap.capability_id().to_string())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default(),
             );
         }
 
@@ -683,6 +688,14 @@ impl SessionService {
                 .map(|s| SubagentStatus::from(s.as_str())),
         }
     }
+
+    async fn resolve_effective_harness(
+        &self,
+        org_id: i64,
+        harness_id: HarnessId,
+    ) -> Result<Option<everruns_core::Harness>> {
+        resolve_effective_harness(self.db.as_ref(), org_id, harness_id).await
+    }
 }
 
 fn normalize_initial_file_path(path: &str) -> String {
@@ -787,6 +800,7 @@ mod tests {
                     name: "Harness".to_string(),
                     description: None,
                     system_prompt: "Harness prompt".to_string(),
+                    parent_harness_id: None,
                     default_model_id: None,
                     tags: vec![],
                     capabilities: vec![],
@@ -879,6 +893,92 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn inherited_harness_starter_files_are_copied_into_new_sessions() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let harness_service = HarnessService::new(db.clone());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(1);
+
+        let parent = harness_service
+            .create(
+                &caller,
+                CreateHarnessRequest {
+                    name: "Parent".to_string(),
+                    description: None,
+                    system_prompt: "Parent prompt".to_string(),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![],
+                    initial_files: vec![
+                        InitialFile {
+                            path: "/workspace/config.txt".to_string(),
+                            content: "from parent".to_string(),
+                            encoding: "text".to_string(),
+                            is_readonly: false,
+                        },
+                        InitialFile {
+                            path: "/parent-only.txt".to_string(),
+                            content: "only parent".to_string(),
+                            encoding: "text".to_string(),
+                            is_readonly: true,
+                        },
+                    ],
+                },
+            )
+            .await
+            .unwrap();
+
+        let child = harness_service
+            .create(
+                &caller,
+                CreateHarnessRequest {
+                    name: "Child".to_string(),
+                    description: None,
+                    system_prompt: "Child prompt".to_string(),
+                    parent_harness_id: Some(parent.id),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![],
+                    initial_files: vec![InitialFile {
+                        path: "/config.txt".to_string(),
+                        content: "from child".to_string(),
+                        encoding: "text".to_string(),
+                        is_readonly: true,
+                    }],
+                },
+            )
+            .await
+            .unwrap();
+
+        let session = session_service
+            .create(
+                &caller,
+                child.id.uuid(),
+                None,
+                None,
+                build_create_request(child.id, None, None),
+            )
+            .await
+            .unwrap();
+
+        let file_service = SessionFileService::new(db);
+        let config = file_service
+            .read_file(session.id.uuid(), "/config.txt")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(config.content.as_deref(), Some("from child"));
+
+        let parent_only = file_service
+            .read_file(session.id.uuid(), "/parent-only.txt")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(parent_only.content.as_deref(), Some("only parent"));
+    }
+
+    #[tokio::test]
     async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
         let db = Arc::new(StorageBackend::in_memory());
         let harness_service = HarnessService::new(db.clone());
@@ -893,6 +993,7 @@ mod tests {
                     name: "Harness".to_string(),
                     description: None,
                     system_prompt: "Harness prompt".to_string(),
+                    parent_harness_id: None,
                     default_model_id: None,
                     tags: vec![],
                     capabilities: vec![],
@@ -948,6 +1049,7 @@ mod tests {
                     name: "Harness 2".to_string(),
                     description: None,
                     system_prompt: "Harness prompt".to_string(),
+                    parent_harness_id: None,
                     default_model_id: None,
                     tags: vec![],
                     capabilities: vec![],
@@ -993,6 +1095,7 @@ mod tests {
                     name: "Other Harness".to_string(),
                     description: None,
                     system_prompt: "Other".to_string(),
+                    parent_harness_id: None,
                     default_model_id: None,
                     tags: vec![],
                     capabilities: vec![],
@@ -1033,6 +1136,7 @@ mod tests {
                     name: "Harness".to_string(),
                     description: None,
                     system_prompt: "Harness".to_string(),
+                    parent_harness_id: None,
                     default_model_id: None,
                     tags: vec![],
                     capabilities: vec![],
@@ -1073,6 +1177,7 @@ mod tests {
                     name: "Other Harness".to_string(),
                     description: None,
                     system_prompt: "Other".to_string(),
+                    parent_harness_id: None,
                     default_model_id: None,
                     tags: vec![],
                     capabilities: vec![AgentCapabilityConfig::new("sample_data")],
@@ -1159,6 +1264,7 @@ mod tests {
                     name: "Other Harness".to_string(),
                     description: None,
                     system_prompt: "Other".to_string(),
+                    parent_harness_id: None,
                     default_model_id: None,
                     tags: vec![],
                     capabilities: vec![AgentCapabilityConfig::new("sample_data")],

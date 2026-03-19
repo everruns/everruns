@@ -743,6 +743,7 @@ impl InMemoryDatabase {
             name: input.name,
             description: input.description,
             system_prompt: input.system_prompt,
+            parent_harness_id: input.parent_harness_id,
             default_model_id: input.default_model_id,
             tags: input.tags,
             initial_files: input.initial_files,
@@ -773,6 +774,7 @@ impl InMemoryDatabase {
             if existing.name == input.name
                 && existing.description == input.description
                 && existing.system_prompt == input.system_prompt
+                && existing.parent_harness_id == input.parent_harness_id
                 && existing.tags == input.tags
                 && existing.initial_files == input.initial_files
             {
@@ -782,6 +784,7 @@ impl InMemoryDatabase {
                 name: input.name,
                 description: input.description,
                 system_prompt: input.system_prompt,
+                parent_harness_id: input.parent_harness_id,
                 tags: input.tags,
                 initial_files: input.initial_files,
                 updated_at: now,
@@ -797,6 +800,7 @@ impl InMemoryDatabase {
             name: input.name,
             description: input.description,
             system_prompt: input.system_prompt,
+            parent_harness_id: input.parent_harness_id,
             default_model_id: input.default_model_id,
             tags: input.tags,
             initial_files: input.initial_files,
@@ -863,6 +867,9 @@ impl InMemoryDatabase {
             if let Some(system_prompt) = input.system_prompt {
                 harness.system_prompt = system_prompt;
             }
+            if let Some(parent_harness_id) = input.parent_harness_id {
+                harness.parent_harness_id = parent_harness_id;
+            }
             if let Some(default_model_id) = input.default_model_id {
                 harness.default_model_id = Some(default_model_id);
             }
@@ -893,6 +900,25 @@ impl InMemoryDatabase {
             return Ok(true);
         }
         Ok(false)
+    }
+
+    pub async fn list_child_harnesses(
+        &self,
+        org_id: i64,
+        parent_id: HarnessId,
+    ) -> Result<Vec<HarnessRow>> {
+        let harnesses = self.harnesses.read();
+        let mut result: Vec<_> = harnesses
+            .values()
+            .filter(|h| {
+                h.org_id == org_id
+                    && h.parent_harness_id == Some(parent_id)
+                    && h.status != "deleted"
+            })
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(result)
     }
 
     pub async fn destroy_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {

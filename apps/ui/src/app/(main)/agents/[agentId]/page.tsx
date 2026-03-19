@@ -382,6 +382,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               ref: cap.ref,
               config: cap.config,
             }))}
+            tools={agent.tools ?? []}
           />
         </TabsContent>
       </Tabs>

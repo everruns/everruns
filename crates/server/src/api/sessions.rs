@@ -972,6 +972,7 @@ mod tests {
                     name: "Base".to_string(),
                     description: Some("Base".to_string()),
                     system_prompt: "You are helpful.".to_string(),
+                    parent_harness_id: None,
                     default_model_id: None,
                     tags: vec!["base".to_string()],
                     initial_files: serde_json::json!([]),

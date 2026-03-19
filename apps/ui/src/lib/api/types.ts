@@ -84,6 +84,7 @@ export interface Harness {
   name: string;
   description: string | null;
   system_prompt: string;
+  parent_harness_id: string | null;
   default_model_id: string | null;
   tags: string[];
   /** Capabilities with per-harness configuration */
@@ -102,6 +103,7 @@ export interface CreateHarnessRequest {
   name: string;
   description?: string;
   system_prompt: string;
+  parent_harness_id?: string;
   default_model_id?: string;
   tags?: string[];
   /** Capabilities with per-harness configuration */
@@ -113,6 +115,7 @@ export interface UpdateHarnessRequest {
   name?: string;
   description?: string;
   system_prompt?: string;
+  parent_harness_id?: string | null;
   default_model_id?: string;
   tags?: string[];
   /** Capabilities with per-harness configuration */
@@ -125,6 +128,8 @@ export interface UpdateHarnessRequest {
 export interface PreviewHarnessRequest {
   /** The base system prompt (before capability additions) */
   system_prompt: string;
+  /** Optional parent harness to inherit from before previewing local changes */
+  parent_harness_id?: string;
   /** Capability IDs to apply */
   capabilities?: AgentCapabilityConfig[];
 }
@@ -135,6 +140,8 @@ export interface PreviewAgentRequest {
   system_prompt: string;
   /** Capabilities to apply with per-agent configuration */
   capabilities?: AgentCapabilityConfig[];
+  /** Client-side tools to include in preview output */
+  tools?: ToolDefinition[];
 }
 
 /** Response showing the final agent shape after applying capabilities */

@@ -1043,10 +1043,9 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let harness = self
             .harness_service
-            .get(&internal_caller, harness_id)
+            .resolve_effective(req.org_id, everruns_core::HarnessId::from_uuid(harness_id))
             .await
             .map_err(|e| Status::internal(format!("Failed to get harness: {}", e)))?;
 
@@ -3323,6 +3322,12 @@ impl WorkerService for WorkerServiceImpl {
             name: req.name,
             description: req.description,
             system_prompt: req.system_prompt,
+            parent_harness_id: req
+                .parent_harness_id
+                .as_ref()
+                .map(|parent_id| parse_uuid(Some(parent_id)))
+                .transpose()?
+                .map(everruns_core::HarnessId::from_uuid),
             default_model_id: None,
             tags: vec![],
             capabilities,
@@ -3352,6 +3357,16 @@ impl WorkerService for WorkerServiceImpl {
             name: req.name,
             description: req.description,
             system_prompt: req.system_prompt,
+            parent_harness_id: if req.clear_parent_harness_id.unwrap_or(false) {
+                Some(None)
+            } else {
+                req.parent_harness_id
+                    .as_ref()
+                    .map(|parent_id| parse_uuid(Some(parent_id)))
+                    .transpose()?
+                    .map(everruns_core::HarnessId::from_uuid)
+                    .map(Some)
+            },
             default_model_id: None,
             tags: None,
             capabilities: None,
@@ -3409,6 +3424,7 @@ impl WorkerService for WorkerServiceImpl {
                 name: Some(new_name),
                 description: None,
                 system_prompt: None,
+                parent_harness_id: None,
                 default_model_id: None,
                 tags: None,
                 capabilities: None,

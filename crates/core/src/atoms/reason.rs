@@ -609,12 +609,6 @@ where
         // 6. Build runtime agent: harness (base) → agent (optional) → session caps
         //    Uses async builder methods so capabilities can resolve dynamic system
         //    prompt content (e.g., reading AGENTS.md, discovering skills).
-        let session_capability_ids: Vec<String> = session
-            .capabilities
-            .iter()
-            .map(|cap| cap.capability_id().to_string())
-            .collect();
-
         let prompt_ctx = crate::capabilities::SystemPromptContext {
             session_id,
             locale: extract_locale_override(&messages).or_else(|| session.locale.clone()),
@@ -630,8 +624,8 @@ where
                 .await;
         }
         builder = builder
-            .with_capabilities(
-                &session_capability_ids,
+            .with_capability_configs(
+                &session.capabilities,
                 &self.capability_registry,
                 &prompt_ctx,
             )

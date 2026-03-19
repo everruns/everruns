@@ -295,6 +295,14 @@ impl StorageBackend {
         dispatch!(self, update_harness, org_id, id, input)
     }
 
+    pub async fn list_child_harnesses(
+        &self,
+        org_id: i64,
+        parent_id: HarnessId,
+    ) -> Result<Vec<HarnessRow>> {
+        dispatch!(self, list_child_harnesses, org_id, parent_id)
+    }
+
     pub async fn delete_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
         dispatch!(self, delete_harness, org_id, id)
     }

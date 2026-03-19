@@ -12,9 +12,10 @@ import { Wrench, FileText, AlertCircle } from "lucide-react";
 interface AgentPreviewProps {
   systemPrompt: string;
   capabilities: AgentCapabilityConfig[];
+  tools?: ToolDefinition[];
 }
 
-export function AgentPreview({ systemPrompt, capabilities }: AgentPreviewProps) {
+export function AgentPreview({ systemPrompt, capabilities, tools = [] }: AgentPreviewProps) {
   const previewMutation = usePreviewAgent();
   const [preview, setPreview] = useState<AgentPreviewResponse | null>(null);
 
@@ -24,6 +25,7 @@ export function AgentPreview({ systemPrompt, capabilities }: AgentPreviewProps) 
       {
         system_prompt: systemPrompt,
         capabilities,
+        tools,
       },
       {
         onSuccess: (data) => {
@@ -32,7 +34,7 @@ export function AgentPreview({ systemPrompt, capabilities }: AgentPreviewProps) 
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [systemPrompt, JSON.stringify(capabilities)]);
+  }, [systemPrompt, JSON.stringify(capabilities), JSON.stringify(tools)]);
 
   if (previewMutation.isPending && !preview) {
     return (

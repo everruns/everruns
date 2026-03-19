@@ -283,6 +283,7 @@ pub struct HarnessRow {
     pub name: String,
     pub description: Option<String>,
     pub system_prompt: String,
+    pub parent_harness_id: Option<HarnessId>,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
     /// Starter files copied into new sessions (JSONB in DB)
@@ -301,6 +302,7 @@ pub struct CreateHarnessRow {
     pub name: String,
     pub description: Option<String>,
     pub system_prompt: String,
+    pub parent_harness_id: Option<HarnessId>,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
     /// Starter files copied into new sessions (JSONB in DB)
@@ -313,6 +315,7 @@ pub struct UpdateHarness {
     pub name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: Option<String>,
+    pub parent_harness_id: Option<Option<HarnessId>>,
     pub default_model_id: Option<ModelId>,
     pub tags: Option<Vec<String>>,
     pub initial_files: Option<serde_json::Value>,

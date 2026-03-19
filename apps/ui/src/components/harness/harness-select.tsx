@@ -22,6 +22,12 @@ interface HarnessSelectProps {
   className?: string;
   /** Disable the select */
   disabled?: boolean;
+  /** Include a "no harness" option */
+  includeNoneOption?: boolean;
+  /** Label for the empty option */
+  noneLabel?: string;
+  /** Harness IDs to omit from the dropdown */
+  excludeIds?: string[];
 }
 
 /**
@@ -34,26 +40,39 @@ export function HarnessSelect({
   placeholder = "Select harness",
   className,
   disabled,
+  includeNoneOption = false,
+  noneLabel = "None",
+  excludeIds = [],
 }: HarnessSelectProps) {
+  const noneValue = "__none__";
   const { data: harnesses = [] } = useHarnesses();
+  const filteredHarnesses = useMemo(
+    () => harnesses.filter((harness) => !excludeIds.includes(harness.id)),
+    [excludeIds, harnesses],
+  );
 
   const harnessMap = useMemo(() => {
-    return new Map<string, Harness>(harnesses.map((h) => [h.id, h]));
-  }, [harnesses]);
+    return new Map<string, Harness>(filteredHarnesses.map((h) => [h.id, h]));
+  }, [filteredHarnesses]);
 
   // Resolve ID → name. When harnesses haven't loaded yet (org switch race),
   // show "Loading…" instead of the raw ID (EVE-142).
   const displayValue = value
-    ? (harnessMap.get(value)?.name ?? (harnesses.length === 0 ? "Loading…" : value))
+    ? (harnessMap.get(value)?.name ?? (filteredHarnesses.length === 0 ? "Loading…" : value))
     : undefined;
 
   return (
-    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+    <Select
+      value={value || (includeNoneOption ? noneValue : value)}
+      onValueChange={(nextValue) => onValueChange(nextValue === noneValue ? "" : nextValue)}
+      disabled={disabled}
+    >
       <SelectTrigger className={className}>
         <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {harnesses.map((harness) => (
+        {includeNoneOption && <SelectItem value={noneValue}>{noneLabel}</SelectItem>}
+        {filteredHarnesses.map((harness) => (
           <SelectItem key={harness.id} value={harness.id}>
             {harness.name}
           </SelectItem>

@@ -10,8 +10,10 @@ use async_trait::async_trait;
 use everruns_core::{
     AgentCapabilityConfig, AgentLoopError, HarnessId, Result,
     harness::{Harness, HarnessStatus},
+    merge_harness,
     traits::HarnessStore,
 };
+use std::collections::HashSet;
 
 use super::repositories::Database;
 
@@ -38,44 +40,70 @@ impl DbHarnessStore {
 #[async_trait]
 impl HarnessStore for DbHarnessStore {
     async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<Harness>> {
-        let harness_row = self
-            .db
-            .get_harness(self.org_id, harness_id)
-            .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+        let mut visited = HashSet::new();
+        let mut chain = Vec::new();
+        let mut cursor = Some(harness_id);
 
-        match harness_row {
-            Some(row) => {
-                let capability_rows = self
-                    .db
-                    .get_harness_capabilities(harness_id.uuid())
-                    .await
-                    .map_err(|e| AgentLoopError::store(e.to_string()))?;
-
-                let capabilities: Vec<AgentCapabilityConfig> = capability_rows
-                    .into_iter()
-                    .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
-                    .collect();
-
-                Ok(Some(Harness {
-                    id: row.id,
-                    name: row.name,
-                    description: row.description,
-                    system_prompt: row.system_prompt,
-                    default_model_id: row.default_model_id,
-                    tags: row.tags,
-                    capabilities,
-                    initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
-                    is_built_in: row.is_built_in,
-                    status: HarnessStatus::from(row.status.as_str()),
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                    archived_at: row.archived_at,
-                    deleted_at: row.deleted_at,
-                }))
+        while let Some(current_harness_id) = cursor {
+            if !visited.insert(current_harness_id) {
+                return Err(AgentLoopError::store(
+                    "Harness inheritance cycle detected".to_string(),
+                ));
             }
-            None => Ok(None),
+
+            let Some(row) = self
+                .db
+                .get_harness(self.org_id, current_harness_id)
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?
+            else {
+                if chain.is_empty() {
+                    return Ok(None);
+                }
+                return Err(AgentLoopError::store(
+                    "Parent harness not found".to_string(),
+                ));
+            };
+
+            let capability_rows = self
+                .db
+                .get_harness_capabilities(current_harness_id.uuid())
+                .await
+                .map_err(|e| AgentLoopError::store(e.to_string()))?;
+
+            let capabilities: Vec<AgentCapabilityConfig> = capability_rows
+                .into_iter()
+                .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
+                .collect();
+
+            cursor = row.parent_harness_id;
+            chain.push(Harness {
+                id: row.id,
+                name: row.name,
+                description: row.description,
+                system_prompt: row.system_prompt,
+                parent_harness_id: row.parent_harness_id,
+                default_model_id: row.default_model_id,
+                tags: row.tags,
+                capabilities,
+                initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+                is_built_in: row.is_built_in,
+                status: HarnessStatus::from(row.status.as_str()),
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                archived_at: row.archived_at,
+                deleted_at: row.deleted_at,
+            });
         }
+
+        let Some(mut effective) = chain.pop() else {
+            return Ok(None);
+        };
+        while let Some(layer) = chain.pop() {
+            effective = merge_harness(&effective, &layer);
+        }
+
+        Ok(Some(effective))
     }
 }
 

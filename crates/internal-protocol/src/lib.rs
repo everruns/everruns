@@ -324,6 +324,11 @@ pub fn schema_harness_to_proto(value: &everruns_core::Harness) -> proto::Harness
             .iter()
             .map(|c| c.capability_id().to_string())
             .collect(),
+        tags: value.tags.clone(),
+        parent_harness_id: value
+            .parent_harness_id
+            .map(|id| uuid_to_proto_uuid(id.uuid())),
+        is_built_in: value.is_built_in,
     }
 }
 
@@ -340,6 +345,10 @@ pub fn proto_harness_to_schema(
         .default_model_id
         .as_ref()
         .map(|u| format!("model_{}", u.value.replace("-", "")));
+    let parent_harness_id_str = value
+        .parent_harness_id
+        .as_ref()
+        .map(|u| format!("harness_{}", u.value.replace("-", "")));
 
     let capabilities: Vec<serde_json::Value> = value
         .capability_ids
@@ -352,9 +361,11 @@ pub fn proto_harness_to_schema(
         "name": value.name,
         "description": if value.description.is_empty() { None } else { Some(&value.description) },
         "system_prompt": value.system_prompt,
+        "parent_harness_id": parent_harness_id_str,
         "default_model_id": model_id_str,
-        "tags": Vec::<String>::new(),
+        "tags": value.tags,
         "capabilities": capabilities,
+        "is_built_in": value.is_built_in,
         "status": value.status,
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),

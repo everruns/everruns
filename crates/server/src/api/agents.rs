@@ -122,6 +122,10 @@ pub struct PreviewAgentRequest {
     #[serde(default)]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "test_math", "config": {}}]))]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Client-side tools to include in the preview.
+    #[serde(default)]
+    #[schema(value_type = Vec<Object>)]
+    pub tools: Vec<ToolDefinition>,
 }
 
 /// Response showing the final agent shape after applying capabilities
@@ -958,7 +962,7 @@ pub async fn preview_agent(
     State(state): State<AppState>,
     Json(req): Json<PreviewAgentRequest>,
 ) -> Result<Json<AgentPreviewResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let (system_prompt, tools) = state
+    let (system_prompt, mut tools) = state
         .capability_service
         .preview(org.org_id, &req.system_prompt, &req.capabilities)
         .await
@@ -967,6 +971,7 @@ pub async fn preview_agent(
             ErrorResponse::new("Internal server error")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
+    tools.extend(req.tools);
 
     Ok(Json(AgentPreviewResponse {
         system_prompt,

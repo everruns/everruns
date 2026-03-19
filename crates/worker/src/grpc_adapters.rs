@@ -578,6 +578,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         name: proto_harness.name,
         description: non_empty_string(proto_harness.description),
         system_prompt: proto_harness.system_prompt,
+        parent_harness_id: None,
         default_model_id: default_model_id.map(|u| u.into()),
         tags: vec![],
         capabilities: proto_harness
@@ -1878,6 +1879,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
         name: &str,
         description: Option<&str>,
         system_prompt: &str,
+        parent_harness_id: Option<everruns_core::HarnessId>,
         capabilities: &[String],
     ) -> Result<Harness> {
         let mut client = self.client.inner.lock().await;
@@ -1888,6 +1890,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 description: description.map(|s| s.to_string()),
                 system_prompt: system_prompt.to_string(),
                 capabilities: capabilities.to_vec(),
+                parent_harness_id: parent_harness_id.map(|id| uuid_to_proto(id.uuid())),
             })
             .await
             .map_err(|e| grpc_error(format!("gRPC platform_create_harness failed: {}", e)))?;
@@ -1907,6 +1910,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
         name: Option<&str>,
         description: Option<&str>,
         system_prompt: Option<&str>,
+        parent_harness_id: Option<Option<everruns_core::HarnessId>>,
     ) -> Result<Harness> {
         let mut client = self.client.inner.lock().await;
         let response = client
@@ -1916,6 +1920,11 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 name: name.map(|s| s.to_string()),
                 description: description.map(|s| s.to_string()),
                 system_prompt: system_prompt.map(|s| s.to_string()),
+                parent_harness_id: parent_harness_id
+                    .flatten()
+                    .map(|parent_id| uuid_to_proto(parent_id.uuid())),
+                clear_parent_harness_id: parent_harness_id
+                    .and_then(|value| value.is_none().then_some(true)),
             })
             .await
             .map_err(|e| grpc_error(format!("gRPC platform_update_harness failed: {}", e)))?;
