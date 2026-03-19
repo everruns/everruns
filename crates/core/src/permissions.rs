@@ -479,6 +479,12 @@ impl SkillPermissionPattern {
     }
 
     /// Check if this pattern matches a skill name.
+    ///
+    /// Note: `NameWildcard` and `ExactName` both match by skill name only.
+    /// The distinction exists for specificity-based precedence: `ExactName`
+    /// (specificity 2) overrides `NameWildcard` (specificity 1). When
+    /// argument-level matching is added, `NameWildcard` will match any
+    /// invocation args while `ExactName` will match only no-arg invocations.
     fn matches(&self, skill_name: &str) -> bool {
         match self {
             SkillPermissionPattern::All => true,
@@ -527,20 +533,30 @@ pub fn parse_skill_permission_rule(input: &str) -> Result<SkillPermissionRule, S
         if inner.is_empty() {
             return Err("Skill name cannot be empty in Skill()".to_string());
         }
-        if let Some(name) = inner.strip_suffix('*') {
-            let name = name.trim().trim_end_matches(' ').trim();
-            if name.is_empty() {
-                return Err("Skill name cannot be empty before wildcard in Skill(*)".to_string());
-            }
-            return Ok(SkillPermissionRule {
-                action,
-                pattern: SkillPermissionPattern::NameWildcard(name.to_string()),
-            });
+
+        // Check for wildcard: "name *" (exactly one space then asterisk)
+        let (name, is_wildcard) = if let Some(name) = inner.strip_suffix(" *") {
+            (name, true)
+        } else {
+            (inner, false)
+        };
+
+        // Validate skill name using the canonical validator
+        if let Err(errors) = crate::skill::validate_skill_name(name) {
+            return Err(format!(
+                "Invalid skill name '{}': {}",
+                name,
+                errors.join(", ")
+            ));
         }
-        return Ok(SkillPermissionRule {
-            action,
-            pattern: SkillPermissionPattern::ExactName(inner.to_string()),
-        });
+
+        let pattern = if is_wildcard {
+            SkillPermissionPattern::NameWildcard(name.to_string())
+        } else {
+            SkillPermissionPattern::ExactName(name.to_string())
+        };
+
+        return Ok(SkillPermissionRule { action, pattern });
     }
 
     Err(format!(
@@ -1052,6 +1068,11 @@ mod tests {
         assert!(parse_skill_permission_rule("Skill(commit)").is_err());
         assert!(parse_skill_permission_rule("allow Skill()").is_err());
         assert!(parse_skill_permission_rule("deny Skill( *)").is_err());
+        // Malformed patterns rejected by skill name validation
+        assert!(parse_skill_permission_rule("allow Skill(deploy **)").is_err());
+        assert!(parse_skill_permission_rule("allow Skill(Deploy)").is_err());
+        assert!(parse_skill_permission_rule("allow Skill(foo bar)").is_err());
+        assert!(parse_skill_permission_rule("allow Skill(-deploy)").is_err());
     }
 
     #[test]
