@@ -5015,6 +5015,40 @@
           }
         }
       },
+      "CostTier": {
+        "type": "object",
+        "description": "A pricing tier that activates above a context token threshold.\nFor example, OpenAI charges higher rates for prompts exceeding 200K tokens.",
+        "required": [
+          "above_tokens",
+          "input",
+          "output"
+        ],
+        "properties": {
+          "above_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Context token threshold above which this tier applies"
+          },
+          "cache_read": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Cached read cost per million tokens (USD) for this tier, if supported"
+          },
+          "input": {
+            "type": "number",
+            "format": "double",
+            "description": "Input cost per million tokens (USD) for this tier"
+          },
+          "output": {
+            "type": "number",
+            "format": "double",
+            "description": "Output cost per million tokens (USD) for this tier"
+          }
+        }
+      },
       "CreateAgentRequest": {
         "type": "object",
         "description": "Request to create a new agent",
@@ -7898,6 +7932,13 @@
             "format": "double",
             "description": "Cached read cost per million tokens (USD), if supported"
           },
+          "cost_tiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostTier"
+            },
+            "description": "Tiered pricing that applies above certain context thresholds.\nWhen present, the base cost fields apply up to the tier threshold,\nand each tier's costs apply for tokens beyond that threshold."
+          },
           "input": {
             "type": "number",
             "format": "double",
@@ -7998,6 +8039,13 @@
                 "description": "Cost per million tokens"
               }
             ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short human-readable description of the model's strengths and intended use"
           },
           "family": {
             "type": "string",
@@ -8491,7 +8539,8 @@
           "text",
           "image",
           "audio",
-          "video"
+          "video",
+          "pdf"
         ]
       },
       "ModelMetadata": {
