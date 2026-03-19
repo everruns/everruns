@@ -460,11 +460,16 @@ impl Tool for ActivateSkillFromVfsTool {
         let content = file.content.as_deref().unwrap_or("");
         match crate::skill::parse_skill_md(content) {
             Ok(parsed) => {
-                // Apply argument substitution
+                // Apply argument substitution, then command injection preprocessing
                 let expanded =
                     crate::skill::expand_skill_arguments(&parsed.instructions, skill_args);
-                let instructions =
-                    format!("<skill name=\"{}\">\n{}\n</skill>", parsed.name, expanded);
+                let executor = crate::skill::ProcessCommandExecutor::default();
+                let preprocessed =
+                    crate::skill::preprocess_command_injections(&expanded, &executor).await;
+                let instructions = format!(
+                    "<skill name=\"{}\">\n{}\n</skill>",
+                    parsed.name, preprocessed
+                );
 
                 // List bundled files in the skill directory
                 let skill_dir = format!("{}/{}", SKILLS_PATH, name);
