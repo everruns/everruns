@@ -230,7 +230,7 @@ Use the smallest set that gives high confidence. `/ship` should pick from this m
 10. Capture UI screenshots for UI changes in validation or PR comments only
 11. Ensure test coverage proves the fix or acceptance criteria, including important negative paths
 12. Update relevant specs, docs, test cases, threat model, OpenAPI, and `AGENTS.md`
-13. Merge only with green CI and resolved PR comments
+13. Merge only with green CI and a final clean PR comment sweep, including async reviewer bots
 
 ### CI
 

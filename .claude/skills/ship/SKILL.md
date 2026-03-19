@@ -47,8 +47,12 @@ Use this skill when the user asks to:
 6. The PR is mergeable and merged safely.
    - Push the branch.
    - Create or update the PR with `.github/pull_request_template.md`.
+   - Check the PR conversation, review threads, and review state from all reviewers, including bots.
+   - After each push and again after CI turns green, wait at least 2 minutes for async reviewer bots to finish, then re-check for new comments before merge.
+   - Address actionable review comments with code or doc changes, or reply with the resolution when no code change is needed.
+   - Do not merge while substantive review feedback is still outstanding.
    - Wait for CI to go green.
-   - Merge with squash only after green CI.
+   - Merge with squash only after CI is green and the final review/comment sweep above is clean.
 
 ## Operating Model
 
@@ -56,6 +60,7 @@ Use this skill when the user asks to:
 - Choose the highest-signal path first: targeted diff review, focused tests, relevant builds, then smoke tests if gaps remain.
 - "Fix and ship" means implement first, then switch into shipping mode.
 - Docs or config-only changes can skip code tests when you explain why and run the relevant docs, lint, or build proof.
+- Do not use auto-merge or `gh pr merge --auto`; merge manually only after the final review sweep is clean because async review bots can post after the last push or after CI turns green.
 - If `just fmt` can auto-fix a failing formatting check, use it once and retry.
 - Stop only for blockers you cannot safely resolve alone: merge conflicts, missing credentials, ambiguous product intent, or CI failures you cannot reproduce or fix.
 
@@ -79,5 +84,9 @@ Pick only what matches the changed surface:
 - In the PR body, explain what changed, why it changed, how it was validated, and notable risks or follow-ups.
 - Use `gh pr view --json url` to detect an existing PR.
 - Create a PR with `gh pr create` if needed.
+- Use `gh pr view --comments` to inspect the PR conversation, including bot comments.
+- Use `gh pr view --json reviews,latestReviews` to inspect reviewer state.
+- If review-thread status is unclear, inspect the review threads in the GitHub UI or via `gh api graphql` before merge.
+- After the final push and after CI is green, wait at least 2 minutes for async reviewer bots, then do one last comment sweep before merge.
 - Use `gh pr checks` to watch CI.
-- Merge with `gh pr merge --squash --auto` only after CI is green.
+- Merge with `gh pr merge --squash` only after CI is green and the final review sweep is clean.

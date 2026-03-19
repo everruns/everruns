@@ -37,7 +37,7 @@ Relevant references:
 3. Merge-ready code: touched code is reviewed for avoidable complexity plus security and performance risk, and issues found during that review are addressed or explicitly blocked.
 4. Synced artifacts: only the affected artifacts are updated, including specs, threat model, docs, OpenAPI, test cases, and agent instructions when relevant.
 5. Smoke test impacted functionality: always smoke test the flows affected by the change end-to-end. This is mandatory, not conditional on risk assessment. Docs-only or config-only changes that do not affect runtime behavior may skip smoke testing with explicit justification.
-6. Safe merge: the PR uses the repo template, CI is green, review comments are resolved, and merge happens with squash only.
+6. Safe merge: the PR uses the repo template, CI is green, review comments from all reviewers, including async bot reviewers, are addressed after a final post-green sweep, and merge happens with squash only.
 
 ## Constraints
 
@@ -45,6 +45,7 @@ Relevant references:
 - Validation should start with the smallest high-signal proof and deepen only when risk or weak signals require it.
 - Bug fixes should prefer a failing test before the fix when practical, but the validation strategy may vary when a smaller or stronger proof exists.
 - Docs-only or config-only changes may skip code tests if that choice is justified and the relevant docs or build checks were run.
+- Auto-merge must not bypass the final review pass; shipping should give async reviewer bots time to comment after the last push and after CI turns green, then re-check before merge.
 - If a blocker cannot be resolved safely by the agent alone, shipping must stop and report the blocker rather than guess.
 
 ## Reporting Standard
