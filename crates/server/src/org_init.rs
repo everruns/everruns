@@ -67,14 +67,10 @@ pub async fn initialize_org_harnesses_with_definitions(
             is_built_in: true,
         };
 
-        if is_default_org && harness.seed_id.is_some() {
+        if is_default_org && let Some(seed_id) = harness.seed_id {
             // Default org: use fixed seed UUIDs for backward compat
             match db
-                .create_harness_with_id(
-                    org_id,
-                    harness.seed_id.expect("seed_id checked above").into(),
-                    input,
-                )
+                .create_harness_with_id(org_id, seed_id.into(), input)
                 .await?
             {
                 Some(row) => {
@@ -88,12 +84,8 @@ pub async fn initialize_org_harnesses_with_definitions(
                     }
                 }
                 None => {
-                    let caps_changed = sync_harness_capabilities(
-                        db,
-                        harness.seed_id.expect("seed_id checked above"),
-                        &harness.capabilities,
-                    )
-                    .await?;
+                    let caps_changed =
+                        sync_harness_capabilities(db, seed_id, &harness.capabilities).await?;
                     if caps_changed {
                         tracing::info!(
                             name = harness.name,
