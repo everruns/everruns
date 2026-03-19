@@ -366,6 +366,7 @@ impl LlmModelService {
             // Hardcoded always wins for curated fields
             name: hardcoded.name,
             family: hardcoded.family,
+            description: hardcoded.description.or(discovered.description),
             release_date: hardcoded.release_date.or(discovered.release_date),
             last_updated: hardcoded.last_updated.or(discovered.last_updated),
             attachment: hardcoded.attachment,
@@ -457,6 +458,7 @@ mod tests {
         LlmModelProfile {
             name: "Test".into(),
             family: "test".into(),
+            description: None,
             release_date: None,
             last_updated: None,
             attachment: true,
@@ -484,6 +486,7 @@ mod tests {
                 input: 5.0,
                 output: 25.0,
                 cache_read: None,
+                cost_tiers: vec![],
             }),
             ..base_profile()
         };

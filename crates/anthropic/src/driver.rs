@@ -1287,6 +1287,7 @@ impl AnthropicModelInfo {
         LlmModelProfile {
             name: self.display_name.clone(),
             family: normalize_anthropic_id(&self.id).to_string(),
+            description: None,
             release_date: self
                 .created_at
                 .as_ref()
