@@ -142,6 +142,10 @@ pub struct AuthState {
     /// Downstream consumers can inject a custom resolver to enforce billing-tier rules,
     /// database-backed grants, or external RBAC decisions.
     pub permission_resolver: Arc<dyn PermissionResolver>,
+    /// Storage backend for org lookups in no-auth mode.
+    /// In AuthMethod::None, the anonymous user only carries the default org,
+    /// so ResolvedOrg needs DB access to resolve the org cookie.
+    pub db: Option<Arc<StorageBackend>>,
 }
 
 impl AuthState {
@@ -150,6 +154,7 @@ impl AuthState {
             config,
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
+            db: None,
         }
     }
 
@@ -163,17 +168,28 @@ impl AuthState {
             config,
             backend,
             permission_resolver: resolver,
+            db: None,
         }
     }
 
     /// Convenience: create with built-in backend (OSS default)
     pub fn builtin(config: AuthConfig, db: Arc<StorageBackend>) -> Self {
-        let backend = Arc::new(super::builtin::BuiltinAuthBackend::new(config.clone(), db));
+        let backend = Arc::new(super::builtin::BuiltinAuthBackend::new(
+            config.clone(),
+            db.clone(),
+        ));
         Self {
             config,
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
+            db: Some(db),
         }
+    }
+
+    /// Set the storage backend (for org resolution in no-auth mode).
+    pub fn with_db(mut self, db: Arc<StorageBackend>) -> Self {
+        self.db = Some(db);
+        self
     }
 }
 
@@ -473,24 +489,51 @@ where
         let user = AuthUser::from_request_parts(parts, state).await?;
 
         match user.auth_method {
-            AuthMethod::ApiKey | AuthMethod::None => {
+            AuthMethod::ApiKey => {
                 // API key auth: user has exactly one org (from API key)
-                // None (anonymous): user has exactly one org (default org)
-                // In both cases, just use the single org - no cookie needed
                 let org = user
                     .organizations
                     .first()
                     .ok_or_else(|| AuthError::unauthorized("No organization available"))?;
-                let user_id = if user.auth_method == AuthMethod::None {
-                    None
-                } else {
-                    Some(user.id)
-                };
                 Ok(ResolvedOrg {
                     org_id: org.org_id,
                     public_id: org.public_id.clone(),
                     name: org.name.clone(),
-                    user_id,
+                    user_id: Some(user.id),
+                    role: org.role,
+                })
+            }
+            AuthMethod::None => {
+                // No-auth mode: anonymous user only carries the default org,
+                // but the user may have switched to a different org via cookie.
+                // Read the org cookie and resolve via DB if available.
+                let auth_state = AuthState::from_ref(state);
+                let jar = CookieJar::from_headers(&parts.headers);
+                let cookie_org_id = jar.get(ORG_COOKIE_NAME).map(|c| c.value().to_string());
+
+                if let (Some(org_public_id), Some(db)) = (&cookie_org_id, &auth_state.db)
+                    && validate_org_public_id(org_public_id)
+                    && let Ok(Some(org_row)) = db.get_organization_by_public_id(org_public_id).await
+                {
+                    return Ok(ResolvedOrg {
+                        org_id: org_row.org_id,
+                        public_id: org_row.public_id,
+                        name: org_row.name,
+                        user_id: None,
+                        role: OrgRole::Owner, // Anonymous user is owner of all orgs
+                    });
+                }
+
+                // Fall back to default org
+                let org = user
+                    .organizations
+                    .first()
+                    .ok_or_else(|| AuthError::unauthorized("No organization available"))?;
+                Ok(ResolvedOrg {
+                    org_id: org.org_id,
+                    public_id: org.public_id.clone(),
+                    name: org.name.clone(),
+                    user_id: None,
                     role: org.role,
                 })
             }

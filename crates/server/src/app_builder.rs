@@ -343,7 +343,8 @@ impl ServerAppBuilder {
                 }
             }
         };
-        let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone());
+        let auth_state =
+            auth::AuthState::new(auth_config.clone(), auth_backend.clone()).with_db(db.clone());
         let feature_flags =
             everruns_core::FeatureFlags::from_env(&everruns_core::DeploymentGrade::from_env());
         let notifications_enabled = feature_flags.notifications;
