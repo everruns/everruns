@@ -43,6 +43,13 @@ pub enum DeferrablePolicy {
     Always,
 }
 
+impl DeferrablePolicy {
+    /// Returns true when the value is the default (`Automatic`).
+    pub fn is_default(&self) -> bool {
+        matches!(self, DeferrablePolicy::Automatic)
+    }
+}
+
 /// Tool definition in agent configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -78,7 +85,7 @@ pub struct BuiltinTool {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
     /// Whether this tool's schema can be deferred via tool_search
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "DeferrablePolicy::is_default")]
     pub deferrable: DeferrablePolicy,
 }
 
@@ -100,7 +107,7 @@ pub struct ClientSideTool {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
     /// Whether this tool's schema can be deferred via tool_search
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "DeferrablePolicy::is_default")]
     pub deferrable: DeferrablePolicy,
 }
 
