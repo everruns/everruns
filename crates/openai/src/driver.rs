@@ -300,6 +300,7 @@ async fn list_openai_models(
             display_name: None, // OpenAI doesn't provide display names
             created_at: chrono::Utc.timestamp_opt(m.created, 0).single(),
             owned_by: Some(m.owned_by),
+            discovered_profile: None,
         })
         .collect();
 

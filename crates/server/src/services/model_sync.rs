@@ -206,11 +206,12 @@ impl ModelSyncService {
         for model in discovered {
             seen_model_ids.insert(model.model_id.clone());
 
-            // Build provider metadata
+            // Build provider metadata (includes discovered_profile when available)
             let metadata = serde_json::json!({
                 "display_name": model.display_name,
                 "created_at": model.created_at,
                 "owned_by": model.owned_by,
+                "discovered_profile": model.discovered_profile,
             });
 
             if existing_ids.contains(model.model_id.as_str()) {

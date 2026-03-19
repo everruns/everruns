@@ -741,6 +741,7 @@ impl LlmDriver for GeminiLlmDriver {
                     display_name: Some(m.display_name),
                     created_at: None,
                     owned_by: Some("google".to_string()),
+                    discovered_profile: None,
                 }
             })
             .collect();
