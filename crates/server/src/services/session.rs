@@ -478,6 +478,7 @@ impl SessionService {
         caller: &Caller,
         user_id: Uuid,
         harness_id: Uuid,
+        title: &str,
     ) -> Result<Session> {
         let org_id = caller.org_id;
         let org_public_id = &caller.org_public_id;
@@ -498,7 +499,7 @@ impl SessionService {
             org_id,
             harness_id: Some(harness_id_typed),
             agent_id: None,
-            title: Some("Platform Chat".to_string()),
+            title: Some(title.to_string()),
             locale: None,
             tags: vec!["global-chat".to_string(), user_tag],
             model_id: None,

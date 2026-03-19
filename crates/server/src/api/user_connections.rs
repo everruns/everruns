@@ -18,9 +18,8 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
 use everruns_core::connection_provider::{
-    ConnectionFormSchema as CoreFormSchema, ConnectionProviderPlugin, ConnectionType,
+    ConnectionFormSchema as CoreFormSchema, ConnectionProviderRegistry, ConnectionType,
 };
-use everruns_core::deployment::DeploymentGrade;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -35,6 +34,25 @@ pub struct AppState {
     pub encryption: Option<Arc<EncryptionService>>,
     pub auth: AuthState,
     pub auth_config: AuthConfig,
+    pub connection_providers: ConnectionProviderRegistry,
+}
+
+impl AppState {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
+        auth: AuthState,
+        auth_config: AuthConfig,
+        connection_providers: ConnectionProviderRegistry,
+    ) -> Self {
+        Self {
+            db,
+            encryption,
+            auth,
+            auth_config,
+            connection_providers,
+        }
+    }
 }
 
 impl FromRef<AppState> for AuthState {
@@ -186,7 +204,6 @@ pub async fn list_connection_providers(
     State(state): State<AppState>,
     _auth: AuthUser,
 ) -> Json<Vec<ProviderResponse>> {
-    let grade = DeploymentGrade::from_env();
     let mut providers = Vec::new();
 
     // Hardcoded GitHub OAuth provider (only if configured)
@@ -201,12 +218,8 @@ pub async fn list_connection_providers(
         });
     }
 
-    // Plugin-registered providers (API-key based)
-    for plugin in inventory::iter::<ConnectionProviderPlugin> {
-        if plugin.experimental_only && !grade.experimental_features_enabled() {
-            continue;
-        }
-        let provider = (plugin.factory)();
+    // Platform-registered providers (API-key based)
+    for provider in state.connection_providers.list() {
         let form_schema = provider.form_schema().map(|s| form_schema_to_response(&s));
         let conn_type = match provider.connection_type() {
             ConnectionType::OAuth => "oauth",
@@ -235,22 +248,15 @@ pub async fn create_api_key_connection(
     Path(provider_id): Path<String>,
     Json(body): Json<CreateApiKeyConnectionRequest>,
 ) -> Result<(StatusCode, Json<ConnectionResponse>), (StatusCode, String)> {
-    let grade = DeploymentGrade::from_env();
-
-    // Find the registered ConnectionProvider for this provider_id
-    let provider: Option<Box<dyn everruns_core::connection_provider::ConnectionProvider>> =
-        inventory::iter::<ConnectionProviderPlugin>
-            .into_iter()
-            .filter(|p| !p.experimental_only || grade.experimental_features_enabled())
-            .map(|p| (p.factory)())
-            .find(|p| p.provider_id() == provider_id);
-
-    let provider = provider.ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            format!("Unknown connection provider: {provider_id}"),
-        )
-    })?;
+    let provider = state
+        .connection_providers
+        .get(&provider_id)
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("Unknown connection provider: {provider_id}"),
+            )
+        })?;
 
     // Only API-key providers support direct creation
     if provider.connection_type() != ConnectionType::ApiKey {
@@ -360,8 +366,6 @@ pub async fn verify_connection(
     auth: AuthUser,
     Path(provider_id): Path<String>,
 ) -> Result<Json<VerifyConnectionResponse>, (StatusCode, String)> {
-    let grade = DeploymentGrade::from_env();
-
     // Look up the stored connection
     let row = state
         .db
@@ -411,20 +415,15 @@ pub async fn verify_connection(
         )
     })?;
 
-    // Find the provider plugin
-    let provider: Option<Box<dyn everruns_core::connection_provider::ConnectionProvider>> =
-        inventory::iter::<ConnectionProviderPlugin>
-            .into_iter()
-            .filter(|p| !p.experimental_only || grade.experimental_features_enabled())
-            .map(|p| (p.factory)())
-            .find(|p| p.provider_id() == provider_id);
-
-    let provider = provider.ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            format!("Unknown connection provider: {provider_id}"),
-        )
-    })?;
+    let provider = state
+        .connection_providers
+        .get(&provider_id)
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("Unknown connection provider: {provider_id}"),
+            )
+        })?;
 
     // Call provider's validate()
     match provider.validate(&credential).await {

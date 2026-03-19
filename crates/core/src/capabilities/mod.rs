@@ -599,6 +599,11 @@ impl CapabilityRegistry {
         self.capabilities.get(id)
     }
 
+    /// Remove a capability from the registry.
+    pub fn unregister(&mut self, id: &str) -> Option<Arc<dyn Capability>> {
+        self.capabilities.remove(id)
+    }
+
     /// Check if a capability is registered
     pub fn has(&self, id: &str) -> bool {
         self.capabilities.contains_key(id)

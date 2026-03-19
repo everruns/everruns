@@ -15,6 +15,7 @@ pub mod grpc_durable_store;
 pub mod grpc_worker_adapters;
 pub mod leased_resource_cleanup;
 pub mod mcp_executor;
+pub mod platform;
 pub mod runner;
 pub mod unified_worker;
 pub mod worker_adapters;
@@ -33,6 +34,7 @@ pub use runner::{AgentRunner, RunnerBackend, create_runner, create_runner_with_b
 
 // Re-export LLM driver factory helpers
 pub use adapters::{create_driver_registry, create_llm_driver};
+pub use platform::{default_platform_definition, default_platform_definition_for_grade};
 
 // Re-export gRPC adapters for worker communication with control plane
 pub use grpc_adapters::{

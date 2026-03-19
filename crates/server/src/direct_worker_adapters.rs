@@ -21,7 +21,6 @@ use everruns_core::{
     LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition, ToolRegistry,
     ToolResultContentPart,
 };
-use everruns_worker::create_driver_registry;
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
@@ -62,6 +61,7 @@ pub struct DirectWorkerAdapters {
     llm_resolver: Arc<LlmResolverService>,
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
+    driver_registry: DriverRegistry,
     sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
@@ -76,6 +76,7 @@ impl DirectWorkerAdapters {
         llm_resolver: Arc<LlmResolverService>,
         mcp_server_service: Arc<McpServerService>,
         capability_registry: CapabilityRegistry,
+        driver_registry: DriverRegistry,
         sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
     ) -> Self {
         Self {
@@ -84,6 +85,7 @@ impl DirectWorkerAdapters {
             llm_resolver,
             mcp_server_service,
             capability_registry,
+            driver_registry,
             sqldb_store,
             storage_store: None,
             connection_resolver: None,
@@ -798,7 +800,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
     }
 
     fn driver_registry(&self) -> DriverRegistry {
-        create_driver_registry()
+        self.driver_registry.clone()
     }
 
     fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {
@@ -1901,6 +1903,7 @@ mod tests {
         let llm_resolver = Arc::new(crate::services::LlmResolverService::new(db.clone(), None));
         let mcp_server_service = Arc::new(crate::services::McpServerService::new(db.clone(), None));
         let cap_registry = CapabilityRegistry::new();
+        let driver_registry = everruns_worker::create_driver_registry();
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: everruns_core::traits::SessionSqlDbStoreRef = Arc::new(
             everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
@@ -1912,6 +1915,7 @@ mod tests {
             llm_resolver,
             mcp_server_service,
             cap_registry,
+            driver_registry,
             sqldb_store,
         )
     }
@@ -2219,6 +2223,7 @@ mod tests {
             Some(encryption),
         ));
         let cap_registry = CapabilityRegistry::new();
+        let driver_registry = everruns_worker::create_driver_registry();
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: everruns_core::traits::SessionSqlDbStoreRef = Arc::new(
             everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
@@ -2230,6 +2235,7 @@ mod tests {
             llm_resolver,
             mcp_server_service,
             cap_registry,
+            driver_registry,
             sqldb_store,
         )
     }

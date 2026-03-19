@@ -13,7 +13,8 @@ use axum::{
     routing::get,
 };
 use everruns_core::{
-    DEFAULT_ORG_ID, OrgRole, Organization, generate_org_public_id, validate_org_public_id,
+    BuiltInHarnessDefinition, DEFAULT_ORG_ID, OrgRole, Organization, generate_org_public_id,
+    validate_org_public_id,
 };
 
 use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
@@ -26,11 +27,24 @@ use utoipa::ToSchema;
 pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
+    pub built_in_harnesses: Vec<BuiltInHarnessDefinition>,
 }
 
 impl AppState {
     pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
+        Self::with_built_in_harnesses(db, auth, crate::platform::oss_built_in_harnesses())
+    }
+
+    pub fn with_built_in_harnesses(
+        db: Arc<StorageBackend>,
+        auth: AuthState,
+        built_in_harnesses: Vec<BuiltInHarnessDefinition>,
+    ) -> Self {
+        Self {
+            db,
+            auth,
+            built_in_harnesses,
+        }
     }
 }
 
@@ -214,7 +228,13 @@ pub async fn create_organization(
         .log_internal_error_json("add organization member")?;
 
     // Initialize built-in harnesses for the new organization
-    if let Err(e) = crate::org_init::initialize_org_harnesses(&state.db, row.org_id).await {
+    if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+        &state.db,
+        row.org_id,
+        &state.built_in_harnesses,
+    )
+    .await
+    {
         tracing::warn!(
             org_id = row.org_id,
             error = %e,

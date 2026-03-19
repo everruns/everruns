@@ -15,14 +15,11 @@
 use anyhow::{Context, Result};
 use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
-use everruns_core::capabilities::{
-    CapabilityRegistry, SystemPromptContext, collect_capabilities, is_mcp_capability,
-};
+use everruns_core::capabilities::{SystemPromptContext, collect_capabilities, is_mcp_capability};
 use everruns_core::traits::{AgentStore, HarnessStore};
-use everruns_core::{AgentStatus, HarnessStatus, Message};
+use everruns_core::{AgentStatus, HarnessStatus, Message, PlatformDefinition};
 use std::sync::Arc;
 
-use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcClient, GrpcConnectionResolver, GrpcEventEmitter, GrpcHarnessStore,
     GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore, GrpcMessageRetriever,
@@ -262,6 +259,7 @@ pub async fn reason_activity(
     grpc_client: GrpcClient,
     org_id: i64,
     input: ReasonInput,
+    platform_definition: &PlatformDefinition,
 ) -> Result<ReasonResult> {
     use everruns_core::MessageRetriever;
     use everruns_core::events::{
@@ -305,8 +303,8 @@ pub async fn reason_activity(
     let session_store = GrpcSessionStore::new(grpc_client.clone(), org_id);
     let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
     let provider_store = GrpcLlmProviderStore::new(grpc_client.clone(), org_id);
-    let capability_registry = CapabilityRegistry::with_builtins();
-    let driver_registry = create_driver_registry();
+    let capability_registry = platform_definition.capability_registry().clone();
+    let driver_registry = platform_definition.driver_registry().clone();
     let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
 
     // Create image resolver for multimodal image support
@@ -425,6 +423,7 @@ pub async fn act_activity(
     grpc_client: GrpcClient,
     org_id: i64,
     input: ActInput,
+    platform_definition: &PlatformDefinition,
 ) -> Result<ActResult> {
     tracing::info!(
         org_id = org_id,
@@ -484,7 +483,7 @@ pub async fn act_activity(
     };
 
     if !cap_ids.is_empty() {
-        let capability_registry = CapabilityRegistry::with_builtins();
+        let capability_registry = platform_definition.capability_registry().clone();
         let ctx = SystemPromptContext::without_file_store(input.context.session_id);
         let collected = collect_capabilities(&cap_ids, &capability_registry, &ctx).await;
         for tool in collected.tools {

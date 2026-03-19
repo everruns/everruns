@@ -3,7 +3,6 @@
 // Decision: Uses gRPC adapters for control-plane communication (no direct DB access)
 
 use anyhow::Result;
-use everruns_core::Message;
 use everruns_core::atoms::AtomContext;
 use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData, ToolCallRequestedData,
@@ -11,6 +10,7 @@ use everruns_core::events::{
 use everruns_core::tool_types::ToolCall;
 use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::{ExecId, MessageId, SessionId, TurnId};
+use everruns_core::{Message, PlatformDefinition};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -184,6 +184,7 @@ pub struct DurableWorker {
     config: DurableWorkerConfig,
     store: Arc<Mutex<GrpcDurableStore>>,
     grpc_address: String,
+    platform_definition: Arc<PlatformDefinition>,
     shutdown_tx: watch::Sender<bool>,
     shutdown_rx: watch::Receiver<bool>,
     /// Count of tasks currently being executed
@@ -193,6 +194,14 @@ pub struct DurableWorker {
 impl DurableWorker {
     /// Create a new durable worker
     pub async fn new(config: DurableWorkerConfig) -> Result<Self> {
+        Self::with_platform_definition(config, crate::platform::default_platform_definition()).await
+    }
+
+    /// Create a new durable worker with an explicit platform definition.
+    pub async fn with_platform_definition(
+        config: DurableWorkerConfig,
+        platform_definition: PlatformDefinition,
+    ) -> Result<Self> {
         info!(
             worker_id = %config.worker_id,
             grpc_address = %config.grpc_address,
@@ -213,6 +222,7 @@ impl DurableWorker {
             config,
             store: Arc::new(Mutex::new(store)),
             grpc_address,
+            platform_definition: Arc::new(platform_definition),
             shutdown_tx,
             shutdown_rx,
             in_flight: Arc::new(AtomicUsize::new(0)),
@@ -774,8 +784,9 @@ impl DurableWorker {
                 let cleanup_input: crate::leased_resource_cleanup::LeasedResourceCleanupInput =
                     serde_json::from_value(task.input.clone())
                         .map_err(|e| anyhow::anyhow!("Failed to parse cleanup input: {}", e))?;
-                let adapters = crate::grpc_worker_adapters::GrpcWorkerAdapters::from_client(
+                let adapters = crate::grpc_worker_adapters::GrpcWorkerAdapters::from_client_with_platform_definition(
                     grpc_client.clone(),
+                    self.platform_definition.as_ref().clone(),
                 );
                 let res = crate::leased_resource_cleanup::execute_cleanup_activity(
                     &adapters,
@@ -1111,7 +1122,13 @@ impl DurableWorker {
         };
 
         // Use the existing reason_activity function with gRPC adapters
-        let result = reason_activity(grpc_client, input.org_id, reason_input).await;
+        let result = reason_activity(
+            grpc_client,
+            input.org_id,
+            reason_input,
+            self.platform_definition.as_ref(),
+        )
+        .await;
 
         // Record circuit breaker outcome
         // LLM failures are wrapped as Ok(ReasonResult { success: false }) by the atom,
@@ -1182,7 +1199,13 @@ impl DurableWorker {
         );
 
         // Use the existing act_activity function with gRPC adapters
-        let result = act_activity(grpc_client, org_id, act_input).await?;
+        let result = act_activity(
+            grpc_client,
+            org_id,
+            act_input,
+            self.platform_definition.as_ref(),
+        )
+        .await?;
 
         Ok(serde_json::to_value(&result)?)
     }
