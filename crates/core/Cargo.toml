@@ -47,6 +47,9 @@ tracing-opentelemetry.workspace = true
 # Encoding
 base64.workspace = true
 
+# Regex for argument substitution
+regex.workspace = true
+
 # URL parsing
 url = "2"
 

@@ -136,6 +136,8 @@ pub struct ParsedSkillMd {
     pub user_invocable: bool,
     /// Whether the model is prevented from auto-invoking this skill (default: false)
     pub disable_model_invocation: bool,
+    /// Hint string for autocomplete (e.g., "<issue-number>")
+    pub argument_hint: Option<String>,
 }
 
 /// YAML frontmatter structure
@@ -155,6 +157,9 @@ struct SkillFrontmatter {
     /// Whether the model is prevented from auto-invoking this skill (default: false)
     #[serde(rename = "disable-model-invocation", default)]
     disable_model_invocation: bool,
+    /// Hint string shown in autocomplete for expected arguments
+    #[serde(rename = "argument-hint")]
+    argument_hint: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -245,6 +250,12 @@ pub fn parse_skill_md(content: &str) -> Result<ParsedSkillMd, Vec<String>> {
         errors.push("compatibility: exceeds 500 character limit".to_string());
     }
 
+    if let Some(ref hint) = fm.argument_hint
+        && hint.len() > 128
+    {
+        errors.push("argument-hint: exceeds 128 character limit".to_string());
+    }
+
     if body.len() > 100 * 1024 {
         errors.push("instructions: exceeds 100 KB limit".to_string());
     }
@@ -271,6 +282,7 @@ pub fn parse_skill_md(content: &str) -> Result<ParsedSkillMd, Vec<String>> {
         instructions: body,
         user_invocable: fm.user_invocable,
         disable_model_invocation: fm.disable_model_invocation,
+        argument_hint: fm.argument_hint,
     })
 }
 
@@ -367,6 +379,113 @@ fn extract_frontmatter(content: &str) -> Result<(String, String), Vec<String>> {
     };
 
     Ok((frontmatter.to_string(), body))
+}
+
+// ============================================================================
+// Skill Argument Substitution
+// ============================================================================
+
+/// Split arguments respecting quoted strings.
+///
+/// Splits on whitespace, treating `"hello world"` or `'hello world'` as single tokens.
+/// Quotes are stripped from the result.
+fn split_skill_args(raw: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quote: Option<char> = None;
+    for c in raw.chars() {
+        match (c, in_quote) {
+            ('"' | '\'', None) => in_quote = Some(c),
+            (q, Some(open)) if q == open => in_quote = None,
+            (c, Some(_)) => current.push(c),
+            (c, None) if c.is_whitespace() => {
+                if !current.is_empty() {
+                    args.push(std::mem::take(&mut current));
+                }
+            }
+            (c, None) => current.push(c),
+        }
+    }
+    if !current.is_empty() {
+        args.push(current);
+    }
+    args
+}
+
+/// Expand positional argument placeholders in skill content.
+///
+/// Substitution variables (processed in this order):
+/// 1. `$ARGUMENTS[N]` → Nth positional argument (0-based)
+/// 2. `$ARGUMENTS` → full argument string
+/// 3. `$N` (single digit 0-9) → shorthand for `$ARGUMENTS[N]`
+///
+/// If no placeholders are found and arguments are non-empty, appends `ARGUMENTS: <value>`.
+/// Out-of-bounds indices resolve to empty string.
+pub fn expand_skill_arguments(content: &str, raw_args: &str) -> String {
+    if raw_args.is_empty() {
+        return content.to_string();
+    }
+
+    let args = split_skill_args(raw_args);
+    let mut result = content.to_string();
+    let mut had_placeholder = false;
+
+    // 1. Replace $ARGUMENTS[N] (must be before $ARGUMENTS to avoid partial match)
+    let indexed_re = regex::Regex::new(r"\$ARGUMENTS\[([0-9]+)\]").unwrap();
+    if indexed_re.is_match(&result) {
+        had_placeholder = true;
+        result = indexed_re
+            .replace_all(&result, |caps: &regex::Captures| {
+                let idx: usize = caps[1].parse().unwrap_or(usize::MAX);
+                args.get(idx).cloned().unwrap_or_default()
+            })
+            .to_string();
+    }
+
+    // 2. Replace $ARGUMENTS (full string)
+    if result.contains("$ARGUMENTS") {
+        had_placeholder = true;
+        result = result.replace("$ARGUMENTS", raw_args);
+    }
+
+    // 3. Replace $N shorthand (single digit, not followed by word chars)
+    let chars: Vec<char> = result.chars().collect();
+    let mut new_result = String::with_capacity(result.len());
+    let mut found_shorthand = false;
+    let mut i = 0;
+
+    while i < chars.len() {
+        if chars[i] == '$' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit() {
+            let digit = chars[i + 1];
+            let next_is_word = i + 2 < chars.len()
+                && (chars[i + 2].is_ascii_alphanumeric() || chars[i + 2] == '_');
+
+            if !next_is_word {
+                found_shorthand = true;
+                let idx = (digit as u8 - b'0') as usize;
+                new_result.push_str(args.get(idx).map(|s| s.as_str()).unwrap_or(""));
+            } else {
+                new_result.push('$');
+                new_result.push(digit);
+            }
+            i += 2;
+        } else {
+            new_result.push(chars[i]);
+            i += 1;
+        }
+    }
+
+    if found_shorthand {
+        had_placeholder = true;
+        result = new_result;
+    }
+
+    // Fallback: append if no placeholders found
+    if !had_placeholder {
+        result.push_str(&format!("\n\nARGUMENTS: {}", raw_args));
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -602,5 +721,126 @@ Instructions.
         assert_eq!(SkillSourceType::from("archive"), SkillSourceType::Archive);
         assert_eq!(SkillSourceType::from("markdown"), SkillSourceType::Markdown);
         assert_eq!(SkillSourceType::from("other"), SkillSourceType::Markdown);
+    }
+
+    #[test]
+    fn test_parse_argument_hint() {
+        let content = r#"---
+name: fix-issue
+description: Fix a GitHub issue.
+argument-hint: "<issue-number>"
+---
+
+Fix issue $ARGUMENTS.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert_eq!(parsed.argument_hint.as_deref(), Some("<issue-number>"));
+    }
+
+    #[test]
+    fn test_parse_argument_hint_default_none() {
+        let content = r#"---
+name: my-skill
+description: A skill.
+---
+
+Body.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert!(parsed.argument_hint.is_none());
+    }
+
+    // ========================================================================
+    // expand_skill_arguments tests
+    // ========================================================================
+
+    #[test]
+    fn test_expand_full_arguments() {
+        let content = "Process $ARGUMENTS now.";
+        let result = expand_skill_arguments(content, "SearchBar React");
+        assert_eq!(result, "Process SearchBar React now.");
+    }
+
+    #[test]
+    fn test_expand_indexed_arguments() {
+        let content = "Migrate $ARGUMENTS[0] from $ARGUMENTS[1] to $ARGUMENTS[2].";
+        let result = expand_skill_arguments(content, "SearchBar React Vue");
+        assert_eq!(result, "Migrate SearchBar from React to Vue.");
+    }
+
+    #[test]
+    fn test_expand_shorthand_arguments() {
+        let content = "Component: $0, from: $1, to: $2.";
+        let result = expand_skill_arguments(content, "SearchBar React Vue");
+        assert_eq!(result, "Component: SearchBar, from: React, to: Vue.");
+    }
+
+    #[test]
+    fn test_expand_quoted_arguments() {
+        let content = "File: $0, message: $1.";
+        let result = expand_skill_arguments(content, "app.js \"hello world\"");
+        assert_eq!(result, "File: app.js, message: hello world.");
+    }
+
+    #[test]
+    fn test_expand_out_of_bounds() {
+        let content = "A: $0, B: $1, C: $5.";
+        let result = expand_skill_arguments(content, "only-one");
+        assert_eq!(result, "A: only-one, B: , C: .");
+    }
+
+    #[test]
+    fn test_expand_no_placeholders_appends() {
+        let content = "Do the thing.";
+        let result = expand_skill_arguments(content, "some args");
+        assert_eq!(result, "Do the thing.\n\nARGUMENTS: some args");
+    }
+
+    #[test]
+    fn test_expand_empty_args() {
+        let content = "Content with $ARGUMENTS placeholder.";
+        let result = expand_skill_arguments(content, "");
+        assert_eq!(result, "Content with $ARGUMENTS placeholder.");
+    }
+
+    #[test]
+    fn test_expand_shorthand_no_word_collision() {
+        // $NAME should NOT be replaced (not $0-$9 pattern)
+        let content = "Variable $NAME and $0.";
+        let result = expand_skill_arguments(content, "first");
+        assert_eq!(result, "Variable $NAME and first.");
+    }
+
+    #[test]
+    fn test_expand_dollar_followed_by_multi_digit() {
+        // $10 should NOT match $1 + "0" — only single-digit shorthand
+        let content = "Value: $10 and $1.";
+        let result = expand_skill_arguments(content, "a b");
+        // $10 is not a valid shorthand (digit followed by digit), $1 = "b"
+        assert_eq!(result, "Value: $10 and b.");
+    }
+
+    #[test]
+    fn test_split_skill_args_basic() {
+        let args = split_skill_args("a b c");
+        assert_eq!(args, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn test_split_skill_args_quoted() {
+        let args = split_skill_args("\"hello world\" foo 'bar baz'");
+        assert_eq!(args, vec!["hello world", "foo", "bar baz"]);
+    }
+
+    #[test]
+    fn test_split_skill_args_empty() {
+        let args = split_skill_args("");
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn test_split_skill_args_extra_whitespace() {
+        let args = split_skill_args("  a   b  ");
+        assert_eq!(args, vec!["a", "b"]);
     }
 }
