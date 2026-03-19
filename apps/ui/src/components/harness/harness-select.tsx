@@ -41,7 +41,11 @@ export function HarnessSelect({
     return new Map<string, Harness>(harnesses.map((h) => [h.id, h]));
   }, [harnesses]);
 
-  const displayValue = value ? harnessMap.get(value)?.name : undefined;
+  // Resolve ID → name. When harnesses haven't loaded yet (org switch race),
+  // show "Loading…" instead of the raw ID (EVE-142).
+  const displayValue = value
+    ? (harnessMap.get(value)?.name ?? (harnesses.length === 0 ? "Loading…" : value))
+    : undefined;
 
   return (
     <Select value={value} onValueChange={onValueChange} disabled={disabled}>
