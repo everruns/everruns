@@ -43,6 +43,7 @@ Use this skill when the task is about repo maintenance rather than a single feat
 
 - Start from goals and risk surface, not checklist order.
 - Prefer the highest-signal path first: recent diffs, flaky areas, failing checks, stale specs, outdated dependencies, or known security/performance hotspots.
+- Check Linear issues in the OSS project (EVE team) already in `In Progress` when maintenance covers release readiness or workflow hygiene. Treat issues whose `updatedAt` is older than 2 days as stale by default, then triage or report them.
 - Skip untouched areas when there is a clear reason. Say why they were skipped.
 - Prefer fixing over reporting.
 - For bugs uncovered during maintenance, prefer a failing test before the fix when practical.
@@ -108,6 +109,15 @@ Good evidence:
 - hacks, shortcuts, and open vulnerabilities surfaced with code references
 - large files (>2K lines non-test) catalogued with the structural reason they grew
 
+### Issue Tracking Hygiene
+
+Goal: Linear reflects reality closely enough that active work is visible, stalled work is noticed, and release planning is not distorted by stale execution state.
+
+Good evidence:
+- OSS project issues already in `In Progress` were reviewed for stale ownership or stalled execution
+- issues whose `updatedAt` was older than 2 days were triaged, commented, re-scoped, or moved out of `In Progress`
+- maintenance findings that should not be fixed immediately were captured as actionable Linear issues or comments instead of left implicit
+
 ### Repo Workflow Hygiene
 
 Goal: agent instructions, commands, skills, examples, and release helpers still match reality.
@@ -130,6 +140,7 @@ Pick only what matches the task:
 - `./scripts/export-openapi.sh`
 - `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh api repos/everruns/everruns/dependabot/alerts --jq "[.[] | select(.state==\"open\")] | length"'` — open Dependabot alert count
 - `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh api repos/everruns/everruns/secret-scanning/alerts --jq "[.[] | select(.state==\"open\")] | length"'` — open secret scanning alert count
+- Linear MCP: list OSS project issues in `In Progress`, compare each issue's `updatedAt` to current time, and flag items older than 2 days for triage
 
 ## Deliverable
 
@@ -138,6 +149,7 @@ Report:
 - what scope was covered
 - what was fixed or found
 - what evidence was gathered
+- which stale `In Progress` Linear issues were triaged, if that check was in scope
 - what was intentionally skipped and why
 
 If the user asks to ship after maintenance, hand off to [`/ship`](../ship/SKILL.md).
