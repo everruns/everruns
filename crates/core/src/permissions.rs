@@ -442,6 +442,168 @@ pub struct ResourceConfigResponse {
 pub type PolicyConfigResponse = ResourceConfigResponse;
 
 // ============================================================================
+// Skill-scoped permission rules
+// ============================================================================
+//
+// Decision: Skill permissions use a separate ACL system from org permissions.
+// Rules are parsed from strings like "allow Skill(commit)" or "deny Skill".
+// Specificity-based precedence: exact > wildcard > all; deny wins at same level.
+// See specs/permissions.md and EVE-140 for design.
+
+/// Action for a skill permission rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillPermissionAction {
+    Allow,
+    Deny,
+}
+
+/// Pattern for matching skill invocations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SkillPermissionPattern {
+    /// Matches any skill invocation (`Skill`)
+    All,
+    /// Exact skill name match (`Skill(name)`)
+    ExactName(String),
+    /// Skill name with any args (`Skill(name *)`)
+    NameWildcard(String),
+}
+
+impl SkillPermissionPattern {
+    /// Specificity for precedence ordering. Higher = more specific.
+    fn specificity(&self) -> u8 {
+        match self {
+            SkillPermissionPattern::All => 0,
+            SkillPermissionPattern::NameWildcard(_) => 1,
+            SkillPermissionPattern::ExactName(_) => 2,
+        }
+    }
+
+    /// Check if this pattern matches a skill name.
+    ///
+    /// Note: `NameWildcard` and `ExactName` both match by skill name only.
+    /// The distinction exists for specificity-based precedence: `ExactName`
+    /// (specificity 2) overrides `NameWildcard` (specificity 1). When
+    /// argument-level matching is added, `NameWildcard` will match any
+    /// invocation args while `ExactName` will match only no-arg invocations.
+    fn matches(&self, skill_name: &str) -> bool {
+        match self {
+            SkillPermissionPattern::All => true,
+            SkillPermissionPattern::ExactName(name) => name == skill_name,
+            SkillPermissionPattern::NameWildcard(name) => name == skill_name,
+        }
+    }
+}
+
+/// A single skill permission rule.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillPermissionRule {
+    pub action: SkillPermissionAction,
+    pub pattern: SkillPermissionPattern,
+}
+
+/// Parse a skill permission rule from a string.
+///
+/// Supported formats:
+/// - `allow Skill` / `deny Skill` — match all skills
+/// - `allow Skill(name)` / `deny Skill(name)` — exact name
+/// - `allow Skill(name *)` / `deny Skill(name *)` — name with any args
+pub fn parse_skill_permission_rule(input: &str) -> Result<SkillPermissionRule, String> {
+    let input = input.trim();
+    let (action, rest) = if let Some(rest) = input.strip_prefix("allow ") {
+        (SkillPermissionAction::Allow, rest.trim())
+    } else if let Some(rest) = input.strip_prefix("deny ") {
+        (SkillPermissionAction::Deny, rest.trim())
+    } else {
+        return Err(format!("Rule must start with 'allow' or 'deny': {input}"));
+    };
+
+    // Parse pattern
+    if rest == "Skill" {
+        return Ok(SkillPermissionRule {
+            action,
+            pattern: SkillPermissionPattern::All,
+        });
+    }
+
+    if let Some(inner) = rest
+        .strip_prefix("Skill(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        let inner = inner.trim();
+        if inner.is_empty() {
+            return Err("Skill name cannot be empty in Skill()".to_string());
+        }
+
+        // Check for wildcard: "name *" (exactly one space then asterisk)
+        let (name, is_wildcard) = if let Some(name) = inner.strip_suffix(" *") {
+            (name, true)
+        } else {
+            (inner, false)
+        };
+
+        // Validate skill name using the canonical validator
+        if let Err(errors) = crate::skill::validate_skill_name(name) {
+            return Err(format!(
+                "Invalid skill name '{}': {}",
+                name,
+                errors.join(", ")
+            ));
+        }
+
+        let pattern = if is_wildcard {
+            SkillPermissionPattern::NameWildcard(name.to_string())
+        } else {
+            SkillPermissionPattern::ExactName(name.to_string())
+        };
+
+        return Ok(SkillPermissionRule { action, pattern });
+    }
+
+    Err(format!(
+        "Invalid skill permission pattern: {rest}. Expected 'Skill', 'Skill(name)', or 'Skill(name *)'"
+    ))
+}
+
+/// Check whether a skill is allowed by the given rules.
+///
+/// Returns `true` if allowed, `false` if denied.
+/// If no rules match, defaults to allowed.
+///
+/// Precedence: higher specificity wins. At same specificity, deny wins.
+pub fn check_skill_permission(rules: &[SkillPermissionRule], skill_name: &str) -> bool {
+    let mut best_specificity: Option<u8> = None;
+    let mut best_allowed = true; // default: allow
+
+    for rule in rules {
+        if !rule.pattern.matches(skill_name) {
+            continue;
+        }
+        let spec = rule.pattern.specificity();
+        let is_allow = rule.action == SkillPermissionAction::Allow;
+
+        match best_specificity {
+            None => {
+                best_specificity = Some(spec);
+                best_allowed = is_allow;
+            }
+            Some(best) if spec > best => {
+                best_specificity = Some(spec);
+                best_allowed = is_allow;
+            }
+            Some(best) if spec == best => {
+                // Same specificity: deny wins
+                if !is_allow {
+                    best_allowed = false;
+                }
+            }
+            _ => {} // lower specificity, ignore
+        }
+    }
+
+    best_allowed
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -862,5 +1024,106 @@ mod tests {
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["policies"]["harness.manage"], true);
         assert_eq!(json["policies"]["harness.dangerous"], false);
+    }
+
+    // -- Skill permission rules --
+
+    #[test]
+    fn parse_skill_permission_allow_all() {
+        let rule = parse_skill_permission_rule("allow Skill").unwrap();
+        assert_eq!(rule.action, SkillPermissionAction::Allow);
+        assert_eq!(rule.pattern, SkillPermissionPattern::All);
+    }
+
+    #[test]
+    fn parse_skill_permission_deny_all() {
+        let rule = parse_skill_permission_rule("deny Skill").unwrap();
+        assert_eq!(rule.action, SkillPermissionAction::Deny);
+        assert_eq!(rule.pattern, SkillPermissionPattern::All);
+    }
+
+    #[test]
+    fn parse_skill_permission_exact_name() {
+        let rule = parse_skill_permission_rule("allow Skill(commit)").unwrap();
+        assert_eq!(rule.action, SkillPermissionAction::Allow);
+        assert_eq!(
+            rule.pattern,
+            SkillPermissionPattern::ExactName("commit".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_skill_permission_name_wildcard() {
+        let rule = parse_skill_permission_rule("deny Skill(deploy *)").unwrap();
+        assert_eq!(rule.action, SkillPermissionAction::Deny);
+        assert_eq!(
+            rule.pattern,
+            SkillPermissionPattern::NameWildcard("deploy".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_skill_permission_invalid() {
+        assert!(parse_skill_permission_rule("allow Something").is_err());
+        assert!(parse_skill_permission_rule("Skill(commit)").is_err());
+        assert!(parse_skill_permission_rule("allow Skill()").is_err());
+        assert!(parse_skill_permission_rule("deny Skill( *)").is_err());
+        // Malformed patterns rejected by skill name validation
+        assert!(parse_skill_permission_rule("allow Skill(deploy **)").is_err());
+        assert!(parse_skill_permission_rule("allow Skill(Deploy)").is_err());
+        assert!(parse_skill_permission_rule("allow Skill(foo bar)").is_err());
+        assert!(parse_skill_permission_rule("allow Skill(-deploy)").is_err());
+    }
+
+    #[test]
+    fn skill_permission_deny_all_blocks_everything() {
+        let rules = vec![parse_skill_permission_rule("deny Skill").unwrap()];
+        assert!(!check_skill_permission(&rules, "commit"));
+        assert!(!check_skill_permission(&rules, "deploy"));
+        assert!(!check_skill_permission(&rules, "anything"));
+    }
+
+    #[test]
+    fn skill_permission_no_rules_allows() {
+        assert!(check_skill_permission(&[], "commit"));
+    }
+
+    #[test]
+    fn skill_permission_exact_overrides_deny_all() {
+        let rules = vec![
+            parse_skill_permission_rule("deny Skill").unwrap(),
+            parse_skill_permission_rule("allow Skill(commit)").unwrap(),
+        ];
+        assert!(check_skill_permission(&rules, "commit"));
+        assert!(!check_skill_permission(&rules, "deploy"));
+    }
+
+    #[test]
+    fn skill_permission_deny_specific_with_allow_all() {
+        let rules = vec![
+            parse_skill_permission_rule("allow Skill").unwrap(),
+            parse_skill_permission_rule("deny Skill(deploy)").unwrap(),
+        ];
+        assert!(check_skill_permission(&rules, "commit"));
+        assert!(!check_skill_permission(&rules, "deploy"));
+    }
+
+    #[test]
+    fn skill_permission_wildcard_overrides_all() {
+        let rules = vec![
+            parse_skill_permission_rule("deny Skill").unwrap(),
+            parse_skill_permission_rule("allow Skill(review-pr *)").unwrap(),
+        ];
+        assert!(check_skill_permission(&rules, "review-pr"));
+        assert!(!check_skill_permission(&rules, "deploy"));
+    }
+
+    #[test]
+    fn skill_permission_deny_wins_at_same_specificity() {
+        let rules = vec![
+            parse_skill_permission_rule("allow Skill(deploy)").unwrap(),
+            parse_skill_permission_rule("deny Skill(deploy)").unwrap(),
+        ];
+        assert!(!check_skill_permission(&rules, "deploy"));
     }
 }
