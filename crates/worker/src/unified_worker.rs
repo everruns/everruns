@@ -540,6 +540,13 @@ where
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
+            // Extract iteration count from act task input (carried through from reason)
+            let iteration = task
+                .input
+                .get("iteration")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1) as u32;
+
             // Create DurableTurnInput from ActInput context
             let turn_input = DurableTurnInput {
                 org_id: act_input
@@ -551,6 +558,7 @@ where
                 input_message_id: act_input.context.input_message_id,
                 turn_id: Some(act_input.context.turn_id),
                 previous_response_id,
+                iteration,
             };
 
             let res = execute_act_activity(adapters, &act_input).await;
@@ -842,7 +850,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         org_id: input.org_id,
         mcp_tool_definitions: turn_context.mcp_tool_definitions,
         previous_response_id: input.previous_response_id.clone(),
-        iteration: 1,
+        iteration: input.iteration,
     };
 
     let result = atom.execute(reason_input).await?;
@@ -926,7 +934,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
                 EventContext::turn(turn_id, input_message_id),
                 TurnCompletedData {
                     turn_id,
-                    iterations: 1,
+                    iterations: input.iteration,
                     duration_ms: None,
                     usage: result.usage.clone(),
                     input_content: None, // Passed through from turn.started by Braintrust
@@ -943,7 +951,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
             EventContext::turn(turn_id, input_message_id),
             SessionIdledData {
                 turn_id,
-                iterations: None,
+                iterations: Some(input.iteration),
                 usage: result.usage.clone(),
             },
         );
@@ -1057,6 +1065,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                 input_message_id: input.input_message_id,
                 turn_id,
                 previous_response_id: None,
+                iteration: 1,
             };
             let input_json = serde_json::to_value(&input_with_turn)?;
 
@@ -1127,10 +1136,11 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                         tool_definitions: reason_result.tool_definitions.clone(),
                     };
                     let mut act_input_json = serde_json::to_value(&act_input)?;
-                    // Carry response_id through act task for next reason iteration
+                    // Carry response_id and iteration through act task for next reason iteration
                     if let Some(rid) = &response_id {
                         act_input_json["previous_response_id"] = serde_json::json!(rid);
                     }
+                    act_input_json["iteration"] = serde_json::json!(input.iteration);
                     let activity_id = format!("act_{}", Uuid::now_v7());
 
                     let task = TaskDefinition {
@@ -1227,7 +1237,10 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                 );
             } else {
                 // Normal flow: schedule another reason activity
-                let input_json = serde_json::to_value(input)?;
+                // Increment iteration count for the next reason step
+                let mut next_input = input.clone();
+                next_input.iteration = next_input.iteration.saturating_add(1);
+                let input_json = serde_json::to_value(&next_input)?;
                 let activity_id = format!("reason_{}", Uuid::now_v7());
                 let task = TaskDefinition {
                     workflow_id: Some(workflow_id),

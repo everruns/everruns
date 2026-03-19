@@ -43,6 +43,14 @@ pub struct DurableTurnInput {
     /// Previous LLM response ID for stateful continuation across reason iterations.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub previous_response_id: Option<String>,
+    /// Current iteration number within this turn (1-based).
+    /// Incremented each time a new reason activity is scheduled after act.
+    #[serde(default = "default_iteration")]
+    pub iteration: u32,
+}
+
+fn default_iteration() -> u32 {
+    1
 }
 
 /// Output from the turn workflow
@@ -495,6 +503,7 @@ impl AgentRunner for DurableRunner {
             input_message_id,
             turn_id: None,
             previous_response_id: None,
+            iteration: 1,
         };
 
         // Create workflow instance
@@ -680,6 +689,7 @@ mod tests {
             input_message_id: MessageId::new(),
             turn_id: None,
             previous_response_id: None,
+            iteration: 1,
         };
 
         let json = serde_json::to_string(&input).unwrap();

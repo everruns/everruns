@@ -743,6 +743,12 @@ impl DurableWorker {
                     .get("previous_response_id")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
+                // Extract iteration count from act task input (carried through from reason)
+                let iteration = task
+                    .input
+                    .get("iteration")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(1) as u32;
                 let turn_input = DurableTurnInput {
                     org_id: act_task_input.org_id,
                     session_id: act_task_input.act_input.context.session_id,
@@ -751,6 +757,7 @@ impl DurableWorker {
                     input_message_id: act_task_input.act_input.context.input_message_id,
                     turn_id: Some(act_task_input.act_input.context.turn_id),
                     previous_response_id,
+                    iteration,
                 };
                 let res = self
                     .execute_act_activity(
@@ -1098,7 +1105,7 @@ impl DurableWorker {
             org_id: input.org_id,
             mcp_tool_definitions: turn_context.mcp_tool_definitions,
             previous_response_id: input.previous_response_id.clone(),
-            iteration: 1,
+            iteration: input.iteration,
         };
 
         // Use the existing reason_activity function with gRPC adapters
@@ -1233,6 +1240,7 @@ impl DurableWorker {
                     input_message_id: input.input_message_id,
                     turn_id,
                     previous_response_id: None,
+                    iteration: 1,
                 };
                 let input_json = serde_json::to_value(&input_with_turn)?;
 
@@ -1281,10 +1289,11 @@ impl DurableWorker {
                         },
                     };
                     let mut act_input_json = serde_json::to_value(&act_task_input)?;
-                    // Carry response_id through act task for next reason iteration
+                    // Carry response_id and iteration through act task for next reason iteration
                     if let Some(rid) = &chained_input.previous_response_id {
                         act_input_json["previous_response_id"] = serde_json::json!(rid);
                     }
+                    act_input_json["iteration"] = serde_json::json!(input.iteration);
 
                     store
                         .enqueue_task(
@@ -1351,6 +1360,8 @@ impl DurableWorker {
 
                 // After action, schedule another reason activity (continue the loop)
                 // Use chained_input which carries previous_response_id from last reason
+                // Increment iteration count for the next reason step
+                chained_input.iteration = chained_input.iteration.saturating_add(1);
                 let chained_json = serde_json::to_value(&chained_input)?;
                 store
                     .enqueue_task(

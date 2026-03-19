@@ -280,6 +280,7 @@ pub async fn reason_activity(
     let session_id = input.context.session_id;
     let turn_id = input.context.turn_id;
     let input_message_id = input.context.input_message_id;
+    let iteration = input.iteration;
 
     if let Some(blocker) =
         detect_dependency_blocker(&grpc_client, org_id, input.harness_id, input.agent_id).await?
@@ -378,7 +379,7 @@ pub async fn reason_activity(
                 EventContext::turn(turn_id, input_message_id),
                 TurnCompletedData {
                     turn_id,
-                    iterations: 1, // TODO: Track actual iterations when workflow supports it
+                    iterations: iteration,
                     duration_ms: None,
                     usage: result.usage.clone(),
                     input_content,
@@ -397,7 +398,7 @@ pub async fn reason_activity(
             EventContext::turn(turn_id, input_message_id),
             SessionIdledData {
                 turn_id,
-                iterations: None, // We don't track iterations in the activity
+                iterations: Some(iteration),
                 usage: result.usage.clone(),
             },
         );
