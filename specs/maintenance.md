@@ -47,7 +47,7 @@ Before a release, maintenance should cover:
 - areas changed since the last release
 - historically fragile or high-risk surfaces
 - release artifacts affected by those changes
-- Linear issues already marked `In Progress` but left stale long enough to signal execution drift; use 2 days without meaningful progress as the default review threshold unless the task sets a stricter bar
+- Linear issues already marked `In Progress` whose `updatedAt` is older than 2 days, signaling execution drift; use that `updatedAt` threshold as the default review threshold unless the task sets a stricter bar
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
 
 A full-repo sweep is not mandatory if the evidence is already strong. The bar is confidence, not checklist completion theater.
