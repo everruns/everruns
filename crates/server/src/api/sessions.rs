@@ -3,10 +3,10 @@
 // Policy enforcement happens at the service layer via #[policy] macro.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::org_init::BASE_HARNESS_ID;
 use crate::services::session::{SESSION_MANAGE, SESSION_VIEW};
 use crate::services::{EventService, SessionService};
 use crate::storage::StorageBackend;
+use anyhow::Context;
 use axum::extract::FromRef;
 use axum::{
     Json, Router,
@@ -17,7 +17,10 @@ use axum::{
 use everruns_core::capability_types::AgentCapabilityConfig;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId, TurnId};
-use everruns_core::{Caller, Message, ResourceConfigResponse, Session, evaluate_policies_with};
+use everruns_core::{
+    BuiltInHarnessRole, Caller, Message, PlatformDefinition, ResourceConfigResponse, Session,
+    evaluate_policies_with,
+};
 use everruns_worker::AgentRunner;
 
 use super::common::{
@@ -134,16 +137,45 @@ pub struct AppState {
     pub event_service: EventService,
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
+    pub fallback_base_harness_name: Option<String>,
+    pub chat_harness_name: Option<String>,
+    pub chat_session_title: Option<String>,
 }
 
 impl AppState {
     pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>, auth: AuthState) -> Self {
+        Self::with_platform_definition(
+            db,
+            runner,
+            auth,
+            &crate::platform::oss_platform_definition(),
+        )
+    }
+
+    pub fn with_platform_definition(
+        db: Arc<StorageBackend>,
+        runner: Arc<dyn AgentRunner>,
+        auth: AuthState,
+        platform_definition: &PlatformDefinition,
+    ) -> Self {
         Self {
-            session_service: Arc::new(SessionService::new(db.clone())),
+            session_service: Arc::new(SessionService::with_registry(
+                db.clone(),
+                platform_definition.capability_registry().clone(),
+            )),
             event_service: EventService::new(db.clone()),
             db,
             runner,
             auth,
+            fallback_base_harness_name: platform_definition
+                .harness_for_role(BuiltInHarnessRole::Base)
+                .map(|h| h.name.clone()),
+            chat_harness_name: platform_definition
+                .harness_for_role(BuiltInHarnessRole::Chat)
+                .map(|h| h.name.clone()),
+            chat_session_title: platform_definition
+                .harness_for_role(BuiltInHarnessRole::Chat)
+                .map(|h| h.name.clone()),
         }
     }
 }
@@ -230,9 +262,14 @@ pub async fn create_session(
     req.locale = normalize_locale(req.locale)
         .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
 
-    let harness_id = resolve_session_harness_id(&state.db, org.org_id, req.harness_id)
-        .await
-        .log_internal_error_json("resolve session harness fallback")?;
+    let harness_id = resolve_session_harness_id(
+        &state.db,
+        org.org_id,
+        req.harness_id,
+        state.fallback_base_harness_name.as_deref(),
+    )
+    .await
+    .log_internal_error_json("resolve session harness fallback")?;
     req.harness_id = Some(harness_id);
 
     // Validate harness exists and belongs to this org
@@ -292,6 +329,7 @@ async fn resolve_session_harness_id(
     db: &StorageBackend,
     org_id: i64,
     requested_harness_id: Option<HarnessId>,
+    fallback_base_harness_name: Option<&str>,
 ) -> anyhow::Result<HarnessId> {
     if let Some(harness_id) = requested_harness_id {
         return Ok(harness_id);
@@ -302,12 +340,19 @@ async fn resolve_session_harness_id(
         return Ok(harness_id);
     }
 
-    let harnesses = db.list_harnesses(org_id, Some("Base"), false).await?;
-    Ok(harnesses
+    let fallback_name = fallback_base_harness_name.context(
+        "Session creation requires a base harness but no base harness role is configured",
+    )?;
+    let harnesses = db
+        .list_harnesses(org_id, Some(fallback_name), false)
+        .await?;
+    harnesses
         .into_iter()
-        .find(|h| h.is_built_in && h.name == "Base")
+        .find(|h| h.is_built_in && h.name == fallback_name)
         .map(|h| h.id)
-        .unwrap_or_else(|| HarnessId::from_uuid(BASE_HARNESS_ID)))
+        .context(format!(
+            "Built-in base harness '{fallback_name}' is not provisioned for org {org_id}"
+        ))
 }
 
 /// POST /v1/sessions/chat - Get or create global chat session
@@ -330,15 +375,48 @@ pub async fn get_or_create_chat_session(
 ) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
     // Use authenticated user_id, or fall back to anonymous user (auth=none mode)
     let user_id = org.user_id.unwrap_or(everruns_core::ANONYMOUS_USER_ID);
+    let chat_harness_name = state.chat_harness_name.clone().ok_or((
+        StatusCode::NOT_FOUND,
+        Json(ErrorResponse::new(
+            "Global chat is not configured for this platform",
+        )),
+    ))?;
+    let chat_harness_id =
+        resolve_named_built_in_harness_id(&state.db, org.org_id, &chat_harness_name)
+            .await
+            .log_internal_error_json("resolve chat harness")?;
 
     let caller = Caller::from(&org);
     let session = state
         .session_service
-        .get_or_create_chat_session(&caller, user_id, crate::seed::CHAT_HARNESS_ID)
+        .get_or_create_chat_session(
+            &caller,
+            user_id,
+            chat_harness_id.uuid(),
+            state
+                .chat_session_title
+                .as_deref()
+                .unwrap_or(chat_harness_name.as_str()),
+        )
         .await
         .map_policy_or_internal("get or create chat session")?;
 
     Ok(Json(session))
+}
+
+async fn resolve_named_built_in_harness_id(
+    db: &StorageBackend,
+    org_id: i64,
+    harness_name: &str,
+) -> anyhow::Result<HarnessId> {
+    let harnesses = db.list_harnesses(org_id, Some(harness_name), false).await?;
+    harnesses
+        .into_iter()
+        .find(|h| h.is_built_in && h.name == harness_name)
+        .map(|h| h.id)
+        .context(format!(
+            "Built-in harness '{harness_name}' is not provisioned for org {org_id}"
+        ))
 }
 
 /// GET /v1/sessions - List sessions in organization
@@ -762,7 +840,10 @@ pub async fn cancel_turn(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{StorageBackend, models::UpdateOrganizationSettings};
+    use crate::storage::{
+        StorageBackend,
+        models::{CreateHarnessRow, UpdateOrganizationSettings},
+    };
 
     const TEST_HARNESS_ID: &str = "harness_550e8400e29b41d4a716446655440000";
     const TEST_AGENT_ID: &str = "agent_550e8400e29b41d4a716446655440000";
@@ -884,9 +965,26 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_session_harness_id_defaults_to_base() {
         let db = StorageBackend::in_memory();
+        let row = db
+            .create_harness(
+                42,
+                CreateHarnessRow {
+                    name: "Base".to_string(),
+                    description: Some("Base".to_string()),
+                    system_prompt: "You are helpful.".to_string(),
+                    default_model_id: None,
+                    tags: vec!["base".to_string()],
+                    initial_files: serde_json::json!([]),
+                    is_built_in: true,
+                },
+            )
+            .await
+            .unwrap();
 
-        let harness_id = resolve_session_harness_id(&db, 42, None).await.unwrap();
-        assert_eq!(harness_id.uuid(), BASE_HARNESS_ID);
+        let harness_id = resolve_session_harness_id(&db, 42, None, Some("Base"))
+            .await
+            .unwrap();
+        assert_eq!(harness_id, row.id);
     }
 
     #[tokio::test]
@@ -904,7 +1002,9 @@ mod tests {
         .await
         .unwrap();
 
-        let harness_id = resolve_session_harness_id(&db, 42, None).await.unwrap();
+        let harness_id = resolve_session_harness_id(&db, 42, None, Some("Base"))
+            .await
+            .unwrap();
         assert_eq!(harness_id, base_harness_id);
     }
 }

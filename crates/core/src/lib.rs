@@ -77,6 +77,7 @@ pub mod message_retriever;
 pub mod openai_protocol;
 pub mod openresponses_protocol;
 pub mod openresponses_types;
+pub mod platform_definition;
 pub mod platform_store;
 pub mod runtime_agent;
 pub mod tools;
@@ -155,8 +156,12 @@ pub use tools::{
 // Capability re-exports
 // Connection provider plugin system (API key connections like Daytona)
 pub use connection_provider::{
-    ConnectionFormSchema, ConnectionProvider, ConnectionProviderPlugin, ConnectionType,
-    ConnectionValidation, FieldType, FormField,
+    ConnectionFormSchema, ConnectionProvider, ConnectionProviderPlugin, ConnectionProviderRegistry,
+    ConnectionProviderRegistryBuilder, ConnectionType, ConnectionValidation, FieldType, FormField,
+};
+pub use platform_definition::{
+    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, PlatformDefinition,
+    PlatformDefinitionBuilder,
 };
 
 pub use capabilities::SystemPromptContext;

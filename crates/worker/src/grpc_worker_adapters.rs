@@ -15,12 +15,13 @@ use everruns_core::traits::{AgentStore, ModelWithProvider, ResolvedImage};
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
-use everruns_core::{Agent, DriverRegistry, Harness, Message, Session, ToolRegistry};
+use everruns_core::{
+    Agent, DriverRegistry, Harness, Message, PlatformDefinition, Session, ToolRegistry,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::adapters::create_driver_registry;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcHarnessStore, GrpcImageResolver,
     GrpcLeasedResourceStore, GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore,
@@ -37,18 +38,48 @@ use crate::worker_adapters::{TurnContext, WorkerAdapters};
 #[derive(Clone)]
 pub struct GrpcWorkerAdapters {
     client: GrpcClient,
+    platform_definition: PlatformDefinition,
 }
 
 impl GrpcWorkerAdapters {
     /// Create new gRPC adapters by connecting to control-plane
     pub async fn connect(grpc_address: &str) -> Result<Self> {
+        Self::connect_with_platform_definition(
+            grpc_address,
+            crate::platform::default_platform_definition(),
+        )
+        .await
+    }
+
+    /// Create new gRPC adapters with an explicit platform definition.
+    pub async fn connect_with_platform_definition(
+        grpc_address: &str,
+        platform_definition: PlatformDefinition,
+    ) -> Result<Self> {
         let client = GrpcClient::connect(grpc_address).await?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            platform_definition,
+        })
     }
 
     /// Create from an existing GrpcClient
     pub fn from_client(client: GrpcClient) -> Self {
-        Self { client }
+        Self::from_client_with_platform_definition(
+            client,
+            crate::platform::default_platform_definition(),
+        )
+    }
+
+    /// Create from an existing GrpcClient with an explicit platform definition.
+    pub fn from_client_with_platform_definition(
+        client: GrpcClient,
+        platform_definition: PlatformDefinition,
+    ) -> Self {
+        Self {
+            client,
+            platform_definition,
+        }
     }
 
     /// Get the underlying GrpcClient (for MCP executor)
@@ -305,11 +336,11 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // =========================================================================
 
     fn capability_registry(&self) -> CapabilityRegistry {
-        CapabilityRegistry::with_builtins()
+        self.platform_definition.capability_registry().clone()
     }
 
     fn driver_registry(&self) -> DriverRegistry {
-        create_driver_registry()
+        self.platform_definition.driver_registry().clone()
     }
 
     fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {

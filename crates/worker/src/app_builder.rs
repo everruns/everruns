@@ -4,6 +4,7 @@
 // Decision: Encapsulates telemetry, shutdown, and worker lifecycle
 
 use anyhow::{Context, Result};
+use everruns_core::PlatformDefinition;
 use tracing::info;
 
 use crate::durable_worker::{DurableWorker, DurableWorkerConfig};
@@ -25,26 +26,47 @@ use crate::durable_worker::{DurableWorker, DurableWorkerConfig};
 /// ```
 pub struct WorkerAppBuilder {
     config: DurableWorkerConfig,
+    platform_definition: Option<PlatformDefinition>,
 }
 
 impl WorkerAppBuilder {
     /// Create a new worker app builder with the given configuration.
     pub fn new(config: DurableWorkerConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            platform_definition: None,
+        }
+    }
+
+    /// Replace the default worker runtime surface with an explicit platform definition.
+    pub fn platform_definition(mut self, platform_definition: PlatformDefinition) -> Self {
+        self.platform_definition = Some(platform_definition);
+        self
     }
 
     /// Build and run the worker. Blocks until shutdown signal.
     pub async fn run(self) -> Result<()> {
+        let Self {
+            config,
+            platform_definition,
+        } = self;
         info!(
-            grpc_address = %self.config.grpc_address,
-            worker_id = %self.config.worker_id,
-            max_concurrent = self.config.max_concurrent_tasks,
+            grpc_address = %config.grpc_address,
+            worker_id = %config.worker_id,
+            max_concurrent = config.max_concurrent_tasks,
             "Starting Durable worker"
         );
 
-        let worker = DurableWorker::new(self.config)
-            .await
-            .context("Failed to create Durable worker")?;
+        let worker = match platform_definition {
+            Some(platform_definition) => {
+                DurableWorker::with_platform_definition(config, platform_definition)
+                    .await
+                    .context("Failed to create Durable worker")?
+            }
+            None => DurableWorker::new(config)
+                .await
+                .context("Failed to create Durable worker")?,
+        };
 
         let shutdown_handle = worker.shutdown_handle();
 

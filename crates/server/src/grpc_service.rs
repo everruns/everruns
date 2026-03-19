@@ -13,6 +13,7 @@ use crate::services::{
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::task_notifications::TaskNotificationBroadcaster;
 use base64::Engine;
+use everruns_core::PlatformDefinition;
 use everruns_durable::{
     ActivityOptions, CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker,
     PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome, WorkerInfo,
@@ -338,14 +339,18 @@ impl WorkerServiceImpl {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+        platform_definition: PlatformDefinition,
     ) -> Self {
         let agent_service = AgentService::new(db.clone());
         let harness_service = HarnessService::new(db.clone());
-        let session_service = SessionService::new(db.clone());
+        let capability_registry = platform_definition.capability_registry().clone();
+        let session_service =
+            SessionService::with_registry(db.clone(), capability_registry.clone());
         let session_file_service = SessionFileService::new(db.clone());
         let llm_resolver_service = LlmResolverService::new(db.clone(), encryption.clone());
         let mcp_server_service = McpServerService::new(db.clone(), encryption.clone());
-        let capability_service = CapabilityService::new(db.clone(), encryption.clone());
+        let capability_service =
+            CapabilityService::with_registry(db.clone(), encryption.clone(), capability_registry);
 
         // Create durable store using the pool if available (PostgreSQL mode only)
         // In dev mode (in-memory), durable execution is handled differently

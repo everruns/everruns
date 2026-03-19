@@ -18,8 +18,9 @@ use crate::storage::{
 };
 use everruns_core::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
-    DEFAULT_ORG_PUBLIC_ID, DeploymentGrade,
+    DEFAULT_ORG_PUBLIC_ID, DeploymentGrade, PlatformDefinition,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -1021,7 +1022,11 @@ User: "Analyze my codebase and suggest improvements"
 /// Seed agents into the database (upserts, only when changed).
 ///
 /// Filters out dev-only agents when not in dev environment.
-async fn seed_agents(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Result<SeedResult> {
+async fn seed_agents_with_platform_definition(
+    db: &StorageBackend,
+    grade: DeploymentGrade,
+    platform_definition: &PlatformDefinition,
+) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
     let include_dev_only = grade.experimental_features_enabled();
 
@@ -1033,6 +1038,21 @@ async fn seed_agents(db: &StorageBackend, grade: DeploymentGrade) -> anyhow::Res
                 id = %seed.id,
                 "Skipping dev-only agent (deployment_grade={})",
                 grade
+            );
+            continue;
+        }
+        let missing_capabilities: Vec<&str> = seed
+            .capabilities
+            .iter()
+            .map(|capability| capability.id)
+            .filter(|capability_id| !platform_definition.capability_registry().has(capability_id))
+            .collect();
+        if !missing_capabilities.is_empty() {
+            tracing::debug!(
+                name = seed.name,
+                id = %seed.id,
+                missing_capabilities = ?missing_capabilities,
+                "Skipping seed agent because platform definition does not register all required capabilities"
             );
             continue;
         }
@@ -1114,11 +1134,38 @@ const SEED_PROVIDERS: &[SeedProvider] = &[
     },
 ];
 
-/// Seed LLM providers into the database (upserts, only when changed)
-async fn seed_providers(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+fn enabled_seed_provider_ids(platform_definition: &PlatformDefinition) -> HashSet<Uuid> {
+    let registered_provider_types: HashSet<String> = platform_definition
+        .driver_registry()
+        .registered_providers()
+        .into_iter()
+        .map(|provider_type| provider_type.to_string())
+        .collect();
+
+    SEED_PROVIDERS
+        .iter()
+        .filter(|seed| registered_provider_types.contains(seed.provider_type))
+        .map(|seed| seed.id)
+        .collect()
+}
+
+async fn seed_providers_with_platform_definition(
+    db: &StorageBackend,
+    platform_definition: &PlatformDefinition,
+) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
+    let enabled_provider_ids = enabled_seed_provider_ids(platform_definition);
 
     for seed in SEED_PROVIDERS {
+        if !enabled_provider_ids.contains(&seed.id) {
+            tracing::debug!(
+                name = seed.name,
+                id = %seed.id,
+                provider_type = seed.provider_type,
+                "Skipping seed provider because platform definition does not register its driver"
+            );
+            continue;
+        }
         let input = CreateLlmProviderRow {
             name: seed.name.to_string(),
             provider_type: seed.provider_type.to_string(),
@@ -1606,10 +1653,22 @@ async fn seed_organization_settings(db: &StorageBackend) -> anyhow::Result<SeedR
 }
 
 /// Seed LLM models into the database (upserts, only when changed)
-async fn seed_models(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+async fn seed_models_with_platform_definition(
+    db: &StorageBackend,
+    platform_definition: &PlatformDefinition,
+) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
+    let enabled_provider_ids = enabled_seed_provider_ids(platform_definition);
 
     for seed in SEED_MODELS {
+        if !enabled_provider_ids.contains(&seed.provider_id) {
+            tracing::debug!(
+                model_id = seed.model_id,
+                id = %seed.id,
+                "Skipping seed model because its provider driver is not registered by the platform definition"
+            );
+            continue;
+        }
         let input = CreateLlmModelRow {
             provider_id: seed.provider_id.into(),
             model_id: seed.model_id.to_string(),
@@ -1740,6 +1799,19 @@ pub struct SeedAuthContext {
 ///
 /// Uses `DeploymentGrade::from_env()` to determine which agents to seed.
 pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) {
+    spawn_seed_task_with_platform_definition(
+        db,
+        auth_ctx,
+        crate::platform::oss_platform_definition_for_grade(DeploymentGrade::from_env()),
+    );
+}
+
+/// Spawn seeding as a background task using an explicit platform definition.
+pub fn spawn_seed_task_with_platform_definition(
+    db: Arc<StorageBackend>,
+    auth_ctx: SeedAuthContext,
+    platform_definition: PlatformDefinition,
+) {
     let grade = DeploymentGrade::from_env();
     tracing::info!(deployment_grade = %grade, "Starting seeding task");
 
@@ -1747,7 +1819,7 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) {
         // Small delay to let the server start first
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        match run_seed_with_retry(&db, grade, &auth_ctx).await {
+        match run_seed_with_retry(&db, grade, &auth_ctx, &platform_definition).await {
             Ok(result) => {
                 if result.has_changes() {
                     tracing::info!(
@@ -1780,12 +1852,13 @@ async fn run_seed_with_retry(
     db: &StorageBackend,
     grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
+    platform_definition: &PlatformDefinition,
 ) -> Result<SeedResult, String> {
     let mut retry_count = 0;
     let mut delay = INITIAL_RETRY_DELAY;
 
     loop {
-        match seed_all(db, grade, auth_ctx).await {
+        match seed_all_with_platform_definition(db, grade, auth_ctx, platform_definition).await {
             Ok(result) => return Ok(result),
             Err(e) => {
                 let error_str = e.to_string();
@@ -1834,6 +1907,17 @@ pub async fn seed_all(
     grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
 ) -> anyhow::Result<SeedResult> {
+    let platform_definition = crate::platform::oss_platform_definition_for_grade(grade);
+    seed_all_with_platform_definition(db, grade, auth_ctx, &platform_definition).await
+}
+
+/// Run all seeders in order using an explicit platform definition.
+pub async fn seed_all_with_platform_definition(
+    db: &StorageBackend,
+    grade: DeploymentGrade,
+    auth_ctx: &SeedAuthContext,
+    platform_definition: &PlatformDefinition,
+) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
     // Seed default organization first (all other resources depend on it)
@@ -1871,7 +1955,7 @@ pub async fn seed_all(
     }
 
     // Seed providers (models depend on them)
-    let provider_result = seed_providers(db).await?;
+    let provider_result = seed_providers_with_platform_definition(db, platform_definition).await?;
     tracing::debug!(
         created = provider_result.created,
         updated = provider_result.updated,
@@ -1881,7 +1965,7 @@ pub async fn seed_all(
     result.merge(provider_result);
 
     // Seed models (depend on providers)
-    let model_result = seed_models(db).await?;
+    let model_result = seed_models_with_platform_definition(db, platform_definition).await?;
     tracing::debug!(
         created = model_result.created,
         updated = model_result.updated,
@@ -1911,7 +1995,11 @@ pub async fn seed_all(
     result.merge(mcp_result);
 
     // Reconcile built-in harnesses across all orgs (before agents, sessions may reference them)
-    let harness_result = org_init::reconcile_built_in_harnesses(db).await?;
+    let harness_result = org_init::reconcile_built_in_harnesses_with_definitions(
+        db,
+        platform_definition.built_in_harnesses(),
+    )
+    .await?;
     tracing::debug!(
         created = harness_result.created,
         updated = harness_result.updated,
@@ -1923,7 +2011,7 @@ pub async fn seed_all(
     result.unchanged += harness_result.unchanged;
 
     // Seed agents (respects deployment grade for dev-only agents)
-    let agent_result = seed_agents(db, grade).await?;
+    let agent_result = seed_agents_with_platform_definition(db, grade, platform_definition).await?;
     tracing::debug!(
         created = agent_result.created,
         updated = agent_result.updated,
@@ -1947,13 +2035,20 @@ mod tests {
         StorageBackend::in_memory()
     }
 
+    fn built_in_harnesses() -> Vec<everruns_core::BuiltInHarnessDefinition> {
+        org_init::default_harness_definitions()
+    }
+
     // --- Harness seed data ---
 
     #[test]
     fn test_seed_harness_ids_are_unique() {
-        let ids: Vec<Uuid> = org_init::BUILT_IN_HARNESSES
+        let ids: Vec<Uuid> = built_in_harnesses()
             .iter()
-            .map(|h| h.seed_id)
+            .map(|h| {
+                h.seed_id
+                    .expect("OSS built-in harness should have a seed id")
+            })
             .collect();
         let mut unique_ids = ids.clone();
         unique_ids.sort();
@@ -1967,10 +2062,8 @@ mod tests {
 
     #[test]
     fn test_seed_harness_names_are_unique() {
-        let names: Vec<&str> = org_init::BUILT_IN_HARNESSES
-            .iter()
-            .map(|h| h.name)
-            .collect();
+        let built_in_harnesses = built_in_harnesses();
+        let names: Vec<&str> = built_in_harnesses.iter().map(|h| h.name.as_str()).collect();
         let mut unique_names = names.clone();
         unique_names.sort();
         unique_names.dedup();
@@ -1983,7 +2076,8 @@ mod tests {
 
     #[test]
     fn test_base_harness_has_no_capabilities() {
-        let base = org_init::BUILT_IN_HARNESSES
+        let built_in_harnesses = built_in_harnesses();
+        let base = built_in_harnesses
             .iter()
             .find(|h| h.name == "Base")
             .expect("Base harness should exist");
@@ -1991,17 +2085,18 @@ mod tests {
             base.capabilities.is_empty(),
             "Base harness must have no capabilities"
         );
-        assert!(base.tags.contains(&"base"));
+        assert!(base.tags.iter().any(|tag| tag == "base"));
     }
 
     #[test]
     fn test_generic_harness_has_expected_capabilities() {
-        let generic = org_init::BUILT_IN_HARNESSES
+        let built_in_harnesses = built_in_harnesses();
+        let generic = built_in_harnesses
             .iter()
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
 
-        let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id).collect();
+        let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id.as_str()).collect();
         assert_eq!(cap_ids.len(), 9);
         assert!(cap_ids.contains(&"session_file_system"));
         assert!(cap_ids.contains(&"virtual_bash"));
@@ -2012,8 +2107,8 @@ mod tests {
         assert!(cap_ids.contains(&"skills"));
         assert!(cap_ids.contains(&"infinity_context"));
         assert!(cap_ids.contains(&"openai_tool_search"));
-        assert!(generic.tags.contains(&"generic"));
-        assert!(generic.tags.contains(&"default"));
+        assert!(generic.tags.iter().any(|tag| tag == "generic"));
+        assert!(generic.tags.iter().any(|tag| tag == "default"));
     }
 
     #[test]
@@ -2023,14 +2118,15 @@ mod tests {
             everruns_core::DeploymentGrade::Dev,
         );
 
-        let generic = org_init::BUILT_IN_HARNESSES
+        let built_in_harnesses = built_in_harnesses();
+        let generic = built_in_harnesses
             .iter()
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
 
-        for cap in generic.capabilities {
+        for cap in &generic.capabilities {
             assert!(
-                registry.has(cap.id),
+                registry.has(&cap.id),
                 "Capability '{}' referenced by Generic harness must be registered",
                 cap.id
             );
@@ -2051,12 +2147,13 @@ mod tests {
             everruns_core::DeploymentGrade::Dev,
         );
 
-        let generic = org_init::BUILT_IN_HARNESSES
+        let built_in_harnesses = built_in_harnesses();
+        let generic = built_in_harnesses
             .iter()
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
 
-        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.to_string()).collect();
+        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.id.clone()).collect();
         let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
@@ -2095,12 +2192,13 @@ mod tests {
             everruns_core::DeploymentGrade::Dev,
         );
 
-        let generic = org_init::BUILT_IN_HARNESSES
+        let built_in_harnesses = built_in_harnesses();
+        let generic = built_in_harnesses
             .iter()
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
 
-        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.to_string()).collect();
+        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.id.clone()).collect();
         let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
@@ -2140,12 +2238,13 @@ mod tests {
             everruns_core::DeploymentGrade::Dev,
         );
 
-        let generic = org_init::BUILT_IN_HARNESSES
+        let built_in_harnesses = built_in_harnesses();
+        let generic = built_in_harnesses
             .iter()
             .find(|h| h.name == "Generic")
             .expect("Generic harness should exist");
 
-        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.to_string()).collect();
+        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.id.clone()).collect();
         let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
@@ -2367,12 +2466,14 @@ mod tests {
             .unwrap();
 
         // Mutate harness description via public API
+        let built_in_harnesses = built_in_harnesses();
         let harness_id = everruns_core::HarnessId::from_uuid(
-            org_init::BUILT_IN_HARNESSES
+            built_in_harnesses
                 .iter()
                 .find(|h| h.name == "Base")
                 .unwrap()
-                .seed_id,
+                .seed_id
+                .expect("OSS built-in harness should have a seed id"),
         );
         db.update_harness(
             DEFAULT_ORG_ID,

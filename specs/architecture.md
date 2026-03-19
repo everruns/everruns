@@ -109,6 +109,24 @@ graph TD
     worker -.->|gRPC| server
 ```
 
+### Platform Composition
+
+Everruns runtime composition is centered on `PlatformDefinition` in `crates/core/src/platform_definition.rs`.
+
+`PlatformDefinition` is the shared bundle for:
+
+- Capabilities
+- LLM drivers
+- Connection providers
+- Built-in harness templates
+
+The server and worker builders both accept an explicit `PlatformDefinition`. If none is supplied, they fall back to crate-local presets:
+
+- `everruns_server::oss_platform_definition()`
+- `everruns_worker::default_platform_definition()`
+
+This keeps the existing OSS runtime as the default while allowing embedders to remove integrations, add custom capabilities, replace harness templates, or register different LLM drivers without forking Everruns internals.
+
 ### Integration Plugin Force-Linking
 
 Integration crates (`docker`, `daytona`) register capabilities at startup via `inventory::submit!`. The `inventory` crate uses linker sections — if the crate is not explicitly referenced, Rust's linker will optimize it out and the `submit!` registrations silently disappear.
@@ -122,11 +140,15 @@ Adding a new integration crate requires:
 
 Without step 3, the crate compiles but its capabilities are never registered. There is no compile-time error — the integration simply does not appear at runtime.
 
+Important: inventory discovery is now confined to default presets. Embedders can bypass those presets entirely by constructing `PlatformDefinition` directly.
+
 ### Server Entrypoint
 
-The server binary (`main.rs`) uses `ServerAppBuilder` from the library crate. The builder pattern enables SaaS wrappers to compose their own binary with custom auth, routes, event listeners, and background tasks.
+The server binary (`main.rs`) uses `ServerAppBuilder` from the library crate. The builder pattern enables SaaS wrappers and embedders to compose their own binary with custom auth, routes, event listeners, background tasks, and a custom `PlatformDefinition`.
 
-See `crates/server/src/app_builder.rs` for `ServerAppBuilder` — composable builder with `auth()`, `routes()`, `run()` methods. Key modules in lib crate: `app_builder`, `server` (config + router), `seed` (database seeding), `grpc_service` (WorkerService).
+See `crates/server/src/app_builder.rs` for `ServerAppBuilder` — composable builder with `auth()`, `platform_definition()`, `routes()`, and `run()` methods. Key modules in lib crate: `app_builder`, `server` (config + router), `seed` (database seeding), `grpc_service` (WorkerService), `platform` (default OSS preset).
+
+The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/worker/src/app_builder.rs`, which also accepts `platform_definition()`.
 
 ### Data Layer
 

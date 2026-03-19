@@ -8,6 +8,8 @@
 
 use async_trait::async_trait;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 // ============================================================================
 // Plugin Registration
@@ -76,6 +78,124 @@ pub trait ConnectionProvider: Send + Sync {
     /// Validate a credential before saving. Called for API key providers.
     /// Returns Ok with optional metadata on success, Err with user-facing message on failure.
     async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String>;
+}
+
+// ============================================================================
+// ConnectionProvider Registry
+// ============================================================================
+
+/// Registry of connection providers available to a platform.
+///
+/// This is the explicit counterpart to `ConnectionProviderPlugin`. Inventory-based
+/// discovery remains useful for the default OSS platform, but embedders need a
+/// concrete registry they can edit before handing the platform to the server.
+#[derive(Clone, Default)]
+pub struct ConnectionProviderRegistry {
+    providers: HashMap<String, Arc<dyn ConnectionProvider>>,
+}
+
+impl ConnectionProviderRegistry {
+    /// Create an empty provider registry.
+    pub fn new() -> Self {
+        Self {
+            providers: HashMap::new(),
+        }
+    }
+
+    /// Register a connection provider.
+    ///
+    /// If a provider with the same `provider_id()` already exists, it is replaced.
+    pub fn register(&mut self, provider: impl ConnectionProvider + 'static) {
+        self.providers
+            .insert(provider.provider_id().to_string(), Arc::new(provider));
+    }
+
+    /// Register a boxed connection provider.
+    pub fn register_boxed(&mut self, provider: Box<dyn ConnectionProvider>) {
+        self.providers
+            .insert(provider.provider_id().to_string(), Arc::from(provider));
+    }
+
+    /// Register an `Arc`-wrapped connection provider.
+    pub fn register_arc(&mut self, provider: Arc<dyn ConnectionProvider>) {
+        self.providers
+            .insert(provider.provider_id().to_string(), provider);
+    }
+
+    /// Remove a provider by ID.
+    pub fn unregister(&mut self, provider_id: &str) -> Option<Arc<dyn ConnectionProvider>> {
+        self.providers.remove(provider_id)
+    }
+
+    /// Get a provider by ID.
+    pub fn get(&self, provider_id: &str) -> Option<&Arc<dyn ConnectionProvider>> {
+        self.providers.get(provider_id)
+    }
+
+    /// Check whether a provider is registered.
+    pub fn has(&self, provider_id: &str) -> bool {
+        self.providers.contains_key(provider_id)
+    }
+
+    /// List all registered providers.
+    pub fn list(&self) -> Vec<&Arc<dyn ConnectionProvider>> {
+        self.providers.values().collect()
+    }
+
+    /// Number of registered providers.
+    pub fn len(&self) -> usize {
+        self.providers.len()
+    }
+
+    /// Whether the registry is empty.
+    pub fn is_empty(&self) -> bool {
+        self.providers.is_empty()
+    }
+
+    /// Create a builder for fluent registration.
+    pub fn builder() -> ConnectionProviderRegistryBuilder {
+        ConnectionProviderRegistryBuilder::new()
+    }
+}
+
+impl std::fmt::Debug for ConnectionProviderRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ids: Vec<_> = self.providers.keys().collect();
+        f.debug_struct("ConnectionProviderRegistry")
+            .field("providers", &ids)
+            .finish()
+    }
+}
+
+/// Builder for creating a `ConnectionProviderRegistry`.
+pub struct ConnectionProviderRegistryBuilder {
+    registry: ConnectionProviderRegistry,
+}
+
+impl ConnectionProviderRegistryBuilder {
+    /// Create a new empty builder.
+    pub fn new() -> Self {
+        Self {
+            registry: ConnectionProviderRegistry::new(),
+        }
+    }
+
+    /// Add a connection provider to the registry.
+    pub fn provider(mut self, provider: impl ConnectionProvider + 'static) -> Self {
+        self.registry.register(provider);
+        self
+    }
+
+    /// Build the registry.
+    pub fn build(self) -> ConnectionProviderRegistry {
+        self.registry
+    }
+}
+
+impl Default for ConnectionProviderRegistryBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ============================================================================

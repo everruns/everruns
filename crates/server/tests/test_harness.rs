@@ -36,7 +36,7 @@ use everruns_server::{
     api, auth, seed, services,
     storage::{EncryptionService, StorageBackend},
 };
-use everruns_worker::{RunnerBackend, create_driver_registry, create_runner_with_backend};
+use everruns_worker::{RunnerBackend, create_runner_with_backend};
 
 /// Get test database URL from environment or use default
 pub fn get_database_url() -> String {
@@ -102,6 +102,7 @@ impl TestServer {
 
         // Seed default data synchronously (harnesses, agents, providers, etc.)
         let grade = everruns_core::DeploymentGrade::from_env();
+        let platform_definition = everruns_server::oss_platform_definition_for_grade(grade);
         seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
             .await
             .expect("Failed to seed test data");
@@ -132,15 +133,19 @@ impl TestServer {
         };
 
         // Create driver registry
-        let driver_registry = Arc::new(create_driver_registry());
+        let driver_registry = Arc::new(platform_definition.driver_registry().clone());
 
         // Create event listeners (minimal for tests)
         let event_service = Arc::new(services::EventService::with_listeners(db.clone(), vec![]));
         let feature_flags = everruns_core::FeatureFlags::from_env(&grade);
 
         // Create module-specific states
-        let sessions_state =
-            api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone());
+        let sessions_state = api::sessions::AppState::with_platform_definition(
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
+            &platform_definition,
+        );
         let messages_state = api::messages::AppState::new(
             db.clone(),
             runner.clone(),
@@ -151,7 +156,10 @@ impl TestServer {
             everruns_server::api::sse::SseConnectionLimits::default(),
         ));
         let events_state = api::events::AppState {
-            session_service: Arc::new(services::SessionService::new(db.clone())),
+            session_service: Arc::new(services::SessionService::with_registry(
+                db.clone(),
+                platform_definition.capability_registry().clone(),
+            )),
             event_service: event_service.clone(),
             sse_tracker: sse_tracker.clone(),
             event_broadcaster: None,
@@ -167,9 +175,10 @@ impl TestServer {
         let llm_models_state = api::llm_models::AppState::new(db.clone(), auth_state.clone(), None);
         let mcp_servers_state =
             api::mcp_servers::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
-        let capability_service = Arc::new(services::CapabilityService::new(
+        let capability_service = Arc::new(services::CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),
+            platform_definition.capability_registry().clone(),
         ));
         let capabilities_state =
             api::capabilities::AppState::new(capability_service.clone(), auth_state.clone());
@@ -200,7 +209,11 @@ impl TestServer {
             api::schedules::ScheduleAppState::new(Some(durable_store), auth_state.clone());
         let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
-        let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
+        let organizations_state = api::organizations::AppState::with_built_in_harnesses(
+            db.clone(),
+            auth_state.clone(),
+            platform_definition.built_in_harnesses().to_vec(),
+        );
         let session_schedules_state = api::session_schedules::AppState::new(
             Arc::new(services::SessionScheduleService::new(db.clone())),
             auth_state.clone(),
@@ -218,12 +231,13 @@ impl TestServer {
         let feature_flags_state = api::feature_flags::AppState {
             flags: feature_flags.clone(),
         };
-        let user_connections_state = api::user_connections::AppState {
-            db: db.clone(),
-            encryption: encryption.clone(),
-            auth: auth_state.clone(),
-            auth_config: auth_config.clone(),
-        };
+        let user_connections_state = api::user_connections::AppState::new(
+            db.clone(),
+            encryption.clone(),
+            auth_state.clone(),
+            auth_config.clone(),
+            platform_definition.connection_providers().clone(),
+        );
 
         let apps_state = api::apps::AppState::new(db.clone(), auth_state.clone());
         let slack_state = api::slack_events::SlackState::new(

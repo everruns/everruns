@@ -32,9 +32,17 @@ pub struct CapabilityService {
 
 impl CapabilityService {
     pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
+        Self::with_registry(db, encryption, CapabilityRegistry::with_builtins())
+    }
+
+    pub fn with_registry(
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
+        registry: CapabilityRegistry,
+    ) -> Self {
         Self {
             db: db.clone(),
-            registry: CapabilityRegistry::with_builtins(),
+            registry,
             mcp_service: McpServerService::new(db.clone(), encryption),
             skill_service: Arc::new(SkillService::new(db)),
         }

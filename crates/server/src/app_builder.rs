@@ -21,14 +21,12 @@ use crate::{api, seed, services};
 use anyhow::{Context, Result};
 use axum::http::{Method, header};
 use axum::{Json, Router, extract::State, routing::get};
-use everruns_core::CapabilityRegistry;
-use everruns_core::{BraintrustListener, EventListener, OtelEventListener};
+use everruns_core::{BraintrustListener, EventListener, OtelEventListener, PlatformDefinition};
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
 };
 use everruns_worker::{
-    AgentRunner, RunnerBackend, TaskWorker, TaskWorkerConfig, create_driver_registry,
-    create_runner_with_backend,
+    AgentRunner, RunnerBackend, TaskWorker, TaskWorkerConfig, create_runner_with_backend,
 };
 use serde::Serialize;
 use sqlx::PgPool;
@@ -67,6 +65,7 @@ pub struct ServerContext {
     pub encryption: Option<Arc<EncryptionService>>,
     pub runner: Arc<dyn AgentRunner>,
     pub driver_registry: Arc<everruns_core::DriverRegistry>,
+    pub platform_definition: Arc<PlatformDefinition>,
 }
 
 // =========================================================================
@@ -124,6 +123,7 @@ struct HealthState {
 pub struct ServerAppBuilder {
     config: ServerConfig,
     auth_factory: Option<AuthFactoryFn>,
+    platform_definition: Option<PlatformDefinition>,
     extra_routes: Vec<Router>,
     event_listeners: Vec<Arc<dyn EventListener>>,
     migrations: Vec<MigrationFn>,
@@ -136,6 +136,7 @@ impl ServerAppBuilder {
         Self {
             config,
             auth_factory: None,
+            platform_definition: None,
             extra_routes: Vec::new(),
             event_listeners: Vec::new(),
             migrations: Vec::new(),
@@ -152,6 +153,12 @@ impl ServerAppBuilder {
         factory: impl FnOnce(Arc<StorageBackend>) -> Arc<dyn AuthBackend> + Send + 'static,
     ) -> Self {
         self.auth_factory = Some(Box::new(factory));
+        self
+    }
+
+    /// Replace the default OSS runtime surface with an explicit platform definition.
+    pub fn platform_definition(mut self, platform_definition: PlatformDefinition) -> Self {
+        self.platform_definition = Some(platform_definition);
         self
     }
 
@@ -203,6 +210,11 @@ impl ServerAppBuilder {
     /// Build and run the server. Blocks until shutdown.
     pub async fn run(self) -> Result<()> {
         tracing::info!("everrun-api starting...");
+        let platform_definition = Arc::new(
+            self.platform_definition
+                .clone()
+                .unwrap_or_else(crate::platform::oss_platform_definition),
+        );
 
         // =====================================================================
         // Phase 1: Storage backend & runner
@@ -285,12 +297,13 @@ impl ServerAppBuilder {
         // Phase 2: Seed & infrastructure services
         // =====================================================================
         let auth_config = auth::AuthConfig::from_env();
-        seed::spawn_seed_task(
+        seed::spawn_seed_task_with_platform_definition(
             db.clone(),
             seed::SeedAuthContext {
                 mode: auth_config.mode.clone(),
                 admin: auth_config.admin.clone(),
             },
+            platform_definition.as_ref().clone(),
         );
 
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
@@ -419,8 +432,12 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 5: API state construction
         // =====================================================================
-        let sessions_state =
-            api::sessions::AppState::new(db.clone(), runner.clone(), auth_state.clone());
+        let sessions_state = api::sessions::AppState::with_platform_definition(
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
+            platform_definition.as_ref(),
+        );
         let messages_state = api::messages::AppState::new(
             db.clone(),
             runner.clone(),
@@ -444,7 +461,10 @@ impl ServerAppBuilder {
         };
 
         let events_state = api::events::AppState {
-            session_service: Arc::new(services::SessionService::new(db.clone())),
+            session_service: Arc::new(services::SessionService::with_registry(
+                db.clone(),
+                platform_definition.capability_registry().clone(),
+            )),
             event_service: event_service.clone(),
             sse_tracker: sse_tracker.clone(),
             event_broadcaster,
@@ -458,7 +478,7 @@ impl ServerAppBuilder {
                 auth: auth_state.clone(),
             }
         });
-        let driver_registry = Arc::new(create_driver_registry());
+        let driver_registry = Arc::new(platform_definition.driver_registry().clone());
         let llm_resolver = Arc::new(services::LlmResolverService::new(
             db.clone(),
             encryption.clone(),
@@ -477,9 +497,10 @@ impl ServerAppBuilder {
         );
         let mcp_servers_state =
             api::mcp_servers::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
-        let capability_service = Arc::new(services::CapabilityService::new(
+        let capability_service = Arc::new(services::CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),
+            platform_definition.capability_registry().clone(),
         ));
         let capabilities_state =
             api::capabilities::AppState::new(capability_service.clone(), auth_state.clone());
@@ -531,14 +552,19 @@ impl ServerAppBuilder {
         ));
         let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
-        let organizations_state = api::organizations::AppState::new(db.clone(), auth_state.clone());
+        let organizations_state = api::organizations::AppState::with_built_in_harnesses(
+            db.clone(),
+            auth_state.clone(),
+            platform_definition.built_in_harnesses().to_vec(),
+        );
         let audit_logs_state = api::audit_logs::AppState::new(db.clone(), auth_state.clone());
-        let user_connections_state = api::user_connections::AppState {
-            db: db.clone(),
-            encryption: encryption.clone(),
-            auth: auth_state.clone(),
-            auth_config: auth_config.clone(),
-        };
+        let user_connections_state = api::user_connections::AppState::new(
+            db.clone(),
+            encryption.clone(),
+            auth_state.clone(),
+            auth_config.clone(),
+            platform_definition.connection_providers().clone(),
+        );
         let session_schedule_service =
             Arc::new(crate::services::SessionScheduleService::new(db.clone()));
         let session_schedules_state = api::session_schedules::AppState::new(
@@ -695,6 +721,7 @@ impl ServerAppBuilder {
             encryption: encryption.clone(),
             runner: runner.clone(),
             driver_registry: driver_registry.clone(),
+            platform_definition: platform_definition.clone(),
         };
 
         if !self.config.dev_mode {
@@ -704,6 +731,7 @@ impl ServerAppBuilder {
             let grpc_event_service = event_service.clone();
             let grpc_runner = runner.clone();
             let grpc_addr = self.config.grpc_addr.clone();
+            let grpc_platform_definition = platform_definition.clone();
 
             let task_broadcaster = if let Some(pool) = db.pool() {
                 let broadcaster = TaskNotificationBroadcaster::new(pool.clone()).await;
@@ -722,6 +750,7 @@ impl ServerAppBuilder {
                     grpc_db,
                     grpc_encryption,
                     Some(grpc_runner),
+                    grpc_platform_definition.as_ref().clone(),
                 );
                 if let Some(broadcaster) = task_broadcaster {
                     grpc_svc.set_task_broadcaster(broadcaster);
@@ -883,8 +912,6 @@ impl ServerAppBuilder {
                     db.clone(),
                     encryption.clone(),
                 ));
-                let capability_registry = CapabilityRegistry::with_builtins();
-
                 let session_storage_store: Arc<dyn everruns_core::traits::SessionStorageStore> =
                     match db.as_ref() {
                         crate::storage::StorageBackend::Postgres(database) => {
@@ -909,7 +936,8 @@ impl ServerAppBuilder {
                     event_service.clone(),
                     llm_resolver,
                     mcp_server_service,
-                    capability_registry,
+                    platform_definition.capability_registry().clone(),
+                    platform_definition.driver_registry().clone(),
                     sqldb_store.clone(),
                 )
                 .with_storage_store(session_storage_store)
