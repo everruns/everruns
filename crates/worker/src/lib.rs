@@ -45,8 +45,7 @@ pub use grpc_worker_adapters::GrpcWorkerAdapters;
 pub use unified_worker::{TaskWorker, TaskWorkerConfig};
 pub use worker_adapters::{
     AdapterAgentStore, AdapterEventEmitter, AdapterLlmProviderStore, AdapterMessageRetriever,
-    AdapterSessionFileStore, AdapterSessionStore, ModelWithProvider as WorkerModelWithProvider,
-    TurnContext as WorkerTurnContext, WorkerAdapters,
+    AdapterSessionFileStore, AdapterSessionStore, TurnContext as WorkerTurnContext, WorkerAdapters,
 };
 
 // Re-export OpenAI driver from the openai crate

@@ -11,7 +11,7 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-use everruns_core::traits::{AgentStore, ResolvedImage};
+use everruns_core::traits::{AgentStore, ModelWithProvider, ResolvedImage};
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
@@ -27,7 +27,7 @@ use crate::grpc_adapters::{
     GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
-use crate::worker_adapters::{ModelWithProvider, TurnContext, WorkerAdapters};
+use crate::worker_adapters::{TurnContext, WorkerAdapters};
 
 // =============================================================================
 // GrpcWorkerAdapters Implementation
@@ -144,28 +144,16 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         model_id: Uuid,
     ) -> Result<Option<ModelWithProvider>> {
         let store = GrpcLlmProviderStore::new(self.client.clone(), org_id);
-        let result = everruns_core::traits::LlmProviderStore::get_model_with_provider(
+        everruns_core::traits::LlmProviderStore::get_model_with_provider(
             &store,
             ModelId::from_uuid(model_id),
         )
-        .await?;
-        Ok(result.map(|m| ModelWithProvider {
-            model: m.model,
-            provider_type: m.provider_type,
-            api_key: m.api_key,
-            base_url: m.base_url,
-        }))
+        .await
     }
 
     async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProvider>> {
         let store = GrpcLlmProviderStore::new(self.client.clone(), org_id);
-        let result = everruns_core::traits::LlmProviderStore::get_default_model(&store).await?;
-        Ok(result.map(|m| ModelWithProvider {
-            model: m.model,
-            provider_type: m.provider_type,
-            api_key: m.api_key,
-            base_url: m.base_url,
-        }))
+        everruns_core::traits::LlmProviderStore::get_default_model(&store).await
     }
 
     // =========================================================================
@@ -307,12 +295,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             agent: ctx.agent,
             session: ctx.session,
             messages: ctx.messages,
-            model: ctx.model.map(|m| ModelWithProvider {
-                model: m.model,
-                provider_type: m.provider_type,
-                api_key: m.api_key,
-                base_url: m.base_url,
-            }),
+            model: ctx.model,
             mcp_tool_definitions: ctx.mcp_tool_definitions,
         })
     }
