@@ -43,6 +43,14 @@ pub struct DurableTurnInput {
     /// Previous LLM response ID for stateful continuation across reason iterations.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub previous_response_id: Option<String>,
+    /// Current iteration number within this turn (1-based).
+    /// Incremented each time a new reason activity is scheduled after act.
+    #[serde(default = "default_iteration")]
+    pub iteration: u32,
+}
+
+fn default_iteration() -> u32 {
+    1
 }
 
 /// Output from the turn workflow
@@ -495,6 +503,7 @@ impl AgentRunner for DurableRunner {
             input_message_id,
             turn_id: None,
             previous_response_id: None,
+            iteration: 1,
         };
 
         // Create workflow instance
@@ -680,6 +689,7 @@ mod tests {
             input_message_id: MessageId::new(),
             turn_id: None,
             previous_response_id: None,
+            iteration: 1,
         };
 
         let json = serde_json::to_string(&input).unwrap();
@@ -690,6 +700,31 @@ mod tests {
         assert_eq!(input.agent_id, parsed.agent_id);
         assert_eq!(input.input_message_id, parsed.input_message_id);
         assert_eq!(input.turn_id, parsed.turn_id);
+        assert_eq!(input.iteration, parsed.iteration);
+    }
+
+    /// Test that iteration defaults to 1 when missing from JSON (backward compat)
+    #[test]
+    fn test_durable_turn_input_iteration_default() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        // Build a valid input and serialize it
+        let input = DurableTurnInput {
+            org_id: DEFAULT_ORG_ID,
+            session_id: SessionId::new(),
+            harness_id: HarnessId::new(),
+            agent_id: None,
+            input_message_id: MessageId::new(),
+            turn_id: None,
+            previous_response_id: None,
+            iteration: 3,
+        };
+        let mut json_val: serde_json::Value = serde_json::to_value(&input).unwrap();
+        // Remove iteration to simulate pre-existing persisted data
+        json_val.as_object_mut().unwrap().remove("iteration");
+
+        let parsed: DurableTurnInput = serde_json::from_value(json_val).unwrap();
+        assert_eq!(parsed.iteration, 1); // defaults to 1
     }
 
     /// Test that start_run works for a new session (first message)
