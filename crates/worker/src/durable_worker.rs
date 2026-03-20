@@ -898,8 +898,10 @@ impl DurableWorker {
                         );
 
                         // After act activity: if ActAtom signaled waiting_for_tool_results
-                        // (connection setup, client-side tools), set session status.
-                        // Events were already emitted by ActAtom hooks.
+                        // (connection setup, client-side tools), check the setup_connection
+                        // client hint before pausing. When the hint is true, set the session
+                        // status so the client can handle the tool calls. When absent, skip
+                        // the pause — the LLM will see the tool errors and inform the user.
                         if task.activity_type == "act"
                             && let Some(ref ti) = turn_input_opt
                         {
@@ -908,16 +910,45 @@ impl DurableWorker {
                                 .and_then(|v| v.as_bool())
                                 .unwrap_or(false);
                             if waiting {
-                                let grpc_client = GrpcClient::connect(&self.grpc_address).await?;
-                                if let Err(e) = grpc_client
-                                    .set_session_status(
+                                // Check the setup_connection hint before pausing
+                                let hint_enabled = {
+                                    use everruns_core::traits::SessionStore;
+                                    let grpc_client = GrpcClient::connect(&self.grpc_address).await?;
+                                    let session_store = crate::grpc_adapters::GrpcSessionStore::new(
+                                        grpc_client.clone(),
                                         ti.org_id,
-                                        ti.session_id,
-                                        "waiting_for_tool_results",
-                                    )
-                                    .await
-                                {
-                                    warn!(error = %e, "Failed to set session status to waiting_for_tool_results");
+                                    );
+                                    match session_store.get_session(ti.session_id).await {
+                                        Ok(Some(session)) => {
+                                            let hints = everruns_core::Controls::resolve_hints(
+                                                session.hints.as_ref(),
+                                                None,
+                                            );
+                                            hints
+                                                .get("setup_connection")
+                                                .and_then(|v| v.as_bool())
+                                                .unwrap_or(false)
+                                        }
+                                        _ => false,
+                                    }
+                                };
+
+                                if hint_enabled {
+                                    let grpc_client = GrpcClient::connect(&self.grpc_address).await?;
+                                    if let Err(e) = grpc_client
+                                        .set_session_status(
+                                            ti.org_id,
+                                            ti.session_id,
+                                            "waiting_for_tool_results",
+                                        )
+                                        .await
+                                    {
+                                        warn!(error = %e, "Failed to set session status to waiting_for_tool_results");
+                                    }
+                                } else {
+                                    info!(
+                                        "setup_connection hint absent; skipping wait for tool results"
+                                    );
                                 }
                             }
                         }

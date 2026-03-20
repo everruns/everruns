@@ -6616,6 +6616,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!({}),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -6630,6 +6631,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!({}),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -6644,6 +6646,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!({}),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
