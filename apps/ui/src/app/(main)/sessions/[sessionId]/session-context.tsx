@@ -24,14 +24,10 @@ import type {
   ToolCompletedData,
   InputMessageData,
   OutputMessageCompletedData,
-  OutputMessageStartedData,
   Message,
   TokenUsage,
-  LlmGenerationData,
-  ReasonThinkingStartedData,
-  OutputMessageDeltaData,
 } from "@/lib/api/types";
-import { getTextFromContent, isToolCallPart } from "@/lib/api/types";
+import { getTextFromContent, isToolCallPart, getEventData } from "@/lib/api/types";
 import type { UseMutationResult } from "@tanstack/react-query";
 
 interface SessionContextValue {
@@ -259,33 +255,37 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
       }
 
       // output.message.delta provides incremental text updates
-      if (event.type === "output.message.delta") {
-        const data = event.data as OutputMessageDeltaData;
-        setIsThinking(false); // No longer just thinking, now we have text
-        setStreamingText(data.accumulated);
-        setStreamingTurnId(data.turn_id);
-        break;
+      {
+        const deltaData = getEventData(event, "output.message.delta");
+        if (deltaData) {
+          setIsThinking(false); // No longer just thinking, now we have text
+          setStreamingText(deltaData.accumulated);
+          setStreamingTurnId(deltaData.turn_id);
+          break;
+        }
       }
 
       // output.message.started tracks iteration number
-      if (event.type === "output.message.started") {
-        const data = event.data as OutputMessageStartedData;
-        if (data.iteration) {
-          setStreamingIteration(data.iteration);
+      {
+        const startedData = getEventData(event, "output.message.started");
+        if (startedData?.iteration) {
+          setStreamingIteration(startedData.iteration);
         }
         // Don't break - continue looking for delta/thinking events
       }
 
       // reason.thinking.started indicates LLM is generating (before first text)
-      if (event.type === "reason.thinking.started") {
-        const data = event.data as ReasonThinkingStartedData;
-        // Only set thinking if we don't already have streaming text for this turn
-        if (!streamingText || streamingTurnId !== data.turn_id) {
-          setIsThinking(true);
-          setStreamingText(null);
-          setStreamingTurnId(data.turn_id);
+      {
+        const thinkData = getEventData(event, "reason.thinking.started");
+        if (thinkData) {
+          // Only set thinking if we don't already have streaming text for this turn
+          if (!streamingText || streamingTurnId !== thinkData.turn_id) {
+            setIsThinking(true);
+            setStreamingText(null);
+            setStreamingTurnId(thinkData.turn_id);
+          }
+          break;
         }
-        break;
       }
     }
   }, [events, streamingTurnId, streamingText]);
@@ -320,14 +320,14 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     const realUserMessages = events
       .filter((e) => e.type === "input.message")
       .map((e) => {
-        const data = e.data as InputMessageData;
-        return getTextFromContent(data.message?.content || []);
+        const data = getEventData(e, "input.message");
+        return getTextFromContent(data?.message?.content || []);
       });
 
     // Remove optimistic events that have matching real events
     const optimisticToRemove = optimisticEvents.filter((optEvent) => {
-      const data = optEvent.data as InputMessageData;
-      const optText = getTextFromContent(data.message?.content || []);
+      const data = getEventData(optEvent, "input.message");
+      const optText = getTextFromContent(data?.message?.content || []);
       return realUserMessages.includes(optText);
     });
 
@@ -359,16 +359,16 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
       realChatEvents
         .filter((e) => e.type === "input.message")
         .map((e) => {
-          const data = e.data as InputMessageData;
-          return getTextFromContent(data.message?.content || []);
+          const data = getEventData(e, "input.message");
+          return getTextFromContent(data?.message?.content || []);
         }),
     );
 
     // Filter out optimistic events that already have a real counterpart
     const pendingOptimisticEvents = optimisticEvents.filter((optEvent) => {
       if (optEvent.type !== "input.message") return true;
-      const data = optEvent.data as InputMessageData;
-      const optText = getTextFromContent(data.message?.content || []);
+      const data = getEventData(optEvent, "input.message");
+      const optText = getTextFromContent(data?.message?.content || []);
       return !realUserTexts.has(optText);
     });
 
@@ -380,8 +380,8 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     const map = new Map<string, ToolCompletedData>();
     if (!events) return map;
     for (const event of events) {
-      if (event.type === "tool.completed") {
-        const data = event.data as ToolCompletedData;
+      const data = getEventData(event, "tool.completed");
+      if (data) {
         map.set(data.tool_call_id, data);
       }
     }
@@ -421,15 +421,13 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     // Only scan events we haven't processed yet
     for (let i = acc.processed; i < events.length; i++) {
       const event = events[i];
-      if (event.type === "llm.generation") {
-        const data = event.data as LlmGenerationData;
-        if (data.metadata?.usage) {
-          acc.hasLlmEvents = true;
-          acc.inputTokens += data.metadata.usage.input_tokens;
-          acc.outputTokens += data.metadata.usage.output_tokens;
-          acc.cacheReadTokens += data.metadata.usage.cache_read_tokens ?? 0;
-          acc.cacheCreationTokens += data.metadata.usage.cache_creation_tokens ?? 0;
-        }
+      const llmData = getEventData(event, "llm.generation");
+      if (llmData?.metadata?.usage) {
+        acc.hasLlmEvents = true;
+        acc.inputTokens += llmData.metadata.usage.input_tokens;
+        acc.outputTokens += llmData.metadata.usage.output_tokens;
+        acc.cacheReadTokens += llmData.metadata.usage.cache_read_tokens ?? 0;
+        acc.cacheCreationTokens += llmData.metadata.usage.cache_creation_tokens ?? 0;
       }
     }
     acc.processed = events.length;

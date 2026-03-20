@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Message } from "@/lib/api/types";
+import { isToolCallContent, isToolResultContent } from "@/lib/api/types";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 import {
   extractToolCallContent,
@@ -21,15 +22,19 @@ interface ToolCallCardProps {
 export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Handle new ContentPart[] format
+  // Handle new ContentPart[] format; fall back to runtime guard for legacy shapes
   const content = Array.isArray(toolCall.content)
     ? extractToolCallContent(toolCall.content)
-    : (toolCall.content as unknown as ToolCallContent);
+    : isToolCallContent(toolCall.content)
+      ? (toolCall.content as ToolCallContent)
+      : null;
 
   const resultContent =
     toolResult?.content && Array.isArray(toolResult.content)
       ? extractToolResultContent(toolResult.content)
-      : (toolResult?.content as unknown as ToolResultContent | undefined);
+      : isToolResultContent(toolResult?.content)
+        ? (toolResult!.content as ToolResultContent)
+        : undefined;
 
   const isComplete = !!toolResult;
   const hasError = resultContent?.error !== undefined && resultContent?.error !== null;

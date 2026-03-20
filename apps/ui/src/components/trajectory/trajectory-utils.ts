@@ -10,19 +10,8 @@
 //   NOT on every SSE delta event (which fires 10-30x per second during streaming).
 
 import type { Node, Edge } from "@xyflow/react";
-import type {
-  Event,
-  InputMessageData,
-  OutputMessageCompletedData,
-  TurnStartedData,
-  TurnCompletedData,
-  TurnFailedData,
-  ReasonCompletedData,
-  ActStartedData,
-  ActCompletedData,
-  ToolCompletedData,
-} from "@/lib/api/types";
-import { getTextFromContent } from "@/lib/api/types";
+import type { Event, ToolCompletedData } from "@/lib/api/types";
+import { getTextFromContent, getEventData } from "@/lib/api/types";
 
 // --- Node data types ---
 
@@ -192,9 +181,9 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
 
   const toolResults = new Map<string, ToolCompletedData>();
   for (const event of events) {
-    if (event.type === "tool.completed") {
-      const data = event.data as ToolCompletedData;
-      toolResults.set(data.tool_call_id, data);
+    const tcData = getEventData(event, "tool.completed");
+    if (tcData) {
+      toolResults.set(tcData.tool_call_id, tcData);
     }
   }
 
@@ -203,7 +192,8 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
 
     switch (event.type) {
       case "turn.started": {
-        const data = event.data as TurnStartedData;
+        const data = getEventData(event, "turn.started");
+        if (!data) break;
 
         // Check if previous turn is an orphan (input.message arrived before turn.started).
         // Adopt it by updating its turnId instead of creating a duplicate turn.
@@ -234,7 +224,8 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
       }
 
       case "input.message": {
-        const data = event.data as InputMessageData;
+        const data = getEventData(event, "input.message");
+        if (!data) break;
         const text = getTextFromContent(data.message?.content || []);
         const messageId = data.message?.id;
         if (currentTurn) {
@@ -256,7 +247,8 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
 
       case "reason.completed": {
         if (!currentTurn) break;
-        const data = event.data as ReasonCompletedData;
+        const data = getEventData(event, "reason.completed");
+        if (!data) break;
         currentIteration = {
           reasoning: {
             eventId: event.id,
@@ -272,7 +264,8 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
 
       case "act.started": {
         if (!currentTurn || !currentIteration) break;
-        const data = event.data as ActStartedData;
+        const data = getEventData(event, "act.started");
+        if (!data) break;
         currentIteration.toolGroup = {
           eventId: event.id,
           ts: event.ts,
@@ -295,7 +288,8 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
 
       case "act.completed": {
         if (!currentTurn || !currentIteration?.toolGroup) break;
-        const data = event.data as ActCompletedData;
+        const data = getEventData(event, "act.completed");
+        if (!data) break;
         currentIteration.toolGroup.successCount = data.success_count;
         currentIteration.toolGroup.errorCount = data.error_count;
         currentIteration.toolGroup.durationMs = data.duration_ms;
@@ -304,7 +298,8 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
 
       case "output.message.completed": {
         if (!currentTurn) break;
-        const data = event.data as OutputMessageCompletedData;
+        const data = getEventData(event, "output.message.completed");
+        if (!data) break;
         const text = getTextFromContent(data.message?.content || []);
         const hasToolCalls = data.message?.content?.some((p) => p.type === "tool_call") ?? false;
         currentTurn.agentMessage = {
@@ -319,7 +314,8 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
 
       case "turn.completed": {
         if (!currentTurn) break;
-        const data = event.data as TurnCompletedData;
+        const data = getEventData(event, "turn.completed");
+        if (!data) break;
         currentTurn.completed = true;
         currentTurn.durationMs = data.duration_ms;
         currentTurn.iterationCount = data.iterations;
@@ -330,7 +326,8 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
 
       case "turn.failed": {
         if (!currentTurn) break;
-        const data = event.data as TurnFailedData;
+        const data = getEventData(event, "turn.failed");
+        if (!data) break;
         currentTurn.completed = true;
         currentTurn.failed = true;
         currentTurn.errorMessage = data.error;
@@ -412,13 +409,16 @@ export function buildTrajectory(events: Event[]): {
     let lastChildId: string | null = null;
 
     function addChild(id: string, type: TrajectoryNodeType, data: TrajectoryNodeData) {
+      // TrajectoryNodeData variants are plain objects with string keys.
+      // React Flow Node requires Record<string, unknown>; TS interfaces lack
+      // implicit index signatures, so a single narrowing cast is needed here.
       nodes.push({
         id,
         type,
         position: { x: CHILD_X, y: childY },
         parentId: groupId,
         extent: "parent" as const,
-        data: data as unknown as Record<string, unknown>,
+        data: data as TrajectoryNodeData & Record<string, unknown>,
       });
       if (!firstChildId) firstChildId = id;
       if (lastChildId) addEdge(lastChildId, id);
@@ -501,7 +501,7 @@ export function buildTrajectory(events: Event[]): {
         failed: turn.failed,
         errorMessage: turn.errorMessage,
         timestamp: turn.startTs,
-      } as unknown as Record<string, unknown>,
+      } as TurnGroupNodeData & Record<string, unknown>, // single cast: TS interface -> Record
       style: {
         width: GROUP_WIDTH,
         height: Math.max(groupHeight, GROUP_PAD_TOP + 40),

@@ -4,7 +4,8 @@ import { Info } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/ui/copy-button";
 import { cn } from "@/lib/utils";
-import type { Event, OutputMessageCompletedData, TokenUsage } from "@/lib/api/types";
+import type { Event, TokenUsage } from "@/lib/api/types";
+import { getEventData, isRecord } from "@/lib/api/types";
 
 interface MessageInfoIconProps {
   /** The event containing message data */
@@ -18,14 +19,20 @@ interface MessageInfoIconProps {
  * Shows: message ID, model, reasoning effort, timestamp, and token usage.
  */
 export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconProps) {
-  const isAgentMessage = event.type === "output.message.completed";
-  const agentData = isAgentMessage ? (event.data as OutputMessageCompletedData) : null;
+  const agentData = getEventData(event, "output.message.completed");
 
   // Model and reasoning are stored on message.metadata (set by ReasonAtom)
   // Fallback to agentData.metadata for backward compatibility
-  const messageMetadata = agentData?.message?.metadata as Record<string, unknown> | undefined;
-  const model = (messageMetadata?.model as string) ?? agentData?.metadata?.model;
-  const reasoningEffort = messageMetadata?.reasoning_effort as string | undefined;
+  const messageMetadata = isRecord(agentData?.message?.metadata)
+    ? agentData.message.metadata
+    : undefined;
+  const model =
+    (typeof messageMetadata?.model === "string" ? messageMetadata.model : undefined) ??
+    agentData?.metadata?.model;
+  const reasoningEffort =
+    typeof messageMetadata?.reasoning_effort === "string"
+      ? messageMetadata.reasoning_effort
+      : undefined;
   const phase = agentData?.message?.phase;
 
   // Token usage from OutputMessageCompletedData (if populated)

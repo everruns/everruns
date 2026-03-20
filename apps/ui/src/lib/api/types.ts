@@ -794,6 +794,94 @@ export type EventData =
   | ContextCompactedData
   | Record<string, unknown>; // Raw/unknown event data
 
+// ============================================
+// Event type guard helpers
+// ============================================
+// These narrow Event.data to the correct payload type based on Event.type,
+// replacing unsafe `as` casts with runtime-checked type predicates.
+
+/** Map from event type string to its data type */
+export interface EventTypeMap {
+  "input.message": InputMessageData;
+  "output.message.started": OutputMessageStartedData;
+  "output.message.delta": OutputMessageDeltaData;
+  "output.message.completed": OutputMessageCompletedData;
+  "turn.started": TurnStartedData;
+  "turn.completed": TurnCompletedData;
+  "turn.failed": TurnFailedData;
+  "reason.started": ReasonStartedData;
+  "reason.completed": ReasonCompletedData;
+  "act.started": ActStartedData;
+  "act.completed": ActCompletedData;
+  "tool.started": ToolStartedData;
+  "tool.call_requested": ToolCallRequestedData;
+  "tool.completed": ToolCompletedData;
+  "llm.generation": LlmGenerationData;
+  "session.started": SessionStartedData;
+  "session.activated": SessionActivatedData;
+  "session.idled": SessionIdledData;
+  "reason.thinking.started": ReasonThinkingStartedData;
+  "reason.thinking.delta": ReasonThinkingDeltaData;
+  "reason.thinking.completed": ReasonThinkingCompletedData;
+  "context.compacting": ContextCompactingData;
+  "context.compacted": ContextCompactedData;
+}
+
+export type KnownEventType = keyof EventTypeMap;
+
+/** Type predicate: narrows an Event to one with a known type and correctly-typed data. */
+export function isEventOfType<T extends KnownEventType>(
+  event: Event,
+  type: T,
+): event is Event & { type: T; data: EventTypeMap[T] } {
+  return event.type === type;
+}
+
+/** Narrow event data after a switch/if on event.type (returns typed data or null). */
+export function getEventData<T extends KnownEventType>(
+  event: Event,
+  type: T,
+): EventTypeMap[T] | null {
+  return event.type === type ? (event.data as EventTypeMap[T]) : null;
+}
+
+/**
+ * Type guard: narrows an unknown object value to Record<string, unknown>.
+ * Use after checking `typeof value === 'object' && value !== null && !Array.isArray(value)`.
+ */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Type guard for ToolCallContent shape (tool-call-card, tool-activity-group).
+ * Validates the essential fields at runtime.
+ */
+export function isToolCallContent(value: unknown): value is {
+  id: string;
+  name: string;
+  display_name?: string;
+  arguments: Record<string, unknown>;
+} {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    isRecord(value.arguments)
+  );
+}
+
+/**
+ * Type guard for ToolResultContent shape.
+ */
+export function isToolResultContent(value: unknown): value is {
+  tool_call_id: string;
+  result?: unknown;
+  error?: string;
+} {
+  return isRecord(value) && typeof value.tool_call_id === "string";
+}
+
 export interface CreateEventRequest {
   event_type: string;
   data: Record<string, unknown>;

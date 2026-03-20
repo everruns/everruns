@@ -1,4 +1,9 @@
-import { forwardRef, type SVGProps } from "react";
+import {
+  forwardRef,
+  type SVGProps,
+  type ForwardRefExoticComponent,
+  type RefAttributes,
+} from "react";
 import {
   CircleOff,
   Clock,
@@ -21,6 +26,14 @@ import {
   Infinity as InfinityIcon,
   type LucideIcon,
 } from "lucide-react";
+
+/**
+ * Icon component type that accepts both LucideIcon and custom SVG forwardRef components.
+ * Avoids `as unknown as LucideIcon` double casts for custom icons.
+ */
+type IconComponent =
+  | LucideIcon
+  | ForwardRefExoticComponent<SVGProps<SVGSVGElement> & RefAttributes<SVGSVGElement>>;
 
 /**
  * Custom MCP (Model Context Protocol) icon.
@@ -102,7 +115,7 @@ DaytonaIcon.displayName = "DaytonaIcon";
  * Centralized mapping of capability icon names to Lucide React components.
  * Icon names are defined in the backend capability implementations.
  */
-export const capabilityIconMap: Record<string, LucideIcon> = {
+export const capabilityIconMap: Record<string, IconComponent> = {
   // Core capabilities
   "circle-off": CircleOff,
   clock: Clock,
@@ -124,16 +137,16 @@ export const capabilityIconMap: Record<string, LucideIcon> = {
   users: Users,
   "dollar-sign": DollarSign,
   package: Package,
-  // Custom icons
-  mcp: McpIcon as unknown as LucideIcon,
-  daytona: DaytonaIcon as unknown as LucideIcon,
+  // Custom icons (ForwardRefExoticComponent<SVGProps> — no double cast needed)
+  mcp: McpIcon,
+  daytona: DaytonaIcon,
 };
 
 /**
  * Get the icon component for a capability.
  * Falls back to CircleOff if the icon is not found.
  */
-export function getCapabilityIcon(iconName?: string | null): LucideIcon {
+export function getCapabilityIcon(iconName?: string | null): IconComponent {
   if (!iconName) return CircleOff;
   return capabilityIconMap[iconName] ?? CircleOff;
 }

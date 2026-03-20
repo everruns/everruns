@@ -1,10 +1,10 @@
 "use client";
 
+import type { ComponentType } from "react";
 import { Github, Cloud, Search, LinkIcon } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 
-const iconMap: Record<string, LucideIcon> = {
+const iconMap: Record<string, ComponentType<{ className?: string }>> = {
   github: Github,
   cloud: Cloud,
   search: Search,
