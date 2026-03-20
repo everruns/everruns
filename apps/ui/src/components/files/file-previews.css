@@ -1,5 +1,5 @@
-/* File preview Streamdown styles.
- * Scoped under `.file-preview-streamdown` class.
+/* File preview styles.
+ * Scoped by `file-preview-*` class names (e.g., `.file-preview-streamdown`, `.file-preview-frontmatter`).
  * Moved from inline <style> tag in file-previews.tsx. */
 
 .file-preview-streamdown pre {
