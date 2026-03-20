@@ -164,7 +164,8 @@ pub async fn submit_tool_results(
 
     // Use session_id as turn_id (matches how DurableRunner uses workflow_id = session_id)
     let turn_id = TurnId::from_uuid(session_id.uuid());
-    let input_message_id = MessageId::new();
+    // Use a deterministic MessageId for event context only (not passed to InputAtom).
+    let event_message_id = MessageId::from_uuid(session_id.uuid());
 
     let accepted = req.tool_results.len();
 
@@ -194,7 +195,7 @@ pub async fn submit_tool_results(
 
         let event = EventRequest::new(
             session_id,
-            EventContext::turn(turn_id, input_message_id),
+            EventContext::turn(turn_id, event_message_id),
             tool_result,
         );
 
@@ -217,16 +218,12 @@ pub async fn submit_tool_results(
         tracing::warn!(error = %e, "Failed to set session status to active");
     }
 
-    // Resume the workflow by starting another run
+    // Resume the workflow by enqueueing a reason activity directly.
+    // This skips InputAtom (there is no new user message) and uses the
+    // DurableTurnInput saved when the workflow paused for connection_required.
     let runner = state.runner.clone();
-    let harness_id = session.harness_id;
-    let agent_id = session.agent_id;
-    let org_id = org.org_id;
     tokio::spawn(async move {
-        if let Err(e) = runner
-            .start_run(org_id, session_id, harness_id, agent_id, input_message_id)
-            .await
-        {
+        if let Err(e) = runner.resume_after_tool_results(session_id).await {
             tracing::error!(
                 session_id = %session_id,
                 error = %e,

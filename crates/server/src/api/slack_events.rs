@@ -2552,6 +2552,13 @@ mod tests {
             Ok(())
         }
 
+        async fn resume_after_tool_results(
+            &self,
+            _session_id: everruns_core::typed_id::SessionId,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
         async fn cancel_run(
             &self,
             _run_id: everruns_core::typed_id::SessionId,

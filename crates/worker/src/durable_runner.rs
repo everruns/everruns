@@ -630,6 +630,88 @@ impl AgentRunner for DurableRunner {
         Ok(())
     }
 
+    async fn resume_after_tool_results(&self, session_id: SessionId) -> Result<()> {
+        let workflow_id = session_id.uuid();
+
+        info!(
+            session_id = %session_id,
+            workflow_id = %workflow_id,
+            "Resuming workflow after client tool results"
+        );
+
+        let mut store = self.store.lock().await;
+
+        // Retrieve saved DurableTurnInput from the workflow result.
+        // schedule_next_activity stores it when completing due to connection_required.
+        let (status, result_json, _) = store
+            .get_workflow_status(workflow_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get workflow status: {}", e))?;
+
+        // Only resume workflows that completed normally (i.e. due to
+        // connection_required). Failed/Cancelled/ContinuedAsNew workflows
+        // should not be resumed via this path.
+        if status != WorkflowStatus::Completed {
+            return Err(anyhow::anyhow!(
+                "Cannot resume: workflow {} is not in Completed status (status: {:?})",
+                workflow_id,
+                status
+            ));
+        }
+
+        let turn_input: DurableTurnInput = result_json
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Cannot resume: workflow {} has no saved turn input in result",
+                    workflow_id
+                )
+            })
+            .and_then(|v| {
+                serde_json::from_value(v)
+                    .map_err(|e| anyhow::anyhow!("Failed to parse saved turn input: {}", e))
+            })?;
+
+        // Reset workflow to Pending and enqueue a reason activity directly
+        // (skipping process_input / InputAtom — there is no new user message).
+        let input_json = serde_json::to_value(&turn_input)?;
+        store
+            .update_workflow_status(workflow_id, WorkflowStatus::Pending, None, None)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to reset workflow status: {}", e))?;
+
+        if let Err(e) = store
+            .enqueue_task(
+                workflow_id,
+                format!("reason_{}", Uuid::now_v7()),
+                "reason".to_string(),
+                input_json.clone(),
+            )
+            .await
+        {
+            // Enqueue failed — restore workflow to Completed with saved input
+            // so a subsequent resume attempt can still succeed.
+            let _ = store
+                .update_workflow_status(
+                    workflow_id,
+                    WorkflowStatus::Completed,
+                    Some(serde_json::to_value(&turn_input).unwrap_or_default()),
+                    None,
+                )
+                .await;
+            return Err(anyhow::anyhow!("Failed to enqueue reason task: {}", e));
+        }
+
+        info!(
+            session_id = %session_id,
+            workflow_id = %workflow_id,
+            turn_id = ?turn_input.turn_id,
+            iteration = turn_input.iteration,
+            "Workflow resumed — reason activity enqueued (skipped InputAtom)"
+        );
+
+        Ok(())
+    }
+
     async fn cancel_run(&self, session_id: SessionId) -> Result<()> {
         info!(session_id = %session_id, "Cancelling durable workflow");
 
@@ -936,5 +1018,139 @@ mod tests {
             .expect("Second start_run should reset failed workflow");
 
         assert!(runner.is_running(session_id).await);
+    }
+
+    /// Test that resume_after_tool_results enqueues a reason activity directly
+    /// (skipping InputAtom) using the saved DurableTurnInput from the workflow result.
+    #[tokio::test]
+    async fn test_resume_after_tool_results_skips_input_atom() {
+        use everruns_core::DEFAULT_ORG_ID;
+        use everruns_core::typed_id::TurnId;
+
+        let runner = DurableRunner::new_in_memory();
+
+        let session_id = SessionId::new();
+        let harness_id = HarnessId::new();
+        let agent_id = AgentId::new();
+        let message_id = MessageId::new();
+        let turn_id = TurnId::new();
+
+        // Create a workflow via start_run (simulates the initial user message)
+        runner
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                message_id,
+            )
+            .await
+            .expect("start_run should succeed");
+
+        // Simulate the workflow completing with connection_required:
+        // save a DurableTurnInput as the workflow result (as schedule_next_activity does).
+        let saved_input = DurableTurnInput {
+            org_id: DEFAULT_ORG_ID,
+            session_id,
+            harness_id,
+            agent_id: Some(agent_id),
+            input_message_id: message_id,
+            turn_id: Some(turn_id),
+            previous_response_id: Some("resp_abc".to_string()),
+            iteration: 3,
+        };
+        {
+            let mut store = runner.store.lock().await;
+            store
+                .update_workflow_status(
+                    session_id.uuid(),
+                    WorkflowStatus::Completed,
+                    Some(serde_json::to_value(&saved_input).unwrap()),
+                    None,
+                )
+                .await
+                .expect("Should complete workflow with saved input");
+        }
+
+        assert!(!runner.is_running(session_id).await, "Should be completed");
+
+        // Resume after tool results — should enqueue reason directly
+        runner
+            .resume_after_tool_results(session_id)
+            .await
+            .expect("resume_after_tool_results should succeed");
+
+        // Workflow should be running again (reset to Pending with reason task)
+        assert!(
+            runner.is_running(session_id).await,
+            "Workflow should be running after resume"
+        );
+    }
+
+    /// Test that resume_after_tool_results fails when workflow has no saved turn input
+    #[tokio::test]
+    async fn test_resume_after_tool_results_no_saved_input() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let runner = DurableRunner::new_in_memory();
+
+        let session_id = SessionId::new();
+        let harness_id = HarnessId::new();
+        let message_id = MessageId::new();
+
+        // Create and complete a workflow without saving turn input in result
+        runner
+            .start_run(DEFAULT_ORG_ID, session_id, harness_id, None, message_id)
+            .await
+            .expect("start_run should succeed");
+
+        {
+            let mut store = runner.store.lock().await;
+            store
+                .update_workflow_status(session_id.uuid(), WorkflowStatus::Completed, None, None)
+                .await
+                .expect("Should complete workflow");
+        }
+
+        // Should fail because no saved turn input
+        let err = runner
+            .resume_after_tool_results(session_id)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("no saved turn input"),
+            "Error should mention missing turn input, got: {}",
+            err
+        );
+    }
+
+    /// Test that resume_after_tool_results fails on a still-running workflow
+    #[tokio::test]
+    async fn test_resume_after_tool_results_rejects_running_workflow() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let runner = DurableRunner::new_in_memory();
+
+        let session_id = SessionId::new();
+        let harness_id = HarnessId::new();
+        let message_id = MessageId::new();
+
+        runner
+            .start_run(DEFAULT_ORG_ID, session_id, harness_id, None, message_id)
+            .await
+            .expect("start_run should succeed");
+
+        assert!(runner.is_running(session_id).await);
+
+        // Should fail because workflow is still running
+        let err = runner
+            .resume_after_tool_results(session_id)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("not in Completed status"),
+            "Error should reject non-Completed workflow, got: {}",
+            err
+        );
     }
 }
