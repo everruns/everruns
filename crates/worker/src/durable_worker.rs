@@ -5,9 +5,8 @@
 use anyhow::Result;
 use everruns_core::atoms::AtomContext;
 use everruns_core::events::{
-    EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData, ToolCallRequestedData,
+    EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData,
 };
-use everruns_core::tool_types::ToolCall;
 use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::{ExecId, MessageId, SessionId, TurnId};
 use everruns_core::{Message, PlatformDefinition};
@@ -898,49 +897,18 @@ impl DurableWorker {
                             "Task completed successfully"
                         );
 
-                        // After act activity: if tools need a connection, emit
-                        // tool.call_requested and set session to waiting_for_tool_results.
-                        // This must happen before schedule_next_activity (which completes
-                        // the workflow) because we need gRPC access for events/status.
+                        // After act activity: if ActAtom signaled waiting_for_tool_results
+                        // (connection setup, client-side tools), set session status.
+                        // Events were already emitted by ActAtom hooks.
                         if task.activity_type == "act"
                             && let Some(ref ti) = turn_input_opt
                         {
-                            let act_result: Option<everruns_core::ActResult> =
-                                serde_json::from_value(output.clone()).ok();
-                            let conn_providers: Vec<String> = act_result
-                                .as_ref()
-                                .map(|r| r.connection_required.clone())
-                                .unwrap_or_default();
-
-                            if !conn_providers.is_empty() {
-                                // Build synthetic setup_connection tool calls
-                                let synthetic_tool_calls: Vec<ToolCall> = conn_providers
-                                    .iter()
-                                    .map(|provider| ToolCall {
-                                        id: format!("setup_conn_{}", Uuid::now_v7()),
-                                        name: "setup_connection".to_string(),
-                                        arguments: serde_json::json!({ "provider": provider }),
-                                    })
-                                    .collect();
-
-                                let turn_id = ti.turn_id.unwrap_or_default();
+                            let waiting = output
+                                .get("waiting_for_tool_results")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            if waiting {
                                 let grpc_client = GrpcClient::connect(&self.grpc_address).await?;
-                                let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
-
-                                let requested_event = EventRequest::new(
-                                    ti.session_id,
-                                    EventContext::turn(turn_id, ti.input_message_id),
-                                    ToolCallRequestedData {
-                                        tool_calls: synthetic_tool_calls,
-                                        tool_summaries: vec![],
-                                        headline: None,
-                                    },
-                                );
-                                if let Err(e) = event_emitter.emit(requested_event).await {
-                                    warn!(error = %e, "Failed to emit tool.call_requested event for connection setup");
-                                }
-
-                                // Set session status to waiting_for_tool_results
                                 if let Err(e) = grpc_client
                                     .set_session_status(
                                         ti.org_id,
@@ -1431,16 +1399,14 @@ impl DurableWorker {
                     return Ok(());
                 }
 
-                // Check if any tools require a user connection setup.
-                // If so, complete the workflow — the event emission and session status
-                // change were already handled by the caller (process_claimed_task).
-                let act_result: Option<everruns_core::ActResult> =
-                    serde_json::from_value(output.clone()).ok();
-                let has_connection_required = act_result
-                    .as_ref()
-                    .is_some_and(|r| !r.connection_required.is_empty());
+                // Check if act needs external input (connection setup, client-side tools).
+                // ActAtom sets waiting_for_tool_results via hooks; worker just checks the flag.
+                let waiting = output
+                    .get("waiting_for_tool_results")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
 
-                if has_connection_required {
+                if waiting {
                     // Complete workflow and persist the current DurableTurnInput so
                     // the tool-results endpoint can resume with correct turn_id,
                     // iteration, and previous_response_id (instead of creating a

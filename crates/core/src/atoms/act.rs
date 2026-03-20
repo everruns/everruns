@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
+use super::act_hooks::{self, PostActHook};
 use super::{Atom, AtomContext};
 use crate::error::Result;
 use crate::events::{
@@ -94,14 +95,23 @@ pub struct ActResult {
     pub success_count: u32,
     /// Number of failed tool calls
     pub error_count: u32,
-    /// Providers that require user connection setup before the tool can run.
-    /// When non-empty, the worker should pause and emit a client-side tool call
-    /// to prompt the user to configure the connection.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub connection_required: Vec<String>,
+    /// When true, the act emitted client-side tool calls (connection setup,
+    /// client-side tools, etc.) and the worker should pause until tool results
+    /// arrive. Workers check this single flag — they never need to know *why*
+    /// the act paused.
+    #[serde(default)]
+    pub waiting_for_tool_results: bool,
     /// True when execution stopped before tool execution because a dependency was archived or deleted.
     #[serde(default, skip_serializing_if = "is_false")]
     pub blocked: bool,
+    /// Client-side tool calls that were NOT executed by ActAtom but need to be
+    /// sent to the client. Populated by ActAtom's partitioning logic, consumed
+    /// by ClientSideToolHook.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub client_tool_calls: Vec<ToolCall>,
+    /// Tool definitions for the client-side tool calls (for narration/display).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub client_tool_definitions: Vec<ToolDefinition>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -150,6 +160,9 @@ where
     platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
     /// Optional leased resource store for provider lease tracking
     leased_resource_store: Option<Arc<dyn crate::traits::LeasedResourceStore>>,
+    /// Post-act hooks that run after tool execution completes.
+    /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
+    hooks: Vec<Box<dyn PostActHook>>,
 }
 
 impl<T, E> ActAtom<T, E>
@@ -157,7 +170,7 @@ where
     T: ToolExecutor,
     E: EventEmitter,
 {
-    /// Create a new ActAtom
+    /// Create a new ActAtom with default hooks (ConnectionSetup + ClientSideTool).
     pub fn new(tool_executor: T, event_emitter: E) -> Self {
         Self {
             tool_executor,
@@ -172,6 +185,7 @@ where
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            hooks: Self::default_hooks(),
         }
     }
 
@@ -194,7 +208,23 @@ where
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            hooks: Self::default_hooks(),
         }
+    }
+
+    /// Add a custom post-act hook.
+    pub fn with_hook(mut self, hook: Box<dyn PostActHook>) -> Self {
+        self.hooks.push(hook);
+        self
+    }
+
+    /// Default hooks: ConnectionSetup (synthetic setup_connection calls)
+    /// and ClientSideTool (emit tool.call_requested for client-side tools).
+    fn default_hooks() -> Vec<Box<dyn PostActHook>> {
+        vec![
+            Box::new(act_hooks::ConnectionSetupHook),
+            Box::new(act_hooks::ClientSideToolHook),
+        ]
     }
 
     /// Set the SQL database store on this atom
@@ -288,16 +318,62 @@ where
             .. // agent_id/org_id not needed here, just passed through workflow
         } = input;
 
-        if tool_calls.is_empty() {
+        // Partition tool calls: server-side tools get executed, client-side tools
+        // are stored on ActResult for the ClientSideToolHook to emit.
+        let (server_tool_calls, client_tool_calls): (Vec<_>, Vec<_>) =
+            tool_calls.into_iter().partition(|tc| {
+                tool_definitions
+                    .iter()
+                    .find(|td| td.name() == tc.name)
+                    .map(|td| !matches!(td, ToolDefinition::ClientSide(_)))
+                    .unwrap_or(true) // unknown tools go to server (will error there)
+            });
+
+        let client_tool_definitions: Vec<_> = tool_definitions
+            .iter()
+            .filter(|td| matches!(td, ToolDefinition::ClientSide(_)))
+            .cloned()
+            .collect();
+
+        if server_tool_calls.is_empty() && client_tool_calls.is_empty() {
             return Ok(ActResult {
                 results: vec![],
                 completed: true,
                 success_count: 0,
                 error_count: 0,
-                connection_required: vec![],
+                waiting_for_tool_results: false,
                 blocked: false,
+                client_tool_calls: vec![],
+                client_tool_definitions: vec![],
             });
         }
+
+        // If only client-side tools (no server-side), skip tool execution entirely.
+        // Just run hooks to emit tool.call_requested.
+        if server_tool_calls.is_empty() {
+            let mut result = ActResult {
+                results: vec![],
+                completed: true,
+                success_count: 0,
+                error_count: 0,
+                waiting_for_tool_results: false,
+                blocked: false,
+                client_tool_calls,
+                client_tool_definitions,
+            };
+            act_hooks::run_post_act_hooks(
+                &self.hooks,
+                &context,
+                &mut result,
+                &tool_definitions,
+                &self.event_emitter,
+            )
+            .await;
+            return Ok(result);
+        }
+
+        // Replace tool_calls with only server-side tools for execution
+        let tool_calls = server_tool_calls;
 
         tracing::info!(
             session_id = %context.session_id,
@@ -375,12 +451,6 @@ where
         let success_count = results.iter().filter(|r| r.success).count() as u32;
         let error_count = results.iter().filter(|r| !r.success).count() as u32;
 
-        // Collect providers that need connection setup
-        let connection_required: Vec<String> = results
-            .iter()
-            .filter_map(|r| r.connection_required.clone())
-            .collect();
-
         // Calculate act phase duration
         let act_duration_ms = act_start.elapsed().as_millis() as u64;
 
@@ -437,14 +507,28 @@ where
             "ActAtom: all tools completed"
         );
 
-        Ok(ActResult {
+        let mut act_result = ActResult {
             results,
             completed: true,
             success_count,
             error_count,
-            connection_required,
+            waiting_for_tool_results: false,
             blocked: false,
-        })
+            client_tool_calls,
+            client_tool_definitions,
+        };
+
+        // Run post-act hooks (connection setup, client-side tool emission, etc.)
+        act_hooks::run_post_act_hooks(
+            &self.hooks,
+            &context,
+            &mut act_result,
+            &tool_definitions,
+            &self.event_emitter,
+        )
+        .await;
+
+        Ok(act_result)
     }
 }
 
@@ -963,14 +1047,16 @@ mod tests {
             completed: true,
             success_count: 0,
             error_count: 0,
-            connection_required: vec!["daytona".to_string()],
+            waiting_for_tool_results: true,
             blocked: false,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
         };
 
         let json_str = serde_json::to_string(&result).unwrap();
         let parsed: ActResult = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(parsed.connection_required, vec!["daytona".to_string()]);
+        assert!(parsed.waiting_for_tool_results);
         assert_eq!(
             parsed.results[0].connection_required,
             Some("daytona".to_string())
@@ -978,8 +1064,8 @@ mod tests {
     }
 
     #[test]
-    fn test_act_result_without_connection_required_backward_compat() {
-        // Old JSON without connection_required fields still deserializes
+    fn test_act_result_backward_compat_deserialization() {
+        // Old JSON without new fields still deserializes
         let json_str = r#"{
             "results": [],
             "completed": true,
@@ -988,6 +1074,7 @@ mod tests {
         }"#;
         let parsed: ActResult = serde_json::from_str(json_str).unwrap();
 
-        assert!(parsed.connection_required.is_empty());
+        assert!(!parsed.waiting_for_tool_results);
+        assert!(parsed.client_tool_calls.is_empty());
     }
 }

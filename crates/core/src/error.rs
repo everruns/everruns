@@ -183,6 +183,34 @@ impl AgentLoopError {
         }
     }
 
+    /// Check if this error is deterministic and should never be retried.
+    ///
+    /// Non-retryable errors reference data that is permanently gone (e.g. a
+    /// deleted message, a missing agent). Retrying will never succeed and only
+    /// burns attempts while keeping the workflow stuck.
+    ///
+    /// Previously this classification was done via string-matching in the
+    /// durable worker. Centralizing it here keeps domain knowledge with the
+    /// error types.
+    pub fn is_non_retryable(&self) -> bool {
+        match self {
+            // Missing data is permanent — the entity was deleted.
+            AgentLoopError::AgentNotFound(_)
+            | AgentLoopError::HarnessNotFound(_)
+            | AgentLoopError::SessionNotFound(_)
+            | AgentLoopError::NoMessages => true,
+
+            // Config/driver errors won't self-heal within retries.
+            AgentLoopError::Configuration(_) | AgentLoopError::DriverNotRegistered(_) => true,
+
+            // MessageStore "not found" errors (deleted messages).
+            AgentLoopError::MessageStore(msg) => msg.to_ascii_lowercase().contains("not found"),
+
+            // Everything else is potentially transient.
+            _ => false,
+        }
+    }
+
     /// Get user-facing error message based on error classification
     pub fn user_facing_message(&self) -> String {
         if let Some(model_id) = self.model_not_available_id() {

@@ -69,6 +69,7 @@ pub mod url_validation;
 pub mod atoms;
 pub mod capabilities;
 pub mod command;
+pub mod dependency_blocker;
 pub mod error;
 pub mod llm_driver_registry;
 pub mod llm_retry;
@@ -191,8 +192,9 @@ pub use capabilities::{
 
 // Atoms re-exports (stateless atomic operations)
 pub use atoms::{
-    ActAtom, ActInput, ActResult, Atom, AtomContext, InputAtom, InputAtomInput, InputAtomResult,
-    ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
+    ActAtom, ActInput, ActResult, Atom, AtomContext, ClientSideToolHook, ConnectionSetupHook,
+    InputAtom, InputAtomInput, InputAtomResult, PostActAction, PostActHook, ReasonAtom,
+    ReasonInput, ReasonResult, ToolCallResult,
 };
 
 // Tool types (runtime types defined in this crate)
@@ -267,6 +269,9 @@ pub use permissions::{
     SkillPermissionPattern, SkillPermissionRule, check_skill_permission, evaluate_policies,
     evaluate_policies_with, parse_skill_permission_rule, role_has_permission, role_permissions,
 };
+
+// Dependency blocker re-exports
+pub use dependency_blocker::{DependencyBlocker, detect_dependency_blocker};
 
 // URL validation re-exports
 pub use url_validation::{UrlValidationError, validate_safe_url};
