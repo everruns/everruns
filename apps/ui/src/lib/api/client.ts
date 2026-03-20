@@ -119,6 +119,26 @@ export const api = {
   delete: <T>(url: string) => request<T>(url, { method: "DELETE" }),
 };
 
+/**
+ * Extract an ApiError from a failed fetch Response.
+ * Use this in callsites that need raw fetch() (FormData, text responses,
+ * header access) but still want centralized error handling.
+ */
+export async function throwApiError(response: Response): Promise<never> {
+  let errorMessage: string | undefined;
+  try {
+    const errorBody = await response.json();
+    errorMessage = errorBody.error || errorBody.message || JSON.stringify(errorBody);
+  } catch {
+    try {
+      errorMessage = await response.text();
+    } catch {
+      // No body at all
+    }
+  }
+  throw new ApiError(response.status, response.statusText, errorMessage);
+}
+
 export function getApiBaseUrl(): string {
   return API_BASE;
 }
