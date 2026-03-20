@@ -1449,12 +1449,18 @@ impl DurableWorker {
                         iteration: chained_input.iteration.saturating_add(1),
                         ..chained_input.clone()
                     };
-                    let result_json = serde_json::to_value(&resumed_input).ok();
+                    let result_json = serde_json::to_value(&resumed_input)
+                        .map_err(|e| {
+                            anyhow::anyhow!(
+                                "Failed to serialize DurableTurnInput for connection_required resume: {}",
+                                e
+                            )
+                        })?;
                     store
                         .update_workflow_status(
                             workflow_id,
                             WorkflowStatus::Completed,
-                            result_json,
+                            Some(result_json),
                             None,
                         )
                         .await

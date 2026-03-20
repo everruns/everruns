@@ -648,9 +648,12 @@ impl AgentRunner for DurableRunner {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get workflow status: {}", e))?;
 
-        if !status.is_terminal() {
+        // Only resume workflows that completed normally (i.e. due to
+        // connection_required). Failed/Cancelled/ContinuedAsNew workflows
+        // should not be resumed via this path.
+        if status != WorkflowStatus::Completed {
             return Err(anyhow::anyhow!(
-                "Cannot resume: workflow {} is still running (status: {:?})",
+                "Cannot resume: workflow {} is not in Completed status (status: {:?})",
                 workflow_id,
                 status
             ));
@@ -670,21 +673,33 @@ impl AgentRunner for DurableRunner {
 
         // Reset workflow to Pending and enqueue a reason activity directly
         // (skipping process_input / InputAtom — there is no new user message).
+        let input_json = serde_json::to_value(&turn_input)?;
         store
             .update_workflow_status(workflow_id, WorkflowStatus::Pending, None, None)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to reset workflow status: {}", e))?;
 
-        let input_json = serde_json::to_value(&turn_input)?;
-        store
+        if let Err(e) = store
             .enqueue_task(
                 workflow_id,
                 format!("reason_{}", Uuid::now_v7()),
                 "reason".to_string(),
-                input_json,
+                input_json.clone(),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
+        {
+            // Enqueue failed — restore workflow to Completed with saved input
+            // so a subsequent resume attempt can still succeed.
+            let _ = store
+                .update_workflow_status(
+                    workflow_id,
+                    WorkflowStatus::Completed,
+                    Some(serde_json::to_value(&turn_input).unwrap_or_default()),
+                    None,
+                )
+                .await;
+            return Err(anyhow::anyhow!("Failed to enqueue reason task: {}", e));
+        }
 
         info!(
             session_id = %session_id,
@@ -1133,8 +1148,8 @@ mod tests {
             .await
             .unwrap_err();
         assert!(
-            err.to_string().contains("still running"),
-            "Error should mention running workflow, got: {}",
+            err.to_string().contains("not in Completed status"),
+            "Error should reject non-Completed workflow, got: {}",
             err
         );
     }
