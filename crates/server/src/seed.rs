@@ -11,8 +11,8 @@ use crate::org_init;
 use crate::storage::{
     StorageBackend,
     models::{
-        CreateAgentRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,
-        CreateOrganizationRow, CreateUserRow,
+        CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow, CreateOrganizationRow,
+        CreateUserRow,
     },
     password::hash_password,
 };
@@ -156,7 +156,7 @@ impl SeedResult {
 
 /// Sync capabilities for an agent, only writing if the set actually changed.
 /// Returns true if capabilities were updated.
-async fn sync_agent_capabilities(
+pub(crate) async fn sync_agent_capabilities(
     db: &StorageBackend,
     agent_id: Uuid,
     desired: &[SeedCapability],
@@ -325,17 +325,17 @@ async fn seed_admin_user(
 // ============================================
 
 /// Capability entry with optional per-capability config.
-struct SeedCapability {
-    id: &'static str,
-    config: Option<fn() -> serde_json::Value>,
+pub(crate) struct SeedCapability {
+    pub(crate) id: &'static str,
+    pub(crate) config: Option<fn() -> serde_json::Value>,
 }
 
 impl SeedCapability {
-    const fn new(id: &'static str) -> Self {
+    pub(crate) const fn new(id: &'static str) -> Self {
         Self { id, config: None }
     }
 
-    const fn with_config(id: &'static str, config: fn() -> serde_json::Value) -> Self {
+    pub(crate) const fn with_config(id: &'static str, config: fn() -> serde_json::Value) -> Self {
         Self {
             id,
             config: Some(config),
@@ -349,19 +349,19 @@ impl std::fmt::Display for SeedCapability {
     }
 }
 /// Seed agent definition
-struct SeedAgent {
-    id: Uuid,
-    name: &'static str,
-    description: &'static str,
-    system_prompt: &'static str,
-    tags: &'static [&'static str],
-    capabilities: &'static [SeedCapability],
+pub(crate) struct SeedAgent {
+    pub(crate) id: Uuid,
+    pub(crate) name: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) system_prompt: &'static str,
+    pub(crate) tags: &'static [&'static str],
+    pub(crate) capabilities: &'static [SeedCapability],
     /// If true, only seed in dev environments (experimental features)
-    dev_only: bool,
+    pub(crate) dev_only: bool,
 }
 
 /// Built-in seed agents
-const SEED_AGENTS: &[SeedAgent] = &[
+pub(crate) const SEED_AGENTS: &[SeedAgent] = &[
     SeedAgent {
         id: seed_ids::DAD_JOKES_AGENT,
         name: "Dad Jokes Agent",
@@ -1019,85 +1019,7 @@ User: "Analyze my codebase and suggest improvements"
     },
 ];
 
-/// Seed agents into the database (upserts, only when changed).
-///
-/// Filters out dev-only agents when not in dev environment.
-async fn seed_agents_with_platform_definition(
-    db: &StorageBackend,
-    grade: DeploymentGrade,
-    platform_definition: &PlatformDefinition,
-) -> anyhow::Result<SeedResult> {
-    let mut result = SeedResult::default();
-    let include_dev_only = grade.experimental_features_enabled();
-
-    for seed in SEED_AGENTS {
-        // Skip dev-only agents in non-dev environments
-        if seed.dev_only && !include_dev_only {
-            tracing::debug!(
-                name = seed.name,
-                id = %seed.id,
-                "Skipping dev-only agent (deployment_grade={})",
-                grade
-            );
-            continue;
-        }
-        let missing_capabilities: Vec<&str> = seed
-            .capabilities
-            .iter()
-            .map(|capability| capability.id)
-            .filter(|capability_id| !platform_definition.capability_registry().has(capability_id))
-            .collect();
-        if !missing_capabilities.is_empty() {
-            tracing::debug!(
-                name = seed.name,
-                id = %seed.id,
-                missing_capabilities = ?missing_capabilities,
-                "Skipping seed agent because platform definition does not register all required capabilities"
-            );
-            continue;
-        }
-        let input = CreateAgentRow {
-            public_id: everruns_core::AgentId::from_uuid(seed.id).to_string(),
-            name: seed.name.to_string(),
-            description: Some(seed.description.to_string()),
-            system_prompt: seed.system_prompt.to_string(),
-            default_model_id: None,
-            tags: seed.tags.iter().map(|s| s.to_string()).collect(),
-            initial_files: serde_json::json!([]),
-            tools: serde_json::json!([]),
-        };
-
-        match db
-            .create_agent_with_id(DEFAULT_ORG_ID, seed.id.into(), input)
-            .await?
-        {
-            Some(row) => {
-                // Row was created or updated — sync capabilities
-                sync_agent_capabilities(db, row.id.uuid(), seed.capabilities).await?;
-                if row.created_at == row.updated_at {
-                    tracing::info!(name = seed.name, id = %seed.id, "Created seed agent");
-                    result.created += 1;
-                } else {
-                    tracing::info!(name = seed.name, id = %seed.id, "Updated seed agent");
-                    result.updated += 1;
-                }
-            }
-            None => {
-                // Row unchanged — check if capabilities need syncing
-                let caps_changed = sync_agent_capabilities(db, seed.id, seed.capabilities).await?;
-                if caps_changed {
-                    tracing::info!(name = seed.name, id = %seed.id, "Updated seed agent capabilities");
-                    result.updated += 1;
-                } else {
-                    tracing::debug!(name = seed.name, id = %seed.id, "Agent up to date");
-                    result.unchanged += 1;
-                }
-            }
-        }
-    }
-
-    Ok(result)
-}
+// Agent seeding has moved to org_init::initialize_org_agents (per-org, mirrors harness pattern).
 
 // ============================================
 // LLM Provider Seeder
@@ -2010,15 +1932,17 @@ pub async fn seed_all_with_platform_definition(
     result.updated += harness_result.updated;
     result.unchanged += harness_result.unchanged;
 
-    // Seed agents (respects deployment grade for dev-only agents)
-    let agent_result = seed_agents_with_platform_definition(db, grade, platform_definition).await?;
+    // Reconcile built-in agents across all orgs (mirrors harness reconciliation)
+    let agent_result = org_init::reconcile_built_in_agents(db, grade, platform_definition).await?;
     tracing::debug!(
         created = agent_result.created,
         updated = agent_result.updated,
         unchanged = agent_result.unchanged,
-        "Agents seeded"
+        "Built-in agents reconciled"
     );
-    result.merge(agent_result);
+    result.created += agent_result.created;
+    result.updated += agent_result.updated;
+    result.unchanged += agent_result.unchanged;
 
     Ok(result)
 }

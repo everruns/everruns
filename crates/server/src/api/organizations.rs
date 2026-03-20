@@ -13,8 +13,8 @@ use axum::{
     routing::get,
 };
 use everruns_core::{
-    BuiltInHarnessDefinition, DEFAULT_ORG_ID, OrgRole, Organization, generate_org_public_id,
-    validate_org_public_id,
+    BuiltInHarnessDefinition, DEFAULT_ORG_ID, DeploymentGrade, OrgRole, Organization,
+    PlatformDefinition, generate_org_public_id, validate_org_public_id,
 };
 use everruns_durable::UpdateField;
 
@@ -29,22 +29,37 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
     pub built_in_harnesses: Vec<BuiltInHarnessDefinition>,
+    pub platform_definition: Arc<PlatformDefinition>,
+    pub deployment_grade: DeploymentGrade,
 }
 
 impl AppState {
     pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self::with_built_in_harnesses(db, auth, crate::platform::oss_built_in_harnesses())
+        let grade = DeploymentGrade::from_env();
+        let platform_definition =
+            Arc::new(crate::platform::oss_platform_definition_for_grade(grade));
+        Self {
+            db,
+            auth,
+            built_in_harnesses: crate::platform::oss_built_in_harnesses(),
+            platform_definition,
+            deployment_grade: grade,
+        }
     }
 
-    pub fn with_built_in_harnesses(
+    pub fn with_platform(
         db: Arc<StorageBackend>,
         auth: AuthState,
         built_in_harnesses: Vec<BuiltInHarnessDefinition>,
+        platform_definition: Arc<PlatformDefinition>,
+        deployment_grade: DeploymentGrade,
     ) -> Self {
         Self {
             db,
             auth,
             built_in_harnesses,
+            platform_definition,
+            deployment_grade,
         }
     }
 }
@@ -240,6 +255,22 @@ pub async fn create_organization(
             org_id = row.org_id,
             error = %e,
             "Failed to initialize built-in harnesses for new org (non-fatal)"
+        );
+    }
+
+    // Seed example agents for the new organization
+    if let Err(e) = crate::org_init::initialize_org_agents(
+        &state.db,
+        row.org_id,
+        state.deployment_grade,
+        &state.platform_definition,
+    )
+    .await
+    {
+        tracing::warn!(
+            org_id = row.org_id,
+            error = %e,
+            "Failed to seed example agents for new org (non-fatal)"
         );
     }
 
