@@ -45,6 +45,13 @@ pub trait AgentRunner: Send + Sync {
         input_message_id: MessageId,
     ) -> Result<()>;
 
+    /// Resume a workflow after client-side tool results (e.g. connection_required).
+    ///
+    /// Unlike `start_run`, this skips `InputAtom` (there is no new user message)
+    /// and enqueues a `reason` activity directly using the turn context saved
+    /// when the workflow paused for tool results.
+    async fn resume_after_tool_results(&self, session_id: SessionId) -> Result<()>;
+
     /// Cancel a running workflow
     async fn cancel_run(&self, run_id: SessionId) -> Result<()>;
 

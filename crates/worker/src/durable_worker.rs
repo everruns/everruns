@@ -1441,9 +1441,22 @@ impl DurableWorker {
                     .is_some_and(|r| !r.connection_required.is_empty());
 
                 if has_connection_required {
-                    // Complete workflow — it will be resumed by tool-results endpoint
+                    // Complete workflow and persist the current DurableTurnInput so
+                    // the tool-results endpoint can resume with correct turn_id,
+                    // iteration, and previous_response_id (instead of creating a
+                    // phantom MessageId that InputAtom cannot find).
+                    let resumed_input = DurableTurnInput {
+                        iteration: chained_input.iteration.saturating_add(1),
+                        ..chained_input.clone()
+                    };
+                    let result_json = serde_json::to_value(&resumed_input).ok();
                     store
-                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
+                        .update_workflow_status(
+                            workflow_id,
+                            WorkflowStatus::Completed,
+                            result_json,
+                            None,
+                        )
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
 
