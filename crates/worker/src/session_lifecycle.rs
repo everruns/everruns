@@ -19,9 +19,10 @@ use crate::worker_adapters::WorkerAdapters;
 
 /// Encapsulates session/turn lifecycle transitions.
 ///
-/// Each method atomically handles the event emission + session status update
-/// for a given lifecycle transition. Workers call these instead of manually
-/// emitting events and setting status.
+/// Each method handles the event emission + session status update for a given
+/// lifecycle transition on a best-effort basis (individual operations may fail
+/// independently). Workers call these instead of manually emitting events and
+/// setting status.
 pub struct SessionLifecycle<A: WorkerAdapters> {
     adapters: A,
     org_id: i64,

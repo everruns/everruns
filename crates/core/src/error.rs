@@ -189,9 +189,10 @@ impl AgentLoopError {
     /// deleted message, a missing agent). Retrying will never succeed and only
     /// burns attempts while keeping the workflow stuck.
     ///
-    /// Previously this classification was done via string-matching in the
-    /// durable worker. Centralizing it here keeps domain knowledge with the
-    /// error types.
+    /// Note: the durable worker currently uses string-matching via
+    /// `is_non_retryable_task_error` because task errors arrive as strings.
+    /// This method provides the typed equivalent for callers that have access
+    /// to a structured `AgentLoopError`.
     pub fn is_non_retryable(&self) -> bool {
         match self {
             // Missing data is permanent — the entity was deleted.

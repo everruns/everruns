@@ -43,7 +43,7 @@ async fn detect_dependency_blocker(
     let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
     everruns_core::detect_dependency_blocker(&harness_store, &agent_store, harness_id, agent_id)
         .await
-        .map_err(|e| anyhow::anyhow!(e))
+        .map_err(anyhow::Error::new)
 }
 
 /// Emit dependency-blocked events (output message + turn.failed + session.idled, set idle).

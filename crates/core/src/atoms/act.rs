@@ -329,11 +329,21 @@ where
                     .unwrap_or(true) // unknown tools go to server (will error there)
             });
 
-        let client_tool_definitions: Vec<_> = tool_definitions
-            .iter()
-            .filter(|td| matches!(td, ToolDefinition::ClientSide(_)))
-            .cloned()
-            .collect();
+        let client_tool_definitions: Vec<_> = if client_tool_calls.is_empty() {
+            vec![]
+        } else {
+            tool_definitions
+                .iter()
+                .filter(|td| {
+                    if let ToolDefinition::ClientSide(ct) = td {
+                        client_tool_calls.iter().any(|tc| tc.name == ct.name)
+                    } else {
+                        false
+                    }
+                })
+                .cloned()
+                .collect()
+        };
 
         if server_tool_calls.is_empty() && client_tool_calls.is_empty() {
             return Ok(ActResult {
