@@ -15,3 +15,5 @@ export * from "./use-global-chat";
 export * from "./use-commands";
 export * from "./use-notifications";
 export * from "./use-mount-effect";
+export * from "./use-scroll-manager";
+export * from "./use-image-drop-zone";

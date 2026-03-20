@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,7 +55,13 @@ import {
   getCompletedTurnDurationsByEvent,
 } from "@/components/chat/turn-delimiter";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { useLlmModels, useImageAttachments, useSessionCommands } from "@/hooks";
+import {
+  useLlmModels,
+  useImageAttachments,
+  useSessionCommands,
+  useScrollManager,
+  useImageDropZone,
+} from "@/hooks";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
 import { useMutation } from "@tanstack/react-query";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
@@ -136,18 +142,8 @@ export function ChatPanel() {
 
   const [inputValue, setInputValue] = useState("");
   const [selectedModelId, setSelectedModelId] = useState("");
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isNearBottomRef = useRef(true);
-  const [hasNewMessages, setHasNewMessages] = useState(false);
-  const prevChatEventsLengthRef = useRef(0);
-  const initialScrollDoneRef = useRef(false);
-
-  // Track scroll height before prepending older events for position preservation
-  const prevScrollHeightRef = useRef<number | null>(null);
   const hasUserSelectedModel = useRef(false);
   const modelSelectionStorageKey = useMemo(
     () => `everruns:chat:model-selection:${agentId}:${sessionId}`,
@@ -165,6 +161,23 @@ export function ChatPanel() {
     hasImages,
     isUploading,
   } = useImageAttachments({ sessionId });
+
+  // Scroll management
+  const { scrollContainerRef, messagesEndRef, hasNewMessages, dismissNewMessages, handleScrollUp } =
+    useScrollManager({
+      eventCount: chatEvents.length,
+      eventsLoaded: !eventsLoading,
+      hasMoreEvents,
+      loadingOlderEvents,
+      loadOlderEvents,
+      sessionId,
+      scrollDeps: [streamingText, isThinking],
+    });
+
+  // Image drag-drop and paste
+  const { isDraggingOver, dropZoneProps, handlePaste } = useImageDropZone({
+    onImageFiles: addFiles,
+  });
 
   // Commands autocomplete
   const { data: commandsData } = useSessionCommands(sessionId);
@@ -362,98 +375,6 @@ export function ChatPanel() {
     }
   }, [supportsReasoning, reasoningEffortConfig, reasoningEffort, setReasoningEffort]);
 
-  // Track whether user is near the bottom of the scroll container
-  const NEAR_BOTTOM_THRESHOLD = 100;
-
-  const checkIsNearBottom = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return true;
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    return scrollHeight - scrollTop - clientHeight <= NEAR_BOTTOM_THRESHOLD;
-  }, []);
-
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
-  }, []);
-
-  // Listen for scroll events to track near-bottom state and trigger older event loading
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      const nearBottom = checkIsNearBottom();
-      isNearBottomRef.current = nearBottom;
-      // Clear "new messages" indicator when user scrolls back to bottom
-      if (nearBottom) {
-        setHasNewMessages(false);
-      }
-    };
-
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [checkIsNearBottom]);
-
-  // Scroll to bottom immediately on initial load (once events are ready)
-  useEffect(() => {
-    if (!eventsLoading && chatEvents.length > 0 && !initialScrollDoneRef.current) {
-      initialScrollDoneRef.current = true;
-      // Use requestAnimationFrame to ensure DOM is painted
-      requestAnimationFrame(() => {
-        scrollToBottom("instant");
-      });
-    }
-  }, [eventsLoading, chatEvents.length, scrollToBottom]);
-
-  // Reset initial scroll flag when session changes
-  useEffect(() => {
-    initialScrollDoneRef.current = false;
-    isNearBottomRef.current = true;
-    setHasNewMessages(false);
-    prevChatEventsLengthRef.current = 0;
-  }, [sessionId]);
-
-  // Auto-scroll on new events or streaming updates (only when near bottom)
-  // Skip if older events were prepended (prevScrollHeightRef is set)
-  useEffect(() => {
-    if (!initialScrollDoneRef.current) return;
-    if (prevScrollHeightRef.current !== null) return;
-
-    const hasNewChatEvents = chatEvents.length > prevChatEventsLengthRef.current;
-    prevChatEventsLengthRef.current = chatEvents.length;
-
-    if (isNearBottomRef.current) {
-      scrollToBottom("smooth");
-    } else if (hasNewChatEvents) {
-      setHasNewMessages(true);
-    }
-  }, [chatEvents, streamingText, isThinking, scrollToBottom]);
-
-  // Scroll position preservation: when older events are prepended,
-  // adjust scrollTop so the viewport stays in the same visual position
-  useLayoutEffect(() => {
-    const container = scrollContainerRef.current;
-    const prevHeight = prevScrollHeightRef.current;
-    if (container && prevHeight !== null) {
-      const newHeight = container.scrollHeight;
-      container.scrollTop += newHeight - prevHeight;
-      prevScrollHeightRef.current = null;
-    }
-  }, [chatEvents]);
-
-  // Scroll-up detection: trigger loading older events
-  const handleScroll = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container || !hasMoreEvents || loadingOlderEvents) return;
-
-    // Trigger when user scrolls within 200px of the top
-    if (container.scrollTop < 200) {
-      // Save scroll height before prepend for position preservation
-      prevScrollHeightRef.current = container.scrollHeight;
-      loadOlderEvents();
-    }
-  }, [hasMoreEvents, loadingOlderEvents, loadOlderEvents]);
-
   // Auto-focus message input when session loads
   useEffect(() => {
     if (!eventsLoading) {
@@ -577,7 +498,7 @@ export function ChatPanel() {
     <>
       <div
         ref={scrollContainerRef}
-        onScroll={handleScroll}
+        onScroll={handleScrollUp}
         className={cn(
           "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-4 py-5 sm:px-6",
           !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-end",
@@ -824,10 +745,7 @@ export function ChatPanel() {
         {hasNewMessages && (
           <button
             type="button"
-            onClick={() => {
-              scrollToBottom("smooth");
-              setHasNewMessages(false);
-            }}
+            onClick={dismissNewMessages}
             className={chatSurfaceStyles.floatingNotice}
           >
             <ArrowDown className="h-3 w-3" />
@@ -854,34 +772,7 @@ export function ChatPanel() {
               chatSurfaceStyles.composerInputShell,
               isDraggingOver && "bg-[hsl(var(--accent)/0.07)] ring-1 ring-accent/60",
             )}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onDragEnter={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDraggingOver(true);
-            }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                setIsDraggingOver(false);
-              }
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDraggingOver(false);
-              const files = e.dataTransfer?.files;
-              if (files && files.length > 0) {
-                const imageFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
-                if (imageFiles.length > 0) {
-                  addFiles(imageFiles);
-                }
-              }
-            }}
+            {...dropZoneProps}
           >
             <CommandAutocomplete
               commands={commands}
@@ -899,21 +790,7 @@ export function ChatPanel() {
                 setShowCommands(hasCommands && shouldShowCommandAutocomplete(val));
               }}
               onKeyDown={handleKeyDown}
-              onPaste={(e) => {
-                const items = e.clipboardData?.items;
-                if (!items) return;
-                const imageFiles: File[] = [];
-                for (const item of Array.from(items)) {
-                  if (item.type.startsWith("image/")) {
-                    const file = item.getAsFile();
-                    if (file) imageFiles.push(file);
-                  }
-                }
-                if (imageFiles.length > 0) {
-                  e.preventDefault();
-                  addFiles(imageFiles);
-                }
-              }}
+              onPaste={handlePaste}
               placeholder={inputPlaceholder}
               className={chatSurfaceStyles.composerTextarea}
             />
