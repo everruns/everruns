@@ -1530,6 +1530,32 @@ async fn test_update_harness_missing_default_model_returns_not_found() {
 }
 
 #[tokio::test]
+async fn test_update_nonexistent_harness_returns_not_found() {
+    let server = TestServer::in_memory().await;
+
+    server
+        .patch(
+            "/v1/harnesses/harness_ffffffffffffffffffffffffffffffff",
+            json!({ "name": "Updated" }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_destroy_nonexistent_harness_returns_not_found() {
+    let server = TestServer::in_memory().await;
+
+    server
+        .post(
+            "/v1/harnesses/harness_ffffffffffffffffffffffffffffffff/delete",
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn test_copy_harness_not_found() {
     let server = TestServer::new().await;
 

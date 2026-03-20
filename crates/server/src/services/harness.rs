@@ -169,7 +169,7 @@ impl HarnessService {
             .db
             .get_harness(caller.org_id, HarnessId::from_uuid(id))
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+            .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
         if existing.status != "active" {
             anyhow::bail!("Archived or deleted harnesses cannot be edited");
         }
@@ -292,7 +292,7 @@ impl HarnessService {
             .db
             .get_harness(caller.org_id, HarnessId::from_uuid(id))
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+            .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
         if existing.status != "archived" {
             anyhow::bail!("Harness must be archived before deletion");
         }
@@ -757,5 +757,32 @@ mod tests {
                 .contains("child harnesses still inherit from it"),
             "unexpected error: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn update_nonexistent_harness_returns_not_found() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = HarnessService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let err = service
+            .update(&caller, Uuid::nil(), build_update_request(None))
+            .await
+            .unwrap_err();
+
+        assert!(err.downcast_ref::<ResourceNotFoundError>().is_some());
+        assert_eq!(err.to_string(), "Harness not found");
+    }
+
+    #[tokio::test]
+    async fn destroy_nonexistent_harness_returns_not_found() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = HarnessService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let err = service.destroy(&caller, Uuid::nil()).await.unwrap_err();
+
+        assert!(err.downcast_ref::<ResourceNotFoundError>().is_some());
+        assert_eq!(err.to_string(), "Harness not found");
     }
 }
