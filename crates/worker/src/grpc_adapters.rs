@@ -694,6 +694,10 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         model_id: model_id.map(|u| u.into()),
         capabilities,
         tools: vec![],
+        hints: proto_session.hints.as_ref().and_then(|s| {
+            let json = everruns_internal_protocol::proto_struct_to_json(s);
+            serde_json::from_value(json).ok()
+        }),
         status,
         created_at,
         updated_at,

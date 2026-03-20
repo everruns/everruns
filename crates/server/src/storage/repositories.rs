@@ -1090,9 +1090,9 @@ impl Database {
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO sessions (org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'started')
-            RETURNING id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            INSERT INTO sessions (org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'started')
+            RETURNING id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             "#,
         )
@@ -1105,6 +1105,7 @@ impl Database {
         .bind(input.model_id)
         .bind(&input.capabilities)
         .bind(&input.tools)
+        .bind(&input.hints)
         .fetch_one(&self.pool)
         .await?;
 
@@ -1115,7 +1116,7 @@ impl Database {
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             FROM sessions
             WHERE org_id = $1 AND id = $2
@@ -1133,7 +1134,7 @@ impl Database {
     pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             FROM sessions
             WHERE id = $1
@@ -1192,7 +1193,7 @@ impl Database {
         let limit_idx = param_idx;
         let offset_idx = param_idx + 1;
         let select_sql = format!(
-            r#"SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            r#"SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             FROM sessions {where_clause}
             ORDER BY created_at DESC
@@ -1234,7 +1235,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             FROM sessions
             WHERE org_id = $1 AND tags @> $2
@@ -1255,7 +1256,7 @@ impl Database {
     pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             FROM sessions
             WHERE status = 'active'
@@ -1312,7 +1313,7 @@ impl Database {
                 started_at = COALESCE($8, started_at),
                 finished_at = COALESCE($9, finished_at)
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, status, created_at, updated_at, started_at, finished_at,
+            RETURNING id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             "#,
         )

@@ -127,6 +127,11 @@ impl SessionService {
         // Serialize capabilities to JSON for storage
         let capabilities_json = serde_json::to_value(&req.capabilities)?;
 
+        let hints_json = req
+            .hints
+            .as_ref()
+            .map(|h| serde_json::to_value(h).unwrap_or_default());
+
         let input = CreateSessionRow {
             org_id,
             harness_id: Some(harness_id),
@@ -137,6 +142,7 @@ impl SessionService {
             model_id,
             capabilities: capabilities_json,
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
+            hints: hints_json,
         };
         let row = self.db.create_session(input).await?;
         let mut session = Self::row_to_session(row, org_public_id);
@@ -506,6 +512,7 @@ impl SessionService {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         };
         let row = self.db.create_session(input).await?;
         let session_id = row.id.uuid();
@@ -671,6 +678,7 @@ impl SessionService {
             model_id: row.model_id,
             capabilities,
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
+            hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -734,6 +742,7 @@ mod tests {
             model_id,
             capabilities: vec![],
             tools: vec![],
+            hints: None,
         }
     }
 
@@ -1220,6 +1229,7 @@ mod tests {
                 )])
                 .unwrap(),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -1304,6 +1314,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();

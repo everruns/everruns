@@ -194,6 +194,7 @@ async fn test_session_crud() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         })
         .await
         .expect("Failed to create session");
@@ -287,6 +288,7 @@ async fn test_event_crud() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         })
         .await
         .expect("Failed to create session");
@@ -361,6 +363,7 @@ async fn test_event_exclude_types() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         })
         .await
         .expect("Failed to create session");
@@ -443,6 +446,7 @@ async fn test_event_filter_types() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         })
         .await
         .expect("Failed to create session");
@@ -727,6 +731,7 @@ async fn test_session_file_crud() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         })
         .await
         .expect("Failed to create session");
@@ -1168,6 +1173,7 @@ async fn test_session_usage_tracking() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         })
         .await
         .expect("Failed to create session");
@@ -1248,6 +1254,7 @@ async fn test_session_previews() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         })
         .await
         .expect("Failed to create session");

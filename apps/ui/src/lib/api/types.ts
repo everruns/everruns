@@ -192,6 +192,8 @@ export interface Session {
   active_schedule_count?: number;
   /** Aggregated UI features from all active capabilities (harness + agent + session) */
   features?: string[];
+  /** Session-level client hints (defaults for every turn) */
+  hints?: Record<string, unknown>;
 }
 
 /** Session counts grouped by status */
@@ -212,6 +214,12 @@ export interface CreateSessionRequest {
   locale?: string;
   tags?: string[];
   model_id?: string;
+  /**
+   * Session-level client hints — arbitrary key-value pairs that tell the
+   * server what the client can handle. Per-message `controls.hints` override
+   * these key-by-key (shallow merge).
+   */
+  hints?: Record<string, unknown>;
 }
 
 export interface UpdateSessionRequest {
@@ -355,6 +363,14 @@ export interface Controls {
   reasoning?: ReasoningConfig;
   max_tokens?: number;
   temperature?: number;
+  /**
+   * Generic client hints — arbitrary key-value pairs declared by the client.
+   * Session-level defaults are set at session creation; per-message values
+   * override session hints key-by-key (shallow merge).
+   *
+   * Examples: `{ setup_connection: true, rich_media: true }`
+   */
+  hints?: Record<string, unknown>;
 }
 
 /**

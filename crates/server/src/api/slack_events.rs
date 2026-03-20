@@ -497,6 +497,7 @@ async fn process_slack_message(
                     model_id: None,
                     capabilities: vec![],
                     tools: vec![],
+                    hints: None,
                 };
                 let internal_caller = Caller::internal(org_id);
                 let s = state
@@ -2023,6 +2024,7 @@ mod tests {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         };
         let session = db.create_session(row).await.unwrap();
         session.id

@@ -142,6 +142,13 @@ pub struct Session {
     /// Client-side tools for this session (additive to agent tools).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolDefinition>,
+    /// Session-level client hints — arbitrary key-value pairs declared by the
+    /// client at session creation time. These are defaults for every turn;
+    /// per-message `controls.hints` override these key-by-key (shallow merge).
+    ///
+    /// Examples: `{"setup_connection": true, "rich_media": true}`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hints: Option<std::collections::HashMap<String, serde_json::Value>>,
     /// Current execution status of the session.
     pub status: SessionStatus,
     /// Timestamp when the session was created.

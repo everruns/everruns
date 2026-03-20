@@ -90,6 +90,7 @@ impl SessionStore for DbSessionStore {
                     model_id: row.model_id,
                     capabilities,
                     tools: serde_json::from_value(row.tools).unwrap_or_default(),
+                    hints: None,
                     status: SessionStatus::from(row.status.as_str()),
                     created_at: row.created_at,
                     updated_at: row.updated_at,

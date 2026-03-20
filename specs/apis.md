@@ -164,7 +164,11 @@ POST /v1/sessions
   "capabilities": [
     { "ref": "current_time" },
     { "ref": "web_fetch", "config": { "timeout_ms": 30000 } }
-  ]
+  ],
+  "hints": {
+    "setup_connection": true,
+    "rich_media": true
+  }
 }
 ```
 
@@ -182,6 +186,24 @@ The optional `capabilities` field allows setting session-level capabilities that
 2. Session capabilities are applied after (additive)
 
 This enables temporarily extending an agent's capabilities for specific sessions without modifying the agent configuration.
+
+**Client Hints:**
+
+The optional `hints` field sets session-level **client hints** — generic key-value pairs that tell the server what the client can handle. Unlike capabilities (agent-scoped feature flags for tools), hints are client-scoped signals that influence server behavior without coupling to a fixed schema.
+
+- Any key-value pair is valid; unknown keys are ignored by the server.
+- Session hints are defaults for every turn in this session.
+- Per-message `controls.hints` override session hints key-by-key (shallow merge).
+- Resolution: `effective_hints = session.hints ∪ message.controls.hints` (message wins).
+
+Examples of hint keys:
+
+| Key | Value | Meaning |
+| --- | ----- | ------- |
+| `setup_connection` | `true` | Client can handle inline connection setup flow |
+| `rich_media` | `true` | Client can render images, audio, etc. |
+| `file_upload` | `true` | Client supports file upload tool calls |
+| `max_image_width` | `1024` | Client display constraint |
 
 Session creation and any other assignment flow must reject archived or deleted harnesses/agents with a client error. Existing sessions are preserved when dependencies are archived or deleted, but the next execution atom must fail gracefully with a user-visible explanation.
 
@@ -229,6 +251,8 @@ Messages store all conversation content (user, agent, tool calls, tool results).
 | GET | `/v1/sessions/{session_id}/messages` | List messages |
 
 `CreateMessageRequest.metadata.locale` and `CreateMessageRequest.metadata.timezone` are reserved for per-turn execution-context overrides. They take precedence over session and user defaults for the triggered turn only.
+
+`CreateMessageRequest.controls.hints` allows per-message client hint overrides. These are shallow-merged with session-level hints (message wins per key). See the Client Hints section under Create Session.
 
 ### Images
 

@@ -270,6 +270,7 @@ mod tests {
                 model_id: None,
                 capabilities: json!([]),
                 tools: json!([]),
+                hints: None,
             })
             .await
             .unwrap();
