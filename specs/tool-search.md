@@ -73,8 +73,8 @@ Map capability categories to tool_search namespaces. Each capability already has
 
 ```
 Capability(session_file_system, category="File System")
-  → Namespace("file_system", "File system tools for reading, writing, and managing files")
-    → Functions: read_file, write_file, list_directory, ... (all defer_loading: true)
+  → Namespace("file_system", "File system tools for reading, writing, editing, and managing files")
+    → Functions: read_file, write_file, edit_file, list_directory, ... (all defer_loading: true)
 ```
 
 For MCP servers, each server is already a natural namespace:

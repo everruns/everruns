@@ -260,7 +260,7 @@ For the full list of built-in capabilities with their tools, parameters, and sys
 
 - **ID**: `session_file_system`
 - **Purpose**: Tools to access and manipulate files in the session workspace (`/workspace`)
-- **Tools**: `read_file`, `write_file`, `list_directory`, `grep_files`, `delete_file`, `stat_file`
+- **Tools**: `read_file`, `write_file`, `edit_file`, `list_directory`, `grep_files`, `delete_file`, `stat_file`
 - **Workspace Mount**: All paths relative to `/workspace`, normalized internally for virtual_bash integration
 
 ##### Design Decision: Context-Aware Tools
@@ -276,6 +276,10 @@ Each session has its own isolated filesystem stored in PostgreSQL. Files are ses
 ##### Design Decision: Auto-Create Parents
 
 When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are automatically created if they don't exist. This follows common filesystem patterns and reduces tool call overhead.
+
+##### Design Decision: Hash-Gated Text Edits
+
+`edit_file` is intentionally narrower than `write_file`: it only edits existing text files, requires the current `content_hash` from `read_file` or `write_file`, and applies one or more exact replacements against the original file content. This keeps the tool model-friendly while preventing stale writes, ambiguous snippet matches, and accidental binary corruption.
 
 #### VirtualBash
 

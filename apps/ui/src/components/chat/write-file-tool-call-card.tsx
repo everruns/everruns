@@ -27,12 +27,17 @@ interface WriteFilePayload {
   path?: string;
   size_bytes?: number;
   created?: boolean;
+  diff?: string;
+  applied_edits?: number;
+  first_changed_line?: number;
 }
 
 interface ParsedWriteFileResult {
   path?: string;
   sizeBytes?: number;
   created?: boolean;
+  appliedEdits?: number;
+  firstChangedLine?: number;
   textContent: string | null;
 }
 
@@ -55,7 +60,11 @@ function parseWriteFilePayload(
           getPathFromArguments(toolCall),
         sizeBytes: typeof parsed.size_bytes === "number" ? parsed.size_bytes : undefined,
         created: typeof parsed.created === "boolean" ? parsed.created : undefined,
-        textContent: null,
+        appliedEdits:
+          typeof parsed.applied_edits === "number" ? parsed.applied_edits : undefined,
+        firstChangedLine:
+          typeof parsed.first_changed_line === "number" ? parsed.first_changed_line : undefined,
+        textContent: typeof parsed.diff === "string" && parsed.diff.length > 0 ? parsed.diff : null,
       };
     }
   } catch {
@@ -66,6 +75,8 @@ function parseWriteFilePayload(
     path: getPathFromArguments(toolCall),
     sizeBytes: undefined,
     created: undefined,
+    appliedEdits: undefined,
+    firstChangedLine: undefined,
     textContent: rawText || null,
   };
 }
@@ -93,7 +104,19 @@ function getTextPreview(text: string | null): string | null {
   return firstLine.length > 120 ? `${firstLine.slice(0, 120)}...` : firstLine;
 }
 
-// isWriteLikeTool is re-exported from @/lib/tool-registry at the top of this file.
+function formatEditPreview(
+  appliedEdits: number | undefined,
+  firstChangedLine: number | undefined,
+): string | null {
+  const parts = [];
+  if (typeof appliedEdits === "number") {
+    parts.push(`${appliedEdits} ${appliedEdits === 1 ? "edit" : "edits"}`);
+  }
+  if (typeof firstChangedLine === "number") {
+    parts.push(`line ${firstChangedLine}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
 
 export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCallCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -116,7 +139,10 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
   const metadataPreview = [parsed.created ? "created" : "updated", formatFileSize(parsed.sizeBytes)]
     .filter(Boolean)
     .join(" · ");
-  const preview = metadataPreview || getTextPreview(parsed.textContent);
+  const preview =
+    formatEditPreview(parsed.appliedEdits, parsed.firstChangedLine) ||
+    metadataPreview ||
+    getTextPreview(parsed.textContent);
   const hasTextDetails = !!parsed.textContent;
 
   const statusIcon = isComplete ? (

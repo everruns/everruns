@@ -187,7 +187,7 @@ Each capability adds tools and/or system prompt context to the agent. Common cap
 | Capability | Tools Provided | Purpose |
 |------------|---------------|---------|
 | `web_fetch` | `web_fetch` | Fetch URLs and convert HTML to markdown |
-| `session_file_system` | `read_file`, `write_file`, `list_directory`, `grep_files`, `delete_file` | Isolated per-session virtual filesystem |
+| `session_file_system` | `read_file`, `write_file`, `edit_file`, `list_directory`, `grep_files`, `delete_file`, `stat_file` | Isolated per-session virtual filesystem |
 | `virtual_bash` | `bash` | Sandboxed bash shell execution |
 | `stateless_todo_list` | `write_todos` | Structured task tracking in conversation |
 | `current_time` | `get_current_time` | Current date/time awareness |

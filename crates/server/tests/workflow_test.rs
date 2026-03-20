@@ -1262,6 +1262,252 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     println!("Agent filesystem and bash workspace integration test passed!");
 }
 
+/// Test agent execution with session_file_system edit flow using LlmSim.
+///
+/// Verifies the end-to-end path for:
+/// 1. Seeding a session file via the session filesystem API
+/// 2. Agent reading the file
+/// 3. Agent editing the file with `edit_file`
+/// 4. Final file content reflecting the requested change
+///
+/// Requirements: API + Worker running (uses LlmSim, no real API keys needed).
+#[tokio::test]
+async fn test_agent_execution_llmsim_with_edit_file_tool() {
+    use std::time::Duration;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .expect("Failed to create client");
+
+    println!("Testing agent execution with edit_file tool...");
+
+    // Step 1: Create LlmSim provider and model
+    println!("\nStep 1: Creating LlmSim provider and model...");
+    let provider_response = client
+        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .json(&json!({
+            "name": "LlmSim Edit Tool Provider",
+            "provider_type": "llmsim"
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    if provider_response.status() != 201 {
+        let status = provider_response.status();
+        let body = provider_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim provider: status={}, body={}",
+            status, body
+        );
+    }
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created LlmSim provider: {}", provider.id);
+
+    let model_response = client
+        .post(format!(
+            "{}/v1/llm-providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "llmsim-edit-tool-test",
+            "display_name": "LlmSim Edit Tool Test Model"
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim model: status={}, body={}",
+            status, body
+        );
+    }
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created LlmSim model: {}", model.id);
+
+    // Step 2: Create agent with session_file_system capability
+    println!("\nStep 2: Creating edit agent...");
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "Edit Tool Test Agent",
+            "system_prompt": "You are a file editing assistant. When asked to update an existing file, first use read_file to inspect the file and obtain its content hash, then use edit_file to make the requested exact replacement. Do not use write_file for existing files. After editing, confirm the final file contents.",
+            "capabilities": [{"ref": "session_file_system", "config": {}}],
+            "default_model_id": model.id
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!("Created agent: {}", agent.public_id);
+
+    // Step 3: Create session
+    println!("\nStep 3: Creating session...");
+    let session_response = client
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({
+            "harness_id": SEED_HARNESS_ID,
+            "agent_id": agent.public_id,
+            "title": "Edit Tool Integration Test"
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    let fs_url = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session.id);
+
+    // Step 4: Seed the file that will be edited
+    println!("\nStep 4: Seeding session file...");
+    let seed_response = client
+        .post(format!("{}/workspace/edit-target.txt", fs_url))
+        .json(&json!({
+            "content": "alpha\nbeta\ngamma\n",
+            "encoding": "text"
+        }))
+        .send()
+        .await
+        .expect("Failed to create seed file");
+
+    assert_eq!(seed_response.status(), 201);
+    println!("Seed file created");
+
+    // Step 5: Ask the agent to update the file
+    println!("\nStep 5: Sending edit request...");
+    let message_response = client
+        .post(format!(
+            "{}/v1/sessions/{}/messages",
+            API_BASE_URL, session.id
+        ))
+        .json(&json!({
+            "message": {
+                "content": [{
+                    "type": "text",
+                    "text": "Update /workspace/edit-target.txt so the line 'beta' becomes 'delta'. Use read_file first, then use edit_file. Reply with the final file contents."
+                }]
+            }
+        }))
+        .send()
+        .await
+        .expect("Failed to send message");
+
+    assert_eq!(message_response.status(), 201);
+    println!("Message sent successfully");
+
+    // Step 6: Wait for read_file + edit_file tool calls and a final response
+    println!("\nStep 6: Waiting for agent workflow (up to 60 seconds)...");
+    let mut read_file_called = false;
+    let mut edit_file_called = false;
+    let mut has_final_response = false;
+
+    for i in 1..=60 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let messages_response = client
+            .get(format!(
+                "{}/v1/sessions/{}/messages",
+                API_BASE_URL, session.id
+            ))
+            .send()
+            .await;
+
+        if let Ok(resp) = messages_response
+            && resp.status() == 200
+        {
+            let data: Value = resp.json().await.unwrap_or_default();
+            let empty_vec = vec![];
+            let messages = data["data"].as_array().unwrap_or(&empty_vec);
+
+            if i % 10 == 0 {
+                println!("  [{}s] Messages: {}", i, messages.len());
+            }
+
+            for msg in messages {
+                let role = msg["role"].as_str().unwrap_or("");
+                if role == "agent"
+                    && let Some(content) = msg["content"].as_array()
+                {
+                    for part in content {
+                        if part["type"] == "tool_call" {
+                            let tool_name = part["name"].as_str().unwrap_or("");
+                            if tool_name == "read_file" && !read_file_called {
+                                read_file_called = true;
+                                println!("  Found read_file tool call after {}s", i);
+                            }
+                            if tool_name == "edit_file" && !edit_file_called {
+                                edit_file_called = true;
+                                println!("  Found edit_file tool call after {}s", i);
+                            }
+                        }
+                        if part["type"] == "text" && edit_file_called {
+                            has_final_response = true;
+                        }
+                    }
+                }
+            }
+
+            if read_file_called && edit_file_called && has_final_response {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                break;
+            }
+        }
+    }
+
+    assert!(read_file_called, "Agent should have called read_file");
+    assert!(edit_file_called, "Agent should have called edit_file");
+    assert!(
+        has_final_response,
+        "Agent should have produced a final response"
+    );
+
+    // Step 7: Verify file contents changed through the session filesystem API
+    println!("\nStep 7: Verifying edited file contents...");
+    let file_response = client
+        .get(format!("{}/workspace/edit-target.txt", fs_url))
+        .send()
+        .await
+        .expect("Failed to fetch edited file");
+
+    assert_eq!(file_response.status(), 200);
+    let file: SessionFile = file_response.json().await.expect("Failed to parse file");
+    assert_eq!(
+        file.content.as_deref(),
+        Some("alpha\ndelta\ngamma\n"),
+        "Expected file content to be updated by edit_file"
+    );
+    println!("Edited file content verified: {:?}", file.content);
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+    client
+        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .send()
+        .await
+        .expect("Failed to delete provider");
+
+    println!("LlmSim edit_file workflow test passed!");
+}
+
 /// Test that message creation returns promptly and triggers agent workflow
 ///
 /// This test verifies:

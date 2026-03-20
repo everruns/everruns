@@ -143,8 +143,8 @@ pub use fake_warehouse::{
     WarehouseUpdateInventoryTool, WarehouseUpdateShipmentStatusTool,
 };
 pub use file_system::{
-    DeleteFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool, ReadFileTool,
-    StatFileTool, WriteFileTool,
+    DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
+    ReadFileTool, StatFileTool, WriteFileTool,
 };
 pub use infinity_context::{
     INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, QueryHistoryTool,

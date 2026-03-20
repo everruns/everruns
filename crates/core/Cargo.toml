@@ -46,9 +46,13 @@ tracing-opentelemetry.workspace = true
 
 # Encoding
 base64.workspace = true
+sha2.workspace = true
 
 # Regex for argument substitution
 regex.workspace = true
+
+# Text diff rendering for edit_file previews
+similar = "2"
 
 # URL parsing
 url = "2"
