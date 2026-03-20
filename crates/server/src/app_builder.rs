@@ -513,9 +513,11 @@ impl ServerAppBuilder {
             api::commands::AppState::new(capability_service.clone(), auth_state.clone());
         let agents_state =
             api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
-        let apps_state = api::apps::AppState::new(db.clone(), auth_state.clone());
+        let apps_state =
+            api::apps::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
         let slack_state = api::slack_events::SlackState::new(
             db.clone(),
+            encryption.clone(),
             runner.clone(),
             slack_dispatcher.clone(),
             notifications_enabled,
@@ -977,8 +979,9 @@ impl ServerAppBuilder {
         if let Some(ref dispatcher) = slack_dispatcher {
             let dispatcher = dispatcher.clone();
             let recovery_db = db.clone();
+            let recovery_enc = encryption.clone();
             tokio::spawn(async move {
-                let app_service = crate::services::AppService::new(recovery_db);
+                let app_service = crate::services::AppService::new(recovery_db, recovery_enc);
                 dispatcher.recover(&app_service).await;
             });
         }

@@ -92,9 +92,13 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<crate::storage::EncryptionService>>,
+        auth: AuthState,
+    ) -> Self {
         Self {
-            service: Arc::new(AppService::new(db)),
+            service: Arc::new(AppService::new(db, encryption)),
             auth,
         }
     }

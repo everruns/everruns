@@ -4677,6 +4677,7 @@ impl InMemoryDatabase {
             agent_id: input.agent_id,
             channel_type: input.channel_type,
             channel_config: input.channel_config,
+            channel_config_encrypted: input.channel_config_encrypted,
             status: "draft".to_string(),
             published_at: None,
             created_at: now,
@@ -4762,6 +4763,9 @@ impl InMemoryDatabase {
         }
         if let Some(channel_config) = input.channel_config {
             app.channel_config = channel_config;
+        }
+        if let Some(encrypted) = input.channel_config_encrypted {
+            app.channel_config_encrypted = Some(encrypted);
         }
         if let Some(status) = input.status {
             app.status = status;
@@ -6364,6 +6368,7 @@ mod tests {
                 agent_id: agent.id.into(),
                 channel_type: "slack".to_string(),
                 channel_config: serde_json::json!({}),
+                channel_config_encrypted: None,
             },
         )
         .await
@@ -6379,6 +6384,7 @@ mod tests {
                 agent_id: agent.id.into(),
                 channel_type: "web".to_string(),
                 channel_config: serde_json::json!({}),
+                channel_config_encrypted: None,
             },
         )
         .await
