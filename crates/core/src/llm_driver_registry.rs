@@ -941,20 +941,24 @@ impl DriverRegistry {
 /// prompt injection surface (TM-AGENT-012).
 const MAX_TOOL_RESULT_BYTES: usize = 64 * 1024;
 
-/// Truncate a tool result string to `MAX_TOOL_RESULT_BYTES`, appending a
-/// warning so the LLM knows the output was cut short.
+const TRUNCATION_SUFFIX: &str = "\n\n[Output truncated — exceeded 64 KiB limit. Ask the tool for a smaller result or use pagination.]";
+
+/// Truncate a tool result string to `MAX_TOOL_RESULT_BYTES` (including the
+/// suffix), appending a warning so the LLM knows the output was cut short.
 fn truncate_tool_result(text: String) -> String {
     if text.len() <= MAX_TOOL_RESULT_BYTES {
         return text;
     }
-    // Find the last char boundary at or before the limit to avoid splitting
+    // Reserve space for the suffix so the total stays within the budget.
+    let content_budget = MAX_TOOL_RESULT_BYTES.saturating_sub(TRUNCATION_SUFFIX.len());
+    // Find the last char boundary at or before the budget to avoid splitting
     // a multi-byte character.
-    let mut end = MAX_TOOL_RESULT_BYTES;
+    let mut end = content_budget;
     while end > 0 && !text.is_char_boundary(end) {
         end -= 1;
     }
     let mut truncated = text[..end].to_string();
-    truncated.push_str("\n\n[Output truncated — exceeded 64 KiB limit. Ask the tool for a smaller result or use pagination.]");
+    truncated.push_str(TRUNCATION_SUFFIX);
     truncated
 }
 
@@ -982,19 +986,25 @@ mod tests {
     fn test_truncate_tool_result_over_limit() {
         let over = "a".repeat(MAX_TOOL_RESULT_BYTES + 100);
         let result = truncate_tool_result(over);
-        assert!(result.len() < MAX_TOOL_RESULT_BYTES + 200);
-        assert!(result.ends_with("[Output truncated — exceeded 64 KiB limit. Ask the tool for a smaller result or use pagination.]"));
+        // Total result must fit within MAX_TOOL_RESULT_BYTES
+        assert!(result.len() <= MAX_TOOL_RESULT_BYTES);
+        assert!(result.ends_with(TRUNCATION_SUFFIX));
+        // Prefix should be the original content
+        let prefix_len = result.len() - TRUNCATION_SUFFIX.len();
+        assert_eq!(&result[..prefix_len], "a".repeat(prefix_len));
     }
 
     #[test]
     fn test_truncate_tool_result_multibyte_boundary() {
-        // Build a string with multi-byte chars that crosses the limit
-        let ch = "é"; // 2 bytes in UTF-8
+        // Use a 3-byte char so MAX_TOOL_RESULT_BYTES doesn't land on a
+        // boundary, exercising the backup loop.
+        let ch = "€"; // 3 bytes in UTF-8
+        assert_eq!(ch.len(), 3);
         let count = MAX_TOOL_RESULT_BYTES / ch.len() + 1;
         let over = ch.repeat(count);
         let result = truncate_tool_result(over);
-        // Must be valid UTF-8
-        assert!(result.is_char_boundary(result.len()));
+        // Must be valid UTF-8 and within budget
+        assert!(result.len() <= MAX_TOOL_RESULT_BYTES);
         assert!(result.contains("[Output truncated"));
     }
 
