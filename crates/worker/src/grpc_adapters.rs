@@ -565,6 +565,11 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         .as_ref()
         .map(|u| proto_uuid_to_uuid(Some(u)))
         .transpose()?;
+    let parent_harness_id = proto_harness
+        .parent_harness_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)))
+        .transpose()?;
 
     let status = match proto_harness.status.to_lowercase().as_str() {
         "active" => HarnessStatus::Active,
@@ -578,16 +583,16 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         name: proto_harness.name,
         description: non_empty_string(proto_harness.description),
         system_prompt: proto_harness.system_prompt,
-        parent_harness_id: None,
+        parent_harness_id: parent_harness_id.map(|u| u.into()),
         default_model_id: default_model_id.map(|u| u.into()),
-        tags: vec![],
+        tags: proto_harness.tags,
         capabilities: proto_harness
             .capability_ids
             .into_iter()
             .map(everruns_core::AgentCapabilityConfig::new)
             .collect(),
         initial_files: vec![],
-        is_built_in: false,
+        is_built_in: proto_harness.is_built_in,
         status,
         created_at: proto_timestamp_or_now(proto_harness.created_at.as_ref()),
         updated_at: proto_timestamp_or_now(proto_harness.updated_at.as_ref()),
@@ -2545,6 +2550,34 @@ fn proto_value_to_json(value: prost_types::Value) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_proto_harness_to_harness_preserves_metadata() {
+        let harness_id = Uuid::new_v4();
+        let parent_id = Uuid::new_v4();
+        let proto = proto::Harness {
+            id: Some(uuid_to_proto(harness_id)),
+            name: "Platform Chat".into(),
+            description: "Built-in chat harness".into(),
+            system_prompt: "prompt".into(),
+            default_model_id: None,
+            status: "active".into(),
+            created_at: None,
+            updated_at: None,
+            capability_ids: vec!["platform_management".into()],
+            tags: vec!["chat".into(), "built-in".into()],
+            parent_harness_id: Some(uuid_to_proto(parent_id)),
+            is_built_in: true,
+        };
+
+        let harness = proto_harness_to_harness(proto).expect("proto harness should convert");
+
+        assert_eq!(harness.id.uuid(), harness_id);
+        assert_eq!(harness.parent_harness_id.map(|id| id.uuid()), Some(parent_id));
+        assert_eq!(harness.tags, vec!["chat".to_string(), "built-in".to_string()]);
+        assert!(harness.is_built_in);
+    }
 
     #[test]
     fn test_proto_value_to_json_null() {
