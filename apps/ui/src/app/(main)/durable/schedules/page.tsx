@@ -499,7 +499,7 @@ export default function SchedulesPage() {
                       <TableHead>Target</TableHead>
                       <TableHead className="whitespace-nowrap">Last Triggered</TableHead>
                       <TableHead className="whitespace-nowrap">Next Trigger</TableHead>
-                      <TableHead className="w-[100px]">Actions</TableHead>
+                      <TableHead className="whitespace-nowrap">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
