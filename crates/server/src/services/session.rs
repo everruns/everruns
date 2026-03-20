@@ -124,6 +124,14 @@ impl SessionService {
                     .or(effective_harness.default_model_id)
             });
 
+        // Validate session-level capability refs before persisting
+        crate::services::capability_validation::validate_capability_refs(
+            &self.db,
+            org_id,
+            &req.capabilities,
+        )
+        .await?;
+
         // Serialize capabilities to JSON for storage
         let capabilities_json = serde_json::to_value(&req.capabilities)?;
 

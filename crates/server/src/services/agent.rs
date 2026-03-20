@@ -72,6 +72,12 @@ impl AgentService {
     ) -> Result<Agent> {
         let capabilities_to_store =
             ensure_file_system_capability(req.capabilities.clone(), !req.initial_files.is_empty());
+        crate::services::capability_validation::validate_capability_refs(
+            &self.db,
+            caller.org_id,
+            &capabilities_to_store,
+        )
+        .await?;
         let default_model_id = self
             .validate_default_model_id(caller.org_id, req.default_model_id)
             .await?;
@@ -233,6 +239,14 @@ impl AgentService {
             )),
             None => None,
         };
+        if let Some(ref caps) = capabilities_override {
+            crate::services::capability_validation::validate_capability_refs(
+                &self.db,
+                caller.org_id,
+                caps,
+            )
+            .await?;
+        }
         let default_model_id = self
             .validate_default_model_id(caller.org_id, req.default_model_id)
             .await?;
@@ -348,6 +362,12 @@ impl AgentService {
     ) -> Result<(Agent, bool)> {
         let capabilities_to_store =
             ensure_file_system_capability(req.capabilities.clone(), !req.initial_files.is_empty());
+        crate::services::capability_validation::validate_capability_refs(
+            &self.db,
+            caller.org_id,
+            &capabilities_to_store,
+        )
+        .await?;
         let default_model_id = self
             .validate_default_model_id(caller.org_id, req.default_model_id)
             .await?;
@@ -634,5 +654,85 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(err.to_string(), "Model not found");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_unknown_builtin_capability() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = AgentService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let mut req = build_create_request(None);
+        req.capabilities = vec![AgentCapabilityConfig::new("nonexistent_cap")];
+
+        let err = service.create(&caller, None, req).await.unwrap_err();
+        assert_eq!(err.to_string(), "Capability not found");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_nonexistent_mcp_ref() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = AgentService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let mut req = build_create_request(None);
+        req.capabilities = vec![AgentCapabilityConfig::new(format!(
+            "mcp:{}",
+            uuid::Uuid::new_v4()
+        ))];
+
+        let err = service.create(&caller, None, req).await.unwrap_err();
+        assert_eq!(err.to_string(), "MCP server not found");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_nonexistent_skill_ref() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = AgentService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let mut req = build_create_request(None);
+        req.capabilities = vec![AgentCapabilityConfig::new(format!(
+            "skill:{}",
+            uuid::Uuid::new_v4()
+        ))];
+
+        let err = service.create(&caller, None, req).await.unwrap_err();
+        assert_eq!(err.to_string(), "Skill not found");
+    }
+
+    #[tokio::test]
+    async fn create_accepts_valid_builtin_capability() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = AgentService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let mut req = build_create_request(None);
+        req.capabilities = vec![AgentCapabilityConfig::new("current_time")];
+
+        let agent = service.create(&caller, None, req).await.unwrap();
+        assert_eq!(agent.capabilities[0].capability_id(), "current_time");
+    }
+
+    #[tokio::test]
+    async fn update_rejects_unknown_capability() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = AgentService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let agent = service
+            .create(&caller, None, build_create_request(None))
+            .await
+            .unwrap();
+
+        let mut req = build_update_request(None);
+        req.capabilities = Some(vec![AgentCapabilityConfig::new("bogus_cap")]);
+
+        let err = service
+            .update(&caller, &agent.public_id.to_string(), req)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.to_string(), "Capability not found");
     }
 }

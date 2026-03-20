@@ -4,6 +4,7 @@
 pub mod agent;
 pub mod app;
 pub mod capability;
+pub(crate) mod capability_validation;
 pub mod event;
 pub mod harness;
 pub mod leased_resource;

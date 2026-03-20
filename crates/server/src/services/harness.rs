@@ -71,6 +71,12 @@ impl HarnessService {
     pub async fn create(&self, caller: &Caller, req: CreateHarnessRequest) -> Result<Harness> {
         let capabilities_to_store =
             ensure_file_system_capability(req.capabilities.clone(), !req.initial_files.is_empty());
+        crate::services::capability_validation::validate_capability_refs(
+            &self.db,
+            caller.org_id,
+            &capabilities_to_store,
+        )
+        .await?;
         let parent_harness_id = self
             .validate_parent_harness(caller.org_id, None, req.parent_harness_id)
             .await?;
@@ -189,6 +195,14 @@ impl HarnessService {
             )),
             None => None,
         };
+        if let Some(ref caps) = capabilities_override {
+            crate::services::capability_validation::validate_capability_refs(
+                &self.db,
+                caller.org_id,
+                caps,
+            )
+            .await?;
+        }
         let default_model_id = self
             .validate_default_model_id(caller.org_id, req.default_model_id)
             .await?;
@@ -784,5 +798,56 @@ mod tests {
 
         assert!(err.downcast_ref::<ResourceNotFoundError>().is_some());
         assert_eq!(err.to_string(), "Harness not found");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_unknown_builtin_capability() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = HarnessService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let mut req = build_create_request(None);
+        req.capabilities = vec![AgentCapabilityConfig::new("nonexistent_cap")];
+
+        let err = service.create(&caller, req).await.unwrap_err();
+        assert_eq!(err.to_string(), "Capability not found");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_nonexistent_mcp_ref() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = HarnessService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let mut req = build_create_request(None);
+        req.capabilities = vec![AgentCapabilityConfig::new(format!(
+            "mcp:{}",
+            Uuid::new_v4()
+        ))];
+
+        let err = service.create(&caller, req).await.unwrap_err();
+        assert_eq!(err.to_string(), "MCP server not found");
+    }
+
+    #[tokio::test]
+    async fn update_rejects_unknown_capability() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = HarnessService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let harness = service
+            .create(&caller, build_create_request(None))
+            .await
+            .unwrap();
+
+        let mut req = build_update_request(None);
+        req.capabilities = Some(vec![AgentCapabilityConfig::new("bogus_cap")]);
+
+        let err = service
+            .update(&caller, harness.id.uuid(), req)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.to_string(), "Capability not found");
     }
 }
