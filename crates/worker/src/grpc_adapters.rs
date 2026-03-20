@@ -351,10 +351,23 @@ impl GrpcMessageRetriever {
 #[async_trait]
 impl MessageRetriever for GrpcMessageRetriever {
     async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
-        // Load all messages and find the one we want
-        // TODO: Add a specific get_message RPC
-        let messages = self.load(session_id).await?;
-        Ok(messages.into_iter().find(|m| m.id == message_id))
+        let mut client = self.client.inner.lock().await;
+
+        let request = proto::GetMessageRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            message_id: Some(uuid_to_proto(message_id.uuid())),
+        };
+
+        let response = client
+            .get_message(request)
+            .await
+            .map_err(|e| grpc_error(format!("gRPC get_message failed: {}", e)))?;
+
+        response
+            .into_inner()
+            .message
+            .map(proto_message_to_message)
+            .transpose()
     }
 
     async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {

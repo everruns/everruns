@@ -74,6 +74,8 @@ use everruns_internal_protocol::proto::{
     GetHarnessResponse,
     GetMcpServerByPrefixRequest,
     GetMcpServerByPrefixResponse,
+    GetMessageRequest,
+    GetMessageResponse,
     GetModelWithProviderRequest,
     GetModelWithProviderResponse,
     GetSessionRequest,
@@ -1222,6 +1224,75 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(SetSessionTitleResponse {
             session: Some(proto_session),
         }))
+    }
+
+    async fn get_message(
+        &self,
+        request: Request<GetMessageRequest>,
+    ) -> Result<Response<GetMessageResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let message_id = parse_uuid(req.message_id.as_ref())?;
+
+        // Load message events and find the one matching message_id
+        let events = self
+            .event_service
+            .list_message_events(session_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
+
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        for event in events {
+            let message = match event_to_message(&event) {
+                Some(m) => m,
+                None => continue,
+            };
+
+            if message.id.uuid() != message_id {
+                continue;
+            }
+
+            // Convert to proto Message
+            let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
+            let content = Some(everruns_internal_protocol::json_to_proto_list(
+                &content_json_val,
+            ));
+
+            let controls = message.controls.as_ref().map(|c| {
+                let json = serde_json::to_value(c).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
+
+            let metadata = message.metadata.as_ref().map(|m| {
+                let json = serde_json::to_value(m).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
+
+            let external_actor = message.external_actor.as_ref().map(|ea| {
+                let json = serde_json::to_value(ea).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            });
+
+            let proto_msg = proto::Message {
+                id: Some(uuid_to_proto_uuid(message.id.uuid())),
+                role: message.role.to_string(),
+                content,
+                controls,
+                metadata,
+                created_at: Some(datetime_to_proto_timestamp(message.created_at)),
+                thinking: message.thinking.clone(),
+                thinking_signature: message.thinking_signature.clone(),
+                external_actor,
+            };
+
+            return Ok(Response::new(GetMessageResponse {
+                message: Some(proto_msg),
+            }));
+        }
+
+        // Message not found
+        Ok(Response::new(GetMessageResponse { message: None }))
     }
 
     async fn load_messages(
