@@ -3572,42 +3572,63 @@ impl InMemoryDatabase {
     }
 
     /// Reconcile org memberships to match an authoritative list.
+    /// Operates under a single write lock for atomicity.
+    /// Duplicate user_ids in the authoritative list are deduplicated (last wins).
     /// Returns `(added, updated, removed)` counts.
     pub async fn reconcile_memberships(
         &self,
         org_id: i64,
         authoritative: &[(Uuid, String)],
     ) -> Result<(usize, usize, usize)> {
-        let current = self.list_organization_members(org_id).await?;
-        let current_map: std::collections::HashMap<Uuid, String> =
-            current.into_iter().map(|m| (m.user_id, m.role)).collect();
+        // Deduplicate authoritative input (last occurrence wins)
         let auth_map: std::collections::HashMap<Uuid, &str> = authoritative
             .iter()
             .map(|(uid, role)| (*uid, role.as_str()))
+            .collect();
+
+        let mut members = self.organization_members.write();
+        let now = Self::now();
+
+        // Build current state under the write lock
+        let current_map: std::collections::HashMap<Uuid, String> = members
+            .iter()
+            .filter(|((oid, _), _)| *oid == org_id)
+            .map(|((_, uid), row)| (*uid, row.role.clone()))
             .collect();
 
         let mut added = 0usize;
         let mut updated = 0usize;
         let mut removed = 0usize;
 
-        for (user_id, role) in authoritative {
+        // Add or update from the deduped map
+        for (user_id, role) in &auth_map {
             match current_map.get(user_id) {
                 None => {
-                    self.add_organization_member(org_id, *user_id, role).await?;
+                    members.insert(
+                        (org_id, *user_id),
+                        OrganizationMemberRow {
+                            org_id,
+                            user_id: *user_id,
+                            role: role.to_string(),
+                            created_at: now,
+                        },
+                    );
                     added += 1;
                 }
                 Some(existing_role) if existing_role != role => {
-                    self.update_organization_member_role(org_id, *user_id, role)
-                        .await?;
+                    if let Some(row) = members.get_mut(&(org_id, *user_id)) {
+                        row.role = role.to_string();
+                    }
                     updated += 1;
                 }
-                _ => {}
+                _ => {} // unchanged
             }
         }
 
+        // Remove members not in authoritative list
         for user_id in current_map.keys() {
             if !auth_map.contains_key(user_id) {
-                self.remove_organization_member(org_id, *user_id).await?;
+                members.remove(&(org_id, *user_id));
                 removed += 1;
             }
         }

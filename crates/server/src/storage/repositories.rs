@@ -4329,7 +4329,10 @@ impl Database {
     /// Updates the role if the membership already exists.
     pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64, role: &str) -> Result<()> {
         sqlx::query(
-            "INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role",
+            "INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, $3) \
+             ON CONFLICT (org_id, user_id) DO UPDATE \
+             SET role = EXCLUDED.role \
+             WHERE organization_members.role IS DISTINCT FROM EXCLUDED.role",
         )
         .bind(org_id)
         .bind(user_id)
@@ -4344,34 +4347,63 @@ impl Database {
     /// identity provider. Adds missing members, updates changed roles, and
     /// removes members not present in the authoritative list.
     ///
+    /// Runs inside a transaction for atomicity. Duplicate user_ids in the
+    /// authoritative list are deduplicated (last wins).
+    ///
     /// Returns `(added, updated, removed)` counts.
     pub async fn reconcile_memberships(
         &self,
         org_id: i64,
         authoritative: &[(Uuid, String)],
     ) -> Result<(usize, usize, usize)> {
-        let current = self.list_organization_members(org_id).await?;
-        let current_map: std::collections::HashMap<Uuid, String> =
-            current.into_iter().map(|m| (m.user_id, m.role)).collect();
+        // Deduplicate authoritative input (last occurrence wins)
         let auth_map: std::collections::HashMap<Uuid, &str> = authoritative
             .iter()
             .map(|(uid, role)| (*uid, role.as_str()))
             .collect();
 
+        let mut tx = self.pool.begin().await?;
+
+        // Read current memberships inside the transaction (lock rows)
+        let current: Vec<OrganizationMemberRow> = sqlx::query_as(
+            "SELECT org_id, user_id, role, created_at \
+             FROM organization_members WHERE org_id = $1 FOR UPDATE",
+        )
+        .bind(org_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let current_map: std::collections::HashMap<Uuid, String> =
+            current.into_iter().map(|m| (m.user_id, m.role)).collect();
+
         let mut added = 0usize;
         let mut updated = 0usize;
         let mut removed = 0usize;
 
-        // Add or update
-        for (user_id, role) in authoritative {
+        // Add or update from the deduped map
+        for (user_id, role) in &auth_map {
             match current_map.get(user_id) {
                 None => {
-                    self.add_organization_member(org_id, *user_id, role).await?;
+                    sqlx::query(
+                        "INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, $3)",
+                    )
+                    .bind(org_id)
+                    .bind(user_id)
+                    .bind(role)
+                    .execute(&mut *tx)
+                    .await?;
                     added += 1;
                 }
                 Some(existing_role) if existing_role != role => {
-                    self.update_organization_member_role(org_id, *user_id, role)
-                        .await?;
+                    sqlx::query(
+                        "UPDATE organization_members SET role = $1 \
+                         WHERE org_id = $2 AND user_id = $3",
+                    )
+                    .bind(role)
+                    .bind(org_id)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
                     updated += 1;
                 }
                 _ => {} // unchanged
@@ -4381,10 +4413,16 @@ impl Database {
         // Remove members not in authoritative list
         for user_id in current_map.keys() {
             if !auth_map.contains_key(user_id) {
-                self.remove_organization_member(org_id, *user_id).await?;
+                sqlx::query("DELETE FROM organization_members WHERE org_id = $1 AND user_id = $2")
+                    .bind(org_id)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
                 removed += 1;
             }
         }
+
+        tx.commit().await?;
 
         Ok((added, updated, removed))
     }
