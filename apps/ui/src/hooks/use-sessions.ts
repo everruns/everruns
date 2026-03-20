@@ -255,6 +255,9 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
   // Track whether initial REST fetch has completed
   const [restLoaded, setRestLoaded] = useState(false);
 
+  // Dedup in-flight REST fetches for the same (org, sessionId) pair (EVE-159)
+  const fetchingKeyRef = useRef<string | null>(null);
+
   // Pagination state
   const [totalNonDeltaCount, setTotalNonDeltaCount] = useState<number | undefined>();
   const oldestLoadedSequenceRef = useRef<number | undefined>(undefined);
@@ -279,6 +282,7 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     eventIdsRef.current.clear();
     reconnectRef.current = createReconnectTracker();
     setRestLoaded(false);
+    fetchingKeyRef.current = null;
     setTotalNonDeltaCount(undefined);
     oldestLoadedSequenceRef.current = undefined;
     setHasMore(false);
@@ -289,6 +293,11 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
   // Step 1: REST batch load last N events (excluding deltas for old messages)
   useEffect(() => {
     if (!org || !sessionId || !isEnabled) return;
+
+    // Skip if already fetching for the same (org, sessionId) pair (EVE-159)
+    const key = `${org}:${sessionId}`;
+    if (fetchingKeyRef.current === key) return;
+    fetchingKeyRef.current = key;
 
     let cancelled = false;
 
@@ -334,6 +343,10 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
     fetchInitialEvents();
     return () => {
       cancelled = true;
+      // Allow re-fetch if effect re-runs after cleanup
+      if (fetchingKeyRef.current === key) {
+        fetchingKeyRef.current = null;
+      }
     };
   }, [org, sessionId, isEnabled]);
 
