@@ -52,6 +52,12 @@ impl From<serde_json::Error> for ConversionError {
     }
 }
 
+impl From<ConversionError> for tonic::Status {
+    fn from(e: ConversionError) -> Self {
+        tonic::Status::invalid_argument(e.to_string())
+    }
+}
+
 // ============================================================================
 // Conversion traits for basic types
 // ============================================================================
@@ -1379,5 +1385,24 @@ mod tests {
         );
         assert_eq!(schema_session.capabilities.len(), 1);
         assert_eq!(schema_session.capabilities[0].capability_id(), "session");
+    }
+
+    #[test]
+    fn test_conversion_error_to_tonic_status() {
+        let err = ConversionError::MissingField("session_id");
+        let status: tonic::Status = err.into();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(
+            status
+                .message()
+                .contains("Missing required field: session_id")
+        );
+
+        let err = ConversionError::JsonError(
+            serde_json::from_str::<serde_json::Value>("invalid").unwrap_err(),
+        );
+        let status: tonic::Status = err.into();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(status.message().contains("JSON error"));
     }
 }

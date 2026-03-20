@@ -1429,7 +1429,7 @@ impl WorkerService for WorkerServiceImpl {
 
         // Convert proto EventRequest to core EventRequest using typed conversions
         let core_event_request = proto_event_request_to_schema(proto_event_request)
-            .map_err(|e| Status::invalid_argument(format!("Invalid event: {}", e)))?;
+            .map_err(|e| Status::invalid_argument(format!("Invalid event: {e}")))?;
 
         // Emit through the EventService
         let stored_event = self
