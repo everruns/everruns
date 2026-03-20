@@ -53,7 +53,19 @@ fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
         }
         tonic::Code::InvalidArgument => AgentLoopError::config(format!("Invalid argument: {msg}")),
         tonic::Code::Unavailable => AgentLoopError::store(format!("Service unavailable: {msg}")),
-        tonic::Code::ResourceExhausted => AgentLoopError::request_too_large(msg),
+        tonic::Code::ResourceExhausted => {
+            let msg_lower = msg.to_ascii_lowercase();
+            if msg_lower.contains("message")
+                || msg_lower.contains("payload")
+                || msg_lower.contains("size")
+                || msg_lower.contains("too large")
+                || msg_lower.contains("context length")
+            {
+                AgentLoopError::request_too_large(msg)
+            } else {
+                AgentLoopError::store(format!("Resource exhausted: {msg}"))
+            }
+        }
         tonic::Code::Unauthenticated | tonic::Code::PermissionDenied => {
             AgentLoopError::config(format!("Auth error: {msg}"))
         }
@@ -61,9 +73,9 @@ fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
     }
 }
 
-/// Create a store error for missing fields in gRPC responses (protocol bugs).
+/// Create a store error for issues in gRPC responses (e.g., missing fields).
 fn grpc_missing_field(field: &str) -> AgentLoopError {
-    AgentLoopError::store(format!("Missing {field} in gRPC response"))
+    AgentLoopError::store(format!("gRPC response error: {field}"))
 }
 
 /// gRPC client wrapper for worker operations
@@ -2848,10 +2860,18 @@ mod tests {
     }
 
     #[test]
-    fn test_grpc_status_to_error_resource_exhausted() {
+    fn test_grpc_status_to_error_resource_exhausted_payload() {
         let status = tonic::Status::resource_exhausted("message too large");
         let err = grpc_status_to_error(status);
         assert!(err.is_request_too_large());
+    }
+
+    #[test]
+    fn test_grpc_status_to_error_resource_exhausted_non_payload() {
+        let status = tonic::Status::resource_exhausted("task queue limit exceeded");
+        let err = grpc_status_to_error(status);
+        assert!(!err.is_request_too_large());
+        assert!(matches!(err, AgentLoopError::MessageStore(_)));
     }
 
     #[test]
@@ -2880,8 +2900,8 @@ mod tests {
 
     #[test]
     fn test_grpc_missing_field() {
-        let err = grpc_missing_field("session");
+        let err = grpc_missing_field("No session in response");
         assert!(matches!(err, AgentLoopError::MessageStore(_)));
-        assert!(err.to_string().contains("Missing session"));
+        assert!(err.to_string().contains("No session in response"));
     }
 }
