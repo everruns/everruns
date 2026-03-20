@@ -31,9 +31,39 @@ use uuid::Uuid;
 
 use crate::grpc_durable_store::GrpcClientAuth;
 
-// Helper to create store errors for gRPC operations
-fn grpc_error(msg: impl Into<String>) -> AgentLoopError {
-    AgentLoopError::store(msg)
+/// Map a tonic gRPC status to the appropriate AgentLoopError variant.
+///
+/// Preserves the semantic meaning of gRPC status codes so that callers
+/// (e.g. retry logic in the durable engine) can distinguish transient
+/// transport errors from permanent domain errors.
+fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
+    let msg = status.message().to_string();
+    match status.code() {
+        tonic::Code::NotFound => {
+            // Map to specific "not found" variants when possible
+            if msg.contains("Session") {
+                AgentLoopError::store(format!("Session not found: {msg}"))
+            } else if msg.contains("Agent") {
+                AgentLoopError::store(format!("Agent not found: {msg}"))
+            } else if msg.contains("Harness") {
+                AgentLoopError::store(format!("Harness not found: {msg}"))
+            } else {
+                AgentLoopError::store(format!("Not found: {msg}"))
+            }
+        }
+        tonic::Code::InvalidArgument => AgentLoopError::config(format!("Invalid argument: {msg}")),
+        tonic::Code::Unavailable => AgentLoopError::store(format!("Service unavailable: {msg}")),
+        tonic::Code::ResourceExhausted => AgentLoopError::request_too_large(msg),
+        tonic::Code::Unauthenticated | tonic::Code::PermissionDenied => {
+            AgentLoopError::config(format!("Auth error: {msg}"))
+        }
+        _ => AgentLoopError::store(format!("gRPC error ({}): {msg}", status.code())),
+    }
+}
+
+/// Create a store error for missing fields in gRPC responses (protocol bugs).
+fn grpc_missing_field(field: &str) -> AgentLoopError {
+    AgentLoopError::store(format!("Missing {field} in gRPC response"))
 }
 
 /// gRPC client wrapper for worker operations
@@ -55,10 +85,10 @@ impl GrpcClient {
     pub async fn connect(addr: &str) -> Result<Self> {
         let endpoint = format!("http://{}", addr);
         let channel = tonic::transport::Endpoint::from_shared(endpoint)
-            .map_err(|e| grpc_error(format!("Invalid gRPC endpoint: {}", e)))?
+            .map_err(|e| AgentLoopError::store(format!("Invalid gRPC endpoint: {}", e)))?
             .connect()
             .await
-            .map_err(|e| grpc_error(format!("gRPC connection failed: {}", e)))?;
+            .map_err(|e| AgentLoopError::store(format!("gRPC connection failed: {e}")))?;
 
         // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
         // Mitigation: Attach bearer token from WORKER_GRPC_AUTH_TOKEN env
@@ -100,12 +130,12 @@ impl GrpcClient {
         let response = client
             .set_session_status(request)
             .await
-            .map_err(|e| grpc_error(format!("Failed to set session status: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let proto_session = response
             .into_inner()
             .session
-            .ok_or_else(|| grpc_error("No session in response"))?;
+            .ok_or_else(|| grpc_missing_field("No session in response"))?;
 
         proto_session_to_session(proto_session)
     }
@@ -127,12 +157,12 @@ impl GrpcClient {
         let response = client
             .set_session_title(request)
             .await
-            .map_err(|e| grpc_error(format!("Failed to set session title: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let proto_session = response
             .into_inner()
             .session
-            .ok_or_else(|| grpc_error("No session in response"))?;
+            .ok_or_else(|| grpc_missing_field("No session in response"))?;
 
         proto_session_to_session(proto_session)
     }
@@ -152,14 +182,12 @@ impl GrpcClient {
         let response = client
             .get_mcp_server_by_prefix(request)
             .await
-            .map_err(|e| grpc_error(format!("Failed to get MCP server: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
-        let proto_server = response.into_inner().server.ok_or_else(|| {
-            grpc_error(format!(
-                "MCP server not found for prefix: {}",
-                server_prefix
-            ))
-        })?;
+        let proto_server = response
+            .into_inner()
+            .server
+            .ok_or_else(|| grpc_missing_field("MCP server not found for prefix: {}"))?;
 
         Ok(crate::mcp_executor::McpServerInfo {
             id: proto_uuid_to_uuid(proto_server.id.as_ref())?,
@@ -183,7 +211,9 @@ impl GrpcClient {
                 stale_after_seconds,
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC claim_due_leased_resources failed: {e}")))?;
+            .map_err(|e| {
+                AgentLoopError::store(format!("gRPC claim_due_leased_resources failed: {e}"))
+            })?;
 
         response
             .into_inner()
@@ -210,7 +240,9 @@ impl GrpcClient {
                 ),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC mark_leased_resource_released failed: {e}")))?;
+            .map_err(|e| {
+                AgentLoopError::store(format!("gRPC mark_leased_resource_released failed: {e}"))
+            })?;
 
         Ok(response.into_inner().updated)
     }
@@ -237,7 +269,7 @@ impl GrpcClient {
             })
             .await
             .map_err(|e| {
-                grpc_error(format!(
+                AgentLoopError::store(format!(
                     "gRPC mark_leased_resource_cleanup_failed failed: {e}"
                 ))
             })?;
@@ -259,8 +291,8 @@ fn uuid_to_proto(id: Uuid) -> proto::Uuid {
 fn proto_uuid_to_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<Uuid> {
     let uuid_str = proto_uuid
         .map(|u| &u.value)
-        .ok_or_else(|| grpc_error("Missing UUID in response"))?;
-    Uuid::parse_str(uuid_str).map_err(|e| grpc_error(format!("Invalid UUID: {}", e)))
+        .ok_or_else(|| grpc_missing_field("Missing UUID in response"))?;
+    Uuid::parse_str(uuid_str).map_err(|e| AgentLoopError::store(format!("Invalid UUID: {}", e)))
 }
 
 fn proto_timestamp_to_datetime(ts: &proto::Timestamp) -> chrono::DateTime<chrono::Utc> {
@@ -310,7 +342,7 @@ impl GrpcMessageRetriever {
 
         // Convert content to prost ListValue
         let content_json = serde_json::to_value(&input.content)
-            .map_err(|e| grpc_error(format!("JSON serialization failed: {}", e)))?;
+            .map_err(|e| AgentLoopError::store(format!("JSON serialization failed: {}", e)))?;
         let content = Some(json_to_proto_list(&content_json));
 
         // Convert controls to prost Struct
@@ -337,12 +369,12 @@ impl GrpcMessageRetriever {
         let response = client
             .add_message(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC add_message failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let proto_msg = response
             .into_inner()
             .message
-            .ok_or_else(|| grpc_error("No message in response"))?;
+            .ok_or_else(|| grpc_missing_field("No message in response"))?;
 
         proto_message_to_message(proto_msg)
     }
@@ -361,7 +393,7 @@ impl MessageRetriever for GrpcMessageRetriever {
         let response = client
             .get_message(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_message failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         response
             .into_inner()
@@ -380,7 +412,7 @@ impl MessageRetriever for GrpcMessageRetriever {
         let response = client
             .load_messages(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC load_messages failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         response
             .into_inner()
@@ -401,7 +433,7 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
         .map(proto_list_to_json)
         .unwrap_or_else(|| serde_json::Value::Array(vec![]));
     let content: Vec<everruns_core::ContentPart> = serde_json::from_value(content_json)
-        .map_err(|e| grpc_error(format!("Failed to parse message content: {}", e)))?;
+        .map_err(|e| AgentLoopError::store(format!("Failed to parse message content: {}", e)))?;
 
     // Convert prost Struct to Controls
     let controls: Option<everruns_core::Controls> = proto_msg
@@ -409,7 +441,7 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
         .as_ref()
         .map(|s| serde_json::from_value(proto_struct_to_json(s)))
         .transpose()
-        .map_err(|e| grpc_error(format!("Failed to parse message controls: {}", e)))?;
+        .map_err(|e| AgentLoopError::store(format!("Failed to parse message controls: {}", e)))?;
 
     // Convert prost Struct to metadata
     let metadata: Option<std::collections::HashMap<String, serde_json::Value>> = proto_msg
@@ -417,7 +449,7 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
         .as_ref()
         .map(|s| serde_json::from_value(proto_struct_to_json(s)))
         .transpose()
-        .map_err(|e| grpc_error(format!("Failed to parse message metadata: {}", e)))?;
+        .map_err(|e| AgentLoopError::store(format!("Failed to parse message metadata: {}", e)))?;
 
     let role = match proto_msg.role.to_lowercase().as_str() {
         "system" => everruns_core::MessageRole::System,
@@ -479,7 +511,7 @@ impl AgentStore for GrpcAgentStore {
         let response = client
             .get_agent(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_agent failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().agent {
             Some(proto_agent) => {
@@ -559,7 +591,7 @@ impl HarnessStore for GrpcHarnessStore {
         let response = client
             .get_harness(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_harness failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().harness {
             Some(proto_harness) => {
@@ -643,7 +675,7 @@ impl SessionStore for GrpcSessionStore {
         let response = client
             .get_session(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_session failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().session {
             Some(proto_session) => {
@@ -765,7 +797,7 @@ impl LlmProviderStore for GrpcLlmProviderStore {
         let response = client
             .get_model_with_provider(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_model_with_provider failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().model {
             Some(proto_model) => {
@@ -786,7 +818,7 @@ impl LlmProviderStore for GrpcLlmProviderStore {
         let response = client
             .get_default_model(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_default_model failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().model {
             Some(proto_model) => {
@@ -808,7 +840,7 @@ fn proto_model_with_provider_to_model(
         "gemini" => everruns_core::LlmProviderType::Gemini,
         "llmsim" => everruns_core::LlmProviderType::LlmSim,
         _ => {
-            return Err(grpc_error(format!(
+            return Err(AgentLoopError::store(format!(
                 "Unknown provider type: {}",
                 proto.provider_type
             )));
@@ -851,7 +883,7 @@ impl SessionFileStore for GrpcSessionFileStore {
         let response = client
             .session_read_file(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_read_file failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().file {
             Some(proto_file) => {
@@ -881,12 +913,12 @@ impl SessionFileStore for GrpcSessionFileStore {
         let response = client
             .session_write_file(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_write_file failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let proto_file = response
             .into_inner()
             .file
-            .ok_or_else(|| grpc_error("No file in response"))?;
+            .ok_or_else(|| grpc_missing_field("No file in response"))?;
 
         proto_session_file_to_file(proto_file)
     }
@@ -914,12 +946,7 @@ impl SessionFileStore for GrpcSessionFileStore {
         let response = client
             .session_write_file_if_content_matches(request)
             .await
-            .map_err(|e| {
-                grpc_error(format!(
-                    "gRPC session_write_file_if_content_matches failed: {}",
-                    e
-                ))
-            })?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().file {
             Some(proto_file) => proto_session_file_to_file(proto_file).map(Some),
@@ -944,7 +971,7 @@ impl SessionFileStore for GrpcSessionFileStore {
         let response = client
             .session_delete_file(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_delete_file failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         Ok(response.into_inner().deleted)
     }
@@ -960,7 +987,7 @@ impl SessionFileStore for GrpcSessionFileStore {
         let response = client
             .session_list_directory(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_list_directory failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         response
             .into_inner()
@@ -981,7 +1008,7 @@ impl SessionFileStore for GrpcSessionFileStore {
         let response = client
             .session_stat_file(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_stat_file failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().stat {
             Some(proto_stat) => {
@@ -1009,7 +1036,7 @@ impl SessionFileStore for GrpcSessionFileStore {
         let response = client
             .session_grep_files(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_grep_files failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         Ok(response
             .into_inner()
@@ -1034,12 +1061,12 @@ impl SessionFileStore for GrpcSessionFileStore {
         let response = client
             .session_create_directory(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_create_directory failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let proto_info = response
             .into_inner()
             .directory
-            .ok_or_else(|| grpc_error("No directory info in response"))?;
+            .ok_or_else(|| grpc_missing_field("No directory info in response"))?;
 
         proto_file_info_to_file_info(proto_info)
     }
@@ -1117,13 +1144,13 @@ impl EventEmitter for GrpcEventEmitter {
         let response = client
             .emit_event(grpc_request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC emit_event failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         // Convert proto Event response back to core Event
         let proto_event = response
             .into_inner()
             .event
-            .ok_or_else(|| grpc_error("No event in response"))?;
+            .ok_or_else(|| grpc_missing_field("No event in response"))?;
 
         proto_event_to_core(proto_event)
     }
@@ -1140,7 +1167,7 @@ fn core_event_request_to_proto(request: &EventRequest) -> Result<proto::EventReq
 /// Convert proto::Event to everruns_core::Event
 fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
     everruns_internal_protocol::proto_event_to_schema(proto_event)
-        .map_err(|e| grpc_error(format!("Failed to convert proto event: {}", e)))
+        .map_err(|e| AgentLoopError::store(format!("Failed to convert proto event: {}", e)))
 }
 
 // ============================================================================
@@ -1176,14 +1203,14 @@ pub async fn load_turn_context(
     let response = grpc_client
         .get_turn_context(request)
         .await
-        .map_err(|e| grpc_error(format!("gRPC get_turn_context failed: {}", e)))?;
+        .map_err(grpc_status_to_error)?;
 
     let inner = response.into_inner();
 
     let agent = inner.agent.map(proto_agent_to_agent).transpose()?;
     let proto_session = inner
         .session
-        .ok_or_else(|| grpc_error("No session in turn context"))?;
+        .ok_or_else(|| grpc_missing_field("No session in turn context"))?;
 
     let session = proto_session_to_session(proto_session)?;
 
@@ -1283,7 +1310,7 @@ impl GrpcImageResolver {
         let response = client
             .resolve_images(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC resolve_images failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let mut result = HashMap::new();
         for (id_str, data) in response.into_inner().images {
@@ -1312,7 +1339,7 @@ impl ImageResolver for GrpcImageResolver {
         let response = client
             .resolve_image(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC resolve_image failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let inner = response.into_inner();
 
@@ -1356,7 +1383,7 @@ impl SessionStorageStore for GrpcSessionStorageStore {
         client
             .session_storage_set_value(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_storage_set_value failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(())
     }
 
@@ -1373,7 +1400,7 @@ impl SessionStorageStore for GrpcSessionStorageStore {
         let response = client
             .session_storage_get_value(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_storage_get_value failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(response.into_inner().value)
     }
 
@@ -1386,7 +1413,7 @@ impl SessionStorageStore for GrpcSessionStorageStore {
         let response = client
             .session_storage_delete_value(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_storage_delete_value failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(response.into_inner().deleted)
     }
 
@@ -1398,7 +1425,7 @@ impl SessionStorageStore for GrpcSessionStorageStore {
         let response = client
             .session_storage_list_keys(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_storage_list_keys failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(response
             .into_inner()
             .keys
@@ -1426,7 +1453,7 @@ impl SessionStorageStore for GrpcSessionStorageStore {
         client
             .session_storage_set_secret(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_storage_set_secret failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(())
     }
 
@@ -1443,7 +1470,7 @@ impl SessionStorageStore for GrpcSessionStorageStore {
         let response = client
             .session_storage_get_secret(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_storage_get_secret failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(response.into_inner().value)
     }
 
@@ -1460,7 +1487,7 @@ impl SessionStorageStore for GrpcSessionStorageStore {
         let response = client
             .session_storage_delete_secret(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_storage_delete_secret failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(response.into_inner().deleted)
     }
 
@@ -1472,7 +1499,7 @@ impl SessionStorageStore for GrpcSessionStorageStore {
         let response = client
             .session_storage_list_secrets(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC session_storage_list_secrets failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(response
             .into_inner()
             .secrets
@@ -1519,7 +1546,7 @@ impl everruns_core::traits::UserConnectionResolver for GrpcConnectionResolver {
         let response = client
             .get_connection_token(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_connection_token failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(response.into_inner().token)
     }
 
@@ -1535,7 +1562,7 @@ impl everruns_core::traits::UserConnectionResolver for GrpcConnectionResolver {
                 provider: provider.to_string(),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_connection_user failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().user_id {
             Some(user_id) => Ok(Some(proto_uuid_to_uuid(Some(&user_id))?)),
@@ -1555,7 +1582,7 @@ impl everruns_core::traits::UserConnectionResolver for GrpcConnectionResolver {
                 provider: provider.to_string(),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_connection_token_for_user failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         Ok(response.into_inner().token)
     }
@@ -1627,12 +1654,14 @@ impl LeasedResourceStore for GrpcLeasedResourceStore {
                 metadata: Some(json_to_proto_struct(&input.metadata)),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC upsert_leased_resource failed: {e}")))?;
+            .map_err(|e| {
+                AgentLoopError::store(format!("gRPC upsert_leased_resource failed: {e}"))
+            })?;
 
         let resource = response
             .into_inner()
             .resource
-            .ok_or_else(|| grpc_error("No leased resource in upsert response"))?;
+            .ok_or_else(|| grpc_missing_field("No leased resource in upsert response"))?;
         proto_leased_resource_to_schema(resource)
     }
 
@@ -1652,7 +1681,9 @@ impl LeasedResourceStore for GrpcLeasedResourceStore {
                 external_id: external_id.to_string(),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC release_leased_resource failed: {e}")))?;
+            .map_err(|e| {
+                AgentLoopError::store(format!("gRPC release_leased_resource failed: {e}"))
+            })?;
 
         response
             .into_inner()
@@ -1668,7 +1699,9 @@ impl LeasedResourceStore for GrpcLeasedResourceStore {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC list_session_leased_resources failed: {e}")))?;
+            .map_err(|e| {
+                AgentLoopError::store(format!("gRPC list_session_leased_resources failed: {e}"))
+            })?;
 
         response
             .into_inner()
@@ -1705,7 +1738,7 @@ fn proto_leased_resource_to_schema(s: proto::LeasedResourceProto) -> Result<Leas
         "released" => LeasedResourceStatus::Released,
         "cleanup_failed" => LeasedResourceStatus::CleanupFailed,
         other => {
-            return Err(grpc_error(format!(
+            return Err(AgentLoopError::store(format!(
                 "Unknown leased resource status from gRPC: {other}"
             )));
         }
@@ -1807,11 +1840,11 @@ impl everruns_core::traits::SessionScheduleStore for GrpcScheduleStore {
         let response = client
             .create_session_schedule(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC create_session_schedule failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         let proto_schedule = response
             .into_inner()
             .schedule
-            .ok_or_else(|| grpc_error("No schedule in response"))?;
+            .ok_or_else(|| grpc_missing_field("No schedule in response"))?;
         proto_schedule_to_schema(proto_schedule)
     }
 
@@ -1829,11 +1862,11 @@ impl everruns_core::traits::SessionScheduleStore for GrpcScheduleStore {
         let response = client
             .cancel_session_schedule(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC cancel_session_schedule failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         let proto_schedule = response
             .into_inner()
             .schedule
-            .ok_or_else(|| grpc_error("No schedule in response"))?;
+            .ok_or_else(|| grpc_missing_field("No schedule in response"))?;
         proto_schedule_to_schema(proto_schedule)
     }
 
@@ -1849,7 +1882,7 @@ impl everruns_core::traits::SessionScheduleStore for GrpcScheduleStore {
         let response = client
             .list_session_schedules(request)
             .await
-            .map_err(|e| grpc_error(format!("gRPC list_session_schedules failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         response
             .into_inner()
             .schedules
@@ -1867,9 +1900,7 @@ impl everruns_core::traits::SessionScheduleStore for GrpcScheduleStore {
         let response = client
             .count_active_session_schedules(request)
             .await
-            .map_err(|e| {
-                grpc_error(format!("gRPC count_active_session_schedules failed: {}", e))
-            })?;
+            .map_err(grpc_status_to_error)?;
         Ok(response.into_inner().count)
     }
 }
@@ -1906,7 +1937,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 org_id: self.org_id,
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_list_harnesses failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         response
             .into_inner()
@@ -1914,7 +1945,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
             .into_iter()
             .map(|h| {
                 everruns_internal_protocol::proto_harness_to_schema(h)
-                    .map_err(|e| grpc_error(format!("Harness conversion failed: {}", e)))
+                    .map_err(|e| AgentLoopError::store(format!("Harness conversion failed: {}", e)))
             })
             .collect()
     }
@@ -1927,12 +1958,13 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 org_id: self.org_id,
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_harness failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().harness {
             Some(h) => Ok(Some(
-                everruns_internal_protocol::proto_harness_to_schema(h)
-                    .map_err(|e| grpc_error(format!("Harness conversion failed: {}", e)))?,
+                everruns_internal_protocol::proto_harness_to_schema(h).map_err(|e| {
+                    AgentLoopError::store(format!("Harness conversion failed: {}", e))
+                })?,
             )),
             None => Ok(None),
         }
@@ -1957,15 +1989,15 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 parent_harness_id: parent_harness_id.map(|id| uuid_to_proto(id.uuid())),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_create_harness failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let harness = response
             .into_inner()
             .harness
-            .ok_or_else(|| grpc_error("No harness in create response"))?;
+            .ok_or_else(|| grpc_missing_field("No harness in create response"))?;
 
         everruns_internal_protocol::proto_harness_to_schema(harness)
-            .map_err(|e| grpc_error(format!("Harness conversion failed: {}", e)))
+            .map_err(|e| AgentLoopError::store(format!("Harness conversion failed: {}", e)))
     }
 
     async fn update_harness(
@@ -1991,15 +2023,15 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                     .and_then(|value| value.is_none().then_some(true)),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_update_harness failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let harness = response
             .into_inner()
             .harness
-            .ok_or_else(|| grpc_error("No harness in update response"))?;
+            .ok_or_else(|| grpc_missing_field("No harness in update response"))?;
 
         everruns_internal_protocol::proto_harness_to_schema(harness)
-            .map_err(|e| grpc_error(format!("Harness conversion failed: {}", e)))
+            .map_err(|e| AgentLoopError::store(format!("Harness conversion failed: {}", e)))
     }
 
     async fn delete_harness(&self, id: everruns_core::HarnessId) -> Result<()> {
@@ -2010,7 +2042,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 harness_id: Some(uuid_to_proto(id.uuid())),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_delete_harness failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(())
     }
 
@@ -2027,15 +2059,15 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 new_name: new_name.map(|s| s.to_string()),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_copy_harness failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let harness = response
             .into_inner()
             .harness
-            .ok_or_else(|| grpc_error("No harness in copy response"))?;
+            .ok_or_else(|| grpc_missing_field("No harness in copy response"))?;
 
         everruns_internal_protocol::proto_harness_to_schema(harness)
-            .map_err(|e| grpc_error(format!("Harness conversion failed: {}", e)))
+            .map_err(|e| AgentLoopError::store(format!("Harness conversion failed: {}", e)))
     }
 
     // =========================================================================
@@ -2049,7 +2081,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 org_id: self.org_id,
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_list_agents failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         response
             .into_inner()
@@ -2057,7 +2089,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
             .into_iter()
             .map(|a| {
                 everruns_internal_protocol::proto_agent_to_schema(a)
-                    .map_err(|e| grpc_error(format!("Agent conversion failed: {}", e)))
+                    .map_err(|e| AgentLoopError::store(format!("Agent conversion failed: {}", e)))
             })
             .collect()
     }
@@ -2070,12 +2102,13 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 org_id: self.org_id,
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_agent failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().agent {
             Some(a) => Ok(Some(
-                everruns_internal_protocol::proto_agent_to_schema(a)
-                    .map_err(|e| grpc_error(format!("Agent conversion failed: {}", e)))?,
+                everruns_internal_protocol::proto_agent_to_schema(a).map_err(|e| {
+                    AgentLoopError::store(format!("Agent conversion failed: {}", e))
+                })?,
             )),
             None => Ok(None),
         }
@@ -2098,15 +2131,15 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 capabilities: capabilities.to_vec(),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_create_agent failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let agent = response
             .into_inner()
             .agent
-            .ok_or_else(|| grpc_error("No agent in create response"))?;
+            .ok_or_else(|| grpc_missing_field("No agent in create response"))?;
 
         everruns_internal_protocol::proto_agent_to_schema(agent)
-            .map_err(|e| grpc_error(format!("Agent conversion failed: {}", e)))
+            .map_err(|e| AgentLoopError::store(format!("Agent conversion failed: {}", e)))
     }
 
     async fn update_agent(
@@ -2126,15 +2159,15 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 system_prompt: system_prompt.map(|s| s.to_string()),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_update_agent failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let agent = response
             .into_inner()
             .agent
-            .ok_or_else(|| grpc_error("No agent in update response"))?;
+            .ok_or_else(|| grpc_missing_field("No agent in update response"))?;
 
         everruns_internal_protocol::proto_agent_to_schema(agent)
-            .map_err(|e| grpc_error(format!("Agent conversion failed: {}", e)))
+            .map_err(|e| AgentLoopError::store(format!("Agent conversion failed: {}", e)))
     }
 
     async fn delete_agent(&self, id: AgentId) -> Result<()> {
@@ -2145,7 +2178,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 agent_id: Some(uuid_to_proto(id.uuid())),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_delete_agent failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(())
     }
 
@@ -2166,7 +2199,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 agent_id: agent_id.map(|id| uuid_to_proto(id.uuid())),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_list_sessions failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         response
             .into_inner()
@@ -2174,7 +2207,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
             .into_iter()
             .map(|s| {
                 everruns_internal_protocol::proto_session_to_schema(s)
-                    .map_err(|e| grpc_error(format!("Session conversion failed: {}", e)))
+                    .map_err(|e| AgentLoopError::store(format!("Session conversion failed: {}", e)))
             })
             .collect()
     }
@@ -2196,15 +2229,15 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 locale: locale.map(|value| value.to_string()),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_create_session failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let session = response
             .into_inner()
             .session
-            .ok_or_else(|| grpc_error("No session in create response"))?;
+            .ok_or_else(|| grpc_missing_field("No session in create response"))?;
 
         everruns_internal_protocol::proto_session_to_schema(session)
-            .map_err(|e| grpc_error(format!("Session conversion failed: {}", e)))
+            .map_err(|e| AgentLoopError::store(format!("Session conversion failed: {}", e)))
     }
 
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
@@ -2215,12 +2248,13 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 org_id: self.org_id,
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC get_session failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         match response.into_inner().session {
             Some(s) => Ok(Some(
-                everruns_internal_protocol::proto_session_to_schema(s)
-                    .map_err(|e| grpc_error(format!("Session conversion failed: {}", e)))?,
+                everruns_internal_protocol::proto_session_to_schema(s).map_err(|e| {
+                    AgentLoopError::store(format!("Session conversion failed: {}", e))
+                })?,
             )),
             None => Ok(None),
         }
@@ -2234,7 +2268,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 session_id: Some(uuid_to_proto(id.uuid())),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_delete_session failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(())
     }
 
@@ -2251,7 +2285,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 content: content.to_string(),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_send_message failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
         Ok(())
     }
 
@@ -2268,7 +2302,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 limit: limit.map(|l| l as u32),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_get_messages failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         Ok(response
             .into_inner()
@@ -2299,7 +2333,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 timeout_secs,
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_wait_for_idle failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         Ok(response.into_inner().status)
     }
@@ -2319,7 +2353,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
                 search: search.map(|s| s.to_string()),
             })
             .await
-            .map_err(|e| grpc_error(format!("gRPC platform_list_capabilities failed: {}", e)))?;
+            .map_err(grpc_status_to_error)?;
 
         let caps = response
             .into_inner()
@@ -2811,5 +2845,58 @@ mod tests {
         let status = tonic::Status::internal("unexpected");
         let err = grpc_status_to_sqldb_error(status);
         assert!(matches!(err, SessionSqlDbError::Internal(_)));
+    }
+
+    #[test]
+    fn test_grpc_status_to_error_not_found() {
+        let status = tonic::Status::not_found("Session not found");
+        let err = grpc_status_to_error(status);
+        assert!(matches!(err, AgentLoopError::MessageStore(_)));
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_grpc_status_to_error_invalid_argument() {
+        let status = tonic::Status::invalid_argument("bad field");
+        let err = grpc_status_to_error(status);
+        assert!(matches!(err, AgentLoopError::Configuration(_)));
+    }
+
+    #[test]
+    fn test_grpc_status_to_error_resource_exhausted() {
+        let status = tonic::Status::resource_exhausted("message too large");
+        let err = grpc_status_to_error(status);
+        assert!(err.is_request_too_large());
+    }
+
+    #[test]
+    fn test_grpc_status_to_error_unauthenticated() {
+        let status = tonic::Status::unauthenticated("bad token");
+        let err = grpc_status_to_error(status);
+        assert!(matches!(err, AgentLoopError::Configuration(_)));
+        assert!(err.to_string().contains("Auth error"));
+    }
+
+    #[test]
+    fn test_grpc_status_to_error_unavailable() {
+        let status = tonic::Status::unavailable("service down");
+        let err = grpc_status_to_error(status);
+        assert!(matches!(err, AgentLoopError::MessageStore(_)));
+        assert!(err.to_string().contains("unavailable"));
+    }
+
+    #[test]
+    fn test_grpc_status_to_error_internal_fallback() {
+        let status = tonic::Status::internal("server error");
+        let err = grpc_status_to_error(status);
+        assert!(matches!(err, AgentLoopError::MessageStore(_)));
+        assert!(err.to_string().contains("Internal"));
+    }
+
+    #[test]
+    fn test_grpc_missing_field() {
+        let err = grpc_missing_field("session");
+        assert!(matches!(err, AgentLoopError::MessageStore(_)));
+        assert!(err.to_string().contains("Missing session"));
     }
 }
