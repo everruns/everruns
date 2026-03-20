@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Select,
@@ -183,7 +184,7 @@ function MemberCardSkeleton() {
 export default function MembersPage() {
   const { user } = useAuth();
   const { currentOrg, hasRole } = useOrg();
-  const { data: members = [], isLoading, error } = useMembers();
+  const { data: members, isLoading, error } = useMembers();
 
   const canManage = hasRole("admin");
   const isOwner = hasRole("owner");
@@ -202,42 +203,44 @@ export default function MembersPage() {
           </div>
         </div>
 
-        {error && (
-          <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-4">
-            Failed to load members: {error.message}
-          </div>
-        )}
-
-        {isLoading ? (
-          <div className="space-y-2">
-            {[...Array(3)].map((_, i) => (
-              <MemberCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : members.length === 0 ? (
-          <Card className="p-8 text-center">
-            <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No members</h3>
-            <p className="text-muted-foreground">
-              No members have been added to this organization yet.
-            </p>
-          </Card>
-        ) : (
-          <div className="space-y-2">
-            <div className="text-sm text-muted-foreground mb-2">
-              {members.length} member{members.length !== 1 ? "s" : ""}
+        <QueryStateWrapper
+          isLoading={isLoading}
+          error={error}
+          data={members}
+          loadingSkeleton={
+            <div className="space-y-2">
+              {[...Array(3)].map((_, i) => (
+                <MemberCardSkeleton key={i} />
+              ))}
             </div>
-            {members.map((member) => (
-              <MemberCard
-                key={member.user_id}
-                member={member}
-                currentUserId={currentUserId}
-                canManage={canManage}
-                isOwner={isOwner}
-              />
-            ))}
-          </div>
-        )}
+          }
+          emptyState={
+            <Card className="p-8 text-center">
+              <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No members</h3>
+              <p className="text-muted-foreground">
+                No members have been added to this organization yet.
+              </p>
+            </Card>
+          }
+        >
+          {(items) => (
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground mb-2">
+                {items.length} member{items.length !== 1 ? "s" : ""}
+              </div>
+              {items.map((member) => (
+                <MemberCard
+                  key={member.user_id}
+                  member={member}
+                  currentUserId={currentUserId}
+                  canManage={canManage}
+                  isOwner={isOwner}
+                />
+              ))}
+            </div>
+          )}
+        </QueryStateWrapper>
       </section>
     </div>
   );
