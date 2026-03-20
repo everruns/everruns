@@ -1,4 +1,6 @@
 // Session management commands
+//
+// TODO(sdk): Replace raw reqwest in create() with SDK once it supports harness_id parameter.
 
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::Result;

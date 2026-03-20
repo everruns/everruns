@@ -1,5 +1,6 @@
 // Capabilities listing command
 //
+// TODO(sdk): Replace raw reqwest with SDK capabilities() methods once available.
 // Note: Capabilities endpoint is not yet supported by the SDK,
 // so we use reqwest directly here.
 
