@@ -2574,8 +2574,14 @@ mod tests {
         let harness = proto_harness_to_harness(proto).expect("proto harness should convert");
 
         assert_eq!(harness.id.uuid(), harness_id);
-        assert_eq!(harness.parent_harness_id.map(|id| id.uuid()), Some(parent_id));
-        assert_eq!(harness.tags, vec!["chat".to_string(), "built-in".to_string()]);
+        assert_eq!(
+            harness.parent_harness_id.map(|id| id.uuid()),
+            Some(parent_id)
+        );
+        assert_eq!(
+            harness.tags,
+            vec!["chat".to_string(), "built-in".to_string()]
+        );
         assert!(harness.is_built_in);
     }
 
