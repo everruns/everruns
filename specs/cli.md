@@ -84,7 +84,7 @@ Session filesystem operations — sync, push, pull, list. See [Files](#files) se
 
 #### Decision 5: Incremental Sync via Content Hashing
 
-**Chosen:** Track `sha256` content hashes locally in `.sync-state.json` (in sync metadata dir). Only upload/download when hash differs.
+**Chosen:** Track `sha256` content hashes locally in `<local-dir>/.everruns-sync/state.json`. Only upload/download when hash differs. The `.everruns-sync/` directory is always excluded from syncing.
 **Rationale:** Avoids redundant transfers. The session filesystem already returns `content_hash` on reads.
 
 ### File Commands
@@ -97,9 +97,8 @@ Long-running bidirectional watch.
 everruns files sync --session <session_id> [local-dir]
   --session, -s     Session ID (required)
   --interval        Remote poll interval in seconds (default: 3)
-  --conflict        Conflict strategy: last-write-wins | local-wins | remote-wins | ask (default: last-write-wins)
+  --conflict        Conflict strategy: last-write-wins | local-wins | remote-wins (default: last-write-wins)
   --exclude         Additional exclude patterns (repeatable)
-  --include         Override excludes for specific patterns (repeatable)
   --no-gitignore    Don't read .gitignore
   --dry-run         Show what would sync without making changes
   --delete          Delete files on one side when deleted on the other (default: false)
@@ -118,7 +117,7 @@ everruns files sync --session <session_id> [local-dir]
 One-shot upload local → remote.
 
 ```
-everruns files push --session <session_id> [local-dir] [-- paths...]
+everruns files push --session <session_id> [local-dir]
   --session, -s     Session ID (required)
   --delete          Delete remote files not present locally (default: false)
   --dry-run         Show what would be pushed
@@ -129,7 +128,7 @@ everruns files push --session <session_id> [local-dir] [-- paths...]
 One-shot download remote → local.
 
 ```
-everruns files pull --session <session_id> [local-dir] [-- paths...]
+everruns files pull --session <session_id> [local-dir]
   --session, -s     Session ID (required)
   --delete          Delete local files not present remotely (default: false)
   --dry-run         Show what would be pulled

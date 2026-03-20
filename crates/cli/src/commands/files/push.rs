@@ -64,6 +64,9 @@ pub async fn run(
                     }
                 });
                 entry.local_hash = Some(hash.clone());
+                // Set remote_hash to local hash so subsequent pull/sync
+                // won't re-download content we just uploaded.
+                entry.remote_hash = Some(hash.clone());
             }
             Err(e) => {
                 eprintln!("  ✗ {}: {}", path, e);

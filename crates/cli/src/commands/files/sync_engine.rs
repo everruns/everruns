@@ -231,6 +231,7 @@ pub async fn reconcile(
                             continue;
                         }
                         stats.uploaded += 1;
+                        update_state(state, path, Some(local_hash), Some(remote_hash));
                     } else {
                         if !dry_run {
                             match download_file(client, local_dir, path).await {
@@ -274,7 +275,9 @@ pub async fn reconcile(
                         continue;
                     }
                     stats.uploaded += 1;
-                    update_state(state, path, Some(local_hash), None);
+                    // Use local hash as remote_hash so next cycle won't
+                    // treat the remote as changed (server may update hash).
+                    update_state(state, path, Some(local_hash), Some(local_hash));
                 }
             }
 

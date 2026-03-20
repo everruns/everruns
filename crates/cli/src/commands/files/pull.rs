@@ -37,7 +37,11 @@ pub async fn run(
     let mut errors = 0u32;
 
     for (path, entry) in &remote_files {
-        let remote_hash = entry.content_hash.as_deref().unwrap_or("");
+        let remote_hash = entry
+            .content_hash
+            .as_deref()
+            .or(entry.updated_at.as_deref())
+            .unwrap_or("");
 
         // Check if changed since last sync
         let prev_hash = state.files.get(path).and_then(|s| s.remote_hash.as_deref());
