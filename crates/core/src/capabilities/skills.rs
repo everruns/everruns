@@ -460,12 +460,19 @@ impl Tool for ActivateSkillFromVfsTool {
         let content = file.content.as_deref().unwrap_or("");
         match crate::skill::parse_skill_md(content) {
             Ok(parsed) => {
-                // Apply argument substitution, then command injection preprocessing
+                // Apply substitution pipeline: arguments → env vars → command injection
                 let expanded =
                     crate::skill::expand_skill_arguments(&parsed.instructions, skill_args);
+                let skill_dir = format!("{}/{}", SKILLS_PATH, name);
+                let session_id_str = context.session_id.to_string();
+                let substituted = crate::skill::substitute_activation_vars(
+                    &expanded,
+                    &session_id_str,
+                    &skill_dir,
+                );
                 let executor = crate::skill::ProcessCommandExecutor::default();
                 let preprocessed =
-                    crate::skill::preprocess_command_injections(&expanded, &executor).await;
+                    crate::skill::preprocess_command_injections(&substituted, &executor).await;
                 let instructions = format!(
                     "<skill name=\"{}\">\n{}\n</skill>",
                     parsed.name, preprocessed
@@ -1816,6 +1823,100 @@ mod tests {
                     skills[0]["description"],
                     "Description with: colons, #hashtags, and \"quotes\""
                 );
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    // ========================================================================
+    // activate_skill env var substitution tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_activate_skill_substitutes_session_id() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        let skill_md =
+            "---\nname: test-env\ndescription: Test env vars.\n---\n\nSession: ${SESSION_ID}";
+        fs.add_file(session_id, "/.agents/skills/test-env/SKILL.md", skill_md);
+
+        let context = ToolContext::with_file_store(session_id, fs);
+        let tool = ActivateSkillFromVfsTool;
+
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "test-env"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                let instructions = val["instructions"].as_str().unwrap();
+                let expected_id = session_id.to_string();
+                assert!(
+                    instructions.contains(&expected_id),
+                    "Instructions should contain session ID '{}', got: {}",
+                    expected_id,
+                    instructions
+                );
+                assert!(
+                    !instructions.contains("${SESSION_ID}"),
+                    "Raw placeholder should be replaced"
+                );
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_activate_skill_substitutes_skill_dir() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        let skill_md =
+            "---\nname: test-dir\ndescription: Test skill dir.\n---\n\nDir: ${SKILL_DIR}";
+        fs.add_file(session_id, "/.agents/skills/test-dir/SKILL.md", skill_md);
+
+        let context = ToolContext::with_file_store(session_id, fs);
+        let tool = ActivateSkillFromVfsTool;
+
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "test-dir"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                let instructions = val["instructions"].as_str().unwrap();
+                assert!(
+                    instructions.contains("/.agents/skills/test-dir"),
+                    "Instructions should contain skill dir path, got: {}",
+                    instructions
+                );
+                assert!(
+                    !instructions.contains("${SKILL_DIR}"),
+                    "Raw placeholder should be replaced"
+                );
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_activate_skill_substitutes_both_env_vars() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        let skill_md = "---\nname: test-both\ndescription: Both vars.\n---\n\n${SKILL_DIR}/run.sh --session ${SESSION_ID}";
+        fs.add_file(session_id, "/.agents/skills/test-both/SKILL.md", skill_md);
+
+        let context = ToolContext::with_file_store(session_id, fs);
+        let tool = ActivateSkillFromVfsTool;
+
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "test-both"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                let instructions = val["instructions"].as_str().unwrap();
+                let expected_id = session_id.to_string();
+                assert!(instructions.contains("/.agents/skills/test-both/run.sh"));
+                assert!(instructions.contains(&format!("--session {}", expected_id)));
+                assert!(!instructions.contains("${SESSION_ID}"));
+                assert!(!instructions.contains("${SKILL_DIR}"));
             }
             other => panic!("Expected Success, got: {:?}", other),
         }
