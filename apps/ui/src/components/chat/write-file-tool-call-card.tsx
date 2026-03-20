@@ -60,8 +60,7 @@ function parseWriteFilePayload(
           getPathFromArguments(toolCall),
         sizeBytes: typeof parsed.size_bytes === "number" ? parsed.size_bytes : undefined,
         created: typeof parsed.created === "boolean" ? parsed.created : undefined,
-        appliedEdits:
-          typeof parsed.applied_edits === "number" ? parsed.applied_edits : undefined,
+        appliedEdits: typeof parsed.applied_edits === "number" ? parsed.applied_edits : undefined,
         firstChangedLine:
           typeof parsed.first_changed_line === "number" ? parsed.first_changed_line : undefined,
         textContent: typeof parsed.diff === "string" && parsed.diff.length > 0 ? parsed.diff : null,
