@@ -21,6 +21,7 @@ mod llm_test_matrix;
 use llm_test_matrix::*;
 use rstest::rstest;
 
+use everruns_core::FileSystemCapability;
 use everruns_core::capabilities::CurrentTimeCapability;
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::llm_models::LlmProviderType;
@@ -96,6 +97,44 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
     assert!(
         result.iterations > 1,
         "Should have multiple iterations (reason -> act -> reason)"
+    );
+}
+
+// ============================================================================
+// Scenario: file system tools accepted by LLM (schema validation regression)
+// ============================================================================
+
+#[rstest]
+#[case::anthropic_haiku(ANTHROPIC_HAIKU)]
+#[case::openai_gpt4o_mini(OPENAI_GPT4O_MINI)]
+#[case::openai_gpt54(OPENAI_GPT54)]
+// Gemini excluded: rejects additionalProperties in nested object schemas (separate issue)
+#[tokio::test]
+async fn test_file_system_tool_schemas_accepted(#[case] config: ProviderModelConfig) {
+    let Some(model) = config.model() else {
+        eprintln!("Skipping: {} not set", config.label());
+        return;
+    };
+
+    // Regression: edit_file schema had top-level oneOf which OpenAI rejects.
+    // This test ensures the schema is accepted by providers.
+    let runner = InMemoryAgenticLoop::builder()
+        .agent_name("File Agent")
+        .system_prompt("Say hello. Do not use any tools.")
+        .model(model)
+        .driver_registry(all_providers_registry())
+        .capability(FileSystemCapability)
+        .max_iterations(1)
+        .build()
+        .await
+        .unwrap();
+
+    let result = runner.run_turn("Say hello").await.unwrap();
+
+    assert!(
+        result.success,
+        "Turn should succeed with file system tools registered: {:?}",
+        result.error
     );
 }
 
