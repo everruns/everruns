@@ -48,7 +48,9 @@ async fn sweep_timed_out_sessions(
     runner: &Arc<dyn AgentRunner>,
     timeout_secs: u64,
 ) -> anyhow::Result<()> {
-    let cutoff = Utc::now() - chrono::Duration::seconds(timeout_secs as i64);
+    let duration = chrono::Duration::try_seconds(timeout_secs.min(i64::MAX as u64) as i64)
+        .unwrap_or(chrono::Duration::seconds(DEFAULT_TIMEOUT_SECS as i64));
+    let cutoff = Utc::now() - duration;
 
     let timed_out = db.list_sessions_waiting_tool_results_before(cutoff).await?;
 
@@ -101,7 +103,7 @@ async fn timeout_session(
         let error_result = ToolCompletedData::failure(
             tool_call_id.clone(),
             String::new(),
-            "error".to_string(),
+            "timeout".to_string(),
             "Timed out waiting for client tool results".to_string(),
             None,
         );
