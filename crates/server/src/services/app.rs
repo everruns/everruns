@@ -1,5 +1,6 @@
 // App service for business logic
 
+use crate::errors::ResourceNotFoundError;
 use crate::storage::{
     AppRow, StorageBackend,
     models::{CreateAppRow, UpdateApp},
@@ -55,7 +56,7 @@ impl AppService {
             .db
             .get_harness(caller.org_id, req.harness_id)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+            .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
         if harness_row.status != "active" {
             anyhow::bail!("Archived or deleted harnesses cannot be assigned");
         }
@@ -63,7 +64,7 @@ impl AppService {
             .db
             .get_agent_by_public_id(caller.org_id, &req.agent_id.to_string())
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+            .ok_or_else(|| ResourceNotFoundError::new("Agent"))?;
         if agent_row.status != "active" {
             anyhow::bail!("Archived or deleted agents cannot be assigned");
         }
@@ -153,7 +154,7 @@ impl AppService {
                 .db
                 .get_harness(caller.org_id, hid)
                 .await?
-                .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+                .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
             if h.status != "active" {
                 anyhow::bail!("Archived or deleted harnesses cannot be assigned");
             }
@@ -167,7 +168,7 @@ impl AppService {
                 .db
                 .get_agent_by_public_id(caller.org_id, &aid.to_string())
                 .await?
-                .ok_or_else(|| anyhow::anyhow!("Agent not found"))?;
+                .ok_or_else(|| ResourceNotFoundError::new("Agent"))?;
             if a.status != "active" {
                 anyhow::bail!("Archived or deleted agents cannot be assigned");
             }
