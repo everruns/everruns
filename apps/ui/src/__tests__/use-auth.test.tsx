@@ -43,6 +43,7 @@ describe("Auth Hooks", () => {
       },
     });
     jest.clearAllMocks();
+    localStorage.clear();
   });
 
   // Helper to initialize the user query so refetchQueries has something to refetch
@@ -310,8 +311,8 @@ describe("Auth Hooks", () => {
   });
 
   describe("useLogout", () => {
-    it("should call logout API and remove user data from cache", async () => {
-      // Pre-populate cache with user data
+    it("should call logout API and clear all cached data", async () => {
+      // Pre-populate cache with user data and org-sensitive data
       const mockUser = {
         id: "user-1",
         email: "test@example.com",
@@ -320,6 +321,10 @@ describe("Auth Hooks", () => {
       };
       queryClient.setQueryData(authKeys.user(), mockUser);
       queryClient.setQueryData(authKeys.apiKeys(), [{ id: "key-1", name: "Test Key" }]);
+      // Simulate org-sensitive cached data (e.g., durable workflows)
+      queryClient.setQueryData(["durable", "workflows"], [{ id: "wf-1" }]);
+
+      localStorage.setItem("everruns_current_org", "org_123");
 
       mockLogout.mockResolvedValueOnce();
 
@@ -331,13 +336,19 @@ describe("Auth Hooks", () => {
 
       expect(mockLogout).toHaveBeenCalled();
 
-      // Verify user data is removed from cache
+      // Verify ALL cached data is cleared, not just auth keys
       const cachedUser = queryClient.getQueryData(authKeys.user());
       expect(cachedUser).toBeUndefined();
 
-      // Verify API keys are also removed
       const cachedApiKeys = queryClient.getQueryData(authKeys.apiKeys());
       expect(cachedApiKeys).toBeUndefined();
+
+      // Verify org-sensitive data is also cleared
+      const cachedWorkflows = queryClient.getQueryData(["durable", "workflows"]);
+      expect(cachedWorkflows).toBeUndefined();
+
+      // Verify localStorage org selection is cleared
+      expect(localStorage.getItem("everruns_current_org")).toBeNull();
     });
 
     it("should clear user cache even if user was previously set", async () => {
