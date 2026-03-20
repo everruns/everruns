@@ -337,17 +337,23 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
 
   // Check LLM provider availability for Chat warning badge
-  const { data: llmProviders } = useLlmProviders();
-  const hasLlmProviders = llmProviders && llmProviders.length > 0;
+  const {
+    data: llmProviders,
+    isLoading: llmProvidersLoading,
+    isError: llmProvidersError,
+  } = useLlmProviders();
+  const llmProvidersReady = !llmProvidersLoading && !llmProvidersError;
+  const shouldShowChatWarning =
+    llmProvidersReady && (!llmProviders || llmProviders.length === 0);
 
   const baseSections = config?.navigation ?? defaultNavigationSections;
 
   // Enrich Chat nav item with warning when no LLM providers configured
-  const sections = !hasLlmProviders
+  const sections = shouldShowChatWarning
     ? baseSections.map((section) => ({
         ...section,
         items: section.items.map((item) =>
-          item.name === "Chat" && item.flag === "global_chat"
+          item.href === "/chat"
             ? {
                 ...item,
                 warningTooltip:

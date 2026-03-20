@@ -10,9 +10,13 @@ export function WarningBadge({ tooltip }: { tooltip: string }) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="ml-auto text-amber-500 cursor-default">
+          <button
+            type="button"
+            className="ml-auto text-amber-500 cursor-default"
+            aria-label={tooltip}
+          >
             <AlertTriangle className="!size-3.5" />
-          </span>
+          </button>
         </TooltipTrigger>
         <TooltipContent>
           <p>{tooltip}</p>
