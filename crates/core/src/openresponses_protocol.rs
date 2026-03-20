@@ -216,6 +216,22 @@ impl OpenResponsesProtocolLlmDriver {
         }
     }
 
+    /// Ensure an object-typed JSON Schema has a `properties` key.
+    /// OpenAI rejects function schemas where `type: "object"` lacks `properties`.
+    fn sanitize_parameters(params: &Value) -> Value {
+        let mut p = params.clone();
+        if let Some(obj) = p.as_object_mut()
+            && obj.get("type").and_then(|v| v.as_str()) == Some("object")
+            && !obj.contains_key("properties")
+        {
+            obj.insert(
+                "properties".to_string(),
+                serde_json::Value::Object(serde_json::Map::new()),
+            );
+        }
+        p
+    }
+
     fn convert_tools(tools: &[ToolDefinition]) -> Vec<ResponsesTool> {
         tools
             .iter()
@@ -223,7 +239,7 @@ impl OpenResponsesProtocolLlmDriver {
                 r#type: "function".to_string(),
                 name: tool.name().to_string(),
                 description: tool.description().to_string(),
-                parameters: tool.parameters().clone(),
+                parameters: Self::sanitize_parameters(tool.parameters()),
                 defer_loading: None,
             })
             .collect()
@@ -254,7 +270,7 @@ impl OpenResponsesProtocolLlmDriver {
                 r#type: "function".to_string(),
                 name: tool.name().to_string(),
                 description: tool.description().to_string(),
-                parameters: tool.parameters().clone(),
+                parameters: Self::sanitize_parameters(tool.parameters()),
                 defer_loading: if should_defer { Some(true) } else { None },
             };
 
@@ -2922,5 +2938,29 @@ mod tests {
         assert_eq!(json["name"], "FileSystem");
         assert_eq!(json["tools"][0]["name"], "read_file");
         assert_eq!(json["tools"][0]["defer_loading"], true);
+    }
+
+    #[test]
+    fn test_sanitize_parameters_adds_missing_properties() {
+        let params = json!({"type": "object", "additionalProperties": false});
+        let sanitized = OpenResponsesProtocolLlmDriver::sanitize_parameters(&params);
+        assert_eq!(
+            sanitized,
+            json!({"type": "object", "properties": {}, "additionalProperties": false})
+        );
+    }
+
+    #[test]
+    fn test_sanitize_parameters_preserves_existing_properties() {
+        let params = json!({"type": "object", "properties": {"x": {"type": "string"}}, "additionalProperties": false});
+        let sanitized = OpenResponsesProtocolLlmDriver::sanitize_parameters(&params);
+        assert_eq!(sanitized, params);
+    }
+
+    #[test]
+    fn test_sanitize_parameters_ignores_non_object_types() {
+        let params = json!({"type": "string"});
+        let sanitized = OpenResponsesProtocolLlmDriver::sanitize_parameters(&params);
+        assert_eq!(sanitized, params);
     }
 }

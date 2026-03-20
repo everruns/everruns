@@ -1006,7 +1006,7 @@ impl Tool for AwsListRdsDatabasesTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({"type": "object", "additionalProperties": false})
+        json!({"type": "object", "properties": {}, "additionalProperties": false})
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -1167,7 +1167,7 @@ impl Tool for AwsListS3BucketsTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({"type": "object", "additionalProperties": false})
+        json!({"type": "object", "properties": {}, "additionalProperties": false})
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -1304,7 +1304,7 @@ impl Tool for AwsListIamUsersTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({"type": "object", "additionalProperties": false})
+        json!({"type": "object", "properties": {}, "additionalProperties": false})
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -1444,7 +1444,7 @@ impl Tool for AwsListSecurityGroupsTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({"type": "object", "additionalProperties": false})
+        json!({"type": "object", "properties": {}, "additionalProperties": false})
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
