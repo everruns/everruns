@@ -465,8 +465,11 @@ impl Tool for ActivateSkillFromVfsTool {
                     crate::skill::expand_skill_arguments(&parsed.instructions, skill_args);
                 let skill_dir = format!("{}/{}", SKILLS_PATH, name);
                 let session_id_str = context.session_id.to_string();
-                let substituted =
-                    crate::skill::substitute_activation_vars(&expanded, &session_id_str, &skill_dir);
+                let substituted = crate::skill::substitute_activation_vars(
+                    &expanded,
+                    &session_id_str,
+                    &skill_dir,
+                );
                 let executor = crate::skill::ProcessCommandExecutor::default();
                 let preprocessed =
                     crate::skill::preprocess_command_injections(&substituted, &executor).await;

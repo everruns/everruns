@@ -1302,7 +1302,8 @@ Body.
     #[test]
     fn test_substitute_both_vars() {
         let content = "Run: ${SKILL_DIR}/run.sh --session ${SESSION_ID}";
-        let result = substitute_activation_vars(content, "session_01abc", "/.agents/skills/data-tool");
+        let result =
+            substitute_activation_vars(content, "session_01abc", "/.agents/skills/data-tool");
         assert_eq!(
             result,
             "Run: /.agents/skills/data-tool/run.sh --session session_01abc"
