@@ -8,12 +8,11 @@ const mockSelectTrigger = jest.fn(
     children,
     nativeButton: _nativeButton,
     render: _render,
-    ...props
   }: {
     children?: React.ReactNode;
     nativeButton?: boolean;
     render?: React.ReactElement;
-  }) => <div {...props}>{children}</div>,
+  }) => <div>{children}</div>,
 );
 
 const mockSessionContext = {
