@@ -913,7 +913,8 @@ impl DurableWorker {
                                 // Check the setup_connection hint before pausing
                                 let hint_enabled = {
                                     use everruns_core::traits::SessionStore;
-                                    let grpc_client = GrpcClient::connect(&self.grpc_address).await?;
+                                    let grpc_client =
+                                        GrpcClient::connect(&self.grpc_address).await?;
                                     let session_store = crate::grpc_adapters::GrpcSessionStore::new(
                                         grpc_client.clone(),
                                         ti.org_id,
@@ -934,7 +935,8 @@ impl DurableWorker {
                                 };
 
                                 if hint_enabled {
-                                    let grpc_client = GrpcClient::connect(&self.grpc_address).await?;
+                                    let grpc_client =
+                                        GrpcClient::connect(&self.grpc_address).await?;
                                     if let Err(e) = grpc_client
                                         .set_session_status(
                                             ti.org_id,

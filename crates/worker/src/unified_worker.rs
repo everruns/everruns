@@ -544,8 +544,11 @@ where
                                 };
 
                             if hint_enabled {
-                                let lifecycle =
-                                    SessionLifecycle::new(adapters.clone(), ti.org_id, ti.session_id);
+                                let lifecycle = SessionLifecycle::new(
+                                    adapters.clone(),
+                                    ti.org_id,
+                                    ti.session_id,
+                                );
                                 lifecycle.waiting_for_tool_results().await;
                             } else {
                                 info!(
