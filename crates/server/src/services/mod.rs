@@ -32,7 +32,7 @@ pub use llm_model::LlmModelService;
 pub use llm_provider::LlmProviderService;
 pub use llm_resolver::{LlmResolverService, ResolvedModel};
 pub use mcp_server::McpServerService;
-pub use message::MessageService;
+pub use message::{CreateMessageContext, MessageService};
 pub use model_sync::{ModelSyncService, SyncResult};
 pub use notification::{NotificationEventListener, NotificationService};
 pub use session::SessionService;

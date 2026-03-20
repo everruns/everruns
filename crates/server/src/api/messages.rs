@@ -28,7 +28,7 @@ use utoipa::ToSchema;
 
 use everruns_core::Caller;
 
-use crate::services::{MessageService, SessionService};
+use crate::services::{CreateMessageContext, MessageService, SessionService};
 
 // Re-export core types with ToSchema for OpenAPI
 #[allow(unused_imports)]
@@ -273,13 +273,15 @@ pub async fn create_message(
     let message = state
         .message_service
         .create(
-            org.org_id,
-            org.user_id,
-            session.harness_id.uuid(),
-            session.agent_id.map(|a| a.uuid()),
-            session_id.uuid(),
+            CreateMessageContext {
+                org_id: org.org_id,
+                user_id: org.user_id,
+                harness_id: session.harness_id.uuid(),
+                agent_id: session.agent_id.map(|a| a.uuid()),
+                session_id: session_id.uuid(),
+                event_metadata: None,
+            },
             req,
-            None,
         )
         .await
         .map_err(|e| {
