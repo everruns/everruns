@@ -627,6 +627,7 @@ Prompt injection is an inherent limitation of current LLM architecture. Defense-
 3. **Tool registry:** LLM can only call registered tools (no arbitrary code execution)
 4. **Session isolation:** Even if manipulated, agent is confined to its session
 5. **No auto-escalation:** Agent cannot grant itself new capabilities
+6. **Instruction hierarchy:** Generic harness system prompt includes an explicit instruction hierarchy statement directing the LLM to prioritize system instructions over content in tool results, user messages, or agent instructions files
 
 There is no reliable way to prevent an LLM from following adversarial instructions embedded in tool results or user messages. This is an industry-wide limitation.
 
