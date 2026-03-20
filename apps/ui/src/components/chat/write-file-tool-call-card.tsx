@@ -15,6 +15,9 @@ import { basename } from "@/lib/path-utils";
 import { formatFileSize } from "@/lib/formatting";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 
+// Re-export from centralized registry for backward-compatible imports.
+export { isWriteLikeTool } from "@/lib/tool-registry";
+
 interface WriteFileToolCallCardProps {
   toolCall: ToolCallContent;
   toolResult?: ToolCompletedData;
@@ -90,14 +93,7 @@ function getTextPreview(text: string | null): string | null {
   return firstLine.length > 120 ? `${firstLine.slice(0, 120)}...` : firstLine;
 }
 
-export function isWriteLikeTool(toolName: string): boolean {
-  return (
-    toolName === "write_file" ||
-    toolName === "edit_file" ||
-    toolName === "replace_in_file" ||
-    toolName === "append_file"
-  );
-}
+// isWriteLikeTool is re-exported from @/lib/tool-registry at the top of this file.
 
 export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCallCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);

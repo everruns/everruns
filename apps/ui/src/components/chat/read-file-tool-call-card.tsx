@@ -15,6 +15,9 @@ import { basename } from "@/lib/path-utils";
 import { formatFileSize } from "@/lib/formatting";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 
+// Re-export from centralized registry for backward-compatible imports.
+export { isReadFileTool } from "@/lib/tool-registry";
+
 interface ReadFileToolCallCardProps {
   toolCall: ToolCallContent;
   toolResult?: ToolCompletedData;
@@ -127,9 +130,7 @@ function getContentPreview(content: string | null): string | null {
     : firstNonEmptyLine;
 }
 
-export function isReadFileTool(toolName: string): boolean {
-  return toolName === "read_file" || toolName === "session_read_file";
-}
+// isReadFileTool is re-exported from @/lib/tool-registry at the top of this file.
 
 export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
