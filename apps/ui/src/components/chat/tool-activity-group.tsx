@@ -19,6 +19,7 @@ import {
   MonitorSmartphone,
 } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
+import { isRecord } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { basename } from "@/lib/path-utils";
 import {
@@ -183,32 +184,26 @@ function parseStructuredText(text: string): unknown | null {
 }
 
 function maskSensitiveFields(toolName: string, value: unknown): unknown {
-  if (
-    toolName !== "secret_store" ||
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value)
-  ) {
+  if (toolName !== "secret_store" || !isRecord(value)) {
     return value;
   }
 
-  const record = value as Record<string, unknown>;
-  if (!("value" in record) || record.value == null) {
+  if (!("value" in value) || value.value == null) {
     return value;
   }
 
   return {
-    ...record,
+    ...value,
     value: "[hidden]",
   };
 }
 
 function summarizeStructuredResult(toolCall: ToolCallContent, parsed: unknown): string | null {
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     return null;
   }
 
-  const record = parsed as Record<string, unknown>;
+  const record = parsed;
 
   if (toolCall.name === "secret_store") {
     const operation = record.operation;

@@ -21,20 +21,8 @@ import {
   CalendarClock,
   ArrowDown,
 } from "lucide-react";
-import type {
-  ActCompletedData,
-  ActStartedData,
-  Controls,
-  InputMessageData,
-  OutputMessageCompletedData,
-  ContentPart,
-  CommandDescriptor,
-  ToolCallRequestedData,
-  ToolCallSummary,
-  ToolCompletedData,
-  ToolStartedData,
-} from "@/lib/api/types";
-import { isImageFilePart } from "@/lib/api/types";
+import type { Controls, ContentPart, CommandDescriptor, ToolCallSummary } from "@/lib/api/types";
+import { isImageFilePart, getEventData } from "@/lib/api/types";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
 import {
@@ -191,8 +179,8 @@ export function ChatPanel() {
   const clientRequestedToolCallIds = useMemo(() => {
     const ids = new Set<string>();
     for (const event of chatEvents) {
-      if (event.type !== "tool.call_requested") continue;
-      const data = event.data as ToolCallRequestedData;
+      const data = getEventData(event, "tool.call_requested");
+      if (!data) continue;
       for (const toolCall of data.tool_calls ?? []) {
         ids.add(toolCall.id);
       }
@@ -242,52 +230,63 @@ export function ChatPanel() {
       const execId = event.context?.exec_id;
       if (!execId) continue;
 
-      if (event.type === "act.started") {
-        const data = event.data as ActStartedData;
-        groupsByExecId.set(execId, {
-          startEventId: event.id,
-          headline: data.headline ?? "Working",
-          rows: (data.tool_calls ?? []).map((toolCall: ToolCallSummary) => ({
-            id: toolCall.id,
-            label: toolCall.narration ?? toolCall.display_name ?? toolCall.name,
-            state: "running",
-          })),
-        });
-        continue;
+      {
+        const actStarted = getEventData(event, "act.started");
+        if (actStarted) {
+          groupsByExecId.set(execId, {
+            startEventId: event.id,
+            headline: actStarted.headline ?? "Working",
+            rows: (actStarted.tool_calls ?? []).map((toolCall: ToolCallSummary) => ({
+              id: toolCall.id,
+              label: toolCall.narration ?? toolCall.display_name ?? toolCall.name,
+              state: "running",
+            })),
+          });
+          continue;
+        }
       }
 
       const group = groupsByExecId.get(execId);
       if (!group) continue;
 
-      if (event.type === "tool.started") {
-        const data = event.data as ToolStartedData;
-        const row = ensureRow(
-          group,
-          data.tool_call.id,
-          data.narration ?? data.display_name ?? data.tool_call.name,
-          "running",
-        );
-        row.label = data.narration ?? row.label;
-        continue;
+      {
+        const toolStarted = getEventData(event, "tool.started");
+        if (toolStarted) {
+          const row = ensureRow(
+            group,
+            toolStarted.tool_call.id,
+            toolStarted.narration ?? toolStarted.display_name ?? toolStarted.tool_call.name,
+            "running",
+          );
+          row.label = toolStarted.narration ?? row.label;
+          continue;
+        }
       }
 
-      if (event.type === "tool.completed") {
-        const data = event.data as ToolCompletedData;
-        const row = ensureRow(
-          group,
-          data.tool_call_id,
-          data.narration ?? data.display_name ?? data.tool_name ?? "Tool call",
-          data.success ? "completed" : "error",
-        );
-        row.label = data.narration ?? row.label;
-        row.result = data;
-        row.state = data.success ? "completed" : "error";
-        continue;
+      {
+        const toolCompleted = getEventData(event, "tool.completed");
+        if (toolCompleted) {
+          const row = ensureRow(
+            group,
+            toolCompleted.tool_call_id,
+            toolCompleted.narration ??
+              toolCompleted.display_name ??
+              toolCompleted.tool_name ??
+              "Tool call",
+            toolCompleted.success ? "completed" : "error",
+          );
+          row.label = toolCompleted.narration ?? row.label;
+          row.result = toolCompleted;
+          row.state = toolCompleted.success ? "completed" : "error";
+          continue;
+        }
       }
 
-      if (event.type === "act.completed") {
-        const data = event.data as ActCompletedData;
-        group.completedHeadline = data.headline;
+      {
+        const actCompleted = getEventData(event, "act.completed");
+        if (actCompleted) {
+          group.completedHeadline = actCompleted.headline;
+        }
       }
     }
 
@@ -540,7 +539,8 @@ export function ChatPanel() {
               }
 
               if (event.type === "context.compacted") {
-                const compactedData = event.data as import("@/lib/api/types").ContextCompactedData;
+                const compactedData = getEventData(event, "context.compacted");
+                if (!compactedData) return null;
                 return <CompactionDivider key={event.id} data={compactedData} />;
               }
 
@@ -562,7 +562,8 @@ export function ChatPanel() {
               }
 
               if (event.type === "tool.call_requested") {
-                const reqData = event.data as ToolCallRequestedData;
+                const reqData = getEventData(event, "tool.call_requested");
+                if (!reqData) return null;
                 if (!reqData.tool_calls || reqData.tool_calls.length === 0) return null;
 
                 if (reqData.headline || reqData.tool_summaries?.length) {
@@ -621,13 +622,18 @@ export function ChatPanel() {
               }
 
               const isUser = event.type === "input.message";
-              const data = event.data as InputMessageData | OutputMessageCompletedData;
+              const inputData = getEventData(event, "input.message");
+              const outputData = getEventData(event, "output.message.completed");
+              const data = inputData ?? outputData;
+              if (!data) return null;
               const textContent = getMessageText(data);
               const toolCalls = isUser
                 ? []
-                : getToolCalls(data as OutputMessageCompletedData).filter(
-                    (toolCall) => !clientRequestedToolCallIds.has(toolCall.id),
-                  );
+                : outputData
+                  ? getToolCalls(outputData).filter(
+                      (toolCall) => !clientRequestedToolCallIds.has(toolCall.id),
+                    )
+                  : [];
               const images = data.message?.content ? getMessageImages(data.message.content) : [];
               const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
               const isToolOnlyMessage =

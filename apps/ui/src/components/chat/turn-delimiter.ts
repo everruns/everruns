@@ -2,24 +2,20 @@
 // optimistic input rows never show a fake duration and client tool requests
 // can take over as the last visible item when embedded tool calls are hidden.
 
-import type {
-  ActStartedData,
-  Event,
-  InputMessageData,
-  OutputMessageCompletedData,
-  ToolCallRequestedData,
-  TurnCompletedData,
-  TurnStartedData,
+import type { Event } from "@/lib/api/types";
+import {
+  getTextFromContent,
+  getToolCallsFromContent,
+  isImageFilePart,
+  getEventData,
 } from "@/lib/api/types";
-import { getTextFromContent, getToolCallsFromContent, isImageFilePart } from "@/lib/api/types";
 
 function getClientRequestedToolCallIds(events: Event[]): Set<string> {
   const ids = new Set<string>();
 
   for (const event of events) {
-    if (event.type !== "tool.call_requested") continue;
-
-    const data = event.data as ToolCallRequestedData;
+    const data = getEventData(event, "tool.call_requested");
+    if (!data) continue;
     for (const toolCall of data.tool_calls ?? []) {
       ids.add(toolCall.id);
     }
@@ -32,9 +28,8 @@ function getInputMessageTurnIds(events: Event[]): Map<string, string> {
   const turnIds = new Map<string, string>();
 
   for (const event of events) {
-    if (event.type !== "turn.started") continue;
-
-    const data = event.data as TurnStartedData;
+    const data = getEventData(event, "turn.started");
+    if (!data) continue;
     turnIds.set(data.input_message_id, data.turn_id);
   }
 
@@ -46,22 +41,22 @@ function isVisibleChatEvent(event: Event, clientRequestedToolCallIds: Set<string
     return true;
   }
 
-  if (event.type === "tool.call_requested") {
-    const data = event.data as ToolCallRequestedData;
-    return (data.tool_calls?.length ?? 0) > 0;
+  const reqData = getEventData(event, "tool.call_requested");
+  if (reqData) {
+    return (reqData.tool_calls?.length ?? 0) > 0;
   }
 
-  if (event.type === "act.started") {
-    const data = event.data as ActStartedData;
-    return (data.tool_calls?.length ?? 0) > 0;
+  const actData = getEventData(event, "act.started");
+  if (actData) {
+    return (actData.tool_calls?.length ?? 0) > 0;
   }
 
-  if (event.type !== "output.message.completed") {
+  const outData = getEventData(event, "output.message.completed");
+  if (!outData) {
     return false;
   }
 
-  const data = event.data as OutputMessageCompletedData;
-  const content = data.message?.content ?? [];
+  const content = outData.message?.content ?? [];
   const text = getTextFromContent(content);
   const hasImages = content.some(isImageFilePart);
   const visibleToolCalls = getToolCallsFromContent(content).filter(
@@ -79,11 +74,8 @@ function getEventTurnId(
     return event.context.turn_id;
   }
 
-  if (event.type !== "input.message") {
-    return undefined;
-  }
-
-  const data = event.data as InputMessageData;
+  const data = getEventData(event, "input.message");
+  if (!data) return undefined;
   return data.message?.id ? inputMessageTurnIds.get(data.message.id) : undefined;
 }
 
@@ -101,11 +93,9 @@ export function getCompletedTurnDurationsByEvent(events: Event[]): Map<string, n
       }
     }
 
-    if (event.type === "turn.completed") {
-      const data = event.data as TurnCompletedData;
-      if (data.duration_ms != null) {
-        durationMsByTurn.set(data.turn_id, data.duration_ms);
-      }
+    const tcData = getEventData(event, "turn.completed");
+    if (tcData && tcData.duration_ms != null) {
+      durationMsByTurn.set(tcData.turn_id, tcData.duration_ms);
     }
   }
 

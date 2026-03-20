@@ -91,9 +91,12 @@ function getCounter(p: MetricsPoint, field: CounterField): number {
   return p[field];
 }
 
-/** Set a counter value on a mutable metrics point record */
-function setCounter(p: Record<string, unknown>, field: CounterField, value: number): void {
-  p[field] = value;
+/** Set a counter value on a mutable metrics point */
+function setCounter(p: MetricsPoint, field: CounterField, value: number): void {
+  // All CounterField keys are valid MetricsPoint numeric fields.
+  // Use indexed access on a type-safe mapped helper to avoid double cast.
+  const mutable: { -readonly [K in CounterField]: number } = p;
+  mutable[field] = value;
 }
 
 /** Create a zero-valued MetricsPoint at a given timestamp */
@@ -159,7 +162,7 @@ function buildTimeWindow(points: MetricsPoint[]): MetricsPoint[] {
       }
     } else if (Object.keys(lastCounters).length > 0) {
       // Fill empty slot with last known counter values
-      const slot = slots[i] as unknown as Record<string, unknown>;
+      const slot = slots[i];
       for (const field of COUNTER_FIELDS) {
         if (field in lastCounters) {
           setCounter(slot, field, lastCounters[field]!);
@@ -174,7 +177,7 @@ function buildTimeWindow(points: MetricsPoint[]): MetricsPoint[] {
   if (firstRealIdx > 0) {
     const firstReal = slots[firstRealIdx];
     for (let i = 0; i < firstRealIdx; i++) {
-      const slot = slots[i] as unknown as Record<string, unknown>;
+      const slot = slots[i];
       for (const field of COUNTER_FIELDS) {
         setCounter(slot, field, getCounter(firstReal, field));
       }
