@@ -945,6 +945,10 @@ mod tests {
             "should have get_current_time"
         );
         assert!(registry.has("echo"), "should have echo");
+        assert!(
+            registry.has("report_progress"),
+            "should have report_progress"
+        );
 
         // TestMath capability tools
         assert!(registry.has("add"), "should have add");
@@ -972,7 +976,7 @@ mod tests {
         assert!(registry.has("web_fetch"), "should have web_fetch");
 
         // Total count
-        assert_eq!(registry.len(), 17, "should have 17 default tools");
+        assert_eq!(registry.len(), 18, "should have 18 default tools");
     }
 
     #[tokio::test]
