@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -234,7 +235,7 @@ function SkillCardSkeleton() {
 
 export default function SkillsPage() {
   const [showArchived, setShowArchived] = useState(false);
-  const { data: skills = [], isLoading, error } = useSkills({ includeArchived: showArchived });
+  const { data: skills, isLoading, error } = useSkills({ includeArchived: showArchived });
   const destroySkillMutation = useDestroySkill();
   const { can: canPolicies } = usePolicies("skills");
   const canDestroy = canPolicies("skill.dangerous");
@@ -266,45 +267,47 @@ export default function SkillsPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
-          Failed to load skills: {error.message}
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <SkillCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : skills.length === 0 ? (
-        <div className="text-center py-12">
-          <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <p className="text-muted-foreground mb-4">No skills yet</p>
-          <div className="flex justify-center gap-2">
-            <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Upload ZIP
-            </Button>
-            <Button onClick={() => setAddSkillOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Skill
-            </Button>
+      <QueryStateWrapper
+        isLoading={isLoading}
+        error={error}
+        data={skills}
+        loadingSkeleton={
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[...Array(6)].map((_, i) => (
+              <SkillCardSkeleton key={i} />
+            ))}
           </div>
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {skills.map((skill) => (
-            <SkillCard
-              key={skill.id}
-              skill={skill}
-              canDestroy={canDestroy}
-              onDelete={setPendingDeleteSkill}
-            />
-          ))}
-        </div>
-      )}
+        }
+        emptyState={
+          <div className="text-center py-12">
+            <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground mb-4">No skills yet</p>
+            <div className="flex justify-center gap-2">
+              <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Upload ZIP
+              </Button>
+              <Button onClick={() => setAddSkillOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Skill
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        {(items) => (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {items.map((skill) => (
+              <SkillCard
+                key={skill.id}
+                skill={skill}
+                canDestroy={canDestroy}
+                onDelete={setPendingDeleteSkill}
+              />
+            ))}
+          </div>
+        )}
+      </QueryStateWrapper>
 
       <AddSkillDialog open={addSkillOpen} onOpenChange={setAddSkillOpen} />
       <UploadSkillDialog open={uploadSkillOpen} onOpenChange={setUploadSkillOpen} />
