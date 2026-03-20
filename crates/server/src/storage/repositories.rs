@@ -4325,10 +4325,14 @@ impl Database {
         Ok(row)
     }
 
-    /// Ensure user is a member of organization (idempotent)
+    /// Ensure user is a member of organization with the given role (upsert).
+    /// Updates the role if the membership already exists.
     pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64, role: &str) -> Result<()> {
         sqlx::query(
-            "INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (org_id, user_id) DO NOTHING"
+            "INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, $3) \
+             ON CONFLICT (org_id, user_id) DO UPDATE \
+             SET role = EXCLUDED.role \
+             WHERE organization_members.role IS DISTINCT FROM EXCLUDED.role",
         )
         .bind(org_id)
         .bind(user_id)
@@ -4337,6 +4341,90 @@ impl Database {
         .await?;
 
         Ok(())
+    }
+
+    /// Reconcile org memberships to match an authoritative list from an external
+    /// identity provider. Adds missing members, updates changed roles, and
+    /// removes members not present in the authoritative list.
+    ///
+    /// Runs inside a transaction for atomicity. Duplicate user_ids in the
+    /// authoritative list are deduplicated (last wins).
+    ///
+    /// Returns `(added, updated, removed)` counts.
+    pub async fn reconcile_memberships(
+        &self,
+        org_id: i64,
+        authoritative: &[(Uuid, String)],
+    ) -> Result<(usize, usize, usize)> {
+        // Deduplicate authoritative input (last occurrence wins)
+        let auth_map: std::collections::HashMap<Uuid, &str> = authoritative
+            .iter()
+            .map(|(uid, role)| (*uid, role.as_str()))
+            .collect();
+
+        let mut tx = self.pool.begin().await?;
+
+        // Read current memberships inside the transaction (lock rows)
+        let current: Vec<OrganizationMemberRow> = sqlx::query_as(
+            "SELECT org_id, user_id, role, created_at \
+             FROM organization_members WHERE org_id = $1 FOR UPDATE",
+        )
+        .bind(org_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        let current_map: std::collections::HashMap<Uuid, String> =
+            current.into_iter().map(|m| (m.user_id, m.role)).collect();
+
+        let mut added = 0usize;
+        let mut updated = 0usize;
+        let mut removed = 0usize;
+
+        // Add or update from the deduped map
+        for (user_id, role) in &auth_map {
+            match current_map.get(user_id) {
+                None => {
+                    sqlx::query(
+                        "INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, $3)",
+                    )
+                    .bind(org_id)
+                    .bind(user_id)
+                    .bind(role)
+                    .execute(&mut *tx)
+                    .await?;
+                    added += 1;
+                }
+                Some(existing_role) if existing_role != role => {
+                    sqlx::query(
+                        "UPDATE organization_members SET role = $1 \
+                         WHERE org_id = $2 AND user_id = $3",
+                    )
+                    .bind(role)
+                    .bind(org_id)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                    updated += 1;
+                }
+                _ => {} // unchanged
+            }
+        }
+
+        // Remove members not in authoritative list
+        for user_id in current_map.keys() {
+            if !auth_map.contains_key(user_id) {
+                sqlx::query("DELETE FROM organization_members WHERE org_id = $1 AND user_id = $2")
+                    .bind(org_id)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                removed += 1;
+            }
+        }
+
+        tx.commit().await?;
+
+        Ok((added, updated, removed))
     }
 
     // ============================================

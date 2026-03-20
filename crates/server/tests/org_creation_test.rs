@@ -345,3 +345,144 @@ fn test_generate_org_public_id_format() {
         assert_eq!(id.len(), 36); // "org_" + 32 hex chars
     }
 }
+
+// ============================================
+// Membership Sync / Reconciliation Tests
+// ============================================
+
+#[tokio::test]
+async fn test_ensure_membership_updates_role() {
+    let db = InMemoryDatabase::default();
+    let user_id = Uuid::now_v7();
+
+    let org = db
+        .create_organization(CreateOrganizationRow {
+            public_id: format!("org_{}", Uuid::now_v7().simple()),
+            name: "Role Update Test".to_string(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+
+    // Insert as member
+    db.ensure_membership(user_id, org.org_id, "member")
+        .await
+        .unwrap();
+    let members = db.list_organization_members(org.org_id).await.unwrap();
+    assert_eq!(members[0].role, "member");
+
+    // Ensure again with different role — should update
+    db.ensure_membership(user_id, org.org_id, "admin")
+        .await
+        .unwrap();
+    let members = db.list_organization_members(org.org_id).await.unwrap();
+    assert_eq!(members.len(), 1, "should still have one member");
+    assert_eq!(members[0].role, "admin");
+}
+
+#[tokio::test]
+async fn test_reconcile_memberships_add_update_remove() {
+    let db = InMemoryDatabase::default();
+    let user_a = Uuid::now_v7();
+    let user_b = Uuid::now_v7();
+    let user_c = Uuid::now_v7();
+
+    let org = db
+        .create_organization(CreateOrganizationRow {
+            public_id: format!("org_{}", Uuid::now_v7().simple()),
+            name: "Reconcile Test".to_string(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+
+    // Seed: A=owner, B=member
+    db.add_organization_member(org.org_id, user_a, "owner")
+        .await
+        .unwrap();
+    db.add_organization_member(org.org_id, user_b, "member")
+        .await
+        .unwrap();
+
+    // Authoritative: A=admin (role change), C=member (new), B absent (remove)
+    let authoritative = vec![
+        (user_a, "admin".to_string()),
+        (user_c, "member".to_string()),
+    ];
+
+    let (added, updated, removed) = db
+        .reconcile_memberships(org.org_id, &authoritative)
+        .await
+        .unwrap();
+
+    assert_eq!(added, 1, "user_c should be added");
+    assert_eq!(updated, 1, "user_a role should be updated");
+    assert_eq!(removed, 1, "user_b should be removed");
+
+    // Verify final state
+    let members = db.list_organization_members(org.org_id).await.unwrap();
+    assert_eq!(members.len(), 2);
+
+    let member_map: std::collections::HashMap<Uuid, String> =
+        members.into_iter().map(|m| (m.user_id, m.role)).collect();
+    assert_eq!(member_map.get(&user_a).unwrap(), "admin");
+    assert_eq!(member_map.get(&user_c).unwrap(), "member");
+    assert!(!member_map.contains_key(&user_b));
+}
+
+#[tokio::test]
+async fn test_reconcile_memberships_empty_authoritative_removes_all() {
+    let db = InMemoryDatabase::default();
+    let user_id = Uuid::now_v7();
+
+    let org = db
+        .create_organization(CreateOrganizationRow {
+            public_id: format!("org_{}", Uuid::now_v7().simple()),
+            name: "Reconcile Empty Test".to_string(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+
+    db.add_organization_member(org.org_id, user_id, "owner")
+        .await
+        .unwrap();
+
+    let (added, updated, removed) = db.reconcile_memberships(org.org_id, &[]).await.unwrap();
+
+    assert_eq!(added, 0);
+    assert_eq!(updated, 0);
+    assert_eq!(removed, 1);
+
+    let members = db.list_organization_members(org.org_id).await.unwrap();
+    assert!(members.is_empty());
+}
+
+#[tokio::test]
+async fn test_reconcile_memberships_no_changes() {
+    let db = InMemoryDatabase::default();
+    let user_id = Uuid::now_v7();
+
+    let org = db
+        .create_organization(CreateOrganizationRow {
+            public_id: format!("org_{}", Uuid::now_v7().simple()),
+            name: "Reconcile Noop Test".to_string(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+
+    db.add_organization_member(org.org_id, user_id, "owner")
+        .await
+        .unwrap();
+
+    let authoritative = vec![(user_id, "owner".to_string())];
+    let (added, updated, removed) = db
+        .reconcile_memberships(org.org_id, &authoritative)
+        .await
+        .unwrap();
+
+    assert_eq!(added, 0);
+    assert_eq!(updated, 0);
+    assert_eq!(removed, 0);
+}
