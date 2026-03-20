@@ -1128,6 +1128,7 @@ pub struct AppRow {
     pub agent_id: Uuid,
     pub channel_type: String,
     pub channel_config: serde_json::Value,
+    pub channel_config_encrypted: Option<Vec<u8>>,
     pub status: String,
     pub published_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -1146,6 +1147,8 @@ pub struct CreateAppRow {
     pub agent_id: Uuid,
     pub channel_type: String,
     pub channel_config: serde_json::Value,
+    /// Encrypted channel_config bytes (envelope-encrypted JSON).
+    pub channel_config_encrypted: Option<Vec<u8>>,
 }
 
 /// Input for updating an app
@@ -1157,6 +1160,8 @@ pub struct UpdateApp {
     pub agent_id: Option<Uuid>,
     pub channel_type: Option<String>,
     pub channel_config: Option<serde_json::Value>,
+    /// Encrypted channel_config bytes (envelope-encrypted JSON).
+    pub channel_config_encrypted: Option<Vec<u8>>,
     pub status: Option<String>,
     pub published_at: UpdateField<DateTime<Utc>>,
 }

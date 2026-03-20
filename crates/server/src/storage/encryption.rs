@@ -395,6 +395,12 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "refresh_token_encrypted",
         id_column: "id",
     },
+    // App channel config contains secrets (e.g. Slack signing_secret, bot_token)
+    EncryptedColumn {
+        table: "apps",
+        column: "channel_config_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]

@@ -1,8 +1,10 @@
 // App service for business logic
+// Decision: channel_config secrets encrypted via EncryptionService (EVE-158)
+// Decision: encrypt on write, decrypt in row_to_app; fallback to plaintext for migration
 
 use crate::errors::ResourceNotFoundError;
 use crate::storage::{
-    AppRow, StorageBackend,
+    AppRow, EncryptionService, StorageBackend,
     models::{CreateAppRow, UpdateApp},
 };
 use anyhow::Result;
@@ -39,11 +41,65 @@ pub const APP_DANGEROUS: Policy = Policy {
 
 pub struct AppService {
     db: Arc<StorageBackend>,
+    encryption: Option<Arc<EncryptionService>>,
 }
 
 impl AppService {
-    pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self { db }
+    pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
+        Self { db, encryption }
+    }
+
+    /// Encrypt channel_config JSON to bytes. Returns None if encryption is not
+    /// configured (dev/test mode) or the config is empty.
+    fn encrypt_channel_config(&self, config: &serde_json::Value) -> Result<Option<Vec<u8>>> {
+        if config.is_null() || (config.is_object() && config.as_object().unwrap().is_empty()) {
+            return Ok(None);
+        }
+        let encryption = match self.encryption.as_ref() {
+            Some(e) => e,
+            None => return Ok(None), // No encryption in dev mode
+        };
+        let json = serde_json::to_string(config)?;
+        Ok(Some(encryption.encrypt_string(&json)?))
+    }
+
+    /// Decrypt channel_config from encrypted bytes. Falls back to the plaintext
+    /// column only for rows that haven't been migrated yet or when encryption
+    /// is not configured (dev/test mode). If encrypted data is present but
+    /// decryption/parsing fails, log and return null instead of silently
+    /// reading from the plaintext column.
+    fn decrypt_channel_config(
+        &self,
+        encrypted: Option<&[u8]>,
+        plaintext_fallback: &serde_json::Value,
+    ) -> serde_json::Value {
+        match (encrypted, self.encryption.as_ref()) {
+            // Pre-migration rows or dev/test mode: use plaintext column.
+            (None, _) | (_, None) => plaintext_fallback.clone(),
+            // Encrypted data with an available encryption service.
+            (Some(data), Some(enc)) => {
+                let json = match enc.decrypt_to_string(data) {
+                    Ok(json) => json,
+                    Err(err) => {
+                        tracing::error!(
+                            error = %err,
+                            "Failed to decrypt channel_config; returning null instead of plaintext fallback"
+                        );
+                        return serde_json::Value::Null;
+                    }
+                };
+                match serde_json::from_str(&json) {
+                    Ok(val) => val,
+                    Err(err) => {
+                        tracing::error!(
+                            error = %err,
+                            "Failed to parse decrypted channel_config JSON; returning null"
+                        );
+                        serde_json::Value::Null
+                    }
+                }
+            }
+        }
     }
 
     #[policy(APP_MANAGE)]
@@ -69,6 +125,17 @@ impl AppService {
             anyhow::bail!("Archived or deleted agents cannot be assigned");
         }
 
+        let channel_config = req.channel_config.unwrap_or_default();
+        let channel_config_encrypted = self.encrypt_channel_config(&channel_config)?;
+
+        // When encryption produced ciphertext, redact the plaintext column
+        // so secrets are not stored in both columns.
+        let stored_plaintext = if channel_config_encrypted.is_some() {
+            serde_json::Value::Object(Default::default())
+        } else {
+            channel_config
+        };
+
         let input = CreateAppRow {
             public_id: public_id.to_string(),
             name: req.name,
@@ -76,7 +143,8 @@ impl AppService {
             harness_id: harness_row.id.uuid(),
             agent_id: agent_row.id.uuid(),
             channel_type: req.channel_type.to_string(),
-            channel_config: req.channel_config.unwrap_or_default(),
+            channel_config: stored_plaintext,
+            channel_config_encrypted,
         };
 
         let row = self.db.create_app(caller.org_id, input).await?;
@@ -177,13 +245,39 @@ impl AppService {
             None
         };
 
+        // Encrypt channel_config. If the request provides a new config, encrypt it.
+        // Otherwise, opportunistically encrypt the existing plaintext config for
+        // pre-migration rows (when encryption is configured but encrypted column is NULL).
+        let (channel_config, channel_config_encrypted) = if let Some(config) = req.channel_config {
+            let encrypted = self.encrypt_channel_config(&config)?;
+            // Redact plaintext when encryption produced ciphertext
+            let stored_plaintext = if encrypted.is_some() {
+                Some(serde_json::Value::Object(Default::default()))
+            } else {
+                Some(config)
+            };
+            (stored_plaintext, encrypted)
+        } else if existing.channel_config_encrypted.is_none() && self.encryption.is_some() {
+            // Opportunistic migration: encrypt existing plaintext on any update
+            let encrypted = self.encrypt_channel_config(&existing.channel_config)?;
+            let stored_plaintext = if encrypted.is_some() {
+                Some(serde_json::Value::Object(Default::default()))
+            } else {
+                None
+            };
+            (stored_plaintext, encrypted)
+        } else {
+            (None, None)
+        };
+
         let input = UpdateApp {
             name: req.name,
             description: req.description,
             harness_id,
             agent_id,
             channel_type: req.channel_type.map(|ct| ct.to_string()),
-            channel_config: req.channel_config,
+            channel_config,
+            channel_config_encrypted,
             status: req.status.map(|s| s.to_string()),
             published_at: UpdateField::Unchanged,
         };
@@ -305,7 +399,10 @@ impl AppService {
             agent_id,
             channel_type: ChannelType::from_str_opt(&row.channel_type)
                 .unwrap_or(ChannelType::Slack),
-            channel_config: row.channel_config,
+            channel_config: self.decrypt_channel_config(
+                row.channel_config_encrypted.as_deref(),
+                &row.channel_config,
+            ),
             status: AppStatus::from(row.status.as_str()),
             published_at: row.published_at,
             created_at: row.created_at,

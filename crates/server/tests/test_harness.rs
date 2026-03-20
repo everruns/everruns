@@ -239,9 +239,10 @@ impl TestServer {
             platform_definition.connection_providers().clone(),
         );
 
-        let apps_state = api::apps::AppState::new(db.clone(), auth_state.clone());
+        let apps_state = api::apps::AppState::new(db.clone(), None, auth_state.clone());
         let slack_state = api::slack_events::SlackState::new(
             db.clone(),
+            None, // No encryption in tests
             runner.clone(),
             None, // No delivery dispatcher in tests
             feature_flags.notifications,
