@@ -677,7 +677,7 @@ impl Tool for ManageSessionsTool {
                 },
                 "harness_id": {
                     "type": "string",
-                    "description": "Harness ID (required for create)"
+                    "description": "Harness ID for the session. If omitted, uses the org's default (Generic) harness."
                 },
                 "agent_id": {
                     "type": "string",
@@ -761,16 +761,36 @@ impl Tool for ManageSessionsTool {
             }
 
             "create" => {
-                let harness_id_str = match require_str(&arguments, "harness_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let harness_id = match harness_id_str.parse::<crate::typed_id::HarnessId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid harness_id: {harness_id_str}"
-                        ));
+                let harness_id = if let Some(harness_id_str) = get_str(&arguments, "harness_id") {
+                    match harness_id_str.parse::<crate::typed_id::HarnessId>() {
+                        Ok(id) => id,
+                        Err(_) => {
+                            return ToolExecutionResult::tool_error(format!(
+                                "Invalid harness_id: {harness_id_str}"
+                            ));
+                        }
+                    }
+                } else {
+                    // Fall back to the org's default (Generic) harness
+                    match store.list_harnesses().await {
+                        Ok(harnesses) => {
+                            match harnesses
+                                .iter()
+                                .find(|h| h.is_built_in && h.name == "Generic")
+                            {
+                                Some(h) => h.id,
+                                None => {
+                                    return ToolExecutionResult::tool_error(
+                                        "No harness_id provided and no default Generic harness found. Please specify a harness_id.",
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            return ToolExecutionResult::tool_error(format!(
+                                "No harness_id provided and failed to resolve default harness: {e}"
+                            ));
+                        }
                     }
                 };
                 let agent_id = get_str(&arguments, "agent_id")
@@ -1653,15 +1673,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn session_create_missing_harness_id_returns_error() {
+    async fn session_create_missing_harness_id_falls_back_to_generic() {
         let ctx = mock_context();
         let tool = ManageSessionsTool;
+        // Mock store has no built-in Generic harness, so fallback should error
         let result = tool
             .execute_with_context(json!({"operation": "create"}), &ctx)
             .await;
         match result {
-            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Missing required")),
-            other => panic!("expected tool error, got: {other:?}"),
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("no default Generic harness found"))
+            }
+            other => panic!("expected tool error for missing Generic harness, got: {other:?}"),
         }
     }
 
