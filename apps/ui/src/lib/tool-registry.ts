@@ -60,7 +60,7 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   mkdir: { category: "write", segmentMode: "grouped" },
 
   // Todo tools
-  write_todos: { category: "todo", segmentMode: "grouped" },
+  write_todos: { category: "todo", segmentMode: "standalone" },
 
   // Store tools
   secret_store: { category: "tool", segmentMode: "grouped" },
