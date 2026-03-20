@@ -255,9 +255,7 @@ pub async fn reconcile(
                     if verbose {
                         eprintln!("  del local {}", path);
                     }
-                    if !dry_run
-                        && let Ok(local_path) = safe_local_path(local_dir, path)
-                    {
+                    if !dry_run && let Ok(local_path) = safe_local_path(local_dir, path) {
                         let _ = std::fs::remove_file(&local_path);
                     }
                     state.files.remove(path);
