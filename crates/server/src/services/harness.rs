@@ -780,10 +780,7 @@ mod tests {
         let service = HarnessService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
 
-        let err = service
-            .destroy(&caller, Uuid::nil())
-            .await
-            .unwrap_err();
+        let err = service.destroy(&caller, Uuid::nil()).await.unwrap_err();
 
         assert!(err.downcast_ref::<ResourceNotFoundError>().is_some());
         assert_eq!(err.to_string(), "Harness not found");
