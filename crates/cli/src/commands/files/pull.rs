@@ -2,7 +2,7 @@
 
 use crate::commands::files::remote::RemoteClient;
 use crate::commands::files::state::{SyncState, content_hash, state_dir};
-use crate::commands::files::sync_engine::scan_remote;
+use crate::commands::files::sync_engine::{safe_local_path, scan_remote};
 use crate::output::OutputFormat;
 use anyhow::Result;
 use std::path::PathBuf;
@@ -54,7 +54,7 @@ pub async fn run(
         match client.read_file(&format!("/{}", path)).await {
             Ok(content) => {
                 let bytes = RemoteClient::decode_content(&content)?;
-                let local_path = local_dir.join(path);
+                let local_path = safe_local_path(&local_dir, path)?;
                 if let Some(parent) = local_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
@@ -89,8 +89,9 @@ pub async fn run(
         let prev_paths: Vec<String> = state.files.keys().cloned().collect();
         for path in prev_paths {
             if !remote_paths.contains(path.as_str()) {
-                let local_path = local_dir.join(&path);
-                if local_path.exists() {
+                if let Ok(local_path) = safe_local_path(&local_dir, &path)
+                    && local_path.exists()
+                {
                     if dry_run {
                         println!("  🗑 local {}", path);
                     } else {

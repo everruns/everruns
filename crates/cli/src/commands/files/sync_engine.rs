@@ -255,8 +255,9 @@ pub async fn reconcile(
                     if verbose {
                         eprintln!("  del local {}", path);
                     }
-                    if !dry_run {
-                        let local_path = local_dir.join(path);
+                    if !dry_run
+                        && let Ok(local_path) = safe_local_path(local_dir, path)
+                    {
                         let _ = std::fs::remove_file(&local_path);
                     }
                     state.files.remove(path);
@@ -361,10 +362,41 @@ fn resolve_conflict(
     }
 }
 
+/// Validate that a path joined with local_dir stays within local_dir (prevents path traversal).
+pub fn safe_local_path(local_dir: &Path, path: &str) -> Result<std::path::PathBuf> {
+    // Reject absolute paths and traversal components
+    if path.starts_with('/') || path.starts_with('\\') || path.contains("..") {
+        anyhow::bail!("Unsafe path rejected (traversal or absolute): {}", path);
+    }
+    let joined = local_dir.join(path);
+    // Normalize and verify the result is under local_dir
+    // Use lexical check since the file may not exist yet
+    let normalized = joined
+        .components()
+        .fold(std::path::PathBuf::new(), |mut acc, c| {
+            match c {
+                std::path::Component::ParentDir => {
+                    acc.pop();
+                }
+                std::path::Component::CurDir => {}
+                _ => acc.push(c),
+            }
+            acc
+        });
+    if !normalized.starts_with(local_dir) {
+        anyhow::bail!(
+            "Path escapes sync directory: {} -> {}",
+            path,
+            normalized.display()
+        );
+    }
+    Ok(joined)
+}
+
 async fn download_file(client: &RemoteClient, local_dir: &Path, path: &str) -> Result<String> {
     let remote_content = client.read_file(&format!("/{}", path)).await?;
     let bytes = RemoteClient::decode_content(&remote_content)?;
-    let local_path = local_dir.join(path);
+    let local_path = safe_local_path(local_dir, path)?;
 
     if let Some(parent) = local_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -595,5 +627,26 @@ mod tests {
         let entry = &state.files["file.txt"];
         assert_eq!(entry.local_hash.as_deref(), Some("sha256:aaa")); // unchanged
         assert_eq!(entry.remote_hash.as_deref(), Some("sha256:bbb"));
+    }
+
+    #[test]
+    fn test_safe_local_path_normal() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = safe_local_path(dir.path(), "src/main.rs").unwrap();
+        assert_eq!(result, dir.path().join("src/main.rs"));
+    }
+
+    #[test]
+    fn test_safe_local_path_rejects_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(safe_local_path(dir.path(), "../../etc/passwd").is_err());
+        assert!(safe_local_path(dir.path(), "../secret").is_err());
+        assert!(safe_local_path(dir.path(), "a/../../b").is_err());
+    }
+
+    #[test]
+    fn test_safe_local_path_rejects_absolute() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(safe_local_path(dir.path(), "/etc/passwd").is_err());
     }
 }
