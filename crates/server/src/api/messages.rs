@@ -279,6 +279,7 @@ pub async fn create_message(
             session.agent_id.map(|a| a.uuid()),
             session_id.uuid(),
             req,
+            None,
         )
         .await
         .map_err(|e| {

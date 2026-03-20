@@ -29,7 +29,17 @@ import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/typ
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
-import { formatTokens } from "@/lib/formatting";
+
+// Helper function to format token counts in a compact way
+function formatTokens(tokens: number): string {
+  if (tokens >= 1000000) {
+    return `${(tokens / 1000000).toFixed(1)}M`;
+  }
+  if (tokens >= 1000) {
+    return `${(tokens / 1000).toFixed(1)}K`;
+  }
+  return tokens.toString();
+}
 
 // Helper function to calculate total tokens
 function totalTokens(usage: TokenUsage): number {

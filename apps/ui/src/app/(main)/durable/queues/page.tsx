@@ -61,10 +61,36 @@ import {
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { CopyButton } from "@/components/ui/copy-button";
-import { formatDistanceToNow, formatDurationCompact } from "@/lib/formatting";
-import { getTaskStatusBadgeVariant } from "@/lib/status-utils";
 
 type TabValue = "overview" | "tasks" | "dlq";
+
+function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean }): string {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  let result = "";
+  if (days > 0) {
+    result = `${days} day${days > 1 ? "s" : ""}`;
+  } else if (hours > 0) {
+    result = `${hours} hour${hours > 1 ? "s" : ""}`;
+  } else if (minutes > 0) {
+    result = `${minutes} minute${minutes > 1 ? "s" : ""}`;
+  } else {
+    result = "less than a minute";
+  }
+
+  return options?.addSuffix ? `${result} ago` : result;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${(ms / 60000).toFixed(1)}m`;
+}
 
 function getTaskStatusIcon(status: TaskStatus) {
   switch (status) {
@@ -80,6 +106,20 @@ function getTaskStatusIcon(status: TaskStatus) {
       return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
     default:
       return <Clock className="h-4 w-4 text-gray-500" />;
+  }
+}
+
+function getTaskStatusBadgeVariant(status: TaskStatus) {
+  switch (status) {
+    case "completed":
+      return "default" as const;
+    case "claimed":
+      return "secondary" as const;
+    case "failed":
+    case "dead":
+      return "destructive" as const;
+    default:
+      return "outline" as const;
   }
 }
 
@@ -120,11 +160,11 @@ function QueueStatsCard({
           </div>
           <div>
             <p className="text-muted-foreground text-xs">Avg Duration</p>
-            <p className="font-medium">{formatDurationCompact(stats.avg_duration_ms)}</p>
+            <p className="font-medium">{formatDuration(stats.avg_duration_ms)}</p>
           </div>
           <div>
             <p className="text-muted-foreground text-xs">p99 Duration</p>
-            <p className="font-medium">{formatDurationCompact(stats.p99_duration_ms)}</p>
+            <p className="font-medium">{formatDuration(stats.p99_duration_ms)}</p>
           </div>
         </div>
         {totalActive > 0 && (
@@ -607,15 +647,15 @@ export default function QueuesPage() {
         <div className="flex items-center gap-6 text-sm text-muted-foreground mb-6">
           <div className="flex items-center gap-1">
             <Timer className="h-3.5 w-3.5" />
-            <span>Oldest pending: {formatDurationCompact(stats.oldest_pending_task_age_ms)}</span>
+            <span>Oldest pending: {formatDuration(stats.oldest_pending_task_age_ms)}</span>
           </div>
           <div className="flex items-center gap-1">
             <ArrowUpDown className="h-3.5 w-3.5" />
-            <span>Avg wait: {formatDurationCompact(stats.avg_schedule_to_start_ms)}</span>
+            <span>Avg wait: {formatDuration(stats.avg_schedule_to_start_ms)}</span>
           </div>
           <div className="flex items-center gap-1">
             <Activity className="h-3.5 w-3.5" />
-            <span>Avg exec: {formatDurationCompact(stats.avg_execution_time_ms)}</span>
+            <span>Avg exec: {formatDuration(stats.avg_execution_time_ms)}</span>
           </div>
         </div>
       )}

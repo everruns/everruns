@@ -6,9 +6,6 @@ import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 
-// Re-export from centralized registry for backward-compatible imports.
-export { isBashTool } from "@/lib/tool-registry";
-
 interface BashToolCallCardProps {
   toolCall: ToolCallContent;
   toolResult?: ToolCompletedData;
@@ -220,4 +217,9 @@ export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps
   );
 }
 
-// isBashTool is re-exported from @/lib/tool-registry at the top of this file.
+/**
+ * Check if a tool name is the bash/shell tool.
+ */
+export function isBashTool(toolName: string): boolean {
+  return toolName === "bash" || toolName === "shell" || toolName === "execute_bash";
+}

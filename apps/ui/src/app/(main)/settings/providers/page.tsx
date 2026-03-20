@@ -49,7 +49,6 @@ import {
   X,
 } from "lucide-react";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
-import { formatTokens } from "@/lib/formatting";
 import type {
   LlmProvider,
   LlmModelWithProvider,
@@ -158,6 +157,16 @@ function ProviderCard({
       </CardContent>
     </Card>
   );
+}
+
+function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    return `${(tokens / 1_000_000).toFixed(1)}M`;
+  }
+  if (tokens >= 1_000) {
+    return `${(tokens / 1_000).toFixed(0)}K`;
+  }
+  return tokens.toString();
 }
 
 function formatCost(cost: number): string {

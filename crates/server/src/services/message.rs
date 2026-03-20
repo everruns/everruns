@@ -8,6 +8,7 @@
 use super::EventService;
 use super::NotificationService;
 use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
+use crate::execution_metadata;
 use crate::storage::StorageBackend;
 use anyhow::Result;
 use chrono::Utc;
@@ -58,6 +59,7 @@ impl MessageService {
         agent_id: Option<Uuid>,
         session_id: Uuid,
         req: CreateMessageRequest,
+        event_metadata: Option<serde_json::Value>,
     ) -> Result<Message> {
         tracing::info!(
             session_id = %session_id,
@@ -99,14 +101,17 @@ impl MessageService {
         let message_id_typed = MessageId::from_uuid(message_id);
 
         // Emit as typed event using EventService
-        let stored_event = self
-            .event_service
-            .emit(EventRequest::new(
-                session_id_typed,
-                EventContext::empty(),
-                InputMessageData::new(core_message),
-            ))
-            .await?;
+        let event_metadata =
+            event_metadata.or_else(|| execution_metadata::interactive_user_metadata(user_id));
+        let mut event_request = EventRequest::new(
+            session_id_typed,
+            EventContext::empty(),
+            InputMessageData::new(core_message),
+        );
+        if let Some(metadata) = event_metadata {
+            event_request = event_request.with_metadata(metadata);
+        }
+        let stored_event = self.event_service.emit(event_request).await?;
 
         // Construct API Message
         let message = Message {

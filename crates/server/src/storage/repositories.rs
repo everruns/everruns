@@ -5,7 +5,8 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::typed_id::{
-    AgentId, EventId, HarnessId, LeasedResourceId, MessageId, NotificationId, ScheduleId, SessionId,
+    AgentId, AgentIdentityId, EventId, HarnessId, LeasedResourceId, MessageId, NotificationId,
+    ScheduleId, SessionId,
 };
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -1162,21 +1163,163 @@ impl Database {
     }
 
     // ============================================
+    // Agent identities
+    // ============================================
+
+    pub async fn create_agent_identity(
+        &self,
+        input: CreateAgentIdentityRow,
+    ) -> Result<AgentIdentityRow> {
+        let row = sqlx::query_as::<_, AgentIdentityRow>(
+            r#"
+            INSERT INTO agent_identities (org_id, id, name, description, avatar_url, locale, timezone, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+            RETURNING id, org_id, name, description, avatar_url, locale, timezone, status, created_at, updated_at, archived_at, deleted_at
+            "#,
+        )
+        .bind(input.org_id)
+        .bind(input.id)
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.avatar_url)
+        .bind(&input.locale)
+        .bind(&input.timezone)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_agent_identity(
+        &self,
+        org_id: i64,
+        id: AgentIdentityId,
+    ) -> Result<Option<AgentIdentityRow>> {
+        let row = sqlx::query_as::<_, AgentIdentityRow>(
+            r#"
+            SELECT id, org_id, name, description, avatar_url, locale, timezone, status, created_at, updated_at, archived_at, deleted_at
+            FROM agent_identities
+            WHERE org_id = $1 AND id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn list_agent_identities(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<AgentIdentityRow>> {
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let status_sql = if include_archived {
+            " AND status != 'deleted'"
+        } else {
+            " AND status NOT IN ('archived', 'deleted')"
+        };
+        let sql = format!(
+            r#"SELECT id, org_id, name, description, avatar_url, locale, timezone, status, created_at, updated_at, archived_at, deleted_at
+                FROM agent_identities
+                WHERE org_id = $1{status_sql}{search_sql}
+                ORDER BY created_at DESC"#
+        );
+        let mut query = sqlx::query_as::<_, AgentIdentityRow>(&sql).bind(org_id);
+        for pat in &patterns {
+            query = query.bind(pat);
+        }
+        Ok(query.fetch_all(&self.pool).await?)
+    }
+
+    pub async fn update_agent_identity(
+        &self,
+        org_id: i64,
+        id: AgentIdentityId,
+        input: UpdateAgentIdentity,
+    ) -> Result<Option<AgentIdentityRow>> {
+        let row = sqlx::query_as::<_, AgentIdentityRow>(
+            r#"
+            UPDATE agent_identities
+            SET
+                name = COALESCE($3, name),
+                description = COALESCE($4, description),
+                avatar_url = COALESCE($5, avatar_url),
+                locale = COALESCE($6, locale),
+                timezone = COALESCE($7, timezone),
+                status = COALESCE($8, status),
+                updated_at = NOW()
+            WHERE org_id = $1 AND id = $2
+            RETURNING id, org_id, name, description, avatar_url, locale, timezone, status, created_at, updated_at, archived_at, deleted_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.avatar_url)
+        .bind(&input.locale)
+        .bind(&input.timezone)
+        .bind(&input.status)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn delete_agent_identity(&self, org_id: i64, id: AgentIdentityId) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE agent_identities
+            SET status = 'archived', archived_at = COALESCE(archived_at, NOW()), updated_at = NOW()
+            WHERE org_id = $1 AND id = $2 AND status = 'active'
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn destroy_agent_identity(&self, org_id: i64, id: AgentIdentityId) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE agent_identities
+            SET status = 'deleted', deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW()
+            WHERE org_id = $1 AND id = $2 AND status = 'archived'
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    // ============================================
     // Sessions (instance of agentic loop)
     // ============================================
 
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO sessions (org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'started')
-            RETURNING id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
+            INSERT INTO sessions (org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'started')
+            RETURNING id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             "#,
         )
         .bind(input.org_id)
         .bind(input.harness_id.map(|h| h.uuid()))
         .bind(input.agent_id.map(|a| a.uuid()))
+        .bind(input.agent_identity_id.map(|a: AgentIdentityId| a.uuid()))
         .bind(&input.title)
         .bind(&input.locale)
         .bind(&input.tags)
@@ -1194,7 +1337,7 @@ impl Database {
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             FROM sessions
             WHERE org_id = $1 AND id = $2
@@ -1212,7 +1355,7 @@ impl Database {
     pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             FROM sessions
             WHERE id = $1
@@ -1271,7 +1414,7 @@ impl Database {
         let limit_idx = param_idx;
         let offset_idx = param_idx + 1;
         let select_sql = format!(
-            r#"SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
+            r#"SELECT id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             FROM sessions {where_clause}
             ORDER BY created_at DESC
@@ -1313,7 +1456,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             FROM sessions
             WHERE org_id = $1 AND tags @> $2
@@ -1334,7 +1477,7 @@ impl Database {
     pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             FROM sessions
             WHERE status = 'active'
@@ -1384,20 +1527,23 @@ impl Database {
             UPDATE sessions
             SET
                 title = COALESCE($3, title),
-                locale = COALESCE($4, locale),
-                tags = COALESCE($5, tags),
-                model_id = COALESCE($6, model_id),
-                status = COALESCE($7, status),
-                started_at = COALESCE($8, started_at),
-                finished_at = COALESCE($9, finished_at)
+                agent_identity_id = CASE WHEN $4 THEN $5 ELSE agent_identity_id END,
+                locale = COALESCE($6, locale),
+                tags = COALESCE($7, tags),
+                model_id = COALESCE($8, model_id),
+                status = COALESCE($9, status),
+                started_at = COALESCE($10, started_at),
+                finished_at = COALESCE($11, finished_at)
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, harness_id, agent_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
+            RETURNING id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
             "#,
         )
         .bind(org_id)
         .bind(id)
         .bind(&input.title)
+        .bind(input.agent_identity_id.is_changed())
+        .bind(input.agent_identity_id.into_value().map(|a| a.uuid()))
         .bind(&input.locale)
         .bind(&input.tags)
         .bind(input.model_id.map(|m| m.uuid()))
@@ -5408,9 +5554,9 @@ impl Database {
     pub async fn create_app(&self, org_id: i64, input: CreateAppRow) -> Result<AppRow> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            INSERT INTO apps (org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
-            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            INSERT INTO apps (org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft')
+            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -5419,6 +5565,7 @@ impl Database {
         .bind(&input.description)
         .bind(input.harness_id)
         .bind(input.agent_id)
+        .bind(input.agent_identity_id)
         .bind(&input.channel_type)
         .bind(&input.channel_config)
         .bind(&input.channel_config_encrypted)
@@ -5435,7 +5582,7 @@ impl Database {
     ) -> Result<Option<AppRow>> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             FROM apps
             WHERE org_id = $1 AND public_id = $2
             "#,
@@ -5452,7 +5599,7 @@ impl Database {
     pub async fn get_app_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<AppRow>> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             FROM apps
             WHERE public_id = $1
             "#,
@@ -5478,7 +5625,7 @@ impl Database {
             " AND status NOT IN ('archived', 'deleted')"
         };
         let sql = format!(
-            r#"SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            r#"SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
                 FROM apps
                 WHERE org_id = $1{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
@@ -5504,14 +5651,15 @@ impl Database {
                 description = COALESCE($4, description),
                 harness_id = COALESCE($5, harness_id),
                 agent_id = COALESCE($6, agent_id),
-                channel_type = COALESCE($7, channel_type),
-                channel_config = COALESCE($8, channel_config),
-                channel_config_encrypted = COALESCE($9, channel_config_encrypted),
-                status = COALESCE($10, status),
-                published_at = CASE WHEN $11 THEN $12 ELSE published_at END,
+                agent_identity_id = CASE WHEN $7 THEN $8 ELSE agent_identity_id END,
+                channel_type = COALESCE($9, channel_type),
+                channel_config = COALESCE($10, channel_config),
+                channel_config_encrypted = COALESCE($11, channel_config_encrypted),
+                status = COALESCE($12, status),
+                published_at = CASE WHEN $13 THEN $14 ELSE published_at END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -5520,6 +5668,8 @@ impl Database {
         .bind(&input.description)
         .bind(input.harness_id)
         .bind(input.agent_id)
+        .bind(input.agent_identity_id.is_changed())
+        .bind(input.agent_identity_id.into_value())
         .bind(&input.channel_type)
         .bind(&input.channel_config)
         .bind(&input.channel_config_encrypted)

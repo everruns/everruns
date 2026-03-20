@@ -12,12 +12,16 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::typed_id::{AgentId, AppId, HarnessId};
+use everruns_core::typed_id::{AgentId, AgentIdentityId, AppId, HarnessId};
 use everruns_core::{
     App, AppStatus, Caller, ChannelType, ResourceConfigResponse, evaluate_policies_with,
 };
 
-use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
+use super::common::{
+    ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse,
+    deserialize_nullable_update_field,
+};
+use everruns_durable::UpdateField;
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -40,6 +44,10 @@ pub struct CreateAppRequest {
     /// ID of the agent to use.
     #[schema(value_type = String, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: AgentId,
+    /// Optional resident agent identity for unattended/channel execution.
+    #[serde(default)]
+    #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
+    pub agent_identity_id: Option<AgentIdentityId>,
     /// Distribution channel type.
     pub channel_type: ChannelType,
     /// Channel-specific configuration.
@@ -64,6 +72,10 @@ pub struct UpdateAppRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub agent_id: Option<AgentId>,
+    /// Optional resident agent identity for unattended/channel execution.
+    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[schema(value_type = Option<String>, nullable = true)]
+    pub agent_identity_id: UpdateField<AgentIdentityId>,
     /// Distribution channel type.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_type: Option<ChannelType>,
@@ -395,4 +407,34 @@ pub async fn unpublish_app(
         .ok_or_not_found_json("App")?;
 
     Ok(Json(app))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_AGENT_IDENTITY_ID: &str = "identity_550e8400e29b41d4a716446655440000";
+
+    #[test]
+    fn update_app_request_leaves_agent_identity_unchanged_when_omitted() {
+        let req: UpdateAppRequest = serde_json::from_str("{}").unwrap();
+        assert_eq!(req.agent_identity_id, UpdateField::Unchanged);
+    }
+
+    #[test]
+    fn update_app_request_clears_agent_identity_when_null() {
+        let req: UpdateAppRequest = serde_json::from_str(r#"{"agent_identity_id":null}"#).unwrap();
+        assert_eq!(req.agent_identity_id, UpdateField::Clear);
+    }
+
+    #[test]
+    fn update_app_request_sets_agent_identity_when_present() {
+        let req: UpdateAppRequest = serde_json::from_str(&format!(
+            r#"{{"agent_identity_id":"{}"}}"#,
+            TEST_AGENT_IDENTITY_ID
+        ))
+        .unwrap();
+        let expected: AgentIdentityId = TEST_AGENT_IDENTITY_ID.parse().unwrap();
+        assert_eq!(req.agent_identity_id, UpdateField::Set(expected));
+    }
 }

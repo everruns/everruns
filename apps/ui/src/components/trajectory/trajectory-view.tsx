@@ -22,7 +22,6 @@ import "@xyflow/react/dist/style.css";
 import { Repeat, Wrench, XCircle, Clock } from "lucide-react";
 
 import type { Event } from "@/lib/api/types";
-import { formatDurationCompact } from "@/lib/formatting";
 import { buildTrajectory, countStructuralEvents, type TrajectoryStats } from "./trajectory-utils";
 import { trajectoryNodeTypes } from "./trajectory-nodes";
 
@@ -50,7 +49,8 @@ function miniMapNodeColor(node: { type?: string }): string {
 }
 
 function formatDuration(ms: number): string {
-  if (ms < 60_000) return formatDurationCompact(ms);
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   const mins = Math.floor(ms / 60_000);
   const secs = ((ms % 60_000) / 1000).toFixed(0);
   return `${mins}m ${secs}s`;

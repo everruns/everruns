@@ -9,8 +9,9 @@ use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{
-    AgentId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId, LeasedResourceId,
-    McpServerId, MessageId, ModelId, NotificationId, ProviderId, ScheduleId, SessionId, SkillId,
+    AgentId, AgentIdentityId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId,
+    LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId, ProviderId, ScheduleId,
+    SessionId, SkillId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -88,6 +89,8 @@ pub struct InMemoryDatabase {
     audit_logs: RwLock<Vec<AuditLogRow>>,
     // Apps (deployable agent+harness bundles)
     apps: RwLock<HashMap<Uuid, AppRow>>,
+    // Agent identities (virtual principals)
+    agent_identities: RwLock<HashMap<AgentIdentityId, AgentIdentityRow>>,
     // Organization settings (default model, etc.)
     org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
 }
@@ -142,6 +145,7 @@ impl Default for InMemoryDatabase {
             leased_resources: RwLock::new(HashMap::new()),
             audit_logs: RwLock::new(Vec::new()),
             apps: RwLock::new(HashMap::new()),
+            agent_identities: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
         }
     }
@@ -1011,6 +1015,138 @@ impl InMemoryDatabase {
     // Sessions
     // ============================================
 
+    // Agent identities
+
+    pub async fn create_agent_identity(
+        &self,
+        input: CreateAgentIdentityRow,
+    ) -> Result<AgentIdentityRow> {
+        let row = AgentIdentityRow {
+            id: input.id,
+            org_id: input.org_id,
+            name: input.name,
+            description: input.description,
+            avatar_url: input.avatar_url,
+            locale: input.locale,
+            timezone: input.timezone,
+            status: "active".to_string(),
+            created_at: Self::now(),
+            updated_at: Self::now(),
+            archived_at: None,
+            deleted_at: None,
+        };
+        self.agent_identities.write().insert(row.id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_agent_identity(
+        &self,
+        org_id: i64,
+        id: AgentIdentityId,
+    ) -> Result<Option<AgentIdentityRow>> {
+        Ok(self
+            .agent_identities
+            .read()
+            .get(&id)
+            .filter(|row| row.org_id == org_id)
+            .cloned())
+    }
+
+    pub async fn list_agent_identities(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<AgentIdentityRow>> {
+        let search = search.map(|s| s.to_lowercase());
+        let mut rows: Vec<_> = self
+            .agent_identities
+            .read()
+            .values()
+            .filter(|row| row.org_id == org_id)
+            .filter(|row| {
+                include_archived || !matches!(row.status.as_str(), "archived" | "deleted")
+            })
+            .filter(|row| match &search {
+                Some(search) => {
+                    row.name.to_lowercase().contains(search)
+                        || row
+                            .description
+                            .as_ref()
+                            .map(|d: &String| d.to_lowercase().contains(search))
+                            .unwrap_or(false)
+                }
+                None => true,
+            })
+            .cloned()
+            .collect();
+        rows.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        Ok(rows)
+    }
+
+    pub async fn update_agent_identity(
+        &self,
+        org_id: i64,
+        id: AgentIdentityId,
+        input: UpdateAgentIdentity,
+    ) -> Result<Option<AgentIdentityRow>> {
+        let mut rows = self.agent_identities.write();
+        let Some(row) = rows.get_mut(&id) else {
+            return Ok(None);
+        };
+        if row.org_id != org_id {
+            return Ok(None);
+        }
+        if let Some(name) = input.name {
+            row.name = name;
+        }
+        if let Some(description) = input.description {
+            row.description = Some(description);
+        }
+        if let Some(avatar_url) = input.avatar_url {
+            row.avatar_url = Some(avatar_url);
+        }
+        if let Some(locale) = input.locale {
+            row.locale = Some(locale);
+        }
+        if let Some(timezone) = input.timezone {
+            row.timezone = Some(timezone);
+        }
+        if let Some(status) = input.status {
+            row.status = status;
+        }
+        row.updated_at = Self::now();
+        Ok(Some(row.clone()))
+    }
+
+    pub async fn delete_agent_identity(&self, org_id: i64, id: AgentIdentityId) -> Result<bool> {
+        let mut rows = self.agent_identities.write();
+        let Some(row) = rows.get_mut(&id) else {
+            return Ok(false);
+        };
+        if row.org_id != org_id || row.status != "active" {
+            return Ok(false);
+        }
+        row.status = "archived".to_string();
+        row.archived_at = Some(Self::now());
+        row.updated_at = Self::now();
+        Ok(true)
+    }
+
+    pub async fn destroy_agent_identity(&self, org_id: i64, id: AgentIdentityId) -> Result<bool> {
+        let mut rows = self.agent_identities.write();
+        let Some(row) = rows.get_mut(&id) else {
+            return Ok(false);
+        };
+        if row.org_id != org_id || row.status != "archived" {
+            return Ok(false);
+        }
+        row.status = "deleted".to_string();
+        row.deleted_at = Some(Self::now());
+        row.updated_at = Self::now();
+        Ok(true)
+    }
+
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let now = Self::now();
         let id = SessionId::new();
@@ -1019,6 +1155,7 @@ impl InMemoryDatabase {
             org_id: input.org_id,
             harness_id: input.harness_id,
             agent_id: input.agent_id,
+            agent_identity_id: input.agent_identity_id,
             title: input.title,
             locale: input.locale,
             tags: input.tags,
@@ -1179,6 +1316,9 @@ impl InMemoryDatabase {
             if let Some(title) = input.title {
                 session.title = Some(title);
             }
+            input
+                .agent_identity_id
+                .apply(&mut session.agent_identity_id);
             if let Some(locale) = input.locale {
                 session.locale = Some(locale);
             }
@@ -4762,6 +4902,7 @@ impl InMemoryDatabase {
             description: input.description,
             harness_id: input.harness_id,
             agent_id: input.agent_id,
+            agent_identity_id: input.agent_identity_id,
             channel_type: input.channel_type,
             channel_config: input.channel_config,
             channel_config_encrypted: input.channel_config_encrypted,
@@ -4845,6 +4986,7 @@ impl InMemoryDatabase {
         if let Some(agent_id) = input.agent_id {
             app.agent_id = agent_id;
         }
+        input.agent_identity_id.apply(&mut app.agent_identity_id);
         if let Some(channel_type) = input.channel_type {
             app.channel_type = channel_type;
         }
@@ -4956,6 +5098,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                agent_identity_id: None,
                 title: Some("Test Session".to_string()),
                 locale: None,
                 tags: vec![],
@@ -5004,6 +5147,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                agent_identity_id: None,
                 title: Some("Test Session".to_string()),
                 locale: None,
                 tags: vec![],
@@ -5067,6 +5211,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                agent_identity_id: None,
                 title: None,
                 locale: None,
                 tags: vec![],
@@ -5127,6 +5272,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                agent_identity_id: None,
                 title: None,
                 locale: None,
                 tags: vec![],
@@ -5602,6 +5748,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                agent_identity_id: None,
                 title: None,
                 locale: None,
                 tags: vec![],
@@ -5648,6 +5795,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                agent_identity_id: None,
                 title: Some(format!("Session {}", i)),
                 locale: None,
                 tags: vec![],
@@ -5733,6 +5881,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                agent_identity_id: None,
                 title: Some(format!("Session {}", i)),
                 locale: None,
                 tags: vec![],
@@ -6267,6 +6416,7 @@ mod tests {
             org_id: DEFAULT_ORG_ID,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_identity_id: None,
             title: Some("Debug production memory leak".to_string()),
             locale: None,
             tags: vec![],
@@ -6282,6 +6432,7 @@ mod tests {
             org_id: DEFAULT_ORG_ID,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_identity_id: None,
             title: Some("Refactor auth module".to_string()),
             locale: None,
             tags: vec![],
@@ -6313,6 +6464,7 @@ mod tests {
             org_id: DEFAULT_ORG_ID,
             harness_id: None,
             agent_id: Some(agent1.id),
+            agent_identity_id: None,
             title: Some("Shared keyword session".to_string()),
             locale: None,
             tags: vec![],
@@ -6328,6 +6480,7 @@ mod tests {
             org_id: DEFAULT_ORG_ID,
             harness_id: None,
             agent_id: Some(agent2.id),
+            agent_identity_id: None,
             title: Some("Shared keyword session".to_string()),
             locale: None,
             tags: vec![],
@@ -6464,6 +6617,7 @@ mod tests {
                 description: Some("Slack integration for support".to_string()),
                 harness_id,
                 agent_id: agent.id.into(),
+                agent_identity_id: None,
                 channel_type: "slack".to_string(),
                 channel_config: serde_json::json!({}),
                 channel_config_encrypted: None,
@@ -6480,6 +6634,7 @@ mod tests {
                 description: Some("Embeddable chat widget".to_string()),
                 harness_id,
                 agent_id: agent.id.into(),
+                agent_identity_id: None,
                 channel_type: "web".to_string(),
                 channel_config: serde_json::json!({}),
                 channel_config_encrypted: None,
@@ -6530,6 +6685,7 @@ mod tests {
                 org_id: DEFAULT_ORG_ID,
                 harness_id: None,
                 agent_id: Some(agent.id),
+                agent_identity_id: None,
                 title: None,
                 locale: None,
                 tags: vec![],

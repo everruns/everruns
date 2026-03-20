@@ -727,3 +727,8 @@ let result = state.db.some_operation().await.map_err(|e| {
     StatusCode::INTERNAL_SERVER_ERROR
 })?;
 ```
+
+
+## Agent Identities
+
+REST endpoints under `/v1/agent-identities` manage virtual principals used by sessions/apps. See `crates/server/src/api/agent_identities.rs`.

@@ -169,6 +169,7 @@ export interface Session {
   organization_id: string;
   harness_id: string;
   agent_id: string | null;
+  agent_identity_id?: string | null;
   title: string | null;
   locale?: string | null;
   /** Preview text from the first user message (truncated) */
@@ -196,6 +197,39 @@ export interface Session {
   hints?: Record<string, unknown>;
 }
 
+export type AgentIdentityStatus = "active" | "archived" | "deleted";
+
+export interface AgentIdentity {
+  id: string;
+  name: string;
+  description?: string | null;
+  avatar_url?: string | null;
+  locale?: string | null;
+  timezone?: string | null;
+  status: AgentIdentityStatus;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string | null;
+  deleted_at?: string | null;
+}
+
+export interface CreateAgentIdentityRequest {
+  name: string;
+  description?: string;
+  avatar_url?: string;
+  locale?: string;
+  timezone?: string;
+}
+
+export interface UpdateAgentIdentityRequest {
+  name?: string;
+  description?: string;
+  avatar_url?: string;
+  locale?: string;
+  timezone?: string;
+  status?: AgentIdentityStatus;
+}
+
 /** Session counts grouped by status */
 export interface SessionStats {
   total: number;
@@ -210,6 +244,8 @@ export interface CreateSessionRequest {
   harness_id?: string;
   /** Agent ID to work in this session (optional) */
   agent_id?: string;
+  /** Resident agent identity for unattended/background execution */
+  agent_identity_id?: string;
   title?: string;
   locale?: string;
   tags?: string[];
@@ -224,6 +260,7 @@ export interface CreateSessionRequest {
 
 export interface UpdateSessionRequest {
   title?: string;
+  agent_identity_id?: string | null;
   locale?: string;
   tags?: string[];
   model_id?: string;
@@ -1998,6 +2035,7 @@ export interface App {
   description: string | null;
   harness_id: string;
   agent_id: string;
+  agent_identity_id?: string | null;
   channel_type: ChannelType;
   channel_config: SlackChannelConfig | Record<string, unknown>;
   status: AppStatus;
@@ -2013,6 +2051,7 @@ export interface CreateAppRequest {
   description?: string;
   harness_id: string;
   agent_id: string;
+  agent_identity_id?: string;
   channel_type: ChannelType;
   channel_config?: SlackChannelConfig | Record<string, unknown>;
 }
@@ -2022,6 +2061,7 @@ export interface UpdateAppRequest {
   description?: string;
   harness_id?: string;
   agent_id?: string;
+  agent_identity_id?: string | null;
   channel_type?: ChannelType;
   channel_config?: SlackChannelConfig | Record<string, unknown>;
   status?: AppStatus;

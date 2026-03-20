@@ -26,6 +26,7 @@ import { SessionCard } from "@/components/session/session-card";
 import { AgentSelect } from "@/components/agent/agent-select";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { AgentFilterMenu } from "@/components/agent/agent-filter-menu";
+import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-select";
 import { Label } from "@/components/ui/label";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LlmModelWithProvider, Agent } from "@/lib/api/types";
@@ -41,6 +42,7 @@ export default function SessionsPage() {
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
   const [newSessionHarnessId, setNewSessionHarnessId] = useState<string>("");
   const [newSessionAgentId, setNewSessionAgentId] = useState<string>("");
+  const [newSessionAgentIdentityId, setNewSessionAgentIdentityId] = useState<string>("");
   const offset = page * PAGE_SIZE;
 
   const { data: agents, isLoading: agentsLoading } = useAgents({ includeArchived: true });
@@ -98,6 +100,7 @@ export default function SessionsPage() {
         request: {
           harness_id: newSessionHarnessId,
           agent_id: newSessionAgentId || undefined,
+          agent_identity_id: newSessionAgentIdentityId || undefined,
         },
       });
       setNewSessionDialogOpen(false);
@@ -250,6 +253,10 @@ export default function SessionsPage() {
                 includeAll
                 allLabel="No agent"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Agent identity (background runs)</Label>
+              <AgentIdentitySelect value={newSessionAgentIdentityId} onValueChange={setNewSessionAgentIdentityId} />
             </div>
           </div>
           <DialogFooter>

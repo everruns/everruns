@@ -8,7 +8,8 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
-    AgentId, EventId, HarnessId, LeasedResourceId, MessageId, NotificationId, ScheduleId, SessionId,
+    AgentId, AgentIdentityId, EventId, HarnessId, LeasedResourceId, MessageId, NotificationId,
+    ScheduleId, SessionId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -342,6 +343,57 @@ impl StorageBackend {
 
     pub async fn destroy_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
         dispatch!(self, destroy_harness, org_id, id)
+    }
+
+    // ============================================
+    // Agent identities
+    // ============================================
+
+    pub async fn create_agent_identity(
+        &self,
+        input: CreateAgentIdentityRow,
+    ) -> Result<AgentIdentityRow> {
+        dispatch!(self, create_agent_identity, input)
+    }
+
+    pub async fn get_agent_identity(
+        &self,
+        org_id: i64,
+        id: AgentIdentityId,
+    ) -> Result<Option<AgentIdentityRow>> {
+        dispatch!(self, get_agent_identity, org_id, id)
+    }
+
+    pub async fn list_agent_identities(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<AgentIdentityRow>> {
+        dispatch!(
+            self,
+            list_agent_identities,
+            org_id,
+            search,
+            include_archived
+        )
+    }
+
+    pub async fn update_agent_identity(
+        &self,
+        org_id: i64,
+        id: AgentIdentityId,
+        input: UpdateAgentIdentity,
+    ) -> Result<Option<AgentIdentityRow>> {
+        dispatch!(self, update_agent_identity, org_id, id, input)
+    }
+
+    pub async fn delete_agent_identity(&self, org_id: i64, id: AgentIdentityId) -> Result<bool> {
+        dispatch!(self, delete_agent_identity, org_id, id)
+    }
+
+    pub async fn destroy_agent_identity(&self, org_id: i64, id: AgentIdentityId) -> Result<bool> {
+        dispatch!(self, destroy_agent_identity, org_id, id)
     }
 
     // ============================================

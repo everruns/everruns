@@ -21,6 +21,7 @@ use everruns_core::{
     Permission, Policy, Rule, Session, SessionId, SessionStatus, SubagentStatus, TokenUsage,
     capabilities::{SystemPromptContext, collect_capabilities, compute_features},
 };
+use everruns_durable::UpdateField;
 use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -112,6 +113,20 @@ impl SessionService {
             None
         };
 
+        let agent_identity_id = if let Some(identity_id) = req.agent_identity_id {
+            let identity = self
+                .db
+                .get_agent_identity(org_id, identity_id)
+                .await?
+                .ok_or_else(|| ResourceNotFoundError::new("Agent identity"))?;
+            if identity.status != "active" {
+                anyhow::bail!("Archived or deleted agent identities cannot be assigned");
+            }
+            Some(identity.id)
+        } else {
+            None
+        };
+
         // Resolve model_id: session > agent > harness
         let model_id = self
             .validate_model_id(org_id, req.model_id)
@@ -136,6 +151,7 @@ impl SessionService {
             org_id,
             harness_id: Some(harness_id),
             agent_id,
+            agent_identity_id,
             title: req.title,
             locale: req.locale.clone(),
             tags: req.tags,
@@ -428,8 +444,24 @@ impl SessionService {
         id: Uuid,
         req: UpdateSessionRequest,
     ) -> Result<Option<Session>> {
+        let agent_identity_id = match req.agent_identity_id {
+            UpdateField::Set(identity_id) => {
+                let identity = self
+                    .db
+                    .get_agent_identity(caller.org_id, identity_id)
+                    .await?
+                    .ok_or_else(|| ResourceNotFoundError::new("Agent identity"))?;
+                if identity.status != "active" {
+                    anyhow::bail!("Archived or deleted agent identities cannot be assigned");
+                }
+                UpdateField::Set(identity.id)
+            }
+            UpdateField::Clear => UpdateField::Clear,
+            UpdateField::Unchanged => UpdateField::Unchanged,
+        };
         let input = UpdateSession {
             title: req.title,
+            agent_identity_id,
             locale: req.locale,
             tags: req.tags,
             ..Default::default()
@@ -506,6 +538,7 @@ impl SessionService {
             org_id,
             harness_id: Some(harness_id_typed),
             agent_id: None,
+            agent_identity_id: None,
             title: Some(title.to_string()),
             locale: None,
             tags: vec!["global-chat".to_string(), user_tag],
@@ -670,6 +703,7 @@ impl SessionService {
                 .harness_id
                 .unwrap_or_else(|| HarnessId::from_uuid(BASE_HARNESS_ID)),
             agent_id: row.agent_id,
+            agent_identity_id: row.agent_identity_id,
             title: row.title,
             locale: row.locale,
             preview: None,        // Populated separately in list()
@@ -736,6 +770,7 @@ mod tests {
         CreateSessionRequest {
             harness_id: Some(harness_id),
             agent_id,
+            agent_identity_id: None,
             title: Some("Test Session".to_string()),
             locale: None,
             tags: vec![],
@@ -1220,6 +1255,7 @@ mod tests {
                 org_id: caller.org_id,
                 harness_id: Some(other_harness.id),
                 agent_id: Some(AgentId::from_uuid(other_agent.internal_id)),
+                agent_identity_id: None,
                 title: Some("Corrupt Session".to_string()),
                 locale: None,
                 tags: vec![],
@@ -1308,6 +1344,7 @@ mod tests {
                 org_id: caller.org_id,
                 harness_id: Some(HarnessId::from_uuid(BASE_HARNESS_ID)),
                 agent_id: None,
+                agent_identity_id: None,
                 title: Some("Mount Test".to_string()),
                 locale: None,
                 tags: vec![],

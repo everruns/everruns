@@ -39,6 +39,7 @@ use tokio::sync::RwLock;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
+use crate::execution_metadata;
 use crate::services::{AppService, EventService, MessageService, SessionService};
 use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
@@ -494,6 +495,7 @@ async fn process_slack_message(
                     title: Some(title),
                     locale: None,
                     tags: desired_tags.clone(),
+                    agent_identity_id: app.agent_identity_id,
                     model_id: None,
                     capabilities: vec![],
                     tools: vec![],
@@ -606,6 +608,10 @@ async fn process_slack_message(
             Some(app.agent_id.uuid()),
             session.id.uuid(),
             create_msg,
+            Some(execution_metadata::app_message_metadata(
+                app.public_id,
+                app.agent_identity_id,
+            )),
         )
         .await?;
 
@@ -1770,6 +1776,7 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
             agent_id: AgentId::from_uuid(uuid::Uuid::nil()),
+            agent_identity_id: None,
             channel_type: ChannelType::Slack,
             channel_config: serde_json::json!({}),
             status: AppStatus::Published,
@@ -2018,6 +2025,7 @@ mod tests {
             agent_id: Some(everruns_core::typed_id::AgentId::from_uuid(
                 uuid::Uuid::nil(),
             )),
+            agent_identity_id: None,
             title: Some("test".to_string()),
             locale: None,
             tags: vec![],

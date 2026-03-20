@@ -50,6 +50,10 @@ Last-resort validation limits to guard against abuse. API returns generic `400 B
 | `capabilities` | 250 items | Maximum capabilities per agent |
 | Import file | 3 MB | Maximum size for `/v1/agents/import` body |
 
+### Agent Identity
+
+A durable virtual principal that can be bound to apps and sessions for unattended execution defaults. See `specs/agent-identities.md` and `crates/core/src/agent_identity.rs`.
+
 ### Session
 
 An instance of agentic loop execution. Sessions are top-level entities under organizations, with an agent assigned to work in each session.
@@ -60,6 +64,7 @@ See `specs/localization.md` for locale/timezone resolution and durable preferenc
 
 Key design points:
 - Sessions are direct children of organizations (not agents). The `agent_id` specifies which agent is assigned.
+- `agent_identity_id` optionally binds a resident virtual principal used for unattended execution defaults and schedule inheritance.
 - `locale` is an optional session-level BCP 47 tag (for example `uk-UA`). The worker carries it through turn loading and prompt construction so scheduled runs, resumed runs, and subagents can inherit localized behavior.
 - `timezone` should be a separate optional session-level IANA timezone for unattended execution defaults. Interactive turns may override it with live browser timezone for that turn.
 - `features` field is computed at read time by aggregating `features()` from all active capabilities (not stored). See `specs/capabilities.md#capability-features`.
