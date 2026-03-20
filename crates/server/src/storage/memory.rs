@@ -1824,15 +1824,9 @@ impl InMemoryDatabase {
                 updated_at: now,
             });
 
-        if let Some(default_model_id) = input.default_model_id {
-            row.default_model_id = default_model_id;
-        }
-        if let Some(default_harness_id) = input.default_harness_id {
-            row.default_harness_id = default_harness_id;
-        }
-        if let Some(base_harness_id) = input.base_harness_id {
-            row.base_harness_id = base_harness_id;
-        }
+        input.default_model_id.apply(&mut row.default_model_id);
+        input.default_harness_id.apply(&mut row.default_harness_id);
+        input.base_harness_id.apply(&mut row.base_harness_id);
 
         row.updated_at = now;
         Ok(row.clone())
@@ -4240,9 +4234,7 @@ impl InMemoryDatabase {
         if let Some(enabled) = input.enabled {
             row.enabled = enabled;
         }
-        if let Some(next) = input.next_trigger_at {
-            row.next_trigger_at = next;
-        }
+        input.next_trigger_at.apply(&mut row.next_trigger_at);
         if let Some(last) = input.last_triggered_at {
             row.last_triggered_at = Some(last);
         }
@@ -4645,9 +4637,7 @@ impl InMemoryDatabase {
         if let Some(status) = input.status {
             app.status = status;
         }
-        if let Some(published_at) = input.published_at {
-            app.published_at = published_at;
-        }
+        input.published_at.apply(&mut app.published_at);
         app.updated_at = Self::now();
         Ok(Some(app.clone()))
     }

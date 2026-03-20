@@ -16,6 +16,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use everruns_durable::UpdateField;
 use everruns_server::api::common::Pagination;
 use everruns_server::org_init;
 use everruns_server::storage::{
@@ -1050,8 +1051,8 @@ async fn test_organization_settings_harness_roundtrip() {
         .patch_organization_settings(
             org.org_id,
             UpdateOrganizationSettings {
-                default_harness_id: Some(Some(generic_id)),
-                base_harness_id: Some(Some(base_id)),
+                default_harness_id: UpdateField::Set(generic_id),
+                base_harness_id: UpdateField::Set(base_id),
                 ..Default::default()
             },
         )

@@ -69,6 +69,7 @@ pub mod persistence;
 pub mod reliability;
 pub mod scheduler;
 pub mod task_events;
+pub mod update_field;
 pub mod worker;
 pub mod workflow;
 // pub mod observability; // Phase 5
@@ -113,6 +114,7 @@ pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,
 };
 pub use scheduler::{DurableScheduler, SchedulerConfig, SchedulerError};
+pub use update_field::UpdateField;
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{
     ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent, WorkflowSignal,

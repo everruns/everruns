@@ -7,7 +7,7 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
 use everruns_durable::{
-    CreateScheduleRow, Pagination, ScheduleFilter, ScheduleTargetType, UpdateSchedule,
+    CreateScheduleRow, Pagination, ScheduleFilter, ScheduleTargetType, UpdateField, UpdateSchedule,
     WorkflowEventStore,
 };
 use std::str::FromStr;
@@ -57,17 +57,19 @@ pub async fn ensure_leased_resource_cleanup_schedule(
                 .update_schedule(
                     schedule.id,
                     UpdateSchedule {
-                        description: Some(Some(LEASED_RESOURCE_CLEANUP_DESCRIPTION.to_string())),
+                        description: UpdateField::Set(
+                            LEASED_RESOURCE_CLEANUP_DESCRIPTION.to_string(),
+                        ),
                         cron_expression: Some(LEASED_RESOURCE_CLEANUP_CRON.to_string()),
                         timezone: Some(LEASED_RESOURCE_CLEANUP_TIMEZONE.to_string()),
                         target_type: Some(ScheduleTargetType::Activity),
                         target_name: Some(LEASED_RESOURCE_CLEANUP_ACTIVITY.to_string()),
                         target_input: Some(desired_input),
                         enabled: Some(true),
-                        max_concurrent: Some(Some(1)),
+                        max_concurrent: UpdateField::Set(1),
                         catch_up_missed: Some(false),
-                        max_catch_up: Some(Some(1)),
-                        next_trigger_at: Some(Some(desired_next_trigger)),
+                        max_catch_up: UpdateField::Set(1),
+                        next_trigger_at: UpdateField::Set(desired_next_trigger),
                         ..Default::default()
                     },
                 )

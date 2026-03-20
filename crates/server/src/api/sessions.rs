@@ -844,6 +844,7 @@ mod tests {
         StorageBackend,
         models::{CreateHarnessRow, UpdateOrganizationSettings},
     };
+    use everruns_durable::UpdateField;
 
     const TEST_HARNESS_ID: &str = "harness_550e8400e29b41d4a716446655440000";
     const TEST_AGENT_ID: &str = "agent_550e8400e29b41d4a716446655440000";
@@ -995,7 +996,7 @@ mod tests {
         db.patch_organization_settings(
             42,
             UpdateOrganizationSettings {
-                base_harness_id: Some(Some(base_harness_id)),
+                base_harness_id: UpdateField::Set(base_harness_id),
                 ..Default::default()
             },
         )

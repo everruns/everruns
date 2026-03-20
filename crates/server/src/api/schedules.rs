@@ -19,7 +19,7 @@ use chrono::{DateTime, Utc};
 use everruns_durable::{
     CreateScheduleRow, Pagination, ScheduleExecutionFilter, ScheduleExecutionRow,
     ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats, ScheduleTargetType,
-    StoreError, UpdateSchedule, WorkflowEventStore,
+    StoreError, UpdateField, UpdateSchedule, WorkflowEventStore,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -649,18 +649,26 @@ pub async fn update_schedule(
 
     let update = UpdateSchedule {
         name: None, // Name cannot be updated
-        description: req.description.map(Some),
+        description: req
+            .description
+            .map_or(UpdateField::Unchanged, UpdateField::Set),
         cron_expression: req.cron_expression,
         timezone: req.timezone,
         target_type,
         target_name: req.target.as_ref().map(|t| t.name.clone()),
         target_input: req.target.map(|t| t.input),
         enabled: req.enabled,
-        max_concurrent: req.max_concurrent.map(Some),
+        max_concurrent: req
+            .max_concurrent
+            .map_or(UpdateField::Unchanged, UpdateField::Set),
         catch_up_missed: req.catch_up_missed,
-        max_catch_up: req.max_catch_up.map(Some),
-        retry_policy: req.retry_policy.map(Some),
-        next_trigger_at: None, // Will be calculated based on cron
+        max_catch_up: req
+            .max_catch_up
+            .map_or(UpdateField::Unchanged, UpdateField::Set),
+        retry_policy: req
+            .retry_policy
+            .map_or(UpdateField::Unchanged, UpdateField::Set),
+        next_trigger_at: UpdateField::Unchanged, // Will be calculated based on cron
     };
 
     store

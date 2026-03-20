@@ -2409,12 +2409,12 @@ impl Database {
             "#,
         )
         .bind(org_id)
-        .bind(input.default_model_id.flatten().map(|id| id.uuid()))
-        .bind(input.default_model_id.is_some())
-        .bind(input.default_harness_id.flatten().map(|id| id.uuid()))
-        .bind(input.default_harness_id.is_some())
-        .bind(input.base_harness_id.flatten().map(|id| id.uuid()))
-        .bind(input.base_harness_id.is_some())
+        .bind(input.default_model_id.clone().into_value().map(|id| id.uuid()))
+        .bind(input.default_model_id.is_changed())
+        .bind(input.default_harness_id.clone().into_value().map(|id| id.uuid()))
+        .bind(input.default_harness_id.is_changed())
+        .bind(input.base_harness_id.clone().into_value().map(|id| id.uuid()))
+        .bind(input.base_harness_id.is_changed())
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -4743,8 +4743,8 @@ impl Database {
         .bind(schedule_id)
         .bind(org_id)
         .bind(input.enabled)
-        .bind(input.next_trigger_at.is_some()) // flag: should update next_trigger_at
-        .bind(input.next_trigger_at.unwrap_or(None)) // value (may be NULL for one-shot)
+        .bind(input.next_trigger_at.is_changed()) // flag: should update next_trigger_at
+        .bind(input.next_trigger_at.into_value()) // value (may be NULL for one-shot)
         .bind(input.last_triggered_at)
         .bind(input.trigger_count_increment)
         .fetch_optional(&self.pool)
@@ -5268,8 +5268,8 @@ impl Database {
         .bind(&input.channel_type)
         .bind(&input.channel_config)
         .bind(&input.status)
-        .bind(input.published_at.is_some())
-        .bind(input.published_at.flatten())
+        .bind(input.published_at.is_changed())
+        .bind(input.published_at.into_value())
         .fetch_optional(&self.pool)
         .await?;
 
