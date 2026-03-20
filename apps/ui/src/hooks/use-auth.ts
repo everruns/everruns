@@ -11,6 +11,7 @@ import {
   deleteApiKey,
 } from "@/lib/api/auth";
 import { updateProfile } from "@/lib/api/users";
+import { ORG_STORAGE_KEY } from "@/lib/constants";
 import type {
   LoginRequest,
   RegisterRequest,
@@ -98,7 +99,7 @@ export function useLogout() {
       // (durable, admin, sessions, etc.) cached for the next user.
       queryClient.clear();
       // Clear persisted org selection
-      localStorage.removeItem("everruns_current_org");
+      localStorage.removeItem(ORG_STORAGE_KEY);
     },
   });
 }
