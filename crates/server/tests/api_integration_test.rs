@@ -2649,12 +2649,12 @@ async fn test_create_app_missing_agent_returns_not_found() {
     let server = TestServer::new().await;
 
     // List harnesses to get a valid harness_id
-    let harnesses: Vec<Value> = server
+    let harnesses: Value = server
         .get("/v1/harnesses")
         .await
         .assert_status(StatusCode::OK)
         .json();
-    let harness_id = harnesses[0]["id"].as_str().unwrap();
+    let harness_id = harnesses["data"][0]["id"].as_str().unwrap();
 
     server
         .post(
