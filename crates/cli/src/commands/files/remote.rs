@@ -1,5 +1,9 @@
 // Remote session filesystem API client
 //
+// TODO(sdk): Replace all raw reqwest calls with SDK methods once everruns-sdk
+// ships session filesystem support (see https://github.com/everruns/sdk/issues/60).
+// Affected methods: list, read_file, write_file, create_dir, delete.
+//
 // Design Decision: Direct reqwest calls since session filesystem is not in the SDK yet.
 // Design Decision: Binary detection mirrors server logic (null bytes in first 8KB).
 
@@ -72,6 +76,7 @@ impl RemoteClient {
     }
 
     /// List files at a path. If recursive, lists the entire tree.
+    // TODO(sdk): Replace with sdk.session_files().list(session_id, path, recursive)
     pub async fn list(&self, path: &str, recursive: bool) -> Result<Vec<RemoteFileEntry>> {
         let mut url = self.fs_url(path);
         if recursive {
@@ -94,12 +99,16 @@ impl RemoteClient {
         }
 
         // The API returns either a file object or a directory listing.
-        // Directory listing has an "entries" array.
+        // Directory listing has a "data" array.
         let body: serde_json::Value = resp.json().await?;
 
-        if let Some(entries) = body.get("entries").and_then(|e| e.as_array()) {
+        if let Some(data) = body
+            .get("data")
+            .and_then(|d| d.as_array())
+            .or_else(|| body.get("entries").and_then(|e| e.as_array()))
+        {
             let files: Vec<RemoteFileEntry> =
-                serde_json::from_value(serde_json::Value::Array(entries.clone()))?;
+                serde_json::from_value(serde_json::Value::Array(data.clone()))?;
             Ok(files)
         } else {
             // Single file
@@ -109,6 +118,7 @@ impl RemoteClient {
     }
 
     /// Read file content.
+    // TODO(sdk): Replace with sdk.session_files().read(session_id, path)
     pub async fn read_file(&self, path: &str) -> Result<RemoteFileContent> {
         let url = self.fs_url(path);
         let resp = self
@@ -141,6 +151,7 @@ impl RemoteClient {
     }
 
     /// Create or update a file on remote.
+    // TODO(sdk): Replace with sdk.session_files().create() / .update()
     pub async fn write_file(&self, path: &str, content: &[u8], create: bool) -> Result<()> {
         let url = self.fs_url(path);
 
@@ -215,6 +226,7 @@ impl RemoteClient {
     }
 
     /// Create a directory on remote (used by sync for mkdir-on-demand).
+    // TODO(sdk): Replace with sdk.session_files().create_dir(session_id, path)
     #[allow(dead_code)]
     pub async fn create_dir(&self, path: &str) -> Result<()> {
         let url = self.fs_url(path);
@@ -241,6 +253,7 @@ impl RemoteClient {
     }
 
     /// Delete a file or directory on remote.
+    // TODO(sdk): Replace with sdk.session_files().delete(session_id, path, recursive)
     pub async fn delete(&self, path: &str, recursive: bool) -> Result<()> {
         let mut url = self.fs_url(path);
         if recursive {
@@ -262,5 +275,149 @@ impl RemoteClient {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_client() -> RemoteClient {
+        RemoteClient::new("https://api.example.com", "test-key", "ses_123")
+    }
+
+    #[test]
+    fn test_fs_url_root() {
+        let client = test_client();
+        assert_eq!(
+            client.fs_url("/"),
+            "https://api.example.com/v1/sessions/ses_123/fs"
+        );
+    }
+
+    #[test]
+    fn test_fs_url_empty() {
+        let client = test_client();
+        assert_eq!(
+            client.fs_url(""),
+            "https://api.example.com/v1/sessions/ses_123/fs"
+        );
+    }
+
+    #[test]
+    fn test_fs_url_file() {
+        let client = test_client();
+        assert_eq!(
+            client.fs_url("/src/main.rs"),
+            "https://api.example.com/v1/sessions/ses_123/fs/src/main.rs"
+        );
+    }
+
+    #[test]
+    fn test_fs_url_nested() {
+        let client = test_client();
+        assert_eq!(
+            client.fs_url("/a/b/c/d.txt"),
+            "https://api.example.com/v1/sessions/ses_123/fs/a/b/c/d.txt"
+        );
+    }
+
+    #[test]
+    fn test_fs_url_trailing_slash_stripped() {
+        let client = RemoteClient::new("https://api.example.com/", "key", "ses_1");
+        assert_eq!(
+            client.fs_url("/file.txt"),
+            "https://api.example.com/v1/sessions/ses_1/fs/file.txt"
+        );
+    }
+
+    #[test]
+    fn test_decode_content_text() {
+        let content = RemoteFileContent {
+            path: "/hello.txt".to_string(),
+            content: "hello world".to_string(),
+            encoding: "text".to_string(),
+            content_hash: None,
+            is_directory: false,
+            updated_at: None,
+        };
+        let bytes = RemoteClient::decode_content(&content).unwrap();
+        assert_eq!(bytes, b"hello world");
+    }
+
+    #[test]
+    fn test_decode_content_base64() {
+        let content = RemoteFileContent {
+            path: "/binary.bin".to_string(),
+            content: base64::engine::general_purpose::STANDARD.encode(b"\x00\x01\x02\x03"),
+            encoding: "base64".to_string(),
+            content_hash: None,
+            is_directory: false,
+            updated_at: None,
+        };
+        let bytes = RemoteClient::decode_content(&content).unwrap();
+        assert_eq!(bytes, &[0x00, 0x01, 0x02, 0x03]);
+    }
+
+    #[test]
+    fn test_decode_content_invalid_base64() {
+        let content = RemoteFileContent {
+            path: "/bad.bin".to_string(),
+            content: "not-valid-base64!!!".to_string(),
+            encoding: "base64".to_string(),
+            content_hash: None,
+            is_directory: false,
+            updated_at: None,
+        };
+        assert!(RemoteClient::decode_content(&content).is_err());
+    }
+
+    #[test]
+    fn test_default_encoding() {
+        assert_eq!(default_encoding(), "text");
+    }
+
+    #[test]
+    fn test_remote_file_entry_deserialize() {
+        let json = serde_json::json!({
+            "path": "/src/lib.rs",
+            "is_directory": false,
+            "size_bytes": 1024,
+            "content_hash": "sha256:abc123",
+            "updated_at": "2026-03-20T12:00:00Z"
+        });
+        let entry: RemoteFileEntry = serde_json::from_value(json).unwrap();
+        assert_eq!(entry.path, "/src/lib.rs");
+        assert!(!entry.is_directory);
+        assert_eq!(entry.size_bytes, 1024);
+        assert_eq!(entry.content_hash.as_deref(), Some("sha256:abc123"));
+        assert!(!entry.is_readonly);
+    }
+
+    #[test]
+    fn test_remote_file_entry_deserialize_minimal() {
+        let json = serde_json::json!({
+            "path": "/test",
+            "is_directory": true
+        });
+        let entry: RemoteFileEntry = serde_json::from_value(json).unwrap();
+        assert_eq!(entry.path, "/test");
+        assert!(entry.is_directory);
+        assert_eq!(entry.size_bytes, 0); // default
+        assert!(entry.content_hash.is_none());
+        assert!(entry.updated_at.is_none());
+    }
+
+    #[test]
+    fn test_remote_file_content_deserialize() {
+        let json = serde_json::json!({
+            "path": "/hello.txt",
+            "content": "hello world",
+        });
+        let content: RemoteFileContent = serde_json::from_value(json).unwrap();
+        assert_eq!(content.path, "/hello.txt");
+        assert_eq!(content.content, "hello world");
+        assert_eq!(content.encoding, "text"); // default
+        assert!(!content.is_directory);
     }
 }

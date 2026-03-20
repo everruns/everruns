@@ -37,3 +37,6 @@ base64.workspace = true
 chrono.workspace = true
 notify.workspace = true
 ignore.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

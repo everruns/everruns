@@ -63,3 +63,28 @@ fn format_size(bytes: i64) -> String {
         format!("{:.1}M", bytes as f64 / (1024.0 * 1024.0))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_size_bytes() {
+        assert_eq!(format_size(0), "0B");
+        assert_eq!(format_size(512), "512B");
+        assert_eq!(format_size(1023), "1023B");
+    }
+
+    #[test]
+    fn test_format_size_kilobytes() {
+        assert_eq!(format_size(1024), "1.0K");
+        assert_eq!(format_size(1536), "1.5K");
+        assert_eq!(format_size(10240), "10.0K");
+    }
+
+    #[test]
+    fn test_format_size_megabytes() {
+        assert_eq!(format_size(1024 * 1024), "1.0M");
+        assert_eq!(format_size(5 * 1024 * 1024), "5.0M");
+    }
+}

@@ -167,7 +167,12 @@ pub async fn reconcile(
             (Some((local_content, local_hash)), Some(remote_entry)) => {
                 let prev_local = prev.and_then(|p| p.local_hash.as_deref());
                 let prev_remote = prev.and_then(|p| p.remote_hash.as_deref());
-                let remote_hash = remote_entry.content_hash.as_deref().unwrap_or("");
+                // Use content_hash if available, fall back to updated_at for change detection
+                let remote_hash = remote_entry
+                    .content_hash
+                    .as_deref()
+                    .or(remote_entry.updated_at.as_deref())
+                    .unwrap_or("");
 
                 let local_changed = prev_local.is_none_or(|h| h != local_hash);
                 let remote_changed = prev_remote.is_none_or(|h| h != remote_hash);
@@ -276,7 +281,11 @@ pub async fn reconcile(
 
             (None, Some(remote_entry)) => {
                 let was_synced = prev.is_some();
-                let remote_hash = remote_entry.content_hash.as_deref().unwrap_or("");
+                let remote_hash = remote_entry
+                    .content_hash
+                    .as_deref()
+                    .or(remote_entry.updated_at.as_deref())
+                    .unwrap_or("");
 
                 if was_synced && delete {
                     if verbose {
@@ -390,4 +399,201 @@ fn update_state(
 
 fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_conflict_parse() {
+        assert!(matches!(Conflict::parse("local-wins"), Conflict::Local));
+        assert!(matches!(Conflict::parse("remote-wins"), Conflict::Remote));
+        assert!(matches!(
+            Conflict::parse("last-write-wins"),
+            Conflict::LastWrite
+        ));
+        assert!(matches!(Conflict::parse("unknown"), Conflict::LastWrite));
+        assert!(matches!(Conflict::parse(""), Conflict::LastWrite));
+    }
+
+    #[test]
+    fn test_sync_stats_display_minimal() {
+        let stats = SyncStats {
+            uploaded: 2,
+            downloaded: 1,
+            ..Default::default()
+        };
+        assert_eq!(format!("{}", stats), "↑2 ↓1");
+    }
+
+    #[test]
+    fn test_sync_stats_display_with_deletes() {
+        let stats = SyncStats {
+            uploaded: 0,
+            downloaded: 0,
+            deleted_local: 1,
+            deleted_remote: 2,
+            ..Default::default()
+        };
+        assert_eq!(format!("{}", stats), "↑0 ↓0 del:3");
+    }
+
+    #[test]
+    fn test_sync_stats_display_full() {
+        let stats = SyncStats {
+            uploaded: 5,
+            downloaded: 3,
+            deleted_local: 1,
+            deleted_remote: 0,
+            conflicts: 2,
+            skipped: 10,
+            errors: 1,
+        };
+        assert_eq!(format!("{}", stats), "↑5 ↓3 del:1 conflicts:2 errors:1");
+    }
+
+    #[test]
+    fn test_sync_stats_display_zero() {
+        let stats = SyncStats::default();
+        assert_eq!(format!("{}", stats), "↑0 ↓0");
+    }
+
+    #[test]
+    fn test_normalize_path_unix() {
+        assert_eq!(normalize_path(Path::new("src/main.rs")), "src/main.rs");
+    }
+
+    #[test]
+    fn test_normalize_path_nested() {
+        assert_eq!(normalize_path(Path::new("a/b/c/d.txt")), "a/b/c/d.txt");
+    }
+
+    #[test]
+    fn test_scan_local_basic() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("hello.txt"), "hello").unwrap();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+        fs::write(dir.path().join("src/main.rs"), "fn main() {}").unwrap();
+
+        let files = scan_local(dir.path(), false, &[]).unwrap();
+        assert!(files.contains_key("hello.txt"));
+        assert!(files.contains_key("src/main.rs"));
+        assert_eq!(files.len(), 2);
+
+        // Verify content and hash
+        let (content, hash) = &files["hello.txt"];
+        assert_eq!(content, b"hello");
+        assert!(hash.starts_with("sha256:"));
+    }
+
+    #[test]
+    fn test_scan_local_excludes_default_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("keep.txt"), "keep").unwrap();
+        fs::create_dir_all(dir.path().join(".git")).unwrap();
+        fs::write(dir.path().join(".git/config"), "gitconfig").unwrap();
+        fs::create_dir_all(dir.path().join("node_modules")).unwrap();
+        fs::write(dir.path().join("node_modules/pkg.js"), "module").unwrap();
+        fs::create_dir_all(dir.path().join("target")).unwrap();
+        fs::write(dir.path().join("target/debug"), "binary").unwrap();
+        fs::create_dir_all(dir.path().join(".everruns-sync")).unwrap();
+        fs::write(dir.path().join(".everruns-sync/state.json"), "{}").unwrap();
+
+        let files = scan_local(dir.path(), false, &[]).unwrap();
+        assert!(files.contains_key("keep.txt"));
+        assert!(!files.contains_key(".git/config"));
+        assert!(!files.contains_key("node_modules/pkg.js"));
+        assert!(!files.contains_key("target/debug"));
+        assert!(!files.contains_key(".everruns-sync/state.json"));
+    }
+
+    #[test]
+    fn test_scan_local_extra_excludes() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("keep.txt"), "keep").unwrap();
+        fs::create_dir_all(dir.path().join("build")).unwrap();
+        fs::write(dir.path().join("build/out.js"), "output").unwrap();
+
+        let files = scan_local(dir.path(), false, &["build".to_string()]).unwrap();
+        assert!(files.contains_key("keep.txt"));
+        assert!(!files.contains_key("build/out.js"));
+    }
+
+    #[test]
+    fn test_scan_local_syncignore() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("keep.txt"), "keep").unwrap();
+        fs::write(dir.path().join("secret.key"), "secret").unwrap();
+        fs::write(dir.path().join(".syncignore"), "*.key\n# comment\n").unwrap();
+
+        let files = scan_local(dir.path(), false, &[]).unwrap();
+        assert!(files.contains_key("keep.txt"));
+        assert!(!files.contains_key("secret.key"));
+    }
+
+    #[test]
+    fn test_scan_local_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = scan_local(dir.path(), false, &[]).unwrap();
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_conflict_local_wins() {
+        let entry = RemoteFileEntry {
+            path: "/test.txt".to_string(),
+            is_directory: false,
+            size_bytes: 5,
+            content_hash: None,
+            updated_at: Some("2026-01-01T00:00:00Z".to_string()),
+            is_readonly: false,
+        };
+        let result = resolve_conflict(Conflict::Local, Path::new("/tmp"), "test.txt", &entry);
+        assert_eq!(result, "local");
+    }
+
+    #[test]
+    fn test_resolve_conflict_remote_wins() {
+        let entry = RemoteFileEntry {
+            path: "/test.txt".to_string(),
+            is_directory: false,
+            size_bytes: 5,
+            content_hash: None,
+            updated_at: Some("2026-01-01T00:00:00Z".to_string()),
+            is_readonly: false,
+        };
+        let result = resolve_conflict(Conflict::Remote, Path::new("/tmp"), "test.txt", &entry);
+        assert_eq!(result, "remote");
+    }
+
+    #[test]
+    fn test_update_state_new_entry() {
+        let mut state = SyncState::new("ses_test");
+        update_state(
+            &mut state,
+            "file.txt",
+            Some("sha256:aaa"),
+            Some("sha256:bbb"),
+        );
+        let entry = &state.files["file.txt"];
+        assert_eq!(entry.local_hash.as_deref(), Some("sha256:aaa"));
+        assert_eq!(entry.remote_hash.as_deref(), Some("sha256:bbb"));
+    }
+
+    #[test]
+    fn test_update_state_partial_update() {
+        let mut state = SyncState::new("ses_test");
+        update_state(&mut state, "file.txt", Some("sha256:aaa"), None);
+        let entry = &state.files["file.txt"];
+        assert_eq!(entry.local_hash.as_deref(), Some("sha256:aaa"));
+        assert!(entry.remote_hash.is_none());
+
+        // Now update remote only
+        update_state(&mut state, "file.txt", None, Some("sha256:bbb"));
+        let entry = &state.files["file.txt"];
+        assert_eq!(entry.local_hash.as_deref(), Some("sha256:aaa")); // unchanged
+        assert_eq!(entry.remote_hash.as_deref(), Some("sha256:bbb"));
+    }
 }
