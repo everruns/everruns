@@ -184,10 +184,9 @@ impl GrpcClient {
             .await
             .map_err(grpc_status_to_error)?;
 
-        let proto_server = response
-            .into_inner()
-            .server
-            .ok_or_else(|| grpc_missing_field("MCP server not found for prefix: {}"))?;
+        let proto_server = response.into_inner().server.ok_or_else(|| {
+            AgentLoopError::store(format!("MCP server not found for prefix: {server_prefix}"))
+        })?;
 
         Ok(crate::mcp_executor::McpServerInfo {
             id: proto_uuid_to_uuid(proto_server.id.as_ref())?,
@@ -211,9 +210,7 @@ impl GrpcClient {
                 stale_after_seconds,
             })
             .await
-            .map_err(|e| {
-                AgentLoopError::store(format!("gRPC claim_due_leased_resources failed: {e}"))
-            })?;
+            .map_err(grpc_status_to_error)?;
 
         response
             .into_inner()
@@ -240,9 +237,7 @@ impl GrpcClient {
                 ),
             })
             .await
-            .map_err(|e| {
-                AgentLoopError::store(format!("gRPC mark_leased_resource_released failed: {e}"))
-            })?;
+            .map_err(grpc_status_to_error)?;
 
         Ok(response.into_inner().updated)
     }
@@ -268,11 +263,7 @@ impl GrpcClient {
                 error: error.to_string(),
             })
             .await
-            .map_err(|e| {
-                AgentLoopError::store(format!(
-                    "gRPC mark_leased_resource_cleanup_failed failed: {e}"
-                ))
-            })?;
+            .map_err(grpc_status_to_error)?;
 
         Ok(response.into_inner().updated)
     }
@@ -1654,9 +1645,7 @@ impl LeasedResourceStore for GrpcLeasedResourceStore {
                 metadata: Some(json_to_proto_struct(&input.metadata)),
             })
             .await
-            .map_err(|e| {
-                AgentLoopError::store(format!("gRPC upsert_leased_resource failed: {e}"))
-            })?;
+            .map_err(grpc_status_to_error)?;
 
         let resource = response
             .into_inner()
@@ -1681,9 +1670,7 @@ impl LeasedResourceStore for GrpcLeasedResourceStore {
                 external_id: external_id.to_string(),
             })
             .await
-            .map_err(|e| {
-                AgentLoopError::store(format!("gRPC release_leased_resource failed: {e}"))
-            })?;
+            .map_err(grpc_status_to_error)?;
 
         response
             .into_inner()
@@ -1699,9 +1686,7 @@ impl LeasedResourceStore for GrpcLeasedResourceStore {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
             })
             .await
-            .map_err(|e| {
-                AgentLoopError::store(format!("gRPC list_session_leased_resources failed: {e}"))
-            })?;
+            .map_err(grpc_status_to_error)?;
 
         response
             .into_inner()
