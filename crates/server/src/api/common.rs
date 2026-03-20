@@ -253,17 +253,6 @@ impl Pagination {
     }
 }
 
-/// Request to create an event (for internal use)
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateEventRequest {
-    /// The type of event (e.g., "message", "tool_call", "error").
-    #[schema(example = "message")]
-    pub event_type: String,
-    /// Event payload as JSON. Structure depends on event_type.
-    pub data: serde_json::Value,
-}
-
 /// Verify that a session belongs to the caller's organization.
 ///
 /// Returns Ok(()) if the session exists under org_id, or a 404 (StatusCode only)

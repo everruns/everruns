@@ -138,18 +138,6 @@ pub enum TimeoutType {
     Heartbeat,
 }
 
-/// A task that has timed out
-#[derive(Debug, Clone)]
-#[allow(dead_code)] // Part of public API, will be used in timeout scanning loop
-pub struct TimedOutTask {
-    /// Task ID
-    pub task_id: Uuid,
-    /// Type of timeout
-    pub timeout_type: TimeoutType,
-    /// How long the timeout was exceeded by
-    pub exceeded_by: Duration,
-}
-
 impl TimeoutManager {
     /// Create a new timeout manager
     pub fn new(store: Arc<dyn WorkflowEventStore>) -> Self {

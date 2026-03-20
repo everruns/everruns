@@ -498,20 +498,6 @@ impl WorkerServiceImpl {
             .ok_or_else(|| Status::unavailable("Session SQL database not available"))
     }
 
-    /// Get organization public_id from org_id
-    #[allow(dead_code)]
-    async fn get_org_public_id(&self, org_id: i64) -> Result<String, Status> {
-        self.db
-            .get_organization(org_id)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get organization: {}", e);
-                Status::internal("Failed to get organization")
-            })?
-            .map(|org| org.public_id)
-            .ok_or_else(|| Status::not_found("Organization not found"))
-    }
-
     /// Max gRPC message size (150MB for base64-encoded images + overhead)
     ///
     /// TODO: Sending large images over gRPC is inefficient. Future improvements:

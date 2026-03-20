@@ -1,7 +1,6 @@
 //! In-memory implementation of WorkflowEventStore for testing
 
 use std::collections::HashMap;
-use std::sync::atomic::AtomicI32;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -90,8 +89,6 @@ pub struct InMemoryWorkflowEventStore {
     schedules: RwLock<HashMap<Uuid, ScheduleMemState>>,
     schedule_executions: RwLock<HashMap<Uuid, ScheduleExecutionMemState>>,
     scheduler_instances: RwLock<HashMap<String, SchedulerInstanceInfo>>,
-    #[allow(dead_code)] // Reserved for future global sequence counter
-    sequence_counter: AtomicI32,
     #[cfg(test)]
     load_events_calls: AtomicUsize,
     #[cfg(test)]
@@ -112,7 +109,6 @@ impl InMemoryWorkflowEventStore {
             schedules: RwLock::new(HashMap::new()),
             schedule_executions: RwLock::new(HashMap::new()),
             scheduler_instances: RwLock::new(HashMap::new()),
-            sequence_counter: AtomicI32::new(0),
             #[cfg(test)]
             load_events_calls: AtomicUsize::new(0),
             #[cfg(test)]

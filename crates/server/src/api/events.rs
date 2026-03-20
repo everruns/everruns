@@ -122,22 +122,6 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Create app state with default event service (no listeners)
-    #[allow(dead_code)]
-    pub fn new(
-        db: Arc<StorageBackend>,
-        auth: AuthState,
-        sse_tracker: Arc<SseConnectionTracker>,
-    ) -> Self {
-        Self {
-            session_service: Arc::new(SessionService::new(db.clone())),
-            event_service: Arc::new(EventService::new(db)),
-            sse_tracker,
-            event_broadcaster: None,
-            auth,
-        }
-    }
-
     /// Create app state with event listeners for observability
     pub fn with_listeners(
         db: Arc<StorageBackend>,

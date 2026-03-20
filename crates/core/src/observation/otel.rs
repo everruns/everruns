@@ -38,7 +38,6 @@ use crate::telemetry::gen_ai;
 
 /// Kind of active span for type-safe lookups
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 enum SpanKind {
     Turn,
     Reason,
@@ -50,7 +49,7 @@ enum SpanKind {
 /// An active span with its tracing guard and metadata
 struct ActiveSpan {
     span: tracing::Span,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // stored for debugging; read via Debug trait
     kind: SpanKind,
     started_at: std::time::Instant,
 }

@@ -57,7 +57,6 @@ impl IntoResponse for AuthError {
 
 /// Authenticated user context extracted from request
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct AuthUser {
     /// User ID
     pub id: Uuid,
@@ -110,13 +109,11 @@ impl AuthUser {
     }
 
     /// Check if user has a specific role
-    #[allow(dead_code)]
     pub fn has_role(&self, role: &str) -> bool {
         self.roles.iter().any(|r| r == role || r == "admin")
     }
 
     /// Check if user is admin
-    #[allow(dead_code)]
     pub fn is_admin(&self) -> bool {
         self.has_role("admin")
     }
@@ -246,38 +243,8 @@ async fn extract_auth_user(
     Err(AuthError::unauthorized("Authentication required"))
 }
 
-/// Optional auth extractor - returns None if not authenticated (in auth mode)
-/// or anonymous user (in no-auth mode)
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct OptionalAuthUser(pub Option<AuthUser>);
-
-impl<S> FromRequestParts<S> for OptionalAuthUser
-where
-    S: Send + Sync,
-    AuthState: FromRef<S>,
-{
-    type Rejection = std::convert::Infallible;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let auth_state = AuthState::from_ref(state);
-
-        // In no-auth mode, always return anonymous user
-        if auth_state.config.mode == AuthMode::None {
-            return Ok(OptionalAuthUser(Some(AuthUser::anonymous())));
-        }
-
-        // Try to extract user, but don't fail if not authenticated
-        match extract_auth_user(parts, &auth_state).await {
-            Ok(user) => Ok(OptionalAuthUser(Some(user))),
-            Err(_) => Ok(OptionalAuthUser(None)),
-        }
-    }
-}
-
 /// Require admin role extractor
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct AdminUser(pub AuthUser);
 
 impl<S> FromRequestParts<S> for AdminUser

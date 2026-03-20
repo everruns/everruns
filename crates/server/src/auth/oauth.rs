@@ -49,7 +49,6 @@ pub struct OAuthUserInfo {
 
 /// OAuth authorization URL with state
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct OAuthAuthorizationUrl {
     pub url: String,
     pub state: String,
@@ -60,8 +59,6 @@ pub struct GoogleOAuthService {
     client_id: String,
     client_secret: String,
     redirect_uri: String,
-    #[allow(dead_code)]
-    allowed_domains: Option<Vec<String>>,
 }
 
 impl GoogleOAuthService {
@@ -70,7 +67,6 @@ impl GoogleOAuthService {
             client_id: config.base.client_id.clone(),
             client_secret: config.base.client_secret.clone(),
             redirect_uri: config.base.redirect_uri.clone(),
-            allowed_domains: config.allowed_domains.clone(),
         })
     }
 

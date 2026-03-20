@@ -561,10 +561,6 @@ impl Database {
     // Agents (configuration for agentic loop)
     // ============================================
 
-    /// Standard agent column list for SELECT queries
-    #[allow(dead_code)]
-    const AGENT_COLUMNS: &str = "id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, initial_files, tools, total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens";
-
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
