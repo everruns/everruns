@@ -385,8 +385,8 @@ function ToolsSection({ tools }: { tools: ToolDefinitionSummary[] }) {
           <CardContent className="p-0">
             <ScrollArea className="max-h-[40vh] px-4 pb-4">
               <div className="space-y-0.5">
-                {tools.map((tool) => (
-                  <ToolItem key={tool.name} tool={tool} />
+                {tools.map((tool, index) => (
+                  <ToolItem key={`${tool.name}-${index}`} tool={tool} />
                 ))}
               </div>
             </ScrollArea>
