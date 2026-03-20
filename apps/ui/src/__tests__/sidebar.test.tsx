@@ -68,6 +68,14 @@ jest.mock("@/providers/feature-flags-provider", () => ({
   }),
 }));
 
+// Mock LLM providers hook (default: providers configured, no warning)
+jest.mock("@/hooks/use-llm-providers", () => ({
+  useLlmProviders: () => ({
+    data: [{ id: "provider-1", name: "Test Provider" }],
+    isLoading: false,
+  }),
+}));
+
 describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
