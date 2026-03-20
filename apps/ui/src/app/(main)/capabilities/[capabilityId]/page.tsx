@@ -196,7 +196,10 @@ export default function CapabilityDetailPage({
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm font-medium">Status</p>
-                <Badge variant={getCapabilityStatusBadgeVariant(capability.status)} className="mt-1">
+                <Badge
+                  variant={getCapabilityStatusBadgeVariant(capability.status)}
+                  className="mt-1"
+                >
                   {getStatusLabel(capability.status)}
                 </Badge>
               </div>

@@ -443,4 +443,3 @@ function WorkflowStatusIcon({ status }: { status: string }) {
       return <Clock className="h-4 w-4 text-gray-500" />;
   }
 }
-

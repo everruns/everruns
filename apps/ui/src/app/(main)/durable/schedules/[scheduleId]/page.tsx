@@ -94,7 +94,9 @@ function ExecutionRow({ execution }: { execution: ScheduleExecution }) {
       <TableCell>
         <div className="flex items-center gap-2">
           {getStatusIcon(execution.status)}
-          <Badge variant={getScheduleExecutionBadgeVariant(execution.status)}>{execution.status}</Badge>
+          <Badge variant={getScheduleExecutionBadgeVariant(execution.status)}>
+            {execution.status}
+          </Badge>
         </div>
       </TableCell>
       <TableCell>

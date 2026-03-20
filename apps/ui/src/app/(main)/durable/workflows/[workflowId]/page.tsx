@@ -239,7 +239,10 @@ export default function WorkflowDetailPage({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={getWorkflowStatusBadgeVariant(workflow.status)} className="text-lg px-3 py-1">
+            <Badge
+              variant={getWorkflowStatusBadgeVariant(workflow.status)}
+              className="text-lg px-3 py-1"
+            >
               {workflow.status}
             </Badge>
             {workflow.status === "running" && (
