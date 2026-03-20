@@ -27,6 +27,7 @@ import {
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
+import { getHealthBadgeVariant, getWorkflowStatusBadgeVariant } from "@/lib/status-utils";
 
 function getHealthStatusColor(status: string) {
   switch (status) {
@@ -38,19 +39,6 @@ function getHealthStatusColor(status: string) {
       return "bg-red-500";
     default:
       return "bg-gray-500";
-  }
-}
-
-function getHealthBadgeVariant(status: string) {
-  switch (status) {
-    case "healthy":
-      return "default" as const;
-    case "degraded":
-      return "secondary" as const;
-    case "unhealthy":
-      return "destructive" as const;
-    default:
-      return "outline" as const;
   }
 }
 
@@ -396,7 +384,7 @@ export default function DurableDashboardPage() {
                           <CopyButton value={workflow.id} />
                         </div>
                       </div>
-                      <Badge variant={getWorkflowStatusVariant(workflow.status)}>
+                      <Badge variant={getWorkflowStatusBadgeVariant(workflow.status)}>
                         {workflow.status}
                       </Badge>
                     </Link>
@@ -453,20 +441,5 @@ function WorkflowStatusIcon({ status }: { status: string }) {
       return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
     default:
       return <Clock className="h-4 w-4 text-gray-500" />;
-  }
-}
-
-function getWorkflowStatusVariant(status: string) {
-  switch (status) {
-    case "completed":
-      return "default" as const;
-    case "running":
-      return "secondary" as const;
-    case "failed":
-      return "destructive" as const;
-    case "cancelled":
-      return "outline" as const;
-    default:
-      return "outline" as const;
   }
 }

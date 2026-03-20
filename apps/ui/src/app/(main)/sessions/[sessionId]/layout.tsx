@@ -40,17 +40,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { useUpdateSession } from "@/hooks/use-sessions";
 import { SessionProvider, useSessionContext } from "./session-context";
 import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
-
-// Helper function to format token counts in a compact way
-function formatTokens(tokens: number): string {
-  if (tokens >= 1000000) {
-    return `${(tokens / 1000000).toFixed(1)}M`;
-  }
-  if (tokens >= 1000) {
-    return `${(tokens / 1000).toFixed(1)}K`;
-  }
-  return tokens.toString();
-}
+import { formatTokens } from "@/lib/formatting";
 
 interface SessionLayoutProps {
   children: React.ReactNode;

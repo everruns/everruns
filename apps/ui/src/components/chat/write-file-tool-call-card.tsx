@@ -11,6 +11,8 @@ import { useMemo, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FilePenLine, Loader2 } from "lucide-react";
 import type { ContentPart, ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { basename } from "@/lib/path-utils";
+import { formatFileSize } from "@/lib/formatting";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 
 interface WriteFileToolCallCardProps {
@@ -29,12 +31,6 @@ interface ParsedWriteFileResult {
   sizeBytes?: number;
   created?: boolean;
   textContent: string | null;
-}
-
-function basename(value: string): string {
-  const clean = value.replace(/\/+$/, "");
-  const parts = clean.split("/");
-  return parts[parts.length - 1] || clean;
 }
 
 function getPathFromArguments(toolCall: ToolCallContent): string | undefined {
@@ -69,13 +65,6 @@ function parseWriteFilePayload(
     created: undefined,
     textContent: rawText || null,
   };
-}
-
-function formatSize(sizeBytes: number | undefined): string | null {
-  if (typeof sizeBytes !== "number" || sizeBytes < 0) return null;
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function getToolVerb(toolName: string): string {
@@ -128,7 +117,7 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
       ? `${toolResult.duration_ms}ms`
       : `${(toolResult.duration_ms / 1000).toFixed(1)}s`
     : null;
-  const metadataPreview = [parsed.created ? "created" : "updated", formatSize(parsed.sizeBytes)]
+  const metadataPreview = [parsed.created ? "created" : "updated", formatFileSize(parsed.sizeBytes)]
     .filter(Boolean)
     .join(" · ");
   const preview = metadataPreview || getTextPreview(parsed.textContent);

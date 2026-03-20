@@ -11,11 +11,11 @@ import type {
   ToolGroupNodeData,
   TurnGroupNodeData,
 } from "./trajectory-utils";
+import { formatDurationCompact } from "@/lib/formatting";
 
 function formatDuration(ms?: number): string {
   if (ms == null) return "";
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
+  return formatDurationCompact(ms);
 }
 
 // --- Turn group node (container box) ---
