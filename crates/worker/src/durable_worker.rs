@@ -489,6 +489,17 @@ impl ShutdownHandle {
     }
 }
 
+/// Check if a task error is deterministic and should never be retried.
+///
+/// Deterministic errors reference data that is permanently gone (e.g. a deleted
+/// message). Retrying will never succeed and only burns attempts while keeping
+/// the workflow in `Pending` status, blocking the entire session.
+fn is_non_retryable_task_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("user message not found")
+        || (lower.contains("inputatom execution failed") && lower.contains("not found"))
+}
+
 impl DurableWorker {
     /// Poll for tasks and execute them concurrently
     async fn poll_and_execute(self: &Arc<Self>) -> Result<usize> {
@@ -551,47 +562,107 @@ impl DurableWorker {
                         "Task execution failed"
                     );
 
-                    // Report failure to store
-                    let mut store = worker.store.lock().await;
-                    match store.fail_task(task.id, &e.to_string()).await {
-                        Ok(will_retry) => {
-                            if !will_retry {
-                                // Task exhausted all retries (DLQ). Mark workflow as
-                                // completed so the session doesn't get stuck.
-                                if let Some(wf_id) = task.workflow_id {
-                                    warn!(
-                                        task_id = %task.id,
-                                        workflow_id = %wf_id,
-                                        "Task moved to DLQ, completing workflow with failure"
-                                    );
-                                    let _ = store
-                                        .update_workflow_status(
-                                            wf_id,
-                                            WorkflowStatus::Completed,
-                                            None,
-                                            Some(e.to_string()),
-                                        )
-                                        .await;
-                                }
+                    let error_msg = e.to_string();
+                    let force_dlq = is_non_retryable_task_error(&error_msg);
 
-                                // Emit a single user-facing error event now that all
-                                // retries are exhausted. Transient errors skip event
-                                // emission during each attempt to avoid duplicates;
-                                // this is the one place we surface the final failure.
-                                if matches!(
-                                    task.activity_type.as_str(),
-                                    "reason" | "process_input" | "act"
-                                ) {
-                                    worker.emit_dlq_error_event(&task).await;
+                    if force_dlq {
+                        // Deterministic error — retrying will never succeed.
+                        // Exhaust all retry attempts immediately so the task
+                        // reaches DLQ, then complete the workflow.
+                        warn!(
+                            task_id = %task.id,
+                            activity_type = %task.activity_type,
+                            error = %error_msg,
+                            "Non-retryable error detected, exhausting retries"
+                        );
+
+                        let mut store = worker.store.lock().await;
+
+                        // Loop fail_task until the store says no more retries
+                        // (task is in DLQ). This ensures we don't complete the
+                        // workflow while the task is still retryable.
+                        loop {
+                            match store.fail_task(task.id, &error_msg).await {
+                                Ok(will_retry) => {
+                                    if !will_retry {
+                                        break;
+                                    }
+                                    // Consume another attempt immediately.
+                                }
+                                Err(fail_err) => {
+                                    error!(
+                                        task_id = %task.id,
+                                        error = %fail_err,
+                                        "Failed to force task into DLQ via fail_task"
+                                    );
+                                    break;
                                 }
                             }
                         }
-                        Err(fail_err) => {
-                            error!(
-                                task_id = %task.id,
-                                error = %fail_err,
-                                "Failed to report task failure"
-                            );
+
+                        // Task is now in DLQ — safe to complete the workflow.
+                        if let Some(wf_id) = task.workflow_id {
+                            let _ = store
+                                .update_workflow_status(
+                                    wf_id,
+                                    WorkflowStatus::Completed,
+                                    None,
+                                    Some(error_msg),
+                                )
+                                .await;
+                        }
+
+                        if matches!(
+                            task.activity_type.as_str(),
+                            "reason" | "process_input" | "act"
+                        ) {
+                            drop(store);
+                            worker.emit_dlq_error_event(&task).await;
+                        }
+                    } else {
+                        // Report failure to store (may retry)
+                        let mut store = worker.store.lock().await;
+                        match store.fail_task(task.id, &error_msg).await {
+                            Ok(will_retry) => {
+                                if !will_retry {
+                                    // Task exhausted all retries (DLQ). Mark workflow as
+                                    // completed so the session doesn't get stuck.
+                                    if let Some(wf_id) = task.workflow_id {
+                                        warn!(
+                                            task_id = %task.id,
+                                            workflow_id = %wf_id,
+                                            "Task moved to DLQ, completing workflow with failure"
+                                        );
+                                        let _ = store
+                                            .update_workflow_status(
+                                                wf_id,
+                                                WorkflowStatus::Completed,
+                                                None,
+                                                Some(error_msg),
+                                            )
+                                            .await;
+                                    }
+
+                                    // Emit a single user-facing error event now that all
+                                    // retries are exhausted. Transient errors skip event
+                                    // emission during each attempt to avoid duplicates;
+                                    // this is the one place we surface the final failure.
+                                    if matches!(
+                                        task.activity_type.as_str(),
+                                        "reason" | "process_input" | "act"
+                                    ) {
+                                        drop(store);
+                                        worker.emit_dlq_error_event(&task).await;
+                                    }
+                                }
+                            }
+                            Err(fail_err) => {
+                                error!(
+                                    task_id = %task.id,
+                                    error = %fail_err,
+                                    "Failed to report task failure"
+                                );
+                            }
                         }
                     }
                 }
@@ -1422,5 +1493,26 @@ mod tests {
         assert!(config.worker_id.starts_with("worker-"));
         assert_eq!(config.max_concurrent_tasks, 1000);
         assert_eq!(config.grpc_address, "127.0.0.1:9001");
+    }
+
+    #[test]
+    fn test_is_non_retryable_task_error_detects_missing_message() {
+        assert!(is_non_retryable_task_error(
+            "Message store error: User message not found: msg_abc123"
+        ));
+        assert!(is_non_retryable_task_error(
+            "InputAtom execution failed: Message store error: User message not found: msg_xyz"
+        ));
+    }
+
+    #[test]
+    fn test_is_non_retryable_task_error_allows_transient_errors() {
+        assert!(!is_non_retryable_task_error(
+            "Transient LLM error (will retry at task level): server_error"
+        ));
+        assert!(!is_non_retryable_task_error("Failed to connect to gRPC"));
+        assert!(!is_non_retryable_task_error(
+            "LLM provider temporarily unavailable (circuit breaker open)"
+        ));
     }
 }

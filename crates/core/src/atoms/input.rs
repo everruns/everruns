@@ -152,6 +152,13 @@ mod tests {
 
         let result = atom.execute(InputAtomInput { context }).await;
 
-        assert!(result.is_err());
+        let err = result.unwrap_err();
+        // Error message must contain "User message not found" so the durable
+        // worker can classify it as non-retryable (see is_non_retryable_task_error).
+        assert!(
+            err.to_string().contains("User message not found"),
+            "Expected 'User message not found' in error: {}",
+            err
+        );
     }
 }
