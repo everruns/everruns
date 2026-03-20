@@ -2691,7 +2691,7 @@ async fn test_update_app_missing_harness_returns_not_found() {
 
     server
         .patch(
-            &format!("/v1/apps/{}", app["public_id"].as_str().unwrap()),
+            &format!("/v1/apps/{}", app["id"].as_str().unwrap()),
             json!({ "harness_id": "harness_ffffffffffffffffffffffffffffffff" }),
         )
         .await
@@ -2727,7 +2727,7 @@ async fn test_update_app_missing_agent_returns_not_found() {
 
     server
         .patch(
-            &format!("/v1/apps/{}", app["public_id"].as_str().unwrap()),
+            &format!("/v1/apps/{}", app["id"].as_str().unwrap()),
             json!({ "agent_id": "agent_ffffffffffffffffffffffffffffffff" }),
         )
         .await
