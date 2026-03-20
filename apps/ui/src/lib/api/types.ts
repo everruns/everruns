@@ -1875,6 +1875,7 @@ export interface CommandsResponse {
 export type AppStatus = "draft" | "published" | "archived" | "deleted";
 export type ChannelType = "slack";
 export type SessionStrategy = "per_thread" | "per_channel" | "per_user";
+export type SlackReplyMode = "all_messages" | "report_progress_only";
 
 export interface SlackChannelConfig {
   signing_secret: string;
@@ -1882,6 +1883,7 @@ export interface SlackChannelConfig {
   channel_id?: string;
   team_id?: string;
   session_strategy: SessionStrategy;
+  reply_mode?: SlackReplyMode;
   webhook_verified_at?: string | null;
   first_message_received_at?: string | null;
 }

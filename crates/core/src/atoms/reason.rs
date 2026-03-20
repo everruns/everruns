@@ -639,7 +639,10 @@ where
             builder = builder.tools(session.tools.clone());
         }
 
-        let runtime_agent = builder.build();
+        let mut runtime_agent = builder.build();
+        if crate::progress_reporting::session_uses_report_progress(&session.tags) {
+            runtime_agent = crate::progress_reporting::apply_report_progress_mode(runtime_agent);
+        }
 
         // 6b. Extract compaction config from agent/harness/session capabilities
         let compaction_config = {

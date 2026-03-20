@@ -29,7 +29,8 @@ Channel config is stored as JSONB and validated at the application layer per cha
   "channel_id": "C0123456789",
   "channel_name": "#support",
   "team_id": "T0123456789",
-  "session_strategy": "per_thread"
+  "session_strategy": "per_thread",
+  "reply_mode": "all_messages"
 }
 ```
 
@@ -39,6 +40,12 @@ Controls how incoming messages map to sessions:
 - `per_thread` — each thread gets its own session (default)
 - `per_channel` — one session per channel
 - `per_user` — one session per user
+
+### Slack Reply Mode
+
+Controls what gets posted back to Slack:
+- `all_messages` — forward completed assistant messages directly to Slack (default)
+- `report_progress_only` — send an immediate handoff acknowledgement, then only forward explicit `report_progress` tool updates
 
 ### Lifecycle
 
@@ -66,6 +73,7 @@ Key fields:
 - `agent_id`: Required FK to agent
 - `channel_type`: Enum string (`slack`, etc.)
 - `channel_config`: JSONB with channel-specific settings
+- Slack `channel_config.reply_mode`: `all_messages` or `report_progress_only`
 - `status`: `draft` | `published` | `archived` | `deleted`
 - `archived_at`, `deleted_at`: Lifecycle timestamps
 - `published_at`: Timestamp when last published

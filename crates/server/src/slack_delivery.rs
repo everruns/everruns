@@ -12,6 +12,10 @@
 // Design Decision: Delivery context is keyed by (session_id, input_message_id)
 // to support concurrent turns in the same session.
 
+use everruns_core::SlackReplyMode;
+use everruns_core::progress_reporting::{
+    ProgressReportPayload, REPORT_PROGRESS_TOOL_NAME, format_progress_report_for_slack,
+};
 use everruns_core::typed_id::{EventId, SessionId};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,6 +33,7 @@ struct DeliveryContext {
     channel: String,
     thread_ts: String,
     input_message_id: String,
+    reply_mode: SlackReplyMode,
     /// Last event ID we've processed (for cursor-based pagination).
     since_event_id: Option<EventId>,
 }
@@ -91,6 +96,7 @@ impl SlackDeliveryDispatcher {
         bot_token: String,
         channel: String,
         thread_ts: String,
+        reply_mode: SlackReplyMode,
     ) {
         let key = DeliveryKey {
             session_id,
@@ -102,6 +108,7 @@ impl SlackDeliveryDispatcher {
             channel,
             thread_ts,
             input_message_id,
+            reply_mode,
             since_event_id: None,
         };
 
@@ -229,8 +236,8 @@ impl SlackDeliveryDispatcher {
                 }
 
                 // Post output messages to Slack
-                if event.event_type == "output.message.completed"
-                    && let Some(text) = extract_response_text(&event.data)
+                if let Some(text) =
+                    extract_delivery_text(&event.event_type, ctx.reply_mode, &event.data)
                     && let Err(e) = post_to_slack_with_retry(
                         &ctx.bot_token,
                         &ctx.channel,
@@ -454,6 +461,7 @@ impl SlackDeliveryDispatcher {
                 slack_config.bot_token.clone(),
                 channel,
                 thread_ts,
+                slack_config.reply_mode,
             )
             .await;
         }
@@ -481,6 +489,47 @@ pub(crate) fn extract_response_text(data: &serde_json::Value) -> Option<String> 
         None
     } else {
         Some(text_parts.join("\n"))
+    }
+}
+
+pub(crate) fn extract_progress_report_text(data: &serde_json::Value) -> Option<String> {
+    if data.get("tool_name")?.as_str()? != REPORT_PROGRESS_TOOL_NAME {
+        return None;
+    }
+    if !data
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return None;
+    }
+
+    let result = data.get("result")?.as_array()?;
+    let json_text = result.iter().find_map(|part| {
+        if part.get("type")?.as_str()? == "text" {
+            part.get("text").and_then(|text| text.as_str())
+        } else {
+            None
+        }
+    })?;
+
+    let payload: ProgressReportPayload = serde_json::from_str(json_text).ok()?;
+    Some(format_progress_report_for_slack(&payload))
+}
+
+pub(crate) fn extract_delivery_text(
+    event_type: &str,
+    reply_mode: SlackReplyMode,
+    data: &serde_json::Value,
+) -> Option<String> {
+    match reply_mode {
+        SlackReplyMode::AllMessages if event_type == "output.message.completed" => {
+            extract_response_text(data)
+        }
+        SlackReplyMode::ReportProgressOnly if event_type == "tool.completed" => {
+            extract_progress_report_text(data)
+        }
+        _ => None,
     }
 }
 
@@ -701,6 +750,71 @@ mod tests {
         // doesn't match "text" and the `&&` short-circuits. Both text parts
         // should be captured.
         assert_eq!(result, Some("Part 1\nPart 2".to_string()));
+    }
+
+    #[test]
+    fn test_extract_progress_report_text_formats_payload() {
+        let data = serde_json::json!({
+            "tool_name": "report_progress",
+            "success": true,
+            "result": [
+                {
+                    "type": "text",
+                    "text": r#"{"status":"completed","summary":"Shipped the fix","details":["updated Slack reply mode"]}"#
+                }
+            ]
+        });
+
+        assert_eq!(
+            extract_progress_report_text(&data),
+            Some("Done: Shipped the fix\n- updated Slack reply mode".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_delivery_text_respects_reply_mode() {
+        let output = serde_json::json!({
+            "message": {
+                "content": [
+                    {"type": "text", "text": "Normal assistant reply"}
+                ]
+            }
+        });
+        let tool = serde_json::json!({
+            "tool_name": "report_progress",
+            "success": true,
+            "result": [
+                {
+                    "type": "text",
+                    "text": r#"{"status":"progress","summary":"Investigating","details":[]}"#
+                }
+            ]
+        });
+
+        assert_eq!(
+            extract_delivery_text(
+                "output.message.completed",
+                SlackReplyMode::AllMessages,
+                &output
+            ),
+            Some("Normal assistant reply".to_string())
+        );
+        assert_eq!(
+            extract_delivery_text("tool.completed", SlackReplyMode::AllMessages, &tool),
+            None
+        );
+        assert_eq!(
+            extract_delivery_text("tool.completed", SlackReplyMode::ReportProgressOnly, &tool),
+            Some("Update: Investigating".to_string())
+        );
+        assert_eq!(
+            extract_delivery_text(
+                "output.message.completed",
+                SlackReplyMode::ReportProgressOnly,
+                &output
+            ),
+            None
+        );
     }
 
     #[test]

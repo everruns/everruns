@@ -690,7 +690,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         locale: non_empty_string(proto_session.locale),
         preview: None,
         output_preview: None,
-        tags: vec![],
+        tags: proto_session.tags,
         model_id: model_id.map(|u| u.into()),
         capabilities,
         tools: vec![],

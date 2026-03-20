@@ -359,6 +359,8 @@ message Session {
     optional Uuid harness_id = 10;
     // Session locale (BCP 47, e.g. "uk-UA")
     string locale = 11;
+    // Session tags (used for routing and channel-specific behavior)
+    repeated string tags = 12;
 }
 
 message GetSessionRequest {
