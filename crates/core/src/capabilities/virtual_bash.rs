@@ -18,8 +18,8 @@ use crate::traits::{SessionFileStore, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use bashkit::{
-    Bash, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem, FileType, Metadata,
-    Tool as BashkitToolTrait,
+    Bash, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem, FileSystemExt, FileType,
+    Metadata, Tool as BashkitToolTrait,
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -298,6 +298,9 @@ impl SessionFileSystemAdapter {
         }
     }
 }
+
+#[async_trait]
+impl FileSystemExt for SessionFileSystemAdapter {}
 
 #[async_trait]
 impl FileSystem for SessionFileSystemAdapter {
