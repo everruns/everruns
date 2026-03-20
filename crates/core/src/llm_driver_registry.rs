@@ -709,6 +709,7 @@ impl LlmMessage {
                     } else {
                         "{}".to_string()
                     };
+                    let text = truncate_tool_result(text);
                     parts.push(LlmContentPart::Text { text });
                 }
             }
@@ -935,6 +936,28 @@ impl DriverRegistry {
     }
 }
 
+/// Maximum tool result size in bytes before truncation (64 KiB).
+/// Large results consume context window, increase cost, and expand the
+/// prompt injection surface (TM-AGENT-012).
+const MAX_TOOL_RESULT_BYTES: usize = 64 * 1024;
+
+/// Truncate a tool result string to `MAX_TOOL_RESULT_BYTES`, appending a
+/// warning so the LLM knows the output was cut short.
+fn truncate_tool_result(text: String) -> String {
+    if text.len() <= MAX_TOOL_RESULT_BYTES {
+        return text;
+    }
+    // Find the last char boundary at or before the limit to avoid splitting
+    // a multi-byte character.
+    let mut end = MAX_TOOL_RESULT_BYTES;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut truncated = text[..end].to_string();
+    truncated.push_str("\n\n[Output truncated — exceeded 64 KiB limit. Ask the tool for a smaller result or use pagination.]");
+    truncated
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -942,6 +965,38 @@ impl DriverRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_truncate_tool_result_short() {
+        let short = "hello".to_string();
+        assert_eq!(truncate_tool_result(short.clone()), short);
+    }
+
+    #[test]
+    fn test_truncate_tool_result_at_limit() {
+        let exact = "a".repeat(MAX_TOOL_RESULT_BYTES);
+        assert_eq!(truncate_tool_result(exact.clone()), exact);
+    }
+
+    #[test]
+    fn test_truncate_tool_result_over_limit() {
+        let over = "a".repeat(MAX_TOOL_RESULT_BYTES + 100);
+        let result = truncate_tool_result(over);
+        assert!(result.len() < MAX_TOOL_RESULT_BYTES + 200);
+        assert!(result.ends_with("[Output truncated — exceeded 64 KiB limit. Ask the tool for a smaller result or use pagination.]"));
+    }
+
+    #[test]
+    fn test_truncate_tool_result_multibyte_boundary() {
+        // Build a string with multi-byte chars that crosses the limit
+        let ch = "é"; // 2 bytes in UTF-8
+        let count = MAX_TOOL_RESULT_BYTES / ch.len() + 1;
+        let over = ch.repeat(count);
+        let result = truncate_tool_result(over);
+        // Must be valid UTF-8
+        assert!(result.is_char_boundary(result.len()));
+        assert!(result.contains("[Output truncated"));
+    }
 
     #[test]
     fn test_llm_call_config_builder_from_runtime_agent() {
