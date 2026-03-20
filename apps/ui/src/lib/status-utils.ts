@@ -1,3 +1,4 @@
+import type { VariantProps } from "class-variance-authority";
 import type {
   WorkflowStatus,
   TaskStatus,
@@ -5,8 +6,9 @@ import type {
   ScheduleExecutionStatus,
   CapabilityStatus,
 } from "@/lib/api/types";
+import type { badgeVariants } from "@/components/ui/badge";
 
-type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+type BadgeVariant = VariantProps<typeof badgeVariants>["variant"];
 
 export function getWorkflowStatusBadgeVariant(status: WorkflowStatus): BadgeVariant {
   switch (status) {
