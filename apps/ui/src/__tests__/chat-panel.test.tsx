@@ -48,6 +48,24 @@ jest.mock("@/hooks", () => ({
     isUploading: false,
   }),
   useSessionCommands: (...args: unknown[]) => mockUseSessionCommands(...args),
+  useScrollManager: () => ({
+    scrollContainerRef: { current: null },
+    messagesEndRef: { current: null },
+    hasNewMessages: false,
+    dismissNewMessages: jest.fn(),
+    handleScrollUp: jest.fn(),
+    scrollToBottom: jest.fn(),
+  }),
+  useImageDropZone: () => ({
+    isDraggingOver: false,
+    dropZoneProps: {
+      onDragOver: jest.fn(),
+      onDragEnter: jest.fn(),
+      onDragLeave: jest.fn(),
+      onDrop: jest.fn(),
+    },
+    handlePaste: jest.fn(),
+  }),
 }));
 
 jest.mock("@tanstack/react-query", () => ({
