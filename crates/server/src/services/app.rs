@@ -1,10 +1,10 @@
 // App service for business logic
 
+use crate::errors::ResourceNotFoundError;
 use crate::storage::{
     AppRow, StorageBackend,
     models::{CreateAppRow, UpdateApp},
 };
-use crate::errors::ResourceNotFoundError;
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, HarnessId};
