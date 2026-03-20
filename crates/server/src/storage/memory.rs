@@ -431,11 +431,12 @@ impl InMemoryDatabase {
 
     pub async fn complete_cli_auth_session(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
         if let Some(session) = self.cli_auth_sessions.write().get_mut(&id)
-            && !session.completed {
-                session.user_id = Some(user_id);
-                session.completed = true;
-                return Ok(true);
-            }
+            && !session.completed
+        {
+            session.user_id = Some(user_id);
+            session.completed = true;
+            return Ok(true);
+        }
         Ok(false)
     }
 

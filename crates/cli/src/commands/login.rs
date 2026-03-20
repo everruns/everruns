@@ -166,9 +166,10 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
 
         // Send code to main flow
         if let Some(code) = code
-            && let Some(tx) = code_tx.lock().await.take() {
-                let _ = tx.send(code);
-            }
+            && let Some(tx) = code_tx.lock().await.take()
+        {
+            let _ = tx.send(code);
+        }
     });
 
     // 4. Open browser
