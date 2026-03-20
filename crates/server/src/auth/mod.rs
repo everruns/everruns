@@ -7,6 +7,7 @@ pub mod api_key;
 pub mod audit;
 pub mod backend;
 pub mod builtin;
+pub mod cli_auth;
 pub mod config;
 pub mod jwt;
 pub mod middleware;

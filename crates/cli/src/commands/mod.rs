@@ -2,4 +2,8 @@ pub mod agents;
 pub mod capabilities;
 pub mod chat;
 pub mod files;
+pub mod login;
+pub mod logout;
+pub mod orgs;
 pub mod sessions;
+pub mod status;

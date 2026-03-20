@@ -38,5 +38,17 @@ chrono.workspace = true
 notify.workspace = true
 ignore.workspace = true
 
+# Interactive prompts
+dialoguer.workspace = true
+
+# Browser launch
+webbrowser.workspace = true
+
+# XDG config directory
+dirs.workspace = true
+
+# Hostname resolution
+hostname = "0.4"
+
 [dev-dependencies]
 tempfile.workspace = true

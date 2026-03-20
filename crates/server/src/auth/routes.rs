@@ -911,6 +911,7 @@ pub async fn create_api_key_route(
             key_prefix: generated.key_prefix.clone(),
             scopes: scopes.clone(),
             expires_at,
+            metadata: serde_json::json!({"source": "web_ui"}),
         })
         .await
         .map_err(|e| {

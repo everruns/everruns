@@ -43,8 +43,27 @@ Authorization: ApiKey <api_key>
 - Full key shown only at creation, stored hashed (SHA-256)
 - Supports scopes and expiration
 - Used for programmatic access
+- `metadata` JSONB column stores creation context: `source` (cli_login, web_ui, api), `hostname`, `os`, `ip`
 
-#### 3. Cookie-based Session
+#### 3. CLI Login (localhost OAuth callback)
+
+Interactive CLI authentication via `everruns login`. Flow:
+
+1. CLI calls `POST /v1/auth/cli/start` with `redirect_port`
+2. Server creates a pending `cli_auth_sessions` row (state + exchange_code, 5-min TTL)
+3. Server returns `auth_url` (login page with redirect to `/v1/auth/cli/callback?state=...`)
+4. CLI opens browser and starts one-shot localhost HTTP server
+5. User logs in, server calls `/v1/auth/cli/callback` which associates user and redirects to `localhost:{port}/callback?code=...`
+6. CLI receives code, redirects browser to `/cli/login-success` (branded success page)
+7. CLI calls `POST /v1/auth/cli/exchange` with code + hostname + os
+8. Server creates API key with metadata, returns key + user + orgs
+9. CLI prompts for org selection (if multiple), stores credentials in `~/.config/everruns/credentials.json`
+
+Endpoints: `POST /v1/auth/cli/start`, `GET /v1/auth/cli/callback`, `POST /v1/auth/cli/exchange`, `GET /cli/login-success`
+
+See `crates/server/src/auth/cli_auth.rs` for implementation.
+
+#### 4. Cookie-based Session
 
 - `access_token` cookie with JWT
 - `refresh_token` cookie (HTTP-only, secure)
