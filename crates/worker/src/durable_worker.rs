@@ -497,7 +497,7 @@ impl ShutdownHandle {
 fn is_non_retryable_task_error(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
     lower.contains("user message not found")
-        || lower.contains("inputatom execution failed") && lower.contains("not found")
+        || (lower.contains("inputatom execution failed") && lower.contains("not found"))
 }
 
 impl DurableWorker {
@@ -567,20 +567,40 @@ impl DurableWorker {
 
                     if force_dlq {
                         // Deterministic error — retrying will never succeed.
-                        // Skip the retry loop and go straight to DLQ.
+                        // Exhaust all retry attempts immediately so the task
+                        // reaches DLQ, then complete the workflow.
                         warn!(
                             task_id = %task.id,
                             activity_type = %task.activity_type,
                             error = %error_msg,
-                            "Non-retryable error detected, skipping retries"
+                            "Non-retryable error detected, exhausting retries"
                         );
 
                         let mut store = worker.store.lock().await;
 
-                        // Mark task as failed (will still count the attempt, but
-                        // we immediately handle the DLQ path regardless).
-                        let _ = store.fail_task(task.id, &error_msg).await;
+                        // Loop fail_task until the store says no more retries
+                        // (task is in DLQ). This ensures we don't complete the
+                        // workflow while the task is still retryable.
+                        loop {
+                            match store.fail_task(task.id, &error_msg).await {
+                                Ok(will_retry) => {
+                                    if !will_retry {
+                                        break;
+                                    }
+                                    // Consume another attempt immediately.
+                                }
+                                Err(fail_err) => {
+                                    error!(
+                                        task_id = %task.id,
+                                        error = %fail_err,
+                                        "Failed to force task into DLQ via fail_task"
+                                    );
+                                    break;
+                                }
+                            }
+                        }
 
+                        // Task is now in DLQ — safe to complete the workflow.
                         if let Some(wf_id) = task.workflow_id {
                             let _ = store
                                 .update_workflow_status(
