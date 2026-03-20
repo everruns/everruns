@@ -30,8 +30,12 @@ function DefaultLoadingSkeleton({ count = 6 }: { count?: number }) {
 
 /* ---------- default error ---------- */
 
-function DefaultError({ message }: { message: string }) {
-  return <div className="text-red-500">Error: {message}</div>;
+function DefaultError({ prefix, message }: { prefix: string; message: string }) {
+  return (
+    <div className="rounded-lg bg-destructive/10 p-4 text-destructive">
+      {prefix}: {message}
+    </div>
+  );
 }
 
 /* ---------- default empty ---------- */
@@ -63,7 +67,9 @@ export interface QueryStateWrapperProps<T> {
   loadingSkeleton?: ReactNode;
   /** Number of skeleton cards when using the default skeleton. Default: 6 */
   skeletonCount?: number;
-  /** Custom error element. Overrides the default red text error. */
+  /** Prefix for the default error banner (e.g. "Failed to load agents"). Default: "Error" */
+  errorMessagePrefix?: string;
+  /** Custom error element. Overrides the default error banner when provided. */
   errorState?: ReactNode;
 }
 
@@ -76,10 +82,11 @@ export function QueryStateWrapper<T>({
   emptyState,
   loadingSkeleton,
   skeletonCount = 6,
+  errorMessagePrefix = "Error",
   errorState,
 }: QueryStateWrapperProps<T>) {
   if (error) {
-    return errorState ?? <DefaultError message={error.message} />;
+    return errorState ?? <DefaultError prefix={errorMessagePrefix} message={error.message} />;
   }
 
   if (isLoading) {

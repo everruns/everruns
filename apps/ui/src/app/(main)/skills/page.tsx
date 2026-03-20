@@ -271,6 +271,7 @@ export default function SkillsPage() {
         isLoading={isLoading}
         error={error}
         data={skills}
+        errorMessagePrefix="Failed to load skills"
         loadingSkeleton={
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {[...Array(6)].map((_, i) => (

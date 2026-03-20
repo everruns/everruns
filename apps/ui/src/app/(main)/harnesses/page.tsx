@@ -33,6 +33,7 @@ export default function HarnessesPage() {
         isLoading={isLoading}
         error={error}
         data={harnesses}
+        errorMessagePrefix="Failed to load harnesses"
         emptyState={
           <div className="text-center py-12">
             <p className="text-muted-foreground mb-4">No harnesses yet</p>

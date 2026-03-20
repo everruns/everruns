@@ -254,13 +254,7 @@ export default function ApiKeysPage() {
           isLoading={apiKeysLoading}
           error={apiKeysError}
           data={userApiKeys}
-          errorState={
-            apiKeysError && (
-              <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-4">
-                Failed to load API keys: {apiKeysError.message}
-              </div>
-            )
-          }
+          errorMessagePrefix="Failed to load API keys"
           loadingSkeleton={
             <div className="space-y-2">
               {[...Array(2)].map((_, i) => (

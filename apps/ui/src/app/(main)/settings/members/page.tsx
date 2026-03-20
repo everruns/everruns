@@ -207,13 +207,7 @@ export default function MembersPage() {
           isLoading={isLoading}
           error={error}
           data={members}
-          errorState={
-            error && (
-              <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-4">
-                Failed to load members: {error.message}
-              </div>
-            )
-          }
+          errorMessagePrefix="Failed to load members"
           loadingSkeleton={
             <div className="space-y-2">
               {[...Array(3)].map((_, i) => (

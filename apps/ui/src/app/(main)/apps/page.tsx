@@ -40,6 +40,7 @@ export default function AppsPage() {
         isLoading={isLoading}
         error={error}
         data={apps}
+        errorMessagePrefix="Failed to load apps"
         skeletonCount={3}
         emptyState={<EmptyState />}
       >

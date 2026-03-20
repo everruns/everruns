@@ -83,6 +83,7 @@ export default function AgentsPage() {
         isLoading={isLoading}
         error={error}
         data={agents}
+        errorMessagePrefix="Failed to load agents"
         emptyState={
           <div className="text-center py-12">
             <p className="text-muted-foreground mb-4">No agents yet</p>
