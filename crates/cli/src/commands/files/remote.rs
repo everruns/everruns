@@ -225,33 +225,6 @@ impl RemoteClient {
         Ok(())
     }
 
-    /// Create a directory on remote (used by sync for mkdir-on-demand).
-    // TODO(sdk): Replace with sdk.session_files().create_dir(session_id, path)
-    #[allow(dead_code)]
-    pub async fn create_dir(&self, path: &str) -> Result<()> {
-        let url = self.fs_url(path);
-        let body = serde_json::json!({ "is_directory": true });
-
-        let resp = self
-            .http
-            .post(&url)
-            .header("Authorization", &self.api_key)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .context("Failed to create remote directory")?;
-
-        // Ignore 409 (already exists)
-        if !resp.status().is_success() && resp.status() != reqwest::StatusCode::CONFLICT {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("Create remote dir failed: {} {}", status, text);
-        }
-
-        Ok(())
-    }
-
     /// Delete a file or directory on remote.
     // TODO(sdk): Replace with sdk.session_files().delete(session_id, path, recursive)
     pub async fn delete(&self, path: &str, recursive: bool) -> Result<()> {

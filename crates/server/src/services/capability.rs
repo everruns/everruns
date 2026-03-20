@@ -18,13 +18,12 @@ use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::{
-    Caller, CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, McpToolDefinition,
-    RiskLevel, mcp_capability_id, skill_capability_id,
+    Caller, CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, RiskLevel,
+    mcp_capability_id, skill_capability_id,
 };
 use std::sync::Arc;
 
 pub struct CapabilityService {
-    db: Arc<StorageBackend>,
     registry: CapabilityRegistry,
     mcp_service: McpServerService,
     skill_service: Arc<SkillService>,
@@ -41,7 +40,6 @@ impl CapabilityService {
         registry: CapabilityRegistry,
     ) -> Self {
         Self {
-            db: db.clone(),
             registry,
             mcp_service: McpServerService::new(db.clone(), encryption),
             skill_service: Arc::new(SkillService::new(db)),
@@ -206,37 +204,6 @@ impl CapabilityService {
             .map(|cap| CapabilityInfo::from_core(cap.as_ref())))
     }
 
-    /// Get MCP tools for a specific MCP server capability
-    #[allow(dead_code)]
-    pub async fn get_mcp_tools(
-        &self,
-        org_id: i64,
-        server_id: uuid::Uuid,
-        force_refresh: bool,
-    ) -> Result<Vec<McpToolDefinition>> {
-        self.mcp_service
-            .get_tools(&Caller::internal(org_id), server_id, force_refresh)
-            .await
-    }
-
-    /// Refresh tools for an MCP server
-    #[allow(dead_code)]
-    pub async fn refresh_mcp_tools(
-        &self,
-        org_id: i64,
-        server_id: uuid::Uuid,
-    ) -> Result<Vec<McpToolDefinition>> {
-        self.mcp_service
-            .refresh_tools(&Caller::internal(org_id), server_id)
-            .await
-    }
-
-    /// Get the built-in capability registry
-    #[allow(dead_code)]
-    pub fn registry(&self) -> &CapabilityRegistry {
-        &self.registry
-    }
-
     /// Return the IDs of any high-risk capabilities in the given list.
     ///
     /// Looks up each capability in the built-in registry.  MCP and skill
@@ -252,12 +219,6 @@ impl CapabilityService {
             })
             .map(|id| id.to_string())
             .collect()
-    }
-
-    /// Get the database storage backend
-    #[allow(dead_code)]
-    pub fn db(&self) -> &Arc<StorageBackend> {
-        &self.db
     }
 
     /// List system commands from all registered capabilities.

@@ -70,7 +70,6 @@ pub fn is_valid_api_key_format(key: &str) -> bool {
 
 /// API key with user info (for validation responses)
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ValidatedApiKey {
     pub key_id: Uuid,
     pub user_id: Uuid,

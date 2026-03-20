@@ -177,12 +177,6 @@ impl JwtService {
         Ok(token_data.claims)
     }
 
-    /// Get access token lifetime in seconds
-    #[allow(dead_code)]
-    pub fn access_token_lifetime_secs(&self) -> i64 {
-        self.config.access_token_lifetime.as_secs() as i64
-    }
-
     /// Get refresh token lifetime in seconds
     pub fn refresh_token_lifetime_secs(&self) -> i64 {
         self.config.refresh_token_lifetime.as_secs() as i64

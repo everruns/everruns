@@ -69,7 +69,6 @@ fn experimental_flag(env_var: &str, grade: &DeploymentGrade) -> bool {
 /// Resolve a standard (non-experimental) flag.
 ///
 /// Priority: explicit env var > default.
-#[allow(dead_code)]
 fn standard_flag(env_var: &str, default: bool) -> bool {
     std::env::var(env_var)
         .map(|v| v == "true" || v == "1")

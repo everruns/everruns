@@ -103,7 +103,6 @@ impl Default for JwtConfig {
 
 /// Complete authentication configuration
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct AuthConfig {
     /// Authentication mode
     pub mode: AuthMode,

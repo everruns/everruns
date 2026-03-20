@@ -92,17 +92,6 @@ struct Ticket {
     updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
-struct Interaction {
-    id: String,
-    customer_id: String,
-    interaction_type: String, // call, email, meeting, chat
-    summary: String,
-    agent: String,
-    timestamp: String,
-}
-
 // ============================================================================
 // Tool: crm_list_customers
 // ============================================================================
