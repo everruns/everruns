@@ -10,17 +10,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, CapabilityStatus } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-
-function getStatusBadgeVariant(status: CapabilityStatus): "default" | "secondary" | "outline" {
-  switch (status) {
-    case "available":
-      return "default";
-    case "coming_soon":
-      return "secondary";
-    case "deprecated":
-      return "outline";
-  }
-}
+import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
 
 function getStatusLabel(status: CapabilityStatus): string {
   switch (status) {
@@ -49,7 +39,7 @@ function CapabilityCard({ capability }: { capability: Capability }) {
               <CopyButton value={capability.id} />
             </div>
           </div>
-          <Badge variant={getStatusBadgeVariant(capability.status)}>
+          <Badge variant={getCapabilityStatusBadgeVariant(capability.status)}>
             {getStatusLabel(capability.status)}
           </Badge>
         </CardHeader>

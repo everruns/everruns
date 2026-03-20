@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { basename } from "@/lib/path-utils";
 import { BashToolCallCard, isBashTool, parseBashOutput } from "./bash-tool-call-card";
 import { ReadFileToolCallCard, isReadFileTool } from "./read-file-tool-call-card";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
@@ -97,12 +98,6 @@ function formatLocation(value: unknown): string {
     return "current directory";
   }
   return value;
-}
-
-function basename(value: string): string {
-  const clean = value.replace(/\/+$/, "");
-  const parts = clean.split("/");
-  return parts[parts.length - 1] || clean;
 }
 
 function getToolLabel(toolCall: ToolCallContent): string {
