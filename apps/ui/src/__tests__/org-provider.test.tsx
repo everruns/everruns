@@ -1,5 +1,6 @@
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { OrgProvider, useOrg } from "@/providers/org-provider";
 import type { OrganizationMembership } from "@/lib/api/types";
 
@@ -11,9 +12,10 @@ jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
 }));
 
-// Mock switchOrg API
+// Mock switchOrg API — controllable per test
+const mockSwitchOrg = jest.fn().mockResolvedValue(undefined);
 jest.mock("@/lib/api/users", () => ({
-  switchOrg: jest.fn().mockResolvedValue(undefined),
+  switchOrg: (...args: unknown[]) => mockSwitchOrg(...args),
 }));
 
 // Mock auth provider — mutable so we can change the user mid-test
@@ -33,6 +35,7 @@ beforeEach(() => {
     .mockImplementation((key, val) => storageMap.set(key, val));
   jest.spyOn(Storage.prototype, "removeItem").mockImplementation((key) => storageMap.delete(key));
   mockPush.mockClear();
+  mockSwitchOrg.mockClear().mockResolvedValue(undefined);
   mockPathname.mockReturnValue("/dashboard");
 });
 
@@ -55,7 +58,14 @@ const NEW_ORG: OrganizationMembership = {
 };
 
 function wrapper({ children }: { children: ReactNode }) {
-  return <OrgProvider>{children}</OrgProvider>;
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return (
+    <QueryClientProvider client={queryClient}>
+      <OrgProvider>{children}</OrgProvider>
+    </QueryClientProvider>
+  );
 }
 
 describe("OrgProvider", () => {
@@ -68,7 +78,7 @@ describe("OrgProvider", () => {
     expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id);
   });
 
-  it("switches to a different existing org", () => {
+  it("switches to a different existing org after cookie sync", async () => {
     mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
     mockAuthLoading = false;
 
@@ -78,44 +88,108 @@ describe("OrgProvider", () => {
       result.current.setCurrentOrg(SECOND_ORG);
     });
 
-    expect(result.current.currentOrg?.public_id).toBe(SECOND_ORG.public_id);
+    // Org switch is async — wait for cookie sync to complete
+    await waitFor(() => {
+      expect(result.current.currentOrg?.public_id).toBe(SECOND_ORG.public_id);
+    });
     expect(storageMap.get("everruns_current_org")).toBe(SECOND_ORG.public_id);
+    expect(mockSwitchOrg).toHaveBeenCalledWith(SECOND_ORG.public_id);
   });
 
-  it("keeps newly created org even when organizations list hasn't caught up", () => {
+  it("rolls back on failed org switch", async () => {
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+    // Reject only for SECOND_ORG; allow init sync for DEFAULT_ORG
+    mockSwitchOrg.mockImplementation((orgId: string) => {
+      if (orgId === SECOND_ORG.public_id) {
+        return Promise.reject(new Error("network error"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const { result } = renderHook(() => useOrg(), { wrapper });
+
+    act(() => {
+      result.current.setCurrentOrg(SECOND_ORG);
+    });
+
+    // Wait for the failed switch to settle
+    await waitFor(() => {
+      expect(result.current.isSwitching).toBe(false);
+    });
+
+    // Should stay on original org
+    expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id);
+    // localStorage should NOT have been updated
+    expect(storageMap.get("everruns_current_org")).toBeUndefined();
+  });
+
+  it("shows isSwitching during org switch", async () => {
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+
+    // Make switchOrg hang until we resolve it
+    let resolveSwitch!: () => void;
+    mockSwitchOrg.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveSwitch = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useOrg(), { wrapper });
+
+    act(() => {
+      result.current.setCurrentOrg(SECOND_ORG);
+    });
+
+    // Should be switching
+    expect(result.current.isSwitching).toBe(true);
+    // Should still be on old org until cookie sync completes
+    expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id);
+
+    // Complete the switch
+    await act(async () => {
+      resolveSwitch();
+    });
+
+    expect(result.current.isSwitching).toBe(false);
+    expect(result.current.currentOrg?.public_id).toBe(SECOND_ORG.public_id);
+  });
+
+  it("keeps newly created org even when organizations list hasn't caught up", async () => {
     // Start with only the default org
     mockUser = { organizations: [DEFAULT_ORG] };
     mockAuthLoading = false;
 
     const { result, rerender } = renderHook(() => useOrg(), { wrapper });
 
-    // Simulate: user creates a new org and calls setCurrentOrg before
-    // the organizations list is refreshed.
     act(() => {
       result.current.setCurrentOrg(NEW_ORG);
     });
 
-    // The new org is NOT yet in the organizations array (query hasn't refetched).
-    // Without the fix, the sync useEffect would reset currentOrg to default.
-    expect(result.current.currentOrg?.public_id).toBe(NEW_ORG.public_id);
+    // Wait for the async switch to complete
+    await waitFor(() => {
+      expect(result.current.currentOrg?.public_id).toBe(NEW_ORG.public_id);
+    });
 
     // Rerender to trigger effects again — should still hold the new org.
     rerender();
     expect(result.current.currentOrg?.public_id).toBe(NEW_ORG.public_id);
   });
 
-  it("clears explicit flag once organizations list catches up", () => {
+  it("clears explicit flag once organizations list catches up", async () => {
     mockUser = { organizations: [DEFAULT_ORG] };
     mockAuthLoading = false;
 
     const { result, rerender } = renderHook(() => useOrg(), { wrapper });
 
-    // Set current org to a new org not yet in the list
     act(() => {
       result.current.setCurrentOrg(NEW_ORG);
     });
 
-    expect(result.current.currentOrg?.public_id).toBe(NEW_ORG.public_id);
+    await waitFor(() => {
+      expect(result.current.currentOrg?.public_id).toBe(NEW_ORG.public_id);
+    });
 
     // Now simulate the organizations list catching up (auth query refetched)
     mockUser = { organizations: [DEFAULT_ORG, NEW_ORG] };
@@ -125,7 +199,7 @@ describe("OrgProvider", () => {
     expect(result.current.currentOrg?.public_id).toBe(NEW_ORG.public_id);
   });
 
-  it("redirects entity detail pages on org switch", () => {
+  it("redirects entity detail pages on org switch", async () => {
     mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
     mockAuthLoading = false;
     mockPathname.mockReturnValue("/agents/agent-123");
@@ -136,10 +210,12 @@ describe("OrgProvider", () => {
       result.current.setCurrentOrg(SECOND_ORG);
     });
 
-    expect(mockPush).toHaveBeenCalledWith("/agents");
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/agents");
+    });
   });
 
-  it("does not redirect non-entity pages on org switch", () => {
+  it("does not redirect non-entity pages on org switch", async () => {
     mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
     mockAuthLoading = false;
     mockPathname.mockReturnValue("/dashboard");
@@ -148,6 +224,10 @@ describe("OrgProvider", () => {
 
     act(() => {
       result.current.setCurrentOrg(SECOND_ORG);
+    });
+
+    await waitFor(() => {
+      expect(result.current.currentOrg?.public_id).toBe(SECOND_ORG.public_id);
     });
 
     expect(mockPush).not.toHaveBeenCalled();

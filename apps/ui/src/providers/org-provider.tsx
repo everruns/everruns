@@ -18,6 +18,7 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./auth-provider";
 import { switchOrg as switchOrgApi } from "@/lib/api/users";
 import type { OrganizationMembership, OrgRole } from "@/lib/api/types";
@@ -61,12 +62,14 @@ export interface OrgContextValue {
   currentOrg: OrganizationMembership | null;
   /** All organizations the user belongs to */
   organizations: OrganizationMembership[];
-  /** Set the current organization */
+  /** Set the current organization (awaits server cookie sync before committing) */
   setCurrentOrg: (org: OrganizationMembership) => void;
   /** Check if current user has at least the given role in the current org */
   hasRole: (role: OrgRole) => boolean;
   /** Loading state */
   isLoading: boolean;
+  /** True while an org switch is in progress (cookie sync pending) */
+  isSwitching: boolean;
 }
 
 export const OrgContext = createContext<OrgContextValue | undefined>(undefined);
@@ -79,11 +82,13 @@ export function OrgProvider({ children }: OrgProviderProps) {
   const { user, isLoading: authLoading } = useAuth();
   const [currentOrg, setCurrentOrgState] = useState<OrganizationMembership | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
   // Track explicit org selection to prevent useEffect from resetting it
   // before the organizations list catches up (e.g. after creating a new org).
   const explicitOrgRef = useRef<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
 
   // Memoize organizations to prevent infinite re-renders
   // User is always fetched (even in none mode) and includes organizations
@@ -136,40 +141,51 @@ export function OrgProvider({ children }: OrgProviderProps) {
     }
   }, [organizations, currentOrg, isInitialized]);
 
-  // Call API to switch org (sets server-side cookie)
-  const syncOrgCookie = useCallback(async (orgId: string) => {
-    try {
-      await switchOrgApi(orgId);
-    } catch (error) {
-      // Log but don't throw - org switching should be resilient
-      console.warn("Failed to sync org cookie:", error);
+  // Sync currentOrg cookie on mount/init (fire-and-forget, not user-initiated)
+  useEffect(() => {
+    if (currentOrg && isInitialized) {
+      void switchOrgApi(currentOrg.public_id).catch((error) => {
+        console.warn("Failed to sync org cookie on init:", error);
+      });
     }
-  }, []);
+  }, [currentOrg, isInitialized]);
 
+  // Atomic org switch: await cookie sync → commit state → invalidate queries
   const setCurrentOrg = useCallback(
     (org: OrganizationMembership) => {
       // Mark as explicitly selected so the sync effect doesn't reset it
       // before the organizations list is refreshed.
       explicitOrgRef.current = org.public_id;
-      setCurrentOrgState(org);
-      localStorage.setItem(ORG_STORAGE_KEY, org.public_id);
-      // Set server-side cookie via API
-      void syncOrgCookie(org.public_id);
-      // Redirect entity detail pages to their list page to avoid 404
-      const listPath = getEntityListPath(pathname);
-      if (listPath) {
-        router.push(listPath);
-      }
-    },
-    [syncOrgCookie, pathname, router],
-  );
 
-  // Sync currentOrg to server cookie on mount/change
-  useEffect(() => {
-    if (currentOrg && isInitialized) {
-      void syncOrgCookie(currentOrg.public_id);
-    }
-  }, [currentOrg, isInitialized, syncOrgCookie]);
+      // Skip if already on this org
+      if (currentOrg?.public_id === org.public_id) return;
+
+      setIsSwitching(true);
+
+      // Await server cookie before committing client state
+      switchOrgApi(org.public_id)
+        .then(() => {
+          setCurrentOrgState(org);
+          localStorage.setItem(ORG_STORAGE_KEY, org.public_id);
+          // Invalidate all org-scoped queries so stale data is refetched
+          void queryClient.invalidateQueries();
+          // Redirect entity detail pages to their list page to avoid 404
+          const listPath = getEntityListPath(pathname);
+          if (listPath) {
+            router.push(listPath);
+          }
+        })
+        .catch((error) => {
+          // Rollback: clear explicit flag, stay on current org
+          explicitOrgRef.current = null;
+          console.error("Org switch failed, staying on current org:", error);
+        })
+        .finally(() => {
+          setIsSwitching(false);
+        });
+    },
+    [currentOrg?.public_id, queryClient, pathname, router],
+  );
 
   const hasRole = useCallback(
     (role: OrgRole) => {
@@ -185,6 +201,7 @@ export function OrgProvider({ children }: OrgProviderProps) {
     setCurrentOrg,
     hasRole,
     isLoading: authLoading || !isInitialized,
+    isSwitching,
   };
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
