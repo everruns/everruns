@@ -64,21 +64,42 @@ impl AppService {
     }
 
     /// Decrypt channel_config from encrypted bytes. Falls back to the plaintext
-    /// column for rows that haven't been migrated yet.
+    /// column only for rows that haven't been migrated yet or when encryption
+    /// is not configured (dev/test mode). If encrypted data is present but
+    /// decryption/parsing fails, log and return null instead of silently
+    /// reading from the plaintext column.
     fn decrypt_channel_config(
         &self,
         encrypted: Option<&[u8]>,
         plaintext_fallback: &serde_json::Value,
     ) -> serde_json::Value {
-        if let Some(data) = encrypted
-            && let Some(ref enc) = self.encryption
-            && let Ok(json) = enc.decrypt_to_string(data)
-            && let Ok(val) = serde_json::from_str(&json)
-        {
-            return val;
+        match (encrypted, self.encryption.as_ref()) {
+            // Pre-migration rows or dev/test mode: use plaintext column.
+            (None, _) | (_, None) => plaintext_fallback.clone(),
+            // Encrypted data with an available encryption service.
+            (Some(data), Some(enc)) => {
+                let json = match enc.decrypt_to_string(data) {
+                    Ok(json) => json,
+                    Err(err) => {
+                        tracing::error!(
+                            error = %err,
+                            "Failed to decrypt channel_config; returning null instead of plaintext fallback"
+                        );
+                        return serde_json::Value::Null;
+                    }
+                };
+                match serde_json::from_str(&json) {
+                    Ok(val) => val,
+                    Err(err) => {
+                        tracing::error!(
+                            error = %err,
+                            "Failed to parse decrypted channel_config JSON; returning null"
+                        );
+                        serde_json::Value::Null
+                    }
+                }
+            }
         }
-        // Fallback to plaintext column (pre-migration rows or dev mode)
-        plaintext_fallback.clone()
     }
 
     #[policy(APP_MANAGE)]
@@ -107,6 +128,14 @@ impl AppService {
         let channel_config = req.channel_config.unwrap_or_default();
         let channel_config_encrypted = self.encrypt_channel_config(&channel_config)?;
 
+        // When encryption produced ciphertext, redact the plaintext column
+        // so secrets are not stored in both columns.
+        let stored_plaintext = if channel_config_encrypted.is_some() {
+            serde_json::Value::Object(Default::default())
+        } else {
+            channel_config
+        };
+
         let input = CreateAppRow {
             public_id: public_id.to_string(),
             name: req.name,
@@ -114,7 +143,7 @@ impl AppService {
             harness_id: harness_row.id.uuid(),
             agent_id: agent_row.id.uuid(),
             channel_type: req.channel_type.to_string(),
-            channel_config,
+            channel_config: stored_plaintext,
             channel_config_encrypted,
         };
 
@@ -216,11 +245,29 @@ impl AppService {
             None
         };
 
-        // Encrypt channel_config if provided
-        let channel_config_encrypted = if let Some(ref config) = req.channel_config {
-            self.encrypt_channel_config(config)?
+        // Encrypt channel_config. If the request provides a new config, encrypt it.
+        // Otherwise, opportunistically encrypt the existing plaintext config for
+        // pre-migration rows (when encryption is configured but encrypted column is NULL).
+        let (channel_config, channel_config_encrypted) = if let Some(config) = req.channel_config {
+            let encrypted = self.encrypt_channel_config(&config)?;
+            // Redact plaintext when encryption produced ciphertext
+            let stored_plaintext = if encrypted.is_some() {
+                Some(serde_json::Value::Object(Default::default()))
+            } else {
+                Some(config)
+            };
+            (stored_plaintext, encrypted)
+        } else if existing.channel_config_encrypted.is_none() && self.encryption.is_some() {
+            // Opportunistic migration: encrypt existing plaintext on any update
+            let encrypted = self.encrypt_channel_config(&existing.channel_config)?;
+            let stored_plaintext = if encrypted.is_some() {
+                Some(serde_json::Value::Object(Default::default()))
+            } else {
+                None
+            };
+            (stored_plaintext, encrypted)
         } else {
-            None
+            (None, None)
         };
 
         let input = UpdateApp {
@@ -229,7 +276,7 @@ impl AppService {
             harness_id,
             agent_id,
             channel_type: req.channel_type.map(|ct| ct.to_string()),
-            channel_config: req.channel_config,
+            channel_config,
             channel_config_encrypted,
             status: req.status.map(|s| s.to_string()),
             published_at: UpdateField::Unchanged,
