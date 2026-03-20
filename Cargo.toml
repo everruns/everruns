@@ -132,6 +132,11 @@ moka = { version = "0.12", features = ["future", "sync"] }
 fail = "0.5"
 rstest = "0.25"
 
+# File watching and gitignore
+notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
+notify-debouncer-mini = { version = "0.5", default-features = false }
+ignore = "0.4"
+
 # Plugin system for external integrations
 inventory = "0.3"
 

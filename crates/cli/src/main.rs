@@ -56,6 +56,12 @@ pub enum Commands {
         command: commands::sessions::SessionsCommand,
     },
 
+    /// File sync and management
+    Files {
+        #[command(subcommand)]
+        command: commands::files::FilesCommand,
+    },
+
     /// Send a message and stream the response
     Chat {
         /// Message text to send
@@ -113,6 +119,9 @@ async fn main() -> anyhow::Result<()> {
                 cli.quiet,
             )
             .await
+        }
+        Commands::Files { command } => {
+            commands::files::run(command, &api_url, &api_key, output_format, cli.quiet).await
         }
         Commands::Chat {
             message,
@@ -276,6 +285,130 @@ mod tests {
             assert_eq!(status, "all");
         } else {
             panic!("Expected Capabilities command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_files_sync() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "files",
+            "sync",
+            "--session",
+            "ses_abc",
+            "--interval",
+            "5",
+            "--conflict",
+            "local-wins",
+            "--verbose",
+            "/tmp/mydir",
+        ])
+        .unwrap();
+        if let Commands::Files { command } = cli.command {
+            if let commands::files::FilesCommand::Sync {
+                session,
+                local_dir,
+                interval,
+                conflict,
+                verbose,
+                ..
+            } = command
+            {
+                assert_eq!(session, "ses_abc");
+                assert_eq!(local_dir, "/tmp/mydir");
+                assert_eq!(interval, 5);
+                assert_eq!(conflict, "local-wins");
+                assert!(verbose);
+            } else {
+                panic!("Expected Sync command");
+            }
+        } else {
+            panic!("Expected Files command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_files_push() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "files",
+            "push",
+            "--session",
+            "ses_xyz",
+            "--dry-run",
+        ])
+        .unwrap();
+        if let Commands::Files { command } = cli.command {
+            if let commands::files::FilesCommand::Push {
+                session, dry_run, ..
+            } = command
+            {
+                assert_eq!(session, "ses_xyz");
+                assert!(dry_run);
+            } else {
+                panic!("Expected Push command");
+            }
+        } else {
+            panic!("Expected Files command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_files_pull() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "files",
+            "pull",
+            "--session",
+            "ses_xyz",
+            "--delete",
+        ])
+        .unwrap();
+        if let Commands::Files { command } = cli.command {
+            if let commands::files::FilesCommand::Pull {
+                session, delete, ..
+            } = command
+            {
+                assert_eq!(session, "ses_xyz");
+                assert!(delete);
+            } else {
+                panic!("Expected Pull command");
+            }
+        } else {
+            panic!("Expected Files command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_files_ls() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "files",
+            "ls",
+            "--session",
+            "ses_xyz",
+            "-r",
+            "-l",
+            "/src",
+        ])
+        .unwrap();
+        if let Commands::Files { command } = cli.command {
+            if let commands::files::FilesCommand::Ls {
+                session,
+                path,
+                recursive,
+                long,
+            } = command
+            {
+                assert_eq!(session, "ses_xyz");
+                assert_eq!(path, "/src");
+                assert!(recursive);
+                assert!(long);
+            } else {
+                panic!("Expected Ls command");
+            }
+        } else {
+            panic!("Expected Files command");
         }
     }
 
