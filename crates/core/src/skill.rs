@@ -167,6 +167,8 @@ pub struct ParsedSkillMd {
     pub context: SkillContext,
     /// Subagent type when context is fork (e.g., "Explore", "Plan"). Default: "general-purpose"
     pub agent: Option<String>,
+    /// LLM model override for this skill (e.g., "claude-haiku-4-5-20251001")
+    pub model: Option<String>,
 }
 
 /// YAML frontmatter structure
@@ -193,6 +195,8 @@ struct SkillFrontmatter {
     context: Option<String>,
     /// Subagent type when context is fork (e.g., "Explore", "Plan")
     agent: Option<String>,
+    /// LLM model override for this skill
+    model: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -335,6 +339,7 @@ pub fn parse_skill_md(content: &str) -> Result<ParsedSkillMd, Vec<String>> {
         argument_hint: fm.argument_hint,
         context,
         agent: fm.agent,
+        model: fm.model,
     })
 }
 
@@ -359,6 +364,13 @@ pub fn validate_skill_md(content: &str) -> SkillValidationResult {
             if parsed.context == SkillContext::Fork && parsed.agent.is_none() {
                 warnings.push(
                     "context: fork without agent field — will use default \"general-purpose\" agent."
+                        .to_string(),
+                );
+            }
+            if parsed.model.is_some() && parsed.context != SkillContext::Fork {
+                warnings.push(
+                    "model: field is only supported with context: fork. \
+                     Inline skills ignore the model override."
                         .to_string(),
                 );
             }
@@ -1061,6 +1073,94 @@ Body.
     #[test]
     fn test_skill_context_default() {
         assert_eq!(SkillContext::default(), SkillContext::Inline);
+    }
+
+    // -- model frontmatter tests --
+
+    #[test]
+    fn test_parse_model_with_fork() {
+        let content = r#"---
+name: quick-lint
+description: Fast lint check.
+context: fork
+model: claude-haiku-4-5-20251001
+---
+
+Lint instructions.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert_eq!(parsed.model.as_deref(), Some("claude-haiku-4-5-20251001"));
+        assert_eq!(parsed.context, SkillContext::Fork);
+    }
+
+    #[test]
+    fn test_parse_model_without_fork() {
+        let content = r#"---
+name: my-skill
+description: A skill.
+model: gpt-4o
+---
+
+Body.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert_eq!(parsed.model.as_deref(), Some("gpt-4o"));
+        assert_eq!(parsed.context, SkillContext::Inline);
+    }
+
+    #[test]
+    fn test_parse_no_model_field() {
+        let content = r#"---
+name: my-skill
+description: A skill.
+---
+
+Body.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert!(parsed.model.is_none());
+    }
+
+    #[test]
+    fn test_validate_warns_model_without_fork() {
+        let content = r#"---
+name: my-skill
+description: A skill.
+model: gpt-4o
+---
+
+Body.
+"#;
+        let result = validate_skill_md(content);
+        assert!(result.valid);
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("model:") && w.contains("context: fork"))
+        );
+    }
+
+    #[test]
+    fn test_validate_no_warning_model_with_fork() {
+        let content = r#"---
+name: my-skill
+description: A skill.
+context: fork
+agent: Explore
+model: claude-haiku-4-5-20251001
+---
+
+Body.
+"#;
+        let result = validate_skill_md(content);
+        assert!(result.valid);
+        assert!(
+            !result
+                .warnings
+                .iter()
+                .any(|w| w.contains("model:") && w.contains("context: fork"))
+        );
     }
 
     // ========================================================================

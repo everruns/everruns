@@ -496,6 +496,9 @@ impl Tool for ActivateSkillFromVfsTool {
                     result["context"] = serde_json::json!("fork");
                     result["agent"] =
                         serde_json::json!(parsed.agent.as_deref().unwrap_or("general-purpose"));
+                    if let Some(ref model) = parsed.model {
+                        result["model"] = serde_json::json!(model);
+                    }
                 }
 
                 if !bundled_files.is_empty() {
@@ -1214,6 +1217,58 @@ mod tests {
                 // No context or agent fields for inline skills
                 assert!(val.get("context").is_none());
                 assert!(val.get("agent").is_none());
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_activate_skill_fork_with_model() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        fs.add_file(
+            session_id,
+            "/.agents/skills/quick-lint/SKILL.md",
+            "---\nname: quick-lint\ndescription: Fast lint.\ncontext: fork\nmodel: claude-haiku-4-5-20251001\n---\n\nLint check.",
+        );
+
+        let context = ToolContext::with_file_store(session_id, fs);
+        let tool = ActivateSkillFromVfsTool;
+
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "quick-lint"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                assert_eq!(val["context"], "fork");
+                assert_eq!(val["agent"], "general-purpose");
+                assert_eq!(val["model"], "claude-haiku-4-5-20251001");
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_activate_skill_inline_no_model_in_result() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        fs.add_file(
+            session_id,
+            "/.agents/skills/my-skill/SKILL.md",
+            "---\nname: my-skill\ndescription: A skill.\nmodel: gpt-4o\n---\n\nBody.",
+        );
+
+        let context = ToolContext::with_file_store(session_id, fs);
+        let tool = ActivateSkillFromVfsTool;
+
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "my-skill"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                // Inline skill: no model field in result (model only applies with fork)
+                assert!(val.get("context").is_none());
+                assert!(val.get("model").is_none());
             }
             other => panic!("Expected Success, got: {:?}", other),
         }
