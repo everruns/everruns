@@ -92,10 +92,13 @@ export function useScrollManager({
   // Auto-scroll on new events or streaming (only when near bottom)
   useEffect(() => {
     if (!initialScrollDoneRef.current) return;
-    if (prevScrollHeightRef.current !== null) return;
 
+    // Always track event count so prepend-only updates don't cause
+    // a stale hasNewEvents on the next scrollDeps change.
     const hasNewEvents = eventCount > prevEventCountRef.current;
     prevEventCountRef.current = eventCount;
+
+    if (prevScrollHeightRef.current !== null) return;
 
     if (isNearBottomRef.current) {
       scrollToBottom("smooth");

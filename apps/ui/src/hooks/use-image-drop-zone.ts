@@ -27,7 +27,8 @@ export function useImageDropZone({ onImageFiles }: UseImageDropZoneOptions) {
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+    const { relatedTarget, currentTarget } = e;
+    if (!(relatedTarget instanceof Node) || !currentTarget.contains(relatedTarget)) {
       setIsDraggingOver(false);
     }
   }, []);
