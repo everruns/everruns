@@ -21,11 +21,19 @@ import {
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { basename } from "@/lib/path-utils";
-import { BashToolCallCard, isBashTool, parseBashOutput } from "./bash-tool-call-card";
-import { ReadFileToolCallCard, isReadFileTool } from "./read-file-tool-call-card";
+import {
+  isBashTool,
+  isReadFileTool,
+  isWriteLikeTool,
+  isWriteTodosTool,
+  getToolCategory,
+  type ToolCategory,
+} from "@/lib/tool-registry";
+import { BashToolCallCard, parseBashOutput } from "./bash-tool-call-card";
+import { ReadFileToolCallCard } from "./read-file-tool-call-card";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
-import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
-import { WriteFileToolCallCard, isWriteLikeTool } from "./write-file-tool-call-card";
+import { TodoListRenderer } from "./todo-list-renderer";
+import { WriteFileToolCallCard } from "./write-file-tool-call-card";
 
 interface ToolActivityGroupProps {
   toolCalls: ToolCallContent[];
@@ -39,8 +47,6 @@ type ActivitySegment =
   | { type: "read_file"; toolCall: ToolCallContent }
   | { type: "write_file"; toolCall: ToolCallContent };
 
-type ToolCategory = "read" | "search" | "write" | "shell" | "tool";
-
 function pluralize(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
@@ -51,43 +57,6 @@ function toTitleCase(value: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function getCategory(name: string): ToolCategory {
-  if (isBashTool(name)) return "shell";
-  if (
-    [
-      "list_files",
-      "read_file",
-      "read_many_files",
-      "session_read_file",
-      "list_capabilities",
-    ].includes(name)
-  ) {
-    return "read";
-  }
-  if (
-    name === "search" ||
-    name === "search_web" ||
-    name === "grep_files" ||
-    name.endsWith("__search")
-  ) {
-    return "search";
-  }
-  if (
-    [
-      "write_file",
-      "edit_file",
-      "replace_in_file",
-      "append_file",
-      "move_file",
-      "delete_file",
-      "mkdir",
-    ].includes(name)
-  ) {
-    return "write";
-  }
-  return "tool";
 }
 
 function formatLocation(value: unknown): string {
@@ -181,16 +150,17 @@ function summarizeToolCalls(toolCalls: ToolCallContent[]): string {
     return getToolLabel(toolCalls[0]);
   }
 
-  const counts = {
+  const counts: Record<ToolCategory, number> = {
     read: 0,
     search: 0,
     write: 0,
     shell: 0,
+    todo: 0,
     tool: 0,
   };
 
   for (const toolCall of toolCalls) {
-    counts[getCategory(toolCall.name)] += 1;
+    counts[getToolCategory(toolCall.name)] += 1;
   }
 
   const parts: string[] = [];
