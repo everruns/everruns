@@ -63,6 +63,8 @@ fn classify_anyhow_error(message: &str) -> Option<(StatusCode, Json<ErrorRespons
         "cannot unpublish archived",
         "cannot update archived",
         "cannot archive built-in",
+        "invalid mcp capability reference",
+        "invalid skill capability reference",
     ]
     .iter()
     .any(|pattern| lowered.contains(pattern));
