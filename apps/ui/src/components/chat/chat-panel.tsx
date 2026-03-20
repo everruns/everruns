@@ -822,7 +822,9 @@ export function ChatPanel() {
                 >
                   <SelectTrigger
                     size="sm"
-                    className="h-7 w-[156px] min-w-0 border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
+                    nativeButton={false}
+                    render={<div />}
+                    className="h-7 w-[156px] min-w-0 cursor-pointer border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
                   >
                     <SelectValue>{modelTriggerLabel}</SelectValue>
                   </SelectTrigger>
@@ -849,7 +851,9 @@ export function ChatPanel() {
                   >
                     <SelectTrigger
                       size="sm"
-                      className="h-7 w-[116px] min-w-0 border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
+                      nativeButton={false}
+                      render={<div />}
+                      className="h-7 w-[116px] min-w-0 cursor-pointer border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
                     >
                       <SelectValue>
                         {reasoningEffort ? getReasoningEffortName(reasoningEffort) : "Default"}
