@@ -304,6 +304,23 @@ impl RuntimeAgentBuilder {
     /// `openai_tool_search` capability is explicitly added to the agent
     /// or harness. This method does NOT auto-enable it.
     pub fn build(mut self) -> RuntimeAgent {
+        // Deduplicate tools by name (last wins). Tools are collected additively
+        // from harness, agent, MCP servers, session capabilities, and client-side
+        // tools — duplicates can occur when the same tool is registered by
+        // multiple sources.
+        {
+            let mut seen = std::collections::HashSet::new();
+            let mut deduped = Vec::with_capacity(self.runtime_agent.tools.len());
+            // Iterate in reverse so the last-added tool wins, then reverse back.
+            for tool in self.runtime_agent.tools.drain(..).rev() {
+                if seen.insert(tool.name().to_owned()) {
+                    deduped.push(tool);
+                }
+            }
+            deduped.reverse();
+            self.runtime_agent.tools = deduped;
+        }
+
         if self.runtime_agent.tool_search.is_some() {
             let model_supports =
                 get_model_profile(&LlmProviderType::Openai, &self.runtime_agent.model)
@@ -848,5 +865,34 @@ mod tests {
             ts.threshold, 5,
             "custom threshold from capability must be preserved"
         );
+    }
+
+    #[test]
+    fn test_build_deduplicates_tools_by_name() {
+        use crate::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
+
+        let make_tool = |name: &str, desc: &str| {
+            ToolDefinition::Builtin(BuiltinTool {
+                name: name.to_string(),
+                display_name: None,
+                description: desc.to_string(),
+                parameters: serde_json::json!({}),
+                policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: Default::default(),
+            })
+        };
+
+        let agent = RuntimeAgentBuilder::new()
+            .tool(make_tool("kv_store", "first"))
+            .tool(make_tool("browser", "only one"))
+            .tool(make_tool("kv_store", "second (should win)"))
+            .build();
+
+        assert_eq!(agent.tools.len(), 2);
+        // Last-added kv_store wins
+        assert_eq!(agent.tools[0].name(), "browser");
+        assert_eq!(agent.tools[1].name(), "kv_store");
+        assert_eq!(agent.tools[1].description(), "second (should win)");
     }
 }
