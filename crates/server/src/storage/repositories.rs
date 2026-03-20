@@ -4325,10 +4325,11 @@ impl Database {
         Ok(row)
     }
 
-    /// Ensure user is a member of organization (idempotent)
+    /// Ensure user is a member of organization with the given role (upsert).
+    /// Updates the role if the membership already exists.
     pub async fn ensure_membership(&self, user_id: Uuid, org_id: i64, role: &str) -> Result<()> {
         sqlx::query(
-            "INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (org_id, user_id) DO NOTHING"
+            "INSERT INTO organization_members (org_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role",
         )
         .bind(org_id)
         .bind(user_id)
@@ -4337,6 +4338,55 @@ impl Database {
         .await?;
 
         Ok(())
+    }
+
+    /// Reconcile org memberships to match an authoritative list from an external
+    /// identity provider. Adds missing members, updates changed roles, and
+    /// removes members not present in the authoritative list.
+    ///
+    /// Returns `(added, updated, removed)` counts.
+    pub async fn reconcile_memberships(
+        &self,
+        org_id: i64,
+        authoritative: &[(Uuid, String)],
+    ) -> Result<(usize, usize, usize)> {
+        let current = self.list_organization_members(org_id).await?;
+        let current_map: std::collections::HashMap<Uuid, String> =
+            current.into_iter().map(|m| (m.user_id, m.role)).collect();
+        let auth_map: std::collections::HashMap<Uuid, &str> = authoritative
+            .iter()
+            .map(|(uid, role)| (*uid, role.as_str()))
+            .collect();
+
+        let mut added = 0usize;
+        let mut updated = 0usize;
+        let mut removed = 0usize;
+
+        // Add or update
+        for (user_id, role) in authoritative {
+            match current_map.get(user_id) {
+                None => {
+                    self.add_organization_member(org_id, *user_id, role).await?;
+                    added += 1;
+                }
+                Some(existing_role) if existing_role != role => {
+                    self.update_organization_member_role(org_id, *user_id, role)
+                        .await?;
+                    updated += 1;
+                }
+                _ => {} // unchanged
+            }
+        }
+
+        // Remove members not in authoritative list
+        for user_id in current_map.keys() {
+            if !auth_map.contains_key(user_id) {
+                self.remove_organization_member(org_id, *user_id).await?;
+                removed += 1;
+            }
+        }
+
+        Ok((added, updated, removed))
     }
 
     // ============================================

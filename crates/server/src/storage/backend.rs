@@ -1319,6 +1319,16 @@ impl StorageBackend {
         dispatch!(self, ensure_membership, user_id, org_id, role)
     }
 
+    /// Reconcile org memberships to match an authoritative list from an external
+    /// identity provider. Returns `(added, updated, removed)` counts.
+    pub async fn reconcile_memberships(
+        &self,
+        org_id: i64,
+        authoritative: &[(Uuid, String)],
+    ) -> Result<(usize, usize, usize)> {
+        dispatch!(self, reconcile_memberships, org_id, authoritative)
+    }
+
     // ============================================
     // Session Storage (Key-Value & Secrets)
     // ============================================
