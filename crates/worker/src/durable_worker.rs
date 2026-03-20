@@ -1148,10 +1148,10 @@ impl DurableWorker {
             .map_err(|e| anyhow::anyhow!("Failed to load turn context: {}", e))?;
 
         // Per-provider circuit breaker key (e.g. "llm:openai", "llm:anthropic").
-        // Falls back to generic "llm" when model/provider info is unavailable.
+        // Falls back to non-colliding "llm:unknown" when model/provider info is unavailable.
         let circuit_key_owned = match &turn_context.model {
             Some(m) => format!("llm:{}", m.provider_type),
-            None => "llm".to_string(),
+            None => "llm:unknown".to_string(),
         };
         let circuit_key = circuit_key_owned.as_str();
 
