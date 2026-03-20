@@ -143,6 +143,7 @@ pub struct ApiKeyRow {
     pub expires_at: Option<DateTime<Utc>>,
     pub last_used_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    pub metadata: sqlx::types::JsonValue,
 }
 
 /// Refresh token row from database
@@ -198,6 +199,29 @@ pub struct CreateApiKeyRow {
     pub key_prefix: String,
     pub scopes: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
+    pub metadata: serde_json::Value,
+}
+
+/// CLI auth session row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct CliAuthSessionRow {
+    pub id: Uuid,
+    pub state: String,
+    pub exchange_code: String,
+    pub user_id: Option<Uuid>,
+    pub redirect_port: i32,
+    pub completed: bool,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating a CLI auth session
+#[derive(Debug, Clone)]
+pub struct CreateCliAuthSessionRow {
+    pub state: String,
+    pub exchange_code: String,
+    pub redirect_port: i32,
+    pub expires_at: DateTime<Utc>,
 }
 
 /// Input for creating a refresh token

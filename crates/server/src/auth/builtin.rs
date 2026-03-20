@@ -226,7 +226,9 @@ impl AuthBackend for BuiltinAuthBackend {
     }
 
     fn auth_routes(&self) -> Option<Router> {
-        Some(routes::routes(self.clone()))
+        let auth_routes = routes::routes(self.clone());
+        let cli_routes = super::cli_auth::cli_auth_routes(self.clone());
+        Some(auth_routes.merge(cli_routes))
     }
 
     fn auth_config_response(&self) -> AuthConfigResponse {

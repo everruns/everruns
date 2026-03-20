@@ -13,6 +13,7 @@ allow = [
     "OpenSSL",
     "Unicode-3.0",
     "Zlib",
+    "MPL-2.0",
 ]
 
 # We don't explicitly deny licenses, instead we use an allowlist approach

@@ -3,7 +3,9 @@
 // Design Decision: Use clap derive for ergonomic argument parsing.
 // Design Decision: Support text/json/yaml output formats for scripting.
 // Design Decision: Use everruns-sdk for API client.
+// Design Decision: Credential file (~/.config/everruns/credentials.json) with env var override.
 
+mod auth;
 mod commands;
 mod output;
 
@@ -15,7 +17,7 @@ use everruns_sdk::Everruns;
 #[command(about = "Everruns CLI - Manage agents, sessions, and conversations")]
 #[command(version)]
 pub struct Cli {
-    /// API key (defaults to EVERRUNS_API_KEY env var)
+    /// API key (defaults to EVERRUNS_API_KEY env var, then credential file)
     #[arg(long, env = "EVERRUNS_API_KEY")]
     pub api_key: Option<String>,
 
@@ -31,12 +33,35 @@ pub struct Cli {
     #[arg(long, short, global = true)]
     pub quiet: bool,
 
+    /// Profile name for credential storage
+    #[arg(long, global = true, default_value = "default")]
+    pub profile: String,
+
     #[command(subcommand)]
     pub command: Commands,
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Interactive login (localhost OAuth callback)
+    Login {
+        /// Paste API key directly (headless/SSH fallback)
+        #[arg(long)]
+        token: bool,
+    },
+
+    /// Remove stored credentials
+    Logout,
+
+    /// Show current user and org
+    Status,
+
+    /// Manage organizations
+    Orgs {
+        #[command(subcommand)]
+        command: Option<OrgsCommand>,
+    },
+
     /// Manage agents
     Agents {
         #[command(subcommand)]
@@ -81,22 +106,45 @@ pub enum Commands {
     },
 }
 
-const DEFAULT_API_URL: &str = "https://app.everruns.com/api";
+#[derive(Subcommand)]
+pub enum OrgsCommand {
+    /// Interactive organization picker
+    Select,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let output_format = output::OutputFormat::from_str(&cli.output);
 
-    // Resolve API key and URL
-    let api_key = cli
-        .api_key
-        .or_else(|| std::env::var("EVERRUNS_API_KEY").ok())
-        .ok_or_else(|| anyhow::anyhow!("EVERRUNS_API_KEY environment variable not set"))?;
-    let api_url = cli
-        .api_url
-        .or_else(|| std::env::var("EVERRUNS_API_URL").ok())
-        .unwrap_or_else(|| DEFAULT_API_URL.to_string());
+    // Commands that don't need authentication
+    match &cli.command {
+        Commands::Login { token } => {
+            return commands::login::run(cli.api_url.as_deref(), *token, &cli.profile).await;
+        }
+        Commands::Logout => {
+            return commands::logout::run(&cli.profile);
+        }
+        Commands::Status => {
+            return commands::status::run(&cli.profile);
+        }
+        Commands::Orgs { command } => {
+            return match command {
+                Some(OrgsCommand::Select) => commands::orgs::run_select(&cli.profile).await,
+                None => commands::orgs::run_list(output_format, &cli.profile).await,
+            };
+        }
+        _ => {}
+    }
+
+    // Resolve credentials: CLI flags > env var > credential file
+    let creds = auth::resolve_credentials(
+        cli.api_key.as_deref(),
+        cli.api_url.as_deref(),
+        Some(&cli.profile),
+    )?;
+    let api_key = creds.api_key;
+    let api_url = creds.api_url;
 
     // Build SDK client
     let client = Everruns::with_base_url(&api_key, &api_url)?;
@@ -106,7 +154,6 @@ async fn main() -> anyhow::Result<()> {
             commands::agents::run(command, &client, output_format, cli.quiet).await
         }
         Commands::Capabilities { status } => {
-            // Capabilities endpoint not yet in SDK, use direct HTTP
             commands::capabilities::run(&api_url, &api_key, output_format, &status).await
         }
         Commands::Sessions { command } => {
@@ -139,6 +186,10 @@ async fn main() -> anyhow::Result<()> {
                 no_stream,
             )
             .await
+        }
+        // Already handled above
+        Commands::Login { .. } | Commands::Logout | Commands::Status | Commands::Orgs { .. } => {
+            unreachable!()
         }
     }
 }
@@ -429,5 +480,62 @@ mod tests {
     fn test_cli_help_available() {
         // Verify help can be generated without panic
         let _ = Cli::command().render_help();
+    }
+
+    #[test]
+    fn test_cli_parse_login() {
+        let cli = Cli::try_parse_from(["everruns", "login"]).unwrap();
+        if let Commands::Login { token } = cli.command {
+            assert!(!token);
+        } else {
+            panic!("Expected Login command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_login_token() {
+        let cli = Cli::try_parse_from(["everruns", "login", "--token"]).unwrap();
+        if let Commands::Login { token } = cli.command {
+            assert!(token);
+        } else {
+            panic!("Expected Login command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_logout() {
+        let cli = Cli::try_parse_from(["everruns", "logout"]).unwrap();
+        assert!(matches!(cli.command, Commands::Logout));
+    }
+
+    #[test]
+    fn test_cli_parse_status() {
+        let cli = Cli::try_parse_from(["everruns", "status"]).unwrap();
+        assert!(matches!(cli.command, Commands::Status));
+    }
+
+    #[test]
+    fn test_cli_parse_orgs() {
+        let cli = Cli::try_parse_from(["everruns", "orgs"]).unwrap();
+        assert!(matches!(cli.command, Commands::Orgs { command: None }));
+    }
+
+    #[test]
+    fn test_cli_parse_orgs_select() {
+        let cli = Cli::try_parse_from(["everruns", "orgs", "select"]).unwrap();
+        if let Commands::Orgs {
+            command: Some(OrgsCommand::Select),
+        } = cli.command
+        {
+            // ok
+        } else {
+            panic!("Expected Orgs Select command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_profile() {
+        let cli = Cli::try_parse_from(["everruns", "--profile", "staging", "status"]).unwrap();
+        assert_eq!(cli.profile, "staging");
     }
 }

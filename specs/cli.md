@@ -9,12 +9,43 @@
 **Global Flags:**
 - `-o, --output` — Output format: `text` (default), `json`, `yaml`
 - `-q, --quiet` — Suppress non-essential output
+- `--profile <name>` — Credential profile (default: `default`)
 
-**Configuration:**
-- `EVERRUNS_API_KEY` — API authentication token
-- `EVERRUNS_API_URL` — Base URL (default: `https://app.everruns.com/api`)
+**Configuration (precedence order):**
+1. CLI flags (`--api-key`, `--api-url`)
+2. Environment variables (`EVERRUNS_API_KEY`, `EVERRUNS_API_URL`)
+3. Credential file (`~/.config/everruns/credentials.json`)
+
+**Credential File:**
+- Multi-profile support: `{ "profiles": { "default": { "api_url", "api_key", "org_id" } }, "current_profile": "default" }`
+- File permissions: `0600` on Unix
+- Managed by `everruns login` / `everruns logout`
 
 ## Commands
+
+### `everruns login`
+
+Interactive authentication. Uses localhost HTTP callback OAuth flow.
+
+- `login` — Open browser for OAuth login, receive API key via localhost callback
+- `login --token` — Paste API key directly (headless/SSH fallback)
+
+Flow: CLI → `POST /v1/auth/cli/start` → open browser → user logs in → server redirects to `localhost:{port}/callback?code=...` → CLI calls `POST /v1/auth/cli/exchange` → receives API key + user info + orgs → interactive org selection → stores in credential file.
+
+### `everruns logout`
+
+Remove stored credentials for current profile.
+
+### `everruns status`
+
+Show current user, API URL, org, and masked API key.
+
+### `everruns orgs`
+
+Organization management.
+
+- `orgs` — List organizations (marks current with `*`)
+- `orgs select` — Interactive org picker
 
 ### `everruns agents`
 

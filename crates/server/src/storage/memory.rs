@@ -53,6 +53,7 @@ pub struct InMemoryDatabase {
     organization_members: RwLock<HashMap<(i64, Uuid), OrganizationMemberRow>>,
     users: RwLock<HashMap<Uuid, UserRow>>,
     api_keys: RwLock<HashMap<Uuid, ApiKeyRow>>,
+    cli_auth_sessions: RwLock<HashMap<Uuid, CliAuthSessionRow>>,
     refresh_tokens: RwLock<HashMap<Uuid, RefreshTokenRow>>,
     agents: RwLock<HashMap<AgentId, AgentRow>>,
     sessions: RwLock<HashMap<SessionId, SessionRow>>,
@@ -115,6 +116,7 @@ impl Default for InMemoryDatabase {
             organization_members: RwLock::new(HashMap::new()),
             users: RwLock::new(HashMap::new()),
             api_keys: RwLock::new(HashMap::new()),
+            cli_auth_sessions: RwLock::new(HashMap::new()),
             refresh_tokens: RwLock::new(HashMap::new()),
             agents: RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
@@ -333,6 +335,7 @@ impl InMemoryDatabase {
             expires_at: input.expires_at,
             last_used_at: None,
             created_at: now,
+            metadata: input.metadata,
         };
         self.api_keys.write().insert(id, row.clone());
         Ok(row)
@@ -374,6 +377,75 @@ impl InMemoryDatabase {
             return Ok(true);
         }
         Ok(false)
+    }
+
+    // ============================================
+    // CLI Auth Sessions
+    // ============================================
+
+    pub async fn create_cli_auth_session(
+        &self,
+        input: CreateCliAuthSessionRow,
+    ) -> Result<CliAuthSessionRow> {
+        let now = Self::now();
+        let id = Uuid::now_v7();
+        let row = CliAuthSessionRow {
+            id,
+            state: input.state,
+            exchange_code: input.exchange_code,
+            user_id: None,
+            redirect_port: input.redirect_port,
+            completed: false,
+            expires_at: input.expires_at,
+            created_at: now,
+        };
+        self.cli_auth_sessions.write().insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_cli_auth_session_by_state(
+        &self,
+        state: &str,
+    ) -> Result<Option<CliAuthSessionRow>> {
+        let now = Self::now();
+        Ok(self
+            .cli_auth_sessions
+            .read()
+            .values()
+            .find(|s| s.state == state && s.expires_at > now)
+            .cloned())
+    }
+
+    pub async fn get_cli_auth_session_by_exchange_code(
+        &self,
+        code: &str,
+    ) -> Result<Option<CliAuthSessionRow>> {
+        let now = Self::now();
+        Ok(self
+            .cli_auth_sessions
+            .read()
+            .values()
+            .find(|s| s.exchange_code == code && s.expires_at > now)
+            .cloned())
+    }
+
+    pub async fn complete_cli_auth_session(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
+        if let Some(session) = self.cli_auth_sessions.write().get_mut(&id)
+            && !session.completed
+        {
+            session.user_id = Some(user_id);
+            session.completed = true;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    pub async fn delete_expired_cli_auth_sessions(&self) -> Result<u64> {
+        let now = Self::now();
+        let mut sessions = self.cli_auth_sessions.write();
+        let before = sessions.len();
+        sessions.retain(|_, s| s.expires_at > now);
+        Ok((before - sessions.len()) as u64)
     }
 
     // ============================================

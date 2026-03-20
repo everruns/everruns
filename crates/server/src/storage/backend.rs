@@ -148,6 +148,39 @@ impl StorageBackend {
     }
 
     // ============================================
+    // CLI Auth Sessions
+    // ============================================
+
+    pub async fn create_cli_auth_session(
+        &self,
+        input: CreateCliAuthSessionRow,
+    ) -> Result<CliAuthSessionRow> {
+        dispatch!(self, create_cli_auth_session, input)
+    }
+
+    pub async fn get_cli_auth_session_by_state(
+        &self,
+        state: &str,
+    ) -> Result<Option<CliAuthSessionRow>> {
+        dispatch!(self, get_cli_auth_session_by_state, state)
+    }
+
+    pub async fn get_cli_auth_session_by_exchange_code(
+        &self,
+        code: &str,
+    ) -> Result<Option<CliAuthSessionRow>> {
+        dispatch!(self, get_cli_auth_session_by_exchange_code, code)
+    }
+
+    pub async fn complete_cli_auth_session(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
+        dispatch!(self, complete_cli_auth_session, id, user_id)
+    }
+
+    pub async fn delete_expired_cli_auth_sessions(&self) -> Result<u64> {
+        dispatch!(self, delete_expired_cli_auth_sessions)
+    }
+
+    // ============================================
     // Refresh Tokens
     // ============================================
 
