@@ -9,13 +9,9 @@
 // while preserving the different deployment models (in-process vs external).
 
 use anyhow::Result;
+use everruns_core::ActInput;
 use everruns_core::atoms::{ActAtom, Atom, AtomContext, InputAtom, ReasonAtom};
-use everruns_core::events::{
-    EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
-    TurnCompletedData, TurnFailedData, TurnStartedData,
-};
 use everruns_core::typed_id::{ExecId, TurnId};
-use everruns_core::{ActInput, AgentStatus, HarnessStatus, Message};
 use everruns_durable::{
     ActivityOptions, ClaimedTask, WorkerInfo, WorkflowEvent, WorkflowEventStore, WorkflowStatus,
     append_event, record_activity_completed, record_activity_failed, record_activity_started,
@@ -29,6 +25,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::durable_runner::DurableTurnInput;
+use crate::session_lifecycle::SessionLifecycle;
 use crate::worker_adapters::{
     AdapterAgentStore, AdapterEventEmitter, AdapterHarnessStore, AdapterImageResolver,
     AdapterLlmProviderStore, AdapterMessageRetriever, AdapterSessionFileStore,
@@ -348,116 +345,24 @@ pub struct ShutdownHandle {
     tx: watch::Sender<bool>,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum DependencyBlocker {
-    HarnessArchived,
-    HarnessDeleted,
-    AgentArchived,
-    AgentDeleted,
-}
-
-impl DependencyBlocker {
-    fn message(self) -> &'static str {
-        match self {
-            DependencyBlocker::HarnessArchived => {
-                "Execution stopped because the assigned harness was archived."
-            }
-            DependencyBlocker::HarnessDeleted => {
-                "Execution stopped because the assigned harness was deleted."
-            }
-            DependencyBlocker::AgentArchived => {
-                "Execution stopped because the assigned agent was archived."
-            }
-            DependencyBlocker::AgentDeleted => {
-                "Execution stopped because the assigned agent was deleted."
-            }
-        }
-    }
-}
-
+/// Helper: detect dependency blockers using shared core logic.
 async fn detect_dependency_blocker<A: WorkerAdapters>(
     adapters: &A,
     org_id: i64,
     harness_id: everruns_core::HarnessId,
     agent_id: Option<everruns_core::AgentId>,
-) -> Result<Option<DependencyBlocker>> {
-    let harness = adapters.get_harness(org_id, harness_id.uuid()).await?;
-    match harness {
-        Some(harness) => match harness.status {
-            HarnessStatus::Active => {}
-            HarnessStatus::Archived => return Ok(Some(DependencyBlocker::HarnessArchived)),
-            HarnessStatus::Deleted => return Ok(Some(DependencyBlocker::HarnessDeleted)),
-        },
-        None => return Ok(Some(DependencyBlocker::HarnessDeleted)),
-    }
-
-    if let Some(agent_id) = agent_id {
-        let agent = adapters.get_agent(org_id, agent_id.uuid()).await?;
-        match agent {
-            Some(agent) => match agent.status {
-                AgentStatus::Active => {}
-                AgentStatus::Archived => return Ok(Some(DependencyBlocker::AgentArchived)),
-                AgentStatus::Deleted => return Ok(Some(DependencyBlocker::AgentDeleted)),
-            },
-            None => return Ok(Some(DependencyBlocker::AgentDeleted)),
-        }
-    }
-
-    Ok(None)
-}
-
-async fn emit_dependency_blocked<A: WorkerAdapters>(
-    adapters: &A,
-    org_id: i64,
-    context: &AtomContext,
-    blocker: DependencyBlocker,
-) {
-    let session_id = context.session_id;
-    let turn_id = context.turn_id;
-    let input_message_id = context.input_message_id;
-    let message = blocker.message();
-
-    let output_event = EventRequest::new(
-        session_id,
-        EventContext::turn(turn_id, input_message_id),
-        OutputMessageCompletedData::new(Message::assistant(message)),
-    );
-    if let Err(e) = adapters.emit_event(output_event).await {
-        warn!(error = %e, "Failed to emit dependency blocked message");
-    }
-
-    if let Err(e) = adapters
-        .set_session_status(org_id, session_id.uuid(), "idle")
-        .await
-    {
-        warn!(error = %e, "Failed to set session status to idle");
-    }
-
-    let failed_event = EventRequest::new(
-        session_id,
-        EventContext::turn(turn_id, input_message_id),
-        TurnFailedData {
-            turn_id,
-            error: message.to_string(),
-            error_code: Some("dependency_unavailable".to_string()),
-        },
-    );
-    if let Err(e) = adapters.emit_event(failed_event).await {
-        warn!(error = %e, "Failed to emit dependency turn.failed");
-    }
-
-    let idled_event = EventRequest::new(
-        session_id,
-        EventContext::turn(turn_id, input_message_id),
-        SessionIdledData {
-            turn_id,
-            iterations: None,
-            usage: None,
-        },
-    );
-    if let Err(e) = adapters.emit_event(idled_event).await {
-        warn!(error = %e, "Failed to emit dependency session.idled");
-    }
+) -> Result<Option<everruns_core::DependencyBlocker>> {
+    let harness_store = AdapterHarnessStore::new(adapters.clone(), org_id);
+    let agent_store = AdapterAgentStore::new(adapters.clone(), org_id);
+    Ok(
+        everruns_core::detect_dependency_blocker(
+            &harness_store,
+            &agent_store,
+            harness_id,
+            agent_id,
+        )
+        .await?,
+    )
 }
 
 impl ShutdownHandle {
@@ -608,56 +513,21 @@ where
                         "Task completed successfully"
                     );
 
-                    // After act activity: if tools need a connection, emit
-                    // tool.call_requested and set session to waiting_for_tool_results.
-                    // This must happen before schedule_next_activity (which completes
-                    // the workflow) because we need adapter access for events/status.
+                    // After act activity: if ActAtom signaled waiting_for_tool_results
+                    // (connection setup, client-side tools, etc.), set session status.
+                    // Event emission is handled by ActAtom's hooks.
                     if task.activity_type == "act"
                         && let Some(ref ti) = turn_input_opt
                     {
                         let act_result: Option<everruns_core::ActResult> =
                             serde_json::from_value(output.clone()).ok();
-                        let conn_providers: Vec<String> = act_result
+                        if act_result
                             .as_ref()
-                            .map(|r| r.connection_required.clone())
-                            .unwrap_or_default();
-
-                        if !conn_providers.is_empty() {
-                            // Build synthetic setup_connection tool calls
-                            let synthetic_tool_calls: Vec<everruns_core::ToolCall> = conn_providers
-                                .iter()
-                                .map(|provider| everruns_core::ToolCall {
-                                    id: format!("setup_conn_{}", Uuid::now_v7()),
-                                    name: "setup_connection".to_string(),
-                                    arguments: serde_json::json!({ "provider": provider }),
-                                })
-                                .collect();
-
-                            let turn_id = ti.turn_id.unwrap_or_default();
-                            let requested_event = EventRequest::new(
-                                ti.session_id,
-                                EventContext::turn(turn_id, ti.input_message_id),
-                                everruns_core::ToolCallRequestedData {
-                                    tool_calls: synthetic_tool_calls,
-                                    tool_summaries: vec![],
-                                    headline: None,
-                                },
-                            );
-                            if let Err(e) = adapters.emit_event(requested_event).await {
-                                warn!(error = %e, "Failed to emit tool.call_requested event for connection setup");
-                            }
-
-                            // Set session status to waiting_for_tool_results
-                            if let Err(e) = adapters
-                                .set_session_status(
-                                    ti.org_id,
-                                    ti.session_id.uuid(),
-                                    "waiting_for_tool_results",
-                                )
-                                .await
-                            {
-                                warn!(error = %e, "Failed to set session status to waiting_for_tool_results");
-                            }
+                            .is_some_and(|r| r.waiting_for_tool_results)
+                        {
+                            let lifecycle =
+                                SessionLifecycle::new(adapters.clone(), ti.org_id, ti.session_id);
+                            lifecycle.waiting_for_tool_results().await;
                         }
                     }
 
@@ -722,40 +592,11 @@ async fn execute_input_activity<A: WorkerAdapters>(
         exec_id: ExecId::new(),
     };
 
-    // Set session status to "active"
-    if let Err(e) = adapters
-        .set_session_status(input.org_id, input.session_id.uuid(), "active")
-        .await
-    {
-        warn!(error = %e, "Failed to set session status to active");
-    }
-
-    // Emit session.activated event
-    let activated_event = EventRequest::new(
-        input.session_id,
-        EventContext::turn(context.turn_id, input.input_message_id),
-        SessionActivatedData {
-            turn_id: context.turn_id,
-            input_message_id: input.input_message_id,
-        },
-    );
-    if let Err(e) = adapters.emit_event(activated_event).await {
-        warn!(error = %e, "Failed to emit session.activated event");
-    }
-
-    // Emit turn.started event
-    let turn_started_event = EventRequest::new(
-        input.session_id,
-        EventContext::turn(context.turn_id, input.input_message_id),
-        TurnStartedData {
-            turn_id: context.turn_id,
-            input_message_id: input.input_message_id,
-            input_content: None, // Content will be extracted by Braintrust listener
-        },
-    );
-    if let Err(e) = adapters.emit_event(turn_started_event).await {
-        warn!(error = %e, "Failed to emit turn.started event");
-    }
+    // Turn starting: set active, emit session.activated + turn.started
+    let lifecycle = SessionLifecycle::new(adapters.clone(), input.org_id, input.session_id);
+    lifecycle
+        .turn_started(context.turn_id, input.input_message_id, None)
+        .await;
 
     // Execute InputAtom
     let message_retriever = AdapterMessageRetriever::new(adapters.clone());
@@ -800,10 +641,14 @@ async fn execute_reason_activity<A: WorkerAdapters>(
     let session_id = input.session_id;
     let input_message_id = input.input_message_id;
 
+    let lifecycle = SessionLifecycle::new(adapters.clone(), input.org_id, session_id);
+
     if let Some(blocker) =
         detect_dependency_blocker(adapters, input.org_id, input.harness_id, input.agent_id).await?
     {
-        emit_dependency_blocked(adapters, input.org_id, &context, blocker).await;
+        lifecycle
+            .dependency_blocked(turn_id, input_message_id, blocker)
+            .await;
         return Ok(serde_json::to_value(everruns_core::ReasonResult {
             success: false,
             text: blocker.message().to_string(),
@@ -857,108 +702,29 @@ async fn execute_reason_activity<A: WorkerAdapters>(
 
     let result = atom.execute(reason_input).await?;
 
-    // Check for client-side tool calls
-    let has_client_side_tools = result.has_tool_calls
-        && result.success
-        && result.tool_calls.iter().any(|tc| {
-            result
-                .tool_definitions
-                .iter()
-                .find(|td| td.name() == tc.name)
-                .map(|td| matches!(td, everruns_core::ToolDefinition::ClientSide(_)))
-                .unwrap_or(false)
-        });
-
-    if has_client_side_tools {
-        // Separate client-side tool calls
-        let client_tool_calls: Vec<_> = result
-            .tool_calls
-            .iter()
-            .filter(|tc| {
-                result
-                    .tool_definitions
-                    .iter()
-                    .find(|td| td.name() == tc.name)
-                    .map(|td| matches!(td, everruns_core::ToolDefinition::ClientSide(_)))
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        // Emit tool.call_requested event with full ToolCall (client needs arguments)
-        let requested_event = EventRequest::new(
-            session_id,
-            EventContext::turn(turn_id, input_message_id),
-            everruns_core::ToolCallRequestedData::with_definitions(
-                &client_tool_calls.into_iter().cloned().collect::<Vec<_>>(),
-                &result.tool_definitions,
-            ),
-        );
-        if let Err(e) = adapters.emit_event(requested_event).await {
-            warn!(error = %e, "Failed to emit tool.call_requested event");
-        }
-
-        // Set session status to waiting_for_tool_results
-        if let Err(e) = adapters
-            .set_session_status(input.org_id, session_id.uuid(), "waiting_for_tool_results")
-            .await
-        {
-            warn!(error = %e, "Failed to set session status to waiting_for_tool_results");
-        }
-    }
-
-    // If turn is complete (no tool calls or failure), set session to idle
+    // If turn is complete (no tool calls or failure), emit lifecycle events.
+    // Client-side tool handling is now done by ActAtom's hooks.
     let turn_complete = !result.has_tool_calls || !result.success;
     if turn_complete {
-        if let Err(e) = adapters
-            .set_session_status(input.org_id, session_id.uuid(), "idle")
-            .await
-        {
-            warn!(error = %e, "Failed to set session status to idle");
-        }
-
-        // Emit turn.failed or turn.completed
         if !result.success {
-            let turn_failed_event = EventRequest::new(
-                session_id,
-                EventContext::turn(turn_id, input_message_id),
-                TurnFailedData {
+            lifecycle
+                .turn_failed(
                     turn_id,
-                    error: "An error occurred while processing your request.".to_string(),
-                    error_code: Some("llm_error".to_string()),
-                },
-            );
-            if let Err(e) = adapters.emit_event(turn_failed_event).await {
-                warn!(error = %e, "Failed to emit turn.failed event");
-            }
+                    input_message_id,
+                    "An error occurred while processing your request.",
+                    Some("llm_error"),
+                )
+                .await;
         } else {
-            let turn_completed_event = EventRequest::new(
-                session_id,
-                EventContext::turn(turn_id, input_message_id),
-                TurnCompletedData {
+            lifecycle
+                .turn_completed(
                     turn_id,
-                    iterations: input.iteration,
-                    duration_ms: None,
-                    usage: result.usage.clone(),
-                    input_content: None, // Passed through from turn.started by Braintrust
-                },
-            );
-            if let Err(e) = adapters.emit_event(turn_completed_event).await {
-                warn!(error = %e, "Failed to emit turn.completed event");
-            }
-        }
-
-        // Emit session.idled event
-        let idled_event = EventRequest::new(
-            session_id,
-            EventContext::turn(turn_id, input_message_id),
-            SessionIdledData {
-                turn_id,
-                iterations: Some(input.iteration),
-                usage: result.usage.clone(),
-            },
-        );
-        if let Err(e) = adapters.emit_event(idled_event).await {
-            warn!(error = %e, "Failed to emit session.idled event");
+                    input_message_id,
+                    input.iteration,
+                    result.usage.clone(),
+                    None,
+                )
+                .await;
         }
     }
 
@@ -984,18 +750,24 @@ async fn execute_act_activity<A: WorkerAdapters>(
     if let Some(blocker) =
         detect_dependency_blocker(adapters, org_id, input.harness_id, input.agent_id).await?
     {
-        emit_dependency_blocked(adapters, org_id, &input.context, blocker).await;
-        let mut output = serde_json::to_value(everruns_core::ActResult {
+        let lifecycle = SessionLifecycle::new(adapters.clone(), org_id, input.context.session_id);
+        lifecycle
+            .dependency_blocked(
+                input.context.turn_id,
+                input.context.input_message_id,
+                blocker,
+            )
+            .await;
+        let output = serde_json::to_value(everruns_core::ActResult {
             results: vec![],
             completed: true,
             success_count: 0,
             error_count: 1,
-            connection_required: vec![],
+            waiting_for_tool_results: false,
             blocked: true,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
         })?;
-        if let serde_json::Value::Object(ref mut map) = output {
-            map.insert("blocked".to_string(), serde_json::Value::Bool(true));
-        }
         return Ok(output);
     }
 
@@ -1097,99 +869,56 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
             debug!(workflow_id = %workflow_id, turn_id = ?turn_id, "Scheduled reason activity");
         }
         "reason" => {
-            // Check if there are tool calls
             let reason_result: everruns_core::ReasonResult = serde_json::from_value(output.clone())
                 .map_err(|e| anyhow::anyhow!("Failed to parse ReasonResult: {}", e))?;
 
-            // Carry response_id forward for next reason iteration
             let response_id = reason_result.response_id.clone();
 
             if reason_result.has_tool_calls && reason_result.success {
                 let turn_id = input.turn_id.unwrap_or_default();
 
-                // Separate server-side and client-side tool calls
-                let (server_tool_calls, client_tool_calls): (Vec<_>, Vec<_>) =
-                    reason_result.tool_calls.into_iter().partition(|tc| {
-                        reason_result
-                            .tool_definitions
-                            .iter()
-                            .find(|td| td.name() == tc.name)
-                            .map(|td| !matches!(td, everruns_core::ToolDefinition::ClientSide(_)))
-                            .unwrap_or(true) // unknown tools go to server (will error)
-                    });
-
-                let has_client_tools = !client_tool_calls.is_empty();
-                let has_server_tools = !server_tool_calls.is_empty();
-
-                if has_server_tools {
-                    // Schedule act activity for server-side tools
-                    // Client-side tools will be handled after act completes
-                    let act_input = ActInput {
-                        org_id: Some(input.org_id),
-                        context: AtomContext {
-                            session_id: input.session_id,
-                            turn_id,
-                            input_message_id: input.input_message_id,
-                            exec_id: ExecId::new(),
-                        },
-                        harness_id: input.harness_id,
-                        agent_id: input.agent_id,
-                        tool_calls: server_tool_calls,
-                        tool_definitions: reason_result.tool_definitions.clone(),
-                    };
-                    let mut act_input_json = serde_json::to_value(&act_input)?;
-                    // Carry response_id and iteration through act task for next reason iteration
-                    if let Some(rid) = &response_id {
-                        act_input_json["previous_response_id"] = serde_json::json!(rid);
-                    }
-                    act_input_json["iteration"] = serde_json::json!(input.iteration);
-                    let activity_id = format!("act_{}", Uuid::now_v7());
-
-                    let task = TaskDefinition {
-                        workflow_id: Some(workflow_id),
-                        activity_id: activity_id.clone(),
-                        activity_type: "act".to_string(),
-                        input: act_input_json.clone(),
-                        options: Default::default(),
-                    };
-                    store
-                        .enqueue_task(task)
-                        .await
-                        .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
-
-                    let scheduled_event = WorkflowEvent::ActivityScheduled {
-                        activity_id,
-                        activity_type: "act".to_string(),
-                        input: act_input_json,
-                        options: ActivityOptions::default(),
-                    };
-                    let _ = append_event(store.as_ref(), workflow_id, scheduled_event).await;
-
-                    debug!(
-                        workflow_id = %workflow_id,
-                        server_tools = has_server_tools,
-                        client_tools = has_client_tools,
-                        "Scheduled act activity for server-side tools"
-                    );
+                // Send ALL tool calls to ActAtom — it handles client/server partitioning internally
+                let act_input = ActInput {
+                    org_id: Some(input.org_id),
+                    context: AtomContext {
+                        session_id: input.session_id,
+                        turn_id,
+                        input_message_id: input.input_message_id,
+                        exec_id: ExecId::new(),
+                    },
+                    harness_id: input.harness_id,
+                    agent_id: input.agent_id,
+                    tool_calls: reason_result.tool_calls,
+                    tool_definitions: reason_result.tool_definitions,
+                };
+                let mut act_input_json = serde_json::to_value(&act_input)?;
+                if let Some(rid) = &response_id {
+                    act_input_json["previous_response_id"] = serde_json::json!(rid);
                 }
+                act_input_json["iteration"] = serde_json::json!(input.iteration);
+                let activity_id = format!("act_{}", Uuid::now_v7());
 
-                if has_client_tools && !has_server_tools {
-                    // Only client-side tools, no server tools
-                    // Complete workflow - it will be resumed by tool-results endpoint
-                    // The tool.call_requested event was already emitted in execute_reason_activity
-                    record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
+                let task = TaskDefinition {
+                    workflow_id: Some(workflow_id),
+                    activity_id: activity_id.clone(),
+                    activity_type: "act".to_string(),
+                    input: act_input_json.clone(),
+                    options: Default::default(),
+                };
+                store
+                    .enqueue_task(task)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
 
-                    store
-                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
-                        .await
-                        .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+                let scheduled_event = WorkflowEvent::ActivityScheduled {
+                    activity_id,
+                    activity_type: "act".to_string(),
+                    input: act_input_json,
+                    options: ActivityOptions::default(),
+                };
+                let _ = append_event(store.as_ref(), workflow_id, scheduled_event).await;
 
-                    info!(
-                        workflow_id = %workflow_id,
-                        client_tool_count = client_tool_calls.len(),
-                        "Workflow completed - waiting for client tool results"
-                    );
-                }
+                debug!(workflow_id = %workflow_id, "Scheduled act activity");
             } else {
                 // Workflow complete
                 record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
@@ -1216,16 +945,14 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                 info!(workflow_id = %workflow_id, "Workflow completed after dependency block");
                 return Ok(());
             }
-            // Check if any tools require a user connection setup.
-            // If so, complete the workflow — the event emission and session status
-            // change were already handled by the caller (process_claimed_task).
-            let act_result: Option<everruns_core::ActResult> =
-                serde_json::from_value(output.clone()).ok();
-            let has_connection_required = act_result
-                .as_ref()
-                .is_some_and(|r| !r.connection_required.is_empty());
+            // Check if act needs external input (connection setup, client-side tools).
+            // ActAtom sets waiting_for_tool_results via hooks; worker just checks the flag.
+            let waiting = output
+                .get("waiting_for_tool_results")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
 
-            if has_connection_required {
+            if waiting {
                 // Complete workflow — it will be resumed by tool-results endpoint
                 record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
                 store
@@ -1235,7 +962,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
 
                 info!(
                     workflow_id = %workflow_id,
-                    "Workflow completed — waiting for user to set up connection"
+                    "Workflow completed — waiting for tool results"
                 );
             } else {
                 // Normal flow: schedule another reason activity
@@ -1281,9 +1008,6 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::tool_types::{
-        BuiltinTool, ClientSideTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy,
-    };
 
     #[test]
     fn test_config_default() {
@@ -1303,304 +1027,5 @@ mod tests {
     fn test_config_production() {
         let config = TaskWorkerConfig::production();
         assert_eq!(config.max_concurrent_tasks, 1000);
-    }
-
-    // =========================================================================
-    // Client-Side Tool Partition Logic Tests
-    //
-    // Tests the partition logic used in schedule_next_activity to separate
-    // server-side and client-side tool calls from a ReasonResult.
-    // =========================================================================
-
-    /// Helper: partition tool calls into (server, client) using the same logic
-    /// as schedule_next_activity in the worker.
-    fn partition_tool_calls(
-        tool_calls: Vec<ToolCall>,
-        tool_definitions: &[ToolDefinition],
-    ) -> (Vec<ToolCall>, Vec<ToolCall>) {
-        tool_calls.into_iter().partition(|tc| {
-            tool_definitions
-                .iter()
-                .find(|td| td.name() == tc.name)
-                .map(|td| !matches!(td, ToolDefinition::ClientSide(_)))
-                .unwrap_or(true) // unknown tools go to server (will error)
-        })
-    }
-
-    #[test]
-    fn test_partition_all_server_tools() {
-        let tool_definitions = vec![ToolDefinition::Builtin(BuiltinTool {
-            name: "get_weather".to_string(),
-            display_name: None,
-            description: "Get weather".to_string(),
-            parameters: serde_json::json!({"type": "object"}),
-            policy: ToolPolicy::Auto,
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-        })];
-
-        let tool_calls = vec![ToolCall {
-            id: "call_1".to_string(),
-            name: "get_weather".to_string(),
-            arguments: serde_json::json!({"city": "NYC"}),
-        }];
-
-        let (server, client) = partition_tool_calls(tool_calls, &tool_definitions);
-        assert_eq!(server.len(), 1);
-        assert_eq!(client.len(), 0);
-        assert_eq!(server[0].id, "call_1");
-    }
-
-    #[test]
-    fn test_partition_all_client_tools() {
-        let tool_definitions = vec![ToolDefinition::ClientSide(ClientSideTool {
-            name: "browser_click".to_string(),
-            display_name: None,
-            description: "Click element".to_string(),
-            parameters: serde_json::json!({"type": "object"}),
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-        })];
-
-        let tool_calls = vec![ToolCall {
-            id: "call_1".to_string(),
-            name: "browser_click".to_string(),
-            arguments: serde_json::json!({"selector": "#btn"}),
-        }];
-
-        let (server, client) = partition_tool_calls(tool_calls, &tool_definitions);
-        assert_eq!(server.len(), 0);
-        assert_eq!(client.len(), 1);
-        assert_eq!(client[0].id, "call_1");
-    }
-
-    #[test]
-    fn test_partition_mixed_tools() {
-        let tool_definitions = vec![
-            ToolDefinition::Builtin(BuiltinTool {
-                name: "get_time".to_string(),
-                display_name: None,
-                description: "Get current time".to_string(),
-                parameters: serde_json::json!({"type": "object"}),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-            }),
-            ToolDefinition::ClientSide(ClientSideTool {
-                name: "browser_click".to_string(),
-                display_name: None,
-                description: "Click element".to_string(),
-                parameters: serde_json::json!({"type": "object"}),
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-            }),
-            ToolDefinition::ClientSide(ClientSideTool {
-                name: "browser_type".to_string(),
-                display_name: None,
-                description: "Type text".to_string(),
-                parameters: serde_json::json!({"type": "object"}),
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-            }),
-            ToolDefinition::Builtin(BuiltinTool {
-                name: "read_file".to_string(),
-                display_name: None,
-                description: "Read a file".to_string(),
-                parameters: serde_json::json!({"type": "object"}),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-            }),
-        ];
-
-        let tool_calls = vec![
-            ToolCall {
-                id: "call_1".to_string(),
-                name: "get_time".to_string(),
-                arguments: serde_json::json!({}),
-            },
-            ToolCall {
-                id: "call_2".to_string(),
-                name: "browser_click".to_string(),
-                arguments: serde_json::json!({"selector": "#submit"}),
-            },
-            ToolCall {
-                id: "call_3".to_string(),
-                name: "read_file".to_string(),
-                arguments: serde_json::json!({"path": "/test.txt"}),
-            },
-            ToolCall {
-                id: "call_4".to_string(),
-                name: "browser_type".to_string(),
-                arguments: serde_json::json!({"selector": "#input", "text": "hello"}),
-            },
-        ];
-
-        let (server, client) = partition_tool_calls(tool_calls, &tool_definitions);
-
-        assert_eq!(server.len(), 2);
-        assert_eq!(client.len(), 2);
-
-        let server_ids: Vec<&str> = server.iter().map(|tc| tc.id.as_str()).collect();
-        let client_ids: Vec<&str> = client.iter().map(|tc| tc.id.as_str()).collect();
-
-        assert!(server_ids.contains(&"call_1")); // get_time -> server
-        assert!(server_ids.contains(&"call_3")); // read_file -> server
-        assert!(client_ids.contains(&"call_2")); // browser_click -> client
-        assert!(client_ids.contains(&"call_4")); // browser_type -> client
-    }
-
-    #[test]
-    fn test_partition_unknown_tool_goes_to_server() {
-        // Unknown tools (not in definitions) default to server-side
-        let tool_definitions = vec![ToolDefinition::ClientSide(ClientSideTool {
-            name: "known_client".to_string(),
-            display_name: None,
-            description: "Known client tool".to_string(),
-            parameters: serde_json::json!({"type": "object"}),
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-        })];
-
-        let tool_calls = vec![
-            ToolCall {
-                id: "call_1".to_string(),
-                name: "unknown_tool".to_string(),
-                arguments: serde_json::json!({}),
-            },
-            ToolCall {
-                id: "call_2".to_string(),
-                name: "known_client".to_string(),
-                arguments: serde_json::json!({}),
-            },
-        ];
-
-        let (server, client) = partition_tool_calls(tool_calls, &tool_definitions);
-
-        assert_eq!(server.len(), 1);
-        assert_eq!(server[0].name, "unknown_tool");
-        assert_eq!(client.len(), 1);
-        assert_eq!(client[0].name, "known_client");
-    }
-
-    #[test]
-    fn test_partition_empty_tool_calls() {
-        let tool_definitions = vec![ToolDefinition::ClientSide(ClientSideTool {
-            name: "some_tool".to_string(),
-            display_name: None,
-            description: "A tool".to_string(),
-            parameters: serde_json::json!({"type": "object"}),
-            category: None,
-            deferrable: DeferrablePolicy::default(),
-        })];
-
-        let tool_calls: Vec<ToolCall> = vec![];
-        let (server, client) = partition_tool_calls(tool_calls, &tool_definitions);
-        assert!(server.is_empty());
-        assert!(client.is_empty());
-    }
-
-    #[test]
-    fn test_partition_with_reason_result() {
-        // Full integration: create a ReasonResult and partition its tool calls
-        let reason_result = ReasonResult {
-            success: true,
-            text: "I'll use both tools.".to_string(),
-            has_tool_calls: true,
-            tool_calls: vec![
-                ToolCall {
-                    id: "call_srv".to_string(),
-                    name: "get_current_time".to_string(),
-                    arguments: serde_json::json!({}),
-                },
-                ToolCall {
-                    id: "call_cli".to_string(),
-                    name: "deploy_app".to_string(),
-                    arguments: serde_json::json!({"env": "staging"}),
-                },
-            ],
-            tool_definitions: vec![
-                ToolDefinition::Builtin(BuiltinTool {
-                    name: "get_current_time".to_string(),
-                    display_name: None,
-                    description: "Get current time".to_string(),
-                    parameters: serde_json::json!({"type": "object"}),
-                    policy: ToolPolicy::Auto,
-                    category: None,
-                    deferrable: DeferrablePolicy::default(),
-                }),
-                ToolDefinition::ClientSide(ClientSideTool {
-                    name: "deploy_app".to_string(),
-                    display_name: None,
-                    description: "Deploy application".to_string(),
-                    parameters: serde_json::json!({"type": "object"}),
-                    category: None,
-                    deferrable: DeferrablePolicy::default(),
-                }),
-            ],
-            max_iterations: 100,
-            error: None,
-            usage: None,
-            response_id: None,
-        };
-
-        // Use the same partition logic as the worker
-        let (server_tool_calls, client_tool_calls): (Vec<_>, Vec<_>) =
-            reason_result.tool_calls.into_iter().partition(|tc| {
-                reason_result
-                    .tool_definitions
-                    .iter()
-                    .find(|td| td.name() == tc.name)
-                    .map(|td| !matches!(td, ToolDefinition::ClientSide(_)))
-                    .unwrap_or(true)
-            });
-
-        assert_eq!(server_tool_calls.len(), 1);
-        assert_eq!(server_tool_calls[0].name, "get_current_time");
-        assert_eq!(client_tool_calls.len(), 1);
-        assert_eq!(client_tool_calls[0].name, "deploy_app");
-    }
-
-    #[test]
-    fn test_partition_requires_approval_stays_server_side() {
-        // Tools with RequiresApproval policy are still server-side
-        let tool_definitions = vec![
-            ToolDefinition::Builtin(BuiltinTool {
-                name: "delete_file".to_string(),
-                display_name: None,
-                description: "Delete a file".to_string(),
-                parameters: serde_json::json!({"type": "object"}),
-                policy: ToolPolicy::RequiresApproval,
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-            }),
-            ToolDefinition::ClientSide(ClientSideTool {
-                name: "browser_click".to_string(),
-                display_name: None,
-                description: "Click element".to_string(),
-                parameters: serde_json::json!({"type": "object"}),
-                category: None,
-                deferrable: DeferrablePolicy::default(),
-            }),
-        ];
-
-        let tool_calls = vec![
-            ToolCall {
-                id: "call_1".to_string(),
-                name: "delete_file".to_string(),
-                arguments: serde_json::json!({}),
-            },
-            ToolCall {
-                id: "call_2".to_string(),
-                name: "browser_click".to_string(),
-                arguments: serde_json::json!({}),
-            },
-        ];
-
-        let (server, client) = partition_tool_calls(tool_calls, &tool_definitions);
-        assert_eq!(server.len(), 1);
-        assert_eq!(server[0].name, "delete_file"); // RequiresApproval -> server
-        assert_eq!(client.len(), 1);
-        assert_eq!(client[0].name, "browser_click"); // ClientSide -> client
     }
 }

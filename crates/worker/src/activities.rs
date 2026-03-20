@@ -16,8 +16,8 @@ use anyhow::{Context, Result};
 use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
 use everruns_core::capabilities::{SystemPromptContext, collect_capabilities, is_mcp_capability};
-use everruns_core::traits::{AgentStore, HarnessStore};
-use everruns_core::{AgentStatus, HarnessStatus, Message, PlatformDefinition};
+use everruns_core::traits::AgentStore;
+use everruns_core::{Message, PlatformDefinition};
 use std::sync::Arc;
 
 use crate::grpc_adapters::{
@@ -32,69 +32,26 @@ pub use everruns_core::atoms::{
     ActInput, ActResult, InputAtomInput, InputAtomResult, ReasonInput, ReasonResult, ToolCallResult,
 };
 
-#[derive(Debug, Clone, Copy)]
-enum DependencyBlocker {
-    HarnessArchived,
-    HarnessDeleted,
-    AgentArchived,
-    AgentDeleted,
-}
-
-impl DependencyBlocker {
-    fn message(self) -> &'static str {
-        match self {
-            DependencyBlocker::HarnessArchived => {
-                "Execution stopped because the assigned harness was archived."
-            }
-            DependencyBlocker::HarnessDeleted => {
-                "Execution stopped because the assigned harness was deleted."
-            }
-            DependencyBlocker::AgentArchived => {
-                "Execution stopped because the assigned agent was archived."
-            }
-            DependencyBlocker::AgentDeleted => {
-                "Execution stopped because the assigned agent was deleted."
-            }
-        }
-    }
-}
-
+/// Thin wrapper: detect dependency blockers using core's shared logic with gRPC adapters.
 async fn detect_dependency_blocker(
     grpc_client: &GrpcClient,
     org_id: i64,
     harness_id: everruns_core::HarnessId,
     agent_id: Option<everruns_core::AgentId>,
-) -> Result<Option<DependencyBlocker>> {
+) -> Result<Option<everruns_core::DependencyBlocker>> {
     let harness_store = GrpcHarnessStore::new(grpc_client.clone(), org_id);
-    match harness_store.get_harness(harness_id).await? {
-        Some(harness) => match harness.status {
-            HarnessStatus::Active => {}
-            HarnessStatus::Archived => return Ok(Some(DependencyBlocker::HarnessArchived)),
-            HarnessStatus::Deleted => return Ok(Some(DependencyBlocker::HarnessDeleted)),
-        },
-        None => return Ok(Some(DependencyBlocker::HarnessDeleted)),
-    }
-
-    if let Some(agent_id) = agent_id {
-        let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
-        match agent_store.get_agent(agent_id).await? {
-            Some(agent) => match agent.status {
-                AgentStatus::Active => {}
-                AgentStatus::Archived => return Ok(Some(DependencyBlocker::AgentArchived)),
-                AgentStatus::Deleted => return Ok(Some(DependencyBlocker::AgentDeleted)),
-            },
-            None => return Ok(Some(DependencyBlocker::AgentDeleted)),
-        }
-    }
-
-    Ok(None)
+    let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
+    everruns_core::detect_dependency_blocker(&harness_store, &agent_store, harness_id, agent_id)
+        .await
+        .map_err(anyhow::Error::new)
 }
 
+/// Emit dependency-blocked events (output message + turn.failed + session.idled, set idle).
 async fn emit_dependency_blocked_events(
     grpc_client: &GrpcClient,
     org_id: i64,
     context: &everruns_core::atoms::AtomContext,
-    blocker: DependencyBlocker,
+    blocker: everruns_core::DependencyBlocker,
 ) {
     use everruns_core::events::{
         EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData, TurnFailedData,
@@ -129,7 +86,7 @@ async fn emit_dependency_blocked_events(
         TurnFailedData {
             turn_id,
             error: message.to_string(),
-            error_code: Some("dependency_unavailable".to_string()),
+            error_code: Some(blocker.error_code().to_string()),
         },
     );
     if let Err(e) = event_emitter.emit(failed_event).await {
@@ -442,8 +399,10 @@ pub async fn act_activity(
             completed: true,
             success_count: 0,
             error_count: 1,
-            connection_required: vec![],
+            waiting_for_tool_results: false,
             blocked: true,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
         });
     }
 
@@ -683,8 +642,10 @@ mod tests {
             completed: true,
             success_count: 1,
             error_count: 0,
-            connection_required: vec![],
+            waiting_for_tool_results: false,
             blocked: false,
+            client_tool_calls: vec![],
+            client_tool_definitions: vec![],
         };
 
         let json = serde_json::to_string(&result).unwrap();
