@@ -550,48 +550,54 @@ impl DurableWorker {
                         "Task execution failed"
                     );
 
-                    // Report failure to store
-                    let mut store = worker.store.lock().await;
-                    match store.fail_task(task.id, &e.to_string()).await {
-                        Ok(will_retry) => {
-                            if !will_retry {
-                                // Task exhausted all retries (DLQ). Mark workflow as
-                                // completed so the session doesn't get stuck.
-                                if let Some(wf_id) = task.workflow_id {
-                                    warn!(
-                                        task_id = %task.id,
-                                        workflow_id = %wf_id,
-                                        "Task moved to DLQ, completing workflow with failure"
-                                    );
-                                    let _ = store
-                                        .update_workflow_status(
-                                            wf_id,
-                                            WorkflowStatus::Completed,
-                                            None,
-                                            Some(e.to_string()),
-                                        )
-                                        .await;
-                                }
+                    let mut should_emit_dlq_error = false;
 
-                                // Emit a single user-facing error event now that all
-                                // retries are exhausted. Transient errors skip event
-                                // emission during each attempt to avoid duplicates;
-                                // this is the one place we surface the final failure.
-                                if matches!(
-                                    task.activity_type.as_str(),
-                                    "reason" | "process_input" | "act"
-                                ) {
-                                    worker.emit_dlq_error_event(&task).await;
+                    // Report failure to store.
+                    {
+                        let mut store = worker.store.lock().await;
+                        match store.fail_task(task.id, &e.to_string()).await {
+                            Ok(will_retry) => {
+                                if !will_retry {
+                                    // Task exhausted all retries (DLQ). Mark workflow as
+                                    // completed so the session doesn't get stuck.
+                                    if let Some(wf_id) = task.workflow_id {
+                                        warn!(
+                                            task_id = %task.id,
+                                            workflow_id = %wf_id,
+                                            "Task moved to DLQ, completing workflow with failure"
+                                        );
+                                        let _ = store
+                                            .update_workflow_status(
+                                                wf_id,
+                                                WorkflowStatus::Completed,
+                                                None,
+                                                Some(e.to_string()),
+                                            )
+                                            .await;
+                                    }
+
+                                    should_emit_dlq_error = matches!(
+                                        task.activity_type.as_str(),
+                                        "reason" | "process_input" | "act"
+                                    );
                                 }
                             }
+                            Err(fail_err) => {
+                                error!(
+                                    task_id = %task.id,
+                                    error = %fail_err,
+                                    "Failed to report task failure"
+                                );
+                            }
                         }
-                        Err(fail_err) => {
-                            error!(
-                                task_id = %task.id,
-                                error = %fail_err,
-                                "Failed to report task failure"
-                            );
-                        }
+                    }
+
+                    if should_emit_dlq_error {
+                        // Emit a single user-facing error event now that all
+                        // retries are exhausted. Transient errors skip event
+                        // emission during each attempt to avoid duplicates;
+                        // this is the one place we surface the final failure.
+                        worker.emit_dlq_error_event(&task).await;
                     }
                 }
 

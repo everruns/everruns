@@ -47,7 +47,8 @@ type TabValue = "workflows" | "tasks" | "dlq";
 function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean }): string {
   const now = new Date();
   const diff = now.getTime() - date.getTime();
-  const seconds = Math.floor(diff / 1000);
+  const future = diff < 0;
+  const seconds = Math.floor(Math.abs(diff) / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
@@ -63,7 +64,8 @@ function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean }): str
     result = "less than a minute";
   }
 
-  return options?.addSuffix ? `${result} ago` : result;
+  if (!options?.addSuffix) return result;
+  return future ? `in ${result}` : `${result} ago`;
 }
 
 function getStatusIcon(status: WorkflowStatus) {

@@ -28,7 +28,7 @@ export function AgentIdentitySelect({
   noneLabel = "No identity",
   disabled,
 }: AgentIdentitySelectProps) {
-  const { data: identities = [] } = useAgentIdentities();
+  const { data: identities = [] } = useAgentIdentities({ includeArchived: !!value });
   const identityMap = useMemo(
     () => new Map<string, AgentIdentity>(identities.map((identity) => [identity.id, identity])),
     [identities],
@@ -48,8 +48,13 @@ export function AgentIdentitySelect({
       <SelectContent>
         {includeNone && <SelectItem value="none">{noneLabel}</SelectItem>}
         {identities.map((identity) => (
-          <SelectItem key={identity.id} value={identity.id}>
+          <SelectItem
+            key={identity.id}
+            value={identity.id}
+            disabled={identity.status !== "active"}
+          >
             {identity.name}
+            {identity.status !== "active" ? " (archived)" : ""}
           </SelectItem>
         ))}
       </SelectContent>

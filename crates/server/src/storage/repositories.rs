@@ -1247,11 +1247,11 @@ impl Database {
             UPDATE agent_identities
             SET
                 name = COALESCE($3, name),
-                description = COALESCE($4, description),
-                avatar_url = COALESCE($5, avatar_url),
-                locale = COALESCE($6, locale),
-                timezone = COALESCE($7, timezone),
-                status = COALESCE($8, status),
+                description = CASE WHEN $4 THEN $5 ELSE description END,
+                avatar_url = CASE WHEN $6 THEN $7 ELSE avatar_url END,
+                locale = CASE WHEN $8 THEN $9 ELSE locale END,
+                timezone = CASE WHEN $10 THEN $11 ELSE timezone END,
+                status = COALESCE($12, status),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, name, description, avatar_url, locale, timezone, status, created_at, updated_at, archived_at, deleted_at
@@ -1260,10 +1260,14 @@ impl Database {
         .bind(org_id)
         .bind(id)
         .bind(&input.name)
-        .bind(&input.description)
-        .bind(&input.avatar_url)
-        .bind(&input.locale)
-        .bind(&input.timezone)
+        .bind(input.description.is_changed())
+        .bind(input.description.into_value())
+        .bind(input.avatar_url.is_changed())
+        .bind(input.avatar_url.into_value())
+        .bind(input.locale.is_changed())
+        .bind(input.locale.into_value())
+        .bind(input.timezone.is_changed())
+        .bind(input.timezone.into_value())
         .bind(&input.status)
         .fetch_optional(&self.pool)
         .await?;

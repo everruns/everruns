@@ -22,7 +22,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
+use super::common::deserialize_nullable_update_field;
 use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
+use everruns_durable::UpdateField;
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateAgentIdentityRequest {
@@ -39,10 +41,18 @@ pub struct CreateAgentIdentityRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateAgentIdentityRequest {
     pub name: Option<String>,
-    pub description: Option<String>,
-    pub avatar_url: Option<String>,
-    pub locale: Option<String>,
-    pub timezone: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[schema(value_type = Option<String>, nullable = true)]
+    pub description: UpdateField<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[schema(value_type = Option<String>, nullable = true)]
+    pub avatar_url: UpdateField<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[schema(value_type = Option<String>, nullable = true)]
+    pub locale: UpdateField<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[schema(value_type = Option<String>, nullable = true)]
+    pub timezone: UpdateField<String>,
     pub status: Option<AgentIdentityStatus>,
 }
 
@@ -245,5 +255,22 @@ mod tests {
         let json = r#"{"status":"archived"}"#;
         let req: UpdateAgentIdentityRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.status, Some(AgentIdentityStatus::Archived));
+    }
+
+    #[test]
+    fn update_agent_identity_request_defaults_to_unchanged() {
+        let req: UpdateAgentIdentityRequest = serde_json::from_str("{}").unwrap();
+        assert_eq!(req.description, UpdateField::Unchanged);
+        assert_eq!(req.avatar_url, UpdateField::Unchanged);
+        assert_eq!(req.locale, UpdateField::Unchanged);
+        assert_eq!(req.timezone, UpdateField::Unchanged);
+    }
+
+    #[test]
+    fn update_agent_identity_request_supports_clear() {
+        let req: UpdateAgentIdentityRequest =
+            serde_json::from_str(r#"{"description":null,"locale":null}"#).unwrap();
+        assert_eq!(req.description, UpdateField::Clear);
+        assert_eq!(req.locale, UpdateField::Clear);
     }
 }

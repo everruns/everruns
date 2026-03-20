@@ -1100,18 +1100,10 @@ impl InMemoryDatabase {
         if let Some(name) = input.name {
             row.name = name;
         }
-        if let Some(description) = input.description {
-            row.description = Some(description);
-        }
-        if let Some(avatar_url) = input.avatar_url {
-            row.avatar_url = Some(avatar_url);
-        }
-        if let Some(locale) = input.locale {
-            row.locale = Some(locale);
-        }
-        if let Some(timezone) = input.timezone {
-            row.timezone = Some(timezone);
-        }
+        input.description.apply(&mut row.description);
+        input.avatar_url.apply(&mut row.avatar_url);
+        input.locale.apply(&mut row.locale);
+        input.timezone.apply(&mut row.timezone);
         if let Some(status) = input.status {
             row.status = status;
         }

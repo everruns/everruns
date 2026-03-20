@@ -223,10 +223,10 @@ export interface CreateAgentIdentityRequest {
 
 export interface UpdateAgentIdentityRequest {
   name?: string;
-  description?: string;
-  avatar_url?: string;
-  locale?: string;
-  timezone?: string;
+  description?: string | null;
+  avatar_url?: string | null;
+  locale?: string | null;
+  timezone?: string | null;
   status?: AgentIdentityStatus;
 }
 

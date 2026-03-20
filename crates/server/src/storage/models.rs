@@ -1178,10 +1178,10 @@ pub struct CreateAgentIdentityRow {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateAgentIdentity {
     pub name: Option<String>,
-    pub description: Option<String>,
-    pub avatar_url: Option<String>,
-    pub locale: Option<String>,
-    pub timezone: Option<String>,
+    pub description: UpdateField<String>,
+    pub avatar_url: UpdateField<String>,
+    pub locale: UpdateField<String>,
+    pub timezone: UpdateField<String>,
     pub status: Option<String>,
 }
 

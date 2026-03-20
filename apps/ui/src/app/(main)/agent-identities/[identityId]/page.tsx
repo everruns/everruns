@@ -35,9 +35,9 @@ export default function AgentIdentityDetailPage({ params }: { params: Promise<{ 
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Name" value={identity.name} onSave={(value) => updateIdentity.mutateAsync({ identityId, request: { name: value } })} />
-            <Field label="Description" value={identity.description ?? ""} onSave={(value) => updateIdentity.mutateAsync({ identityId, request: { description: value || undefined } })} />
-            <Field label="Locale" value={identity.locale ?? ""} onSave={(value) => updateIdentity.mutateAsync({ identityId, request: { locale: value || undefined } })} />
-            <Field label="Timezone" value={identity.timezone ?? ""} onSave={(value) => updateIdentity.mutateAsync({ identityId, request: { timezone: value || undefined } })} />
+            <Field label="Description" value={identity.description ?? ""} onSave={(value) => updateIdentity.mutateAsync({ identityId, request: { description: value || null } })} />
+            <Field label="Locale" value={identity.locale ?? ""} onSave={(value) => updateIdentity.mutateAsync({ identityId, request: { locale: value || null } })} />
+            <Field label="Timezone" value={identity.timezone ?? ""} onSave={(value) => updateIdentity.mutateAsync({ identityId, request: { timezone: value || null } })} />
           </div>
           <div className="flex gap-3">
             {identity.status === "active" ? (
@@ -56,7 +56,14 @@ function Field({ label, value, onSave }: { label: string; value: string; onSave:
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <div className="flex gap-2"><Input defaultValue={value} onBlur={(e) => void onSave(e.target.value)} /></div>
+      <div className="flex gap-2">
+        <Input
+          defaultValue={value}
+          onBlur={(e) => {
+            void onSave(e.target.value).catch(() => {});
+          }}
+        />
+      </div>
     </div>
   );
 }
