@@ -712,6 +712,47 @@ async fn test_sessions_pagination() {
     assert_eq!(body["data"].as_array().unwrap().len(), 5); // Only 5 remaining
 }
 
+#[tokio::test]
+async fn test_list_sessions_unknown_agent_returns_empty() {
+    let server = TestServer::new().await;
+
+    // Create a session so we know unfiltered results would be non-empty
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Test Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let _session: Value = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Filter by nonexistent agent_id should return empty results, not unfiltered
+    let body: Value = server
+        .get("/v1/sessions?agent_id=agent_ffffffffffffffffffffffffffffffff")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(body["total"], 0);
+    assert_eq!(body["data"].as_array().unwrap().len(), 0);
+    assert_eq!(body["offset"], 0);
+    assert_eq!(body["limit"], 20);
+}
+
 // ============================================
 // Message Tests
 // ============================================
