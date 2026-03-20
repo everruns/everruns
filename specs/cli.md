@@ -1,17 +1,67 @@
-# File Sync CLI Specification
+# CLI Specification
 
-## Abstract
+## Overview
 
-Live bidirectional file synchronization between a local directory and a session's virtual filesystem (`/workspace`). Enables developers to edit files locally (in their IDE) while an agent works on them remotely, and vice versa.
+`everruns` — command-line interface for the Everruns platform. Manages agents, sessions, chat, and file sync.
 
-## Design Decisions
+**Crate:** `crates/cli/`
 
-### Decision 1: CLI Subcommand under `files`
+**Global Flags:**
+- `-o, --output` — Output format: `text` (default), `json`, `yaml`
+- `-q, --quiet` — Suppress non-essential output
+
+**Configuration:**
+- `EVERRUNS_API_KEY` — API authentication token
+- `EVERRUNS_API_URL` — Base URL (default: `https://app.everruns.com/api`)
+
+## Commands
+
+### `everruns agents`
+
+Agent CRUD. Create from YAML/JSON/Markdown (YAML front matter + body = system prompt).
+
+- `create --file <path>` | `--name <n> --system-prompt <s>`
+- `list`
+- `get <id>`
+- `delete <id>` (soft archive)
+
+### `everruns sessions`
+
+Session management.
+
+- `create --harness <id> [--agent <id>] [--title <t>] [--model <m>]`
+- `list`
+- `get <id>`
+
+### `everruns chat`
+
+Send message and poll for response.
+
+- `chat --session <id> "<message>" [--timeout <s>] [--no-stream]`
+- Polls `/v1/sessions/{id}/events` every 500ms until `turn.completed` or timeout (default 300s)
+
+### `everruns capabilities`
+
+List platform capabilities.
+
+- `list [--status available|coming_soon|all]`
+
+### `everruns files`
+
+Session filesystem operations — sync, push, pull, list. See [Files](#files) section below.
+
+---
+
+## Files
+
+### Design Decisions
+
+#### Decision 1: CLI Subcommand under `files`
 
 **Chosen:** `everruns files sync --session <id> [local-dir]`
 **Rationale:** Groups all file operations (sync, push, pull, ls) under one noun. `sync` is the long-running watch command; `push`/`pull` are one-shot bulk transfers.
 
-### Decision 2: Polling-based Change Detection
+#### Decision 2: Polling-based Change Detection
 
 **Chosen:** Poll local filesystem with `notify` (inotify/FSEvents/kqueue) + poll remote via periodic `GET /fs/?recursive=true` with `If-Modified-Since` semantics (compare `updated_at`).
 **Alternatives considered:**
@@ -19,7 +69,7 @@ Live bidirectional file synchronization between a local directory and a session'
 - Pure polling both sides: Higher latency, more API calls.
 **Rationale:** `notify` gives near-instant local detection. Remote polling at 2-5s intervals is acceptable for MVP. Server can add file-change SSE events later to eliminate remote polling.
 
-### Decision 3: Conflict Resolution — Last-Write-Wins with Warning
+#### Decision 3: Conflict Resolution — Last-Write-Wins with Warning
 
 **Chosen:** If both sides changed the same file since last sync, apply last-write-wins and print a warning. Optionally `--conflict=ask` to prompt user.
 **Alternatives considered:**
@@ -27,19 +77,19 @@ Live bidirectional file synchronization between a local directory and a session'
 - Always-local-wins / always-remote-wins: Too aggressive.
 **Rationale:** Conflicts are rare in practice (user edits locally, agent edits remotely, typically different files). Warning + configurable strategy covers edge cases without over-engineering.
 
-### Decision 4: `.syncignore` + Sensible Defaults
+#### Decision 4: `.syncignore` + Sensible Defaults
 
 **Chosen:** Respect `.gitignore` patterns by default (via `ignore` crate). Additional `.syncignore` file for sync-specific exclusions. Always exclude: `.git/`, `node_modules/`, `target/`, `__pycache__/`, `.env`.
 **Rationale:** Prevents syncing build artifacts and secrets. Aligns with developer expectations.
 
-### Decision 5: Incremental Sync via Content Hashing
+#### Decision 5: Incremental Sync via Content Hashing
 
 **Chosen:** Track `sha256` content hashes locally in `.sync-state.json` (in sync metadata dir). Only upload/download when hash differs.
 **Rationale:** Avoids redundant transfers. The session filesystem already returns `content_hash` on reads.
 
-## Commands
+### File Commands
 
-### `everruns files sync`
+#### `everruns files sync`
 
 Long-running bidirectional watch.
 
@@ -63,7 +113,7 @@ everruns files sync --session <session_id> [local-dir]
 4. Print summary line on each sync cycle (e.g., `↑2 ↓1 files synced`)
 5. Ctrl+C: graceful shutdown, print final stats
 
-### `everruns files push`
+#### `everruns files push`
 
 One-shot upload local → remote.
 
@@ -74,7 +124,7 @@ everruns files push --session <session_id> [local-dir] [-- paths...]
   --dry-run         Show what would be pushed
 ```
 
-### `everruns files pull`
+#### `everruns files pull`
 
 One-shot download remote → local.
 
@@ -85,7 +135,7 @@ everruns files pull --session <session_id> [local-dir] [-- paths...]
   --dry-run         Show what would be pulled
 ```
 
-### `everruns files ls`
+#### `everruns files ls`
 
 List remote session files.
 
@@ -96,7 +146,7 @@ everruns files ls --session <session_id> [path]
   --long, -l        Show size, dates
 ```
 
-## Sync State
+### Sync State
 
 Stored in `<local-dir>/.everruns-sync/state.json`:
 
@@ -115,7 +165,7 @@ Stored in `<local-dir>/.everruns-sync/state.json`:
 }
 ```
 
-## Sync Algorithm
+### Sync Algorithm
 
 ```
 for each file in (local ∪ remote):
@@ -130,7 +180,7 @@ for each file in (local ∪ remote):
   if file only on remote → download (or delete remote if --delete and was previously synced)
 ```
 
-## Wire Protocol
+### Wire Protocol
 
 Uses existing session filesystem REST API:
 
@@ -143,7 +193,7 @@ Uses existing session filesystem REST API:
 
 Binary detection: same as server — null bytes in first 8KB → base64.
 
-## Future Enhancements
+### Future Enhancements
 
 1. **Server-side file change events** via SSE (`file.created`, `file.updated`, `file.deleted`) to eliminate remote polling
 2. **Delta sync** using content-defined chunking for large files
@@ -151,7 +201,7 @@ Binary detection: same as server — null bytes in first 8KB → base64.
 4. **Selective path sync** (`everruns files sync --session ses_xxx ./src` to sync only `src/`)
 5. **Integration with `everruns chat`** — auto-sync while chatting
 
-## Dependencies (new for CLI crate)
+### Dependencies (new for CLI crate)
 
 - `notify` — cross-platform filesystem watcher
 - `ignore` — gitignore-compatible pattern matching

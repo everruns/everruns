@@ -103,7 +103,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/otel-observability.md` - OpenTelemetry Gen-AI semantic convention tracing
 - `specs/encryption.md` - Envelope encryption for sensitive data
 - `specs/session-filesystem.md` - Per-session virtual filesystem
-- `specs/file-sync.md` - CLI bidirectional file sync with session workspace
+- `specs/cli.md` - CLI specification (commands, file sync, wire protocol)
 - `specs/usage-tracking.md` - LLM token usage tracking
 - `specs/documentation.md` - Documentation site (Astro Starlight)
 - `specs/brand.md` - Brand identity, colors, typography
