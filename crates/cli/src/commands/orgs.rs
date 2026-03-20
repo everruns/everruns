@@ -20,7 +20,15 @@ struct MeResponse {
 
 /// List organizations
 pub async fn run_list(output_format: OutputFormat, profile: &str) -> Result<()> {
-    let creds = resolve_credentials(None, None, Some(profile))?;
+    let creds = match resolve_credentials(None, None, Some(profile)) {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!(
+                "Not logged in. Run `everruns login` or set EVERRUNS_API_KEY environment variable."
+            );
+            std::process::exit(1);
+        }
+    };
     let orgs = fetch_orgs(&creds.api_url, &creds.api_key).await?;
 
     match output_format {
@@ -62,7 +70,15 @@ pub async fn run_list(output_format: OutputFormat, profile: &str) -> Result<()> 
 
 /// Interactive org selection
 pub async fn run_select(profile: &str) -> Result<()> {
-    let creds = resolve_credentials(None, None, Some(profile))?;
+    let creds = match resolve_credentials(None, None, Some(profile)) {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!(
+                "Not logged in. Run `everruns login` or set EVERRUNS_API_KEY environment variable."
+            );
+            std::process::exit(1);
+        }
+    };
     let orgs = fetch_orgs(&creds.api_url, &creds.api_key).await?;
 
     if orgs.is_empty() {
