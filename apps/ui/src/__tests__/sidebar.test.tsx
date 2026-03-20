@@ -68,6 +68,16 @@ jest.mock("@/providers/feature-flags-provider", () => ({
   }),
 }));
 
+/// Mock LLM providers hook (default: providers configured, no warning)
+const mockUseLlmProviders = jest.fn(() => ({
+  data: [{ id: "provider-1", name: "Test Provider" }],
+  isLoading: false,
+  isError: false,
+}));
+jest.mock("@/hooks/use-llm-providers", () => ({
+  useLlmProviders: () => mockUseLlmProviders(),
+}));
+
 describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
@@ -403,5 +413,36 @@ describe("Create Organisation dialog", () => {
 
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("shows chat warning badge when no LLM providers configured", () => {
+    mockUseLlmProviders.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+    });
+
+    render(<Sidebar />);
+
+    const warningBtn = screen.getByRole("button", {
+      name: /no llm provider configured/i,
+    });
+    expect(warningBtn).toBeInTheDocument();
+
+    // Restore default mock
+    mockUseLlmProviders.mockReturnValue({
+      data: [{ id: "provider-1", name: "Test Provider" }],
+      isLoading: false,
+      isError: false,
+    });
+  });
+
+  it("hides chat warning badge when LLM providers are configured", () => {
+    render(<Sidebar />);
+
+    const warningBtn = screen.queryByRole("button", {
+      name: /no llm provider configured/i,
+    });
+    expect(warningBtn).not.toBeInTheDocument();
   });
 });

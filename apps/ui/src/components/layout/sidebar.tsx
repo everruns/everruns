@@ -74,8 +74,10 @@ import {
 } from "lucide-react";
 import { capabilityIconMap } from "@/lib/capability-icons";
 import { ExperimentalBadge } from "@/components/ui/experimental-badge";
+import { WarningBadge } from "@/components/ui/warning-badge";
 import { useCommandPalette } from "@/hooks/use-command-palette";
 import { NotificationBell } from "@/components/layout/notification-bell";
+import { useLlmProviders } from "@/hooks/use-llm-providers";
 import type { FeatureFlags } from "@/lib/api/types";
 
 const isDev = process.env.NODE_ENV === "development";
@@ -93,6 +95,8 @@ export type NavigationItem = {
   exact?: boolean;
   /** Show experimental badge */
   experimental?: boolean;
+  /** Show warning badge with this tooltip message */
+  warningTooltip?: string;
 };
 
 export type NavigationSection = {
@@ -198,7 +202,8 @@ function NavLink({
     >
       <item.icon className="icon-sharp h-[18px] w-[18px] shrink-0 stroke-[2.15]" />
       {item.name}
-      {item.experimental && <ExperimentalBadge />}
+      {item.warningTooltip && <WarningBadge tooltip={item.warningTooltip} />}
+      {item.experimental && !item.warningTooltip && <ExperimentalBadge />}
     </Link>
   );
 }
@@ -331,7 +336,33 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
 
-  const sections = config?.navigation ?? defaultNavigationSections;
+  // Check LLM provider availability for Chat warning badge
+  const {
+    data: llmProviders,
+    isLoading: llmProvidersLoading,
+    isError: llmProvidersError,
+  } = useLlmProviders();
+  const llmProvidersReady = !llmProvidersLoading && !llmProvidersError;
+  const shouldShowChatWarning = llmProvidersReady && (!llmProviders || llmProviders.length === 0);
+
+  const baseSections = config?.navigation ?? defaultNavigationSections;
+
+  // Enrich Chat nav item with warning when no LLM providers configured
+  const sections = shouldShowChatWarning
+    ? baseSections.map((section) => ({
+        ...section,
+        items: section.items.map((item) =>
+          item.href === "/chat"
+            ? {
+                ...item,
+                warningTooltip:
+                  "No LLM provider configured. Set one up in Settings \u2192 Providers to use Chat.",
+              }
+            : item,
+        ),
+      }))
+    : baseSections;
+
   const allSections = config?.extraSections ? [...sections, ...config.extraSections] : sections;
 
   const { setOpen: openCommandPalette } = useCommandPalette();
