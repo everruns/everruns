@@ -68,6 +68,9 @@ pub mod seed;
 pub mod leased_resource_scheduler;
 pub mod session_scheduler;
 
+// Background sweep: time out sessions stuck in waiting_for_tool_results
+pub mod tool_result_timeout;
+
 // Server configuration and router helpers
 pub mod server;
 pub use server::ServerConfig;

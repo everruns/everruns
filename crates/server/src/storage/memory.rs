@@ -1052,6 +1052,20 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    /// Find sessions in `waiting_for_tool_results` with updated_at before cutoff.
+    pub async fn list_sessions_waiting_tool_results_before(
+        &self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<(SessionId, i64)>> {
+        let sessions = self.sessions.read();
+        let result: Vec<_> = sessions
+            .values()
+            .filter(|s| s.status == "waiting_for_tool_results" && s.updated_at < cutoff)
+            .map(|s| (s.id, s.org_id))
+            .collect();
+        Ok(result)
+    }
+
     /// Find a single session matching ALL given tags within an org.
     pub async fn find_session_by_tags(
         &self,
@@ -6569,6 +6583,83 @@ mod tests {
         let events = db.list_message_events_filtered(&query).await.unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, "input.message");
+    }
+
+    #[tokio::test]
+    async fn test_list_sessions_waiting_tool_results_before() {
+        let db = InMemoryDatabase::new();
+        let now = Utc::now();
+        let cutoff = now - chrono::Duration::minutes(5);
+
+        // Create 3 sessions: one waiting+old, one waiting+recent, one active+old
+        let s1 = db
+            .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
+                harness_id: None,
+                agent_id: None,
+                title: None,
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!({}),
+                tools: serde_json::json!([]),
+            })
+            .await
+            .unwrap();
+        let s2 = db
+            .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
+                harness_id: None,
+                agent_id: None,
+                title: None,
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!({}),
+                tools: serde_json::json!([]),
+            })
+            .await
+            .unwrap();
+        let s3 = db
+            .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
+                harness_id: None,
+                agent_id: None,
+                title: None,
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!({}),
+                tools: serde_json::json!([]),
+            })
+            .await
+            .unwrap();
+
+        // Manually set statuses and updated_at
+        {
+            let mut sessions = db.sessions.write();
+            if let Some(s) = sessions.get_mut(&s1.id) {
+                s.status = "waiting_for_tool_results".to_string();
+                s.updated_at = now - chrono::Duration::minutes(10); // old, should match
+            }
+            if let Some(s) = sessions.get_mut(&s2.id) {
+                s.status = "waiting_for_tool_results".to_string();
+                s.updated_at = now - chrono::Duration::minutes(1); // recent, should NOT match
+            }
+            if let Some(s) = sessions.get_mut(&s3.id) {
+                s.status = "active".to_string();
+                s.updated_at = now - chrono::Duration::minutes(10); // old but active, should NOT match
+            }
+        }
+
+        let result = db
+            .list_sessions_waiting_tool_results_before(cutoff)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, s1.id);
+        assert_eq!(result[0].1, DEFAULT_ORG_ID);
     }
 
     #[tokio::test]

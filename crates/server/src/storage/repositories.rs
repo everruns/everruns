@@ -1271,6 +1271,27 @@ impl Database {
         Ok(rows)
     }
 
+    /// Find sessions in `waiting_for_tool_results` with updated_at before the
+    /// given cutoff. Returns lightweight `(session_id, org_id)` pairs.
+    pub async fn list_sessions_waiting_tool_results_before(
+        &self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<(SessionId, i64)>> {
+        let rows = sqlx::query_as::<_, (SessionId, i64)>(
+            r#"
+            SELECT id, org_id
+            FROM sessions
+            WHERE status = 'waiting_for_tool_results'
+              AND updated_at < $1
+            "#,
+        )
+        .bind(cutoff)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
     /// Update session by org and session id
     pub async fn update_session(
         &self,

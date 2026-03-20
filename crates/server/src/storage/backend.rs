@@ -350,6 +350,15 @@ impl StorageBackend {
         dispatch!(self, find_active_slack_sessions)
     }
 
+    /// Find sessions in `waiting_for_tool_results` with updated_at before the
+    /// given cutoff. Returns `(session_id, org_id)` pairs.
+    pub async fn list_sessions_waiting_tool_results_before(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<(SessionId, i64)>> {
+        dispatch!(self, list_sessions_waiting_tool_results_before, cutoff)
+    }
+
     /// Find a single session matching ALL given tags within an org.
     pub async fn find_session_by_tags(
         &self,

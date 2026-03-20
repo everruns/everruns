@@ -1004,6 +1004,9 @@ impl ServerAppBuilder {
             tracing::info!("Durable task scheduler started");
         }
 
+        // -- Tool result timeout sweep (both prod and dev) --
+        crate::tool_result_timeout::spawn_tool_result_timeout_sweep(db.clone(), runner.clone());
+
         // -- Session schedule poller (both prod and dev) --
         crate::session_scheduler::spawn_session_scheduler(
             db.clone(),
