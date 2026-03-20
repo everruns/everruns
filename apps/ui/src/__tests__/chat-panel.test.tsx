@@ -3,6 +3,18 @@ import React from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
 
 const mockUseSessionCommands = jest.fn();
+const mockSelectTrigger = jest.fn(
+  ({
+    children,
+    nativeButton: _nativeButton,
+    render: _render,
+    ...props
+  }: {
+    children?: React.ReactNode;
+    nativeButton?: boolean;
+    render?: React.ReactElement;
+  }) => <div {...props}>{children}</div>,
+);
 
 const mockSessionContext = {
   agentId: "agent-1",
@@ -105,7 +117,11 @@ jest.mock("@/components/ui/select", () => ({
   Select: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SelectContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SelectItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SelectTrigger: (props: {
+    children?: React.ReactNode;
+    nativeButton?: boolean;
+    render?: React.ReactElement;
+  }) => mockSelectTrigger(props),
   SelectValue: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }));
 
@@ -157,6 +173,10 @@ beforeAll(() => {
 describe("ChatPanel compaction divider", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSelectTrigger.mockClear();
+    mockSessionContext.chatEvents = [];
+    mockSessionContext.llmModel = null;
+    mockSessionContext.reasoningEffort = "";
     mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
   });
 
@@ -289,5 +309,29 @@ describe("ChatPanel placeholder", () => {
 
     expect(composerShell).not.toBeNull();
     expect(composerShell).not.toHaveClass("border-t");
+  });
+
+  it("renders inline composer selects with non-native triggers to avoid nested picker chrome", () => {
+    mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
+    mockSessionContext.llmModel = {
+      display_name: "GPT-5.4",
+      profile: {
+        reasoning: true,
+        reasoning_effort: {
+          default: "medium",
+          values: [{ value: "medium", name: "Medium" }],
+        },
+      },
+    };
+
+    render(<ChatPanel />);
+
+    expect(mockSelectTrigger).toHaveBeenCalledTimes(2);
+
+    for (const [triggerProps] of mockSelectTrigger.mock.calls) {
+      expect(triggerProps?.nativeButton).toBe(false);
+      expect(React.isValidElement(triggerProps?.render)).toBe(true);
+      expect(triggerProps?.render.type).toBe("div");
+    }
   });
 });
