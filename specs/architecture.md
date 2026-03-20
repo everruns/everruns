@@ -294,7 +294,7 @@ The `TaskWorker` provides a unified worker implementation that works with both i
 1. **`WorkerAdapters` trait** - Unified interface for data operations
    - `get_agent()`, `get_session()`, `load_messages()`
    - `emit_event()`, `get_model_with_provider()`
-   - `read_file()`, `write_file()` (session filesystem)
+   - `read_file()`, `write_file()`, `edit_file()` (session filesystem)
    - `load_turn_context()` - Batched context loading
    - `storage_store()`, `platform_store()`, `connection_resolver()`, `schedule_store()` — **required**, non-optional
    - `sqldb_store()` — optional with default `None` until gRPC support added (EVE-44)

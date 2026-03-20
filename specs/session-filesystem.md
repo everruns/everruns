@@ -2,7 +2,7 @@
 
 ## Abstract
 
-This document defines the session-level virtual filesystem for Everruns. Each session has an isolated filesystem backed by PostgreSQL, enabling agents to read, write, and manipulate files during execution.
+This document defines the session-level virtual filesystem for Everruns. Each session has an isolated filesystem backed by PostgreSQL, enabling agents to read, write, edit, and manipulate files during execution.
 
 ## Design Decisions
 
@@ -119,8 +119,13 @@ See the OpenAPI spec (`./scripts/export-openapi.sh`) for detailed request/respon
 2. **Delete cascade:** Deleting a session deletes all its files (via FK cascade)
 3. **Encoding detection:** Files with null bytes in first 8KB are base64 encoded
 4. **Readonly protection:** Cannot modify or delete readonly files; recursive delete of a directory fails if it contains any readonly files
-5. **Capability mounts:** When a session is created, files from capability mount points are automatically populated (see `specs/capabilities.md` for details)
-6. **Starter files:** Agents and harnesses can declare starter files that are copied into each new session before use. Agent starter files override harness starter files when they target the same normalized path.
+5. **Hash-based freshness:** `read_file` and `write_file` return a `content_hash` (`sha256:...`). `edit_file` requires that hash and rejects stale edits, including writes that race after the initial read.
+6. **Text-only edit tool:** `edit_file` only operates on text files. Binary/base64 files must be replaced via `write_file`.
+7. **Exact replacement semantics:** `edit_file` supports single or batched exact replacements within one file. All replacements are matched against the original file content; ambiguous or overlapping matches are rejected.
+8. **Formatting preservation:** `edit_file` preserves UTF-8 BOM and the file's existing newline convention (`LF`, `CRLF`, or `CR`).
+9. **Bounded diff payloads:** `edit_file` returns a unified diff for transcript/UI rendering, but large diffs are truncated and flagged to avoid oversized tool payloads.
+10. **Capability mounts:** When a session is created, files from capability mount points are automatically populated (see `specs/capabilities.md` for details)
+11. **Starter files:** Agents and harnesses can declare starter files that are copied into each new session before use. Agent starter files override harness starter files when they target the same normalized path.
 
 ### Database Schema
 
@@ -138,7 +143,7 @@ See `crates/server/migrations/001_base_schema.sql` for the `session_files` table
   - **JSON files**: Pretty-printed with Shiki syntax highlighting
   - **Markdown files**: Full rendering with GFM, code blocks, alerts
   - **Images** (png, jpg, gif, webp, svg): Inline preview
-- File editor with save functionality (text files only)
+- File editor with save functionality (text files only, should use freshness-checked edits)
 - Create file/folder dialogs
 - Delete confirmation
 - Download file support

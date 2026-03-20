@@ -366,6 +366,36 @@ impl SessionFileService {
         Ok(row.map(Self::row_to_session_file))
     }
 
+    /// Update a file only if its content still matches the provided snapshot.
+    pub async fn update_file_if_content_matches(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        let path = Self::normalize_path(path);
+
+        let expected_bytes = SessionFile::decode_content(expected_content, expected_encoding)?;
+        let content = SessionFile::decode_content(content, encoding)?;
+
+        let row = self
+            .db
+            .update_session_file_if_content_matches(
+                session_id,
+                &path,
+                expected_bytes,
+                UpdateSessionFile {
+                    content: Some(content),
+                    is_readonly: None,
+                },
+            )
+            .await?;
+        Ok(row.map(Self::row_to_session_file))
+    }
+
     /// Delete a file or directory
     pub async fn delete(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
         let path = Self::normalize_path(path);
@@ -958,5 +988,36 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("too long"), "Expected 'too long' in: {err}");
+    }
+
+    #[tokio::test]
+    async fn update_file_if_content_matches_updates_when_snapshot_matches() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let svc = SessionFileService::new(Arc::new(db.clone()));
+        seed_file(&db, sid, "/notes.txt", "hello").await;
+
+        let updated = svc
+            .update_file_if_content_matches(sid, "/notes.txt", "hello", "text", "goodbye", "text")
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(updated.content.as_deref(), Some("goodbye"));
+    }
+
+    #[tokio::test]
+    async fn update_file_if_content_matches_rejects_stale_snapshot() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let svc = SessionFileService::new(Arc::new(db.clone()));
+        seed_file(&db, sid, "/notes.txt", "hello").await;
+
+        let updated = svc
+            .update_file_if_content_matches(sid, "/notes.txt", "stale", "text", "goodbye", "text")
+            .await
+            .unwrap();
+
+        assert!(updated.is_none());
     }
 }

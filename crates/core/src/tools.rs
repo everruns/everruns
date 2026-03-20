@@ -455,11 +455,11 @@ impl ToolRegistry {
     /// - TestMath tools: add, subtract, multiply, divide
     /// - TestWeather tools: get_weather, get_forecast
     /// - TaskList tools: write_todos
-    /// - FileSystem tools: read_file, write_file, list_directory, grep_files, delete_file, stat_file
+    /// - FileSystem tools: read_file, write_file, edit_file, list_directory, grep_files, delete_file, stat_file
     /// - WebFetch tools: web_fetch
     pub fn with_defaults() -> Self {
         use crate::capabilities::{
-            AddTool, DeleteFileTool, DivideTool, GetCurrentTimeTool, GetForecastTool,
+            AddTool, DeleteFileTool, DivideTool, EditFileTool, GetCurrentTimeTool, GetForecastTool,
             GetWeatherTool, GrepFilesTool, ListDirectoryTool, MultiplyTool, ReadFileTool,
             StatFileTool, SubtractTool, WebFetchTool, WriteFileTool, WriteTodosTool,
         };
@@ -480,6 +480,7 @@ impl ToolRegistry {
             // FileSystem capability tools
             .tool(ReadFileTool)
             .tool(WriteFileTool)
+            .tool(EditFileTool)
             .tool(ListDirectoryTool)
             .tool(GrepFilesTool)
             .tool(DeleteFileTool)
@@ -958,6 +959,7 @@ mod tests {
         // FileSystem capability tools
         assert!(registry.has("read_file"), "should have read_file");
         assert!(registry.has("write_file"), "should have write_file");
+        assert!(registry.has("edit_file"), "should have edit_file");
         assert!(registry.has("list_directory"), "should have list_directory");
         assert!(registry.has("grep_files"), "should have grep_files");
         assert!(registry.has("delete_file"), "should have delete_file");
@@ -967,7 +969,7 @@ mod tests {
         assert!(registry.has("web_fetch"), "should have web_fetch");
 
         // Total count
-        assert_eq!(registry.len(), 16, "should have 16 default tools");
+        assert_eq!(registry.len(), 17, "should have 17 default tools");
     }
 
     #[tokio::test]

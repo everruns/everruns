@@ -860,6 +860,23 @@ impl StorageBackend {
         dispatch!(self, update_session_file, session_id, path, input)
     }
 
+    pub async fn update_session_file_if_content_matches(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        expected_content: Vec<u8>,
+        input: UpdateSessionFile,
+    ) -> Result<Option<SessionFileRow>> {
+        dispatch!(
+            self,
+            update_session_file_if_content_matches,
+            session_id,
+            path,
+            expected_content,
+            input
+        )
+    }
+
     pub async fn delete_session_file(&self, session_id: Uuid, path: &str) -> Result<bool> {
         dispatch!(self, delete_session_file, session_id, path)
     }

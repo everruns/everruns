@@ -2392,6 +2392,40 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
+    pub async fn update_session_file_if_content_matches(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        expected_content: Vec<u8>,
+        input: UpdateSessionFile,
+    ) -> Result<Option<SessionFileRow>> {
+        let mut files = self.session_files.write();
+        if let Some(file) = files
+            .values_mut()
+            .find(|f| f.session_id == session_id && f.path == path)
+        {
+            if file.is_directory || file.is_readonly {
+                return Ok(None);
+            }
+
+            let current_content = file.content.clone().unwrap_or_default();
+            if current_content != expected_content {
+                return Ok(None);
+            }
+
+            if let Some(content) = input.content {
+                file.size_bytes = content.len() as i64;
+                file.content = Some(content);
+            }
+            if let Some(is_readonly) = input.is_readonly {
+                file.is_readonly = is_readonly;
+            }
+            file.updated_at = Self::now();
+            return Ok(Some(file.clone()));
+        }
+        Ok(None)
+    }
+
     pub async fn delete_session_file(&self, session_id: Uuid, path: &str) -> Result<bool> {
         let session_id = SessionId::from_uuid(session_id);
         let mut files = self.session_files.write();

@@ -132,6 +132,34 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         encoding: &str,
     ) -> Result<SessionFile>;
 
+    /// Write a file only if its current content snapshot still matches.
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        let Some(existing) = self.read_file(session_id, path).await? else {
+            return Ok(None);
+        };
+
+        if existing.is_directory {
+            return Ok(None);
+        }
+
+        let current_content = existing.content.unwrap_or_default();
+        if current_content != expected_content || existing.encoding != expected_encoding {
+            return Ok(None);
+        }
+
+        self.write_file(session_id, path, content, encoding)
+            .await
+            .map(Some)
+    }
+
     /// Delete a file from session filesystem
     async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool>;
 
@@ -502,6 +530,27 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionFileStore for AdapterSessi
     ) -> Result<SessionFile> {
         self.adapters
             .write_file(session_id.uuid(), path, content, encoding)
+            .await
+    }
+
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        self.adapters
+            .write_file_if_content_matches(
+                session_id.uuid(),
+                path,
+                expected_content,
+                expected_encoding,
+                content,
+                encoding,
+            )
             .await
     }
 

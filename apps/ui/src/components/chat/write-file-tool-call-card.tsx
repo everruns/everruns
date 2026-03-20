@@ -27,12 +27,19 @@ interface WriteFilePayload {
   path?: string;
   size_bytes?: number;
   created?: boolean;
+  diff?: string;
+  diff_truncated?: boolean;
+  applied_edits?: number;
+  first_changed_line?: number;
 }
 
 interface ParsedWriteFileResult {
   path?: string;
   sizeBytes?: number;
   created?: boolean;
+  appliedEdits?: number;
+  firstChangedLine?: number;
+  diffTruncated: boolean;
   textContent: string | null;
 }
 
@@ -55,7 +62,11 @@ function parseWriteFilePayload(
           getPathFromArguments(toolCall),
         sizeBytes: typeof parsed.size_bytes === "number" ? parsed.size_bytes : undefined,
         created: typeof parsed.created === "boolean" ? parsed.created : undefined,
-        textContent: null,
+        appliedEdits: typeof parsed.applied_edits === "number" ? parsed.applied_edits : undefined,
+        firstChangedLine:
+          typeof parsed.first_changed_line === "number" ? parsed.first_changed_line : undefined,
+        diffTruncated: parsed.diff_truncated === true,
+        textContent: typeof parsed.diff === "string" && parsed.diff.length > 0 ? parsed.diff : null,
       };
     }
   } catch {
@@ -66,6 +77,9 @@ function parseWriteFilePayload(
     path: getPathFromArguments(toolCall),
     sizeBytes: undefined,
     created: undefined,
+    appliedEdits: undefined,
+    firstChangedLine: undefined,
+    diffTruncated: false,
     textContent: rawText || null,
   };
 }
@@ -93,7 +107,19 @@ function getTextPreview(text: string | null): string | null {
   return firstLine.length > 120 ? `${firstLine.slice(0, 120)}...` : firstLine;
 }
 
-// isWriteLikeTool is re-exported from @/lib/tool-registry at the top of this file.
+function formatEditPreview(
+  appliedEdits: number | undefined,
+  firstChangedLine: number | undefined,
+): string | null {
+  const parts = [];
+  if (typeof appliedEdits === "number") {
+    parts.push(`${appliedEdits} ${appliedEdits === 1 ? "edit" : "edits"}`);
+  }
+  if (typeof firstChangedLine === "number") {
+    parts.push(`line ${firstChangedLine}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
 
 export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCallCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -116,7 +142,12 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
   const metadataPreview = [parsed.created ? "created" : "updated", formatFileSize(parsed.sizeBytes)]
     .filter(Boolean)
     .join(" · ");
-  const preview = metadataPreview || getTextPreview(parsed.textContent);
+  const preview =
+    formatEditPreview(parsed.appliedEdits, parsed.firstChangedLine) ||
+    metadataPreview ||
+    getTextPreview(parsed.textContent);
+  const detailLabel =
+    parsed.diffTruncated && toolCall.name === "edit_file" ? "Diff truncated" : null;
   const hasTextDetails = !!parsed.textContent;
 
   const statusIcon = isComplete ? (
@@ -168,11 +199,14 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
       )}
 
       {!hasError && preview && !isExpanded && (
-        <div className="ml-[22px] mt-0.5 truncate text-[10px] opacity-70">{preview}</div>
+        <div className="ml-[22px] mt-0.5 truncate text-[10px] opacity-70">
+          {[preview, detailLabel].filter(Boolean).join(" · ")}
+        </div>
       )}
 
       {!hasError && isExpanded && parsed.textContent && (
         <div className="ml-[22px] mt-1.5">
+          {detailLabel && <div className="mb-1 text-[10px] opacity-60">{detailLabel}</div>}
           <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/85">
             {parsed.textContent}
           </pre>

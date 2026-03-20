@@ -240,6 +240,28 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         .await
     }
 
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        let store = GrpcSessionFileStore::new(self.client.clone());
+        everruns_core::traits::SessionFileStore::write_file_if_content_matches(
+            &store,
+            SessionId::from_uuid(session_id),
+            path,
+            expected_content,
+            expected_encoding,
+            content,
+            encoding,
+        )
+        .await
+    }
+
     async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
         let store = GrpcSessionFileStore::new(self.client.clone());
         everruns_core::traits::SessionFileStore::delete_file(

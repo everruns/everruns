@@ -361,6 +361,24 @@ mod tests {
     }
 
     #[test]
+    fn renders_edit_file_narration() {
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "edit_file".to_string(),
+            arguments: json!({ "path": "/workspace/src/main.rs" }),
+        };
+
+        assert_eq!(
+            render_tool_narration(None, &tool_call, ToolNarrationPhase::Started),
+            "Editing main.rs"
+        );
+        assert_eq!(
+            render_tool_narration(None, &tool_call, ToolNarrationPhase::Completed),
+            "Edited main.rs"
+        );
+    }
+
+    #[test]
     fn renders_group_headline_from_multiple_tool_calls() {
         let tool_calls = vec![
             ToolCall {

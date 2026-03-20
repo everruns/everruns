@@ -1262,6 +1262,215 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     println!("Agent filesystem and bash workspace integration test passed!");
 }
 
+/// Test the stable edit_file integration boundary with LlmSim.
+///
+/// Verifies:
+/// 1. Agents with `session_file_system` preview `read_file` and `edit_file`
+/// 2. `edit_file` advertises `expected_hash` as a required parameter
+/// 3. Session filesystem API round-trips the target text file for the session
+///
+/// Note: the default LlmSim driver used by workflow tests does not
+/// deterministically emit file tool calls, so exact `edit_file` behavior is
+/// covered in core/server unit tests instead of this workflow smoke test.
+#[tokio::test]
+async fn test_agent_execution_llmsim_with_edit_file_tool() {
+    use std::time::Duration;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("Failed to create client");
+
+    println!("Testing agent execution with edit_file tool...");
+
+    // Step 1: Create LlmSim provider and model
+    println!("\nStep 1: Creating LlmSim provider and model...");
+    let provider_response = client
+        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .json(&json!({
+            "name": "LlmSim Edit Tool Provider",
+            "provider_type": "llmsim"
+        }))
+        .send()
+        .await
+        .expect("Failed to create provider");
+
+    if provider_response.status() != 201 {
+        let status = provider_response.status();
+        let body = provider_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim provider: status={}, body={}",
+            status, body
+        );
+    }
+    let provider: LlmProvider = provider_response
+        .json()
+        .await
+        .expect("Failed to parse provider");
+    println!("Created LlmSim provider: {}", provider.id);
+
+    let model_response = client
+        .post(format!(
+            "{}/v1/llm-providers/{}/models",
+            API_BASE_URL, provider.id
+        ))
+        .json(&json!({
+            "model_id": "llmsim-edit-tool-test",
+            "display_name": "LlmSim Edit Tool Test Model"
+        }))
+        .send()
+        .await
+        .expect("Failed to create model");
+
+    if model_response.status() != 201 {
+        let status = model_response.status();
+        let body = model_response.text().await.unwrap_or_default();
+        panic!(
+            "Failed to create LlmSim model: status={}, body={}",
+            status, body
+        );
+    }
+    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    println!("Created LlmSim model: {}", model.id);
+
+    // Step 2: Create agent with session_file_system capability
+    println!("\nStep 2: Creating edit agent...");
+    let agent_response = client
+        .post(format!("{}/v1/agents", API_BASE_URL))
+        .json(&json!({
+            "name": "Edit Tool Test Agent",
+            "system_prompt": "You are a file editing assistant. When asked to update an existing file, first use read_file to inspect the file and obtain its content hash, then use edit_file to make the requested exact replacement. Do not use write_file for existing files. After editing, confirm the final file contents.",
+            "capabilities": [{"ref": "session_file_system", "config": {}}],
+            "default_model_id": model.id
+        }))
+        .send()
+        .await
+        .expect("Failed to create agent");
+
+    assert_eq!(agent_response.status(), 201);
+    let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    println!("Created agent: {}", agent.public_id);
+
+    // Step 3: Create session
+    println!("\nStep 3: Creating session...");
+    let session_response = client
+        .post(format!("{}/v1/sessions", API_BASE_URL))
+        .json(&json!({
+            "harness_id": SEED_HARNESS_ID,
+            "agent_id": agent.public_id,
+            "title": "Edit Tool Integration Test"
+        }))
+        .send()
+        .await
+        .expect("Failed to create session");
+
+    assert_eq!(session_response.status(), 201);
+    let session: Session = session_response
+        .json()
+        .await
+        .expect("Failed to parse session");
+    println!("Created session: {}", session.id);
+
+    let fs_url = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session.id);
+
+    // Step 4: Preview agent tools and verify edit_file contract
+    println!("\nStep 4: Previewing tool definitions...");
+    let preview_response = client
+        .post(format!("{}/v1/agents/preview", API_BASE_URL))
+        .json(&json!({
+            "system_prompt": "You are a file editing assistant. When asked to update an existing file, first use read_file to inspect the file and obtain its content hash, then use edit_file to make the requested exact replacement. Do not use write_file for existing files. After editing, confirm the final file contents.",
+            "capabilities": [{"ref": "session_file_system", "config": {}}],
+            "tools": []
+        }))
+        .send()
+        .await
+        .expect("Failed to preview agent");
+
+    assert_eq!(preview_response.status(), 200);
+    let preview: Value = preview_response
+        .json()
+        .await
+        .expect("Failed to parse preview");
+    let tools = preview["tools"]
+        .as_array()
+        .expect("Expected preview tools array");
+    let tool_names: Vec<&str> = tools
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    assert!(tool_names.contains(&"read_file"));
+    assert!(tool_names.contains(&"edit_file"));
+
+    let edit_tool = tools
+        .iter()
+        .find(|tool| tool["name"] == "edit_file")
+        .expect("Expected edit_file tool in preview");
+    let required = edit_tool["parameters"]["required"]
+        .as_array()
+        .expect("Expected edit_file required array");
+    assert!(required.contains(&json!("path")));
+    assert!(required.contains(&json!("expected_hash")));
+    println!("Preview includes read_file and edit_file with expected_hash");
+
+    // Step 5: Seed the file that edit_file would target
+    println!("\nStep 5: Seeding session file...");
+    let seed_response = client
+        .post(format!("{}/workspace/edit-target.txt", fs_url))
+        .json(&json!({
+            "content": "alpha\nbeta\ngamma\n",
+            "encoding": "text"
+        }))
+        .send()
+        .await
+        .expect("Failed to create seed file");
+
+    assert_eq!(seed_response.status(), 201);
+    println!("Seed file created");
+
+    // Step 6: Verify the file remains accessible through the session filesystem API
+    println!("\nStep 6: Verifying session file contents...");
+    let file_response = client
+        .get(format!("{}/workspace/edit-target.txt", fs_url))
+        .send()
+        .await
+        .expect("Failed to fetch session file");
+
+    assert_eq!(file_response.status(), 200);
+    let file: SessionFile = file_response
+        .json()
+        .await
+        .expect("Failed to parse session file");
+    assert_eq!(
+        file.content.as_deref(),
+        Some("alpha\nbeta\ngamma\n"),
+        "Expected seeded file content to round-trip unchanged"
+    );
+    println!("Session file content verified: {:?}", file.content);
+
+    // Cleanup
+    println!("\nCleaning up...");
+    client
+        .delete(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
+        .send()
+        .await
+        .expect("Failed to delete agent");
+    client
+        .delete(format!(
+            "{}/v1/llm-providers/{}/models/{}",
+            API_BASE_URL, provider.id, model.id
+        ))
+        .send()
+        .await
+        .expect("Failed to delete model");
+    client
+        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .send()
+        .await
+        .expect("Failed to delete provider");
+
+    println!("LlmSim edit_file integration test passed!");
+}
+
 /// Test that message creation returns promptly and triggers agent workflow
 ///
 /// This test verifies:

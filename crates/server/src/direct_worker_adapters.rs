@@ -560,6 +560,62 @@ impl WorkerAdapters for DirectWorkerAdapters {
         })
     }
 
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        use crate::storage::models::UpdateSessionFile;
+
+        let expected_bytes = SessionFile::decode_content(expected_content, expected_encoding)
+            .map_err(|e| store_error(format!("Invalid expected content encoding: {}", e)))?;
+        let content_bytes = SessionFile::decode_content(content, encoding)
+            .map_err(|e| store_error(format!("Invalid content encoding: {}", e)))?;
+
+        let row = self
+            .db
+            .update_session_file_if_content_matches(
+                session_id,
+                path,
+                expected_bytes,
+                UpdateSessionFile {
+                    content: Some(content_bytes),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to conditionally update file: {}", e);
+                store_error("Failed to write file")
+            })?;
+
+        Ok(row.map(|row| {
+            let (content, encoding) = if let Some(bytes) = row.content {
+                SessionFile::encode_content(&bytes)
+            } else {
+                (String::new(), "text".to_string())
+            };
+
+            SessionFile {
+                id: row.id,
+                session_id: row.session_id.uuid(),
+                path: row.path.clone(),
+                name: name_from_path(&row.path),
+                content: Some(content),
+                encoding,
+                is_directory: row.is_directory,
+                is_readonly: row.is_readonly,
+                size_bytes: row.size_bytes,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            }
+        }))
+    }
+
     async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
         if recursive {
             let count = self
