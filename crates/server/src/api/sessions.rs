@@ -439,14 +439,21 @@ pub async fn list_sessions(
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
     let pagination = Pagination::new(offset, limit);
 
-    // Resolve agent public_id to internal UUID if filtering by agent
+    // Resolve agent public_id to internal UUID if filtering by agent.
+    // If agent_id is provided but not found, return empty results rather than
+    // silently dropping the filter and returning unfiltered sessions.
     let agent_internal_id = if let Some(ref agent_id) = query.agent_id {
         let row = state
             .db
             .get_agent_by_public_id(org.org_id, &agent_id.to_string())
             .await
             .log_internal_error_json("resolve agent for filter")?;
-        row.map(|r| r.id.uuid())
+        match row {
+            Some(r) => Some(r.id.uuid()),
+            None => {
+                return Ok(Json(PaginatedResponse::new(vec![], 0, offset, limit)));
+            }
+        }
     } else {
         None
     };
