@@ -348,13 +348,16 @@ impl AgentService {
     ) -> Result<(Agent, bool)> {
         let capabilities_to_store =
             ensure_file_system_capability(req.capabilities.clone(), !req.initial_files.is_empty());
+        let default_model_id = self
+            .validate_default_model_id(caller.org_id, req.default_model_id)
+            .await?;
 
         let input = CreateAgentRow {
             public_id: public_id.to_string(),
             name: req.name,
             description: req.description,
             system_prompt: req.system_prompt,
-            default_model_id: req.default_model_id,
+            default_model_id,
             tags: req.tags,
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
@@ -587,6 +590,45 @@ mod tests {
                 &caller,
                 &agent.public_id.to_string(),
                 build_update_request(Some(other_model_id)),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.to_string(), "Model not found");
+    }
+
+    #[tokio::test]
+    async fn upsert_rejects_default_model_from_another_org() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = AgentService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let other_org_id = create_second_org(&db).await;
+        let other_model_id = create_model(&db, other_org_id, "cross-org-model").await;
+
+        let err = service
+            .upsert(
+                &caller,
+                "agent_00000000000000000000000000000099",
+                build_create_request(Some(other_model_id)),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.to_string(), "Model not found");
+    }
+
+    #[tokio::test]
+    async fn upsert_rejects_nonexistent_default_model() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = AgentService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let fake_model_id = everruns_core::ModelId::from_uuid(uuid::Uuid::new_v4());
+
+        let err = service
+            .upsert(
+                &caller,
+                "agent_00000000000000000000000000000098",
+                build_create_request(Some(fake_model_id)),
             )
             .await
             .unwrap_err();
