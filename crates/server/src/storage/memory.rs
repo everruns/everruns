@@ -1052,6 +1052,20 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    /// Find sessions in `waiting_for_tool_results` with updated_at before cutoff.
+    pub async fn list_sessions_waiting_tool_results_before(
+        &self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<(SessionId, i64)>> {
+        let sessions = self.sessions.read();
+        let result: Vec<_> = sessions
+            .values()
+            .filter(|s| s.status == "waiting_for_tool_results" && s.updated_at < cutoff)
+            .map(|s| (s.id, s.org_id))
+            .collect();
+        Ok(result)
+    }
+
     /// Find a single session matching ALL given tags within an org.
     pub async fn find_session_by_tags(
         &self,
