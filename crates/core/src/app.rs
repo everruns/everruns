@@ -131,7 +131,7 @@ pub struct App {
 }
 
 /// Session strategy for incoming messages (how messages map to sessions).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum SessionStrategy {
@@ -142,6 +142,18 @@ pub enum SessionStrategy {
     PerChannel,
     /// One session per user.
     PerUser,
+}
+
+/// How replies are delivered back to Slack.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SlackReplyMode {
+    /// Forward completed assistant messages directly to Slack.
+    #[default]
+    AllMessages,
+    /// Only send deterministic updates emitted via `report_progress`.
+    ReportProgressOnly,
 }
 
 /// Typed Slack channel configuration.
@@ -162,6 +174,9 @@ pub struct SlackChannelConfig {
     /// How incoming messages map to sessions.
     #[serde(default)]
     pub session_strategy: SessionStrategy,
+    /// How replies are delivered back to Slack.
+    #[serde(default)]
+    pub reply_mode: SlackReplyMode,
     /// Set when Slack successfully verifies the webhook URL (url_verification challenge).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub webhook_verified_at: Option<DateTime<Utc>>,
@@ -254,7 +269,8 @@ mod tests {
             "bot_token": "xoxb-tok",
             "channel_id": "C123",
             "team_id": "T123",
-            "session_strategy": "per_channel"
+            "session_strategy": "per_channel",
+            "reply_mode": "report_progress_only"
         }"#;
         let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.signing_secret, "sec123");
@@ -262,6 +278,7 @@ mod tests {
         assert_eq!(config.channel_id.as_deref(), Some("C123"));
         assert_eq!(config.team_id.as_deref(), Some("T123"));
         assert_eq!(config.session_strategy, SessionStrategy::PerChannel);
+        assert_eq!(config.reply_mode, SlackReplyMode::ReportProgressOnly);
     }
 
     #[test]
@@ -271,6 +288,7 @@ mod tests {
         assert!(config.channel_id.is_none());
         assert!(config.team_id.is_none());
         assert_eq!(config.session_strategy, SessionStrategy::PerThread);
+        assert_eq!(config.reply_mode, SlackReplyMode::AllMessages);
         assert!(config.webhook_verified_at.is_none());
         assert!(config.first_message_received_at.is_none());
     }
@@ -301,12 +319,21 @@ mod tests {
             channel_id: None,
             team_id: None,
             session_strategy: SessionStrategy::PerThread,
+            reply_mode: SlackReplyMode::AllMessages,
             webhook_verified_at: None,
             first_message_received_at: None,
         };
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("webhook_verified_at").is_none());
         assert!(json.get("first_message_received_at").is_none());
+    }
+
+    #[test]
+    fn test_slack_reply_mode_serde_roundtrip() {
+        let json = serde_json::to_string(&SlackReplyMode::ReportProgressOnly).unwrap();
+        assert_eq!(json, r#""report_progress_only""#);
+        let parsed: SlackReplyMode = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, SlackReplyMode::ReportProgressOnly);
     }
 
     #[test]

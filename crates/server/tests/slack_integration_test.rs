@@ -320,6 +320,77 @@ async fn test_slack_message_creates_session() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_slack_report_progress_only_tags_session() {
+    let server = TestServer::new().await;
+    let agent_id = create_test_agent(&server).await;
+    let app: App = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Slack Report Progress Bot",
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent_id,
+                "channel_type": "slack",
+                "channel_config": {
+                    "signing_secret": TEST_SIGNING_SECRET,
+                    "bot_token": "xoxb-test-token-for-integration",
+                    "team_id": "T_TEST",
+                    "session_strategy": "per_thread",
+                    "reply_mode": "report_progress_only"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .post(&format!("/v1/apps/{}/publish", app.public_id), json!({}))
+        .await
+        .assert_success();
+
+    let ts = unique_ts();
+    let payload = json!({
+        "type": "event_callback",
+        "team_id": "T_TEST",
+        "event": {
+            "type": "message",
+            "text": "Please fix this",
+            "user": "U_TESTUSER",
+            "ts": ts,
+            "thread_ts": null
+        }
+    });
+
+    let resp = send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload).await;
+    let body: Value = resp.assert_status(StatusCode::OK).json();
+    assert_eq!(body["ok"], true);
+
+    let expected_thread_tag = format!("slack:thread:{}", ts);
+    let sessions = wait_for_sessions_with_tag(&server, &expected_thread_tag, 1).await;
+    let session = &sessions[0];
+
+    let tags: Vec<&str> = session["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|t| t.as_str())
+        .collect();
+
+    let expected_app_tag = format!("slack:app:{}", app.public_id);
+    assert!(
+        tags.contains(&expected_app_tag.as_str()),
+        "Session should have slack:app tag, got: {:?}",
+        tags
+    );
+    assert!(
+        tags.contains(&"slack:reply_mode:report_progress_only"),
+        "Session should have slack reply-mode tag, got: {:?}",
+        tags
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_slack_threaded_message_reuses_session() {
     let server = TestServer::new().await;
     let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;

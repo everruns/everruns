@@ -42,7 +42,12 @@ import {
 import { ArrowLeft, Globe, GlobeLock, Copy, Trash2, Pencil, Check, X, Rocket } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { SlackSetupGuidance } from "@/components/apps/slack-setup-guidance";
-import type { SessionStrategy, SlackChannelConfig, UpdateAppRequest } from "@/lib/api/types";
+import type {
+  SessionStrategy,
+  SlackChannelConfig,
+  SlackReplyMode,
+  UpdateAppRequest,
+} from "@/lib/api/types";
 import {
   getEntityNameClassName,
   getEntityReferenceClassName,
@@ -80,6 +85,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const [editChannelId, setEditChannelId] = useState("");
   const [editTeamId, setEditTeamId] = useState("");
   const [editSessionStrategy, setEditSessionStrategy] = useState<SessionStrategy>("per_thread");
+  const [editReplyMode, setEditReplyMode] = useState<SlackReplyMode>("all_messages");
 
   const [creatingSlackApp, setCreatingSlackApp] = useState(false);
 
@@ -143,6 +149,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditChannelId(slackConfig?.channel_id ?? "");
     setEditTeamId(slackConfig?.team_id ?? "");
     setEditSessionStrategy(slackConfig?.session_strategy ?? "per_thread");
+    setEditReplyMode(slackConfig?.reply_mode ?? "all_messages");
     setEditingSlack(true);
   };
 
@@ -152,6 +159,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       signing_secret: editSigningSecret,
       bot_token: editBotToken,
       session_strategy: editSessionStrategy,
+      reply_mode: editReplyMode,
       ...(editChannelId ? { channel_id: editChannelId } : {}),
       ...(editTeamId ? { team_id: editTeamId } : {}),
     };
@@ -365,6 +373,33 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                     </p>
                   </div>
 
+                  <div>
+                    <Label htmlFor="reply_mode">Reply Mode</Label>
+                    <Select
+                      value={editReplyMode}
+                      onValueChange={(v) => setEditReplyMode(v as SlackReplyMode)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue>
+                          {
+                            {
+                              all_messages: "All Assistant Messages",
+                              report_progress_only: "Report Progress Only",
+                            }[editReplyMode]
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all_messages">All Assistant Messages</SelectItem>
+                        <SelectItem value="report_progress_only">Report Progress Only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Report-progress mode sends a fast handoff acknowledgement and only forwards
+                      deterministic `report_progress` updates to Slack.
+                    </p>
+                  </div>
+
                   <div className="flex gap-2 pt-2">
                     <Button
                       size="sm"
@@ -422,6 +457,15 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                         : slackConfig?.session_strategy === "per_channel"
                           ? "Per Channel"
                           : "Per User"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium">Reply Mode</p>
+                    <p className="text-sm text-muted-foreground">
+                      {slackConfig?.reply_mode === "report_progress_only"
+                        ? "Report Progress Only"
+                        : "All Assistant Messages"}
                     </p>
                   </div>
 

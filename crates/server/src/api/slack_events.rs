@@ -25,7 +25,10 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
-use everruns_core::{App, AppStatus, Caller, ChannelType, SessionStrategy, SlackChannelConfig};
+use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
+use everruns_core::{
+    App, AppStatus, Caller, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode,
+};
 use everruns_worker::AgentRunner;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
@@ -39,7 +42,7 @@ use crate::api::sessions::CreateSessionRequest;
 use crate::services::{AppService, EventService, MessageService, SessionService};
 use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
-use crate::storage::models::UpdateApp;
+use crate::storage::models::{UpdateApp, UpdateSession};
 
 use super::common::ErrorResponse;
 
@@ -442,22 +445,45 @@ async fn process_slack_message(
     let org_public_id = org_row.public_id;
 
     // Build session tags based on strategy
-    let session_tags = build_session_tags(app, slack_config, event);
+    let routing_tags = build_session_tags(app, slack_config, event);
+    let desired_tags = desired_session_tags(&routing_tags, slack_config.reply_mode);
 
     // Find or create session
     let (session, is_new_session) =
-        match state.db.find_session_by_tags(org_id, &session_tags).await? {
+        match state.db.find_session_by_tags(org_id, &routing_tags).await? {
             Some(row) => {
                 tracing::debug!(
                     session_id = %row.id,
-                    tags = ?session_tags,
+                    tags = ?routing_tags,
                     "Found existing Slack session"
                 );
-                (SessionService::row_to_session(row, &org_public_id), false)
+                let session = SessionService::row_to_session(row, &org_public_id);
+                let mut synced_tags = session.tags.clone();
+                sync_slack_reply_mode_tags(&mut synced_tags, slack_config.reply_mode);
+                if synced_tags != session.tags
+                    && let Err(error) = state
+                        .db
+                        .update_session(
+                            org_id,
+                            session.id,
+                            UpdateSession {
+                                tags: Some(synced_tags),
+                                ..Default::default()
+                            },
+                        )
+                        .await
+                {
+                    tracing::warn!(
+                        session_id = %session.id,
+                        error = %error,
+                        "Failed to sync Slack reply-mode session tags"
+                    );
+                }
+                (session, false)
             }
             None => {
                 tracing::info!(
-                    tags = ?session_tags,
+                    tags = ?desired_tags,
                     "Creating new Slack session"
                 );
                 let title = build_session_title(slack_config, event);
@@ -466,7 +492,7 @@ async fn process_slack_message(
                     agent_id: Some(app.agent_id),
                     title: Some(title),
                     locale: None,
-                    tags: session_tags.clone(),
+                    tags: desired_tags.clone(),
                     model_id: None,
                     capabilities: vec![],
                     tools: vec![],
@@ -599,6 +625,19 @@ async fn process_slack_message(
     let session_id = session.id.uuid();
     let message_id = message.id;
 
+    if slack_config.reply_mode == SlackReplyMode::ReportProgressOnly
+        && !channel.is_empty()
+        && !thread_ts.is_empty()
+        && let Err(error) =
+            crate::slack_delivery::post_to_slack(&bot_token, &channel, &thread_ts, "On it.").await
+    {
+        tracing::warn!(
+            session_id = %session.id,
+            error = %error,
+            "Failed to post initial Slack handoff acknowledgement"
+        );
+    }
+
     if let Some(ref dispatcher) = state.delivery_dispatcher {
         // Event-driven delivery: no deadline, handles arbitrarily long turns
         dispatcher
@@ -608,15 +647,17 @@ async fn process_slack_message(
                 bot_token,
                 channel,
                 thread_ts,
+                slack_config.reply_mode,
             )
             .await;
     } else {
         // Fallback for DEV_MODE without EventNotificationBroadcaster:
         // use the legacy polling approach
         let db = state.db.clone();
+        let reply_mode = slack_config.reply_mode;
         tokio::spawn(async move {
             if let Err(e) = wait_and_post_response(
-                &db, session_id, message_id, &bot_token, &channel, &thread_ts,
+                &db, session_id, message_id, &bot_token, &channel, &thread_ts, reply_mode,
             )
             .await
             {
@@ -737,6 +778,12 @@ fn build_session_tags(
         }
     }
 
+    tags
+}
+
+fn desired_session_tags(routing_tags: &[String], reply_mode: SlackReplyMode) -> Vec<String> {
+    let mut tags = routing_tags.to_vec();
+    sync_slack_reply_mode_tags(&mut tags, reply_mode);
     tags
 }
 
@@ -970,6 +1017,7 @@ async fn wait_and_post_response(
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
+    reply_mode: SlackReplyMode,
 ) -> anyhow::Result<()> {
     use everruns_core::typed_id::{EventId, SessionId};
 
@@ -1004,9 +1052,12 @@ async fn wait_and_post_response(
             // Post each assistant message to Slack as it arrives. This gives
             // users progress visibility during multi-step agent turns (e.g.
             // "Let me search for that..." before tool execution).
-            if event_row.event_type == "output.message.completed"
-                && is_our_turn
-                && let Some(text) = extract_response_text(&event_row.data)
+            if is_our_turn
+                && let Some(text) = crate::slack_delivery::extract_delivery_text(
+                    &event_row.event_type,
+                    reply_mode,
+                    &event_row.data,
+                )
             {
                 post_to_slack(bot_token, channel, thread_ts, &text).await?;
             }
@@ -1030,6 +1081,7 @@ async fn wait_and_post_response(
 
 /// Extract text content from an output.message.completed event's data.
 /// Delegates to the shared implementation in `slack_delivery`.
+#[cfg(test)]
 fn extract_response_text(data: &serde_json::Value) -> Option<String> {
     crate::slack_delivery::extract_response_text(data)
 }
@@ -1513,6 +1565,7 @@ mod tests {
         let json = r#"{"signing_secret": "sec", "bot_token": "tok"}"#;
         let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.session_strategy, SessionStrategy::PerThread);
+        assert_eq!(config.reply_mode, SlackReplyMode::AllMessages);
         assert!(config.channel_id.is_none());
         assert!(config.team_id.is_none());
     }
@@ -1558,6 +1611,26 @@ mod tests {
 
         let tags = build_session_tags(&app, &config, &event);
         assert_eq!(tags[1], "slack:user:U999");
+    }
+
+    #[test]
+    fn test_desired_session_tags_adds_reply_mode_for_report_progress_only() {
+        let tags = desired_session_tags(
+            &[
+                "slack:app:app_123".to_string(),
+                "slack:thread:1234.0000".to_string(),
+            ],
+            SlackReplyMode::ReportProgressOnly,
+        );
+
+        assert_eq!(
+            tags,
+            vec![
+                "slack:app:app_123".to_string(),
+                "slack:thread:1234.0000".to_string(),
+                "slack:reply_mode:report_progress_only".to_string(),
+            ]
+        );
     }
 
     #[test]
@@ -1713,6 +1786,7 @@ mod tests {
             channel_id: None,
             team_id: None,
             session_strategy: strategy,
+            reply_mode: SlackReplyMode::AllMessages,
             webhook_verified_at: None,
             first_message_received_at: None,
         }

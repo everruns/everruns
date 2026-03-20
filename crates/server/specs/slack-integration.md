@@ -40,6 +40,7 @@ The events endpoint verifies HMAC-SHA256 signing secret, finds/creates session b
 - **Startup recovery**: On server restart, `SlackDeliveryDispatcher::recover()` queries sessions with `status = 'active'` and `slack:*` tags, looks up the corresponding app for the bot_token, finds the last unfinished turn, and re-registers deliveries.
 - **Slack event dedup**: Slack sends both `app_mention` and `message` events for @mentions. DB-level dedup via `has_event_with_slack_ts()` prevents duplicate processing (uses JSONB `@>` containment on input.message events).
 - **Thread context injection**: When the bot is first mentioned mid-thread (`PerThread` strategy, new session, `thread_ts` present), prior messages are fetched via Slack's `conversations.replies` API and injected as `input.message` events (without triggering agent workflows). This gives the agent full conversational context. Bot messages become assistant-role; human messages get user-role with `ExternalActor` attribution. Failures are non-fatal — the agent proceeds without history. Required scopes (`channels:history`, `groups:history`, `im:history`, `mpim:history`) are already in the manifest.
+- **Reply modes**: Slack apps can either forward completed assistant messages (`all_messages`) or run in `report_progress_only` handoff mode. In handoff mode the webhook posts an immediate deterministic acknowledgement (`On it.`), the session is tagged with the reply mode, ReasonAtom exposes a `report_progress` tool + prompt instructions, and Slack delivery ignores normal assistant messages in favor of explicit `tool.completed` events from that tool.
 
 ## Channel Config
 
@@ -51,6 +52,7 @@ Key fields:
 - `channel_id`: Optional channel to listen on
 - `team_id`: Slack workspace ID
 - `session_strategy`: `per_thread` (default), `per_channel`, `per_user`
+- `reply_mode`: `all_messages` (default) or `report_progress_only`
 
 ## Session Strategies
 
@@ -59,6 +61,13 @@ Key fields:
 | `per_thread` | `slack:thread:{thread_ts}` | Each Slack thread = separate session |
 | `per_channel` | `slack:channel:{channel}` | One session per channel |
 | `per_user` | `slack:user:{user}` | One session per user |
+
+## Reply Modes
+
+| Mode | Slack-visible behavior |
+|------|------------------------|
+| `all_messages` | Every completed assistant message is posted back to Slack |
+| `report_progress_only` | Slack gets `On it.` immediately, then only deterministic `report_progress` updates |
 
 ## API
 

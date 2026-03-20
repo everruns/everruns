@@ -377,7 +377,7 @@ pub fn proto_harness_to_schema(
 pub fn proto_session_to_schema(
     value: proto::Session,
 ) -> Result<everruns_core::Session, ConversionError> {
-    let tags: Vec<String> = vec![];
+    let tags = value.tags.clone();
     let started_at: Option<String> = None;
     let finished_at: Option<String> = None;
 
@@ -444,6 +444,7 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
             .filter_map(|c| serde_json::to_string(c).ok())
             .collect(),
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
+        tags: value.tags.clone(),
     }
 }
 
@@ -1083,7 +1084,7 @@ mod tests {
             description: Some("Test description".to_string()),
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
-            tags: vec![],
+            tags: vec!["slack:thread:123.456".to_string()],
             capabilities: vec![
                 AgentCapabilityConfig::new("tools:read_file"),
                 AgentCapabilityConfig::new("tools:write_file"),
@@ -1141,7 +1142,7 @@ mod tests {
             description: None,
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
-            tags: vec![],
+            tags: vec!["slack:thread:123.456".to_string()],
             capabilities: vec![],
             initial_files: vec![],
             tools: vec![],
@@ -1330,7 +1331,7 @@ mod tests {
             locale: None,
             preview: None,
             output_preview: None,
-            tags: vec![],
+            tags: vec!["slack:thread:123.456".to_string()],
             model_id: None,
             capabilities: vec![AgentCapabilityConfig::new("session")],
             tools: vec![],
@@ -1356,6 +1357,7 @@ mod tests {
             "org_00000000000000000000000000000001"
         );
         assert_eq!(proto_session.capabilities.len(), 1);
+        assert_eq!(proto_session.tags, vec!["slack:thread:123.456".to_string()]);
 
         // Convert back to schema
         let schema_session = proto_session_to_schema(proto_session).unwrap();
@@ -1365,6 +1367,10 @@ mod tests {
         );
         assert_eq!(schema_session.id, session.id);
         assert_eq!(schema_session.harness_id, session.harness_id);
+        assert_eq!(
+            schema_session.tags,
+            vec!["slack:thread:123.456".to_string()]
+        );
         assert_eq!(schema_session.capabilities.len(), 1);
         assert_eq!(schema_session.capabilities[0].capability_id(), "session");
     }

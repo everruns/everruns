@@ -61,6 +61,7 @@ pub mod skill;
 
 // Permissions model (policies, rules, caller context)
 pub mod permissions;
+pub mod progress_reporting;
 
 // URL validation for SSRF prevention (shared utility)
 pub mod url_validation;
@@ -204,7 +205,7 @@ pub use tool_types::{
 // Domain entity re-exports
 // Note: LlmProvider entity is in llm_models module. Import as: everruns_core::llm_models::LlmProvider
 pub use agent::{Agent, AgentStatus, generate_agent_public_id, validate_agent_public_id};
-pub use app::{App, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig};
+pub use app::{App, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use events::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, CONTEXT_COMPACTED,

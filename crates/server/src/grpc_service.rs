@@ -845,6 +845,7 @@ impl WorkerService for WorkerServiceImpl {
                 .iter()
                 .filter_map(|c| serde_json::to_string(c).ok())
                 .collect(),
+            tags: session.tags.clone(),
         };
 
         // Load messages from events using EventService with limit
@@ -1094,6 +1095,7 @@ impl WorkerService for WorkerServiceImpl {
                 .iter()
                 .filter_map(|c| serde_json::to_string(c).ok())
                 .collect(),
+            tags: s.tags.clone(),
         });
 
         Ok(Response::new(GetSessionResponse {
@@ -1146,6 +1148,7 @@ impl WorkerService for WorkerServiceImpl {
                 .iter()
                 .filter_map(|c| serde_json::to_string(c).ok())
                 .collect(),
+            tags: session.tags.clone(),
         };
 
         Ok(Response::new(SetSessionStatusResponse {
@@ -1197,6 +1200,7 @@ impl WorkerService for WorkerServiceImpl {
                 .iter()
                 .filter_map(|c| serde_json::to_string(c).ok())
                 .collect(),
+            tags: session.tags.clone(),
         };
 
         Ok(Response::new(SetSessionTitleResponse {

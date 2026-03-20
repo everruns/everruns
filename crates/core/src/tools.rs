@@ -452,6 +452,7 @@ impl ToolRegistry {
     /// This includes:
     /// - `get_current_time`: Returns the current date and time
     /// - `echo`: Echoes back the provided message
+    /// - `report_progress`: Emits deterministic external progress updates
     /// - TestMath tools: add, subtract, multiply, divide
     /// - TestWeather tools: get_weather, get_forecast
     /// - TaskList tools: write_todos
@@ -463,10 +464,12 @@ impl ToolRegistry {
             GetWeatherTool, GrepFilesTool, ListDirectoryTool, MultiplyTool, ReadFileTool,
             StatFileTool, SubtractTool, WebFetchTool, WriteFileTool, WriteTodosTool,
         };
+        use crate::progress_reporting::ReportProgressTool;
 
         ToolRegistry::builder()
             .tool(GetCurrentTimeTool)
             .tool(EchoTool)
+            .tool(ReportProgressTool)
             // TestMath capability tools
             .tool(AddTool)
             .tool(SubtractTool)
