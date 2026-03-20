@@ -1,13 +1,10 @@
 //! Reliability patterns for durable execution
 //!
 //! This module provides:
-//! - [`RetryPolicy`] - Configurable retry with exponential backoff (ACTIVE)
+//! - [`RetryPolicy`] - Configurable retry with exponential backoff
 //! - [`CircuitBreakerConfig`] - Circuit breaker configuration
-//! - [`DistributedCircuitBreaker`] - Distributed circuit breaker using PostgreSQL (FUTURE)
-//! - [`TimeoutManager`] - Activity timeout handling (ACTIVE)
-//!
-//! Note: `DistributedCircuitBreaker` is fully implemented but not yet integrated.
-//! See the module documentation for planned integration points.
+//! - [`DistributedCircuitBreaker`] - Distributed circuit breaker using PostgreSQL
+//! - [`TimeoutManager`] - Activity timeout handling
 
 mod circuit_breaker;
 mod distributed_circuit_breaker;
