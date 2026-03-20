@@ -57,10 +57,14 @@ const NEW_ORG: OrganizationMembership = {
   role: "owner",
 };
 
-function wrapper({ children }: { children: ReactNode }) {
-  const queryClient = new QueryClient({
+let queryClient: QueryClient;
+beforeEach(() => {
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+});
+
+function wrapper({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <OrgProvider>{children}</OrgProvider>
@@ -128,13 +132,16 @@ describe("OrgProvider", () => {
     mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
     mockAuthLoading = false;
 
-    // Make switchOrg hang until we resolve it
+    // Make switchOrg hang for SECOND_ORG until we resolve it; allow init sync for DEFAULT_ORG
     let resolveSwitch!: () => void;
-    mockSwitchOrg.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        resolveSwitch = resolve;
-      }),
-    );
+    mockSwitchOrg.mockImplementation((orgId: string) => {
+      if (orgId === SECOND_ORG.public_id) {
+        return new Promise<void>((resolve) => {
+          resolveSwitch = resolve;
+        });
+      }
+      return Promise.resolve(undefined);
+    });
 
     const { result } = renderHook(() => useOrg(), { wrapper });
 

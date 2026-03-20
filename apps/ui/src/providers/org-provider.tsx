@@ -141,30 +141,39 @@ export function OrgProvider({ children }: OrgProviderProps) {
     }
   }, [organizations, currentOrg, isInitialized]);
 
-  // Sync currentOrg cookie on mount/init (fire-and-forget, not user-initiated)
+  // Sync currentOrg cookie on init only (fire-and-forget, not user-initiated).
+  // Guard with ref to avoid redundant calls after user-initiated switches.
+  const didInitSyncRef = useRef(false);
   useEffect(() => {
-    if (currentOrg && isInitialized) {
+    if (currentOrg && isInitialized && !didInitSyncRef.current) {
+      didInitSyncRef.current = true;
       void switchOrgApi(currentOrg.public_id).catch((error) => {
         console.warn("Failed to sync org cookie on init:", error);
       });
     }
   }, [currentOrg, isInitialized]);
 
+  // Track latest switch to handle concurrent calls (last one wins)
+  const switchCounterRef = useRef(0);
+
   // Atomic org switch: await cookie sync → commit state → invalidate queries
   const setCurrentOrg = useCallback(
     (org: OrganizationMembership) => {
+      // Skip if already on this org
+      if (currentOrg?.public_id === org.public_id) return;
+
       // Mark as explicitly selected so the sync effect doesn't reset it
       // before the organizations list is refreshed.
       explicitOrgRef.current = org.public_id;
 
-      // Skip if already on this org
-      if (currentOrg?.public_id === org.public_id) return;
-
+      const switchId = ++switchCounterRef.current;
       setIsSwitching(true);
 
       // Await server cookie before committing client state
       switchOrgApi(org.public_id)
         .then(() => {
+          // Only commit if this is still the latest switch request
+          if (switchCounterRef.current !== switchId) return;
           setCurrentOrgState(org);
           localStorage.setItem(ORG_STORAGE_KEY, org.public_id);
           // Invalidate all org-scoped queries so stale data is refetched
@@ -176,12 +185,16 @@ export function OrgProvider({ children }: OrgProviderProps) {
           }
         })
         .catch((error) => {
+          // Only rollback if this is still the latest switch request
+          if (switchCounterRef.current !== switchId) return;
           // Rollback: clear explicit flag, stay on current org
           explicitOrgRef.current = null;
           console.error("Org switch failed, staying on current org:", error);
         })
         .finally(() => {
-          setIsSwitching(false);
+          if (switchCounterRef.current === switchId) {
+            setIsSwitching(false);
+          }
         });
     },
     [currentOrg?.public_id, queryClient, pathname, router],
