@@ -1,7 +1,7 @@
 // Skills registry API functions
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { api } from "./client";
+import { api, throwApiError } from "./client";
 import type {
   Skill,
   SkillContent,
@@ -57,6 +57,7 @@ export async function uploadSkillArchive(file: File): Promise<Skill> {
   const formData = new FormData();
   formData.append("file", file);
 
+  // Raw fetch needed for FormData (no Content-Type header — browser sets multipart boundary)
   const response = await fetch("/api/v1/skills/upload", {
     method: "POST",
     credentials: "include",
@@ -64,14 +65,7 @@ export async function uploadSkillArchive(file: File): Promise<Skill> {
   });
 
   if (!response.ok) {
-    let errorMessage: string | undefined;
-    try {
-      const errorBody = await response.json();
-      errorMessage = errorBody.error || errorBody.message || JSON.stringify(errorBody);
-    } catch {
-      // Response body is not JSON or empty
-    }
-    throw new Error(errorMessage || `Upload failed: ${response.status} ${response.statusText}`);
+    await throwApiError(response);
   }
 
   return response.json();

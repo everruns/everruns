@@ -1,7 +1,7 @@
 // Agent API functions (M2)
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { api } from "./client";
+import { api, throwApiError } from "./client";
 import type {
   Agent,
   AgentPreviewResponse,
@@ -41,20 +41,18 @@ export async function destroyAgent(agentId: string): Promise<void> {
 }
 
 export async function exportAgent(agentId: string): Promise<string> {
-  // Use fetch directly since we need to return text, not JSON
-  // Org is sent via cookie automatically (credentials: "include")
+  // Raw fetch needed: returns text/markdown, not JSON
   const response = await fetch(`/api/v1/agents/${agentId}/export`, {
     credentials: "include",
   });
   if (!response.ok) {
-    throw new Error(`Export failed: ${response.statusText}`);
+    await throwApiError(response);
   }
   return response.text();
 }
 
 export async function importAgent(markdown: string): Promise<Agent> {
-  // Use fetch directly since we need to send text/markdown content type
-  // Org is sent via cookie automatically (credentials: "include")
+  // Raw fetch needed: sends text/markdown Content-Type
   const response = await fetch("/api/v1/agents/import", {
     method: "POST",
     credentials: "include",
@@ -64,8 +62,7 @@ export async function importAgent(markdown: string): Promise<Agent> {
     body: markdown,
   });
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || `Import failed: ${response.statusText}`);
+    await throwApiError(response);
   }
   return response.json();
 }

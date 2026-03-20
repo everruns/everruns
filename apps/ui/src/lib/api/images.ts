@@ -4,7 +4,7 @@
 // API functions for uploading, retrieving, and deleting images.
 // Images can be attached to messages as image_file content parts.
 
-import { getApiBaseUrl } from "./client";
+import { api, getApiBaseUrl, throwApiError } from "./client";
 import type { ImageUploadResponse, ImageInfo } from "./types";
 import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE } from "./types";
 
@@ -53,16 +53,15 @@ export async function uploadImage(file: File, sessionId?: string): Promise<Image
   const params = sessionId ? `?session_id=${sessionId}` : "";
   const url = `${baseUrl}/v1/images${params}`;
 
-  // Org is sent via cookie automatically (credentials: "include")
+  // Raw fetch needed for FormData (no Content-Type header — browser sets multipart boundary)
   const response = await fetch(url, {
     method: "POST",
     body: formData,
-    credentials: "include", // Include cookies for auth (access_token, everruns_org)
+    credentials: "include",
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Failed to upload image: ${text}`);
+    await throwApiError(response);
   }
 
   return response.json();
@@ -86,34 +85,15 @@ export function getThumbnailUrl(imageId: string): string {
  * Delete an image
  */
 export async function deleteImage(imageId: string): Promise<void> {
-  // Org is sent via cookie automatically (credentials: "include")
-  const response = await fetch(`${getApiBaseUrl()}/v1/images/${imageId}`, {
-    method: "DELETE",
-    credentials: "include", // Include cookies for auth (access_token, everruns_org)
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Failed to delete image: ${text}`);
-  }
+  await api.delete(`/v1/images/${imageId}`);
 }
 
 /**
  * List images
  */
 export async function listImages(limit: number = 50, offset: number = 0): Promise<ImageInfo[]> {
-  // Org is sent via cookie automatically (credentials: "include")
-  const response = await fetch(
-    `${getApiBaseUrl()}/v1/images?limit=${limit}&offset=${offset}`,
-    { credentials: "include" }, // Include cookies for auth (access_token, everruns_org)
-  );
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Failed to list images: ${text}`);
-  }
-
-  return response.json();
+  const response = await api.get<ImageInfo[]>(`/v1/images?limit=${limit}&offset=${offset}`);
+  return response.data;
 }
 
 /**

@@ -2,7 +2,7 @@
 // Events are SSE notifications for real-time updates
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { api, ApiError, getApiBaseUrl } from "./client";
+import { getApiBaseUrl, throwApiError } from "./client";
 import type { Event, ListResponse } from "./types";
 
 // Default event types to exclude in UI contexts (streaming delta events are noise)
@@ -68,7 +68,7 @@ export async function listEventsPaginated(
   });
 
   if (!response.ok) {
-    throw new ApiError(response.status, response.statusText);
+    await throwApiError(response);
   }
 
   const body: ListResponse<Event> = await response.json();

@@ -64,15 +64,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   }
 
   if (!response.ok) {
-    // Try to get error details from response body
-    let errorMessage: string | undefined;
-    try {
-      const errorBody = await response.json();
-      errorMessage = errorBody.error || errorBody.message || JSON.stringify(errorBody);
-    } catch {
-      // Response body is not JSON or empty
-    }
-    throw new ApiError(response.status, response.statusText, errorMessage);
+    await throwApiError(response);
   }
 
   // Handle empty responses (204 No Content or empty body)
@@ -118,6 +110,31 @@ export const api = {
 
   delete: <T>(url: string) => request<T>(url, { method: "DELETE" }),
 };
+
+/**
+ * Extract an ApiError from a failed fetch Response.
+ * Use this in callsites that need raw fetch() (FormData, text responses,
+ * header access) but still want centralized error handling.
+ */
+export async function throwApiError(response: Response): Promise<never> {
+  let errorMessage: string | undefined;
+  try {
+    // Read body as text first to avoid consuming the stream with response.json()
+    const text = await response.text();
+    if (text) {
+      try {
+        const errorBody = JSON.parse(text);
+        errorMessage = errorBody.error || errorBody.message || JSON.stringify(errorBody);
+      } catch {
+        // Not JSON — use the raw text as the error message
+        errorMessage = text;
+      }
+    }
+  } catch {
+    // No body at all
+  }
+  throw new ApiError(response.status, response.statusText, errorMessage);
+}
 
 export function getApiBaseUrl(): string {
   return API_BASE;
