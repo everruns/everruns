@@ -343,8 +343,7 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
     isError: llmProvidersError,
   } = useLlmProviders();
   const llmProvidersReady = !llmProvidersLoading && !llmProvidersError;
-  const shouldShowChatWarning =
-    llmProvidersReady && (!llmProviders || llmProviders.length === 0);
+  const shouldShowChatWarning = llmProvidersReady && (!llmProviders || llmProviders.length === 0);
 
   const baseSections = config?.navigation ?? defaultNavigationSections;
 
