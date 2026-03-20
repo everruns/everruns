@@ -696,7 +696,13 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         tools: vec![],
         hints: proto_session.hints.as_ref().and_then(|s| {
             let json = everruns_internal_protocol::proto_struct_to_json(s);
-            serde_json::from_value(json).ok()
+            match serde_json::from_value(json) {
+                Ok(hints) => Some(hints),
+                Err(err) => {
+                    tracing::warn!("Failed to deserialize session hints: {err}");
+                    None
+                }
+            }
         }),
         status,
         created_at,

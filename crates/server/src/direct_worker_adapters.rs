@@ -232,7 +232,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 model_id: r.model_id,
                 capabilities,
                 tools: vec![],
-                hints: None,
+                hints: r.hints.and_then(|v| serde_json::from_value(v).ok()),
                 status: match r.status.as_str() {
                     "started" => SessionStatus::Started,
                     "active" => SessionStatus::Active,
@@ -1344,7 +1344,7 @@ impl DirectPlatformStore {
             model_id: row.model_id,
             capabilities,
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
-            hints: None,
+            hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
