@@ -24,7 +24,7 @@ import type { OrganizationMembership, OrgRole } from "@/lib/api/types";
 
 // Default organization public ID (matches backend DEFAULT_ORG_PUBLIC_ID)
 const DEFAULT_ORG_PUBLIC_ID = "org_00000000000000000000000000000001";
-const STORAGE_KEY = "everruns_current_org";
+import { ORG_STORAGE_KEY } from "@/lib/constants";
 
 /** Check if a role has permission for a required role level */
 const ROLE_HIERARCHY: Record<OrgRole, number> = { owner: 3, admin: 2, member: 1 };
@@ -94,7 +94,7 @@ export function OrgProvider({ children }: OrgProviderProps) {
     if (authLoading || isInitialized) return;
 
     // Try to restore from localStorage
-    const storedOrgId = localStorage.getItem(STORAGE_KEY);
+    const storedOrgId = localStorage.getItem(ORG_STORAGE_KEY);
 
     if (storedOrgId && organizations.length > 0) {
       // Find the stored org in user's organizations
@@ -152,7 +152,7 @@ export function OrgProvider({ children }: OrgProviderProps) {
       // before the organizations list is refreshed.
       explicitOrgRef.current = org.public_id;
       setCurrentOrgState(org);
-      localStorage.setItem(STORAGE_KEY, org.public_id);
+      localStorage.setItem(ORG_STORAGE_KEY, org.public_id);
       // Set server-side cookie via API
       void syncOrgCookie(org.public_id);
       // Redirect entity detail pages to their list page to avoid 404

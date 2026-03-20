@@ -11,6 +11,7 @@ import {
   deleteApiKey,
 } from "@/lib/api/auth";
 import { updateProfile } from "@/lib/api/users";
+import { ORG_STORAGE_KEY } from "@/lib/constants";
 import type {
   LoginRequest,
   RegisterRequest,
@@ -93,9 +94,12 @@ export function useLogout() {
   return useMutation({
     mutationFn: logout,
     onSuccess: () => {
-      // Clear all auth-related queries
-      queryClient.removeQueries({ queryKey: authKeys.user() });
-      queryClient.removeQueries({ queryKey: authKeys.apiKeys() });
+      // Clear ALL cached queries to prevent data leaking across users.
+      // Selective removal (only auth keys) left org-sensitive data
+      // (durable, admin, sessions, etc.) cached for the next user.
+      queryClient.clear();
+      // Clear persisted org selection
+      localStorage.removeItem(ORG_STORAGE_KEY);
     },
   });
 }
