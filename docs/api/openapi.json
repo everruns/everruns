@@ -9127,6 +9127,13 @@
             "type": "string",
             "description": "The base system prompt (before capability additions)",
             "example": "You are a helpful customer support agent."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Client-side tools to include in the preview."
           }
         }
       },

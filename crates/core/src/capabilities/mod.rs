@@ -860,6 +860,38 @@ pub fn resolve_dependencies(
     })
 }
 
+/// Resolve dependency-expanded capability configs, preserving explicit config on selected IDs.
+///
+/// Dependencies are inserted with empty configs. If the same capability is provided more than
+/// once, the last explicit config wins.
+pub fn resolve_capability_configs(
+    selected_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+) -> Result<Vec<AgentCapabilityConfig>, DependencyError> {
+    let selected_ids: Vec<String> = selected_configs
+        .iter()
+        .map(|config| config.capability_id().to_string())
+        .collect();
+    let resolved = resolve_dependencies(&selected_ids, registry)?;
+
+    let explicit_configs: std::collections::HashMap<String, serde_json::Value> = selected_configs
+        .iter()
+        .map(|config| (config.capability_id().to_string(), config.config.clone()))
+        .collect();
+
+    Ok(resolved
+        .resolved_ids
+        .into_iter()
+        .map(|capability_id| {
+            explicit_configs
+                .get(&capability_id)
+                .cloned()
+                .map(|config| AgentCapabilityConfig::with_config(capability_id.clone(), config))
+                .unwrap_or_else(|| AgentCapabilityConfig::new(capability_id))
+        })
+        .collect())
+}
+
 /// Helper function to resolve a single capability and its dependencies recursively.
 fn resolve_single_capability(
     cap_id: &str,

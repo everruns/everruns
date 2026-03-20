@@ -2221,6 +2221,11 @@ async fn test_chat_harness_has_platform_management() {
         .json();
 
     assert_eq!(harness.name, "Platform Chat");
+    assert_eq!(
+        harness.parent_harness_id.as_ref().map(ToString::to_string),
+        Some(SEED_GENERIC_HARNESS_ID.to_string()),
+        "Platform Chat should inherit from Generic"
+    );
 
     let cap_ids: Vec<&str> = harness
         .capabilities
@@ -2230,16 +2235,41 @@ async fn test_chat_harness_has_platform_management() {
 
     assert_eq!(
         cap_ids.len(),
-        10,
-        "Platform Chat harness should have 10 capabilities (Generic + platform_management)"
-    );
-    assert!(
-        cap_ids.contains(&"infinity_context"),
-        "Platform Chat harness should include infinity_context from Generic"
+        1,
+        "Platform Chat should only store its local capability set"
     );
     assert!(
         cap_ids.contains(&"platform_management"),
-        "Platform Chat harness should include platform_management capability"
+        "Platform Chat should store platform_management locally"
+    );
+
+    let preview: Value = server
+        .post(
+            "/v1/harnesses/preview",
+            json!({
+                "system_prompt": harness.system_prompt,
+                "parent_harness_id": harness.parent_harness_id,
+                "capabilities": harness.capabilities,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let tool_names: Vec<&str> = preview["tools"]
+        .as_array()
+        .expect("preview tools should be an array")
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+
+    assert!(
+        tool_names.contains(&"web_fetch"),
+        "Platform Chat preview should include inherited Generic tools"
+    );
+    assert!(
+        tool_names.contains(&"manage_harnesses"),
+        "Platform Chat preview should include platform management tools"
     );
 }
 

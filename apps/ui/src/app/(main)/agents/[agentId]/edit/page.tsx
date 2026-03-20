@@ -397,6 +397,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
               <AgentPreview
                 systemPrompt={formData.system_prompt}
                 capabilities={selectedCapabilities}
+                tools={agent.tools ?? []}
               />
             </div>
 

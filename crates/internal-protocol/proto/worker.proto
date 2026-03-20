@@ -324,6 +324,9 @@ message Harness {
     Timestamp created_at = 7;
     Timestamp updated_at = 8;
     repeated string capability_ids = 9;
+    repeated string tags = 10;
+    optional Uuid parent_harness_id = 11;
+    bool is_built_in = 12;
 }
 
 message GetHarnessRequest {
@@ -1382,6 +1385,7 @@ message PlatformCreateHarnessRequest {
     optional string description = 3;
     string system_prompt = 4;
     repeated string capabilities = 5;
+    optional Uuid parent_harness_id = 6;
 }
 
 message PlatformCreateHarnessResponse {
@@ -1394,6 +1398,8 @@ message PlatformUpdateHarnessRequest {
     optional string name = 3;
     optional string description = 4;
     optional string system_prompt = 5;
+    optional Uuid parent_harness_id = 6;
+    optional bool clear_parent_harness_id = 7;
 }
 
 message PlatformUpdateHarnessResponse {

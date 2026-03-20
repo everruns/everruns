@@ -78,6 +78,8 @@ pub struct BuiltInHarnessDefinition {
     pub description: String,
     /// Base system prompt for the harness.
     pub system_prompt: String,
+    /// Optional parent harness key to inherit from during provisioning.
+    pub parent_key: Option<String>,
     /// Tags applied to the harness.
     pub tags: Vec<String>,
     /// Capabilities enabled by default for the harness.
@@ -100,6 +102,7 @@ impl BuiltInHarnessDefinition {
             name: name.into(),
             description: description.into(),
             system_prompt: system_prompt.into(),
+            parent_key: None,
             tags: Vec::new(),
             capabilities: Vec::new(),
             roles: Vec::new(),
@@ -119,6 +122,12 @@ impl BuiltInHarnessDefinition {
         S: Into<String>,
     {
         self.tags = tags.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Set the parent harness key used for inheritance during provisioning.
+    pub fn with_parent_key(mut self, parent_key: impl Into<String>) -> Self {
+        self.parent_key = Some(parent_key.into());
         self
     }
 

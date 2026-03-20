@@ -320,7 +320,7 @@ impl CapabilityService {
         capability_configs: &[everruns_core::AgentCapabilityConfig],
     ) -> Result<(String, Vec<everruns_core::ToolDefinition>)> {
         use everruns_core::capabilities::{
-            SystemPromptContext, collect_capabilities, resolve_dependencies,
+            SystemPromptContext, collect_capabilities_with_configs, resolve_capability_configs,
         };
 
         let mut system_prompt_parts: Vec<String> = Vec::new();
@@ -328,8 +328,8 @@ impl CapabilityService {
 
         // Separate built-in capabilities from MCP capabilities
         // Skill capabilities (skill:{uuid}) are mount-only; skip in preview.
-        let mut builtin_cap_ids: Vec<String> = Vec::new();
         let mut mcp_cap_ids: Vec<uuid::Uuid> = Vec::new();
+        let mut builtin_cap_configs: Vec<everruns_core::AgentCapabilityConfig> = Vec::new();
 
         for cap_config in capability_configs {
             let cap_ref = &cap_config.capability_ref;
@@ -338,18 +338,18 @@ impl CapabilityService {
             } else if cap_ref.skill_id().is_some() {
                 // AttachSkillCapability: mount-only, no preview contribution
             } else {
-                builtin_cap_ids.push(cap_ref.to_string());
+                builtin_cap_configs.push(cap_config.clone());
             }
         }
 
         // Resolve dependencies for built-in capabilities
-        let resolved = resolve_dependencies(&builtin_cap_ids, &self.registry)
+        let resolved = resolve_capability_configs(&builtin_cap_configs, &self.registry)
             .map_err(|e| anyhow::anyhow!("Failed to resolve capability dependencies: {}", e))?;
 
         // Collect from resolved capabilities (includes dependencies in correct order)
         // Preview has no session context, so dynamic capabilities (agent_instructions) return None
         let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
-        let collected = collect_capabilities(&resolved.resolved_ids, &self.registry, &ctx).await;
+        let collected = collect_capabilities_with_configs(&resolved, &self.registry, &ctx).await;
         if let Some(prefix) = collected.system_prompt_prefix() {
             system_prompt_parts.push(prefix);
         }

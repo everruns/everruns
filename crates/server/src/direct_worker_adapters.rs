@@ -19,7 +19,7 @@ use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EventData, Harness, HarnessStatus,
     LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition, ToolRegistry,
-    ToolResultContentPart,
+    ToolResultContentPart, merge_harness,
 };
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
@@ -908,49 +908,72 @@ impl WorkerAdapters for DirectWorkerAdapters {
 impl DirectWorkerAdapters {
     /// Get a harness by ID (direct DB access)
     async fn get_harness_impl(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
-        let harness_id_typed = HarnessId::from_uuid(harness_id);
-        let row = self
-            .db
-            .get_harness(org_id, harness_id_typed)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get harness: {}", e);
-                store_error("Failed to get harness")
-            })?;
+        let mut visited = std::collections::HashSet::new();
+        let mut chain = Vec::new();
+        let mut cursor = Some(HarnessId::from_uuid(harness_id));
 
-        let capabilities = if row.is_some() {
-            self.db
-                .get_harness_capabilities(harness_id)
+        while let Some(current_harness_id) = cursor {
+            if !visited.insert(current_harness_id) {
+                return Err(store_error("Harness inheritance cycle detected"));
+            }
+
+            let row = self
+                .db
+                .get_harness(org_id, current_harness_id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to get harness: {}", e);
+                    store_error("Failed to get harness")
+                })?;
+            let Some(row) = row else {
+                if chain.is_empty() {
+                    return Ok(None);
+                }
+                return Err(store_error("Parent harness not found"));
+            };
+
+            let capabilities = self
+                .db
+                .get_harness_capabilities(current_harness_id.uuid())
                 .await
                 .unwrap_or_default()
-        } else {
-            vec![]
-        };
-
-        Ok(row.map(|r| Harness {
-            id: r.id,
-            name: r.name,
-            description: r.description,
-            system_prompt: r.system_prompt,
-            default_model_id: r.default_model_id,
-            tags: r.tags,
-            capabilities: capabilities
                 .into_iter()
-                .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
-                .collect(),
-            initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
-            is_built_in: r.is_built_in,
-            status: match r.status.as_str() {
-                "active" => HarnessStatus::Active,
-                "archived" => HarnessStatus::Archived,
-                "deleted" => HarnessStatus::Deleted,
-                _ => HarnessStatus::Active,
-            },
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-            archived_at: r.archived_at,
-            deleted_at: r.deleted_at,
-        }))
+                .map(|cap| AgentCapabilityConfig::with_config(cap.capability_id, cap.config))
+                .collect();
+
+            cursor = row.parent_harness_id;
+            chain.push(Harness {
+                id: row.id,
+                name: row.name,
+                description: row.description,
+                system_prompt: row.system_prompt,
+                parent_harness_id: row.parent_harness_id,
+                default_model_id: row.default_model_id,
+                tags: row.tags,
+                capabilities,
+                initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+                is_built_in: row.is_built_in,
+                status: match row.status.as_str() {
+                    "active" => HarnessStatus::Active,
+                    "archived" => HarnessStatus::Archived,
+                    "deleted" => HarnessStatus::Deleted,
+                    _ => HarnessStatus::Active,
+                },
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                archived_at: row.archived_at,
+                deleted_at: row.deleted_at,
+            });
+        }
+
+        let Some(mut effective) = chain.pop() else {
+            return Ok(None);
+        };
+        while let Some(layer) = chain.pop() {
+            effective = merge_harness(&effective, &layer);
+        }
+
+        Ok(Some(effective))
     }
 
     /// Build an Agent from a DB row and pre-loaded capability rows.
@@ -1205,6 +1228,7 @@ impl DirectPlatformStore {
             name: row.name,
             description: row.description,
             system_prompt: row.system_prompt,
+            parent_harness_id: row.parent_harness_id,
             default_model_id: row.default_model_id,
             tags: row.tags,
             capabilities,
@@ -1340,6 +1364,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         name: &str,
         description: Option<&str>,
         system_prompt: &str,
+        parent_harness_id: Option<HarnessId>,
         capabilities: &[String],
     ) -> everruns_core::error::Result<Harness> {
         use crate::storage::models::CreateHarnessRow;
@@ -1348,6 +1373,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             name: name.to_string(),
             description: description.map(|s| s.to_string()),
             system_prompt: system_prompt.to_string(),
+            parent_harness_id,
             default_model_id: None,
             tags: vec!["managed".to_string()],
             initial_files: serde_json::json!([]),
@@ -1389,6 +1415,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         name: Option<&str>,
         description: Option<&str>,
         system_prompt: Option<&str>,
+        parent_harness_id: Option<Option<HarnessId>>,
     ) -> everruns_core::error::Result<Harness> {
         use crate::storage::models::UpdateHarness;
 
@@ -1396,6 +1423,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             name: name.map(|s| s.to_string()),
             description: description.map(|s| s.to_string()),
             system_prompt: system_prompt.map(|s| s.to_string()),
+            parent_harness_id,
             ..Default::default()
         };
         self.db
@@ -1441,6 +1469,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             &copy_name,
             source.description.as_deref(),
             &source.system_prompt,
+            source.parent_harness_id,
             &cap_ids,
         )
         .await

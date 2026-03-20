@@ -6,6 +6,8 @@ Harnesses define the base environment and capabilities for sessions. Everruns sh
 
 Harnesses may also define starter files. Starter files are copied into each new session created from the harness and can be marked editable or read-only per file.
 
+Harnesses support single-parent inheritance via `parent_harness_id`. Inheritance is live: the effective harness is resolved from parent to child at runtime and in preview.
+
 ## Built-in Harness Types
 
 ### Base
@@ -64,23 +66,17 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 |----------|-------|
 | Name | Platform Chat |
 | Seed ID | `harness_01933b5a000070008000000000000603` |
+| Parent | Generic |
 | System Prompt | See `crates/server/src/seed.rs` (CHAT_HARNESS) for full prompt |
 | Tags | `chat`, `seed` |
 
-**Capabilities:** Generic capabilities plus `platform_management`:
+**Local capabilities:** `platform_management`
 
 | Capability ID | Name | Purpose | Config |
 |---------------|------|---------|--------|
-| `session_file_system` | File System | Read, write, list, grep, delete files in `/workspace` | |
-| `virtual_bash` | Virtual Bash | Sandboxed bash shell for code execution and scripting | |
-| `web_fetch` | Web Fetch | Fetch web content with file download support | `{"enable_file_download": true}` |
-| `session_storage` | Storage | Key/value store and encrypted secret storage | |
-| `session` | Session | Session info access and title management | |
-| `agent_instructions` | AGENTS.md | Reads AGENTS.md from workspace and injects into system prompt | |
-| `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem | |
-| `infinity_context` | Infinity Context | Trims older prompt history while keeping it queryable | |
-| `openai_tool_search` | OpenAI Tool Search | Defers tool schema loading on supported OpenAI models | |
 | `platform_management` | Platform Management | Manage harnesses, agents, and sessions via tools | |
+
+**Effective capabilities:** Generic capabilities plus `platform_management`
 
 **System prompt guidance includes:**
 - "Run agent" workflow: create session → send message → wait for idle → get results
@@ -102,8 +98,9 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 | Why include `session` in Generic? | Session metadata (title, info) is commonly needed and has minimal overhead. |
 | Why include `agent_instructions` in Generic? | AGENTS.md is the standard way to provide project-level instructions. Including it by default means users get this functionality without extra configuration. |
 | Why include `skills` in Generic? | Skills extend agent abilities via portable instruction packages. Including discovery by default means agents can use skills uploaded to the session filesystem without extra capability setup. |
-<<<<<<< HEAD
 | Why include `infinity_context` in Generic? | General-purpose sessions often grow long. Including long-context support by default keeps the prompt bounded without permanently hiding earlier conversation state. |
+| Why support harness inheritance? | It lets users build on Generic or other shared harnesses without duplicating long capability lists, prompts, model defaults, or starter files. |
+| How does harness inheritance merge? | System prompt appends parent then child. Default model falls back parent then child override. Capabilities merge by capability ID with child config overriding parent. Starter files merge by normalized path with child overriding parent. |
 | Can users create additional harnesses? | Yes, via `POST /v1/harnesses`. Built-in harnesses are readonly; users can copy them for editable versions. |
 | Why are built-in harnesses readonly? | Prevents accidental modification of system-managed definitions. Copy-to-edit pattern gives users full control while keeping built-ins stable and upgradeable. |
 | How are built-in harnesses upgraded? | Reconciliation runs at startup — iterates all orgs and upserts built-in harness definitions. Changes to `org_init::BUILT_IN_HARNESSES` propagate automatically. |

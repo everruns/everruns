@@ -3,7 +3,9 @@
 // Policy enforcement happens at the service layer via #[policy] macro.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::harness::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
+use crate::services::harness::{
+    HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW, merge_preview_layer, resolve_effective_harness,
+};
 use crate::storage::StorageBackend;
 use axum::extract::FromRef;
 use axum::{
@@ -39,6 +41,10 @@ pub struct CreateHarnessRequest {
     /// The system prompt defining the harness's base behavior.
     #[schema(example = "You are a research assistant with deep analytical capabilities.")]
     pub system_prompt: String,
+    /// Optional parent harness to inherit from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000602")]
+    pub parent_harness_id: Option<HarnessId>,
     /// Default LLM model ID for this harness. Lowest priority in model chain.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
@@ -67,6 +73,9 @@ pub struct UpdateHarnessRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, nullable = true)]
+    pub parent_harness_id: Option<Option<HarnessId>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub default_model_id: Option<ModelId>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -84,6 +93,9 @@ pub struct UpdateHarnessRequest {
 pub struct PreviewHarnessRequest {
     #[schema(example = "You are a research assistant.")]
     pub system_prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000602")]
+    pub parent_harness_id: Option<HarnessId>,
     #[serde(default)]
     pub capabilities: Vec<AgentCapabilityConfig>,
 }
@@ -478,9 +490,27 @@ pub async fn preview_harness(
     State(state): State<AppState>,
     Json(req): Json<PreviewHarnessRequest>,
 ) -> Result<Json<HarnessPreviewResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let parent = match req.parent_harness_id {
+        Some(parent_harness_id) => Some(
+            resolve_effective_harness(state.service.db().as_ref(), org.org_id, parent_harness_id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to resolve harness preview parent: {}", e);
+                    ErrorResponse::new("Internal server error")
+                        .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+                })?
+                .ok_or_else(|| {
+                    ErrorResponse::new("Parent harness not found")
+                        .into_response(StatusCode::NOT_FOUND)
+                })?,
+        ),
+        None => None,
+    };
+    let (system_prompt, capabilities) =
+        merge_preview_layer(parent.as_ref(), &req.system_prompt, &req.capabilities);
     let (system_prompt, tools) = state
         .capability_service
-        .preview(org.org_id, &req.system_prompt, &req.capabilities)
+        .preview(org.org_id, &system_prompt, &capabilities)
         .await
         .map_err(|e| {
             tracing::error!("Failed to generate harness preview: {}", e);

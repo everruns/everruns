@@ -222,7 +222,7 @@ pub use events::{
     TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData, ToolStartedData,
     TurnCancelledData, TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
 };
-pub use harness::{Harness, HarnessStatus};
+pub use harness::{Harness, HarnessStatus, merge_harness, merge_harness_chain};
 pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
 };

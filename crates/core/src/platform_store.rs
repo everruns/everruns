@@ -46,6 +46,7 @@ pub trait PlatformStore: Send + Sync {
         name: &str,
         description: Option<&str>,
         system_prompt: &str,
+        parent_harness_id: Option<HarnessId>,
         capabilities: &[String],
     ) -> Result<Harness>;
 
@@ -56,6 +57,7 @@ pub trait PlatformStore: Send + Sync {
         name: Option<&str>,
         description: Option<&str>,
         system_prompt: Option<&str>,
+        parent_harness_id: Option<Option<HarnessId>>,
     ) -> Result<Harness>;
 
     /// Delete (archive) a harness.
@@ -201,6 +203,7 @@ pub mod tests {
                     name: "Test Harness".to_string(),
                     description: Some("test harness".to_string()),
                     system_prompt: "You are helpful.".to_string(),
+                    parent_harness_id: None,
                     default_model_id: None,
                     tags: vec![],
                     capabilities: vec![AgentCapabilityConfig::new("session")],
@@ -274,10 +277,12 @@ pub mod tests {
             name: &str,
             _desc: Option<&str>,
             _prompt: &str,
+            parent_harness_id: Option<HarnessId>,
             _caps: &[String],
         ) -> Result<Harness> {
             let mut h = self.harness.clone();
             h.name = name.to_string();
+            h.parent_harness_id = parent_harness_id;
             Ok(h)
         }
         async fn update_harness(
@@ -286,10 +291,14 @@ pub mod tests {
             name: Option<&str>,
             _desc: Option<&str>,
             _prompt: Option<&str>,
+            parent_harness_id: Option<Option<HarnessId>>,
         ) -> Result<Harness> {
             let mut h = self.harness.clone();
             if let Some(n) = name {
                 h.name = n.to_string();
+            }
+            if let Some(parent_harness_id) = parent_harness_id {
+                h.parent_harness_id = parent_harness_id;
             }
             Ok(h)
         }

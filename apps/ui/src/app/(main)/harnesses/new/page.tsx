@@ -20,6 +20,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
+import { HarnessSelect } from "@/components/harness/harness-select";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 
@@ -33,6 +34,7 @@ export default function NewHarnessPage() {
     name: "",
     description: "",
     system_prompt: "",
+    parent_harness_id: "",
     default_model_id: "",
     tags: "",
   });
@@ -57,6 +59,7 @@ export default function NewHarnessPage() {
         name: formData.name,
         description: formData.description || undefined,
         system_prompt: formData.system_prompt,
+        parent_harness_id: formData.parent_harness_id || undefined,
         default_model_id: formData.default_model_id || undefined,
         tags: tags.length > 0 ? tags : undefined,
         capabilities: selectedCapabilities.length > 0 ? selectedCapabilities : undefined,
@@ -116,6 +119,22 @@ export default function NewHarnessPage() {
                 onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
               />
               <p className="text-xs text-muted-foreground">Comma-separated list of tags</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="parent-harness">Parent Harness</Label>
+              <HarnessSelect
+                value={formData.parent_harness_id}
+                onValueChange={(value) => setFormData({ ...formData, parent_harness_id: value })}
+                placeholder="No parent harness"
+                includeNoneOption
+                noneLabel="No parent harness"
+                disabled={createHarness.isPending}
+              />
+              <p className="text-xs text-muted-foreground">
+                Inherit system prompt, capabilities, initial files, and default model from another
+                harness.
+              </p>
             </div>
 
             <div className="space-y-2">

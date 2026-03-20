@@ -14,7 +14,6 @@ use anyhow::{Context, Result};
 use everruns_core::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
 use everruns_durable::UpdateField;
 use uuid::Uuid;
-
 /// Well-known seed IDs for default org harnesses (backward compat)
 mod harness_ids {
     use uuid::Uuid;
@@ -58,10 +57,15 @@ pub async fn initialize_org_harnesses_with_definitions(
     let is_default_org = org_id == DEFAULT_ORG_ID;
 
     for harness in harnesses {
+        let parent_harness_id =
+            resolve_built_in_parent_id(db, org_id, is_default_org, harnesses, harness)
+                .await
+                .with_context(|| format!("resolve parent for built-in harness {}", harness.name))?;
         let input = CreateHarnessRow {
             name: harness.name.to_string(),
             description: Some(harness.description.to_string()),
             system_prompt: harness.system_prompt.to_string(),
+            parent_harness_id,
             default_model_id: None,
             tags: harness.tags.clone(),
             initial_files: serde_json::json!([]),
@@ -162,6 +166,38 @@ pub async fn initialize_org_harnesses_with_definitions(
     sync_org_harness_settings_with_definitions(db, org_id, harnesses).await?;
 
     Ok(result)
+}
+
+async fn resolve_built_in_parent_id(
+    db: &StorageBackend,
+    org_id: i64,
+    is_default_org: bool,
+    harnesses: &[BuiltInHarnessDefinition],
+    harness: &BuiltInHarnessDefinition,
+) -> Result<Option<everruns_core::HarnessId>> {
+    let Some(parent_key) = harness.parent_key.as_deref() else {
+        return Ok(None);
+    };
+
+    let parent = harnesses
+        .iter()
+        .find(|candidate| candidate.key == parent_key)
+        .with_context(|| format!("unknown built-in parent {parent_key}"))?;
+
+    if is_default_org {
+        let parent_seed = parent
+            .seed_id
+            .with_context(|| format!("missing seed id for built-in parent {parent_key}"))?;
+        return Ok(Some(parent_seed.into()));
+    }
+
+    let parent_row = db
+        .list_harnesses(org_id, Some(&parent.name), true)
+        .await?
+        .into_iter()
+        .find(|candidate| candidate.is_built_in && candidate.name == parent.name)
+        .with_context(|| format!("missing built-in parent {} for org {org_id}", parent.name))?;
+    Ok(Some(parent_row.id))
 }
 
 /// Reconcile built-in harnesses across all organizations.
@@ -398,6 +434,23 @@ mod tests {
             GENERIC_HARNESS_ID
         );
         assert_eq!(settings.base_harness_id.unwrap().uuid(), BASE_HARNESS_ID);
+
+        let chat = provisioned_harnesses
+            .iter()
+            .find(|h| h.name == "Platform Chat")
+            .expect("chat harness");
+        let generic = provisioned_harnesses
+            .iter()
+            .find(|h| h.name == "Generic")
+            .expect("generic harness");
+        assert_eq!(chat.parent_harness_id, Some(generic.id));
+
+        let chat_caps = db.get_harness_capabilities(chat.id.uuid()).await.unwrap();
+        let chat_cap_ids = chat_caps
+            .iter()
+            .map(|cap| cap.capability_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(chat_cap_ids, vec!["platform_management"]);
     }
 
     #[tokio::test]

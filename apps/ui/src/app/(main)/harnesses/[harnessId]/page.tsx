@@ -7,6 +7,7 @@ import {
   useLlmModels,
   useDeleteHarness,
   useCopyHarness,
+  useHarnesses,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -30,6 +31,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
   const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
+  const { data: harnesses = [] } = useHarnesses();
   const { data: allCapabilities } = useCapabilities();
   const { data: llmModels } = useLlmModels();
   const deleteHarness = useDeleteHarness();
@@ -42,6 +44,9 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
 
   const defaultModel = harness?.default_model_id
     ? modelMap.get(harness.default_model_id)
+    : undefined;
+  const parentHarness = harness?.parent_harness_id
+    ? harnesses.find((candidate) => candidate.id === harness.parent_harness_id)
     : undefined;
 
   const getCapabilityInfo = (capabilityId: string): Capability | undefined =>
@@ -171,13 +176,17 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
                 <CardContent>
                   {harnessCapabilities.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No capabilities enabled.{" "}
-                      <Link
-                        href={`/harnesses/${harnessId}/edit`}
-                        className="text-primary hover:underline"
-                      >
-                        Add some
-                      </Link>
+                      {harness.parent_harness_id
+                        ? "No local capabilities configured on this harness. Preview shows inherited capabilities."
+                        : "No capabilities enabled. "}
+                      {!harness.parent_harness_id && (
+                        <Link
+                          href={`/harnesses/${harnessId}/edit`}
+                          className="text-primary hover:underline"
+                        >
+                          Add some
+                        </Link>
+                      )}
                     </p>
                   ) : (
                     <div className="space-y-2">
@@ -216,6 +225,22 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
                         <ProviderIcon providerType={defaultModel.provider_type} size="sm" />
                         <span className="text-sm">{defaultModel.display_name}</span>
                       </div>
+                    </div>
+                  )}
+
+                  {harness.parent_harness_id && (
+                    <div>
+                      <p className="text-sm font-medium">Inherits From</p>
+                      {parentHarness ? (
+                        <Link
+                          href={`/harnesses/${parentHarness.id}`}
+                          className="text-sm text-primary hover:underline"
+                        >
+                          {parentHarness.name}
+                        </Link>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">{harness.parent_harness_id}</p>
+                      )}
                     </div>
                   )}
 
@@ -263,6 +288,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
         <TabsContent value="preview">
           <HarnessPreview
             systemPrompt={harness.system_prompt}
+            parentHarnessId={harness.parent_harness_id || undefined}
             capabilities={harnessCapabilities.map((cap) => ({
               ref: cap.ref,
               config: cap.config,

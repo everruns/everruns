@@ -12,9 +12,10 @@ use crate::storage::{
 use anyhow::Result;
 use everruns_core::{
     AgentCapabilityConfig, Caller, Harness, HarnessId, HarnessStatus, InitialFile, Permission,
-    Policy, Rule,
+    Policy, Rule, merge_harness,
 };
 use everruns_macros::policy;
+use std::collections::HashSet;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -62,10 +63,17 @@ impl HarnessService {
         Self { db }
     }
 
+    pub(crate) fn db(&self) -> &Arc<StorageBackend> {
+        &self.db
+    }
+
     #[policy(HARNESS_MANAGE)]
     pub async fn create(&self, caller: &Caller, req: CreateHarnessRequest) -> Result<Harness> {
         let capabilities_to_store =
             ensure_file_system_capability(req.capabilities.clone(), !req.initial_files.is_empty());
+        let parent_harness_id = self
+            .validate_parent_harness(caller.org_id, None, req.parent_harness_id)
+            .await?;
         let default_model_id = self
             .validate_default_model_id(caller.org_id, req.default_model_id)
             .await?;
@@ -74,6 +82,7 @@ impl HarnessService {
             name: req.name,
             description: req.description,
             system_prompt: req.system_prompt,
+            parent_harness_id,
             default_model_id,
             tags: req.tags,
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
@@ -183,11 +192,19 @@ impl HarnessService {
         let default_model_id = self
             .validate_default_model_id(caller.org_id, req.default_model_id)
             .await?;
+        let parent_harness_id = self
+            .validate_parent_harness(
+                caller.org_id,
+                Some(HarnessId::from_uuid(id)),
+                req.parent_harness_id.flatten(),
+            )
+            .await?;
 
         let input = UpdateHarness {
             name: req.name,
             description: req.description,
             system_prompt: req.system_prompt,
+            parent_harness_id: req.parent_harness_id.map(|_| parent_harness_id),
             default_model_id,
             tags: req.tags,
             initial_files: req
@@ -239,6 +256,7 @@ impl HarnessService {
             name: format!("{} (copy)", source.name),
             description: source.description,
             system_prompt: source.system_prompt,
+            parent_harness_id: source.parent_harness_id,
             default_model_id: source.default_model_id,
             tags: source.tags,
             capabilities: source.capabilities,
@@ -255,6 +273,8 @@ impl HarnessService {
         if self.is_built_in(caller.org_id, id).await? {
             anyhow::bail!("Cannot delete built-in harness.");
         }
+        self.ensure_no_child_harnesses(caller.org_id, HarnessId::from_uuid(id))
+            .await?;
 
         self.db
             .delete_harness(caller.org_id, HarnessId::from_uuid(id))
@@ -266,6 +286,8 @@ impl HarnessService {
         if self.is_built_in(caller.org_id, id).await? {
             anyhow::bail!("Cannot delete built-in harness.");
         }
+        self.ensure_no_child_harnesses(caller.org_id, HarnessId::from_uuid(id))
+            .await?;
         let existing = self
             .db
             .get_harness(caller.org_id, HarnessId::from_uuid(id))
@@ -277,6 +299,10 @@ impl HarnessService {
         self.db
             .destroy_harness(caller.org_id, HarnessId::from_uuid(id))
             .await
+    }
+
+    pub async fn resolve_effective(&self, org_id: i64, id: HarnessId) -> Result<Option<Harness>> {
+        resolve_effective_harness(self.db.as_ref(), org_id, id).await
     }
 
     /// Check if a harness is built-in (system-managed, readonly).
@@ -313,12 +339,65 @@ impl HarnessService {
         Ok(Some(model_id))
     }
 
+    async fn validate_parent_harness(
+        &self,
+        org_id: i64,
+        current_harness_id: Option<HarnessId>,
+        parent_harness_id: Option<HarnessId>,
+    ) -> Result<Option<HarnessId>> {
+        let Some(parent_harness_id) = parent_harness_id else {
+            return Ok(None);
+        };
+
+        if current_harness_id == Some(parent_harness_id) {
+            anyhow::bail!("Harness cannot inherit from itself");
+        }
+
+        let parent = self
+            .db
+            .get_harness(org_id, parent_harness_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Parent harness"))?;
+        if parent.status != "active" {
+            anyhow::bail!("Parent harness must be active");
+        }
+
+        if let Some(current_harness_id) = current_harness_id {
+            ensure_no_parent_cycle(
+                self.db.as_ref(),
+                org_id,
+                current_harness_id,
+                parent_harness_id,
+            )
+            .await?;
+        }
+
+        Ok(Some(parent_harness_id))
+    }
+
+    async fn ensure_no_child_harnesses(&self, org_id: i64, parent_id: HarnessId) -> Result<()> {
+        let children = self.db.list_child_harnesses(org_id, parent_id).await?;
+        if children.is_empty() {
+            return Ok(());
+        }
+
+        let child_names = children
+            .iter()
+            .map(|child| child.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        anyhow::bail!(
+            "Cannot archive or delete harness while child harnesses still inherit from it: {child_names}"
+        );
+    }
+
     fn row_to_harness(row: HarnessRow, capabilities: Vec<AgentCapabilityConfig>) -> Harness {
         Harness {
             id: row.id,
             name: row.name,
             description: row.description,
             system_prompt: row.system_prompt,
+            parent_harness_id: row.parent_harness_id,
             default_model_id: row.default_model_id,
             tags: row.tags,
             capabilities,
@@ -334,6 +413,115 @@ impl HarnessService {
     }
 }
 
+pub(crate) async fn load_raw_harness(
+    db: &StorageBackend,
+    org_id: i64,
+    harness_id: HarnessId,
+) -> Result<Option<Harness>> {
+    let Some(row) = db.get_harness(org_id, harness_id).await? else {
+        return Ok(None);
+    };
+    let capabilities = db
+        .get_harness_capabilities(harness_id.uuid())
+        .await?
+        .into_iter()
+        .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
+        .collect();
+    Ok(Some(HarnessService::row_to_harness(row, capabilities)))
+}
+
+pub(crate) async fn resolve_effective_harness(
+    db: &StorageBackend,
+    org_id: i64,
+    harness_id: HarnessId,
+) -> Result<Option<Harness>> {
+    let mut visited = HashSet::new();
+    let mut chain = Vec::new();
+    let mut cursor = Some(harness_id);
+
+    while let Some(current_harness_id) = cursor {
+        if !visited.insert(current_harness_id) {
+            anyhow::bail!("Harness inheritance cycle detected");
+        }
+
+        let Some(harness) = load_raw_harness(db, org_id, current_harness_id).await? else {
+            if chain.is_empty() {
+                return Ok(None);
+            }
+            anyhow::bail!("Parent harness not found");
+        };
+        cursor = harness.parent_harness_id;
+        chain.push(harness);
+    }
+
+    let Some(mut effective) = chain.pop() else {
+        return Ok(None);
+    };
+
+    while let Some(layer) = chain.pop() {
+        effective = merge_harness(&effective, &layer);
+    }
+
+    Ok(Some(effective))
+}
+
+pub(crate) fn merge_preview_layer(
+    parent: Option<&Harness>,
+    system_prompt: &str,
+    capabilities: &[AgentCapabilityConfig],
+) -> (String, Vec<AgentCapabilityConfig>) {
+    let Some(parent) = parent else {
+        return (system_prompt.to_string(), capabilities.to_vec());
+    };
+
+    let draft = Harness {
+        id: HarnessId::new(),
+        name: "preview".to_string(),
+        description: None,
+        system_prompt: system_prompt.to_string(),
+        parent_harness_id: None,
+        default_model_id: None,
+        tags: vec![],
+        capabilities: capabilities.to_vec(),
+        initial_files: vec![],
+        is_built_in: false,
+        status: HarnessStatus::Active,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        archived_at: None,
+        deleted_at: None,
+    };
+    let merged = merge_harness(parent, &draft);
+    (merged.system_prompt, merged.capabilities)
+}
+
+async fn ensure_no_parent_cycle(
+    db: &StorageBackend,
+    org_id: i64,
+    current_harness_id: HarnessId,
+    candidate_parent_id: HarnessId,
+) -> Result<()> {
+    let mut cursor = Some(candidate_parent_id);
+    let mut visited = HashSet::new();
+
+    while let Some(harness_id) = cursor {
+        if harness_id == current_harness_id {
+            anyhow::bail!("Harness inheritance cycle detected");
+        }
+        if !visited.insert(harness_id) {
+            anyhow::bail!("Harness inheritance cycle detected");
+        }
+
+        let row = db
+            .get_harness(org_id, harness_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Parent harness"))?;
+        cursor = row.parent_harness_id;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,6 +535,7 @@ mod tests {
             name: "Test Harness".to_string(),
             description: None,
             system_prompt: "Test".to_string(),
+            parent_harness_id: None,
             default_model_id,
             tags: vec![],
             capabilities: vec![],
@@ -361,6 +550,7 @@ mod tests {
             name: None,
             description: None,
             system_prompt: None,
+            parent_harness_id: None,
             default_model_id,
             tags: None,
             capabilities: None,
@@ -460,5 +650,112 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(err.to_string(), "Model not found");
+    }
+
+    #[tokio::test]
+    async fn resolves_effective_harness_from_parent() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = HarnessService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let parent = service
+            .create(
+                &caller,
+                CreateHarnessRequest {
+                    name: "Parent".to_string(),
+                    description: None,
+                    system_prompt: "Parent prompt".to_string(),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec!["parent".to_string()],
+                    capabilities: vec![AgentCapabilityConfig::with_config(
+                        "web_fetch",
+                        serde_json::json!({"enable_file_download": true}),
+                    )],
+                    initial_files: vec![InitialFile {
+                        path: "/workspace/README.md".to_string(),
+                        content: "parent".to_string(),
+                        encoding: "text".to_string(),
+                        is_readonly: true,
+                    }],
+                },
+            )
+            .await
+            .unwrap();
+
+        let child = service
+            .create(
+                &caller,
+                CreateHarnessRequest {
+                    name: "Child".to_string(),
+                    description: None,
+                    system_prompt: "Child prompt".to_string(),
+                    parent_harness_id: Some(parent.id),
+                    default_model_id: None,
+                    tags: vec!["child".to_string()],
+                    capabilities: vec![AgentCapabilityConfig::new("platform_management")],
+                    initial_files: vec![InitialFile {
+                        path: "/README.md".to_string(),
+                        content: "child".to_string(),
+                        encoding: "text".to_string(),
+                        is_readonly: false,
+                    }],
+                },
+            )
+            .await
+            .unwrap();
+
+        let effective = service
+            .resolve_effective(DEFAULT_ORG_ID, child.id)
+            .await
+            .unwrap()
+            .expect("effective harness");
+
+        assert_eq!(effective.system_prompt, "Parent prompt\n\nChild prompt");
+        assert_eq!(
+            effective
+                .capabilities
+                .iter()
+                .map(|cap| cap.capability_id())
+                .collect::<Vec<_>>(),
+            vec!["session_file_system", "web_fetch", "platform_management"]
+        );
+        assert_eq!(effective.initial_files.len(), 1);
+        assert_eq!(effective.initial_files[0].content, "child");
+    }
+
+    #[tokio::test]
+    async fn rejects_archiving_parent_with_children() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = HarnessService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let parent = service
+            .create(&caller, build_create_request(None))
+            .await
+            .unwrap();
+        service
+            .create(
+                &caller,
+                CreateHarnessRequest {
+                    name: "Child".to_string(),
+                    description: None,
+                    system_prompt: "Child".to_string(),
+                    parent_harness_id: Some(parent.id),
+                    default_model_id: None,
+                    tags: vec![],
+                    capabilities: vec![],
+                    initial_files: vec![],
+                },
+            )
+            .await
+            .unwrap();
+
+        let err = service.delete(&caller, parent.id.uuid()).await.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("child harnesses still inherit from it"),
+            "unexpected error: {err}"
+        );
     }
 }

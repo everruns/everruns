@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   useHarness,
+  useHarnesses,
   useUpdateHarness,
   useDeleteHarness,
   useDestroyHarness,
@@ -28,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
+import { HarnessSelect } from "@/components/harness/harness-select";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
@@ -39,6 +41,7 @@ interface FormData {
   name: string;
   description: string;
   system_prompt: string;
+  parent_harness_id: string;
   tags: string;
   default_model_id: string;
 }
@@ -48,6 +51,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
   const router = useRouter();
 
   const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
+  const { data: harnesses = [] } = useHarnesses();
   const updateHarness = useUpdateHarness();
   const deleteHarness = useDeleteHarness();
   const destroyHarness = useDestroyHarness();
@@ -65,6 +69,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
         name: "",
         description: "",
         system_prompt: "",
+        parent_harness_id: "",
         tags: "",
         default_model_id: "",
       };
@@ -73,6 +78,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
       name: harness.name,
       description: harness.description || "",
       system_prompt: harness.system_prompt,
+      parent_harness_id: harness.parent_harness_id || "",
       tags: harness.tags.join(", "),
       default_model_id: harness.default_model_id || "",
     };
@@ -81,6 +87,13 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
   const formData = useMemo(
     () => ({ ...initialFormData, ...formChanges }),
     [initialFormData, formChanges],
+  );
+  const selectedParentHarness = useMemo(
+    () =>
+      formData.parent_harness_id
+        ? harnesses.find((candidate) => candidate.id === formData.parent_harness_id)
+        : undefined,
+    [formData.parent_harness_id, harnesses],
   );
 
   const handleFormChange = useCallback((field: keyof FormData, value: string) => {
@@ -123,6 +136,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
           name: formData.name,
           description: formData.description || undefined,
           system_prompt: formData.system_prompt,
+          parent_harness_id: formData.parent_harness_id || null,
           tags,
           default_model_id: formData.default_model_id || undefined,
           ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
@@ -251,6 +265,23 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                         disabled={isSaving || isReadOnly}
                         rows={2}
                       />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="parent-harness">Parent Harness</Label>
+                      <HarnessSelect
+                        value={formData.parent_harness_id}
+                        onValueChange={(value) => handleFormChange("parent_harness_id", value)}
+                        placeholder="No parent harness"
+                        includeNoneOption
+                        noneLabel="No parent harness"
+                        excludeIds={[harnessId]}
+                        disabled={isSaving || isReadOnly}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Inherit prompt, capabilities, initial files, and model fallback from a
+                        parent harness.
+                      </p>
                     </div>
 
                     <div className="space-y-2">
@@ -395,6 +426,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
               <HarnessPreview
                 systemPrompt={formData.system_prompt}
                 capabilities={selectedCapabilities}
+                parentHarnessId={formData.parent_harness_id || undefined}
               />
             </div>
 
@@ -414,6 +446,12 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                     <p className="text-sm font-medium">Description</p>
                     <p className="text-sm text-muted-foreground">
                       {formData.description || "(not set)"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Parent Harness</p>
+                    <p className="text-sm text-muted-foreground">
+                      {(selectedParentHarness?.name ?? formData.parent_harness_id) || "(none)"}
                     </p>
                   </div>
                   <div>

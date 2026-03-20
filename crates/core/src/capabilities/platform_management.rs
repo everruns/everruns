@@ -134,6 +134,10 @@ impl Tool for ManageHarnessesTool {
                     "type": "string",
                     "description": "System prompt for the harness. Defaults to 'You are a helpful assistant.' if omitted."
                 },
+                "parent_harness_id": {
+                    "type": ["string", "null"],
+                    "description": "Optional parent harness ID. Set to null on update to clear inheritance."
+                },
                 "capabilities": {
                     "type": "array",
                     "items": {"type": "string"},
@@ -231,6 +235,24 @@ impl Tool for ManageHarnessesTool {
                 let system_prompt =
                     get_str(&arguments, "system_prompt").unwrap_or("You are a helpful assistant.");
                 let description = get_str(&arguments, "description");
+                let parent_harness_id = match arguments.get("parent_harness_id") {
+                    Some(Value::String(id_str)) => {
+                        match id_str.parse::<crate::typed_id::HarnessId>() {
+                            Ok(id) => Some(id),
+                            Err(_) => {
+                                return ToolExecutionResult::tool_error(format!(
+                                    "Invalid parent_harness_id: {id_str}"
+                                ));
+                            }
+                        }
+                    }
+                    Some(Value::Null) | None => None,
+                    Some(_) => {
+                        return ToolExecutionResult::tool_error(
+                            "parent_harness_id must be a harness ID string or null",
+                        );
+                    }
+                };
                 let capabilities: Vec<String> = arguments
                     .get("capabilities")
                     .and_then(|v| v.as_array())
@@ -241,13 +263,20 @@ impl Tool for ManageHarnessesTool {
                     })
                     .unwrap_or_default();
                 match store
-                    .create_harness(name, description, system_prompt, &capabilities)
+                    .create_harness(
+                        name,
+                        description,
+                        system_prompt,
+                        parent_harness_id,
+                        &capabilities,
+                    )
                     .await
                 {
                     Ok(h) => ToolExecutionResult::success(json!({
                         "id": h.id.to_string(),
                         "name": h.name,
                         "description": h.description,
+                        "parent_harness_id": h.parent_harness_id.map(|id| id.to_string()),
                         "status": format!("{:?}", h.status),
                         "ui_link": format!("{}/harnesses/{}", base_url, h.id),
                         "message": "Harness created successfully"
@@ -274,14 +303,34 @@ impl Tool for ManageHarnessesTool {
                 let name = get_str(&arguments, "name");
                 let description = get_str(&arguments, "description");
                 let system_prompt = get_str(&arguments, "system_prompt");
+                let parent_harness_id = match arguments.get("parent_harness_id") {
+                    Some(Value::String(id_str)) => {
+                        match id_str.parse::<crate::typed_id::HarnessId>() {
+                            Ok(id) => Some(Some(id)),
+                            Err(_) => {
+                                return ToolExecutionResult::tool_error(format!(
+                                    "Invalid parent_harness_id: {id_str}"
+                                ));
+                            }
+                        }
+                    }
+                    Some(Value::Null) => Some(None),
+                    None => None,
+                    Some(_) => {
+                        return ToolExecutionResult::tool_error(
+                            "parent_harness_id must be a harness ID string or null",
+                        );
+                    }
+                };
                 match store
-                    .update_harness(id, name, description, system_prompt)
+                    .update_harness(id, name, description, system_prompt, parent_harness_id)
                     .await
                 {
                     Ok(h) => ToolExecutionResult::success(json!({
                         "id": h.id.to_string(),
                         "name": h.name,
                         "description": h.description,
+                        "parent_harness_id": h.parent_harness_id.map(|id| id.to_string()),
                         "status": format!("{:?}", h.status),
                         "ui_link": format!("{}/harnesses/{}", base_url, h.id),
                         "message": "Harness updated successfully"

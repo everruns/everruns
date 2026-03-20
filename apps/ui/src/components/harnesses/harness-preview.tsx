@@ -12,9 +12,14 @@ import { Wrench, FileText, AlertCircle } from "lucide-react";
 interface HarnessPreviewProps {
   systemPrompt: string;
   capabilities: AgentCapabilityConfig[];
+  parentHarnessId?: string;
 }
 
-export function HarnessPreview({ systemPrompt, capabilities }: HarnessPreviewProps) {
+export function HarnessPreview({
+  systemPrompt,
+  capabilities,
+  parentHarnessId,
+}: HarnessPreviewProps) {
   const previewMutation = usePreviewHarness();
   const [preview, setPreview] = useState<AgentPreviewResponse | null>(null);
 
@@ -22,6 +27,7 @@ export function HarnessPreview({ systemPrompt, capabilities }: HarnessPreviewPro
     previewMutation.mutate(
       {
         system_prompt: systemPrompt,
+        parent_harness_id: parentHarnessId,
         capabilities,
       },
       {
@@ -31,7 +37,7 @@ export function HarnessPreview({ systemPrompt, capabilities }: HarnessPreviewPro
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [systemPrompt, JSON.stringify(capabilities)]);
+  }, [parentHarnessId, systemPrompt, JSON.stringify(capabilities)]);
 
   if (previewMutation.isPending && !preview) {
     return (

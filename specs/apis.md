@@ -107,6 +107,8 @@ All agent create/update/import endpoints enforce input size limits as last-resor
 
 Harnesses define the base environment and capabilities for sessions. See [harness-types.md](harness-types.md) for built-in types.
 
+Harness create/update payloads include optional `parent_harness_id`. When present, preview and runtime resolve the effective harness from parent to child before applying any agent or session layers.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/v1/harnesses` | Create harness |

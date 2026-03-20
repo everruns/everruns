@@ -332,6 +332,7 @@ impl InMemoryAgenticLoopBuilder {
             name: "In-Memory Harness".to_string(),
             description: None,
             system_prompt: self.system_prompt.clone(),
+            parent_harness_id: None,
             default_model_id: None,
             tags: vec![],
             capabilities: vec![],
