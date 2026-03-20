@@ -4976,6 +4976,13 @@
         "type": "object",
         "description": "Runtime controls for message processing",
         "properties": {
+          "hints": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Generic client hints — arbitrary key-value pairs declared by the client.\nSession-level defaults are set at session creation; per-message values\noverride session hints key-by-key (shallow merge).\n\nExamples: `{\"setup_connection\": true, \"rich_media\": true}`"
+          },
           "model_id": {
             "type": [
               "string",
@@ -5469,6 +5476,13 @@
             ],
             "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the org base harness is used. New orgs default that to Base.",
             "example": "harness_01933b5a00007000800000000000001"
+          },
+          "hints": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).\n\nExamples: `{\"setup_connection\": true, \"rich_media\": true}`"
           },
           "locale": {
             "type": [
@@ -8948,6 +8962,17 @@
                   "description": "ID of the harness for this session (format: harness_{32-hex}).",
                   "example": "harness_01933b5a00007000800000000000001"
                 },
+                "hints": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "Session-level client hints — arbitrary key-value pairs declared by the\nclient at session creation time. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).\n\nExamples: `{\"setup_connection\": true, \"rich_media\": true}`",
+                  "additionalProperties": {},
+                  "propertyNames": {
+                    "type": "string"
+                  }
+                },
                 "id": {
                   "type": "string",
                   "description": "Unique identifier for the session (format: session_{32-hex}).",
@@ -9749,6 +9774,17 @@
             "type": "string",
             "description": "ID of the harness for this session (format: harness_{32-hex}).",
             "example": "harness_01933b5a00007000800000000000001"
+          },
+          "hints": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Session-level client hints — arbitrary key-value pairs declared by the\nclient at session creation time. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).\n\nExamples: `{\"setup_connection\": true, \"rich_media\": true}`",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "id": {
             "type": "string",
