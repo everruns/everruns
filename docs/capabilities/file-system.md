@@ -33,7 +33,7 @@ Create or overwrite a file. Parent directories are created automatically. Succes
 
 ### `edit_file`
 
-Apply one or more exact text replacements to an existing text file. This tool is text-only and requires the current `content_hash` from `read_file` or `write_file`.
+Apply one or more exact text replacements to an existing text file. This tool is text-only, requires the current `content_hash` from `read_file` or `write_file`, and uses compare-and-set semantics so concurrent writes fail cleanly instead of clobbering newer content.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -120,6 +120,8 @@ Agent updates an existing file safely:
 - Parent directories are auto-created on write
 - `edit_file` only works on text files and rejects binary/base64 content
 - `edit_file` applies all replacements against the original file content and rejects ambiguous or overlapping matches
+- `edit_file` preserves the file's existing BOM and newline style (`LF`, `CRLF`, or `CR`)
+- `edit_file` returns a unified diff capped to a bounded size; oversized diffs are truncated and marked as such
 - Shared filesystem with [Virtual Bash](/capabilities/virtual-bash/) (same `/workspace`)
 
 ## See Also

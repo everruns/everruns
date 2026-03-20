@@ -187,6 +187,8 @@ use everruns_internal_protocol::proto::{
     SessionStorageSetSecretResponse,
     SessionStorageSetValueRequest,
     SessionStorageSetValueResponse,
+    SessionWriteFileIfContentMatchesRequest,
+    SessionWriteFileIfContentMatchesResponse,
     SessionWriteFileRequest,
     SessionWriteFileResponse,
     SetSessionStatusRequest,
@@ -1612,6 +1614,50 @@ impl WorkerService for WorkerServiceImpl {
 
         Ok(Response::new(SessionWriteFileResponse {
             file: Some(proto_file),
+        }))
+    }
+
+    async fn session_write_file_if_content_matches(
+        &self,
+        request: Request<SessionWriteFileIfContentMatchesRequest>,
+    ) -> Result<Response<SessionWriteFileIfContentMatchesResponse>, Status> {
+        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let file = self
+            .session_file_service
+            .update_file_if_content_matches(
+                session_id,
+                &req.path,
+                &req.expected_content,
+                &req.expected_encoding,
+                &req.content,
+                &req.encoding,
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to conditionally update file: {}", e);
+                Status::internal("Failed to update file")
+            })?;
+
+        let proto_file = file.map(|file| proto::SessionFile {
+            id: Some(uuid_to_proto_uuid(file.id)),
+            session_id: Some(uuid_to_proto_uuid(file.session_id)),
+            path: file.path.clone(),
+            name: file.name.clone(),
+            content: file.content,
+            encoding: file.encoding,
+            is_directory: file.is_directory,
+            is_readonly: file.is_readonly,
+            size_bytes: file.size_bytes,
+            created_at: Some(datetime_to_proto_timestamp(file.created_at)),
+            updated_at: Some(datetime_to_proto_timestamp(file.updated_at)),
+        });
+
+        Ok(Response::new(SessionWriteFileIfContentMatchesResponse {
+            file: proto_file,
         }))
     }
 

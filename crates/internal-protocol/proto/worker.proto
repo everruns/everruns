@@ -49,6 +49,7 @@ service WorkerService {
     // Session file operations (virtual filesystem)
     rpc SessionReadFile(SessionReadFileRequest) returns (SessionReadFileResponse);
     rpc SessionWriteFile(SessionWriteFileRequest) returns (SessionWriteFileResponse);
+    rpc SessionWriteFileIfContentMatches(SessionWriteFileIfContentMatchesRequest) returns (SessionWriteFileIfContentMatchesResponse);
     rpc SessionDeleteFile(SessionDeleteFileRequest) returns (SessionDeleteFileResponse);
     rpc SessionListDirectory(SessionListDirectoryRequest) returns (SessionListDirectoryResponse);
     rpc SessionStatFile(SessionStatFileRequest) returns (SessionStatFileResponse);
@@ -586,6 +587,19 @@ message SessionWriteFileRequest {
 
 message SessionWriteFileResponse {
     SessionFile file = 1;
+}
+
+message SessionWriteFileIfContentMatchesRequest {
+    Uuid session_id = 1;
+    string path = 2;
+    string expected_content = 3;
+    string expected_encoding = 4;
+    string content = 5;
+    string encoding = 6;
+}
+
+message SessionWriteFileIfContentMatchesResponse {
+    optional SessionFile file = 1;
 }
 
 message SessionDeleteFileRequest {

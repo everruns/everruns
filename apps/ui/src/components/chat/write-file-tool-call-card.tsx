@@ -28,6 +28,7 @@ interface WriteFilePayload {
   size_bytes?: number;
   created?: boolean;
   diff?: string;
+  diff_truncated?: boolean;
   applied_edits?: number;
   first_changed_line?: number;
 }
@@ -38,6 +39,7 @@ interface ParsedWriteFileResult {
   created?: boolean;
   appliedEdits?: number;
   firstChangedLine?: number;
+  diffTruncated: boolean;
   textContent: string | null;
 }
 
@@ -63,6 +65,7 @@ function parseWriteFilePayload(
         appliedEdits: typeof parsed.applied_edits === "number" ? parsed.applied_edits : undefined,
         firstChangedLine:
           typeof parsed.first_changed_line === "number" ? parsed.first_changed_line : undefined,
+        diffTruncated: parsed.diff_truncated === true,
         textContent: typeof parsed.diff === "string" && parsed.diff.length > 0 ? parsed.diff : null,
       };
     }
@@ -76,6 +79,7 @@ function parseWriteFilePayload(
     created: undefined,
     appliedEdits: undefined,
     firstChangedLine: undefined,
+    diffTruncated: false,
     textContent: rawText || null,
   };
 }
@@ -142,6 +146,8 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
     formatEditPreview(parsed.appliedEdits, parsed.firstChangedLine) ||
     metadataPreview ||
     getTextPreview(parsed.textContent);
+  const detailLabel =
+    parsed.diffTruncated && toolCall.name === "edit_file" ? "Diff truncated" : null;
   const hasTextDetails = !!parsed.textContent;
 
   const statusIcon = isComplete ? (
@@ -193,11 +199,14 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
       )}
 
       {!hasError && preview && !isExpanded && (
-        <div className="ml-[22px] mt-0.5 truncate text-[10px] opacity-70">{preview}</div>
+        <div className="ml-[22px] mt-0.5 truncate text-[10px] opacity-70">
+          {[preview, detailLabel].filter(Boolean).join(" · ")}
+        </div>
       )}
 
       {!hasError && isExpanded && parsed.textContent && (
         <div className="ml-[22px] mt-1.5">
+          {detailLabel && <div className="mb-1 text-[10px] opacity-60">{detailLabel}</div>}
           <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/85">
             {parsed.textContent}
           </pre>

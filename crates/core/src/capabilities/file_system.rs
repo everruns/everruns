@@ -41,6 +41,7 @@ fn image_media_type(path: &str) -> Option<&'static str> {
 
 /// Workspace prefix used in file paths
 const WORKSPACE_PREFIX: &str = "/workspace";
+const MAX_EDIT_DIFF_CHARS: usize = 16_000;
 
 /// Normalize a file path by stripping the /workspace prefix.
 /// This ensures both file_system and virtual_bash capabilities use the same
@@ -90,6 +91,7 @@ fn session_file_content_hash(file: &SessionFile) -> crate::error::Result<String>
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LineEnding {
     Lf,
+    Cr,
     Crlf,
 }
 
@@ -104,6 +106,8 @@ fn strip_utf8_bom(content: &str) -> (bool, &str) {
 fn detect_line_ending(content: &str) -> LineEnding {
     if content.contains("\r\n") {
         LineEnding::Crlf
+    } else if content.contains('\r') {
+        LineEnding::Cr
     } else {
         LineEnding::Lf
     }
@@ -113,8 +117,13 @@ fn align_to_file_line_endings(content: &str, line_ending: LineEnding) -> String 
     let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
     match line_ending {
         LineEnding::Lf => normalized,
+        LineEnding::Cr => normalized.replace('\n', "\r"),
         LineEnding::Crlf => normalized.replace('\n', "\r\n"),
     }
+}
+
+fn normalize_line_endings(content: &str) -> String {
+    content.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 fn truncate_snippet(content: &str, max_chars: usize) -> String {
@@ -132,8 +141,8 @@ fn first_changed_line(before: &str, after: &str) -> Option<usize> {
         return None;
     }
 
-    let before = before.replace("\r\n", "\n");
-    let after = after.replace("\r\n", "\n");
+    let before = normalize_line_endings(before);
+    let after = normalize_line_endings(after);
     let before_lines: Vec<&str> = before.split('\n').collect();
     let after_lines: Vec<&str> = after.split('\n').collect();
 
@@ -147,11 +156,26 @@ fn first_changed_line(before: &str, after: &str) -> Option<usize> {
 }
 
 fn render_unified_diff(path: &str, before: &str, after: &str) -> String {
-    TextDiff::from_lines(before, after)
-        .unified_diff()
-        .context_radius(2)
-        .header(&format!("{path} (before)"), &format!("{path} (after)"))
-        .to_string()
+    TextDiff::from_lines(
+        &normalize_line_endings(before),
+        &normalize_line_endings(after),
+    )
+    .unified_diff()
+    .context_radius(2)
+    .header(&format!("{path} (before)"), &format!("{path} (after)"))
+    .to_string()
+}
+
+fn truncate_diff(diff: String) -> (String, bool) {
+    if diff.chars().count() <= MAX_EDIT_DIFF_CHARS {
+        return (diff, false);
+    }
+
+    let truncated: String = diff.chars().take(MAX_EDIT_DIFF_CHARS).collect();
+    (
+        format!("{truncated}\n... diff truncated after {MAX_EDIT_DIFF_CHARS} characters ..."),
+        true,
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -758,18 +782,67 @@ impl Tool for EditFileTool {
         };
 
         let first_changed_line = first_changed_line(&current_content, &updated_content);
-        let diff = render_unified_diff(&display_path, &current_content, &updated_content);
+        let (diff, diff_truncated) = truncate_diff(render_unified_diff(
+            &display_path,
+            &current_content,
+            &updated_content,
+        ));
 
         match file_store
-            .write_file(
+            .write_file_if_content_matches(
                 context.session_id,
                 &normalized_path,
+                &current_content,
+                "text",
                 &updated_content,
                 "text",
             )
             .await
         {
             Ok(updated_file) => {
+                let Some(updated_file) = updated_file else {
+                    let latest = match file_store
+                        .read_file(context.session_id, &normalized_path)
+                        .await
+                    {
+                        Ok(file) => file,
+                        Err(e) => return ToolExecutionResult::internal_error(e),
+                    };
+
+                    return match latest {
+                        Some(file) if file.is_directory => {
+                            ToolExecutionResult::tool_error(format!(
+                                "Path '{}' is a directory, not a file. Use list_directory instead.",
+                                display_path
+                            ))
+                        }
+                        Some(file) if file.is_readonly => ToolExecutionResult::tool_error(format!(
+                            "Cannot modify readonly file: {}",
+                            display_path
+                        )),
+                        Some(file) if file.encoding != "text" => {
+                            ToolExecutionResult::tool_error(format!(
+                                "File '{}' is not a text file. edit_file only supports text files; use write_file for binary/base64 content.",
+                                display_path
+                            ))
+                        }
+                        Some(file) => {
+                            let latest_hash = match session_file_content_hash(&file) {
+                                Ok(hash) => hash,
+                                Err(e) => return ToolExecutionResult::internal_error(e),
+                            };
+                            ToolExecutionResult::tool_error(format!(
+                                "File '{}' changed since the last read. Expected {}, found {}. Read the file again before editing.",
+                                display_path, expected_hash, latest_hash
+                            ))
+                        }
+                        None => ToolExecutionResult::tool_error(format!(
+                            "File not found: {}",
+                            display_path
+                        )),
+                    };
+                };
+
                 let new_hash = match session_file_content_hash(&updated_file) {
                     Ok(hash) => hash,
                     Err(e) => return ToolExecutionResult::internal_error(e),
@@ -781,7 +854,8 @@ impl Tool for EditFileTool {
                     "previous_content_hash": current_hash,
                     "applied_edits": applied_edits,
                     "first_changed_line": first_changed_line,
-                    "diff": diff
+                    "diff": diff,
+                    "diff_truncated": diff_truncated
                 }))
             }
             Err(e) => {
@@ -1272,6 +1346,7 @@ mod tests {
     #[derive(Default)]
     struct MockFileStore {
         files: Mutex<HashMap<String, StoredFile>>,
+        conditional_write_injections: Mutex<HashMap<String, StoredFile>>,
     }
 
     impl MockFileStore {
@@ -1301,6 +1376,13 @@ mod tests {
                 .unwrap()
                 .get(path)
                 .and_then(|file| file.content.clone())
+        }
+
+        fn inject_conditional_write_change(&self, path: &str, file: StoredFile) {
+            self.conditional_write_injections
+                .lock()
+                .unwrap()
+                .insert(path.to_string(), file);
         }
 
         fn entry_to_session_file(path: &str, entry: &StoredFile) -> SessionFile {
@@ -1432,6 +1514,49 @@ mod tests {
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             })
+        }
+
+        async fn write_file_if_content_matches(
+            &self,
+            _session_id: SessionId,
+            path: &str,
+            expected_content: &str,
+            expected_encoding: &str,
+            content: &str,
+            encoding: &str,
+        ) -> Result<Option<SessionFile>> {
+            let mut files = self.files.lock().unwrap();
+            if let Some(injected) = self
+                .conditional_write_injections
+                .lock()
+                .unwrap()
+                .remove(path)
+            {
+                files.insert(path.to_string(), injected);
+            }
+
+            let Some(existing) = files.get(path).cloned() else {
+                return Ok(None);
+            };
+
+            if existing.is_directory
+                || existing.is_readonly
+                || existing.encoding != expected_encoding
+                || existing.content.unwrap_or_default() != expected_content
+            {
+                return Ok(None);
+            }
+
+            let entry = StoredFile {
+                content: Some(content.to_string()),
+                encoding: encoding.to_string(),
+                is_directory: false,
+                is_readonly: false,
+                created_at: existing.created_at,
+                updated_at: Utc::now(),
+            };
+            files.insert(path.to_string(), entry.clone());
+            Ok(Some(Self::entry_to_session_file(path, &entry)))
         }
     }
 
@@ -1789,6 +1914,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_edit_file_preserves_cr_line_endings() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/classic-mac.txt", "alpha\rbeta\r");
+        let context = make_context(store.clone());
+        let expected_hash = read_hash(&context, "/workspace/classic-mac.txt").await;
+
+        let result = EditFileTool
+            .execute_with_context(
+                json!({
+                    "path": "/workspace/classic-mac.txt",
+                    "expected_hash": expected_hash,
+                    "old_text": "beta\n",
+                    "new_text": "gamma\n"
+                }),
+                &context,
+            )
+            .await;
+
+        expect_success(result);
+        assert_eq!(store.content("/classic-mac.txt").unwrap(), "alpha\rgamma\r");
+    }
+
+    #[tokio::test]
     async fn test_edit_file_rejects_hash_mismatch() {
         let store = Arc::new(MockFileStore::default());
         store.add_text_file("/stale.txt", "hello");
@@ -1960,6 +2108,61 @@ mod tests {
             .await;
 
         assert!(expect_tool_error(result).contains("readonly"));
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_detects_concurrent_change_during_write() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/race.txt", "hello");
+        store.inject_conditional_write_change("/race.txt", StoredFile::text("hola"));
+        let context = make_context(store.clone());
+        let expected_hash = read_hash(&context, "/workspace/race.txt").await;
+
+        let result = EditFileTool
+            .execute_with_context(
+                json!({
+                    "path": "/workspace/race.txt",
+                    "expected_hash": expected_hash,
+                    "old_text": "hello",
+                    "new_text": "goodbye"
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(expect_tool_error(result).contains("changed since the last read"));
+        assert_eq!(store.content("/race.txt").unwrap(), "hola");
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_truncates_large_diffs() {
+        let store = Arc::new(MockFileStore::default());
+        let original = format!("{}\n", "a".repeat(MAX_EDIT_DIFF_CHARS + 2000));
+        let replacement = format!("{}\n", "b".repeat(MAX_EDIT_DIFF_CHARS + 2000));
+        store.add_text_file("/large.txt", &original);
+        let context = make_context(store.clone());
+        let expected_hash = read_hash(&context, "/workspace/large.txt").await;
+
+        let result = EditFileTool
+            .execute_with_context(
+                json!({
+                    "path": "/workspace/large.txt",
+                    "expected_hash": expected_hash,
+                    "old_text": original,
+                    "new_text": replacement
+                }),
+                &context,
+            )
+            .await;
+        let value = expect_success(result);
+
+        assert_eq!(value["diff_truncated"], true);
+        assert!(
+            value["diff"]
+                .as_str()
+                .unwrap()
+                .contains("diff truncated after")
+        );
     }
 
     #[test]

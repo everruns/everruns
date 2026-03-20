@@ -3009,6 +3009,42 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn update_session_file_if_content_matches(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        expected_content: Vec<u8>,
+        input: UpdateSessionFile,
+    ) -> Result<Option<SessionFileRow>> {
+        let size_bytes = input.content.as_ref().map(|c| c.len() as i64);
+
+        let row = sqlx::query_as::<_, SessionFileRow>(
+            r#"
+            UPDATE session_files
+            SET
+                content = COALESCE($4, content),
+                is_readonly = COALESCE($5, is_readonly),
+                size_bytes = COALESCE($6, size_bytes)
+            WHERE session_id = $1
+              AND path = $2
+              AND is_directory = FALSE
+              AND is_readonly = FALSE
+              AND COALESCE(content, '\x'::bytea) = $3
+            RETURNING id, session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            "#,
+        )
+        .bind(session_id)
+        .bind(path)
+        .bind(&expected_content)
+        .bind(&input.content)
+        .bind(input.is_readonly)
+        .bind(size_bytes)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     /// Delete a file or directory (directories must be empty)
     pub async fn delete_session_file(&self, session_id: Uuid, path: &str) -> Result<bool> {
         let result = sqlx::query("DELETE FROM session_files WHERE session_id = $1 AND path = $2")

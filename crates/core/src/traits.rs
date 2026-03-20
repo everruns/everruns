@@ -231,6 +231,37 @@ pub trait SessionFileStore: Send + Sync {
         encoding: &str,
     ) -> Result<SessionFile>;
 
+    /// Write a file only if its current content snapshot still matches.
+    ///
+    /// Implementations backed by transactional storage should override this
+    /// with an atomic compare-and-set update.
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        let Some(existing) = self.read_file(session_id, path).await? else {
+            return Ok(None);
+        };
+
+        if existing.is_directory {
+            return Ok(None);
+        }
+
+        let current_content = existing.content.unwrap_or_default();
+        if current_content != expected_content || existing.encoding != expected_encoding {
+            return Ok(None);
+        }
+
+        self.write_file(session_id, path, content, encoding)
+            .await
+            .map(Some)
+    }
+
     /// Delete a file or directory
     async fn delete_file(&self, session_id: SessionId, path: &str, recursive: bool)
     -> Result<bool>;

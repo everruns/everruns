@@ -261,6 +261,62 @@ impl SessionFileStore for DbSessionFileStore {
         })
     }
 
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        let path = Self::normalize_path(path);
+
+        let expected_bytes = SessionFile::decode_content(expected_content, expected_encoding)
+            .map_err(|e| {
+                AgentLoopError::store(format!("Invalid expected content encoding: {}", e))
+            })?;
+        let bytes = SessionFile::decode_content(content, encoding)
+            .map_err(|e| AgentLoopError::store(format!("Invalid content encoding: {}", e)))?;
+
+        let row = self
+            .db
+            .update_session_file_if_content_matches(
+                session_id.uuid(),
+                &path,
+                expected_bytes,
+                UpdateSessionFile {
+                    content: Some(bytes),
+                    is_readonly: None,
+                },
+            )
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+
+        Ok(row.map(|row| {
+            let (content, encoding) = if let Some(bytes) = row.content {
+                let (c, e) = SessionFile::encode_content(&bytes);
+                (Some(c), e)
+            } else {
+                (None, "text".to_string())
+            };
+
+            SessionFile {
+                id: row.id,
+                session_id: row.session_id.uuid(),
+                path: row.path.clone(),
+                name: FileInfo::name_from_path(&row.path),
+                content,
+                encoding,
+                is_directory: row.is_directory,
+                is_readonly: row.is_readonly,
+                size_bytes: row.size_bytes,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            }
+        }))
+    }
+
     async fn delete_file(
         &self,
         session_id: SessionId,

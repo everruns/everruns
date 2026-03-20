@@ -868,6 +868,42 @@ impl SessionFileStore for GrpcSessionFileStore {
         proto_session_file_to_file(proto_file)
     }
 
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        let mut client = self.client.inner.lock().await;
+
+        let request = proto::SessionWriteFileIfContentMatchesRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            path: path.to_string(),
+            expected_content: expected_content.to_string(),
+            expected_encoding: expected_encoding.to_string(),
+            content: content.to_string(),
+            encoding: encoding.to_string(),
+        };
+
+        let response = client
+            .session_write_file_if_content_matches(request)
+            .await
+            .map_err(|e| {
+                grpc_error(format!(
+                    "gRPC session_write_file_if_content_matches failed: {}",
+                    e
+                ))
+            })?;
+
+        match response.into_inner().file {
+            Some(proto_file) => proto_session_file_to_file(proto_file).map(Some),
+            None => Ok(None),
+        }
+    }
+
     async fn delete_file(
         &self,
         session_id: SessionId,
