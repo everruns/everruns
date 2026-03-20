@@ -35,6 +35,7 @@ service WorkerService {
     rpc SetSessionTitle(SetSessionTitleRequest) returns (SetSessionTitleResponse);
 
     // Message operations
+    rpc GetMessage(GetMessageRequest) returns (GetMessageResponse);
     rpc LoadMessages(LoadMessagesRequest) returns (LoadMessagesResponse);
     rpc AddMessage(AddMessageRequest) returns (AddMessageResponse);
 
@@ -414,6 +415,15 @@ message Message {
     optional string thinking_signature = 8;
     // External actor identity (for messages from external channels like Slack)
     optional google.protobuf.Struct external_actor = 9;
+}
+
+message GetMessageRequest {
+    Uuid session_id = 1;
+    Uuid message_id = 2;
+}
+
+message GetMessageResponse {
+    optional Message message = 1;
 }
 
 message LoadMessagesRequest {

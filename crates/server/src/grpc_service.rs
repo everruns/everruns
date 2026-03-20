@@ -74,6 +74,8 @@ use everruns_internal_protocol::proto::{
     GetHarnessResponse,
     GetMcpServerByPrefixRequest,
     GetMcpServerByPrefixResponse,
+    GetMessageRequest,
+    GetMessageResponse,
     GetModelWithProviderRequest,
     GetModelWithProviderResponse,
     GetSessionRequest,
@@ -746,6 +748,43 @@ fn json_value_to_proto(value: serde_json::Value) -> prost_types::Value {
     prost_types::Value { kind }
 }
 
+/// Convert a domain Message to a proto Message.
+fn message_to_proto(message: &everruns_core::Message) -> proto::Message {
+    use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+
+    let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
+    let content = Some(everruns_internal_protocol::json_to_proto_list(
+        &content_json_val,
+    ));
+
+    let controls = message.controls.as_ref().map(|c| {
+        let json = serde_json::to_value(c).unwrap_or_default();
+        everruns_internal_protocol::json_to_proto_struct(&json)
+    });
+
+    let metadata = message.metadata.as_ref().map(|m| {
+        let json = serde_json::to_value(m).unwrap_or_default();
+        everruns_internal_protocol::json_to_proto_struct(&json)
+    });
+
+    let external_actor = message.external_actor.as_ref().map(|ea| {
+        let json = serde_json::to_value(ea).unwrap_or_default();
+        everruns_internal_protocol::json_to_proto_struct(&json)
+    });
+
+    proto::Message {
+        id: Some(uuid_to_proto_uuid(message.id.uuid())),
+        role: message.role.to_string(),
+        content,
+        controls,
+        metadata,
+        created_at: Some(datetime_to_proto_timestamp(message.created_at)),
+        thinking: message.thinking.clone(),
+        thinking_signature: message.thinking_signature.clone(),
+        external_actor,
+    }
+}
+
 /// Extract a Message from an Event's data field
 ///
 /// Events returned from EventService already have data parsed into EventData.
@@ -896,38 +935,7 @@ impl WorkerService for WorkerServiceImpl {
                 }
             };
 
-            // Convert to proto Message using prost types
-            let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
-            let content = Some(everruns_internal_protocol::json_to_proto_list(
-                &content_json_val,
-            ));
-
-            let controls = message.controls.as_ref().map(|c| {
-                let json = serde_json::to_value(c).unwrap_or_default();
-                everruns_internal_protocol::json_to_proto_struct(&json)
-            });
-
-            let metadata = message.metadata.as_ref().map(|m| {
-                let json = serde_json::to_value(m).unwrap_or_default();
-                everruns_internal_protocol::json_to_proto_struct(&json)
-            });
-
-            let external_actor = message.external_actor.as_ref().map(|ea| {
-                let json = serde_json::to_value(ea).unwrap_or_default();
-                everruns_internal_protocol::json_to_proto_struct(&json)
-            });
-
-            proto_messages.push(proto::Message {
-                id: Some(uuid_to_proto_uuid(message.id.uuid())),
-                role: message.role.to_string(),
-                content,
-                controls,
-                metadata,
-                created_at: Some(datetime_to_proto_timestamp(message.created_at)),
-                thinking: message.thinking.clone(),
-                thinking_signature: message.thinking_signature.clone(),
-                external_actor,
-            });
+            proto_messages.push(message_to_proto(&message));
         }
 
         // Get model with provider (decrypted API key) via LlmResolverService
@@ -1224,6 +1232,47 @@ impl WorkerService for WorkerServiceImpl {
         }))
     }
 
+    async fn get_message(
+        &self,
+        request: Request<GetMessageRequest>,
+    ) -> Result<Response<GetMessageResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let message_id = parse_uuid(req.message_id.as_ref())?;
+
+        // Load message events and find the one matching message_id
+        let events = self
+            .event_service
+            .list_message_events(session_id)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
+
+        for event in events {
+            let message = match event_to_message(&event) {
+                Some(m) => m,
+                None => {
+                    tracing::warn!(
+                        "Failed to extract message from event {}: type={}",
+                        event.id,
+                        event.event_type
+                    );
+                    continue;
+                }
+            };
+
+            if message.id.uuid() != message_id {
+                continue;
+            }
+
+            return Ok(Response::new(GetMessageResponse {
+                message: Some(message_to_proto(&message)),
+            }));
+        }
+
+        // Message not found
+        Ok(Response::new(GetMessageResponse { message: None }))
+    }
+
     async fn load_messages(
         &self,
         request: Request<LoadMessagesRequest>,
@@ -1237,8 +1286,6 @@ impl WorkerService for WorkerServiceImpl {
             .list_message_events(session_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
-
-        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
 
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
 
@@ -1256,38 +1303,7 @@ impl WorkerService for WorkerServiceImpl {
                 }
             };
 
-            // Convert to proto Message using prost types
-            let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
-            let content = Some(everruns_internal_protocol::json_to_proto_list(
-                &content_json_val,
-            ));
-
-            let controls = message.controls.as_ref().map(|c| {
-                let json = serde_json::to_value(c).unwrap_or_default();
-                everruns_internal_protocol::json_to_proto_struct(&json)
-            });
-
-            let metadata = message.metadata.as_ref().map(|m| {
-                let json = serde_json::to_value(m).unwrap_or_default();
-                everruns_internal_protocol::json_to_proto_struct(&json)
-            });
-
-            let external_actor = message.external_actor.as_ref().map(|ea| {
-                let json = serde_json::to_value(ea).unwrap_or_default();
-                everruns_internal_protocol::json_to_proto_struct(&json)
-            });
-
-            proto_messages.push(proto::Message {
-                id: Some(uuid_to_proto_uuid(message.id.uuid())),
-                role: message.role.to_string(),
-                content,
-                controls,
-                metadata,
-                created_at: Some(datetime_to_proto_timestamp(message.created_at)),
-                thinking: message.thinking.clone(),
-                thinking_signature: message.thinking_signature.clone(),
-                external_actor,
-            });
+            proto_messages.push(message_to_proto(&message));
         }
 
         Ok(Response::new(LoadMessagesResponse {
