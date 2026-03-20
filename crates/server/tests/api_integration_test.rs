@@ -2648,23 +2648,87 @@ async fn test_create_app_missing_harness_returns_not_found() {
 async fn test_create_app_missing_agent_returns_not_found() {
     let server = TestServer::new().await;
 
-    // List harnesses to get a valid harness_id
-    let harnesses: Value = server
-        .get("/v1/harnesses")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    let harness_id = harnesses["data"][0]["id"].as_str().unwrap();
-
     server
         .post(
             "/v1/apps",
             json!({
                 "name": "Test App",
-                "harness_id": harness_id,
+                "harness_id": SEED_GENERIC_HARNESS_ID,
                 "agent_id": "agent_ffffffffffffffffffffffffffffffff",
                 "channel_type": "slack"
             }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_update_app_missing_harness_returns_not_found() {
+    let server = TestServer::new().await;
+
+    // Create agent and app
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({ "name": "Test Agent", "system_prompt": "Test" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Test App",
+                "harness_id": SEED_GENERIC_HARNESS_ID,
+                "agent_id": agent["id"],
+                "channel_type": "slack"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .patch(
+            &format!("/v1/apps/{}", app["public_id"].as_str().unwrap()),
+            json!({ "harness_id": "harness_ffffffffffffffffffffffffffffffff" }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_update_app_missing_agent_returns_not_found() {
+    let server = TestServer::new().await;
+
+    // Create agent and app
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({ "name": "Test Agent", "system_prompt": "Test" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Test App",
+                "harness_id": SEED_GENERIC_HARNESS_ID,
+                "agent_id": agent["id"],
+                "channel_type": "slack"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .patch(
+            &format!("/v1/apps/{}", app["public_id"].as_str().unwrap()),
+            json!({ "agent_id": "agent_ffffffffffffffffffffffffffffffff" }),
         )
         .await
         .assert_status(StatusCode::NOT_FOUND);
