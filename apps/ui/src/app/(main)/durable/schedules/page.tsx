@@ -75,12 +75,12 @@ function ScheduleRow({
 }) {
   return (
     <TableRow>
-      <TableCell>
+      <TableCell className="max-w-[200px]">
         <div className="flex items-center gap-2 min-w-0">
           <Clock
             className={`h-4 w-4 shrink-0 ${schedule.enabled ? "text-green-500" : "text-gray-400"}`}
           />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <Link
               href={`/durable/schedules/${schedule.id}`}
               className="font-medium hover:underline truncate block"
@@ -102,9 +102,9 @@ function ScheduleRow({
       <TableCell>
         <code className="text-sm bg-muted px-2 py-0.5 rounded">{schedule.cron_expression}</code>
       </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2 min-w-0">
-          <Badge variant="outline" className="shrink-0">
+      <TableCell className="max-w-[150px]">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Badge variant="outline" className="shrink-0 text-xs">
             {schedule.target.type}
           </Badge>
           <span className="text-sm truncate">{schedule.target.name}</span>
@@ -489,17 +489,17 @@ export default function SchedulesPage() {
           </CardHeader>
           <CardContent>
             {filteredSchedules.length > 0 ? (
-              <div className="rounded-md border overflow-x-auto">
+              <div className="rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="min-w-[200px]">Schedule</TableHead>
+                      <TableHead>Schedule</TableHead>
                       <TableHead className="w-[80px]">Status</TableHead>
-                      <TableHead className="w-[140px]">Cron</TableHead>
-                      <TableHead className="min-w-[150px]">Target</TableHead>
-                      <TableHead className="w-[140px] whitespace-nowrap">Last Triggered</TableHead>
-                      <TableHead className="w-[140px] whitespace-nowrap">Next Trigger</TableHead>
-                      <TableHead className="w-[130px]">Actions</TableHead>
+                      <TableHead>Cron</TableHead>
+                      <TableHead>Target</TableHead>
+                      <TableHead className="whitespace-nowrap">Last Triggered</TableHead>
+                      <TableHead className="whitespace-nowrap">Next Trigger</TableHead>
+                      <TableHead className="w-[100px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
