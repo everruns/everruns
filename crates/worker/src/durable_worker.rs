@@ -1124,8 +1124,10 @@ impl DurableWorker {
 
     /// Execute reasoning activity (LLM call)
     ///
-    /// This activity is protected by a circuit breaker to prevent cascading
-    /// failures when the LLM provider is unavailable.
+    /// This activity is protected by a per-provider circuit breaker to prevent
+    /// cascading failures when an LLM provider is unavailable. Each provider
+    /// (openai, anthropic, gemini, etc.) has its own breaker so an outage in
+    /// one does not block the others.
     async fn execute_reason_activity(
         &self,
         grpc_client: GrpcClient,
@@ -1138,9 +1140,20 @@ impl DurableWorker {
             "Executing reason activity"
         );
 
-        // Circuit breaker key for LLM calls
-        // TODO: Make this per-provider (openai, anthropic) based on model config
-        let circuit_key = "llm";
+        // Fetch turn context to get MCP tool definitions and model/provider info.
+        // We need the provider type before the circuit breaker check so breaker
+        // keys are per-provider (e.g. "llm:openai", "llm:anthropic").
+        let turn_context = load_turn_context(&grpc_client, input.org_id, input.session_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to load turn context: {}", e))?;
+
+        // Per-provider circuit breaker key (e.g. "llm:openai", "llm:anthropic").
+        // Falls back to non-colliding "llm:unknown" when model/provider info is unavailable.
+        let circuit_key_owned = match &turn_context.model {
+            Some(m) => format!("llm:{}", m.provider_type),
+            None => "llm:unknown".to_string(),
+        };
+        let circuit_key = circuit_key_owned.as_str();
 
         // Check circuit breaker before making LLM call
         {
@@ -1165,14 +1178,6 @@ impl DurableWorker {
                 }
             }
         }
-
-        // Fetch turn context to get MCP tool definitions
-        // Note: This fetches agent, session, messages in a single batched call
-        // but reason_activity will refetch them via individual stores.
-        // The key value here is the mcp_tool_definitions.
-        let turn_context = load_turn_context(&grpc_client, input.org_id, input.session_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to load turn context: {}", e))?;
 
         // Create AtomContext - use turn_id from input if available (from input activity)
         let turn_id = input.turn_id.unwrap_or_default();

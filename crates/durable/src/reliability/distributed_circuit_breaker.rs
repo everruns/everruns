@@ -3,17 +3,13 @@
 //! Circuit breaker state is shared across workers via PostgreSQL, enabling
 //! coordinated failure handling in distributed systems.
 //!
-//! # Status: FUTURE FEATURE
+//! # Integration
 //!
-//! This module is fully implemented but not yet integrated into the workflow
-//! execution pipeline. The database table (`durable_circuit_breaker_state`)
-//! and store operations exist, but no code path currently instantiates
-//! `DistributedCircuitBreaker`.
-//!
-//! TODO: Integrate circuit breakers for:
-//! - LLM provider calls (protect against provider outages)
-//! - External tool executions (prevent cascading failures)
-//! - Rate limiting coordination across workers
+//! The gRPC service (`grpc_service.rs`) instantiates `DistributedCircuitBreaker`
+//! for each check/record call. The durable worker uses per-provider keys
+//! (e.g. `llm:openai`, `llm:anthropic`) so a provider outage only trips
+//! that provider's breaker. Admin API endpoints and the UI dashboard allow
+//! listing, force-opening, and force-closing breakers.
 
 use std::sync::Arc;
 use std::time::Duration;
