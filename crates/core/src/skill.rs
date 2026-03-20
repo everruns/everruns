@@ -562,14 +562,14 @@ pub fn expand_skill_arguments(content: &str, raw_args: &str) -> String {
 // Environment Variable Substitution
 // ============================================================================
 
-/// Substitute environment variables in skill content.
+/// Substitute activation-time placeholders in skill content.
 ///
 /// Replaces:
 /// - `${SESSION_ID}` → current session's prefixed ID (e.g. `session_01abc...`)
 /// - `${SKILL_DIR}` → absolute path to the skill's directory
 ///
 /// Called after `$ARGUMENTS`/`$N` substitution, before `!command` preprocessing.
-pub fn substitute_env_vars(content: &str, session_id: &str, skill_dir: &str) -> String {
+pub fn substitute_activation_vars(content: &str, session_id: &str, skill_dir: &str) -> String {
     content
         .replace("${SESSION_ID}", session_id)
         .replace("${SKILL_DIR}", skill_dir)
@@ -1275,34 +1275,34 @@ Body.
     }
 
     // ========================================================================
-    // substitute_env_vars tests
+    // substitute_activation_vars tests
     // ========================================================================
 
     #[test]
     fn test_substitute_session_id() {
         let content = "Session: ${SESSION_ID}";
-        let result = substitute_env_vars(content, "session_01abc123", "/some/dir");
+        let result = substitute_activation_vars(content, "session_01abc123", "/some/dir");
         assert_eq!(result, "Session: session_01abc123");
     }
 
     #[test]
     fn test_substitute_skill_dir_filesystem() {
         let content = "Dir: ${SKILL_DIR}";
-        let result = substitute_env_vars(content, "session_x", "/home/user/skills/my-skill");
+        let result = substitute_activation_vars(content, "session_x", "/home/user/skills/my-skill");
         assert_eq!(result, "Dir: /home/user/skills/my-skill");
     }
 
     #[test]
     fn test_substitute_skill_dir_db_backed() {
         let content = "Dir: ${SKILL_DIR}";
-        let result = substitute_env_vars(content, "session_x", "/.agents/skills/my-skill");
+        let result = substitute_activation_vars(content, "session_x", "/.agents/skills/my-skill");
         assert_eq!(result, "Dir: /.agents/skills/my-skill");
     }
 
     #[test]
     fn test_substitute_both_vars() {
         let content = "Run: ${SKILL_DIR}/run.sh --session ${SESSION_ID}";
-        let result = substitute_env_vars(content, "session_01abc", "/.agents/skills/data-tool");
+        let result = substitute_activation_vars(content, "session_01abc", "/.agents/skills/data-tool");
         assert_eq!(
             result,
             "Run: /.agents/skills/data-tool/run.sh --session session_01abc"
@@ -1312,14 +1312,14 @@ Body.
     #[test]
     fn test_substitute_no_vars() {
         let content = "No variables here.";
-        let result = substitute_env_vars(content, "session_x", "/dir");
+        let result = substitute_activation_vars(content, "session_x", "/dir");
         assert_eq!(result, "No variables here.");
     }
 
     #[test]
     fn test_substitute_multiple_occurrences() {
         let content = "${SESSION_ID} and ${SESSION_ID} again";
-        let result = substitute_env_vars(content, "session_abc", "/dir");
+        let result = substitute_activation_vars(content, "session_abc", "/dir");
         assert_eq!(result, "session_abc and session_abc again");
     }
 
