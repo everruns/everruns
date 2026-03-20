@@ -246,6 +246,7 @@ pub mod tests {
                     model_id: None,
                     capabilities: vec![],
                     tools: vec![],
+                    hints: None,
                     status: SessionStatus::Idle,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),

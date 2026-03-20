@@ -246,6 +246,7 @@ mod tests {
             model_id: Some(ModelId::new()),
             capabilities: vec![],
             tools: vec![],
+            hints: None,
             status: SessionStatus::Idle,
             created_at: Utc::now(),
             updated_at: Utc::now(),

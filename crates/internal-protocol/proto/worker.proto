@@ -361,6 +361,8 @@ message Session {
     string locale = 11;
     // Session tags (used for routing and channel-specific behavior)
     repeated string tags = 12;
+    // Session-level client hints (JSON-encoded HashMap<String, Value>)
+    optional google.protobuf.Struct hints = 13;
 }
 
 message GetSessionRequest {

@@ -227,6 +227,7 @@ async fn test_gpt52_vs_gpt54_reasoning() {
                 reasoning: Some(ReasoningConfig {
                     effort: Some("high".into()),
                 }),
+                hints: None,
             }),
             metadata: None,
             tags: vec![],

@@ -363,6 +363,9 @@ pub struct SessionRow {
     /// Client-side tools (JSONB in DB)
     #[sqlx(default)]
     pub tools: serde_json::Value,
+    /// Session-level client hints (JSONB in DB, nullable)
+    #[sqlx(default)]
+    pub hints: Option<serde_json::Value>,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -404,6 +407,8 @@ pub struct CreateSessionRow {
     pub capabilities: serde_json::Value,
     /// Client-side tools (additive to agent tools, JSONB in DB)
     pub tools: serde_json::Value,
+    /// Session-level client hints (JSONB in DB)
+    pub hints: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default)]

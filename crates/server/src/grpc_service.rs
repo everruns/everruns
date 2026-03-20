@@ -846,6 +846,10 @@ impl WorkerService for WorkerServiceImpl {
                 .filter_map(|c| serde_json::to_string(c).ok())
                 .collect(),
             tags: session.tags.clone(),
+            hints: session.hints.as_ref().map(|h| {
+                let json = serde_json::to_value(h).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            }),
         };
 
         // Load messages from events using EventService with limit
@@ -1096,6 +1100,10 @@ impl WorkerService for WorkerServiceImpl {
                 .filter_map(|c| serde_json::to_string(c).ok())
                 .collect(),
             tags: s.tags.clone(),
+            hints: s.hints.as_ref().map(|h| {
+                let json = serde_json::to_value(h).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            }),
         });
 
         Ok(Response::new(GetSessionResponse {
@@ -1149,6 +1157,10 @@ impl WorkerService for WorkerServiceImpl {
                 .filter_map(|c| serde_json::to_string(c).ok())
                 .collect(),
             tags: session.tags.clone(),
+            hints: session.hints.as_ref().map(|h| {
+                let json = serde_json::to_value(h).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            }),
         };
 
         Ok(Response::new(SetSessionStatusResponse {
@@ -1201,6 +1213,10 @@ impl WorkerService for WorkerServiceImpl {
                 .filter_map(|c| serde_json::to_string(c).ok())
                 .collect(),
             tags: session.tags.clone(),
+            hints: session.hints.as_ref().map(|h| {
+                let json = serde_json::to_value(h).unwrap_or_default();
+                everruns_internal_protocol::json_to_proto_struct(&json)
+            }),
         };
 
         Ok(Response::new(SetSessionTitleResponse {
@@ -3675,6 +3691,7 @@ impl WorkerService for WorkerServiceImpl {
             model_id: None,
             capabilities: vec![],
             tools: vec![],
+            hints: None,
         };
 
         let session = self

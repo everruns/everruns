@@ -197,6 +197,35 @@ pub struct Controls {
     /// Reasoning configuration
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<ReasoningConfig>,
+
+    /// Generic client hints — arbitrary key-value pairs declared by the client.
+    /// Session-level defaults are set at session creation; per-message values
+    /// override session hints key-by-key (shallow merge).
+    ///
+    /// Examples: `{"setup_connection": true, "rich_media": true}`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub hints: Option<std::collections::HashMap<String, serde_json::Value>>,
+}
+
+impl Controls {
+    /// Resolve effective hints by shallow-merging session-level defaults with
+    /// per-message overrides. Per-message hints take precedence key-by-key.
+    pub fn resolve_hints(
+        session_hints: Option<&std::collections::HashMap<String, serde_json::Value>>,
+        message_hints: Option<&std::collections::HashMap<String, serde_json::Value>>,
+    ) -> std::collections::HashMap<String, serde_json::Value> {
+        match (session_hints, message_hints) {
+            (None, None) => std::collections::HashMap::new(),
+            (Some(s), None) => s.clone(),
+            (None, Some(m)) => m.clone(),
+            (Some(s), Some(m)) => {
+                let mut merged = s.clone();
+                merged.extend(m.iter().map(|(k, v)| (k.clone(), v.clone())));
+                merged
+            }
+        }
+    }
 }
 
 /// A message in the conversation
@@ -1318,5 +1347,68 @@ mod tests {
         let msg = Message::assistant("Hello").with_phase(ExecutionPhase::FinalAnswer);
         let json = serde_json::to_value(&msg).unwrap();
         assert_eq!(json.get("phase").unwrap(), "final_answer");
+    }
+
+    #[test]
+    fn test_resolve_hints_both_none() {
+        let result = Controls::resolve_hints(None, None);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_hints_session_only() {
+        let mut session = std::collections::HashMap::new();
+        session.insert("key1".into(), serde_json::json!("val1"));
+        session.insert("key2".into(), serde_json::json!(42));
+
+        let result = Controls::resolve_hints(Some(&session), None);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result["key1"], serde_json::json!("val1"));
+        assert_eq!(result["key2"], serde_json::json!(42));
+    }
+
+    #[test]
+    fn test_resolve_hints_message_only() {
+        let mut message = std::collections::HashMap::new();
+        message.insert("key1".into(), serde_json::json!(true));
+
+        let result = Controls::resolve_hints(None, Some(&message));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result["key1"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn test_resolve_hints_message_overrides_session() {
+        let mut session = std::collections::HashMap::new();
+        session.insert("shared".into(), serde_json::json!("session_val"));
+        session.insert("session_only".into(), serde_json::json!(1));
+
+        let mut message = std::collections::HashMap::new();
+        message.insert("shared".into(), serde_json::json!("message_val"));
+        message.insert("message_only".into(), serde_json::json!(2));
+
+        let result = Controls::resolve_hints(Some(&session), Some(&message));
+        assert_eq!(result.len(), 3);
+        assert_eq!(result["shared"], serde_json::json!("message_val"));
+        assert_eq!(result["session_only"], serde_json::json!(1));
+        assert_eq!(result["message_only"], serde_json::json!(2));
+    }
+
+    #[test]
+    fn test_controls_hints_serde_roundtrip() {
+        let mut hints = std::collections::HashMap::new();
+        hints.insert("setup_connection".into(), serde_json::json!(true));
+        hints.insert("theme".into(), serde_json::json!("dark"));
+
+        let controls = Controls {
+            hints: Some(hints),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_value(&controls).unwrap();
+        let deserialized: Controls = serde_json::from_value(json).unwrap();
+        let h = deserialized.hints.unwrap();
+        assert_eq!(h["setup_connection"], serde_json::json!(true));
+        assert_eq!(h["theme"], serde_json::json!("dark"));
     }
 }

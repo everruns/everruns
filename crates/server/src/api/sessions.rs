@@ -68,6 +68,14 @@ pub struct CreateSessionRequest {
     /// These tools are sent to the LLM but executed by the client.
     #[serde(default)]
     pub tools: Vec<everruns_core::ToolDefinition>,
+    /// Session-level client hints — arbitrary key-value pairs that tell the
+    /// server what the client can handle. These are defaults for every turn;
+    /// per-message `controls.hints` override these key-by-key (shallow merge).
+    ///
+    /// Examples: `{"setup_connection": true, "rich_media": true}`
+    #[serde(default)]
+    #[schema(value_type = Option<Object>)]
+    pub hints: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
 /// Response from cancel turn endpoint

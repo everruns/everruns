@@ -232,6 +232,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 model_id: r.model_id,
                 capabilities,
                 tools: vec![],
+                hints: r.hints.and_then(|v| serde_json::from_value(v).ok()),
                 status: match r.status.as_str() {
                     "started" => SessionStatus::Started,
                     "active" => SessionStatus::Active,
@@ -1343,6 +1344,7 @@ impl DirectPlatformStore {
             model_id: row.model_id,
             capabilities,
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
+            hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -1734,6 +1736,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             model_id: None,
             capabilities: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
+            hints: None,
         };
         let row = self
             .db
@@ -2739,6 +2742,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::Value::Array(vec![]),
                 tools: serde_json::Value::Array(vec![]),
+                hints: None,
             })
             .await
             .expect("create session");

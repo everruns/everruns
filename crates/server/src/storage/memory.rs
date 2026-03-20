@@ -953,6 +953,7 @@ impl InMemoryDatabase {
             model_id: input.model_id,
             capabilities: input.capabilities,
             tools: input.tools,
+            hints: input.hints,
             status: "pending".to_string(), // Default status for new sessions
             created_at: now,
             updated_at: now,
@@ -4889,6 +4890,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -4936,6 +4938,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -4998,6 +5001,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -5057,6 +5061,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -5531,6 +5536,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -5576,6 +5582,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -5660,6 +5667,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -6193,6 +6201,7 @@ mod tests {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         })
         .await
         .unwrap();
@@ -6207,6 +6216,7 @@ mod tests {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         })
         .await
         .unwrap();
@@ -6237,6 +6247,7 @@ mod tests {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         })
         .await
         .unwrap();
@@ -6251,6 +6262,7 @@ mod tests {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            hints: None,
         })
         .await
         .unwrap();
@@ -6452,6 +6464,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -6603,6 +6616,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!({}),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -6617,6 +6631,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!({}),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();
@@ -6631,6 +6646,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!({}),
                 tools: serde_json::json!([]),
+                hints: None,
             })
             .await
             .unwrap();

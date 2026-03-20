@@ -514,20 +514,47 @@ where
                     );
 
                     // After act activity: if ActAtom signaled waiting_for_tool_results
-                    // (connection setup, client-side tools, etc.), set session status.
-                    // Event emission is handled by ActAtom's hooks.
+                    // (connection setup, client-side tools), check the setup_connection
+                    // client hint before pausing. When the hint is true, set the session
+                    // status so the client can handle the tool calls. When absent, skip
+                    // the pause — the LLM will see the tool errors and inform the user.
                     if task.activity_type == "act"
                         && let Some(ref ti) = turn_input_opt
                     {
                         let act_result: Option<everruns_core::ActResult> =
                             serde_json::from_value(output.clone()).ok();
-                        if act_result
+                        let waiting = act_result
                             .as_ref()
-                            .is_some_and(|r| r.waiting_for_tool_results)
-                        {
-                            let lifecycle =
-                                SessionLifecycle::new(adapters.clone(), ti.org_id, ti.session_id);
-                            lifecycle.waiting_for_tool_results().await;
+                            .is_some_and(|r| r.waiting_for_tool_results);
+                        if waiting {
+                            // Check the setup_connection hint before pausing
+                            let hint_enabled =
+                                match adapters.get_session(ti.org_id, ti.session_id.uuid()).await {
+                                    Ok(Some(session)) => {
+                                        let hints = everruns_core::Controls::resolve_hints(
+                                            session.hints.as_ref(),
+                                            None,
+                                        );
+                                        hints
+                                            .get("setup_connection")
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false)
+                                    }
+                                    _ => false,
+                                };
+
+                            if hint_enabled {
+                                let lifecycle = SessionLifecycle::new(
+                                    adapters.clone(),
+                                    ti.org_id,
+                                    ti.session_id,
+                                );
+                                lifecycle.waiting_for_tool_results().await;
+                            } else {
+                                info!(
+                                    "setup_connection hint absent; skipping wait for tool results"
+                                );
+                            }
                         }
                     }
 

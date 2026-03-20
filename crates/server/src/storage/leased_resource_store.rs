@@ -165,6 +165,7 @@ mod tests {
             model_id: None,
             capabilities: json!([]),
             tools: json!([]),
+            hints: None,
         })
         .await
         .expect("test session should be created")

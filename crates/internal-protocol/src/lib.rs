@@ -422,6 +422,7 @@ pub fn proto_session_to_schema(
         "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "started_at": started_at,
         "finished_at": finished_at,
+        "hints": value.hints.as_ref().map(proto_struct_to_json),
     });
     serde_json::from_value(json).map_err(ConversionError::from)
 }
@@ -445,6 +446,10 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
             .collect(),
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
         tags: value.tags.clone(),
+        hints: value.hints.as_ref().map(|h| {
+            let json = serde_json::to_value(h).unwrap_or_default();
+            json_to_proto_struct(&json)
+        }),
     }
 }
 
@@ -1335,6 +1340,7 @@ mod tests {
             model_id: None,
             capabilities: vec![AgentCapabilityConfig::new("session")],
             tools: vec![],
+            hints: None,
             status: everruns_core::SessionStatus::Idle,
             created_at: now,
             updated_at: now,

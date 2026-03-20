@@ -90,7 +90,13 @@ export function useCreateSession() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ request }: { request: CreateSessionRequest }) => createSession(request),
+    mutationFn: ({ request }: { request: CreateSessionRequest }) =>
+      createSession({
+        ...request,
+        // Auto-declare setup_connection hint so the worker emits synthetic
+        // setup_connection tool calls that the Chat UI can render inline.
+        hints: { setup_connection: true, ...request.hints },
+      }),
     onSuccess: (_, { request }) => {
       // Invalidate sessions list - both all sessions and agent-specific
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
