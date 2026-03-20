@@ -361,6 +361,13 @@ export default function McpServersPage() {
         isLoading={isLoading}
         error={error}
         data={servers}
+        errorState={
+          error && (
+            <div className="rounded-lg bg-destructive/10 p-4 text-destructive">
+              Failed to load MCP servers: {error.message}
+            </div>
+          )
+        }
         loadingSkeleton={
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {[...Array(3)].map((_, i) => (
