@@ -688,10 +688,6 @@ impl Tool for EditFileTool {
                 }
             },
             "required": ["path", "expected_hash"],
-            "oneOf": [
-                { "required": ["path", "expected_hash", "old_text", "new_text"] },
-                { "required": ["path", "expected_hash", "edits"] }
-            ],
             "additionalProperties": false
         })
     }
@@ -1716,6 +1712,24 @@ mod tests {
         assert!(GrepFilesTool.requires_context());
         assert!(DeleteFileTool.requires_context());
         assert!(StatFileTool.requires_context());
+    }
+
+    #[test]
+    fn test_tool_schemas_have_no_top_level_composition_keywords() {
+        // OpenAI Responses API rejects schemas with oneOf/anyOf/allOf/enum/not at top level
+        let cap = FileSystemCapability;
+        let forbidden = ["oneOf", "anyOf", "allOf", "enum", "not"];
+        for tool in cap.tools() {
+            let schema = tool.parameters_schema();
+            for kw in &forbidden {
+                assert!(
+                    schema.get(*kw).is_none(),
+                    "Tool '{}' schema has forbidden top-level keyword '{}'",
+                    tool.name(),
+                    kw
+                );
+            }
+        }
     }
 
     #[tokio::test]
