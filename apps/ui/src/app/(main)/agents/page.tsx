@@ -5,9 +5,8 @@ import { useAgents, useCapabilities, useImportAgent } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Upload } from "lucide-react";
+import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { AgentCard } from "@/components/agents";
 import { ArchiveFilter } from "@/components/archive-filter";
 
@@ -48,14 +47,6 @@ export default function AgentsPage() {
     [importAgent, router],
   );
 
-  if (error) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500">Error loading agents: {error.message}</div>
-      </div>
-    );
-  }
-
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
@@ -88,42 +79,36 @@ export default function AgentsPage() {
         </div>
       )}
 
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-6 w-3/4" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-4 w-full mb-2" />
-                <Skeleton className="h-4 w-2/3" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : agents?.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground mb-4">No agents yet</p>
-          <Link href="/agents/new">
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Create your first agent
-            </Button>
-          </Link>
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {agents?.map((agent) => (
-            <AgentCard
-              key={agent.id}
-              agent={agent}
-              allCapabilities={allCapabilities}
-              showEditButton
-            />
-          ))}
-        </div>
-      )}
+      <QueryStateWrapper
+        isLoading={isLoading}
+        error={error}
+        data={agents}
+        errorMessagePrefix="Failed to load agents"
+        emptyState={
+          <div className="text-center py-12">
+            <p className="text-muted-foreground mb-4">No agents yet</p>
+            <Link href="/agents/new">
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                Create your first agent
+              </Button>
+            </Link>
+          </div>
+        }
+      >
+        {(items) => (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {items.map((agent) => (
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                allCapabilities={allCapabilities}
+                showEditButton
+              />
+            ))}
+          </div>
+        )}
+      </QueryStateWrapper>
     </div>
   );
 }

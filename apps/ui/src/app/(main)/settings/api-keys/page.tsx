@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -192,7 +193,7 @@ function ShowApiKeyDialog({
 
 export default function ApiKeysPage() {
   const { requiresAuth } = useAuth();
-  const { data: userApiKeys = [], isLoading: apiKeysLoading, error: apiKeysError } = useApiKeys();
+  const { data: userApiKeys, isLoading: apiKeysLoading, error: apiKeysError } = useApiKeys();
   const deleteApiKey = useDeleteApiKey();
 
   const [createApiKeyOpen, setCreateApiKeyOpen] = useState(false);
@@ -249,37 +250,40 @@ export default function ApiKeysPage() {
           </Button>
         </div>
 
-        {apiKeysError && (
-          <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-4">
-            Failed to load API keys: {apiKeysError.message}
-          </div>
-        )}
-
-        {apiKeysLoading ? (
-          <div className="space-y-2">
-            {[...Array(2)].map((_, i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </div>
-        ) : userApiKeys.length === 0 ? (
-          <Card className="p-8 text-center">
-            <Key className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No API keys</h3>
-            <p className="text-muted-foreground mb-4">
-              Create an API key to access the Everruns API programmatically.
-            </p>
-            <Button onClick={() => setCreateApiKeyOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create API Key
-            </Button>
-          </Card>
-        ) : (
-          <div className="space-y-2">
-            {userApiKeys.map((apiKey) => (
-              <ApiKeyRow key={apiKey.id} apiKey={apiKey} onDelete={handleDeleteApiKey} />
-            ))}
-          </div>
-        )}
+        <QueryStateWrapper
+          isLoading={apiKeysLoading}
+          error={apiKeysError}
+          data={userApiKeys}
+          errorMessagePrefix="Failed to load API keys"
+          loadingSkeleton={
+            <div className="space-y-2">
+              {[...Array(2)].map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          }
+          emptyState={
+            <Card className="p-8 text-center">
+              <Key className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No API keys</h3>
+              <p className="text-muted-foreground mb-4">
+                Create an API key to access the Everruns API programmatically.
+              </p>
+              <Button onClick={() => setCreateApiKeyOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create API Key
+              </Button>
+            </Card>
+          }
+        >
+          {(items) => (
+            <div className="space-y-2">
+              {items.map((apiKey) => (
+                <ApiKeyRow key={apiKey.id} apiKey={apiKey} onDelete={handleDeleteApiKey} />
+              ))}
+            </div>
+          )}
+        </QueryStateWrapper>
       </section>
 
       {/* Dialogs */}

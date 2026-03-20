@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useApps, usePublishApp, useUnpublishApp } from "@/hooks/use-apps";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Plus, Rocket, Globe, GlobeLock, Copy } from "lucide-react";
 import { ArchiveFilter } from "@/components/archive-filter";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -17,14 +17,6 @@ import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entit
 export default function AppsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const { data: apps, isLoading, error } = useApps({ includeArchived: showArchived });
-
-  if (error) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500">Error loading apps: {error.message}</div>
-      </div>
-    );
-  }
 
   return (
     <div className="container mx-auto p-6">
@@ -44,29 +36,22 @@ export default function AppsPage() {
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-6 w-3/4" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-4 w-full mb-2" />
-                <Skeleton className="h-4 w-2/3" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : apps && apps.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {apps.map((app) => (
-            <AppCard key={app.id} app={app} />
-          ))}
-        </div>
-      ) : (
-        <EmptyState />
-      )}
+      <QueryStateWrapper
+        isLoading={isLoading}
+        error={error}
+        data={apps}
+        errorMessagePrefix="Failed to load apps"
+        skeletonCount={3}
+        emptyState={<EmptyState />}
+      >
+        {(items) => (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {items.map((app) => (
+              <AppCard key={app.id} app={app} />
+            ))}
+          </div>
+        )}
+      </QueryStateWrapper>
     </div>
   );
 }

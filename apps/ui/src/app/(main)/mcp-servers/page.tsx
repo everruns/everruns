@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -321,7 +322,7 @@ function McpServerCardSkeleton() {
 
 export default function McpServersPage() {
   const [showArchived, setShowArchived] = useState(false);
-  const { data: servers = [], isLoading, error } = useMcpServers({ includeArchived: showArchived });
+  const { data: servers, isLoading, error } = useMcpServers({ includeArchived: showArchived });
   const destroyServer = useDestroyMcpServer();
   const { can: canPolicies } = usePolicies("mcp-servers");
   const canDestroy = canPolicies("mcp_server.dangerous");
@@ -356,44 +357,47 @@ export default function McpServersPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-lg bg-destructive/10 p-4 text-destructive">
-          Failed to load MCP servers: {error.message}
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
-            <McpServerCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : servers.length === 0 ? (
-        <Card className="p-8 text-center">
-          <Plug className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-          <h2 className="mb-2 text-lg font-medium">No MCP servers configured</h2>
-          <p className="mb-4 text-muted-foreground">
-            Add an MCP server to extend your agents with external tools and resources.
-          </p>
-          <Button onClick={() => setAddServerOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Server
-          </Button>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {servers.map((server) => (
-            <McpServerCard
-              key={server.id}
-              server={server}
-              canDestroy={canDestroy}
-              onDelete={setPendingDeleteServer}
-              onArchive={setPendingArchiveServer}
-              onSetApiKey={setApiKeyServer}
-            />
-          ))}
-        </div>
-      )}
+      <QueryStateWrapper
+        isLoading={isLoading}
+        error={error}
+        data={servers}
+        errorMessagePrefix="Failed to load MCP servers"
+        loadingSkeleton={
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[...Array(3)].map((_, i) => (
+              <McpServerCardSkeleton key={i} />
+            ))}
+          </div>
+        }
+        emptyState={
+          <Card className="p-8 text-center">
+            <Plug className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+            <h2 className="mb-2 text-lg font-medium">No MCP servers configured</h2>
+            <p className="mb-4 text-muted-foreground">
+              Add an MCP server to extend your agents with external tools and resources.
+            </p>
+            <Button onClick={() => setAddServerOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Server
+            </Button>
+          </Card>
+        }
+      >
+        {(items) => (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {items.map((server) => (
+              <McpServerCard
+                key={server.id}
+                server={server}
+                canDestroy={canDestroy}
+                onDelete={setPendingDeleteServer}
+                onArchive={setPendingArchiveServer}
+                onSetApiKey={setApiKeyServer}
+              />
+            ))}
+          </div>
+        )}
+      </QueryStateWrapper>
 
       {/* Dialogs */}
       <AddMcpServerDialog open={addServerOpen} onOpenChange={setAddServerOpen} />
