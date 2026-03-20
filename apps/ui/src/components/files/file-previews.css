@@ -1,0 +1,46 @@
+/* File preview Streamdown styles.
+ * Scoped under `.file-preview-streamdown` class.
+ * Moved from inline <style> tag in file-previews.tsx. */
+
+.file-preview-streamdown pre { background: var(--color-muted); padding: 1em; overflow-x: auto; margin: 0; }
+.file-preview-streamdown pre code { background: none; padding: 0; }
+.file-preview-streamdown [data-streamdown-code] { border-radius: 0; }
+.file-preview-streamdown p { margin: 0.5em 0; }
+.file-preview-streamdown ul, .file-preview-streamdown ol { margin: 0.5em 0; padding-left: 1.5em; }
+.file-preview-streamdown li { margin: 0.25em 0; }
+.file-preview-streamdown code:not(pre code) { background: var(--color-muted); padding: 0.2em 0.4em; font-size: 0.9em; }
+.file-preview-streamdown blockquote { border-left: 3px solid var(--color-border); padding-left: 1em; margin: 0.5em 0; color: var(--color-muted-foreground); }
+.file-preview-streamdown hr { border: none; border-top: 1px solid var(--color-border); margin: 1em 0; }
+.file-preview-streamdown a { color: var(--color-primary); text-decoration: underline; }
+.file-preview-streamdown strong { font-weight: 600; }
+.file-preview-streamdown em { font-style: italic; }
+.file-preview-streamdown table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
+.file-preview-streamdown th, .file-preview-streamdown td { border: 1px solid var(--color-border); padding: 0.5em; text-align: left; }
+.file-preview-streamdown th { background: var(--color-muted); font-weight: 600; }
+.file-preview-streamdown img { max-width: 100%; height: auto; }
+.file-preview-streamdown h1 { font-size: 1.5em; font-weight: 700; margin: 1em 0 0.5em; }
+.file-preview-streamdown h2 { font-size: 1.25em; font-weight: 600; margin: 1em 0 0.5em; }
+.file-preview-streamdown h3 { font-size: 1.1em; font-weight: 600; margin: 1em 0 0.5em; }
+
+/* Frontmatter metadata block */
+.file-preview-frontmatter { background: var(--color-muted); border: 1px solid var(--color-border); border-radius: 6px; padding: 0.75em 1em; margin-bottom: 1.5em; }
+.file-preview-frontmatter table { width: 100%; border-collapse: collapse; }
+.file-preview-frontmatter tr:not(:last-child) td { padding-bottom: 0.25em; }
+.file-preview-frontmatter-key { color: var(--color-muted-foreground); font-weight: 500; white-space: nowrap; padding-right: 1em; vertical-align: top; width: 1%; font-size: 0.85em; }
+.file-preview-frontmatter-value { color: var(--color-foreground); word-break: break-word; font-size: 0.85em; }
+.file-preview-frontmatter-value .empty { color: var(--color-muted-foreground); }
+
+/* GitHub-style alerts */
+.file-preview-streamdown .markdown-alert { padding: 0.5em 1em; margin: 0.5em 0; border-left: 4px solid; }
+.file-preview-streamdown .markdown-alert-title { display: flex; align-items: center; gap: 0.5em; font-weight: 600; margin-bottom: 0.25em; }
+.file-preview-streamdown .markdown-alert-title svg { width: 1em; height: 1em; }
+.file-preview-streamdown .markdown-alert-note { border-color: #0969da; background: rgba(9, 105, 218, 0.1); }
+.file-preview-streamdown .markdown-alert-note .markdown-alert-title { color: #0969da; }
+.file-preview-streamdown .markdown-alert-tip { border-color: #1a7f37; background: rgba(26, 127, 55, 0.1); }
+.file-preview-streamdown .markdown-alert-tip .markdown-alert-title { color: #1a7f37; }
+.file-preview-streamdown .markdown-alert-important { border-color: #8250df; background: rgba(130, 80, 223, 0.1); }
+.file-preview-streamdown .markdown-alert-important .markdown-alert-title { color: #8250df; }
+.file-preview-streamdown .markdown-alert-warning { border-color: #9a6700; background: rgba(154, 103, 0, 0.1); }
+.file-preview-streamdown .markdown-alert-warning .markdown-alert-title { color: #9a6700; }
+.file-preview-streamdown .markdown-alert-caution { border-color: #cf222e; background: rgba(207, 34, 46, 0.1); }
+.file-preview-streamdown .markdown-alert-caution .markdown-alert-title { color: #cf222e; }
