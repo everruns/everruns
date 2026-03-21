@@ -455,13 +455,15 @@ case "$cmd" in
     echo "1️⃣  Checking PostgreSQL..."
     if check_postgres_ready localhost "$DB_PORT" everruns; then
       echo "   ✅ PostgreSQL is ready"
+      ensure_postgres_db localhost "$DB_PORT" everruns everruns
       export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
     elif check_postgres_ready localhost "$DB_PORT" postgres; then
       echo "   ✅ PostgreSQL is ready (user: postgres)"
+      ensure_postgres_db localhost "$DB_PORT" postgres everruns
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
     else
       echo "   ⚠️  PostgreSQL not found. Starting via pg_ctl..."
-      "$PROJECT_ROOT/scripts/lib/docker.sh" start
+      "$PROJECT_ROOT/scripts/lib/infra.sh" start
       if check_postgres_ready localhost "$DB_PORT" everruns; then
         export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
       else
@@ -477,7 +479,7 @@ case "$cmd" in
         echo "   ✅ Valkey ready (distributed rate limiting enabled)"
       else
         echo "   ℹ️  Starting Valkey..."
-        "$PROJECT_ROOT/scripts/lib/docker.sh" start >/dev/null 2>&1 || true
+        "$PROJECT_ROOT/scripts/lib/infra.sh" start >/dev/null 2>&1 || true
         if check_valkey_ready "$VALKEY_PORT"; then
           export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
           echo "   ✅ Valkey started (distributed rate limiting enabled)"
@@ -718,13 +720,15 @@ case "$cmd" in
     echo "1️⃣  Checking PostgreSQL..."
     if check_postgres_ready localhost "$DB_PORT" everruns; then
       echo "   ✅ PostgreSQL is ready"
+      ensure_postgres_db localhost "$DB_PORT" everruns everruns
       export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
     elif check_postgres_ready localhost "$DB_PORT" postgres; then
       echo "   ✅ PostgreSQL is ready (user: postgres)"
+      ensure_postgres_db localhost "$DB_PORT" postgres everruns
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
     else
       echo "   ⚠️  PostgreSQL not found. Starting via pg_ctl..."
-      "$PROJECT_ROOT/scripts/lib/docker.sh" start
+      "$PROJECT_ROOT/scripts/lib/infra.sh" start
       if check_postgres_ready localhost "$DB_PORT" everruns; then
         export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
       else
@@ -740,7 +744,7 @@ case "$cmd" in
         echo "   ✅ Valkey ready (distributed rate limiting enabled)"
       else
         echo "   ℹ️  Starting Valkey..."
-        "$PROJECT_ROOT/scripts/lib/docker.sh" start >/dev/null 2>&1 || true
+        "$PROJECT_ROOT/scripts/lib/infra.sh" start >/dev/null 2>&1 || true
         if check_valkey_ready "$VALKEY_PORT"; then
           export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
           echo "   ✅ Valkey started (distributed rate limiting enabled)"
@@ -877,7 +881,7 @@ case "$cmd" in
     signal_port_bound_services KILL
     clear_run_state_dir
 
-    "$PROJECT_ROOT/scripts/lib/docker.sh" stop 2>/dev/null || true
+    "$PROJECT_ROOT/scripts/lib/infra.sh" stop 2>/dev/null || true
 
     echo "✅ All services stopped!"
     ;;

@@ -219,6 +219,27 @@ check_postgres_ready() {
 }
 
 
+# Ensure the target database exists on a running PostgreSQL instance.
+# Usage: ensure_postgres_db <host> <port> <user> <dbname>
+ensure_postgres_db() {
+  local host="${1:-localhost}"
+  local port="${2:-5432}"
+  local user="${3:-everruns}"
+  local db="${4:-everruns}"
+
+  if ! command -v psql &> /dev/null && ! command -v createdb &> /dev/null; then
+    return 0  # can't check, let the app fail with a clear error
+  fi
+
+  # Check if DB exists (cut first column to avoid matching the owner name)
+  if psql -h "$host" -p "$port" -U "$user" -lqt 2>/dev/null | cut -d'|' -f1 | grep -qw "$db"; then
+    return 0
+  fi
+
+  echo "   📦 Creating database '$db'..."
+  createdb -h "$host" -p "$port" -U "$user" "$db" 2>/dev/null || true
+}
+
 print_doppler_secret_hint() {
   local missing=()
 

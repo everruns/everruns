@@ -25,15 +25,15 @@ upload-agents:
 
 # Start infrastructure services (Postgres via pg_ctl, Valkey as process)
 start-infra:
-    ./scripts/lib/docker.sh start
+    ./scripts/lib/infra.sh start
 
 # Stop infrastructure services
 stop-infra:
-    ./scripts/lib/docker.sh stop
+    ./scripts/lib/infra.sh stop
 
 # Stop and remove all infrastructure data (pg data, valkey)
 reset:
-    ./scripts/lib/docker.sh reset
+    ./scripts/lib/infra.sh reset
 
 # === Build & Test ===
 

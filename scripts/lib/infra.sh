@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Infrastructure services: start, stop, reset, logs
-# Runs PostgreSQL via pg_ctl and Valkey/Redis as native processes (no Docker).
+# Runs PostgreSQL via pg_ctl and Valkey/Redis as native processes.
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
