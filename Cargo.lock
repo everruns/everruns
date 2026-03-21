@@ -1361,6 +1361,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-config"
+version = "0.8.6"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "everruns-core"
 version = "0.8.6"
 dependencies = [
@@ -1371,6 +1378,7 @@ dependencies = [
  "chrono",
  "eventsource-stream",
  "everruns-anthropic",
+ "everruns-config",
  "everruns-gemini",
  "everruns-openai",
  "everruns-openui",
@@ -1621,6 +1629,7 @@ dependencies = [
  "clap",
  "cron",
  "dotenvy",
+ "everruns-config",
  "everruns-core",
  "everruns-durable",
  "everruns-integrations-brave-search",
@@ -1703,6 +1712,7 @@ dependencies = [
  "base64",
  "chrono",
  "everruns-anthropic",
+ "everruns-config",
  "everruns-core",
  "everruns-durable",
  "everruns-gemini",

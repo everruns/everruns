@@ -214,26 +214,21 @@ impl TelemetryConfig {
     /// - `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`: Record input/output content (standard OTel)
     /// - `OTEL_RECORD_CONTENT`: Legacy alias for content recording
     pub fn from_env() -> Self {
-        // Check if SDK is disabled via environment variable
-        let sdk_disabled = std::env::var("OTEL_SDK_DISABLED")
-            .map(|v| v.to_lowercase() == "true")
-            .unwrap_or(false);
+        use everruns_config::{env_bool, env_opt_string, env_string};
+
+        let sdk_disabled = env_bool("OTEL_SDK_DISABLED", false);
 
         Self {
-            service_name: std::env::var("OTEL_SERVICE_NAME")
-                .unwrap_or_else(|_| "everruns".to_string()),
-            service_version: std::env::var("OTEL_SERVICE_VERSION").ok(),
-            // Don't configure OTLP endpoint if SDK is disabled
+            service_name: env_string("OTEL_SERVICE_NAME", "everruns"),
+            service_version: env_opt_string("OTEL_SERVICE_VERSION"),
             otlp_endpoint: if sdk_disabled {
                 None
             } else {
-                std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok()
+                env_opt_string("OTEL_EXPORTER_OTLP_ENDPOINT")
             },
-            environment: std::env::var("OTEL_ENVIRONMENT").ok(),
+            environment: env_opt_string("OTEL_ENVIRONMENT"),
             enable_console: true,
-            log_filter: std::env::var("RUST_LOG")
-                .ok()
-                .or_else(|| std::env::var("LOG_LEVEL").ok()),
+            log_filter: env_opt_string("RUST_LOG").or_else(|| env_opt_string("LOG_LEVEL")),
             // Standard OTel env var, with legacy alias fallback
             record_content: std::env::var("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT")
                 .or_else(|_| std::env::var("OTEL_RECORD_CONTENT"))
