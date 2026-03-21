@@ -251,8 +251,8 @@ pub fn parse_skill_md(content: &str) -> Result<ParsedSkillMd, Vec<String>> {
         Err(strict_err) => match try_lenient_yaml_parse(&frontmatter_str) {
             Ok(fm) => {
                 warn!(
-                    "SKILL.md YAML frontmatter required lenient parsing (strict error: {strict_err}). \
-                     Skill authors should fix their YAML."
+                    strict_error = %strict_err,
+                    "SKILL.md YAML frontmatter required lenient parsing; skill authors should fix their YAML."
                 );
                 fm
             }
@@ -472,7 +472,7 @@ fn extract_frontmatter(content: &str) -> Result<(String, String), Vec<String>> {
 /// Attempt lenient YAML parsing by auto-fixing common issues:
 /// - Unquoted values containing colons (e.g., `description: Use this: it works`)
 /// - Unquoted values with special YAML characters (`{`, `}`, `[`, `]`, `#`)
-/// - Strip invalid control characters (except newline/tab)
+/// - Strip invalid control characters (except tab; newlines consumed by line iteration)
 fn try_lenient_yaml_parse(frontmatter: &str) -> Result<SkillFrontmatter, serde_yaml::Error> {
     let fixed = fix_yaml_values(frontmatter);
     serde_yaml::from_str(&fixed)
@@ -483,7 +483,7 @@ fn try_lenient_yaml_parse(frontmatter: &str) -> Result<SkillFrontmatter, serde_y
 /// For each line that looks like `key: value`, if the value is not already
 /// quoted and contains characters that break strict YAML parsing (`:`, `{`,
 /// `}`, `[`, `]`, `#`), wrap it in double quotes (escaping inner quotes).
-/// Also strips control characters (except `\n`, `\r`, `\t`).
+/// Also strips control characters (except `\t`; `\n` is consumed by line iteration).
 fn fix_yaml_values(frontmatter: &str) -> String {
     let problematic_chars: &[char] = &[':', '{', '}', '[', ']', '#'];
 
@@ -513,8 +513,12 @@ fn fix_yaml_values(frontmatter: &str) -> String {
                     return line;
                 }
 
-                // If value contains problematic chars, quote it
-                if value.contains(problematic_chars) {
+                // If value contains problematic chars, quote it.
+                // Skip values that look like YAML flow collections (start with { or [).
+                if value.contains(problematic_chars)
+                    && !value.starts_with('{')
+                    && !value.starts_with('[')
+                {
                     let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
                     return format!("{key}: \"{escaped}\"");
                 }
@@ -1585,5 +1589,14 @@ Instructions.
         // Nested keys (indented) should not be modified
         assert!(fixed.contains("  version: 1.0"));
         assert!(fixed.contains("  key: value: nested"));
+    }
+
+    #[test]
+    fn test_fix_yaml_values_preserves_flow_collections() {
+        let input = "name: my-skill\nmetadata: { version: \"1.0\" }\ntags: [a, b]";
+        let fixed = fix_yaml_values(input);
+        // Flow collections should NOT be quoted
+        assert!(fixed.contains("metadata: { version: \"1.0\" }"));
+        assert!(fixed.contains("tags: [a, b]"));
     }
 }
