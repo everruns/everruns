@@ -2,50 +2,30 @@
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
 import { api, throwApiError } from "./client";
+import { createCrudApi } from "./crud";
 import type {
+  CreateSkillRequest,
   Skill,
   SkillContent,
   SkillValidationResult,
-  CreateSkillRequest,
   UpdateSkillRequest,
   ValidateSkillRequest,
-  ListResponse,
 } from "./types";
 
-// Skill CRUD
+export const skillsCrudApi = createCrudApi<Skill, CreateSkillRequest, UpdateSkillRequest>(
+  "/v1/skills",
+);
 
-export async function getSkills(includeArchived = false): Promise<Skill[]> {
-  const path = includeArchived ? "/v1/skills?include_archived=true" : "/v1/skills";
-  const response = await api.get<ListResponse<Skill>>(path);
-  return response.data.data;
-}
-
-export async function getSkill(skillId: string): Promise<Skill> {
-  const response = await api.get<Skill>(`/v1/skills/${skillId}`);
-  return response.data;
-}
+export const getSkills = skillsCrudApi.list;
+export const getSkill = skillsCrudApi.get;
+export const createSkill = skillsCrudApi.create;
+export const updateSkill = skillsCrudApi.update;
+export const deleteSkill = skillsCrudApi.delete;
+export const destroySkill = skillsCrudApi.destroy;
 
 export async function getSkillContent(skillId: string): Promise<SkillContent> {
   const response = await api.get<SkillContent>(`/v1/skills/${skillId}/content`);
   return response.data;
-}
-
-export async function createSkill(data: CreateSkillRequest): Promise<Skill> {
-  const response = await api.post<Skill>("/v1/skills", data);
-  return response.data;
-}
-
-export async function updateSkill(skillId: string, data: UpdateSkillRequest): Promise<Skill> {
-  const response = await api.patch<Skill>(`/v1/skills/${skillId}`, data);
-  return response.data;
-}
-
-export async function deleteSkill(skillId: string): Promise<void> {
-  await api.delete(`/v1/skills/${skillId}`);
-}
-
-export async function destroySkill(skillId: string): Promise<void> {
-  await api.post(`/v1/skills/${skillId}/delete`);
 }
 
 export async function validateSkill(data: ValidateSkillRequest): Promise<SkillValidationResult> {

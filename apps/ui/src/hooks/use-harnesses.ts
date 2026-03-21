@@ -1,115 +1,52 @@
 // Harness hooks
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  copyHarness,
-  createHarness,
-  deleteHarness,
-  destroyHarness,
-  getHarness,
-  listHarnesses,
-  previewHarness,
-  updateHarness,
-} from "@/lib/api/harnesses";
-import { queryKeys } from "@/lib/query-keys";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { copyHarness, harnessesCrudApi, previewHarness } from "@/lib/api/harnesses";
 import type {
   CreateHarnessRequest,
   PreviewHarnessRequest,
   UpdateHarnessRequest,
 } from "@/lib/api/types";
-import { useOrg } from "@/providers/org-provider";
+import { queryKeys } from "@/lib/query-keys";
+import { createCrudHooks } from "./create-crud-hooks";
 
-interface UseHarnessesOptions {
-  includeArchived?: boolean;
-}
+const harnessCrudHooks = createCrudHooks<
+  Awaited<ReturnType<typeof harnessesCrudApi.get>>,
+  CreateHarnessRequest,
+  UpdateHarnessRequest
+>({
+  api: harnessesCrudApi,
+  queryKeys: queryKeys.harnesses,
+});
 
-export function useHarnesses(options: UseHarnessesOptions = {}) {
-  const { currentOrg, isLoading: orgLoading } = useOrg();
-  const org = currentOrg?.public_id;
-  const includeArchived = options.includeArchived ?? false;
-
-  const query = useQuery({
-    queryKey: [...queryKeys.harnesses.list(includeArchived), org],
-    queryFn: () => listHarnesses(includeArchived),
-    enabled: !!org,
-  });
-
-  return {
-    ...query,
-    isLoading: orgLoading || query.isLoading,
-  };
-}
-
-export function useHarness(harnessId: string | undefined) {
-  const { currentOrg, isLoading: orgLoading } = useOrg();
-  const org = currentOrg?.public_id;
-
-  const query = useQuery({
-    queryKey: [...queryKeys.harnesses.detail(harnessId!), org],
-    queryFn: () => getHarness(harnessId!),
-    enabled: !!org && !!harnessId,
-  });
-
-  return {
-    ...query,
-    isLoading: orgLoading || query.isLoading,
-  };
-}
-
-export function useCreateHarness() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (request: CreateHarnessRequest) => createHarness(request),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.harnesses.all });
-    },
-  });
-}
+export const useHarnesses = harnessCrudHooks.useList;
+export const useHarness = harnessCrudHooks.useDetail;
+export const useCreateHarness = harnessCrudHooks.useCreate;
+export const useDeleteHarness = harnessCrudHooks.useDelete;
+export const useDestroyHarness = harnessCrudHooks.useDestroy;
 
 export function useUpdateHarness() {
-  const queryClient = useQueryClient();
+  const mutation = harnessCrudHooks.useUpdate();
 
-  return useMutation({
-    mutationFn: ({ harnessId, request }: { harnessId: string; request: UpdateHarnessRequest }) =>
-      updateHarness(harnessId, request),
-    onSuccess: (_, { harnessId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.harnesses.all });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.harnesses.detail(harnessId),
-      });
-    },
-  });
+  return {
+    ...mutation,
+    mutate: (
+      variables: { harnessId: string; request: UpdateHarnessRequest },
+      options?: Parameters<typeof mutation.mutate>[1],
+    ) => mutation.mutate({ id: variables.harnessId, request: variables.request }, options),
+    mutateAsync: (
+      variables: { harnessId: string; request: UpdateHarnessRequest },
+      options?: Parameters<typeof mutation.mutateAsync>[1],
+    ) => mutation.mutateAsync({ id: variables.harnessId, request: variables.request }, options),
+  };
 }
 
 export function useCopyHarness() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (harnessId: string) => copyHarness(harnessId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.harnesses.all });
-    },
-  });
-}
-
-export function useDeleteHarness() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (harnessId: string) => deleteHarness(harnessId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.harnesses.all });
-    },
-  });
-}
-
-export function useDestroyHarness() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (harnessId: string) => destroyHarness(harnessId),
+    mutationFn: copyHarness,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.harnesses.all });
     },
