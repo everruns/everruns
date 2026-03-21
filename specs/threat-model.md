@@ -822,7 +822,7 @@ Daytona sandboxes are remote Linux environments managed via REST API. The agent 
 | TM-DAYTONA-003 | Git token scope — over-privileged access | Medium | Token scoped by GitHub App installation permissions; user controls repo access via GitHub App settings | **CALLER RISK** |
 | TM-DAYTONA-004 | Daytona API key compromise | High | Stored in user connections (Settings > Connections); encrypted at rest via envelope encryption (AES-256-GCM) | MITIGATED |
 | TM-DAYTONA-005 | Cross-session sandbox access | Critical | Sandbox IDs stored in session-scoped secrets (`daytona_sandbox:{id}`); session isolation enforced by storage store | MITIGATED |
-| TM-DAYTONA-006 | Sandbox not deleted — resource leak | Low | Auto-stop after 5 min inactivity; system prompt instructs agent to delete when done | MITIGATED |
+| TM-DAYTONA-006 | Sandbox not deleted — resource leak | Low | Auto-stop 5 min, auto-archive 30 min, auto-delete 60 min (Daytona-native); leased-resource cleanup 20 min (control plane); system prompt instructs agent to delete when done | MITIGATED |
 | TM-DAYTONA-007 | Git credential helper persists after sandbox reuse | Low | Credential file in `/tmp` cleared on stop; sandbox stop resets environment | MITIGATED |
 
 ### Mitigation Details

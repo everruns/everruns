@@ -962,6 +962,8 @@ mod tests {
             .and(wiremock::matchers::body_json(json!({
                 "name": "Labeled Sandbox",
                 "autoStopInterval": 5,
+                "autoArchiveInterval": 30,
+                "autoDeleteInterval": 60,
                 "labels": {
                     "everruns": "true",
                     "everruns.session_id": "session_abc",
@@ -986,6 +988,8 @@ mod tests {
             .create_sandbox(json!({
                 "name": "Labeled Sandbox",
                 "autoStopInterval": 5,
+                "autoArchiveInterval": 30,
+                "autoDeleteInterval": 60,
                 "labels": {
                     "everruns": "true",
                     "everruns.session_id": "session_abc",

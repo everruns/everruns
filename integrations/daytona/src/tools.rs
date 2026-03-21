@@ -12,7 +12,10 @@ use crate::state::{
     SandboxState, delete_sandbox_state, get_api_key, get_sandbox_state, list_sandbox_states,
     release_sandbox_lease, required_str, save_sandbox_state, touch_sandbox_lease,
 };
-use crate::{AUTO_STOP_INTERVAL_MINUTES, EXEC_TIMEOUT_MS};
+use crate::{
+    AUTO_ARCHIVE_INTERVAL_MINUTES, AUTO_DELETE_INTERVAL_MINUTES, AUTO_STOP_INTERVAL_MINUTES,
+    EXEC_TIMEOUT_MS,
+};
 
 // ============================================================================
 // DaytonaCreateSandboxTool
@@ -109,6 +112,8 @@ impl Tool for DaytonaCreateSandboxTool {
         let mut create_body = json!({
             "name": title,
             "autoStopInterval": AUTO_STOP_INTERVAL_MINUTES,
+            "autoArchiveInterval": AUTO_ARCHIVE_INTERVAL_MINUTES,
+            "autoDeleteInterval": AUTO_DELETE_INTERVAL_MINUTES,
             "labels": labels,
         });
         if let Some(image) = arguments.get("image").and_then(|v| v.as_str()) {

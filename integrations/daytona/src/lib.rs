@@ -58,6 +58,10 @@ const SANDBOX_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const SANDBOX_READY_MAX_WAIT: Duration = Duration::from_secs(60);
 /// Auto-stop after 5 minutes of inactivity (safety net)
 const AUTO_STOP_INTERVAL_MINUTES: u64 = 5;
+/// Auto-archive after 30 minutes — archived sandboxes consume fewer Daytona resources
+const AUTO_ARCHIVE_INTERVAL_MINUTES: u64 = 30;
+/// Auto-delete after 60 minutes — Daytona-native safety net beyond our leased-resource cleanup
+const AUTO_DELETE_INTERVAL_MINUTES: u64 = 60;
 /// Default workspace path inside Daytona sandboxes
 const DAYTONA_WORKSPACE_PATH: &str = "/home/daytona";
 
@@ -112,7 +116,7 @@ Authentication: Daytona API key is resolved automatically from Settings > Connec
 If not configured, guide the user to set up their key in Settings > Connections.
 
 All tools except `daytona_create_sandbox` and `daytona_list_sandboxes` require a `sandbox_id`.
-Sandboxes auto-stop after 5 minutes of inactivity.
+Sandboxes auto-stop after 5 min, auto-archive after 30 min, and auto-delete after 60 min.
 Always DELETE sandboxes when done (stop leaves them on the dashboard).
 Active sandboxes also appear in the session Resources tab so users can see what
 may be cleaned automatically later.
