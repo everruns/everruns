@@ -12,8 +12,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::{
-    AgentLoopError, ContentPart, Event, EventData, InputMessage, Message, MessageFilter, MessageId,
-    MessageQuery, MessageRetriever, MessageRole, Result, SessionId,
+    ContentPart, Event, EventData, InputMessage, Message, MessageFilter, MessageId, MessageQuery,
+    MessageRetriever, MessageRole, Result, SessionId, StoreResultExt,
     events::{
         EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
     },
@@ -85,10 +85,7 @@ impl DbMessageRetriever {
             }
         };
 
-        self.event_service
-            .emit(event_request)
-            .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+        self.event_service.emit(event_request).await.store_err()?;
 
         Ok(message)
     }
@@ -102,11 +99,7 @@ impl MessageRetriever for DbMessageRetriever {
     }
 
     async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
-        let events = self
-            .db
-            .list_message_events(session_id)
-            .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+        let events = self.db.list_message_events(session_id).await.store_err()?;
 
         let mut messages = Vec::with_capacity(events.len());
 
@@ -131,7 +124,7 @@ impl MessageRetriever for DbMessageRetriever {
             .db
             .list_message_events_filtered(&query)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         // Convert events to messages
         let mut messages = Vec::with_capacity(events.len());
@@ -163,11 +156,7 @@ impl MessageRetriever for DbMessageRetriever {
     }
 
     async fn count(&self, session_id: SessionId) -> Result<usize> {
-        let count = self
-            .db
-            .count_message_events(session_id)
-            .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+        let count = self.db.count_message_events(session_id).await.store_err()?;
         Ok(count as usize)
     }
 }

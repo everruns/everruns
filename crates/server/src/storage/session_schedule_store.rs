@@ -6,8 +6,8 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    AgentLoopError, Result, ScheduleId, SessionId, session_schedule::SessionSchedule,
-    traits::SessionScheduleStore,
+    AgentLoopError, Result, ScheduleId, SessionId, StoreResultExt,
+    session_schedule::SessionSchedule, traits::SessionScheduleStore,
 };
 
 use super::backend::StorageBackend;
@@ -77,7 +77,7 @@ impl SessionScheduleStore for DbSessionScheduleStore {
                 next_trigger_at: next_trigger,
             })
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         Ok(row_to_domain(&row))
     }
@@ -98,7 +98,7 @@ impl SessionScheduleStore for DbSessionScheduleStore {
                 },
             )
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?
+            .store_err()?
             .ok_or_else(|| AgentLoopError::tool("Schedule not found".to_string()))?;
 
         Ok(row_to_domain(&row))
@@ -109,7 +109,7 @@ impl SessionScheduleStore for DbSessionScheduleStore {
             .db
             .list_session_schedules(self.org_id, session_id)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         Ok(rows.iter().map(row_to_domain).collect())
     }

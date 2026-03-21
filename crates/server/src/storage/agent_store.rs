@@ -9,8 +9,9 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentCapabilityConfig, AgentId, AgentLoopError, Result,
+    AgentCapabilityConfig, AgentId, Result, StoreResultExt,
     agent::{Agent, AgentStatus},
+    from_json,
     traits::AgentStore,
 };
 
@@ -39,11 +40,7 @@ impl DbAgentStore {
 #[async_trait]
 impl AgentStore for DbAgentStore {
     async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
-        let agent_row = self
-            .db
-            .get_agent(self.org_id, agent_id)
-            .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+        let agent_row = self.db.get_agent(self.org_id, agent_id).await.store_err()?;
 
         match agent_row {
             Some(row) => {
@@ -52,7 +49,7 @@ impl AgentStore for DbAgentStore {
                     .db
                     .get_agent_capabilities(agent_id.uuid())
                     .await
-                    .map_err(|e| AgentLoopError::store(e.to_string()))?;
+                    .store_err()?;
 
                 let capabilities: Vec<AgentCapabilityConfig> = capability_rows
                     .into_iter()
@@ -71,8 +68,8 @@ impl AgentStore for DbAgentStore {
                     default_model_id: row.default_model_id,
                     tags: row.tags,
                     capabilities,
-                    initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
-                    tools: serde_json::from_value(row.tools).unwrap_or_default(),
+                    initial_files: from_json(row.initial_files),
+                    tools: from_json(row.tools),
                     status: AgentStatus::from(row.status.as_str()),
                     created_at: row.created_at,
                     updated_at: row.updated_at,

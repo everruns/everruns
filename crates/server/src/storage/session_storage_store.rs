@@ -5,7 +5,8 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, KeyInfo, Result, SecretInfo, SessionId, traits::SessionStorageStore,
+    AgentLoopError, KeyInfo, Result, SecretInfo, SessionId, StoreResultExt,
+    traits::SessionStorageStore,
 };
 
 use super::encryption::EncryptionService;
@@ -67,10 +68,7 @@ impl SessionStorageStore for DbSessionStorageStore {
             value: value.to_string(),
         };
 
-        self.db
-            .upsert_session_key_value(input)
-            .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+        self.db.upsert_session_key_value(input).await.store_err()?;
 
         Ok(())
     }
@@ -80,7 +78,7 @@ impl SessionStorageStore for DbSessionStorageStore {
             .db
             .get_session_key_value(session_id.uuid(), key)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         Ok(row.map(|r| r.value))
     }
@@ -97,7 +95,7 @@ impl SessionStorageStore for DbSessionStorageStore {
             .db
             .list_session_keys(session_id.uuid())
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         Ok(rows
             .into_iter()
@@ -127,10 +125,7 @@ impl SessionStorageStore for DbSessionStorageStore {
             value_encrypted: encrypted,
         };
 
-        self.db
-            .upsert_session_secret(input)
-            .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+        self.db.upsert_session_secret(input).await.store_err()?;
 
         Ok(())
     }
@@ -142,7 +137,7 @@ impl SessionStorageStore for DbSessionStorageStore {
             .db
             .get_session_secret(session_id.uuid(), name)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         match row {
             Some(r) => {
@@ -168,7 +163,7 @@ impl SessionStorageStore for DbSessionStorageStore {
             .db
             .list_session_secrets(session_id.uuid())
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         Ok(rows
             .into_iter()

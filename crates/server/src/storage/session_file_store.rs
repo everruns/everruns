@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, FileInfo, FileStat, GrepMatch, Result, SessionFile, SessionId,
+    AgentLoopError, FileInfo, FileStat, GrepMatch, Result, SessionFile, SessionId, StoreResultExt,
     traits::SessionFileStore,
 };
 use regex::Regex;
@@ -120,7 +120,7 @@ impl SessionFileStore for DbSessionFileStore {
             .db
             .get_session_file(session_id.uuid(), &path)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         Ok(row.map(|r| {
             let (content, encoding) = if let Some(bytes) = r.content {
@@ -169,7 +169,7 @@ impl SessionFileStore for DbSessionFileStore {
             .db
             .get_session_file(session_id.uuid(), &path)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         let row = if let Some(existing) = existing {
             // Update existing file
@@ -196,7 +196,7 @@ impl SessionFileStore for DbSessionFileStore {
                     },
                 )
                 .await
-                .map_err(|e| AgentLoopError::store(e.to_string()))?
+                .store_err()?
                 .ok_or_else(|| AgentLoopError::store("File not found after update"))?
         } else {
             // Create new file
@@ -227,7 +227,7 @@ impl SessionFileStore for DbSessionFileStore {
                                 },
                             )
                             .await
-                            .map_err(|e| AgentLoopError::store(e.to_string()))?
+                            .store_err()?
                             .ok_or_else(|| {
                                 AgentLoopError::store("File not found after race recovery")
                             })?
@@ -291,7 +291,7 @@ impl SessionFileStore for DbSessionFileStore {
                 },
             )
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         Ok(row.map(|row| {
             let (content, encoding) = if let Some(bytes) = row.content {
@@ -332,7 +332,7 @@ impl SessionFileStore for DbSessionFileStore {
                     .db
                     .has_readonly_session_files(session_id.uuid(), "/")
                     .await
-                    .map_err(|e| AgentLoopError::store(e.to_string()))?;
+                    .store_err()?;
                 if has_readonly {
                     return Err(AgentLoopError::store(
                         "Cannot delete: directory contains readonly files",
@@ -341,7 +341,7 @@ impl SessionFileStore for DbSessionFileStore {
                 self.db
                     .delete_session_file_recursive(session_id.uuid(), "/")
                     .await
-                    .map_err(|e| AgentLoopError::store(e.to_string()))?;
+                    .store_err()?;
                 return Ok(true);
             } else {
                 return Err(AgentLoopError::store(
@@ -355,7 +355,7 @@ impl SessionFileStore for DbSessionFileStore {
             .db
             .get_session_file(session_id.uuid(), &path)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         // Check readonly on the target itself
         if let Some(ref f) = file
@@ -375,7 +375,7 @@ impl SessionFileStore for DbSessionFileStore {
                 .db
                 .session_directory_has_children(session_id.uuid(), &path)
                 .await
-                .map_err(|e| AgentLoopError::store(e.to_string()))?;
+                .store_err()?;
             if has_children {
                 return Err(AgentLoopError::store(
                     "Directory is not empty. Use recursive=true to delete",
@@ -389,7 +389,7 @@ impl SessionFileStore for DbSessionFileStore {
                 .db
                 .has_readonly_session_files(session_id.uuid(), &path)
                 .await
-                .map_err(|e| AgentLoopError::store(e.to_string()))?;
+                .store_err()?;
             if has_readonly {
                 return Err(AgentLoopError::store(
                     "Cannot delete: directory contains readonly files",
@@ -399,7 +399,7 @@ impl SessionFileStore for DbSessionFileStore {
                 .db
                 .delete_session_file_recursive(session_id.uuid(), &path)
                 .await
-                .map_err(|e| AgentLoopError::store(e.to_string()))?;
+                .store_err()?;
             Ok(deleted > 0)
         } else {
             self.db
@@ -418,7 +418,7 @@ impl SessionFileStore for DbSessionFileStore {
                 .db
                 .get_session_file(session_id.uuid(), &path)
                 .await
-                .map_err(|e| AgentLoopError::store(e.to_string()))?;
+                .store_err()?;
             match dir {
                 Some(d) if !d.is_directory => {
                     return Err(AgentLoopError::store(format!(
@@ -440,7 +440,7 @@ impl SessionFileStore for DbSessionFileStore {
             .db
             .list_session_files(session_id.uuid(), &path)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         Ok(rows
             .into_iter()
@@ -478,7 +478,7 @@ impl SessionFileStore for DbSessionFileStore {
             .db
             .get_session_file(session_id.uuid(), &path)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         Ok(row.map(|r| FileStat {
             path: r.path.clone(),
@@ -506,7 +506,7 @@ impl SessionFileStore for DbSessionFileStore {
             .db
             .grep_session_files(session_id.uuid(), pattern, path_pattern)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         let mut results = Vec::new();
 
@@ -517,7 +517,7 @@ impl SessionFileStore for DbSessionFileStore {
                 .db
                 .get_session_file(session_id.uuid(), &file_info.path)
                 .await
-                .map_err(|e| AgentLoopError::store(e.to_string()))?;
+                .store_err()?;
 
             if let Some(f) = file
                 && let Some(content) = f.content
@@ -548,7 +548,7 @@ impl SessionFileStore for DbSessionFileStore {
             .db
             .get_session_file(session_id.uuid(), &path)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?
+            .store_err()?
         {
             if existing.is_directory {
                 return Ok(FileInfo {
@@ -596,7 +596,7 @@ impl SessionFileStore for DbSessionFileStore {
                         .db
                         .get_session_file(session_id.uuid(), &path)
                         .await
-                        .map_err(|e| AgentLoopError::store(e.to_string()))?
+                        .store_err()?
                         && existing.is_directory
                     {
                         return Ok(FileInfo {
