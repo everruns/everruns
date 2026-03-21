@@ -268,4 +268,24 @@ impl InMemoryDatabase {
         }
         Ok(false)
     }
+
+    pub async fn update_mcp_server_tools(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateMcpServerTools,
+    ) -> Result<Option<McpServerRow>> {
+        let id = McpServerId::from_uuid(id);
+        let mut servers = self.mcp_servers.write();
+        if let Some(server) = servers.get_mut(&id) {
+            if server.org_id != org_id {
+                return Ok(None);
+            }
+            server.cached_tools = input.cached_tools;
+            server.tools_cached_at = Some(Self::now());
+            server.updated_at = Self::now();
+            return Ok(Some(server.clone()));
+        }
+        Ok(None)
+    }
 }
