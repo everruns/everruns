@@ -77,7 +77,7 @@ This avoids entering the key in chat (see TM-AGENT-016).
 
 | Method | Path | Purpose | Request Body |
 |--------|------|---------|-------------|
-| POST | `/sandbox` | Create sandbox | `{ name?, image?, autoStopInterval, labels? }` |
+| POST | `/sandbox` | Create sandbox | `{ name?, image?, autoStopInterval, autoArchiveInterval, autoDeleteInterval, labels? }` |
 | GET | `/sandbox/{id}` | Get sandbox info | — |
 | POST | `/sandbox/{id}/start` | Start sandbox | — |
 | POST | `/sandbox/{id}/stop` | Stop sandbox | — |
