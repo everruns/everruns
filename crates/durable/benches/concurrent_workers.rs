@@ -42,6 +42,14 @@ struct TestScenario {
 
 impl TestScenario {
     fn new(task_count: u64, worker_count: usize, simulate_execution: bool) -> Self {
+        // Raise per-workflow queue limit to accommodate large task counts
+        // SAFETY: bench is single-threaded at construction time; no other thread reads this var yet.
+        unsafe {
+            env::set_var(
+                "DURABLE_MAX_PENDING_TASKS_PER_WORKFLOW",
+                task_count.max(10_000).to_string(),
+            );
+        }
         Self {
             store: Arc::new(InMemoryWorkflowEventStore::new()),
             workflow_id: Uuid::now_v7(),
