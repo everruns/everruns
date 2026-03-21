@@ -1231,4 +1231,169 @@ mod tests {
             "Workflow should be running after takeover"
         );
     }
+
+    /// Regression guard: a Running workflow blocks and waits (polling at 100ms),
+    /// whereas a Pending workflow returns instantly. This test asserts the Running
+    /// path takes measurable time (>200ms) while the Pending path (<50ms) doesn't.
+    /// The contrast is the regression signal for EVE-168.
+    #[tokio::test]
+    async fn test_running_blocks_but_pending_returns_instantly() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        // --- Pending path (should be instant) ---
+        let runner_p = DurableRunner::new_in_memory();
+        let sid_p = SessionId::new();
+        runner_p
+            .start_run(DEFAULT_ORG_ID, sid_p, HarnessId::new(), Some(AgentId::new()), MessageId::new())
+            .await
+            .unwrap();
+        // Leave workflow Pending
+        let t0 = std::time::Instant::now();
+        runner_p
+            .start_run(DEFAULT_ORG_ID, sid_p, HarnessId::new(), Some(AgentId::new()), MessageId::new())
+            .await
+            .unwrap();
+        let pending_dur = t0.elapsed();
+
+        // --- Running path (completes after 300ms background task) ---
+        let runner_r = DurableRunner::new_in_memory();
+        let sid_r = SessionId::new();
+        runner_r
+            .start_run(DEFAULT_ORG_ID, sid_r, HarnessId::new(), Some(AgentId::new()), MessageId::new())
+            .await
+            .unwrap();
+        {
+            let mut store = runner_r.store.lock().await;
+            store
+                .update_workflow_status(sid_r.uuid(), WorkflowStatus::Running, None, None)
+                .await
+                .unwrap();
+        }
+        let store_clone = runner_r.store.clone();
+        let sid_r_clone = sid_r;
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            let mut store = store_clone.lock().await;
+            store
+                .update_workflow_status(sid_r_clone.uuid(), WorkflowStatus::Completed, None, None)
+                .await
+                .unwrap();
+        });
+        let t1 = std::time::Instant::now();
+        runner_r
+            .start_run(DEFAULT_ORG_ID, sid_r, HarnessId::new(), Some(AgentId::new()), MessageId::new())
+            .await
+            .unwrap();
+        let running_dur = t1.elapsed();
+
+        // Pending should be nearly instant; Running should have waited ~300ms
+        assert!(
+            pending_dur < std::time::Duration::from_millis(50),
+            "Pending takeover should be instant, took {:?}",
+            pending_dur
+        );
+        assert!(
+            running_dur >= std::time::Duration::from_millis(200),
+            "Running path should block until completion, took {:?}",
+            running_dur
+        );
+    }
+
+    /// Test that three rapid messages while workflow stays Pending all succeed
+    /// instantly — no cumulative delay (EVE-168).
+    #[tokio::test]
+    async fn test_multiple_rapid_messages_while_pending() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let runner = DurableRunner::new_in_memory();
+
+        let session_id = SessionId::new();
+        let harness_id = HarnessId::new();
+        let agent_id = AgentId::new();
+
+        // First message — creates workflow (Pending)
+        runner
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                MessageId::new(),
+            )
+            .await
+            .expect("First start_run should succeed");
+
+        // Send two more messages rapidly while still Pending
+        let start = std::time::Instant::now();
+        for i in 0..2 {
+            runner
+                .start_run(
+                    DEFAULT_ORG_ID,
+                    session_id,
+                    harness_id,
+                    Some(agent_id),
+                    MessageId::new(),
+                )
+                .await
+                .unwrap_or_else(|e| panic!("Message {} should succeed: {}", i + 2, e));
+        }
+
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(1),
+            "All Pending takeovers should be instant — took {:?}",
+            start.elapsed(),
+        );
+        assert!(runner.is_running(session_id).await);
+    }
+
+    /// Test that Pending takeover resets workflow status correctly —
+    /// after takeover the workflow is Pending (new task enqueued), not stuck.
+    #[tokio::test]
+    async fn test_pending_takeover_resets_workflow_to_pending() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let runner = DurableRunner::new_in_memory();
+
+        let session_id = SessionId::new();
+        let harness_id = HarnessId::new();
+        let agent_id = AgentId::new();
+
+        // First message — Pending
+        runner
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                MessageId::new(),
+            )
+            .await
+            .expect("First start_run");
+
+        // Second message — takes over Pending
+        runner
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                MessageId::new(),
+            )
+            .await
+            .expect("Second start_run should take over");
+
+        // Verify workflow is in non-terminal state (Pending with new task)
+        let (status, _, _) = {
+            let mut store = runner.store.lock().await;
+            store
+                .get_workflow_status(session_id.uuid())
+                .await
+                .expect("Should get workflow status")
+        };
+        assert_eq!(
+            status,
+            WorkflowStatus::Pending,
+            "After Pending takeover, workflow should be reset to Pending (new task enqueued)"
+        );
+    }
 }
