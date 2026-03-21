@@ -606,7 +606,9 @@ impl FileSystem for SessionFileSystemAdapter {
 // ============================================================================
 
 impl SearchCapable for SessionFileSystemAdapter {
-    fn search_provider(&self, _path: &Path) -> Option<Box<dyn SearchProvider>> {
+    fn search_provider(&self, path: &Path) -> Option<Box<dyn SearchProvider>> {
+        // Only provide indexed search for paths inside /workspace
+        Self::to_session_path(path)?;
         Some(Box::new(SessionSearchProvider {
             session_id: self.session_id,
             store: self.store.clone(),
@@ -616,9 +618,8 @@ impl SearchCapable for SessionFileSystemAdapter {
 
 /// Bridges bashkit's synchronous `SearchProvider` to `SessionFileStore::grep_files`.
 ///
-/// Uses `tokio::task::block_in_place` + `Handle::block_on` to call the async
-/// store method from the sync trait. This is safe because bashkit's builtins
-/// already run inside a tokio runtime context.
+/// Uses a scoped thread with a dedicated tokio runtime to call the async
+/// store method from the sync trait, avoiding nested `block_on` calls.
 struct SessionSearchProvider {
     session_id: SessionId,
     store: Arc<dyn SessionFileStore>,
@@ -628,14 +629,31 @@ impl SearchProvider for SessionSearchProvider {
     fn search(&self, query: &SearchQuery) -> bashkit::Result<SearchResults> {
         let session_id = self.session_id;
         let store = self.store.clone();
-        let pattern = query.pattern.clone();
         let root = query.root.to_string_lossy().into_owned();
         let max_results = query.max_results;
 
-        // Convert root path from bash VFS path to session store path
-        let path_pattern = SessionFileSystemAdapter::to_session_path(Path::new(&root))
-            .map(|p| if p == "/" { None } else { Some(p) })
-            .unwrap_or(None);
+        // Honor case_insensitive flag via inline regex flag
+        let pattern = if query.case_insensitive {
+            format!("(?i){}", query.pattern)
+        } else {
+            query.pattern.clone()
+        };
+
+        // Convert root path from bash VFS path to session store path.
+        // search_provider already guards against paths outside /workspace,
+        // so to_session_path should always succeed here.
+        let session_root =
+            SessionFileSystemAdapter::to_session_path(Path::new(&root)).ok_or_else(|| {
+                bashkit::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Path not in workspace: {}", root),
+                ))
+            })?;
+        let path_pattern = if session_root == "/" {
+            None
+        } else {
+            Some(session_root)
+        };
 
         // Bridge async grep_files to sync SearchProvider::search.
         // Run on a dedicated thread with its own runtime to avoid nesting
