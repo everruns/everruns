@@ -24,6 +24,7 @@ mod users;
 mod tests;
 
 use anyhow::Result;
+use everruns_config::{env_duration_secs, env_or};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 
@@ -51,24 +52,13 @@ impl DatabasePoolConfig {
     pub fn from_env() -> Self {
         let defaults = Self::default();
         Self {
-            max_connections: std::env::var("DATABASE_POOL_MAX")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(defaults.max_connections),
-            min_connections: std::env::var("DATABASE_POOL_MIN")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(defaults.min_connections),
-            acquire_timeout: std::env::var("DATABASE_ACQUIRE_TIMEOUT_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .map(std::time::Duration::from_secs)
-                .unwrap_or(defaults.acquire_timeout),
-            idle_timeout: std::env::var("DATABASE_IDLE_TIMEOUT_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .map(std::time::Duration::from_secs)
-                .unwrap_or(defaults.idle_timeout),
+            max_connections: env_or("DATABASE_POOL_MAX", defaults.max_connections),
+            min_connections: env_or("DATABASE_POOL_MIN", defaults.min_connections),
+            acquire_timeout: env_duration_secs(
+                "DATABASE_ACQUIRE_TIMEOUT_SECS",
+                defaults.acquire_timeout,
+            ),
+            idle_timeout: env_duration_secs("DATABASE_IDLE_TIMEOUT_SECS", defaults.idle_timeout),
         }
     }
 }

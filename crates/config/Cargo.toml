@@ -1,0 +1,16 @@
+# Shared configuration helpers
+#
+# Zero internal dependencies — a leaf crate that any workspace member can use.
+# Provides env-var loading helpers and a common ConfigError type so every
+# subsystem config struct doesn't reinvent the same parsing boilerplate.
+
+[package]
+name = "everruns-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Shared configuration loading helpers for Everruns"
+
+[dependencies]
+thiserror.workspace = true

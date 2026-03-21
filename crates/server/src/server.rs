@@ -4,6 +4,7 @@
 
 use axum::Router;
 use axum::http::HeaderValue;
+use everruns_config::{env_bool, env_list, env_string};
 
 /// Server configuration loaded from environment
 pub struct ServerConfig {
@@ -18,29 +19,16 @@ pub struct ServerConfig {
 impl ServerConfig {
     /// Load server configuration from environment variables
     pub fn from_env() -> Self {
-        let dev_mode = std::env::var("DEV_MODE")
-            .map(|v| v == "true" || v == "1")
-            .unwrap_or(false);
-
-        let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
-
-        let cors_origins: Vec<HeaderValue> = std::env::var("CORS_ALLOWED_ORIGINS")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .map(|s| s.split(',').filter_map(|s| s.trim().parse().ok()).collect())
-            .unwrap_or_default();
-
-        let addr = std::env::var("ADDR").unwrap_or_else(|_| "0.0.0.0:9000".to_string());
-        let grpc_addr =
-            std::env::var("WORKER_GRPC_ADDR").unwrap_or_else(|_| "0.0.0.0:9001".to_string());
-
         Self {
-            dev_mode,
+            dev_mode: env_bool("DEV_MODE", false),
             no_migrations: false,
-            api_prefix,
-            cors_origins,
-            addr,
-            grpc_addr,
+            api_prefix: std::env::var("API_PREFIX").unwrap_or_default(),
+            cors_origins: env_list::<String>("CORS_ALLOWED_ORIGINS")
+                .into_iter()
+                .filter_map(|s| s.parse::<HeaderValue>().ok())
+                .collect(),
+            addr: env_string("ADDR", "0.0.0.0:9000"),
+            grpc_addr: env_string("WORKER_GRPC_ADDR", "0.0.0.0:9001"),
         }
     }
 }

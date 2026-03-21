@@ -15,6 +15,7 @@ description = "Core agent abstractions for Everruns - agent loop, events, tools,
 
 [dependencies]
 # Core dependencies
+everruns-config = { path = "../config" }
 anyhow.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true

@@ -146,28 +146,19 @@ impl Default for DurableWorkerConfig {
 impl DurableWorkerConfig {
     /// Create configuration from environment variables
     pub fn from_env() -> Self {
-        let worker_id =
-            std::env::var("WORKER_ID").unwrap_or_else(|_| format!("worker-{}", Uuid::now_v7()));
+        use everruns_config::{env_duration_secs, env_or, env_string};
 
-        let grpc_address =
-            std::env::var("WORKER_GRPC_ADDRESS").unwrap_or_else(|_| "127.0.0.1:9001".to_string());
-
-        let max_concurrent = std::env::var("MAX_CONCURRENT_TASKS")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(10);
-
-        let connect_timeout_secs: u64 = std::env::var("WORKER_GRPC_CONNECT_TIMEOUT")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(30);
-
+        let defaults = Self::default();
         Self {
-            worker_id,
-            grpc_address,
-            max_concurrent_tasks: max_concurrent,
-            connect_timeout: Duration::from_secs(connect_timeout_secs),
-            ..Default::default()
+            worker_id: std::env::var("WORKER_ID")
+                .unwrap_or_else(|_| format!("worker-{}", Uuid::now_v7())),
+            grpc_address: env_string("WORKER_GRPC_ADDRESS", "127.0.0.1:9001"),
+            max_concurrent_tasks: env_or("MAX_CONCURRENT_TASKS", 10),
+            connect_timeout: env_duration_secs(
+                "WORKER_GRPC_CONNECT_TIMEOUT",
+                defaults.connect_timeout,
+            ),
+            ..defaults
         }
     }
 }

@@ -62,6 +62,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 urlencoding = "2"
 git2.workspace = true
 
+everruns-config = { path = "../config" }
 everruns-core = { path = "../core", features = ["openapi", "sqlx"] }
 everruns-macros = { path = "../macros" }
 everruns-integrations-docker = { path = "../../integrations/docker" }
