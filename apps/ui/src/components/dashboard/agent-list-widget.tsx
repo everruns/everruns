@@ -15,8 +15,10 @@ interface AgentListWidgetProps {
   allCapabilities?: Capability[];
 }
 
+const MAX_DISPLAYED = 5;
+
 export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProps) {
-  const activeAgents = agents.filter((a) => a.status === "active").slice(0, 5);
+  const activeAgents = agents.filter((a) => a.status === "active").slice(0, MAX_DISPLAYED);
 
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
