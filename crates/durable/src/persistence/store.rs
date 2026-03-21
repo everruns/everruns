@@ -608,6 +608,17 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     async fn fail_task(&self, task_id: Uuid, error: &str)
     -> Result<TaskFailureOutcome, StoreError>;
 
+    /// Cancel all pending (unclaimed) tasks for a workflow.
+    ///
+    /// Returns the number of tasks cancelled. Does NOT affect claimed or
+    /// completed tasks — only pending ones still in the queue.
+    async fn cancel_pending_tasks_for_workflow(
+        &self,
+        _workflow_id: Uuid,
+    ) -> Result<u64, StoreError> {
+        Ok(0)
+    }
+
     /// Get task info by ID
     async fn get_task(&self, task_id: Uuid) -> Result<TaskInfo, StoreError>;
 
