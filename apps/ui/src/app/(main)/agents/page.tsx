@@ -124,6 +124,12 @@ export default function AgentsPage() {
                     Create your first agent
                   </Button>
                 </Link>
+                <Link href="/agents/all">
+                  <Button variant="outline">
+                    View all agents
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Link>
               </div>
             </div>
           }

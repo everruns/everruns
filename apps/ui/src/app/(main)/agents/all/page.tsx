@@ -19,7 +19,7 @@ export default function AllAgentsPage() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Link href="/agents">
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Back to agents">
               <ArrowLeft className="w-4 h-4" />
             </Button>
           </Link>

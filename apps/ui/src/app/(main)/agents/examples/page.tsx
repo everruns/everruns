@@ -49,11 +49,11 @@ export default function AllExamplesPage() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Link href="/agents">
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Back to agents">
               <ArrowLeft className="w-4 h-4" />
             </Button>
           </Link>
-          <h2 className="text-2xl font-bold">Example Agents</h2>
+          <h1 className="text-2xl font-bold">Example Agents</h1>
         </div>
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
