@@ -49,6 +49,78 @@ case "$cmd" in
       echo "  ✅ caddy already installed: $(caddy version 2>/dev/null)"
     fi
 
+    # PostgreSQL (needed for start-all / start-production)
+    echo ""
+    echo "🐘 PostgreSQL:"
+    if command -v pg_ctl &> /dev/null || [ -d "/usr/lib/postgresql" ]; then
+      local pg_ver
+      pg_ver=$(pg_ctl --version 2>/dev/null | grep -oE '[0-9]+' | head -1 || ls /usr/lib/postgresql 2>/dev/null | sort -V | tail -1)
+      echo "  ✅ PostgreSQL $pg_ver already installed"
+    else
+      echo "  Installing PostgreSQL..."
+      case "$(uname -s)" in
+        Darwin)
+          if command -v brew &> /dev/null; then
+            brew install postgresql@17
+            echo "  ✅ PostgreSQL installed via Homebrew"
+          else
+            echo "  ❌ Homebrew not found. Install PostgreSQL manually: brew install postgresql@17"
+            exit 1
+          fi
+          ;;
+        Linux)
+          if command -v apt-get &> /dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql >/dev/null 2>&1
+            echo "  ✅ PostgreSQL installed via apt"
+          else
+            echo "  ❌ apt-get not found. Install PostgreSQL manually for your distro."
+            exit 1
+          fi
+          ;;
+        *)
+          echo "  ❌ Unsupported OS: $(uname -s). Install PostgreSQL manually."
+          exit 1
+          ;;
+      esac
+    fi
+
+    # Valkey / Redis (optional — used for distributed rate limiting)
+    echo ""
+    echo "🔑 Valkey/Redis:"
+    if command -v valkey-server &> /dev/null; then
+      echo "  ✅ valkey-server already installed"
+    elif command -v redis-server &> /dev/null; then
+      echo "  ✅ redis-server already installed (used as Valkey substitute)"
+    else
+      echo "  Installing Valkey/Redis..."
+      case "$(uname -s)" in
+        Darwin)
+          if command -v brew &> /dev/null; then
+            brew install valkey 2>/dev/null || brew install redis
+            echo "  ✅ Installed via Homebrew"
+          else
+            echo "  ⚠️  Homebrew not found. Install valkey/redis manually (optional)."
+          fi
+          ;;
+        Linux)
+          if command -v apt-get &> /dev/null; then
+            if sudo apt-get install -y -qq valkey >/dev/null 2>&1; then
+              echo "  ✅ valkey installed via apt"
+            elif sudo apt-get install -y -qq redis-server >/dev/null 2>&1; then
+              echo "  ✅ redis-server installed via apt"
+            else
+              echo "  ⚠️  Could not install Valkey/Redis (optional — per-instance rate limiting will be used)"
+            fi
+          else
+            echo "  ⚠️  apt-get not found. Install valkey/redis manually (optional)."
+          fi
+          ;;
+        *)
+          echo "  ⚠️  Unsupported OS for auto-install. Install valkey/redis manually (optional)."
+          ;;
+      esac
+    fi
+
     # Rust tools
     echo "📦 Rust tools:"
     if ! command -v sqlx &> /dev/null; then

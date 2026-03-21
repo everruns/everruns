@@ -118,7 +118,7 @@ sccache-stats:
 
 # === Services ===
 
-# Start in DEV MODE (in-memory storage, no Docker/PostgreSQL required)
+# Start in DEV MODE (in-memory storage, no PostgreSQL required)
 start-dev *args:
     ./scripts/lib/services.sh start-dev {{args}}
 

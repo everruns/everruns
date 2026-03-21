@@ -377,7 +377,7 @@ case "$cmd" in
     echo ""
     echo "⚠️  DEV MODE notes:"
     echo "   - Data is stored in memory (lost on restart)"
-    echo "   - No PostgreSQL or Docker required"
+    echo "   - No PostgreSQL required"
     echo "   - Worker runs in-process with server"
     echo ""
     if [ "$NO_WATCH" = false ]; then
