@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getOrganization } from "@/lib/api/organizations";
 import { listHarnesses } from "@/lib/api/harnesses";
+import { listAgents } from "@/lib/api/agents";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 import { Building2, Check, CircleDot, Loader2, ArrowRight } from "lucide-react";
@@ -34,6 +35,11 @@ const SETUP_STEPS: SetupStep[] = [
     id: "harnesses_init",
     label: "Harnesses initialised",
     description: "Built-in harnesses (Base, Generic, Platform Chat) are ready",
+  },
+  {
+    id: "agents_seeded",
+    label: "Example agents seeded",
+    description: "Starter agents are ready to use out of the box",
   },
   {
     id: "defaults_configured",
@@ -71,11 +77,20 @@ export default function OrgSetupPage() {
     staleTime: 30000,
   });
 
+  // Fetch agents for this org
+  const { data: agents = [] } = useQuery({
+    queryKey: [...queryKeys.agents.all, orgId],
+    queryFn: () => listAgents(),
+    enabled: !!org,
+    staleTime: 30000,
+  });
+
   // Derive step statuses from real data
   const orgReady = !!org;
   const harnessesReady = harnesses.length > 0;
+  const agentsReady = agents.length > 0;
   const defaultsReady = !!org?.default_harness_id && !!org?.base_harness_id;
-  const allDone = orgReady && harnessesReady && defaultsReady;
+  const allDone = orgReady && harnessesReady && agentsReady && defaultsReady;
 
   // Ensure this org is set as current so harness queries work
   useEffect(() => {

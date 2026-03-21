@@ -209,10 +209,12 @@ impl TestServer {
             api::schedules::ScheduleAppState::new(Some(durable_store), auth_state.clone());
         let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
-        let organizations_state = api::organizations::AppState::with_built_in_harnesses(
+        let organizations_state = api::organizations::AppState::with_platform(
             db.clone(),
             auth_state.clone(),
             platform_definition.built_in_harnesses().to_vec(),
+            Arc::new(platform_definition.clone()),
+            grade,
         );
         let session_schedules_state = api::session_schedules::AppState::new(
             Arc::new(services::SessionScheduleService::new(db.clone())),

@@ -554,10 +554,12 @@ impl ServerAppBuilder {
         ));
         let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
-        let organizations_state = api::organizations::AppState::with_built_in_harnesses(
+        let organizations_state = api::organizations::AppState::with_platform(
             db.clone(),
             auth_state.clone(),
             platform_definition.built_in_harnesses().to_vec(),
+            platform_definition.clone(),
+            everruns_core::DeploymentGrade::from_env(),
         );
         let audit_logs_state = api::audit_logs::AppState::new(db.clone(), auth_state.clone());
         let user_connections_state = api::user_connections::AppState::new(
