@@ -109,6 +109,7 @@ Creates a new sandbox. Optionally uploads files from session storage.
   - `disk`: integer (optional) — GiB disk, 1-10 (default: 3)
   - `upload_files`: array (optional) — `[{session_path, sandbox_path}]`
 - **Returns**: `{ sandbox_id, status, workspace_path }`
+- **Resource mapping**: When any of `cpu`/`memory`/`disk` are specified, they are sent as a `resources` object in the Daytona API request body. Only specified fields are included; omitted fields use Daytona defaults. Values are validated client-side (type + range) before the API call.
 
 ### daytona_exec
 

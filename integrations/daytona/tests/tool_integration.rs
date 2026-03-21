@@ -714,3 +714,133 @@ async fn test_client_sends_bearer_auth() {
     let info = client.get_sandbox("sb_auth").await.unwrap();
     assert_eq!(info.id, "sb_auth");
 }
+
+// ============================================================================
+// Resource options tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_sandbox_with_resources_via_client() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/sandbox"))
+        .and(wiremock::matchers::body_json(json!({
+            "name": "Resource Test",
+            "resources": {"cpu": 2, "memory": 4, "disk": 8}
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_resource",
+            "name": "Resource Test",
+            "state": "started"
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let info = client
+        .create_sandbox(json!({
+            "name": "Resource Test",
+            "resources": {"cpu": 2, "memory": 4, "disk": 8}
+        }))
+        .await
+        .unwrap();
+    assert_eq!(info.id, "sb_resource");
+}
+
+#[tokio::test]
+async fn test_create_sandbox_partial_resources_via_client() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/sandbox"))
+        .and(wiremock::matchers::body_json(json!({
+            "name": "Partial",
+            "resources": {"disk": 5}
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_partial",
+            "state": "started"
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let info = client
+        .create_sandbox(json!({
+            "name": "Partial",
+            "resources": {"disk": 5}
+        }))
+        .await
+        .unwrap();
+    assert_eq!(info.id, "sb_partial");
+}
+
+#[tokio::test]
+async fn test_create_sandbox_tool_rejects_invalid_cpu() {
+    let tool = get_tool("daytona_create_sandbox");
+    let session_id = SessionId::new();
+    let store = Arc::new(MockStorageStore::new());
+    let context = ToolContext::with_storage_store(session_id, store)
+        .with_connection_resolver(daytona_resolver());
+
+    let result = tool
+        .execute_with_context(json!({"cpu": 10}), &context)
+        .await;
+
+    match result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(msg.contains("cpu"), "Got: {msg}");
+            assert!(msg.contains("between 1 and 4"), "Got: {msg}");
+        }
+        other => panic!("Expected ToolError, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_create_sandbox_tool_rejects_zero_memory() {
+    let tool = get_tool("daytona_create_sandbox");
+    let session_id = SessionId::new();
+    let store = Arc::new(MockStorageStore::new());
+    let context = ToolContext::with_storage_store(session_id, store)
+        .with_connection_resolver(daytona_resolver());
+
+    let result = tool
+        .execute_with_context(json!({"memory": 0}), &context)
+        .await;
+
+    match result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(msg.contains("memory"), "Got: {msg}");
+            assert!(msg.contains("between 1 and 8"), "Got: {msg}");
+        }
+        other => panic!("Expected ToolError, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_create_sandbox_tool_rejects_string_disk() {
+    let tool = get_tool("daytona_create_sandbox");
+    let session_id = SessionId::new();
+    let store = Arc::new(MockStorageStore::new());
+    let context = ToolContext::with_storage_store(session_id, store)
+        .with_connection_resolver(daytona_resolver());
+
+    let result = tool
+        .execute_with_context(json!({"disk": "big"}), &context)
+        .await;
+
+    match result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(msg.contains("disk"), "Got: {msg}");
+            assert!(msg.contains("positive integer"), "Got: {msg}");
+        }
+        other => panic!("Expected ToolError, got: {other:?}"),
+    }
+}
