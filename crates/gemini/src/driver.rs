@@ -16,6 +16,10 @@ use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::llm_driver_helpers::{
+    self, AUDIO_CONTENT_PLACEHOLDER, GEMINI_NOT_FOUND_PATTERNS, GEMINI_TOO_LARGE_PATTERNS,
+    parse_data_url,
+};
 use everruns_core::llm_driver_registry::{
     BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmCompletionMetadata,
     LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponseStream,
@@ -98,22 +102,16 @@ impl GeminiLlmDriver {
                         }
                     }
                     LlmContentPart::Image { url } => {
-                        if url.starts_with("data:") {
-                            // Parse data URL: data:image/jpeg;base64,/9j/4AAQ...
-                            let url_parts: Vec<&str> = url.splitn(2, ',').collect();
-                            if url_parts.len() == 2 {
-                                let type_part = url_parts[0]
-                                    .trim_start_matches("data:")
-                                    .trim_end_matches(";base64");
-                                Some(GeminiPart::InlineData {
-                                    inline_data: GeminiBlob {
-                                        mime_type: type_part.to_string(),
-                                        data: url_parts[1].to_string(),
-                                    },
-                                })
-                            } else {
-                                None
-                            }
+                        if let Some(parsed) = parse_data_url(url) {
+                            Some(GeminiPart::InlineData {
+                                inline_data: GeminiBlob {
+                                    mime_type: parsed.media_type,
+                                    data: parsed.data,
+                                },
+                            })
+                        } else if url.starts_with("data:") {
+                            // Malformed data URL
+                            None
                         } else {
                             // HTTP URL - use file_data
                             Some(GeminiPart::FileData {
@@ -125,7 +123,7 @@ impl GeminiLlmDriver {
                         }
                     }
                     LlmContentPart::Audio { .. } => Some(GeminiPart::Text {
-                        text: "[Audio content]".to_string(),
+                        text: AUDIO_CONTENT_PLACEHOLDER.to_string(),
                     }),
                 })
                 .collect(),
@@ -808,53 +806,12 @@ fn extract_sse_event(buffer: &mut String) -> Option<String> {
 // Error Detection
 // ============================================================================
 
-/// Check if a Gemini API error indicates the request is too large
-/// Check if the error indicates the model was not found.
-///
-/// Gemini returns 404 with `"NOT_FOUND"` status when a model doesn't exist.
 fn is_gemini_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
-    if status == reqwest::StatusCode::NOT_FOUND {
-        let error_lower = error_text.to_lowercase();
-        if error_lower.contains("not_found") || error_lower.contains("not found") {
-            return true;
-        }
-        if error_lower.contains("model") {
-            return true;
-        }
-    }
-    false
+    llm_driver_helpers::is_model_not_found(status, error_text, GEMINI_NOT_FOUND_PATTERNS)
 }
 
 fn is_gemini_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
-    let error_lower = error_text.to_lowercase();
-
-    // HTTP 413 Payload Too Large
-    if status == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
-        return true;
-    }
-
-    // HTTP 400 with context/token errors
-    if status == reqwest::StatusCode::BAD_REQUEST {
-        if error_lower.contains("request payload size exceeds") {
-            return true;
-        }
-        if error_lower.contains("exceeds the maximum") && error_lower.contains("token") {
-            return true;
-        }
-        if error_lower.contains("content too large") {
-            return true;
-        }
-    }
-
-    // Generic patterns
-    if error_lower.contains("input is too long")
-        || error_lower.contains("maximum context")
-        || error_lower.contains("token limit exceeded")
-    {
-        return true;
-    }
-
-    false
+    llm_driver_helpers::is_request_too_large(status, error_text, GEMINI_TOO_LARGE_PATTERNS)
 }
 
 // ============================================================================

@@ -21,6 +21,10 @@ use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::llm_driver_helpers::{
+    self, ANTHROPIC_NOT_FOUND_PATTERNS, ANTHROPIC_TOO_LARGE_PATTERNS, AUDIO_CONTENT_PLACEHOLDER,
+    parse_data_url,
+};
 use everruns_core::llm_driver_registry::{
     BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmCompletionMetadata,
     LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponseStream,
@@ -140,20 +144,20 @@ impl AnthropicLlmDriver {
                         }
                     }
                     LlmContentPart::Image { url } => {
-                        // Parse data URL or use as-is
-                        if url.starts_with("data:") {
-                            // Parse data URL: data:image/jpeg;base64,/9j/4AAQ...
-                            let parts: Vec<&str> = url.splitn(2, ',').collect();
-                            let (media_type, data) = if parts.len() == 2 {
-                                let type_part = parts[0]
-                                    .trim_start_matches("data:")
-                                    .trim_end_matches(";base64");
-                                (type_part.to_string(), parts[1].to_string())
-                            } else {
-                                ("image/jpeg".to_string(), url.clone())
-                            };
+                        if let Some(parsed) = parse_data_url(url) {
                             Some(AnthropicContentBlock::Image {
-                                source: AnthropicImageSource::Base64 { media_type, data },
+                                source: AnthropicImageSource::Base64 {
+                                    media_type: parsed.media_type,
+                                    data: parsed.data,
+                                },
+                            })
+                        } else if url.starts_with("data:") {
+                            // Malformed data URL — fall back to image/jpeg
+                            Some(AnthropicContentBlock::Image {
+                                source: AnthropicImageSource::Base64 {
+                                    media_type: "image/jpeg".to_string(),
+                                    data: url.clone(),
+                                },
                             })
                         } else {
                             // HTTP URL
@@ -162,12 +166,9 @@ impl AnthropicLlmDriver {
                             })
                         }
                     }
-                    LlmContentPart::Audio { .. } => {
-                        // Anthropic doesn't support audio input yet, convert to text note
-                        Some(AnthropicContentBlock::Text {
-                            text: "[Audio content not supported]".to_string(),
-                        })
-                    }
+                    LlmContentPart::Audio { .. } => Some(AnthropicContentBlock::Text {
+                        text: AUDIO_CONTENT_PLACEHOLDER.to_string(),
+                    }),
                 })
                 .collect(),
         }
@@ -206,19 +207,10 @@ impl AnthropicLlmDriver {
                                             })
                                         }
                                         LlmContentPart::Image { url } => {
-                                            let source = if url.starts_with("data:") {
-                                                let parts: Vec<&str> = url.splitn(2, ',').collect();
-                                                if parts.len() == 2 {
-                                                    let media_type = parts[0]
-                                                        .trim_start_matches("data:")
-                                                        .trim_end_matches(";base64")
-                                                        .to_string();
-                                                    AnthropicImageSource::Base64 {
-                                                        media_type,
-                                                        data: parts[1].to_string(),
-                                                    }
-                                                } else {
-                                                    AnthropicImageSource::Url { url: url.clone() }
+                                            let source = if let Some(parsed) = parse_data_url(url) {
+                                                AnthropicImageSource::Base64 {
+                                                    media_type: parsed.media_type,
+                                                    data: parsed.data,
                                                 }
                                             } else {
                                                 AnthropicImageSource::Url { url: url.clone() }
@@ -824,64 +816,22 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 // Error Detection Helpers
 // ============================================================================
 
-/// Check if the error indicates the model was not found.
-///
-/// Anthropic returns 404 with `"type":"not_found_error"` when a model doesn't exist
-/// or isn't accessible.
 fn is_anthropic_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
+    if llm_driver_helpers::is_model_not_found(status, error_text, ANTHROPIC_NOT_FOUND_PATTERNS) {
+        return true;
+    }
+    // Compound check: both "model" and "not found" must appear together
     if status == reqwest::StatusCode::NOT_FOUND {
-        let error_lower = error_text.to_lowercase();
-        // Anthropic returns: {"type":"error","error":{"type":"not_found_error","message":"model: ..."}}
-        if error_lower.contains("not_found_error") {
-            return true;
-        }
-        // Also catch generic "model" + "not found" patterns
-        if error_lower.contains("model") && error_lower.contains("not found") {
+        let lower = error_text.to_lowercase();
+        if lower.contains("model") && lower.contains("not found") {
             return true;
         }
     }
     false
 }
 
-/// Check if an Anthropic API error indicates the request is too large.
-///
-/// Detects:
-/// - 413 Request Entity Too Large
-/// - 400 with "prompt is too long" message
-/// - "request size exceeded" message
 fn is_anthropic_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
-    let error_lower = error_text.to_lowercase();
-
-    // HTTP 413 Request Entity Too Large
-    if status == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
-        return true;
-    }
-
-    // HTTP 400 with prompt/context length errors
-    if status == reqwest::StatusCode::BAD_REQUEST {
-        // "prompt is too long: X tokens > Y maximum"
-        if error_lower.contains("prompt is too long") {
-            return true;
-        }
-        // "request size exceeded maximum"
-        if error_lower.contains("request size exceeded") {
-            return true;
-        }
-        // Generic context length error
-        if error_lower.contains("context length") || error_lower.contains("too many tokens") {
-            return true;
-        }
-    }
-
-    // Generic patterns that could appear with various status codes
-    if error_lower.contains("input is too long")
-        || error_lower.contains("exceeds the maximum")
-        || error_lower.contains("maximum context")
-    {
-        return true;
-    }
-
-    false
+    llm_driver_helpers::is_request_too_large(status, error_text, ANTHROPIC_TOO_LARGE_PATTERNS)
 }
 
 // ============================================================================
@@ -916,14 +866,7 @@ struct AnthropicThinking {
 impl AnthropicThinking {
     /// Create thinking config from reasoning effort level
     fn from_effort(effort: &str) -> Option<Self> {
-        let budget = match effort.to_lowercase().as_str() {
-            "low" => 1024,
-            "medium" => 4096,
-            "high" => 16384,
-            "xhigh" => 32768,
-            _ => return None,
-        };
-        Some(Self {
+        llm_driver_helpers::thinking_budget::from_effort(effort).map(|budget| Self {
             r#type: "enabled".to_string(),
             budget_tokens: budget,
         })
