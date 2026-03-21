@@ -7,6 +7,7 @@
 "use client";
 
 import { Bot, CalendarClock, Loader2 } from "lucide-react";
+import { useMemo } from "react";
 import type {
   ContentPart,
   Event,
@@ -163,18 +164,27 @@ export function ChatMessageList({
   getMessageText,
   getToolCalls,
 }: ChatMessageListProps) {
-  const clientRequestedToolCallIds = new Set<string>();
-  for (const event of chatEvents) {
-    const data = getEventData(event, "tool.call_requested");
-    if (!data) continue;
-    for (const toolCall of data.tool_calls ?? []) {
-      clientRequestedToolCallIds.add(toolCall.id);
+  const clientRequestedToolCallIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const event of chatEvents) {
+      const data = getEventData(event, "tool.call_requested");
+      if (!data) continue;
+      for (const toolCall of data.tool_calls ?? []) {
+        ids.add(toolCall.id);
+      }
     }
-  }
+    return ids;
+  }, [chatEvents]);
 
-  const turnDurationByEventId = getCompletedTurnDurationsByEvent(events ?? []);
-  const hasNarratedActEvents = chatEvents.some((event) => event.type === "act.started");
-  const actGroupsByStartEventId = buildActGroups(chatEvents);
+  const turnDurationByEventId = useMemo(
+    () => getCompletedTurnDurationsByEvent(events ?? []),
+    [events],
+  );
+  const hasNarratedActEvents = useMemo(
+    () => chatEvents.some((event) => event.type === "act.started"),
+    [chatEvents],
+  );
+  const actGroupsByStartEventId = useMemo(() => buildActGroups(chatEvents), [chatEvents]);
 
   if (eventsLoading) {
     return (

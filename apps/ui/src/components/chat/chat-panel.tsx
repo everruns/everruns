@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDown, Bot } from "lucide-react";
 import type { CommandDescriptor, Controls } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -48,6 +48,7 @@ export function ChatPanel() {
 
   const { data: llmModels = [] } = useLlmModels();
   const [inputValue, setInputValue] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const {
     selectedModelId,
@@ -100,10 +101,7 @@ export function ChatPanel() {
   useEffect(() => {
     if (!eventsLoading) {
       const focusTimer = window.setTimeout(() => {
-        const textarea = document.querySelector("textarea");
-        if (textarea instanceof HTMLTextAreaElement) {
-          textarea.focus();
-        }
+        textareaRef.current?.focus();
       }, 0);
       return () => window.clearTimeout(focusTimer);
     }
@@ -260,6 +258,7 @@ export function ChatPanel() {
         canSubmit={canSubmit}
         isUploading={isUploading}
         sendPending={sendMessage.isPending || sendMessageWithImages.isPending}
+        textareaRef={textareaRef}
       />
     </>
   );

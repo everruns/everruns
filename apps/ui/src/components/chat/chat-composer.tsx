@@ -57,6 +57,7 @@ export function ChatComposer({
   canSubmit,
   isUploading,
   sendPending,
+  textareaRef,
 }: {
   commands: CommandDescriptor[];
   llmModels: LlmModel[];
@@ -69,7 +70,7 @@ export function ChatComposer({
   removeImage: (tempId: string) => void;
   addFiles: (files: File[]) => void;
   isDraggingOver: boolean;
-  dropZoneProps: Record<string, unknown>;
+  dropZoneProps: React.HTMLAttributes<HTMLDivElement>;
   handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
   selectedModelId: string;
   onModelChange: (value: string) => void;
@@ -86,9 +87,9 @@ export function ChatComposer({
   canSubmit: boolean;
   isUploading: boolean;
   sendPending: boolean;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showCommands, setShowCommands] = useState(false);
   const hasCommands = commands.length > 0;
   const inputPlaceholder = hasCommands

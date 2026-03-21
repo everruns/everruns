@@ -31,6 +31,7 @@ export function ToolActivityRow({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const fullText = getFullText(toolResult?.result);
+  const detailsId = `tool-activity-details-${toolCall.id}`;
   const hasOutput = fullText.length > 0;
   const hasToolError = Boolean(toolResult?.error);
   const isComplete = Boolean(toolResult);
@@ -80,6 +81,8 @@ export function ToolActivityRow({
             <button
               type="button"
               onClick={() => setIsExpanded((current) => !current)}
+              aria-expanded={isExpanded}
+              aria-controls={detailsId}
               className="mt-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/65 transition-colors hover:text-foreground"
             >
               {isExpanded ? (
@@ -92,6 +95,7 @@ export function ToolActivityRow({
           )}
 
           <div
+            id={detailsId}
             className={cn(
               "grid transition-all duration-300 ease-out",
               isExpanded ? "mt-1.5 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
