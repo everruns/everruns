@@ -1,6 +1,11 @@
 // Agent and Harness types
 
-import type { AgentCapabilityConfig, InitialFile, ToolDefinition, TokenUsage } from "./common-types";
+import type {
+  AgentCapabilityConfig,
+  InitialFile,
+  ToolDefinition,
+  TokenUsage,
+} from "./common-types";
 
 // ============================================
 // Agent types (M2)

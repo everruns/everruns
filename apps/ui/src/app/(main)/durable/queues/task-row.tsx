@@ -4,14 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  XCircle,
-  Activity,
-  ExternalLink,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle, Clock, XCircle, Activity, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { CopyButton } from "@/components/ui/copy-button";
 import { formatDistanceToNow } from "@/lib/formatting";
