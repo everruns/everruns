@@ -34,7 +34,7 @@ Use this skill when the user asks to:
    - Validation must match risk. For bugs, prefer a failing test first when practical.
 3. The changed code is fit to merge.
    - Simplify obvious duplication or accidental complexity.
-   - Review touched areas for auth, input validation, data exposure, injection, dependency, and performance risk.
+   - Perform a structured security review (see **Security Review** section below).
    - Fix issues you find and refresh the evidence.
 4. Relevant artifacts stay in sync.
    - Update only the artifacts affected by the change: `specs/`, `specs/threat-model.md`, `AGENTS.md`, `test_cases/`, `apps/docs/`, and OpenAPI exports when applicable.
@@ -49,11 +49,10 @@ Use this skill when the user asks to:
    - Create or update the PR with `.github/pull_request_template.md`.
    - Check the PR conversation, review threads, and review state from all reviewers, including bots.
    - After each push and again after CI turns green, wait at least 2 minutes for async reviewer bots to finish, then re-check for new comments before merge.
-   - Address actionable review comments with code or doc changes, or reply with the resolution when no code change is needed.
-   - Analyze **all** review comments, including non-blocking ones (COMMENTED state, bot suggestions). Non-blocking comments often contain valid improvements (UX, robustness, doc clarity). Evaluate each on merit and fix worthwhile ones before merge — do not dismiss comments solely because they are non-blocking.
-   - Do not merge while substantive review feedback is still outstanding.
+   - **Address every review comment** — including low-confidence suggestions, nits, non-blocking ones (COMMENTED state), and bot suggestions. Non-blocking comments often contain valid improvements (UX, robustness, doc clarity). For each comment: analyze the concern, reason about whether a code change is warranted, and either apply the fix or reply with a clear explanation of why the current code is correct. Do not dismiss comments without reasoning.
+   - Do not merge while any review comment is unresolved. Every thread must be explicitly addressed (code change or written resolution) before merge.
    - Wait for CI to go green.
-   - Merge with squash only after CI is green and the final review/comment sweep above is clean.
+   - Merge with squash only after CI is green, all review threads are resolved, and the final review/comment sweep above is clean.
 
 ## Operating Model
 
@@ -64,6 +63,43 @@ Use this skill when the user asks to:
 - Do not use auto-merge or `gh pr merge --auto`; merge manually only after the final review sweep is clean because async review bots can post after the last push or after CI turns green.
 - If `just fmt` can auto-fix a failing formatting check, use it once and retry.
 - Stop only for blockers you cannot safely resolve alone: merge conflicts, missing credentials, ambiguous product intent, or CI failures you cannot reproduce or fix.
+
+## Security Review
+
+**This is a mandatory step for every change that touches code, configuration, or infrastructure. It is not optional and must not be skipped based on perceived low risk.**
+
+For every shipped change, explicitly perform these steps:
+
+1. **Identify the threat surface.** Read `git diff origin/main...HEAD` and determine which threat model categories from [`specs/threat-model.md`](../../../specs/threat-model.md) the change touches. Common categories:
+   - `TM-AUTH` — authentication changes, session handling, token generation
+   - `TM-AUTHZ` — permission checks, policy enforcement, role changes
+   - `TM-API` — new/changed endpoints, input parsing, query parameters
+   - `TM-TOOL` — tool registration, MCP servers, tool execution paths
+   - `TM-LLM` — prompt construction, API key handling, model parameters
+   - `TM-TENANT` — data queries, org scoping, cross-tenant boundaries
+   - `TM-FS` / `TM-SQL` — file paths, database queries, sandbox boundaries
+   - `TM-BASH` — sandbox configuration, command execution
+   - `TM-WEB` — frontend rendering, CORS, CSP, cookie handling
+   - `TM-DOS` — unbounded inputs, missing pagination, resource limits
+
+2. **Review each touched category.** For every relevant category, check the diff for:
+   - **Injection** — SQL, command, prompt, XSS, path traversal
+   - **Authentication/Authorization bypass** — missing auth checks, broken access control
+   - **Data exposure** — sensitive data in logs, responses, errors, or traces
+   - **Input validation** — missing or insufficient validation at trust boundaries
+   - **Dependency risk** — new dependencies, version changes, supply chain
+   - **Resource exhaustion** — unbounded loops, missing limits, large allocations
+
+3. **Check for THREAT comments.** If the change modifies code near existing `// THREAT[TM-XXX-NNN]` comments, verify the mitigation is preserved. If the change introduces new threat surface, add appropriate `THREAT` comments.
+
+4. **Update the threat model.** If the change introduces a genuinely new threat or materially changes an existing mitigation, update `specs/threat-model.md` with new entries or revised mitigations. Do not skip this for "small" changes — small changes at trust boundaries can have outsized impact.
+
+5. **Document the review.** Include a **Security** section in the PR body listing:
+   - Which threat categories were reviewed
+   - Any findings and how they were addressed
+   - Explicit statement if no security-relevant surface was touched (with reasoning)
+
+Changes that are purely docs, comments, specs, or test-only may state "No security-relevant code changes" with a one-line justification instead of the full review.
 
 ## Common Evidence Commands
 
