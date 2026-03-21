@@ -55,12 +55,21 @@ Use judgment on which surfaces matter for the current task.
 
 ### Dependency Health
 
-Goal: dependencies are current enough for the release risk, and upgrades do not silently break the repo.
+Goal: all packages — including CLI, server, worker, integrations, UI, and docs — run on current dependency versions. Outdated major versions are upgraded proactively, not deferred indefinitely.
+
+Actions:
+- audit every workspace crate and npm package for outdated dependencies, including major-version bumps
+- upgrade major versions when the migration path is clear; document blockers when it is not
+- flag deprecated crates/packages and identify replacements
+- check for unused dependencies (`cargo udeps` or manual review)
 
 Good evidence:
+- `cargo outdated` (or `cargo search`) checked for each CLI and workspace dependency
+- `npm outdated` checked for `apps/ui/` and `apps/docs/`
+- major-version upgrades applied and tested, not just noted
+- deprecated dependencies flagged with replacement plan
 - lockfiles updated intentionally
 - relevant build/lint/test checks pass
-- major-version changes reviewed, not just applied blindly
 
 ### Specs And Docs Alignment
 

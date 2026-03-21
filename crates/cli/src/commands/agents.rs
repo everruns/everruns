@@ -1,17 +1,21 @@
 // Agent management commands
+//
+// Design Decision: When --file is provided, send raw content to the server's
+// import API (POST /v1/agents/import) which handles YAML/JSON/Markdown parsing.
+// This avoids duplicating parsing logic and removes the serde_yaml dependency.
+// CLI flag overrides (--name, --description, etc.) are not supported with --file.
 
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use everruns_sdk::{AgentCapabilityConfig, CreateAgentRequest, Everruns, InitialFile};
-use serde::{Deserialize, Serialize};
-use std::path::Path;
+use everruns_sdk::{CreateAgentRequest, Everruns};
+use serde::Deserialize;
 
 #[derive(Subcommand)]
 pub enum AgentsCommand {
     /// Create a new agent (upserts if id: is present in frontmatter)
     Create {
-        /// YAML/JSON/Markdown file with agent definition
+        /// YAML/JSON/Markdown file with agent definition (sent to server for parsing)
         #[arg(short, long)]
         file: Option<String>,
 
@@ -34,10 +38,6 @@ pub enum AgentsCommand {
         /// Tags (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
-
-        /// Directory to glob for initial_files (uploaded as session starter files)
-        #[arg(long)]
-        initial_files_dir: Option<String>,
     },
 
     /// Update an existing agent from a file definition
@@ -45,7 +45,7 @@ pub enum AgentsCommand {
         /// Agent ID (e.g. agent_xxx). If omitted, uses id from file frontmatter.
         agent_id: Option<String>,
 
-        /// YAML/JSON/Markdown file with agent definition
+        /// YAML/JSON/Markdown file with agent definition (sent to server for parsing)
         #[arg(short, long)]
         file: Option<String>,
 
@@ -68,10 +68,6 @@ pub enum AgentsCommand {
         /// Tags (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
-
-        /// Directory to glob for initial_files (uploaded as session starter files)
-        #[arg(long)]
-        initial_files_dir: Option<String>,
     },
 
     /// List all agents
@@ -90,150 +86,18 @@ pub enum AgentsCommand {
     },
 }
 
-/// Agent definition from YAML/JSON file
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct AgentFile {
-    /// Agent ID for upsert. When present, uses apply (create-or-update).
-    pub id: Option<String>,
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub system_prompt: Option<String>,
-    pub default_model_id: Option<String>,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    /// Capabilities - supports both string IDs and objects with ref/config
-    #[serde(default)]
-    pub capabilities: Vec<AgentFileCapability>,
-    #[serde(default)]
-    pub initial_files: Vec<InitialFile>,
-}
-
-/// Capability entry in agent file - supports both string and object formats
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum AgentFileCapability {
-    /// Legacy format: just capability ID string
-    Simple(String),
-    /// New format: object with ref and config
-    WithConfig {
-        #[serde(rename = "ref")]
-        capability_ref: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        config: Option<serde_json::Value>,
-    },
-}
-
-impl AgentFileCapability {
-    fn to_sdk_config(&self) -> AgentCapabilityConfig {
-        match self {
-            AgentFileCapability::Simple(id) => AgentCapabilityConfig::new(id.clone()),
-            AgentFileCapability::WithConfig {
-                capability_ref,
-                config,
-            } => {
-                let cap = AgentCapabilityConfig::new(capability_ref.clone());
-                match config {
-                    Some(v) => cap.config(v.clone()),
-                    None => cap,
-                }
-            }
-        }
-    }
-}
-
-/// Glob a directory and collect all files as InitialFile entries.
-/// Walks the directory recursively; file paths are stored relative to `dir`.
-fn glob_initial_files(dir: &str) -> Result<Vec<InitialFile>> {
-    let base = Path::new(dir)
-        .canonicalize()
-        .with_context(|| format!("Cannot resolve initial-files-dir: {}", dir))?;
-
-    let mut files = Vec::new();
-    collect_files(&base, &base, &mut files)?;
-    files.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok(files)
-}
-
-fn collect_files(root: &Path, current: &Path, out: &mut Vec<InitialFile>) -> Result<()> {
-    for entry in std::fs::read_dir(current)
-        .with_context(|| format!("Failed to read directory: {}", current.display()))?
-    {
-        let entry = entry?;
-        let path = entry.path();
-        // Skip hidden entries (check file_name component, not full path)
-        if path
-            .file_name()
-            .map(|n| n.to_string_lossy().starts_with('.'))
-            .unwrap_or(false)
-        {
-            continue;
-        }
-        if path.is_dir() {
-            collect_files(root, &path, out)?;
-        } else {
-            // Canonicalize to resolve symlinks, then ensure still under root
-            let canonical = path
-                .canonicalize()
-                .with_context(|| format!("Cannot resolve initial file path: {}", path.display()))?;
-            let rel_path = canonical.strip_prefix(root).with_context(|| {
-                format!(
-                    "Initial file path {} is not under root {}",
-                    canonical.display(),
-                    root.display()
-                )
-            })?;
-            let mut rel = rel_path.to_string_lossy().to_string();
-            // Normalize to forward slashes for platform-independent paths
-            if std::path::MAIN_SEPARATOR != '/' {
-                rel = rel.replace(std::path::MAIN_SEPARATOR, "/");
-            }
-            let content = std::fs::read_to_string(&path)
-                .with_context(|| format!("Failed to read file: {}", path.display()))?;
-            let file_path = format!("/{}", rel);
-            out.push(InitialFile::new(file_path, content).is_readonly(true));
-        }
-    }
-    Ok(())
-}
-
-/// Parse markdown file with YAML front matter.
-/// Format:
-/// ```markdown
-/// ---
-/// name: "agent-name"
-/// ---
-/// System prompt goes here as the body.
-/// ```
-fn parse_markdown_frontmatter(content: &str) -> Result<AgentFile> {
-    // Check for front matter delimiter
-    if !content.starts_with("---") {
-        anyhow::bail!("Markdown file must start with YAML front matter (---)");
-    }
-
-    // Find the closing delimiter
-    let rest = &content[3..];
-    let end_pos = rest
-        .find("\n---")
-        .context("Missing closing front matter delimiter (---)")?;
-
-    let front_matter = &rest[..end_pos].trim();
-    let body = rest[end_pos + 4..].trim(); // Skip "\n---"
-
-    // Parse front matter as YAML
-    let mut config: AgentFile =
-        serde_yaml::from_str(front_matter).context("Failed to parse front matter as YAML")?;
-
-    // Body becomes system_prompt if not empty
-    if !body.is_empty() {
-        config.system_prompt = Some(body.to_string());
-    }
-
-    Ok(config)
+/// Response from the import API
+#[derive(Debug, Deserialize, serde::Serialize)]
+struct ImportedAgent {
+    id: String,
+    name: String,
 }
 
 pub async fn run(
     command: AgentsCommand,
     client: &Everruns,
+    api_url: &str,
+    api_key: &str,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -245,23 +109,30 @@ pub async fn run(
             description,
             model,
             tag,
-            initial_files_dir,
         } => {
-            create_or_update(
-                client,
-                output,
-                quiet,
-                file,
-                name,
-                system_prompt,
-                description,
-                model,
-                tag,
-                initial_files_dir,
-                None,  // no explicit agent_id override
-                false, // create doesn't require an ID
-            )
-            .await
+            if let Some(path) = file {
+                if name.is_some()
+                    || system_prompt.is_some()
+                    || description.is_some()
+                    || model.is_some()
+                    || !tag.is_empty()
+                {
+                    eprintln!("Warning: CLI flag overrides are ignored when --file is used");
+                }
+                import_from_file(api_url, api_key, &path, output, quiet).await
+            } else {
+                create_from_flags(
+                    client,
+                    output,
+                    quiet,
+                    name,
+                    system_prompt,
+                    description,
+                    model,
+                    tag,
+                )
+                .await
+            }
         }
         AgentsCommand::Update {
             agent_id,
@@ -271,23 +142,34 @@ pub async fn run(
             description,
             model,
             tag,
-            initial_files_dir,
         } => {
-            create_or_update(
-                client,
-                output,
-                quiet,
-                file,
-                name,
-                system_prompt,
-                description,
-                model,
-                tag,
-                initial_files_dir,
-                agent_id,
-                true, // update requires an agent ID
-            )
-            .await
+            if let Some(path) = file {
+                if agent_id.is_some()
+                    || name.is_some()
+                    || system_prompt.is_some()
+                    || description.is_some()
+                    || model.is_some()
+                    || !tag.is_empty()
+                {
+                    eprintln!("Warning: CLI flag overrides are ignored when --file is used");
+                }
+                import_from_file(api_url, api_key, &path, output, quiet).await
+            } else {
+                // Update without file requires agent_id
+                let id = agent_id.context("Agent ID is required for update without --file")?;
+                update_from_flags(
+                    client,
+                    output,
+                    quiet,
+                    &id,
+                    name,
+                    system_prompt,
+                    description,
+                    model,
+                    tag,
+                )
+                .await
+            }
         }
         AgentsCommand::List => list(client, output).await,
         AgentsCommand::Get { agent_id } => get(client, output, agent_id).await,
@@ -295,133 +177,138 @@ pub async fn run(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn create_or_update(
-    client: &Everruns,
+/// Import agent from file via server import API.
+/// Server handles YAML/JSON/Markdown parsing.
+async fn import_from_file(
+    api_url: &str,
+    api_key: &str,
+    path: &str,
     output: OutputFormat,
     quiet: bool,
-    file: Option<String>,
-    name: Option<String>,
-    system_prompt: Option<String>,
-    description: Option<String>,
-    model: Option<String>,
-    tags: Vec<String>,
-    initial_files_dir: Option<String>,
-    agent_id_override: Option<String>,
-    require_id: bool,
 ) -> Result<()> {
-    // Load from file if provided
-    let file_config = if let Some(path) = file {
-        let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read file: {}", path))?;
+    let content =
+        std::fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path))?;
 
-        // Detect format by extension
-        let config: AgentFile = if path.ends_with(".md") {
-            // Markdown with YAML front matter
-            parse_markdown_frontmatter(&content)
-                .with_context(|| format!("Failed to parse markdown: {}", path))?
-        } else if path.ends_with(".yaml") || path.ends_with(".yml") {
-            serde_yaml::from_str(&content)
-                .with_context(|| format!("Failed to parse YAML: {}", path))?
-        } else if path.ends_with(".json") {
-            serde_json::from_str(&content)
-                .with_context(|| format!("Failed to parse JSON: {}", path))?
-        } else {
-            // Try markdown first (if starts with ---), then YAML, then JSON
-            if content.starts_with("---") {
-                parse_markdown_frontmatter(&content)
-                    .or_else(|_| serde_yaml::from_str(&content))
-                    .or_else(|_| serde_json::from_str(&content))
-                    .with_context(|| {
-                        format!(
-                            "Failed to parse file (tried markdown, YAML, JSON): {}",
-                            path
-                        )
-                    })?
-            } else {
-                serde_yaml::from_str(&content)
-                    .or_else(|_| serde_json::from_str(&content))
-                    .with_context(|| {
-                        format!("Failed to parse file (tried YAML and JSON): {}", path)
-                    })?
-            }
-        };
-        config
-    } else {
-        AgentFile::default()
-    };
+    let http = reqwest::Client::new();
+    let resp = http
+        .post(format!("{}/v1/agents/import", api_url))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "text/plain")
+        .body(content)
+        .send()
+        .await
+        .context("Failed to send import request")?;
 
-    // Resolve agent ID: CLI arg > file frontmatter > none (pure create)
-    let resolved_id = agent_id_override.or(file_config.id);
-
-    if require_id && resolved_id.is_none() {
-        anyhow::bail!("Agent ID is required for update (provide as argument or id: in file)");
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Import failed ({}): {}", status, body);
     }
 
-    // CLI args override file values
-    let final_name = name
-        .or(file_config.name)
-        .context("--name is required (or provide in file)")?;
-    let final_system_prompt = system_prompt
-        .or(file_config.system_prompt)
-        .context("--system-prompt is required (or provide in file)")?;
-    let final_description = description.or(file_config.description);
-    let final_model = model.or(file_config.default_model_id);
-    let final_tags = if tags.is_empty() {
-        file_config.tags
-    } else {
-        tags
-    };
+    let was_created = status == reqwest::StatusCode::CREATED;
+    let agent: ImportedAgent = resp
+        .json()
+        .await
+        .context("Failed to parse import response")?;
 
-    // Resolve capabilities from file
-    let final_capabilities: Vec<AgentCapabilityConfig> = file_config
-        .capabilities
-        .iter()
-        .map(|c| c.to_sdk_config())
-        .collect();
-
-    // Resolve initial_files: --initial-files-dir overrides file-defined initial_files
-    let final_initial_files = if let Some(dir) = initial_files_dir {
-        glob_initial_files(&dir)?
-    } else {
-        file_config.initial_files
-    };
-
-    // Build the request
-    let mut req = CreateAgentRequest::new(&final_name, &final_system_prompt);
-    if let Some(desc) = final_description {
-        req = req.description(desc);
-    }
-    if let Some(model_id) = final_model {
-        req = req.default_model_id(model_id);
-    }
-    if !final_tags.is_empty() {
-        req = req.tags(final_tags);
-    }
-    if !final_capabilities.is_empty() {
-        req = req.capabilities(final_capabilities);
-    }
-    if !final_initial_files.is_empty() {
-        req = req.initial_files(final_initial_files);
-    }
-
-    let agent = if let Some(id) = &resolved_id {
-        client.agents().apply_with_options(id, req).await?
-    } else {
-        client.agents().create_with_options(req).await?
-    };
-
-    let verb = if resolved_id.is_some() {
-        "Applied"
-    } else {
-        "Created"
-    };
+    let verb = if was_created { "Created" } else { "Applied" };
 
     if output.is_text() {
         if quiet {
             println!("{}", agent.id);
         } else {
             println!("{} agent: {}", verb, agent.id);
+            print_field("Name", &agent.name);
+        }
+    } else {
+        let json = serde_json::json!({
+            "id": agent.id,
+            "name": agent.name,
+            "action": verb.to_lowercase(),
+        });
+        output.print_value(&json);
+    }
+
+    Ok(())
+}
+
+/// Create agent from CLI flags using SDK
+#[allow(clippy::too_many_arguments)]
+async fn create_from_flags(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    name: Option<String>,
+    system_prompt: Option<String>,
+    description: Option<String>,
+    model: Option<String>,
+    tags: Vec<String>,
+) -> Result<()> {
+    let name = name.context("--name is required")?;
+    let system_prompt = system_prompt.context("--system-prompt is required")?;
+
+    let mut req = CreateAgentRequest::new(&name, &system_prompt);
+    if let Some(desc) = description {
+        req = req.description(desc);
+    }
+    if let Some(model_id) = model {
+        req = req.default_model_id(model_id);
+    }
+    if !tags.is_empty() {
+        req = req.tags(tags);
+    }
+
+    let agent = client.agents().create_with_options(req).await?;
+
+    if output.is_text() {
+        if quiet {
+            println!("{}", agent.id);
+        } else {
+            println!("Created agent: {}", agent.id);
+            print_field("Name", &agent.name);
+        }
+    } else {
+        output.print_value(&agent);
+    }
+
+    Ok(())
+}
+
+/// Update agent from CLI flags using SDK
+#[allow(clippy::too_many_arguments)]
+async fn update_from_flags(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    agent_id: &str,
+    name: Option<String>,
+    system_prompt: Option<String>,
+    description: Option<String>,
+    model: Option<String>,
+    tags: Vec<String>,
+) -> Result<()> {
+    let name = name.context("--name is required for update without --file")?;
+    let system_prompt =
+        system_prompt.context("--system-prompt is required for update without --file")?;
+
+    let mut req = CreateAgentRequest::new(&name, &system_prompt);
+    if let Some(desc) = description {
+        req = req.description(desc);
+    }
+    if let Some(model_id) = model {
+        req = req.default_model_id(model_id);
+    }
+    if !tags.is_empty() {
+        req = req.tags(tags);
+    }
+
+    let agent = client.agents().apply_with_options(agent_id, req).await?;
+
+    if output.is_text() {
+        if quiet {
+            println!("{}", agent.id);
+        } else {
+            println!("Applied agent: {}", agent.id);
             print_field("Name", &agent.name);
         }
     } else {
@@ -447,7 +334,6 @@ async fn list(client: &Everruns, output: OutputFormat) -> Result<()> {
             print_table_row(&[(&agent.id, 36), (&agent.name, 20), (&status, 8)]);
         }
     } else {
-        // Convert to JSON for non-text output
         let data: Vec<serde_json::Value> = response
             .data
             .iter()
@@ -522,240 +408,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_markdown_frontmatter_basic() {
-        let content = r#"---
-name: "test-agent"
-description: "A test agent"
----
-You are a helpful assistant."#;
-
-        let result = parse_markdown_frontmatter(content).unwrap();
-        assert_eq!(result.name, Some("test-agent".to_string()));
-        assert_eq!(result.description, Some("A test agent".to_string()));
-        assert_eq!(
-            result.system_prompt,
-            Some("You are a helpful assistant.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_parse_markdown_frontmatter_with_tags() {
-        let content = r#"---
-name: "agent"
-tags:
-  - coding
-  - rust
----
-Help with code."#;
-
-        let result = parse_markdown_frontmatter(content).unwrap();
-        assert_eq!(result.name, Some("agent".to_string()));
-        assert_eq!(result.tags, vec!["coding", "rust"]);
-        assert_eq!(result.system_prompt, Some("Help with code.".to_string()));
-    }
-
-    #[test]
-    fn test_parse_markdown_frontmatter_empty_body() {
-        let content = r#"---
-name: "agent"
-system_prompt: "From front matter"
----
-"#;
-
-        let result = parse_markdown_frontmatter(content).unwrap();
-        assert_eq!(result.name, Some("agent".to_string()));
-        // Empty body doesn't override front matter system_prompt
-        assert_eq!(result.system_prompt, Some("From front matter".to_string()));
-    }
-
-    #[test]
-    fn test_parse_markdown_frontmatter_no_start_delimiter() {
-        let content = "name: test\n---\nBody";
-        let result = parse_markdown_frontmatter(content);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_parse_markdown_frontmatter_no_end_delimiter() {
-        let content = "---\nname: test\nNo end delimiter";
-        let result = parse_markdown_frontmatter(content);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_agent_file_yaml_parse() {
-        let yaml = r#"
-name: "yaml-agent"
-description: "Parsed from YAML"
-default_model_id: "mod_123"
-tags:
-  - helper
-"#;
-        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(result.name, Some("yaml-agent".to_string()));
-        assert_eq!(result.description, Some("Parsed from YAML".to_string()));
-        assert_eq!(result.default_model_id, Some("mod_123".to_string()));
-        assert_eq!(result.tags, vec!["helper"]);
-    }
-
-    #[test]
-    fn test_agent_file_json_parse() {
-        let json = r#"{
-            "name": "json-agent",
-            "system_prompt": "You help.",
-            "tags": ["fast", "smart"]
-        }"#;
-        let result: AgentFile = serde_json::from_str(json).unwrap();
-        assert_eq!(result.name, Some("json-agent".to_string()));
-        assert_eq!(result.system_prompt, Some("You help.".to_string()));
-        assert_eq!(result.tags, vec!["fast", "smart"]);
-    }
-
-    #[test]
-    fn test_agent_file_defaults() {
-        let yaml = "name: minimal";
-        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(result.name, Some("minimal".to_string()));
-        assert_eq!(result.id, None);
-        assert_eq!(result.description, None);
-        assert_eq!(result.system_prompt, None);
-        assert_eq!(result.default_model_id, None);
-        assert!(result.tags.is_empty());
-        assert!(result.capabilities.is_empty());
-        assert!(result.initial_files.is_empty());
-    }
-
-    #[test]
-    fn test_agent_file_with_id() {
-        let yaml = r#"
-id: "agent_abc123"
-name: "upsert-agent"
-system_prompt: "You help."
-"#;
-        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(result.id, Some("agent_abc123".to_string()));
-        assert_eq!(result.name, Some("upsert-agent".to_string()));
-    }
-
-    #[test]
-    fn test_parse_markdown_frontmatter_with_id() {
-        let content = r#"---
-id: "agent_abc123"
-name: "test-agent"
----
-You are a helpful assistant."#;
-
-        let result = parse_markdown_frontmatter(content).unwrap();
-        assert_eq!(result.id, Some("agent_abc123".to_string()));
-        assert_eq!(result.name, Some("test-agent".to_string()));
-        assert_eq!(
-            result.system_prompt,
-            Some("You are a helpful assistant.".to_string())
-        );
-    }
-
-    #[test]
-    fn test_agent_file_capabilities_simple() {
-        let yaml = r#"
-name: "cap-agent"
-capabilities:
-  - current_time
-  - web_fetch
-"#;
-        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(result.capabilities.len(), 2);
-        let sdk_caps: Vec<_> = result
-            .capabilities
-            .iter()
-            .map(|c| c.to_sdk_config())
-            .collect();
-        assert_eq!(sdk_caps[0].capability_ref, "current_time");
-        assert_eq!(sdk_caps[1].capability_ref, "web_fetch");
-    }
-
-    #[test]
-    fn test_agent_file_capabilities_with_config() {
-        let yaml = r#"
-name: "cap-agent"
-capabilities:
-  - ref: current_time
-    config: {}
-  - ref: web_fetch
-    config:
-      max_size: 1024
-"#;
-        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(result.capabilities.len(), 2);
-        let sdk_caps: Vec<_> = result
-            .capabilities
-            .iter()
-            .map(|c| c.to_sdk_config())
-            .collect();
-        assert_eq!(sdk_caps[0].capability_ref, "current_time");
-        assert_eq!(sdk_caps[1].capability_ref, "web_fetch");
-        assert!(sdk_caps[1].config.is_some());
-    }
-
-    #[test]
-    fn test_agent_file_capabilities_mixed() {
-        let yaml = r#"
-name: "cap-agent"
-capabilities:
-  - current_time
-  - ref: web_fetch
-    config: {}
-"#;
-        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(result.capabilities.len(), 2);
-    }
-
-    #[test]
-    fn test_agent_file_initial_files_inline() {
-        let yaml = r##"
-name: "files-agent"
-initial_files:
-  - path: "/README.md"
-    content: "# Hello"
-  - path: "/data.txt"
-    content: "some data"
-    is_readonly: true
-"##;
-        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(result.initial_files.len(), 2);
-        assert_eq!(result.initial_files[0].path, "/README.md");
-        assert_eq!(result.initial_files[0].content, "# Hello");
-    }
-
-    #[test]
-    fn test_parse_markdown_frontmatter_with_capabilities() {
-        let content = r#"---
-name: "cap-agent"
-capabilities:
-  - current_time
-  - ref: web_fetch
-    config: {}
----
-You are helpful."#;
-
-        let result = parse_markdown_frontmatter(content).unwrap();
-        assert_eq!(result.capabilities.len(), 2);
-    }
-
-    #[test]
-    fn test_glob_initial_files() {
-        let tmp = tempfile::tempdir().unwrap();
-        let base = tmp.path();
-        std::fs::create_dir_all(base.join("sub")).unwrap();
-        std::fs::write(base.join("README.md"), "# Hello").unwrap();
-        std::fs::write(base.join("sub/data.txt"), "data").unwrap();
-        std::fs::write(base.join(".hidden"), "skip").unwrap();
-
-        let files = glob_initial_files(base.to_str().unwrap()).unwrap();
-        assert_eq!(files.len(), 2);
-        // Sorted by path
-        assert_eq!(files[0].path, "/README.md");
-        assert_eq!(files[0].content, "# Hello");
-        assert_eq!(files[1].path, "/sub/data.txt");
-        assert_eq!(files[1].content, "data");
+    fn test_imported_agent_deserialize() {
+        let json = r#"{"id":"agent_abc","name":"test","description":null,"system_prompt":"hello","status":"active"}"#;
+        let agent: ImportedAgent = serde_json::from_str(json).unwrap();
+        assert_eq!(agent.id, "agent_abc");
+        assert_eq!(agent.name, "test");
     }
 }
