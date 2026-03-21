@@ -17,6 +17,28 @@ use crate::{
     EXEC_TIMEOUT_MS,
 };
 
+/// Parse an optional integer resource parameter, validating type and range.
+fn parse_resource_param(
+    arguments: &Value,
+    name: &str,
+    min: u64,
+    max: u64,
+) -> Result<Option<u64>, String> {
+    let Some(val) = arguments.get(name) else {
+        return Ok(None);
+    };
+    if val.is_null() {
+        return Ok(None);
+    }
+    let n = val
+        .as_u64()
+        .ok_or_else(|| format!("Invalid '{name}': must be a positive integer"))?;
+    if n < min || n > max {
+        return Err(format!("Invalid '{name}': must be between {min} and {max}"));
+    }
+    Ok(Some(n))
+}
+
 // ============================================================================
 // DaytonaCreateSandboxTool
 // ============================================================================
@@ -44,6 +66,27 @@ impl Tool for DaytonaCreateSandboxTool {
                 "image": {
                     "type": "string",
                     "description": "Container image (optional, uses Daytona default if omitted)"
+                },
+                "cpu": {
+                    "type": "integer",
+                    "description": "Number of vCPUs (1-4, default: 1)",
+                    "minimum": 1,
+                    "maximum": 4,
+                    "default": 1
+                },
+                "memory": {
+                    "type": "integer",
+                    "description": "Memory in GiB (1-8, default: 1)",
+                    "minimum": 1,
+                    "maximum": 8,
+                    "default": 1
+                },
+                "disk": {
+                    "type": "integer",
+                    "description": "Disk size in GiB (1-10, default: 3)",
+                    "minimum": 1,
+                    "maximum": 10,
+                    "default": 3
                 },
                 "upload_files": {
                     "type": "array",
@@ -118,6 +161,33 @@ impl Tool for DaytonaCreateSandboxTool {
         });
         if let Some(image) = arguments.get("image").and_then(|v| v.as_str()) {
             create_body["image"] = json!(image);
+        }
+
+        // Parse and validate resource constraints
+        let cpu = match parse_resource_param(&arguments, "cpu", 1, 4) {
+            Ok(v) => v,
+            Err(e) => return ToolExecutionResult::tool_error(&e),
+        };
+        let memory = match parse_resource_param(&arguments, "memory", 1, 8) {
+            Ok(v) => v,
+            Err(e) => return ToolExecutionResult::tool_error(&e),
+        };
+        let disk = match parse_resource_param(&arguments, "disk", 1, 10) {
+            Ok(v) => v,
+            Err(e) => return ToolExecutionResult::tool_error(&e),
+        };
+        if cpu.is_some() || memory.is_some() || disk.is_some() {
+            let mut resources = serde_json::Map::new();
+            if let Some(cpu) = cpu {
+                resources.insert("cpu".to_string(), json!(cpu));
+            }
+            if let Some(memory) = memory {
+                resources.insert("memory".to_string(), json!(memory));
+            }
+            if let Some(disk) = disk {
+                resources.insert("disk".to_string(), json!(disk));
+            }
+            create_body["resources"] = json!(resources);
         }
 
         // Create sandbox
