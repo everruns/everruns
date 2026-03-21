@@ -14,9 +14,9 @@ impl Database {
     pub async fn create_app(&self, org_id: i64, input: CreateAppRow) -> Result<AppRow> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            INSERT INTO apps (org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
-            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            INSERT INTO apps (org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft')
+            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -25,6 +25,7 @@ impl Database {
         .bind(&input.description)
         .bind(input.harness_id)
         .bind(input.agent_id)
+        .bind(input.agent_identity_id)
         .bind(&input.channel_type)
         .bind(&input.channel_config)
         .bind(&input.channel_config_encrypted)
@@ -41,7 +42,7 @@ impl Database {
     ) -> Result<Option<AppRow>> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             FROM apps
             WHERE org_id = $1 AND public_id = $2
             "#,
@@ -58,7 +59,7 @@ impl Database {
     pub async fn get_app_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<AppRow>> {
         let row = sqlx::query_as::<_, AppRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             FROM apps
             WHERE public_id = $1
             "#,
@@ -84,7 +85,7 @@ impl Database {
             " AND status NOT IN ('archived', 'deleted')"
         };
         let sql = format!(
-            r#"SELECT id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            r#"SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
                 FROM apps
                 WHERE org_id = $1{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
@@ -110,14 +111,15 @@ impl Database {
                 description = COALESCE($4, description),
                 harness_id = COALESCE($5, harness_id),
                 agent_id = COALESCE($6, agent_id),
-                channel_type = COALESCE($7, channel_type),
-                channel_config = COALESCE($8, channel_config),
-                channel_config_encrypted = COALESCE($9, channel_config_encrypted),
-                status = COALESCE($10, status),
-                published_at = CASE WHEN $11 THEN $12 ELSE published_at END,
+                agent_identity_id = CASE WHEN $7 THEN $8 ELSE agent_identity_id END,
+                channel_type = COALESCE($9, channel_type),
+                channel_config = COALESCE($10, channel_config),
+                channel_config_encrypted = COALESCE($11, channel_config_encrypted),
+                status = COALESCE($12, status),
+                published_at = CASE WHEN $13 THEN $14 ELSE published_at END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -126,6 +128,8 @@ impl Database {
         .bind(&input.description)
         .bind(input.harness_id)
         .bind(input.agent_id)
+        .bind(input.agent_identity_id.is_changed())
+        .bind(input.agent_identity_id.into_value())
         .bind(&input.channel_type)
         .bind(&input.channel_config)
         .bind(&input.channel_config_encrypted)

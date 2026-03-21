@@ -382,6 +382,7 @@ impl WorkerService for WorkerServiceImpl {
                 session_id,
                 crate::api::sessions::UpdateSessionRequest {
                     title: Some(req.title),
+                    agent_identity_id: everruns_durable::UpdateField::Unchanged,
                     locale: None,
                     tags: None,
                 },
@@ -2947,6 +2948,7 @@ impl WorkerService for WorkerServiceImpl {
         let create_req = crate::api::sessions::CreateSessionRequest {
             harness_id: Some(everruns_core::HarnessId::from_uuid(harness_id)),
             agent_id: agent_public_id,
+            agent_identity_id: None,
             title: req.title,
             locale: req.locale,
             tags: vec![],

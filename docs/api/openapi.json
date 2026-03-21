@@ -5890,6 +5890,14 @@
             "description": "ID of the agent to work in this session (optional, format: agent_{32-hex}).",
             "example": "agent_01933b5a00007000800000000000001"
           },
+          "agent_identity_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional resident agent identity used for unattended/background execution.",
+            "example": "identity_01933b5a00007000800000000000001"
+          },
           "capabilities": {
             "type": "array",
             "items": {
@@ -9568,6 +9576,14 @@
                   "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
                   "example": "agent_01933b5a00007000800000000000001"
                 },
+                "agent_identity_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional resident agent identity for unattended/background execution.",
+                  "example": "identity_01933b5a00007000800000000000001"
+                },
                 "capabilities": {
                   "type": "array",
                   "items": {
@@ -10380,6 +10396,14 @@
             ],
             "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
             "example": "agent_01933b5a00007000800000000000001"
+          },
+          "agent_identity_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional resident agent identity for unattended/background execution.",
+            "example": "identity_01933b5a00007000800000000000001"
           },
           "capabilities": {
             "type": "array",
@@ -12033,6 +12057,14 @@
         "type": "object",
         "description": "Request to update a session. Only provided fields will be updated.",
         "properties": {
+          "agent_identity_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional resident agent identity used for unattended/background execution.",
+            "example": "identity_01933b5a00007000800000000000001"
+          },
           "locale": {
             "type": [
               "string",

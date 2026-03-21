@@ -19,6 +19,7 @@ export interface Session {
   organization_id: string;
   harness_id: string;
   agent_id: string | null;
+  agent_identity_id?: string | null;
   title: string | null;
   locale?: string | null;
   /** Preview text from the first user message (truncated) */
@@ -60,6 +61,7 @@ export interface CreateSessionRequest {
   harness_id?: string;
   /** Agent ID to work in this session (optional) */
   agent_id?: string;
+  agent_identity_id?: string;
   title?: string;
   locale?: string;
   tags?: string[];

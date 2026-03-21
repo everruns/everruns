@@ -7,6 +7,7 @@
 //
 // Split into per-entity modules for maintainability (EVE-99).
 
+mod agent_identities;
 mod agents;
 mod apps;
 mod audit_logs;
@@ -31,8 +32,9 @@ mod tests;
 
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    AgentId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId, LeasedResourceId,
-    McpServerId, MessageId, ModelId, NotificationId, ProviderId, ScheduleId, SessionId, SkillId,
+    AgentId, AgentIdentityId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId,
+    LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId, ProviderId, ScheduleId,
+    SessionId, SkillId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -113,6 +115,8 @@ pub struct InMemoryDatabase {
     audit_logs: RwLock<Vec<AuditLogRow>>,
     // Apps (deployable agent+harness bundles)
     apps: RwLock<HashMap<Uuid, AppRow>>,
+    // Agent identities (virtual principals)
+    agent_identities: RwLock<HashMap<AgentIdentityId, AgentIdentityRow>>,
     // Organization settings (default model, etc.)
     org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
 }
@@ -169,6 +173,7 @@ impl Default for InMemoryDatabase {
             leased_resources: RwLock::new(HashMap::new()),
             audit_logs: RwLock::new(Vec::new()),
             apps: RwLock::new(HashMap::new()),
+            agent_identities: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
         }
     }

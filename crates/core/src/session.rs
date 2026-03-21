@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
 use crate::tool_types::ToolDefinition;
-use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+use crate::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId, SessionId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -115,6 +115,10 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001"))]
     pub agent_id: Option<AgentId>,
+    /// Optional resident agent identity for unattended/background execution.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001"))]
+    pub agent_identity_id: Option<AgentIdentityId>,
     /// Human-readable title for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,

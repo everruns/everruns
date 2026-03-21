@@ -238,6 +238,7 @@ mod tests {
             organization_id: "org_00000000000000000000000000000001".to_string(),
             harness_id: HarnessId::new(),
             agent_id,
+            agent_identity_id: None,
             title: Some("Old title".to_string()),
             locale: None,
             preview: None,

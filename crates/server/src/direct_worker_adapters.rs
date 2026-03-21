@@ -224,6 +224,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 organization_id: everruns_core::org_public_id_from_internal(org_id),
                 harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                 agent_id: r.agent_id,
+                agent_identity_id: r.agent_identity_id,
                 title: r.title,
                 locale: r.locale,
                 preview: None,
@@ -1338,6 +1339,7 @@ impl DirectPlatformStore {
                 .harness_id
                 .unwrap_or_else(|| HarnessId::from_uuid(BASE_HARNESS_ID)),
             agent_id: row.agent_id,
+            agent_identity_id: row.agent_identity_id,
             title: row.title,
             locale: row.locale,
             preview: None,
@@ -1732,6 +1734,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             org_id: self.org_id,
             harness_id: Some(harness_id),
             agent_id,
+            agent_identity_id: None,
             title: title.map(|s| s.to_string()),
             locale: locale.map(|value| value.to_string()),
             tags: vec!["managed".to_string()],
@@ -2737,6 +2740,7 @@ mod tests {
             .create_session(CreateSessionRow {
                 org_id: everruns_core::DEFAULT_ORG_ID,
                 agent_id: Some(AgentId::from_uuid(agent_id)),
+                agent_identity_id: None,
                 harness_id: Some(HarnessId::from_seed(1)),
                 title: None,
                 locale: None,

@@ -264,6 +264,7 @@ mod tests {
                 org_id: 1,
                 harness_id: None,
                 agent_id: None,
+                agent_identity_id: None,
                 title: Some("Inbox".to_string()),
                 locale: None,
                 tags: vec![],

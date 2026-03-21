@@ -32,6 +32,7 @@ import {
   Server,
   Settings,
   Shield,
+  UserRound,
   Workflow,
   Cog,
 } from "lucide-react";
@@ -82,6 +83,7 @@ export const defaultTopNavigation: NavigationItem[] = [
 export const defaultBuildingBlocksNavigation: NavigationItem[] = [
   { name: "Harnesses", href: "/harnesses", icon: Shield },
   { name: "Agents", href: "/agents", icon: Boxes },
+  { name: "Agent Identities", href: "/agent-identities", icon: UserRound },
   { name: "Skills", href: "/skills", icon: BookOpen },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
   { name: "MCP Servers", href: "/mcp-servers", icon: capabilityIconMap.mcp },

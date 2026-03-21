@@ -159,6 +159,7 @@ mod tests {
             org_id: DEFAULT_ORG_ID,
             harness_id: None,
             agent_id: None,
+            agent_identity_id: None,
             title: Some("Lease test session".to_string()),
             locale: None,
             tags: Vec::new(),

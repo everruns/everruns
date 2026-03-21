@@ -238,6 +238,7 @@ pub mod tests {
                     organization_id: "org_00000000000000000000000000000001".to_string(),
                     harness_id: HarnessId::new(),
                     agent_id: None,
+                    agent_identity_id: None,
                     title: Some("Test Session".to_string()),
                     locale: None,
                     preview: None,

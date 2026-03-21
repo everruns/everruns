@@ -22,6 +22,7 @@ impl InMemoryDatabase {
             description: input.description,
             harness_id: input.harness_id,
             agent_id: input.agent_id,
+            agent_identity_id: input.agent_identity_id,
             channel_type: input.channel_type,
             channel_config: input.channel_config,
             channel_config_encrypted: input.channel_config_encrypted,
@@ -105,6 +106,7 @@ impl InMemoryDatabase {
         if let Some(agent_id) = input.agent_id {
             app.agent_id = agent_id;
         }
+        input.agent_identity_id.apply(&mut app.agent_identity_id);
         if let Some(channel_type) = input.channel_type {
             app.channel_type = channel_type;
         }
