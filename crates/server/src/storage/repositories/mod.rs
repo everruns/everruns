@@ -22,9 +22,6 @@ mod users;
 #[cfg(test)]
 mod tests;
 
-// Repository layer for database operations
-// M2 Revised: Agent/Session/Messages/Events model
-
 use anyhow::Result;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
