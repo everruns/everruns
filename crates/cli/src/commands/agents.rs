@@ -118,8 +118,8 @@ pub enum AgentFileCapability {
     WithConfig {
         #[serde(rename = "ref")]
         capability_ref: String,
-        #[serde(default)]
-        config: serde_json::Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        config: Option<serde_json::Value>,
     },
 }
 
@@ -130,7 +130,13 @@ impl AgentFileCapability {
             AgentFileCapability::WithConfig {
                 capability_ref,
                 config,
-            } => AgentCapabilityConfig::new(capability_ref.clone()).config(config.clone()),
+            } => {
+                let cap = AgentCapabilityConfig::new(capability_ref.clone());
+                match config {
+                    Some(v) => cap.config(v.clone()),
+                    None => cap,
+                }
+            }
         }
     }
 }
@@ -154,25 +160,32 @@ fn collect_files(root: &Path, current: &Path, out: &mut Vec<InitialFile>) -> Res
     {
         let entry = entry?;
         let path = entry.path();
+        // Skip hidden entries (check file_name component, not full path)
+        if path
+            .file_name()
+            .map(|n| n.to_string_lossy().starts_with('.'))
+            .unwrap_or(false)
+        {
+            continue;
+        }
         if path.is_dir() {
-            // Skip hidden directories
-            if path
-                .file_name()
-                .map(|n| n.to_string_lossy().starts_with('.'))
-                .unwrap_or(false)
-            {
-                continue;
-            }
             collect_files(root, &path, out)?;
         } else {
-            let rel = path
-                .strip_prefix(root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .to_string();
-            // Skip hidden files and binary-looking extensions
-            if rel.starts_with('.') {
-                continue;
+            // Canonicalize to resolve symlinks, then ensure still under root
+            let canonical = path
+                .canonicalize()
+                .with_context(|| format!("Cannot resolve initial file path: {}", path.display()))?;
+            let rel_path = canonical.strip_prefix(root).with_context(|| {
+                format!(
+                    "Initial file path {} is not under root {}",
+                    canonical.display(),
+                    root.display()
+                )
+            })?;
+            let mut rel = rel_path.to_string_lossy().to_string();
+            // Normalize to forward slashes for platform-independent paths
+            if std::path::MAIN_SEPARATOR != '/' {
+                rel = rel.replace(std::path::MAIN_SEPARATOR, "/");
             }
             let content = std::fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read file: {}", path.display()))?;
@@ -245,7 +258,8 @@ pub async fn run(
                 model,
                 tag,
                 initial_files_dir,
-                None, // no explicit agent_id override
+                None,  // no explicit agent_id override
+                false, // create doesn't require an ID
             )
             .await
         }
@@ -271,6 +285,7 @@ pub async fn run(
                 tag,
                 initial_files_dir,
                 agent_id,
+                true, // update requires an agent ID
             )
             .await
         }
@@ -293,6 +308,7 @@ async fn create_or_update(
     tags: Vec<String>,
     initial_files_dir: Option<String>,
     agent_id_override: Option<String>,
+    require_id: bool,
 ) -> Result<()> {
     // Load from file if provided
     let file_config = if let Some(path) = file {
@@ -337,6 +353,10 @@ async fn create_or_update(
 
     // Resolve agent ID: CLI arg > file frontmatter > none (pure create)
     let resolved_id = agent_id_override.or(file_config.id);
+
+    if require_id && resolved_id.is_none() {
+        anyhow::bail!("Agent ID is required for update (provide as argument or id: in file)");
+    }
 
     // CLI args override file values
     let final_name = name
@@ -723,21 +743,19 @@ You are helpful."#;
 
     #[test]
     fn test_glob_initial_files() {
-        let tmp = std::env::temp_dir().join("everruns_test_glob");
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(tmp.join("sub")).unwrap();
-        std::fs::write(tmp.join("README.md"), "# Hello").unwrap();
-        std::fs::write(tmp.join("sub/data.txt"), "data").unwrap();
-        std::fs::write(tmp.join(".hidden"), "skip").unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        std::fs::create_dir_all(base.join("sub")).unwrap();
+        std::fs::write(base.join("README.md"), "# Hello").unwrap();
+        std::fs::write(base.join("sub/data.txt"), "data").unwrap();
+        std::fs::write(base.join(".hidden"), "skip").unwrap();
 
-        let files = glob_initial_files(tmp.to_str().unwrap()).unwrap();
+        let files = glob_initial_files(base.to_str().unwrap()).unwrap();
         assert_eq!(files.len(), 2);
         // Sorted by path
         assert_eq!(files[0].path, "/README.md");
         assert_eq!(files[0].content, "# Hello");
         assert_eq!(files[1].path, "/sub/data.txt");
         assert_eq!(files[1].content, "data");
-
-        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
