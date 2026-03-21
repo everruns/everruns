@@ -104,21 +104,16 @@ pub const GEMINI_TOO_LARGE_PATTERNS: &[&str] = &[
 
 /// Check if an HTTP error indicates the model was not found.
 ///
-/// Common across providers: 404 status with model/not-found indicators.
-pub fn is_model_not_found(status: StatusCode, error_text: &str, extra_patterns: &[&str]) -> bool {
+/// Only matches on 404 status. Uses provider-specific patterns to avoid
+/// false positives on generic 404s (e.g., "Endpoint not found").
+pub fn is_model_not_found(status: StatusCode, error_text: &str, patterns: &[&str]) -> bool {
     if status != StatusCode::NOT_FOUND {
         return false;
     }
 
     let error_lower = error_text.to_lowercase();
 
-    // Generic patterns
-    if error_lower.contains("not found") || error_lower.contains("not_found") {
-        return true;
-    }
-
-    // Provider-specific patterns
-    for pattern in extra_patterns {
+    for pattern in patterns {
         if error_lower.contains(&pattern.to_lowercase()) {
             return true;
         }
@@ -128,10 +123,12 @@ pub fn is_model_not_found(status: StatusCode, error_text: &str, extra_patterns: 
 }
 
 /// Anthropic-specific model-not-found patterns.
+/// Matches `not_found_error` (Anthropic's error type) or `model` + `not found` together.
 pub const ANTHROPIC_NOT_FOUND_PATTERNS: &[&str] = &["not_found_error"];
 
 /// Gemini-specific model-not-found patterns.
-pub const GEMINI_NOT_FOUND_PATTERNS: &[&str] = &["model"];
+/// Gemini returns 404 with `"NOT_FOUND"` status or `"model"` in the message.
+pub const GEMINI_NOT_FOUND_PATTERNS: &[&str] = &["not_found", "model"];
 
 // ============================================================================
 // Thinking Budget Constants
@@ -218,11 +215,21 @@ mod tests {
     }
 
     #[test]
-    fn test_is_model_not_found_404() {
+    fn test_is_model_not_found_with_pattern() {
         assert!(is_model_not_found(
             StatusCode::NOT_FOUND,
-            "model not found",
-            &[]
+            r#"{"error":{"type":"not_found_error"}}"#,
+            ANTHROPIC_NOT_FOUND_PATTERNS
+        ));
+    }
+
+    #[test]
+    fn test_is_model_not_found_no_match_without_pattern() {
+        // Generic "not found" without matching patterns should NOT match
+        assert!(!is_model_not_found(
+            StatusCode::NOT_FOUND,
+            "Endpoint not found",
+            ANTHROPIC_NOT_FOUND_PATTERNS
         ));
     }
 
@@ -232,6 +239,15 @@ mod tests {
             StatusCode::BAD_REQUEST,
             "model not found",
             &[]
+        ));
+    }
+
+    #[test]
+    fn test_is_model_not_found_gemini() {
+        assert!(is_model_not_found(
+            StatusCode::NOT_FOUND,
+            r#"{"error":{"status":"NOT_FOUND","message":"model foo"}}"#,
+            GEMINI_NOT_FOUND_PATTERNS
         ));
     }
 

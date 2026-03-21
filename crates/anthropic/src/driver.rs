@@ -817,7 +817,17 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 // ============================================================================
 
 fn is_anthropic_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
-    llm_driver_helpers::is_model_not_found(status, error_text, ANTHROPIC_NOT_FOUND_PATTERNS)
+    if llm_driver_helpers::is_model_not_found(status, error_text, ANTHROPIC_NOT_FOUND_PATTERNS) {
+        return true;
+    }
+    // Compound check: both "model" and "not found" must appear together
+    if status == reqwest::StatusCode::NOT_FOUND {
+        let lower = error_text.to_lowercase();
+        if lower.contains("model") && lower.contains("not found") {
+            return true;
+        }
+    }
+    false
 }
 
 fn is_anthropic_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
