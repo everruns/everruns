@@ -347,7 +347,31 @@ pub fn aggressive_trim(
     for &idx in &protected_indices {
         protected_budget += estimate_tokens(&conversation[idx]);
     }
-    token_budget = token_budget.saturating_sub(protected_budget);
+
+    // If protected messages alone exceed the remaining budget, keep as many
+    // protected messages as possible (newest first) and skip non-protected.
+    if protected_budget > token_budget {
+        let mut protected_with_indices: Vec<(usize, LlmMessage)> = protected_indices
+            .iter()
+            .map(|&idx| (idx, conversation[idx].clone()))
+            .collect();
+        protected_with_indices.sort_by_key(|(i, _)| *i);
+
+        let mut remaining = token_budget;
+        let mut kept: Vec<(usize, LlmMessage)> = Vec::new();
+        for (idx, msg) in protected_with_indices.into_iter().rev() {
+            let t = estimate_tokens(&msg);
+            if t <= remaining {
+                kept.push((idx, msg));
+                remaining -= t;
+            }
+        }
+        kept.sort_by_key(|(i, _)| *i);
+        result.extend(kept.into_iter().map(|(_, m)| m));
+        return result;
+    }
+
+    token_budget -= protected_budget;
 
     // Walk from newest to oldest, collecting non-protected messages that fit
     let mut keep_from_end = Vec::new();
@@ -780,8 +804,12 @@ pub fn format_messages_for_summarization(messages: &[LlmMessage]) -> String {
 
         let content = extract_text(&msg.content);
 
+        // Protected tool results (skill instructions) are never truncated —
+        // the summarizer must see the full text to reproduce them verbatim.
+        let is_protected = is_protected_tool_result(messages, msg);
+
         // Truncate very long messages to avoid blowing up the summarization prompt
-        let truncated = if content.len() > 2000 {
+        let truncated = if !is_protected && content.len() > 2000 {
             format!(
                 "{}... [truncated, {} chars total]",
                 &content[..2000],
@@ -1937,6 +1965,57 @@ mod tests {
         assert!(
             prompt.contains("activate_skill"),
             "Summarization prompt must instruct LLM to preserve skill content"
+        );
+    }
+
+    #[test]
+    fn test_aggressive_trim_protected_exceed_budget() {
+        // When protected messages alone exceed the budget, keep as many as
+        // fit (newest first) and drop non-protected entirely.
+        let messages = vec![
+            make_user_msg(&"s".repeat(400)), // system ~100 tokens
+            make_assistant_with_tool_call("skill1", "activate_skill"), // protected
+            make_tool_result("skill1", &"x".repeat(800)), // protected ~200 tokens
+            make_assistant_with_tool_call("skill2", "activate_skill"), // protected
+            make_tool_result("skill2", &"y".repeat(800)), // protected ~200 tokens
+            make_user_msg(&"z".repeat(400)), // non-protected
+        ];
+
+        // Budget only fits system + ~1 protected pair
+        let result = aggressive_trim(&messages, 200, true);
+
+        // Must not exceed budget — non-protected messages dropped
+        let has_non_protected = result
+            .iter()
+            .any(|m| m.role == LlmMessageRole::User && extract_text(&m.content).contains('z'));
+        assert!(
+            !has_non_protected,
+            "Non-protected messages must be dropped when protected exceed budget"
+        );
+    }
+
+    #[test]
+    fn test_format_messages_no_truncate_protected_tool_result() {
+        // Protected tool results should not be truncated at 2000 chars
+        let long_instructions = "a".repeat(5000);
+        let messages = vec![
+            make_assistant_with_tool_call("s1", "activate_skill"),
+            make_tool_result("s1", &long_instructions),
+            make_assistant_with_tool_call("r1", "read_file"),
+            make_tool_result("r1", &"b".repeat(5000)),
+        ];
+
+        let formatted = format_messages_for_summarization(&messages);
+
+        // Skill result: full 5000-char content present, not truncated
+        assert!(
+            formatted.contains(&long_instructions),
+            "Protected tool result must not be truncated"
+        );
+        // Regular result: should be truncated
+        assert!(
+            formatted.contains("[truncated, 5000 chars total]"),
+            "Non-protected tool result should be truncated"
         );
     }
 }
