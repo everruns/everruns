@@ -65,7 +65,7 @@ impl Default for WorkerPoolConfig {
             worker_id: format!("worker-{}", Uuid::now_v7()),
             worker_group: "default".to_string(),
             activity_types: vec![],
-            max_concurrency: 10,
+            max_concurrency: 1000,
             backpressure: BackpressureConfig::default(),
             poller: PollerConfig::default(),
             heartbeat_interval: Duration::from_secs(5),
@@ -687,7 +687,7 @@ mod tests {
         let config = WorkerPoolConfig::default();
         assert!(!config.worker_id.is_empty());
         assert_eq!(config.worker_group, "default");
-        assert_eq!(config.max_concurrency, 10);
+        assert_eq!(config.max_concurrency, 1000);
         assert_eq!(config.heartbeat_interval, Duration::from_secs(5));
     }
 

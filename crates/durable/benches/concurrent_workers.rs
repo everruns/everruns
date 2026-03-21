@@ -308,6 +308,15 @@ fn parse_args() -> CliOptions {
 
 fn main() {
     let opts = parse_args();
+
+    // Raise per-workflow queue limit before creating the runtime (set_var is
+    // unsafe in Rust 2024 because other threads may read env concurrently).
+    // 60_000 covers the largest scenario (burst_50k_tasks) with headroom.
+    // SAFETY: no other threads exist yet — runtime is created below.
+    unsafe {
+        env::set_var("DURABLE_MAX_PENDING_TASKS_PER_WORKFLOW", "60000");
+    }
+
     let rt = Runtime::new().unwrap();
 
     println!("═══════════════════════════════════════════════════════════");

@@ -75,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
 | `WORKER_GRPC_ADDRESS` | Control-plane gRPC address | `127.0.0.1:9001` |
 | `WORKER_GRPC_AUTH_TOKEN` | Bearer token for gRPC auth | Unset (disabled) |
 | `WORKER_ID` | Unique worker identifier | Auto-generated |
-| `MAX_CONCURRENT_TASKS` | Max tasks per worker | `10` |
+| `MAX_CONCURRENT_TASKS` | Max tasks per worker | `1000` |
 
 ### Database Tables
 

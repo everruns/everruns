@@ -66,7 +66,7 @@ impl Default for TaskWorkerConfig {
                 "act".to_string(),
                 "leased_resource_cleanup".to_string(),
             ],
-            max_concurrent_tasks: 10,
+            max_concurrent_tasks: 1000,
             poll_interval: Duration::from_millis(100),
             heartbeat_interval: Duration::from_secs(10),
             worker_group: None,
@@ -103,7 +103,7 @@ impl TaskWorkerConfig {
         let max_concurrent = std::env::var("MAX_CONCURRENT_TASKS")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(10);
+            .unwrap_or(1000);
 
         let worker_group = std::env::var("WORKER_GROUP").ok();
 
@@ -1042,7 +1042,7 @@ mod tests {
     fn test_config_default() {
         let config = TaskWorkerConfig::default();
         assert!(config.worker_id.starts_with("worker-"));
-        assert_eq!(config.max_concurrent_tasks, 10);
+        assert_eq!(config.max_concurrent_tasks, 1000);
     }
 
     #[test]
