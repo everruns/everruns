@@ -62,9 +62,22 @@ The workflow will extract release notes from CHANGELOG.md and create the GitHub 
 2. Release title: `vX.Y.Z`
 3. Release body: Extracted from CHANGELOG.md section for that version
 4. Docker images tagged with version (triggered via `workflow_dispatch` from Release workflow)
+5. Pre-built CLI binaries attached as release assets (triggered by `release: published` event)
 
 > **Note:** Tags created by `GITHUB_TOKEN` don't trigger other workflows (GitHub anti-recursion).
 > The Release workflow explicitly dispatches Docker Publish after creating the release.
+
+### CLI Binary Assets
+
+The `Publish CLI Binaries` workflow builds and attaches pre-built CLI binaries to each GitHub Release:
+
+| Asset | Target |
+|-------|--------|
+| `everruns-x86_64-apple-darwin.tar.gz` | macOS Intel |
+| `everruns-aarch64-apple-darwin.tar.gz` | macOS Apple Silicon |
+| `everruns-x86_64-unknown-linux-gnu.tar.gz` | Linux x86_64 |
+
+Each archive contains the `everruns` binary. SHA-256 checksums (`.sha256` files) are included for verification. These assets are used by the Homebrew formula for installation.
 
 ### Docker Image Tagging
 
