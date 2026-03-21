@@ -3,7 +3,7 @@
 // Design Decision: Use clap derive for ergonomic argument parsing.
 // Design Decision: Support text/json/yaml output formats for scripting.
 // Design Decision: Use everruns-sdk for API client.
-// Design Decision: Credential file (~/.config/everruns/credentials.json) with env var override.
+// Design Decision: Credential file (platform config dir/everruns/credentials.json) with env var override.
 
 mod auth;
 mod commands;

@@ -1,6 +1,7 @@
 // CLI credential management
 //
-// Decision: Credentials stored in ~/.config/everruns/credentials.json
+// Decision: Credentials stored via dirs::config_dir()/everruns/credentials.json
+// (Linux: ~/.config/everruns/, macOS: ~/Library/Application Support/everruns/)
 // Decision: Multi-profile support from day one
 // Decision: EVERRUNS_API_KEY env var always takes precedence
 // Decision: File permissions 0600 on Unix
@@ -252,5 +253,22 @@ mod tests {
         let path = credentials_path().unwrap();
         assert!(path.to_str().unwrap().contains("everruns"));
         assert!(path.to_str().unwrap().ends_with("credentials.json"));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_credentials_path_macos_uses_application_support() {
+        let path = credentials_path().unwrap();
+        let path_str = path.to_str().unwrap();
+        assert!(
+            path_str.contains("Library/Application Support"),
+            "macOS credentials path should use ~/Library/Application Support, got: {}",
+            path_str
+        );
+        assert!(
+            !path_str.contains(".config"),
+            "macOS credentials path must not use ~/.config, got: {}",
+            path_str
+        );
     }
 }
