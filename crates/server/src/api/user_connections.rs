@@ -625,6 +625,14 @@ pub async fn authorize_connection(
     .max_age(time::Duration::minutes(10))
     .build();
 
+    // Validate authorize URL even for preconfigured endpoints (settings may
+    // have been stored before SSRF validation was enforced at discovery time).
+    validate_safe_url(&metadata.authorization_endpoint).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Authorization endpoint blocked: {e}"),
+        )
+    })?;
     let authorize_url = reqwest::Url::parse(&metadata.authorization_endpoint)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let scopes = if !metadata.scopes_supported.is_empty() {
@@ -1229,14 +1237,12 @@ async fn discover_resource_metadata(
 ) -> Result<OAuthProtectedResourceMetadata, (StatusCode, String)> {
     let resource_url = parse_and_validate_url(server_url)?;
     let origin = resource_origin(&resource_url)?;
-    reqwest::Client::new()
+    let response = reqwest::Client::new()
         .get(format!("{origin}/.well-known/oauth-protected-resource"))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?
-        .json()
-        .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    json_response_or_error(response).await
 }
 
 async fn discover_oauth_server_metadata(
@@ -1340,17 +1346,18 @@ fn finalize_oauth_redirect(
     popup: bool,
 ) -> String {
     let frontend = auth_config.frontend_url.trim_end_matches('/');
+    let encoded_provider = urlencoding::encode(provider);
     if popup {
         format!(
             "{}/connection-complete?provider={}&status=success&return_to={}",
             frontend,
-            urlencoding::encode(provider),
+            encoded_provider,
             urlencoding::encode(return_to),
         )
     } else if return_to.contains('?') {
-        format!("{frontend}{return_to}&connected={provider}")
+        format!("{frontend}{return_to}&connected={encoded_provider}")
     } else {
-        format!("{frontend}{return_to}?connected={provider}")
+        format!("{frontend}{return_to}?connected={encoded_provider}")
     }
 }
 

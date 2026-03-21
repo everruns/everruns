@@ -43,7 +43,9 @@ export function SetupConnectionToolCall({
   const providerInfo = providers.find((p) => p.provider_id === provider);
   const displayName = providerInfo?.display_name ?? provider;
   const icon = providerInfo?.icon ?? "link";
-  const isOAuth = providerInfo?.connection_type === "oauth";
+  // Only MCP OAuth providers use the popup authorize flow; GitHub/other OAuth
+  // providers have their own dedicated connection flow.
+  const isOAuth = providerInfo?.connection_type === "oauth" && provider.startsWith("mcp_oauth_");
 
   // If we already have a tool result for this call, show completed state
   const existingResult = toolResultsMap.get(toolCallId);
@@ -73,14 +75,24 @@ export function SetupConnectionToolCall({
       "popup,width=720,height=820",
     );
     if (!popup) return;
+    let timeoutId: number | undefined;
     const listener = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type !== "everruns:connection-complete") return;
       if (event.data?.provider !== provider) return;
       window.removeEventListener("message", listener);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       void handleConnected();
     };
     window.addEventListener("message", listener);
+    // Auto-cleanup listener after 2 minutes to prevent leaks if popup is
+    // closed without completing the flow.
+    timeoutId = window.setTimeout(
+      () => {
+        window.removeEventListener("message", listener);
+      },
+      2 * 60 * 1000,
+    );
   };
 
   const handleCancelled = async () => {
