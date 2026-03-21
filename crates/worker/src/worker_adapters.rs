@@ -2,6 +2,9 @@
 //
 // Decision: Single trait abstracts all data operations needed by activities
 // Decision: Implementations for gRPC (external workers) and Direct (in-process)
+// Decision: 9 per-trait Adapter* wrappers consolidated into 2 (EVE-103):
+//   - SessionAdapter<A>  (session-scoped, no org_id)
+//   - OrgAdapter<A>      (org-scoped, carries org_id)
 //
 // This allows a single Worker implementation to work with either backend.
 
@@ -330,42 +333,65 @@ pub struct TurnContext {
 }
 
 // =============================================================================
-// Adapter-based trait implementations for core traits
+// Consolidated adapter wrappers (EVE-103)
+//
+// Two generic structs replace the former 9 per-trait Adapter* wrappers:
+//   - SessionAdapter<A>  (session-scoped, no org_id)
+//   - OrgAdapter<A>      (org-scoped, carries org_id)
+//
+// Type aliases preserve the old names at all call sites.
 // =============================================================================
 
-/// Adapter-based AgentStore implementation
-pub struct AdapterAgentStore<A: WorkerAdapters> {
+/// Session-scoped adapter: bridges WorkerAdapters → core traits that don't need org_id.
+///
+/// Implements: MessageRetriever, EventEmitter, SessionFileStore.
+pub struct SessionAdapter<A: WorkerAdapters> {
+    adapters: A,
+}
+
+impl<A: WorkerAdapters> SessionAdapter<A> {
+    pub fn new(adapters: A) -> Self {
+        Self { adapters }
+    }
+}
+
+/// Org-scoped adapter: bridges WorkerAdapters → core traits that need org_id.
+///
+/// Implements: AgentStore, HarnessStore, SessionStore, SessionMutator,
+/// LlmProviderStore, ImageResolver.
+pub struct OrgAdapter<A: WorkerAdapters> {
     adapters: A,
     org_id: i64,
 }
 
-impl<A: WorkerAdapters> AdapterAgentStore<A> {
+impl<A: WorkerAdapters> OrgAdapter<A> {
     pub fn new(adapters: A, org_id: i64) -> Self {
         Self { adapters, org_id }
     }
 }
 
+// Type aliases for backward compatibility at call sites
+pub type AdapterAgentStore<A> = OrgAdapter<A>;
+pub type AdapterHarnessStore<A> = OrgAdapter<A>;
+pub type AdapterSessionStore<A> = OrgAdapter<A>;
+pub type AdapterSessionMutator<A> = OrgAdapter<A>;
+pub type AdapterLlmProviderStore<A> = OrgAdapter<A>;
+pub type AdapterImageResolver<A> = OrgAdapter<A>;
+pub type AdapterMessageRetriever<A> = SessionAdapter<A>;
+pub type AdapterEventEmitter<A> = SessionAdapter<A>;
+pub type AdapterSessionFileStore<A> = SessionAdapter<A>;
+
+// --- Org-scoped trait impls ---
+
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::AgentStore for AdapterAgentStore<A> {
+impl<A: WorkerAdapters> everruns_core::traits::AgentStore for OrgAdapter<A> {
     async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
         self.adapters.get_agent(self.org_id, agent_id.uuid()).await
     }
 }
 
-/// Adapter-based HarnessStore implementation
-pub struct AdapterHarnessStore<A: WorkerAdapters> {
-    adapters: A,
-    org_id: i64,
-}
-
-impl<A: WorkerAdapters> AdapterHarnessStore<A> {
-    pub fn new(adapters: A, org_id: i64) -> Self {
-        Self { adapters, org_id }
-    }
-}
-
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::HarnessStore for AdapterHarnessStore<A> {
+impl<A: WorkerAdapters> everruns_core::traits::HarnessStore for OrgAdapter<A> {
     async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<Harness>> {
         self.adapters
             .get_harness(self.org_id, harness_id.uuid())
@@ -373,41 +399,8 @@ impl<A: WorkerAdapters> everruns_core::traits::HarnessStore for AdapterHarnessSt
     }
 }
 
-/// Adapter-based SessionStore implementation
-pub struct AdapterSessionStore<A: WorkerAdapters> {
-    adapters: A,
-    org_id: i64,
-}
-
-/// Adapter-based SessionMutator implementation.
-pub struct AdapterSessionMutator<A: WorkerAdapters> {
-    adapters: A,
-    org_id: i64,
-}
-
-impl<A: WorkerAdapters> AdapterSessionMutator<A> {
-    pub fn new(adapters: A, org_id: i64) -> Self {
-        Self { adapters, org_id }
-    }
-}
-
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::SessionMutator for AdapterSessionMutator<A> {
-    async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
-        self.adapters
-            .set_session_title(self.org_id, session_id.uuid(), title)
-            .await
-    }
-}
-
-impl<A: WorkerAdapters> AdapterSessionStore<A> {
-    pub fn new(adapters: A, org_id: i64) -> Self {
-        Self { adapters, org_id }
-    }
-}
-
-#[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::SessionStore for AdapterSessionStore<A> {
+impl<A: WorkerAdapters> everruns_core::traits::SessionStore for OrgAdapter<A> {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
         self.adapters
             .get_session(self.org_id, session_id.uuid())
@@ -415,44 +408,17 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionStore for AdapterSessionSt
     }
 }
 
-/// Adapter-based MessageRetriever implementation
-pub struct AdapterMessageRetriever<A: WorkerAdapters> {
-    adapters: A,
-}
-
-impl<A: WorkerAdapters> AdapterMessageRetriever<A> {
-    pub fn new(adapters: A) -> Self {
-        Self { adapters }
-    }
-}
-
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::MessageRetriever for AdapterMessageRetriever<A> {
-    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+impl<A: WorkerAdapters> everruns_core::traits::SessionMutator for OrgAdapter<A> {
+    async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
         self.adapters
-            .get_message(session_id.uuid(), message_id.uuid())
+            .set_session_title(self.org_id, session_id.uuid(), title)
             .await
     }
-
-    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
-        self.adapters.load_messages(session_id.uuid()).await
-    }
-}
-
-/// Adapter-based LlmProviderStore implementation
-pub struct AdapterLlmProviderStore<A: WorkerAdapters> {
-    adapters: A,
-    org_id: i64,
-}
-
-impl<A: WorkerAdapters> AdapterLlmProviderStore<A> {
-    pub fn new(adapters: A, org_id: i64) -> Self {
-        Self { adapters, org_id }
-    }
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::LlmProviderStore for AdapterLlmProviderStore<A> {
+impl<A: WorkerAdapters> everruns_core::traits::LlmProviderStore for OrgAdapter<A> {
     async fn get_model_with_provider(
         &self,
         model_id: ModelId,
@@ -467,56 +433,37 @@ impl<A: WorkerAdapters> everruns_core::traits::LlmProviderStore for AdapterLlmPr
     }
 }
 
-/// Adapter-based EventEmitter implementation
-pub struct AdapterEventEmitter<A: WorkerAdapters> {
-    adapters: A,
-}
-
-impl<A: WorkerAdapters> AdapterEventEmitter<A> {
-    pub fn new(adapters: A) -> Self {
-        Self { adapters }
-    }
-}
-
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::EventEmitter for AdapterEventEmitter<A> {
-    async fn emit(&self, request: EventRequest) -> Result<Event> {
-        self.adapters.emit_event(request).await
-    }
-}
-
-/// Adapter-based ImageResolver implementation
-pub struct AdapterImageResolver<A: WorkerAdapters> {
-    adapters: A,
-    org_id: i64,
-}
-
-impl<A: WorkerAdapters> AdapterImageResolver<A> {
-    pub fn new(adapters: A, org_id: i64) -> Self {
-        Self { adapters, org_id }
-    }
-}
-
-#[async_trait]
-impl<A: WorkerAdapters> ImageResolver for AdapterImageResolver<A> {
+impl<A: WorkerAdapters> ImageResolver for OrgAdapter<A> {
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
         self.adapters.resolve_image(self.org_id, image_id).await
     }
 }
 
-/// Adapter-based SessionFileStore implementation
-pub struct AdapterSessionFileStore<A: WorkerAdapters> {
-    adapters: A,
-}
+// --- Session-scoped trait impls ---
 
-impl<A: WorkerAdapters> AdapterSessionFileStore<A> {
-    pub fn new(adapters: A) -> Self {
-        Self { adapters }
+#[async_trait]
+impl<A: WorkerAdapters> everruns_core::MessageRetriever for SessionAdapter<A> {
+    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+        self.adapters
+            .get_message(session_id.uuid(), message_id.uuid())
+            .await
+    }
+
+    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
+        self.adapters.load_messages(session_id.uuid()).await
     }
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::SessionFileStore for AdapterSessionFileStore<A> {
+impl<A: WorkerAdapters> everruns_core::traits::EventEmitter for SessionAdapter<A> {
+    async fn emit(&self, request: EventRequest) -> Result<Event> {
+        self.adapters.emit_event(request).await
+    }
+}
+
+#[async_trait]
+impl<A: WorkerAdapters> everruns_core::traits::SessionFileStore for SessionAdapter<A> {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.adapters.read_file(session_id.uuid(), path).await
     }
