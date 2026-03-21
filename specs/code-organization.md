@@ -233,7 +233,7 @@ just start-dev --no-watch &
 - Tests use `DATABASE_URL` environment variable
 - Default: `postgres://everruns:everruns@localhost:5432/everruns_test`
 - CI uses PostgreSQL service container
-- Local: Docker via `just start-docker`
+- Local: `just start-infra` (native pg_ctl + valkey)
 
 ### When to Add Tests
 

@@ -14,7 +14,7 @@ start tag="latest":
     local_postgres=$(docker ps --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME" --filter "label=com.docker.compose.service=postgres" --format '{{"{{"}}.Names{{"}}"}}' 2>/dev/null || true)
     if [[ -n "$local_postgres" ]]; then
         echo "❌ Local docker compose appears to be running (project '$COMPOSE_PROJECT_NAME')."
-        echo "   Stop it first with: just stop-docker"
+        echo "   Stop it first with: just stop-infra"
         exit 1
     fi
 

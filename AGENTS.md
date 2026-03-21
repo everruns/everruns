@@ -145,8 +145,8 @@ Always make sure you are working on top of latest main from remote.
 ### Local Dev
 
 ```bash
-just start-dev          # DEV MODE (in-memory, no Docker)
-just start-all          # Full mode (PostgreSQL)
+just start-dev          # DEV MODE (in-memory, no external services)
+just start-all          # Full mode (PostgreSQL + Valkey as processes)
 just --list             # All commands
 ```
 
@@ -181,7 +181,7 @@ PORT_PREFIX=271 just start-dev
 PORT_PREFIX=271 just start-all
 ```
 
-- `scripts/lib/services.sh`, `scripts/lib/docker.sh`, `scripts/lib/bench.sh`, `example.just`, and `local/Caddyfile` read `PORT_PREFIX`
+- `scripts/lib/services.sh`, `scripts/lib/infra.sh`, `scripts/lib/bench.sh`, `example.just`, and `local/Caddyfile` read `PORT_PREFIX`
 - Explicit `API_PORT`, `WORKER_GRPC_PORT`, `UI_PORT`, `PROXY_PORT`, `VALKEY_PORT`, and `DB_PORT` still override individual ports if needed
 - If `PORT_PREFIX` is unset, repo defaults are `9300` (proxy), `9301` (API), `9001` (worker gRPC), `9305` (UI), `6379` (Valkey), `9332` (Postgres)
 - UI-only worktree iteration:

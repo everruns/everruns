@@ -8,12 +8,11 @@ shift || true
 
 # Parse flags
 NO_WATCH=false
-NO_DOCKER=false
 NO_UI=false
 for arg in "$@"; do
   case "$arg" in
     --no-watch) NO_WATCH=true ;;
-    --no-docker) NO_DOCKER=true ;;
+    --no-docker) ;; # Accepted for backward compat (no-op, Docker removed)
     --no-ui) NO_UI=true ;;
   esac
 done
@@ -378,7 +377,7 @@ case "$cmd" in
     echo ""
     echo "⚠️  DEV MODE notes:"
     echo "   - Data is stored in memory (lost on restart)"
-    echo "   - No PostgreSQL or Docker required"
+    echo "   - No PostgreSQL required"
     echo "   - Worker runs in-process with server"
     echo ""
     if [ "$NO_WATCH" = false ]; then
@@ -446,7 +445,7 @@ case "$cmd" in
 
       # Restore terminal state
       stty sane 2>/dev/null || true
-      echo "✅ Services stopped (Docker still running if started)"
+      echo "✅ Services stopped"
       exit 0
     }
 
@@ -454,64 +453,39 @@ case "$cmd" in
 
     # Check PostgreSQL
     echo "1️⃣  Checking PostgreSQL..."
-    if [ "$NO_DOCKER" = true ]; then
-      # No Docker mode - require local PostgreSQL
-      if check_postgres_ready localhost "$DB_PORT" everruns; then
-        echo "   ✅ Local PostgreSQL is ready"
-        export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
-      else
-        echo "   ❌ PostgreSQL not running or not responding on localhost:${DB_PORT}"
-        echo "   Start PostgreSQL or remove --no-docker flag"
-        exit 1
-      fi
-    elif docker_compose_service_running postgres && check_postgres_ready localhost "$DB_PORT" everruns; then
-      echo "   ✅ Docker PostgreSQL is ready"
+    if check_postgres_ready localhost "$DB_PORT" everruns; then
+      echo "   ✅ PostgreSQL is ready"
+      ensure_postgres_db localhost "$DB_PORT" everruns everruns
       export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
     elif check_postgres_ready localhost "$DB_PORT" postgres; then
-      echo "   ✅ Local PostgreSQL is ready"
+      echo "   ✅ PostgreSQL is ready (user: postgres)"
+      ensure_postgres_db localhost "$DB_PORT" postgres everruns
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
     else
-      echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
-      if resolve_docker_compose; then
-        ensure_docker_daemon || exit 1
-        cd "$PROJECT_ROOT/local"
-        "${DOCKER_COMPOSE[@]}" up -d postgres
-        cd "$PROJECT_ROOT"
-        sleep 3
-        until check_postgres_ready localhost "$DB_PORT" everruns; do
-          echo "   Waiting for Postgres to be ready..."
-          sleep 1
-        done
+      echo "   ⚠️  PostgreSQL not found. Starting via pg_ctl..."
+      "$PROJECT_ROOT/scripts/lib/infra.sh" start || true
+      if check_postgres_ready localhost "$DB_PORT" everruns; then
         export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
-        echo "   ✅ Docker PostgreSQL started"
       else
-        echo "   ❌ No PostgreSQL available. Start PostgreSQL or install Docker."
+        echo "   ❌ PostgreSQL failed to start. Install PostgreSQL and try again."
         exit 1
       fi
     fi
 
     # Start Valkey for distributed rate limiting
-    if [ "$NO_DOCKER" = true ]; then
+    if [ -z "${VALKEY_URL:-}" ]; then
       if check_valkey_ready "$VALKEY_PORT"; then
         export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
-        echo "   ✅ Local Valkey ready (distributed rate limiting enabled)"
+        echo "   ✅ Valkey ready (distributed rate limiting enabled)"
       else
-        echo "   ℹ️  Valkey not available — using per-instance rate limiting"
-      fi
-    elif [ -z "${VALKEY_URL:-}" ]; then
-      if resolve_docker_compose 2>/dev/null; then
-        if ! docker_compose_service_running valkey; then
-          echo "   ℹ️  Starting Valkey for distributed rate limiting..."
-          cd "$PROJECT_ROOT/local"
-          "${DOCKER_COMPOSE[@]}" up -d valkey 2>/dev/null
-          cd "$PROJECT_ROOT"
+        echo "   ℹ️  Starting Valkey..."
+        "$PROJECT_ROOT/scripts/lib/infra.sh" start >/dev/null 2>&1 || true
+        if check_valkey_ready "$VALKEY_PORT"; then
+          export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
+          echo "   ✅ Valkey started (distributed rate limiting enabled)"
+        else
+          echo "   ℹ️  Valkey not available — using per-instance rate limiting"
         fi
-        until check_valkey_ready "$VALKEY_PORT"; do
-          echo "   Waiting for Valkey to be ready..."
-          sleep 1
-        done
-        export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
-        echo "   ✅ Valkey started (distributed rate limiting enabled)"
       fi
     fi
 
@@ -736,7 +710,7 @@ case "$cmd" in
       clear_run_state_dir
 
       stty sane 2>/dev/null || true
-      echo "✅ Services stopped (Docker still running if started)"
+      echo "✅ Services stopped"
       exit 0
     }
 
@@ -744,63 +718,39 @@ case "$cmd" in
 
     # Check PostgreSQL (same as start-all)
     echo "1️⃣  Checking PostgreSQL..."
-    if [ "$NO_DOCKER" = true ]; then
-      if check_postgres_ready localhost "$DB_PORT" everruns; then
-        echo "   ✅ Local PostgreSQL is ready"
-        export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
-      else
-        echo "   ❌ PostgreSQL not running or not responding on localhost:${DB_PORT}"
-        echo "   Start PostgreSQL or remove --no-docker flag"
-        exit 1
-      fi
-    elif docker_compose_service_running postgres && check_postgres_ready localhost "$DB_PORT" everruns; then
-      echo "   ✅ Docker PostgreSQL is ready"
+    if check_postgres_ready localhost "$DB_PORT" everruns; then
+      echo "   ✅ PostgreSQL is ready"
+      ensure_postgres_db localhost "$DB_PORT" everruns everruns
       export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
     elif check_postgres_ready localhost "$DB_PORT" postgres; then
-      echo "   ✅ Local PostgreSQL is ready"
+      echo "   ✅ PostgreSQL is ready (user: postgres)"
+      ensure_postgres_db localhost "$DB_PORT" postgres everruns
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
     else
-      echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
-      if resolve_docker_compose; then
-        ensure_docker_daemon || exit 1
-        cd "$PROJECT_ROOT/local"
-        "${DOCKER_COMPOSE[@]}" up -d postgres
-        cd "$PROJECT_ROOT"
-        sleep 3
-        until check_postgres_ready localhost "$DB_PORT" everruns; do
-          echo "   Waiting for Postgres to be ready..."
-          sleep 1
-        done
+      echo "   ⚠️  PostgreSQL not found. Starting via pg_ctl..."
+      "$PROJECT_ROOT/scripts/lib/infra.sh" start || true
+      if check_postgres_ready localhost "$DB_PORT" everruns; then
         export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
-        echo "   ✅ Docker PostgreSQL started"
       else
-        echo "   ❌ No PostgreSQL available. Start PostgreSQL or install Docker."
+        echo "   ❌ PostgreSQL failed to start. Install PostgreSQL and try again."
         exit 1
       fi
     fi
 
     # Start Valkey for distributed rate limiting
-    if [ "$NO_DOCKER" = true ]; then
+    if [ -z "${VALKEY_URL:-}" ]; then
       if check_valkey_ready "$VALKEY_PORT"; then
         export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
-        echo "   ✅ Local Valkey ready (distributed rate limiting enabled)"
+        echo "   ✅ Valkey ready (distributed rate limiting enabled)"
       else
-        echo "   ℹ️  Valkey not available — using per-instance rate limiting"
-      fi
-    elif [ -z "${VALKEY_URL:-}" ]; then
-      if resolve_docker_compose 2>/dev/null; then
-        if ! docker_compose_service_running valkey; then
-          echo "   ℹ️  Starting Valkey for distributed rate limiting..."
-          cd "$PROJECT_ROOT/local"
-          "${DOCKER_COMPOSE[@]}" up -d valkey 2>/dev/null
-          cd "$PROJECT_ROOT"
+        echo "   ℹ️  Starting Valkey..."
+        "$PROJECT_ROOT/scripts/lib/infra.sh" start >/dev/null 2>&1 || true
+        if check_valkey_ready "$VALKEY_PORT"; then
+          export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
+          echo "   ✅ Valkey started (distributed rate limiting enabled)"
+        else
+          echo "   ℹ️  Valkey not available — using per-instance rate limiting"
         fi
-        until check_valkey_ready "$VALKEY_PORT"; do
-          echo "   Waiting for Valkey to be ready..."
-          sleep 1
-        done
-        export VALKEY_URL=${VALKEY_URL:-$VALKEY_URL_DEFAULT}
-        echo "   ✅ Valkey started (distributed rate limiting enabled)"
       fi
     fi
 
@@ -931,11 +881,7 @@ case "$cmd" in
     signal_port_bound_services KILL
     clear_run_state_dir
 
-    if resolve_docker_compose 2>/dev/null; then
-      cd "$PROJECT_ROOT/local"
-      "${DOCKER_COMPOSE[@]}" down
-      cd "$PROJECT_ROOT"
-    fi
+    "$PROJECT_ROOT/scripts/lib/infra.sh" stop 2>/dev/null || true
 
     echo "✅ All services stopped!"
     ;;
@@ -945,7 +891,6 @@ case "$cmd" in
     echo ""
     echo "Options:"
     echo "  --no-watch    Don't use cargo-watch (faster startup, no auto-reload)"
-    echo "  --no-docker   Don't use Docker (requires local PostgreSQL for start-all)"
     echo "  --no-ui       Don't start the UI server"
     exit 1
     ;;

@@ -53,7 +53,6 @@ check_prefixed_ports() {
 
 check_example_ports() {
   local compose_file="$PROJECT_ROOT/examples/docker-compose-full.yaml"
-  local local_compose_file="$PROJECT_ROOT/local/docker-compose.yml"
 
   if rg -q '^    container_name:' "$compose_file"; then
     echo "FAIL: example compose should not hardcode container_name" >&2
@@ -64,9 +63,6 @@ check_example_ports() {
   rg -q 'reverse_proxy server:9301' "$compose_file"
   rg -q 'reverse_proxy ui:9305' "$compose_file"
   rg -q '\$\{EXAMPLE_PROXY_PORT:-9300\}:9300' "$compose_file"
-  rg -q '\$\{VALKEY_PORT:-6379\}:6379' "$local_compose_file"
-  rg -q '\$\{OTEL_GRPC_PORT:-4317\}:4317' "$local_compose_file"
-  rg -q '\$\{OTEL_HTTP_PORT:-4318\}:4318' "$local_compose_file"
 }
 
 check_caddyfile() {

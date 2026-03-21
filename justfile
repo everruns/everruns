@@ -21,19 +21,19 @@ init:
 upload-agents:
     ./scripts/lib/setup.sh upload-agents
 
-# === Docker Services ===
+# === Infrastructure Services ===
 
-# Start Docker services (Postgres, Valkey)
-start-docker:
-    ./scripts/lib/docker.sh start
+# Start infrastructure services (Postgres via pg_ctl, Valkey as process)
+start-infra:
+    ./scripts/lib/infra.sh start
 
-# Stop Docker services
-stop-docker:
-    ./scripts/lib/docker.sh stop
+# Stop infrastructure services
+stop-infra:
+    ./scripts/lib/infra.sh stop
 
-# Stop and remove all Docker volumes
+# Stop and remove all infrastructure data (pg data, valkey)
 reset:
-    ./scripts/lib/docker.sh reset
+    ./scripts/lib/infra.sh reset
 
 # === Build & Test ===
 
@@ -55,8 +55,8 @@ test-unit:
     cargo test -p everruns-internal-protocol --lib --all-features
     cargo test -p everruns-core --lib --all-features
 
-# Run integration tests (requires PostgreSQL via Docker or start-dev)
-test-integration: start-docker
+# Run integration tests (requires PostgreSQL via start-infra or externally)
+test-integration: start-infra
     #!/usr/bin/env bash
     set -e
     # Wait for postgres
@@ -118,11 +118,11 @@ sccache-stats:
 
 # === Services ===
 
-# Start in DEV MODE (in-memory storage, no Docker/PostgreSQL required)
+# Start in DEV MODE (in-memory storage, no PostgreSQL required)
 start-dev *args:
     ./scripts/lib/services.sh start-dev {{args}}
 
-# Start everything with auto-reload (Docker, API, Worker, UI)
+# Start everything with auto-reload (Postgres, Valkey, API, Worker, UI)
 start-all *args:
     ./scripts/lib/services.sh start-all {{args}}
 
@@ -130,7 +130,7 @@ start-all *args:
 start-production *args:
     ./scripts/lib/services.sh start-production {{args}}
 
-# Stop all services (API, UI, Docker)
+# Stop all services (API, Worker, UI, Postgres, Valkey)
 stop-all:
     ./scripts/lib/services.sh stop-all
 
