@@ -10,6 +10,8 @@
 //! - Live visibility: files written by other tools are immediately visible
 //! - Resource limits prevent runaway scripts (max commands, loop iterations)
 //! - Context-aware tool that requires session filesystem access
+//! - SearchCapable impl delegates grep to SessionFileStore::grep_files for
+//!   single-query indexed search instead of per-file linear scan
 
 use super::{Capability, CapabilityStatus};
 use crate::session_file::SessionFile;
@@ -19,7 +21,8 @@ use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use bashkit::{
     Bash, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem, FileSystemExt, FileType,
-    Metadata, Tool as BashkitToolTrait,
+    Metadata, SearchCapabilities, SearchCapable, SearchMatch as BashkitSearchMatch, SearchProvider,
+    SearchQuery, SearchResults, Tool as BashkitToolTrait,
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -592,6 +595,116 @@ impl FileSystem for SessionFileSystemAdapter {
         // chmod is a no-op - session filesystem doesn't track permissions
         Ok(())
     }
+
+    fn as_search_capable(&self) -> Option<&dyn SearchCapable> {
+        Some(self)
+    }
+}
+
+// ============================================================================
+// SearchCapable / SearchProvider — indexed search via SessionFileStore
+// ============================================================================
+
+impl SearchCapable for SessionFileSystemAdapter {
+    fn search_provider(&self, path: &Path) -> Option<Box<dyn SearchProvider>> {
+        // Only provide indexed search for paths inside /workspace
+        Self::to_session_path(path)?;
+        Some(Box::new(SessionSearchProvider {
+            session_id: self.session_id,
+            store: self.store.clone(),
+        }))
+    }
+}
+
+/// Bridges bashkit's synchronous `SearchProvider` to `SessionFileStore::grep_files`.
+///
+/// Uses a scoped thread with a dedicated tokio runtime to call the async
+/// store method from the sync trait, avoiding nested `block_on` calls.
+struct SessionSearchProvider {
+    session_id: SessionId,
+    store: Arc<dyn SessionFileStore>,
+}
+
+impl SearchProvider for SessionSearchProvider {
+    fn search(&self, query: &SearchQuery) -> bashkit::Result<SearchResults> {
+        let session_id = self.session_id;
+        let store = self.store.clone();
+        let root = query.root.to_string_lossy().into_owned();
+        let max_results = query.max_results;
+
+        // Honor case_insensitive flag via inline regex flag
+        let pattern = if query.case_insensitive {
+            format!("(?i){}", query.pattern)
+        } else {
+            query.pattern.clone()
+        };
+
+        // Convert root path from bash VFS path to session store path.
+        // search_provider already guards against paths outside /workspace,
+        // so to_session_path should always succeed here.
+        let session_root =
+            SessionFileSystemAdapter::to_session_path(Path::new(&root)).ok_or_else(|| {
+                bashkit::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Path not in workspace: {}", root),
+                ))
+            })?;
+        let path_pattern = if session_root == "/" {
+            None
+        } else {
+            Some(session_root)
+        };
+
+        // Bridge async grep_files to sync SearchProvider::search.
+        // Run on a dedicated thread with its own runtime to avoid nesting
+        // block_on calls within the caller's tokio runtime.
+        let matches = std::thread::scope(|s| {
+            s.spawn(|| {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))?;
+                rt.block_on(async {
+                    store
+                        .grep_files(session_id, &pattern, path_pattern.as_deref())
+                        .await
+                })
+                .map_err(|e| bashkit::Error::Io(std::io::Error::other(e.to_string())))
+            })
+            .join()
+            .unwrap_or_else(|_| {
+                Err(bashkit::Error::Io(std::io::Error::other(
+                    "search thread panicked",
+                )))
+            })
+        })?;
+
+        let truncated = max_results.is_some_and(|max| matches.len() > max);
+        let matches: Vec<BashkitSearchMatch> = matches
+            .into_iter()
+            .take(max_results.unwrap_or(usize::MAX))
+            .map(|m| {
+                // Convert session store path back to bash VFS path
+                let vfs_path = format!("{}{}", SessionFileSystemAdapter::WORKSPACE_PREFIX, m.path);
+                BashkitSearchMatch {
+                    path: PathBuf::from(vfs_path),
+                    line_number: m.line_number,
+                    line_content: m.line,
+                }
+            })
+            .collect();
+
+        Ok(SearchResults { matches, truncated })
+    }
+
+    fn capabilities(&self) -> SearchCapabilities {
+        SearchCapabilities {
+            regex: true,
+            glob_filter: false,
+            content_search: true,
+            filename_search: false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -776,11 +889,38 @@ mod tests {
 
         async fn grep_files(
             &self,
-            _session_id: SessionId,
-            _pattern: &str,
-            _path_pattern: Option<&str>,
+            session_id: SessionId,
+            pattern: &str,
+            path_pattern: Option<&str>,
         ) -> Result<Vec<GrepMatch>> {
-            Ok(vec![])
+            let regex = regex::Regex::new(pattern)
+                .map_err(|e| anyhow::anyhow!("invalid pattern: {}", e))?;
+            let files = self.files.lock().unwrap();
+            let mut matches = Vec::new();
+            for ((sid, file_path), (content, _)) in files.iter() {
+                if *sid != session_id {
+                    continue;
+                }
+                if let Some(pp) = path_pattern
+                    && !file_path.starts_with(pp)
+                {
+                    continue;
+                }
+                let decoded = SessionFile::decode_content(content, "utf-8")
+                    .unwrap_or_else(|_| content.as_bytes().to_vec());
+                let text = String::from_utf8_lossy(&decoded);
+                for (i, line) in text.lines().enumerate() {
+                    if regex.is_match(line) {
+                        matches.push(GrepMatch {
+                            path: file_path.clone(),
+                            line_number: i + 1,
+                            line: line.to_string(),
+                        });
+                    }
+                }
+            }
+            matches.sort_by(|a, b| a.path.cmp(&b.path).then(a.line_number.cmp(&b.line_number)));
+            Ok(matches)
         }
 
         async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
@@ -2062,7 +2202,7 @@ mod tests {
     }
 
     // ========================================================================
-    // bashkit API smoke tests (v0.1.10 surface)
+    // bashkit API smoke tests
     // ========================================================================
 
     #[test]
@@ -2146,5 +2286,133 @@ mod tests {
         // Just verify it doesn't panic and returns a valid object
         // The limits are used by both BASHKIT_TOOL and per-execution Bash instances
         let _ = limits;
+    }
+
+    // ========================================================================
+    // SearchCapable / indexed search tests
+    // ========================================================================
+
+    #[test]
+    fn test_adapter_is_search_capable() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        let sc = adapter.as_search_capable();
+        assert!(
+            sc.is_some(),
+            "SessionFileSystemAdapter should be SearchCapable"
+        );
+
+        let provider = sc.unwrap().search_provider(Path::new("/workspace"));
+        assert!(provider.is_some(), "Should return a SearchProvider");
+
+        let caps = provider.unwrap().capabilities();
+        assert!(caps.content_search, "Should support content search");
+        assert!(caps.regex, "Should support regex patterns");
+    }
+
+    #[tokio::test]
+    async fn test_search_provider_returns_grep_results() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store.clone());
+
+        // Write files via the adapter
+        adapter
+            .write_file(
+                Path::new("/workspace/hello.txt"),
+                b"hello world\ngoodbye world",
+            )
+            .await
+            .unwrap();
+        adapter
+            .write_file(Path::new("/workspace/other.txt"), b"no match here")
+            .await
+            .unwrap();
+
+        let sc = adapter.as_search_capable().unwrap();
+        let provider = sc.search_provider(Path::new("/workspace")).unwrap();
+
+        let results = provider
+            .search(&SearchQuery {
+                pattern: "hello".into(),
+                is_regex: false,
+                case_insensitive: false,
+                root: PathBuf::from("/workspace"),
+                glob_filter: None,
+                max_results: None,
+            })
+            .unwrap();
+
+        assert_eq!(results.matches.len(), 1);
+        assert_eq!(
+            results.matches[0].path,
+            PathBuf::from("/workspace/hello.txt")
+        );
+        assert_eq!(results.matches[0].line_number, 1);
+        assert_eq!(results.matches[0].line_content, "hello world");
+    }
+
+    #[tokio::test]
+    async fn test_search_provider_truncates_at_max_results() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store.clone());
+
+        adapter
+            .write_file(
+                Path::new("/workspace/many.txt"),
+                b"match line 1\nmatch line 2\nmatch line 3\nmatch line 4",
+            )
+            .await
+            .unwrap();
+
+        let sc = adapter.as_search_capable().unwrap();
+        let provider = sc.search_provider(Path::new("/workspace")).unwrap();
+
+        let results = provider
+            .search(&SearchQuery {
+                pattern: "match".into(),
+                is_regex: false,
+                case_insensitive: false,
+                root: PathBuf::from("/workspace"),
+                glob_filter: None,
+                max_results: Some(2),
+            })
+            .unwrap();
+
+        assert_eq!(results.matches.len(), 2);
+        assert!(results.truncated);
+    }
+
+    #[tokio::test]
+    async fn test_bash_grep_uses_indexed_search() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Create files
+        tool.execute_with_context(
+            json!({"command": "mkdir -p /workspace/src && echo 'fn main() { println!(\"hello\"); }' > /workspace/src/main.rs && echo 'fn test() {}' > /workspace/src/test.rs"}),
+            &context,
+        )
+        .await;
+
+        // Run grep -r which should use indexed search via SearchCapable
+        let result = tool
+            .execute_with_context(json!({"command": "grep -r 'fn' /workspace/src"}), &context)
+            .await;
+
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["exit_code"], 0);
+            let stdout = output["stdout"].as_str().unwrap_or("");
+            assert!(
+                stdout.contains("fn main") || stdout.contains("fn test"),
+                "grep -r should find matches via indexed search, got: {}",
+                stdout
+            );
+        } else {
+            panic!("Expected success result, got: {:?}", result);
+        }
     }
 }

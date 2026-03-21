@@ -429,8 +429,8 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bashkit"
-version = "0.1.11"
-source = "git+https://github.com/everruns/bashkit?tag=v0.1.11#3eeedbdfd3a40878252ffb9c1c490013b780adea"
+version = "0.1.12"
+source = "git+https://github.com/everruns/bashkit?tag=v0.1.12#c7765259590a6a7cc3876e2b1bdd224a52c4b73d"
 dependencies = [
  "anyhow",
  "async-trait",
