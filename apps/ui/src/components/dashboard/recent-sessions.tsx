@@ -26,7 +26,8 @@ function formatTotalTokens(usage: TokenUsage): string {
 }
 
 export function RecentSessions({ sessions, agents, models = [] }: RecentSessionsProps) {
-  const recentSessions = sessions.slice(0, 10);
+  const MAX_RECENT = 10;
+  const recentSessions = sessions.slice(0, MAX_RECENT);
   const agentMap = new Map(agents.map((a) => [a.id, a]));
   const modelMap = new Map(models.map((m) => [m.id, m]));
 

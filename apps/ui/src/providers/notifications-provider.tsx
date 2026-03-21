@@ -58,13 +58,16 @@ function sortNotifications(notifications: Notification[]): Notification[] {
   });
 }
 
+/** Maximum notifications kept in memory to limit memory growth. */
+const MAX_NOTIFICATIONS = 50;
+
 function upsertNotification(state: NotificationState, incoming: Notification): NotificationState {
   const previous = state.rawNotifications.find((item) => item.id === incoming.id);
   const notifications = sortNotifications(
     previous
       ? state.rawNotifications.map((item) => (item.id === incoming.id ? incoming : item))
       : [incoming, ...state.rawNotifications],
-  ).slice(0, 50);
+  ).slice(0, MAX_NOTIFICATIONS);
 
   let rawUnviewedCount = state.rawUnviewedCount;
   if (!previous && !incoming.viewed_at) {
@@ -134,7 +137,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!notificationsQuery.data || !isEnabled) return;
     setState({
-      rawNotifications: sortNotifications(notificationsQuery.data.data).slice(0, 50),
+      rawNotifications: sortNotifications(notificationsQuery.data.data).slice(0, MAX_NOTIFICATIONS),
       rawUnviewedCount: notificationsQuery.data.unviewed_count,
       initialized: true,
     });
