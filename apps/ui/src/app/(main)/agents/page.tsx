@@ -25,11 +25,7 @@ export default function AgentsPage() {
   const [exampleSearch, setExampleSearch] = useState("");
   const { data: agents, isLoading, error } = useAgents({ includeArchived: showArchived });
   const { data: allCapabilities } = useCapabilities();
-  const {
-    data: examples,
-    isLoading: examplesLoading,
-    error: examplesError,
-  } = useAgentExamples();
+  const { data: examples, isLoading: examplesLoading, error: examplesError } = useAgentExamples();
   const importAgent = useImportAgent();
   const adoptExample = useAdoptAgentExample();
   const fileInputRef = useRef<HTMLInputElement>(null);
