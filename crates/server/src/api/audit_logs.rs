@@ -4,7 +4,6 @@
 
 use crate::auth::middleware::{AuthState, OrgAdmin};
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{Json, Router, extract::State, routing::get};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -12,7 +11,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::common::ListResponse;
+use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -26,11 +25,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Audit log entry response
 #[derive(Debug, Serialize, ToSchema)]
@@ -67,10 +62,7 @@ async fn list_audit_logs(
     State(state): State<AppState>,
     org: OrgAdmin,
     axum::extract::Query(query): axum::extract::Query<ListAuditLogsQuery>,
-) -> Result<
-    Json<ListResponse<AuditLogResponse>>,
-    (axum::http::StatusCode, Json<super::common::ErrorResponse>),
-> {
+) -> ApiResult<ListResponse<AuditLogResponse>> {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
 
     let rows = state
@@ -87,7 +79,7 @@ async fn list_audit_logs(
             tracing::error!("Failed to list audit logs: {}", e);
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                Json(super::common::ErrorResponse {
+                Json(ErrorResponse {
                     error: "Failed to list audit logs".to_string(),
                 }),
             )

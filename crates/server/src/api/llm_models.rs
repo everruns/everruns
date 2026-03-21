@@ -1,11 +1,12 @@
 // LLM Model API endpoints
 // Routes: /v1/llm-providers/:provider_id/models/... and /v1/llm-models/...
 
-use crate::api::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
+use crate::api::common::{
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
+};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::llm_model::{LLM_MODEL_MANAGE, LLM_MODEL_VIEW};
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -47,11 +48,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Request to create a new LLM model for a provider
 #[derive(Debug, Deserialize, ToSchema)]
@@ -179,7 +176,7 @@ pub async fn list_provider_models(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(provider_id): Path<String>,
-) -> Result<Json<ListResponse<LlmModel>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ListResponse<LlmModel>> {
     let provider_id: ProviderId = provider_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -215,7 +212,7 @@ pub async fn list_all_models(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListModelsQuery>,
-) -> Result<Json<ListResponse<LlmModelWithProvider>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ListResponse<LlmModelWithProvider>> {
     let caller = Caller::from(&org);
     let models = state
         .service
@@ -249,7 +246,7 @@ pub async fn get_model(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<LlmModelWithProvider>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<LlmModelWithProvider> {
     let model_id: ModelId = id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -290,7 +287,7 @@ pub async fn update_model(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(req): Json<UpdateLlmModelRequest>,
-) -> Result<Json<LlmModel>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<LlmModel> {
     let model_id: ModelId = id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,

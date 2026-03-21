@@ -5,7 +5,6 @@
 
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin, OrgContext};
 use crate::storage::{StorageBackend, models::UpdateOrganizationSettings};
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -18,7 +17,9 @@ use everruns_core::{
 };
 use everruns_durable::UpdateField;
 
-use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
+use super::common::{
+    ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -64,11 +65,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Request to create a new organization
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -157,7 +154,7 @@ pub fn routes(state: AppState) -> Router {
 pub async fn list_organizations(
     State(state): State<AppState>,
     user: AuthUser,
-) -> Result<Json<ListResponse<OrganizationResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ListResponse<OrganizationResponse>> {
     // Query the database for fresh membership data.
     // Previously this read from user.organizations (populated at auth time),
     // which meant newly created orgs were invisible until re-login.
@@ -299,7 +296,7 @@ pub async fn get_organization(
     State(state): State<AppState>,
     user: AuthUser,
     Path(org_public_id): Path<String>,
-) -> Result<Json<OrganizationResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<OrganizationResponse> {
     // Validate format
     if !validate_org_public_id(&org_public_id) {
         return Err(ErrorResponse::not_found("Organization"));
@@ -346,7 +343,7 @@ pub async fn update_organization(
     user: AuthUser,
     Path(org_public_id): Path<String>,
     Json(req): Json<UpdateOrganizationRequest>,
-) -> Result<Json<OrganizationResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<OrganizationResponse> {
     use crate::storage::models::UpdateOrganization;
 
     // Validate format
@@ -551,7 +548,7 @@ pub struct UpdateMemberRoleRequest {
 pub async fn list_members(
     State(state): State<AppState>,
     org: OrgContext,
-) -> Result<Json<ListResponse<MemberResponse>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ListResponse<MemberResponse>> {
     let members = state
         .db
         .list_organization_members_with_users(org.org_id)
@@ -660,7 +657,7 @@ pub async fn update_member_role(
     OrgAdmin(org): OrgAdmin,
     Path((_org_public_id, user_id_str)): Path<(String, String)>,
     Json(req): Json<UpdateMemberRoleRequest>,
-) -> Result<Json<MemberResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<MemberResponse> {
     let new_role: OrgRole = req.role.parse().map_err(|_| {
         (
             StatusCode::BAD_REQUEST,

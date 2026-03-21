@@ -15,7 +15,6 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Query, State},
@@ -25,7 +24,7 @@ use axum::{
 use everruns_core::typed_id::SessionId;
 use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
 
-use super::common::{ListResponse, verify_session_ownership};
+use super::common::{ListResponse, impl_auth_state, verify_session_ownership};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -150,11 +149,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create session files routes
 pub fn routes(state: AppState) -> Router {

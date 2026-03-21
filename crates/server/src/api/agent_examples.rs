@@ -7,7 +7,6 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::seed::{SEED_AGENTS, SeedAgent};
 use crate::services::CapabilityService;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -20,7 +19,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use super::agents::CreateAgentRequest;
-use super::common::{ApiPolicyResultExt, ErrorResponse};
+use super::common::{ApiPolicyResultExt, ErrorResponse, impl_auth_state};
 
 use crate::services::AgentService;
 
@@ -89,11 +88,7 @@ pub struct AppState {
     pub platform_definition: Arc<PlatformDefinition>,
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create agent example routes
 pub fn routes(state: AppState) -> Router {

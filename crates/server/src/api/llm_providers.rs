@@ -5,7 +5,6 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::llm_provider::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
 use crate::services::{LlmProviderService, LlmResolverService, ModelSyncService, SyncResult};
 use crate::storage::{EncryptionService, StorageBackend};
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -22,7 +21,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
+use super::common::{
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -52,11 +53,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Request to create a new LLM provider
 #[derive(Debug, Deserialize, ToSchema)]
@@ -156,7 +153,7 @@ pub async fn create_provider(
 pub async fn list_providers(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> Result<Json<ListResponse<LlmProvider>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ListResponse<LlmProvider>> {
     let caller = Caller::from(&org);
     let providers = state
         .service
@@ -185,7 +182,7 @@ pub async fn get_provider(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<LlmProvider>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<LlmProvider> {
     let provider_id: ProviderId = id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -226,7 +223,7 @@ pub async fn update_provider(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(req): Json<UpdateLlmProviderRequest>,
-) -> Result<Json<LlmProvider>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<LlmProvider> {
     let provider_id: ProviderId = id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -311,7 +308,7 @@ pub async fn sync_models(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<SyncModelsResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<SyncModelsResponse> {
     let provider_id: ProviderId = id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,

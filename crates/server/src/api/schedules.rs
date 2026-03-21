@@ -11,7 +11,7 @@
 
 use axum::{
     Json, Router,
-    extract::{FromRef, Path, Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{delete, get, patch, post},
 };
@@ -26,7 +26,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::common::ErrorResponse;
+use super::common::{ApiResult, ErrorResponse, impl_auth_state};
 use crate::auth::middleware::{AuthState, AuthUser};
 
 /// App state for schedule routes
@@ -37,11 +37,7 @@ pub struct ScheduleAppState {
     auth: AuthState,
 }
 
-impl FromRef<ScheduleAppState> for AuthState {
-    fn from_ref(state: &ScheduleAppState) -> Self {
-        state.auth.clone()
-    }
-}
+impl_auth_state!(ScheduleAppState);
 
 impl ScheduleAppState {
     /// Create new state with an optional workflow event store and auth state
@@ -514,7 +510,7 @@ pub async fn list_schedules(
     _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Query(query): Query<ListSchedulesQuery>,
-) -> Result<Json<SchedulesListResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<SchedulesListResponse> {
     let store = state.get_store()?;
 
     let target_type = query.target_type.and_then(|t| match t.as_str() {
@@ -580,7 +576,7 @@ pub async fn get_schedule(
     _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
-) -> Result<Json<ScheduleResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ScheduleResponse> {
     let store = state.get_store()?;
 
     let schedule = store.get_schedule(schedule_id).await.map_err(|e| match e {
@@ -626,7 +622,7 @@ pub async fn update_schedule(
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
     Json(req): Json<UpdateScheduleRequest>,
-) -> Result<Json<ScheduleResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ScheduleResponse> {
     let store = state.get_store()?;
 
     // Parse target type if provided
@@ -777,7 +773,7 @@ pub async fn pause_schedule(
     _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
-) -> Result<Json<ScheduleResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ScheduleResponse> {
     let store = state.get_store()?;
 
     let update = UpdateSchedule {
@@ -844,7 +840,7 @@ pub async fn resume_schedule(
     _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
-) -> Result<Json<ScheduleResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ScheduleResponse> {
     let store = state.get_store()?;
 
     // Get current schedule to get cron expression
@@ -931,7 +927,7 @@ pub async fn trigger_schedule(
     _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
-) -> Result<Json<TriggerResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<TriggerResponse> {
     let store = state.get_store()?;
 
     // Get schedule to verify it exists
@@ -996,7 +992,7 @@ pub async fn list_schedule_executions(
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
     Query(query): Query<ListExecutionsQuery>,
-) -> Result<Json<ScheduleExecutionsListResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ScheduleExecutionsListResponse> {
     let store = state.get_store()?;
 
     // Verify schedule exists
@@ -1077,7 +1073,7 @@ pub async fn get_execution(
     _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(execution_id): Path<Uuid>,
-) -> Result<Json<ScheduleExecutionResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ScheduleExecutionResponse> {
     let store = state.get_store()?;
 
     let execution = store
@@ -1123,7 +1119,7 @@ pub async fn get_schedule_stats(
     _auth: AuthUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
-) -> Result<Json<ScheduleStatsResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ScheduleStatsResponse> {
     let store = state.get_store()?;
 
     // Verify schedule exists

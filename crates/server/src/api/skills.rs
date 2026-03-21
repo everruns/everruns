@@ -4,12 +4,13 @@
 // CRUD for Agent Skills (agentskills.io format).
 // Supports both SKILL.md text upload and ZIP archive upload.
 
-use crate::api::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
+use crate::api::common::{
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
+};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::SkillService;
 use crate::services::skill::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Query, State},
@@ -92,11 +93,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 // ============================================
 // Helpers
@@ -260,7 +257,7 @@ pub async fn list_skills(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListSkillsQuery>,
-) -> Result<Json<ListResponse<Skill>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ListResponse<Skill>> {
     let caller = Caller::from(&org);
     let skills = state
         .service
@@ -292,7 +289,7 @@ pub async fn get_skill(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
-) -> Result<Json<Skill>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Skill> {
     let skill_id: SkillId = skill_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -325,7 +322,7 @@ pub async fn get_skill_content(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
-) -> Result<Json<SkillContent>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<SkillContent> {
     let skill_id: SkillId = skill_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -359,7 +356,7 @@ pub async fn update_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
     Json(req): Json<UpdateSkillRequest>,
-) -> Result<Json<Skill>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Skill> {
     let skill_id: SkillId = skill_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;

@@ -10,7 +10,6 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -20,7 +19,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use everruns_core::typed_id::{MessageId, SessionId};
 
-use super::common::{ErrorResponse, ListResponse};
+use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
@@ -179,11 +178,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create message routes (nested under sessions)
 pub fn routes(state: AppState) -> Router {
@@ -313,7 +308,7 @@ pub async fn list_messages(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<Json<ListResponse<Message>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ListResponse<Message>> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,

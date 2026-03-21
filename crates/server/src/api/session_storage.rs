@@ -4,7 +4,6 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -16,7 +15,7 @@ use serde::Serialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::{ApiResultExt, ListResponse, verify_session_ownership};
+use super::common::{ApiResultExt, ListResponse, impl_auth_state, verify_session_ownership};
 
 /// Key-value entry info (key and timestamps, no value)
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -55,11 +54,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create session storage routes (nested under sessions)
 pub fn routes(state: AppState) -> Router {

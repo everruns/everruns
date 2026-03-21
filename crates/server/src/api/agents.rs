@@ -4,7 +4,6 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::errors::ResourceNotFoundError;
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     body::Body,
@@ -21,7 +20,8 @@ use everruns_core::{
 };
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ErrorResponse, PaginatedResponse, Pagination,
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, PaginatedResponse, Pagination,
+    impl_auth_state,
 };
 use super::validation::{
     validate_create_agent_input, validate_import_file_size, validate_update_agent_input,
@@ -231,11 +231,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// GET /v1/agents/config
 #[utoipa::path(
@@ -369,7 +365,7 @@ pub async fn list_agents(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListAgentsQuery>,
-) -> Result<Json<PaginatedResponse<Agent>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<PaginatedResponse<Agent>> {
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
     let pagination = Pagination::new(offset, limit);
@@ -408,7 +404,7 @@ pub async fn get_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
-) -> Result<Json<Agent>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Agent> {
     let agent_id: AgentId = agent_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -450,7 +446,7 @@ pub async fn update_agent(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
     Json(req): Json<UpdateAgentRequest>,
-) -> Result<Json<Agent>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Agent> {
     let agent_id: AgentId = agent_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -961,7 +957,7 @@ pub async fn preview_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<PreviewAgentRequest>,
-) -> Result<Json<AgentPreviewResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<AgentPreviewResponse> {
     let (system_prompt, mut tools) = state
         .capability_service
         .preview(org.org_id, &req.system_prompt, &req.capabilities)
