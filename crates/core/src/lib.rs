@@ -71,6 +71,7 @@ pub mod capabilities;
 pub mod command;
 pub mod dependency_blocker;
 pub mod error;
+pub mod llm_driver_helpers;
 pub mod llm_driver_registry;
 pub mod llm_retry;
 pub mod message;
