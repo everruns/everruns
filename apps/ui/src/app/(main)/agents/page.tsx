@@ -88,11 +88,7 @@ export default function AgentsPage() {
             accept=".md,.yaml,.yml,.json"
             className="hidden"
           />
-          <Button
-            variant="outline"
-            onClick={handleImportClick}
-            disabled={importAgent.isPending}
-          >
+          <Button variant="outline" onClick={handleImportClick} disabled={importAgent.isPending}>
             <Upload className="w-4 h-4 mr-2" />
             {importAgent.isPending ? "Importing..." : "Import"}
           </Button>
