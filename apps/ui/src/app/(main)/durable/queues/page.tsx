@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -14,23 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   useTasks,
   useTaskStats,
@@ -38,9 +22,7 @@ import {
   useRequeueDlqEntry,
   useDeleteDlqEntry,
   usePurgeDlq,
-  useEnqueueTask,
 } from "@/hooks";
-import type { DurableTask, TaskStatus, DlqEntry, ActivityTypeStats } from "@/lib/api/types";
 import {
   AlertTriangle,
   CheckCircle,
@@ -49,391 +31,22 @@ import {
   Activity,
   RefreshCw,
   Search,
-  RotateCcw,
   Inbox,
   ListTodo,
   Plus,
   Trash2,
   ArrowUpDown,
-  ExternalLink,
   Timer,
 } from "lucide-react";
-import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { CopyButton } from "@/components/ui/copy-button";
-import { formatDistanceToNow, formatDurationCompact } from "@/lib/formatting";
-import { getTaskStatusBadgeVariant } from "@/lib/status-utils";
+import { formatDurationCompact } from "@/lib/formatting";
+
+import { QueueStatsCard } from "./queue-stats-card";
+import { TaskRow } from "./task-row";
+import { DlqRow } from "./dlq-row";
+import { EnqueueDialog } from "./enqueue-dialog";
 
 type TabValue = "overview" | "tasks" | "dlq";
-
-function getTaskStatusIcon(status: TaskStatus) {
-  switch (status) {
-    case "completed":
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
-    case "claimed":
-      return <Activity className="h-4 w-4 text-blue-500 animate-pulse" />;
-    case "failed":
-      return <XCircle className="h-4 w-4 text-red-500" />;
-    case "dead":
-      return <AlertTriangle className="h-4 w-4 text-red-700" />;
-    case "cancelled":
-      return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-    default:
-      return <Clock className="h-4 w-4 text-gray-500" />;
-  }
-}
-
-// --- Queue Stats Card ---
-
-function QueueStatsCard({
-  activityType,
-  stats,
-}: {
-  activityType: string;
-  stats: ActivityTypeStats;
-}) {
-  const totalActive = stats.pending + stats.claimed;
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium truncate">{activityType}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <p className="text-muted-foreground text-xs">Pending</p>
-            <p className="font-semibold text-lg">{stats.pending}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground text-xs">Claimed</p>
-            <p className="font-semibold text-lg">{stats.claimed}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground text-xs">Completed/hr</p>
-            <p className="font-medium">{stats.completed_last_hour}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground text-xs">Failed/hr</p>
-            <p className={cn("font-medium", stats.failed_last_hour > 0 && "text-red-500")}>
-              {stats.failed_last_hour}
-            </p>
-          </div>
-          <div>
-            <p className="text-muted-foreground text-xs">Avg Duration</p>
-            <p className="font-medium">{formatDurationCompact(stats.avg_duration_ms)}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground text-xs">p99 Duration</p>
-            <p className="font-medium">{formatDurationCompact(stats.p99_duration_ms)}</p>
-          </div>
-        </div>
-        {totalActive > 0 && (
-          <div className="mt-3">
-            <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 rounded-full"
-                style={{ width: `${(stats.claimed / totalActive) * 100}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {stats.claimed}/{totalActive} processing
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// --- Task Row ---
-
-function TaskRow({ task }: { task: DurableTask }) {
-  return (
-    <TableRow>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          {getTaskStatusIcon(task.status)}
-          <div>
-            <p className="font-medium">{task.activity_type}</p>
-            <p className="text-xs text-muted-foreground">{task.activity_id}</p>
-          </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        <Badge variant={getTaskStatusBadgeVariant(task.status)}>{task.status}</Badge>
-      </TableCell>
-      <TableCell>
-        <Badge variant="outline">{task.priority}</Badge>
-      </TableCell>
-      <TableCell>
-        <span className="text-sm">
-          {task.attempt}/{task.max_attempts}
-        </span>
-      </TableCell>
-      <TableCell>
-        {task.claimed_by ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger className="text-sm font-mono text-muted-foreground">
-                {task.claimed_by.slice(0, 12)}...
-              </TooltipTrigger>
-              <TooltipContent>{task.claimed_by}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <span className="text-sm text-muted-foreground">-</span>
-        )}
-      </TableCell>
-      <TableCell>
-        {task.last_error ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger className="text-sm text-red-600 max-w-[150px] truncate block">
-                {task.last_error}
-              </TooltipTrigger>
-              <TooltipContent className="max-w-sm">
-                <pre className="text-xs whitespace-pre-wrap">{task.last_error}</pre>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <span className="text-sm text-muted-foreground">-</span>
-        )}
-      </TableCell>
-      <TableCell>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(task.created_at), { addSuffix: true })}
-            </TooltipTrigger>
-            <TooltipContent>{new Date(task.created_at).toLocaleString()}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-1">
-          <CopyButton value={task.id} />
-          {task.workflow_id ? (
-            <Link href={`/durable/workflows/${task.workflow_id}`}>
-              <Button variant="ghost" size="sm">
-                <ExternalLink className="h-3 w-3" />
-              </Button>
-            </Link>
-          ) : (
-            <Badge variant="outline" className="text-xs">
-              standalone
-            </Badge>
-          )}
-        </div>
-      </TableCell>
-    </TableRow>
-  );
-}
-
-// --- DLQ Row ---
-
-function DlqRow({
-  entry,
-  onRequeue,
-  onDelete,
-}: {
-  entry: DlqEntry;
-  onRequeue: (id: string) => void;
-  onDelete: (id: string) => void;
-}) {
-  return (
-    <TableRow>
-      <TableCell>
-        <div>
-          <p className="font-medium">{entry.activity_type}</p>
-          <p className="text-xs text-muted-foreground">{entry.activity_id}</p>
-        </div>
-      </TableCell>
-      <TableCell>
-        <span className="text-sm">{entry.attempts}</span>
-      </TableCell>
-      <TableCell>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger className="text-sm text-red-600 max-w-[200px] truncate block">
-              {entry.last_error}
-            </TooltipTrigger>
-            <TooltipContent className="max-w-sm">
-              <pre className="text-xs whitespace-pre-wrap">{entry.last_error}</pre>
-              {entry.error_history.length > 1 && (
-                <div className="mt-2 pt-2 border-t">
-                  <p className="text-xs font-medium mb-1">
-                    Error history ({entry.error_history.length}):
-                  </p>
-                  {entry.error_history.map((err, i) => (
-                    <p key={i} className="text-xs text-muted-foreground">
-                      {i + 1}. {err}
-                    </p>
-                  ))}
-                </div>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </TableCell>
-      <TableCell>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(entry.dead_at), { addSuffix: true })}
-            </TooltipTrigger>
-            <TooltipContent>{new Date(entry.dead_at).toLocaleString()}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </TableCell>
-      <TableCell>
-        <span className="text-sm">{entry.requeue_count}</span>
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => onRequeue(entry.id)}>
-            <RotateCcw className="h-3 w-3 mr-1" />
-            Requeue
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => onDelete(entry.id)}>
-            <Trash2 className="h-3 w-3 text-muted-foreground" />
-          </Button>
-          {entry.workflow_id ? (
-            <Link href={`/durable/workflows/${entry.workflow_id}`}>
-              <Button variant="ghost" size="sm">
-                <ExternalLink className="h-3 w-3" />
-              </Button>
-            </Link>
-          ) : (
-            <Badge variant="outline" className="text-xs">
-              standalone
-            </Badge>
-          )}
-        </div>
-      </TableCell>
-    </TableRow>
-  );
-}
-
-// --- Enqueue Dialog ---
-
-function EnqueueDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const [activityType, setActivityType] = useState("");
-  const [inputJson, setInputJson] = useState("{}");
-  const [maxAttempts, setMaxAttempts] = useState("3");
-  const [priority, setPriority] = useState("0");
-  const [jsonError, setJsonError] = useState<string | null>(null);
-  const enqueueMutation = useEnqueueTask();
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const parsed = JSON.parse(inputJson);
-      setJsonError(null);
-      enqueueMutation.mutate(
-        {
-          activity_type: activityType,
-          input: parsed,
-          max_attempts: parseInt(maxAttempts, 10),
-          priority: parseInt(priority, 10),
-        },
-        {
-          onSuccess: () => {
-            setActivityType("");
-            setInputJson("{}");
-            setMaxAttempts("3");
-            setPriority("0");
-            onOpenChange(false);
-          },
-        },
-      );
-    } catch {
-      setJsonError("Invalid JSON");
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Enqueue Task</DialogTitle>
-          <DialogDescription>Add a standalone task to the queue.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="activity-type">Activity Type</Label>
-            <Input
-              id="activity-type"
-              value={activityType}
-              onChange={(e) => setActivityType(e.target.value)}
-              placeholder="e.g. send_email"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="input-json">Input (JSON)</Label>
-            <textarea
-              id="input-json"
-              value={inputJson}
-              onChange={(e) => {
-                setInputJson(e.target.value);
-                setJsonError(null);
-              }}
-              className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder='{"key": "value"}'
-            />
-            {jsonError && <p className="text-sm text-destructive">{jsonError}</p>}
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="max-attempts">Max Attempts</Label>
-              <Input
-                id="max-attempts"
-                type="number"
-                min="1"
-                max="10"
-                value={maxAttempts}
-                onChange={(e) => setMaxAttempts(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="priority">Priority</Label>
-              <Input
-                id="priority"
-                type="number"
-                min="-10"
-                max="10"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-              />
-            </div>
-          </div>
-          {enqueueMutation.isError && (
-            <p className="text-sm text-destructive">
-              Failed to enqueue: {enqueueMutation.error.message}
-            </p>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={enqueueMutation.isPending || !activityType.trim()}>
-              {enqueueMutation.isPending ? "Enqueuing..." : "Enqueue"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// --- Main Page ---
 
 export default function QueuesPage() {
   const [activeTab, setActiveTab] = useState<TabValue>("overview");
