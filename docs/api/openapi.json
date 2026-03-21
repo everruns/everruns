@@ -5646,6 +5646,17 @@
             ],
             "description": "API key for authentication (optional)."
           },
+          "auth_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpServerAuthMode",
+                "description": "Authentication mode. Defaults to `api_key` when `api_key` is provided, otherwise `none`."
+              }
+            ]
+          },
           "description": {
             "type": [
               "string",
@@ -7723,6 +7734,10 @@
                   "format": "date-time",
                   "description": "Timestamp when the MCP server was archived."
                 },
+                "auth_mode": {
+                  "$ref": "#/components/schemas/McpServerAuthMode",
+                  "description": "Authentication mode for this MCP server."
+                },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
@@ -7763,6 +7778,13 @@
                   "type": "string",
                   "description": "Display name of the MCP server.",
                   "example": "atlassian-mcp-server"
+                },
+                "oauth_provider_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Stable provider id used for user-scoped OAuth connections."
                 },
                 "status": {
                   "$ref": "#/components/schemas/McpServerStatus",
@@ -8904,6 +8926,10 @@
             "format": "date-time",
             "description": "Timestamp when the MCP server was archived."
           },
+          "auth_mode": {
+            "$ref": "#/components/schemas/McpServerAuthMode",
+            "description": "Authentication mode for this MCP server."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -8945,6 +8971,13 @@
             "description": "Display name of the MCP server.",
             "example": "atlassian-mcp-server"
           },
+          "oauth_provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable provider id used for user-scoped OAuth connections."
+          },
           "status": {
             "$ref": "#/components/schemas/McpServerStatus",
             "description": "Current lifecycle status of the MCP server."
@@ -8964,6 +8997,15 @@
             "example": "https://mcp.atlassian.com/v1/mcp"
           }
         }
+      },
+      "McpServerAuthMode": {
+        "type": "string",
+        "description": "MCP server authentication mode.",
+        "enum": [
+          "none",
+          "api_key",
+          "o_auth"
+        ]
       },
       "McpServerStatus": {
         "type": "string",
@@ -11740,6 +11782,17 @@
               "null"
             ],
             "description": "API key for authentication. Set to update."
+          },
+          "auth_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpServerAuthMode",
+                "description": "Authentication mode."
+              }
+            ]
           },
           "description": {
             "type": [
