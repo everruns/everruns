@@ -5,15 +5,28 @@ import { usePublishApp, useUnpublishApp, useUpdateApp } from "@/hooks/use-apps";
 import { queryKeys } from "@/lib/query-keys";
 import type { App, UpdateAppRequest } from "@/lib/api/types";
 
-jest.mock("@/lib/api/apps", () => ({
-  createApp: jest.fn(),
-  deleteApp: jest.fn(),
-  getApp: jest.fn(),
-  getApps: jest.fn(),
-  publishApp: jest.fn(),
-  unpublishApp: jest.fn(),
-  updateApp: jest.fn(),
-}));
+jest.mock("@/lib/api/apps", () => {
+  const api = {
+    create: jest.fn(),
+    list: jest.fn(),
+    get: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+    destroy: jest.fn(),
+  };
+
+  return {
+    appsCrudApi: api,
+    createApp: api.create,
+    deleteApp: api.delete,
+    destroyApp: api.destroy,
+    getApp: api.get,
+    getApps: api.list,
+    publishApp: jest.fn(),
+    unpublishApp: jest.fn(),
+    updateApp: api.update,
+  };
+});
 
 const mockUseOrg = jest.fn();
 jest.mock("@/providers/org-provider", () => ({

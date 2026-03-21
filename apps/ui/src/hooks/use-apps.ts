@@ -1,20 +1,11 @@
 // App hooks for Slack bot integration
 "use client";
 
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import {
-  createApp,
-  deleteApp,
-  destroyApp,
-  getApp,
-  getApps,
-  publishApp,
-  unpublishApp,
-  updateApp,
-} from "@/lib/api/apps";
-import { queryKeys } from "@/lib/query-keys";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { appsCrudApi, publishApp, unpublishApp } from "@/lib/api/apps";
 import type { App, CreateAppRequest, UpdateAppRequest } from "@/lib/api/types";
-import { useOrg } from "@/providers/org-provider";
+import { queryKeys } from "@/lib/query-keys";
+import { createCrudHooks } from "./create-crud-hooks";
 
 // Keep list/detail app caches in sync so detail pages do not wait for a background refetch.
 function syncAppCache(queryClient: QueryClient, app: App) {
@@ -29,118 +20,51 @@ function syncAppCache(queryClient: QueryClient, app: App) {
   );
 }
 
-interface UseAppsOptions {
-  includeArchived?: boolean;
-}
+const appCrudHooks = createCrudHooks<App, CreateAppRequest, UpdateAppRequest>({
+  api: appsCrudApi,
+  queryKeys: queryKeys.apps,
+  syncEntityCache: syncAppCache,
+});
 
-export function useApps(options: UseAppsOptions = {}) {
-  const { currentOrg, isLoading: orgLoading } = useOrg();
-  const org = currentOrg?.public_id;
-  const includeArchived = options.includeArchived ?? false;
-
-  const query = useQuery({
-    queryKey: [...queryKeys.apps.list(includeArchived), org],
-    queryFn: () => getApps(includeArchived),
-    enabled: !!org,
-  });
-
-  return {
-    ...query,
-    isLoading: orgLoading || query.isLoading,
-  };
-}
-
-export function useApp(appId: string | undefined) {
-  const { currentOrg, isLoading: orgLoading } = useOrg();
-  const org = currentOrg?.public_id;
-
-  const query = useQuery({
-    queryKey: [...queryKeys.apps.detail(appId!), org],
-    queryFn: () => getApp(appId!),
-    enabled: !!org && !!appId,
-  });
-
-  return {
-    ...query,
-    isLoading: orgLoading || query.isLoading,
-  };
-}
-
-export function useCreateApp() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (request: CreateAppRequest) => createApp(request),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
-    },
-  });
-}
+export const useApps = appCrudHooks.useList;
+export const useApp = appCrudHooks.useDetail;
+export const useCreateApp = appCrudHooks.useCreate;
+export const useDeleteApp = appCrudHooks.useDelete;
+export const useDestroyApp = appCrudHooks.useDestroy;
 
 export function useUpdateApp() {
+  const mutation = appCrudHooks.useUpdate();
+
+  return {
+    ...mutation,
+    mutate: (
+      variables: { appId: string; data: UpdateAppRequest },
+      options?: Parameters<typeof mutation.mutate>[1],
+    ) => mutation.mutate({ id: variables.appId, request: variables.data }, options),
+    mutateAsync: (
+      variables: { appId: string; data: UpdateAppRequest },
+      options?: Parameters<typeof mutation.mutateAsync>[1],
+    ) => mutation.mutateAsync({ id: variables.appId, request: variables.data }, options),
+  };
+}
+
+function useAppStatusMutation(mutationFn: (appId: string) => Promise<App>) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ appId, data }: { appId: string; data: UpdateAppRequest }) =>
-      updateApp(appId, data),
-    onSuccess: async (app) => {
+    mutationFn,
+    onSuccess: (app) => {
       syncAppCache(queryClient, app);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(app.id) }),
-      ]);
-    },
-  });
-}
-
-export function useDeleteApp() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (appId: string) => deleteApp(appId),
-    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
-    },
-  });
-}
-
-export function useDestroyApp() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (appId: string) => destroyApp(appId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(app.id) });
     },
   });
 }
 
 export function usePublishApp() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (appId: string) => publishApp(appId),
-    onSuccess: async (app) => {
-      syncAppCache(queryClient, app);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(app.id) }),
-      ]);
-    },
-  });
+  return useAppStatusMutation(publishApp);
 }
 
 export function useUnpublishApp() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (appId: string) => unpublishApp(appId),
-    onSuccess: async (app) => {
-      syncAppCache(queryClient, app);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(app.id) }),
-      ]);
-    },
-  });
+  return useAppStatusMutation(unpublishApp);
 }

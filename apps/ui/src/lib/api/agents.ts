@@ -2,43 +2,25 @@
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
 import { api, throwApiError } from "./client";
+import { createCrudApi } from "./crud";
 import type {
   Agent,
   AgentPreviewResponse,
   CreateAgentRequest,
   PreviewAgentRequest,
   UpdateAgentRequest,
-  ListResponse,
 } from "./types";
 
-export async function createAgent(request: CreateAgentRequest): Promise<Agent> {
-  const response = await api.post<Agent>("/v1/agents", request);
-  return response.data;
-}
+export const agentsCrudApi = createCrudApi<Agent, CreateAgentRequest, UpdateAgentRequest>(
+  "/v1/agents",
+);
 
-export async function listAgents(includeArchived = false): Promise<Agent[]> {
-  const path = includeArchived ? "/v1/agents?include_archived=true" : "/v1/agents";
-  const response = await api.get<ListResponse<Agent>>(path);
-  return response.data.data;
-}
-
-export async function getAgent(agentId: string): Promise<Agent> {
-  const response = await api.get<Agent>(`/v1/agents/${agentId}`);
-  return response.data;
-}
-
-export async function updateAgent(agentId: string, request: UpdateAgentRequest): Promise<Agent> {
-  const response = await api.patch<Agent>(`/v1/agents/${agentId}`, request);
-  return response.data;
-}
-
-export async function deleteAgent(agentId: string): Promise<void> {
-  await api.delete(`/v1/agents/${agentId}`);
-}
-
-export async function destroyAgent(agentId: string): Promise<void> {
-  await api.post(`/v1/agents/${agentId}/delete`);
-}
+export const createAgent = agentsCrudApi.create;
+export const listAgents = agentsCrudApi.list;
+export const getAgent = agentsCrudApi.get;
+export const updateAgent = agentsCrudApi.update;
+export const deleteAgent = agentsCrudApi.delete;
+export const destroyAgent = agentsCrudApi.destroy;
 
 export async function exportAgent(agentId: string): Promise<string> {
   // Raw fetch needed: returns text/markdown, not JSON

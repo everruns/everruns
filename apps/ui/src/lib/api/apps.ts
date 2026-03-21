@@ -2,36 +2,17 @@
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
 import { api } from "./client";
-import type { App, CreateAppRequest, UpdateAppRequest, ListResponse } from "./types";
+import { createCrudApi } from "./crud";
+import type { App, CreateAppRequest, UpdateAppRequest } from "./types";
 
-export async function getApps(includeArchived = false): Promise<App[]> {
-  const path = includeArchived ? "/v1/apps?include_archived=true" : "/v1/apps";
-  const response = await api.get<ListResponse<App>>(path);
-  return response.data.data;
-}
+export const appsCrudApi = createCrudApi<App, CreateAppRequest, UpdateAppRequest>("/v1/apps");
 
-export async function getApp(appId: string): Promise<App> {
-  const response = await api.get<App>(`/v1/apps/${appId}`);
-  return response.data;
-}
-
-export async function createApp(data: CreateAppRequest): Promise<App> {
-  const response = await api.post<App>("/v1/apps", data);
-  return response.data;
-}
-
-export async function updateApp(appId: string, data: UpdateAppRequest): Promise<App> {
-  const response = await api.patch<App>(`/v1/apps/${appId}`, data);
-  return response.data;
-}
-
-export async function deleteApp(appId: string): Promise<void> {
-  await api.delete(`/v1/apps/${appId}`);
-}
-
-export async function destroyApp(appId: string): Promise<void> {
-  await api.post(`/v1/apps/${appId}/delete`);
-}
+export const getApps = appsCrudApi.list;
+export const getApp = appsCrudApi.get;
+export const createApp = appsCrudApi.create;
+export const updateApp = appsCrudApi.update;
+export const deleteApp = appsCrudApi.delete;
+export const destroyApp = appsCrudApi.destroy;
 
 export async function publishApp(appId: string): Promise<App> {
   const response = await api.post<App>(`/v1/apps/${appId}/publish`);

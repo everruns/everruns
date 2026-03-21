@@ -1,44 +1,18 @@
 // MCP Server API functions
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { api } from "./client";
-import type {
+import { createCrudApi } from "./crud";
+import type { CreateMcpServerRequest, McpServer, UpdateMcpServerRequest } from "./types";
+
+export const mcpServersCrudApi = createCrudApi<
   McpServer,
   CreateMcpServerRequest,
-  UpdateMcpServerRequest,
-  ListResponse,
-} from "./types";
+  UpdateMcpServerRequest
+>("/v1/mcp-servers");
 
-// MCP Server CRUD
-
-export async function getMcpServers(includeArchived = false): Promise<McpServer[]> {
-  const path = includeArchived ? "/v1/mcp-servers?include_archived=true" : "/v1/mcp-servers";
-  const response = await api.get<ListResponse<McpServer>>(path);
-  return response.data.data;
-}
-
-export async function getMcpServer(serverId: string): Promise<McpServer> {
-  const response = await api.get<McpServer>(`/v1/mcp-servers/${serverId}`);
-  return response.data;
-}
-
-export async function createMcpServer(data: CreateMcpServerRequest): Promise<McpServer> {
-  const response = await api.post<McpServer>("/v1/mcp-servers", data);
-  return response.data;
-}
-
-export async function updateMcpServer(
-  serverId: string,
-  data: UpdateMcpServerRequest,
-): Promise<McpServer> {
-  const response = await api.patch<McpServer>(`/v1/mcp-servers/${serverId}`, data);
-  return response.data;
-}
-
-export async function deleteMcpServer(serverId: string): Promise<void> {
-  await api.delete(`/v1/mcp-servers/${serverId}`);
-}
-
-export async function destroyMcpServer(serverId: string): Promise<void> {
-  await api.post(`/v1/mcp-servers/${serverId}/delete`);
-}
+export const getMcpServers = mcpServersCrudApi.list;
+export const getMcpServer = mcpServersCrudApi.get;
+export const createMcpServer = mcpServersCrudApi.create;
+export const updateMcpServer = mcpServersCrudApi.update;
+export const deleteMcpServer = mcpServersCrudApi.delete;
+export const destroyMcpServer = mcpServersCrudApi.destroy;

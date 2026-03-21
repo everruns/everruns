@@ -1,103 +1,38 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  getMcpServers,
-  getMcpServer,
-  createMcpServer,
-  updateMcpServer,
-  deleteMcpServer,
-  destroyMcpServer,
-} from "@/lib/api/mcp-servers";
-import { queryKeys } from "@/lib/query-keys";
+import { mcpServersCrudApi } from "@/lib/api/mcp-servers";
 import type { CreateMcpServerRequest, UpdateMcpServerRequest } from "@/lib/api/types";
-import { useOrg } from "@/providers/org-provider";
+import { queryKeys } from "@/lib/query-keys";
+import { createCrudHooks } from "./create-crud-hooks";
 
 // MCP Server hooks
 
-interface UseMcpServersOptions {
-  includeArchived?: boolean;
-}
+const mcpServerCrudHooks = createCrudHooks<
+  Awaited<ReturnType<typeof mcpServersCrudApi.get>>,
+  CreateMcpServerRequest,
+  UpdateMcpServerRequest
+>({
+  api: mcpServersCrudApi,
+  queryKeys: queryKeys.mcpServers,
+  staleTime: 30000,
+});
 
-export function useMcpServers(options: UseMcpServersOptions = {}) {
-  const { currentOrg, isLoading: orgLoading } = useOrg();
-  const org = currentOrg?.public_id;
-  const includeArchived = options.includeArchived ?? false;
-
-  const query = useQuery({
-    queryKey: [...queryKeys.mcpServers.list(includeArchived), org],
-    queryFn: () => getMcpServers(includeArchived),
-    enabled: !!org,
-    staleTime: 30000,
-  });
-
-  // Include org loading state so pages show skeleton while org initializes
-  return {
-    ...query,
-    isLoading: orgLoading || query.isLoading,
-  };
-}
-
-export function useMcpServer(serverId: string) {
-  const { currentOrg, isLoading: orgLoading } = useOrg();
-  const org = currentOrg?.public_id;
-
-  const query = useQuery({
-    queryKey: [...queryKeys.mcpServers.detail(serverId), org],
-    queryFn: () => getMcpServer(serverId),
-    enabled: !!org && !!serverId,
-  });
-
-  // Include org loading state so pages show skeleton while org initializes
-  return {
-    ...query,
-    isLoading: orgLoading || query.isLoading,
-  };
-}
-
-export function useCreateMcpServer() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: CreateMcpServerRequest) => createMcpServer(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
-    },
-  });
-}
+export const useMcpServers = mcpServerCrudHooks.useList;
+export const useMcpServer = mcpServerCrudHooks.useDetail;
+export const useCreateMcpServer = mcpServerCrudHooks.useCreate;
+export const useDeleteMcpServer = mcpServerCrudHooks.useDelete;
+export const useDestroyMcpServer = mcpServerCrudHooks.useDestroy;
 
 export function useUpdateMcpServer(serverId: string) {
-  const queryClient = useQueryClient();
+  const mutation = mcpServerCrudHooks.useUpdate();
 
-  return useMutation({
-    mutationFn: (data: UpdateMcpServerRequest) => updateMcpServer(serverId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.mcpServers.detail(serverId),
-      });
-    },
-  });
-}
-
-export function useDeleteMcpServer() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (serverId: string) => deleteMcpServer(serverId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
-    },
-  });
-}
-
-export function useDestroyMcpServer() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (serverId: string) => destroyMcpServer(serverId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers.all });
-    },
-  });
+  return {
+    ...mutation,
+    mutate: (request: UpdateMcpServerRequest, options?: Parameters<typeof mutation.mutate>[1]) =>
+      mutation.mutate({ id: serverId, request }, options),
+    mutateAsync: (
+      request: UpdateMcpServerRequest,
+      options?: Parameters<typeof mutation.mutateAsync>[1],
+    ) => mutation.mutateAsync({ id: serverId, request }, options),
+  };
 }

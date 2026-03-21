@@ -2,46 +2,25 @@
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
 import { api } from "./client";
+import { createCrudApi } from "./crud";
 import type {
-  Harness,
-  CreateHarnessRequest,
-  UpdateHarnessRequest,
-  ListResponse,
-  PreviewHarnessRequest,
   AgentPreviewResponse,
+  CreateHarnessRequest,
+  Harness,
+  PreviewHarnessRequest,
+  UpdateHarnessRequest,
 } from "./types";
 
-export async function createHarness(request: CreateHarnessRequest): Promise<Harness> {
-  const response = await api.post<Harness>("/v1/harnesses", request);
-  return response.data;
-}
+export const harnessesCrudApi = createCrudApi<Harness, CreateHarnessRequest, UpdateHarnessRequest>(
+  "/v1/harnesses",
+);
 
-export async function listHarnesses(includeArchived = false): Promise<Harness[]> {
-  const path = includeArchived ? "/v1/harnesses?include_archived=true" : "/v1/harnesses";
-  const response = await api.get<ListResponse<Harness>>(path);
-  return response.data.data;
-}
-
-export async function getHarness(harnessId: string): Promise<Harness> {
-  const response = await api.get<Harness>(`/v1/harnesses/${harnessId}`);
-  return response.data;
-}
-
-export async function updateHarness(
-  harnessId: string,
-  request: UpdateHarnessRequest,
-): Promise<Harness> {
-  const response = await api.patch<Harness>(`/v1/harnesses/${harnessId}`, request);
-  return response.data;
-}
-
-export async function deleteHarness(harnessId: string): Promise<void> {
-  await api.delete(`/v1/harnesses/${harnessId}`);
-}
-
-export async function destroyHarness(harnessId: string): Promise<void> {
-  await api.post(`/v1/harnesses/${harnessId}/delete`);
-}
+export const createHarness = harnessesCrudApi.create;
+export const listHarnesses = harnessesCrudApi.list;
+export const getHarness = harnessesCrudApi.get;
+export const updateHarness = harnessesCrudApi.update;
+export const deleteHarness = harnessesCrudApi.delete;
+export const destroyHarness = harnessesCrudApi.destroy;
 
 export async function copyHarness(harnessId: string): Promise<Harness> {
   const response = await api.post<Harness>(`/v1/harnesses/${harnessId}/copy`, {});

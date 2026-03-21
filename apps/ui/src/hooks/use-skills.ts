@@ -1,84 +1,48 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  getSkills,
-  getSkill,
-  getSkillContent,
-  createSkill,
-  updateSkill,
-  deleteSkill,
-  destroySkill,
-  uploadSkillArchive,
-} from "@/lib/api/skills";
-import { queryKeys } from "@/lib/query-keys";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { getSkillContent, skillsCrudApi, uploadSkillArchive } from "@/lib/api/skills";
 import type { CreateSkillRequest, UpdateSkillRequest } from "@/lib/api/types";
-import { useOrg } from "@/providers/org-provider";
+import { queryKeys } from "@/lib/query-keys";
+import { createCrudHooks, useOrgScopedQuery } from "./create-crud-hooks";
 
 // Skill hooks
 
-interface UseSkillsOptions {
-  includeArchived?: boolean;
-}
+const skillCrudHooks = createCrudHooks<
+  Awaited<ReturnType<typeof skillsCrudApi.get>>,
+  CreateSkillRequest,
+  UpdateSkillRequest
+>({
+  api: skillsCrudApi,
+  queryKeys: queryKeys.skills,
+  staleTime: 30000,
+});
 
-export function useSkills(options: UseSkillsOptions = {}) {
-  const { currentOrg, isLoading: orgLoading } = useOrg();
-  const org = currentOrg?.public_id;
-  const includeArchived = options.includeArchived ?? false;
+export const useSkills = skillCrudHooks.useList;
+export const useSkill = skillCrudHooks.useDetail;
+export const useCreateSkill = skillCrudHooks.useCreate;
+export const useDeleteSkill = skillCrudHooks.useDelete;
+export const useDestroySkill = skillCrudHooks.useDestroy;
 
-  const query = useQuery({
-    queryKey: [...queryKeys.skills.list(includeArchived), org],
-    queryFn: () => getSkills(includeArchived),
-    enabled: !!org,
-    staleTime: 30000,
-  });
-
-  return {
-    ...query,
-    isLoading: orgLoading || query.isLoading,
-  };
-}
-
-export function useSkill(skillId: string) {
-  const { currentOrg, isLoading: orgLoading } = useOrg();
-  const org = currentOrg?.public_id;
-
-  const query = useQuery({
-    queryKey: [...queryKeys.skills.detail(skillId), org],
-    queryFn: () => getSkill(skillId),
-    enabled: !!org && !!skillId,
-  });
+export function useUpdateSkill(skillId: string) {
+  const mutation = skillCrudHooks.useUpdate();
 
   return {
-    ...query,
-    isLoading: orgLoading || query.isLoading,
+    ...mutation,
+    mutate: (request: UpdateSkillRequest, options?: Parameters<typeof mutation.mutate>[1]) =>
+      mutation.mutate({ id: skillId, request }, options),
+    mutateAsync: (
+      request: UpdateSkillRequest,
+      options?: Parameters<typeof mutation.mutateAsync>[1],
+    ) => mutation.mutateAsync({ id: skillId, request }, options),
   };
 }
 
 export function useSkillContent(skillId: string) {
-  const { currentOrg, isLoading: orgLoading } = useOrg();
-  const org = currentOrg?.public_id;
-
-  const query = useQuery({
-    queryKey: [...queryKeys.skills.content(skillId), org],
+  return useOrgScopedQuery({
+    queryKey: queryKeys.skills.content(skillId),
     queryFn: () => getSkillContent(skillId),
-    enabled: !!org && !!skillId,
-  });
-
-  return {
-    ...query,
-    isLoading: orgLoading || query.isLoading,
-  };
-}
-
-export function useCreateSkill() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: CreateSkillRequest) => createSkill(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
-    },
+    enabled: !!skillId,
   });
 }
 
@@ -86,43 +50,7 @@ export function useUploadSkill() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (file: File) => uploadSkillArchive(file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
-    },
-  });
-}
-
-export function useUpdateSkill(skillId: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: UpdateSkillRequest) => updateSkill(skillId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.skills.detail(skillId),
-      });
-    },
-  });
-}
-
-export function useDeleteSkill() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (skillId: string) => deleteSkill(skillId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
-    },
-  });
-}
-
-export function useDestroySkill() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (skillId: string) => destroySkill(skillId),
+    mutationFn: uploadSkillArchive,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.skills.all });
     },
