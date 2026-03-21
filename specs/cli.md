@@ -7,7 +7,7 @@
 **Crate:** `crates/cli/`
 
 **Global Flags:**
-- `-o, --output` — Output format: `text` (default), `json`, `yaml`
+- `-o, --output` — Output format: `text` (default), `json`
 - `-q, --quiet` — Suppress non-essential output
 - `--profile <name>` — Credential profile (default: `default`)
 
@@ -49,15 +49,15 @@ Organization management.
 
 ### `everruns agents`
 
-Agent CRUD. Create from YAML/JSON/Markdown (YAML front matter + body = system prompt).
+Agent CRUD. Create from YAML/JSON/Markdown files or CLI flags.
 
-- `create --file <path> [--initial-files-dir <dir>]` | `--name <n> --system-prompt <s>` — upserts when `id:` present in frontmatter
-- `update [<id>] --file <path> [--initial-files-dir <dir>]` — same as create but requires agent ID (positional or from frontmatter)
+- `create --file <path>` — send file to server import API (server handles parsing); upserts when `id:` present in frontmatter
+- `create --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--tag <t>]` — create from CLI flags
+- `update [<id>] --file <path>` — same as create but requires agent ID (positional or from frontmatter)
+- `update <id> --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--tag <t>]` — update from CLI flags
 - `list`
 - `get <id>`
 - `delete <id>` (soft archive)
-
-`--initial-files-dir <dir>` globs a directory recursively and uploads all files as readonly `initial_files`. Hidden files/dirs are skipped. File frontmatter supports `capabilities` (string IDs or `{ref, config}` objects) and inline `initial_files`.
 
 ### `everruns sessions`
 

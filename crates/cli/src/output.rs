@@ -6,14 +6,12 @@ use serde::Serialize;
 pub enum OutputFormat {
     Text,
     Json,
-    Yaml,
 }
 
 impl OutputFormat {
     pub fn from_str(s: &str) -> Self {
         match s {
             "json" => OutputFormat::Json,
-            "yaml" => OutputFormat::Yaml,
             _ => OutputFormat::Text,
         }
     }
@@ -22,9 +20,6 @@ impl OutputFormat {
         match self {
             OutputFormat::Json => {
                 println!("{}", serde_json::to_string_pretty(value).unwrap());
-            }
-            OutputFormat::Yaml => {
-                println!("{}", serde_yaml::to_string(value).unwrap());
             }
             OutputFormat::Text => {
                 // Text format is handled by each command
@@ -93,7 +88,6 @@ mod tests {
     #[test]
     fn test_output_format_from_str() {
         assert!(matches!(OutputFormat::from_str("json"), OutputFormat::Json));
-        assert!(matches!(OutputFormat::from_str("yaml"), OutputFormat::Yaml));
         assert!(matches!(OutputFormat::from_str("text"), OutputFormat::Text));
         assert!(matches!(
             OutputFormat::from_str("unknown"),
@@ -106,7 +100,6 @@ mod tests {
     fn test_output_format_is_text() {
         assert!(OutputFormat::Text.is_text());
         assert!(!OutputFormat::Json.is_text());
-        assert!(!OutputFormat::Yaml.is_text());
     }
 
     #[test]

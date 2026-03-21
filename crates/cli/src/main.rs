@@ -1,7 +1,7 @@
 // Everruns CLI
 //
 // Design Decision: Use clap derive for ergonomic argument parsing.
-// Design Decision: Support text/json/yaml output formats for scripting.
+// Design Decision: Support text/json output formats for scripting.
 // Design Decision: Use everruns-sdk for API client.
 // Design Decision: Credential file (platform config dir/everruns/credentials.json) with env var override.
 
@@ -26,7 +26,7 @@ pub struct Cli {
     pub api_url: Option<String>,
 
     /// Output format
-    #[arg(long, short, global = true, default_value = "text", value_parser = ["text", "json", "yaml"])]
+    #[arg(long, short, global = true, default_value = "text", value_parser = ["text", "json"])]
     pub output: String,
 
     /// Suppress non-essential output
@@ -160,7 +160,15 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Agents { command } => {
-            commands::agents::run(command, &client, output_format, cli.quiet).await
+            commands::agents::run(
+                command,
+                &client,
+                &api_url,
+                &api_key,
+                output_format,
+                cli.quiet,
+            )
+            .await
         }
         Commands::Capabilities { command } => {
             let status = match &command {
@@ -327,9 +335,6 @@ mod tests {
     fn test_cli_parse_output_format() {
         let cli = Cli::try_parse_from(["everruns", "-o", "json", "agents", "list"]).unwrap();
         assert_eq!(cli.output, "json");
-
-        let cli = Cli::try_parse_from(["everruns", "--output", "yaml", "agents", "list"]).unwrap();
-        assert_eq!(cli.output, "yaml");
     }
 
     #[test]

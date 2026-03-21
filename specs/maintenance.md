@@ -50,6 +50,8 @@ Before a release, maintenance should cover:
 - Linear issues already marked `In Progress` whose `updatedAt` is older than 2 days, signaling execution drift; use that `updatedAt` threshold as the default review threshold unless the task sets a stricter bar
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
 
+- dependency versions across all packages (Cargo workspace crates, npm packages, CLI) checked for outdated major versions and deprecated crates
+
 A full-repo sweep is not mandatory if the evidence is already strong. The bar is confidence, not checklist completion theater.
 
 ## Reporting Standard

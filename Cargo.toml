@@ -34,7 +34,7 @@ authors = ["Everruns Contributors"]
 
 [workspace.dependencies]
 # Async runtime
-tokio = { version = "1.42", features = ["full"] }
+tokio = { version = "1.50", features = ["full"] }
 tokio-stream = "0.1"
 futures = "0.3"
 
@@ -105,7 +105,7 @@ eventsource-stream = "0.2"
 regex = "1.11"
 time = "0.3"
 parking_lot = "0.12"
-dialoguer = "0.11"
+dialoguer = "0.12"
 webbrowser = "1"
 dirs = "6"
 
@@ -114,7 +114,7 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
 
 # Everruns SDK
-everruns-sdk = { git = "https://github.com/everruns/sdk", tag = "v0.1.5" }
+everruns-sdk = "0.1.5"
 
 # gRPC (tonic)
 tonic = { version = "0.14", features = ["tls-ring"] }
