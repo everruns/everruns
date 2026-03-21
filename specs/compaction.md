@@ -376,11 +376,23 @@ When tool type is known, apply type-specific compression:
 
 | Tool | Mask Strategy |
 |------|--------------|
+| `activate_skill` | **Never mask** — protected, always kept verbatim |
 | `read_file` | Keep path + line count: `[read_file("src/main.rs") → 245 lines]` |
 | `bash` | Keep exit code + last 20 lines |
 | `search` / `grep` | Keep matched file paths only |
 | `write_file` | Keep path + operation: `[write_file("src/main.rs") → 245 lines written]` |
 | `web_fetch` | Keep URL + status: `[web_fetch("https://...") → 200 OK, 12KB]` |
+
+### Protected Tool Results
+
+Tool results from `PROTECTED_TOOL_NAMES` (currently `activate_skill`) are exempt from all compaction strategies:
+
+1. **Observation masking**: excluded from the maskable tool index — never replaced with summaries
+2. **Aggressive trim**: budget reserved first; always kept even when other messages are dropped
+3. **Hierarchical memory**: rescued from cold tier into output verbatim
+4. **Summarization**: `skill_instructions` in default preserve list; prompt instructs LLM to include skill content verbatim
+
+See `crates/core/src/capabilities/compaction.rs` for implementation (`PROTECTED_TOOL_NAMES`, `is_protected_tool_result`).
 
 ## Summarization
 
