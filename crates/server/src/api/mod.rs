@@ -23,6 +23,7 @@ pub mod organizations;
 pub mod schedules;
 pub mod session_databases;
 pub mod session_files;
+pub mod session_git;
 pub mod session_resources;
 pub mod session_schedules;
 pub mod session_storage;

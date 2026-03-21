@@ -190,6 +190,7 @@ impl TestServer {
         let agents_state =
             api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
+        let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), auth_state.clone());
         // Session SQL database store (in-memory for all test modes)
@@ -263,6 +264,7 @@ impl TestServer {
             .merge(api::mcp_servers::routes(mcp_servers_state))
             .merge(api::capabilities::routes(capabilities_state))
             .merge(api::session_files::routes(session_files_state))
+            .merge(api::session_git::routes(session_git_state))
             .merge(api::session_storage::routes(session_storage_state))
             .merge(api::session_databases::routes(session_databases_state))
             .merge(api::users::routes(users_state))

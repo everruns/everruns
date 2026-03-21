@@ -147,3 +147,44 @@ See `crates/server/migrations/001_base_schema.sql` for the `session_files` table
 - Create file/folder dialogs
 - Delete confirmation
 - Download file support
+
+## Git Version Control
+
+Per-session git version control backed by libgit2 with a PostgreSQL object/ref store.
+
+### Design: Mempack Hydrate/Drain
+
+Git operations use an in-memory libgit2 repository via the mempack backend:
+1. **Load** all git objects + refs from PostgreSQL (single query each)
+2. **Hydrate** a mempack ODB, perform git operations in `spawn_blocking`
+3. **Drain** new objects + updated refs back to PostgreSQL
+
+This avoids filesystem I/O entirely — the git repository exists only in memory during operations.
+
+### Storage
+
+- `session_git_objects` — session-scoped content-addressable store (session_id, 20-byte SHA1 OID, type, data)
+- `session_git_refs` — session-scoped refdb (session_id, name, target OID)
+- CHECK constraints enforce OID length (20 bytes) and object type (1–4)
+- See `crates/server/migrations/012_session_git.sql` for DDL
+
+### API Endpoints
+
+All under `/v1/sessions/{session_id}/git/`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `commit` | Commit current session files |
+| GET | `log` | Commit history (optional `ref`, `limit` params) |
+| GET | `diff` | Diff between commits (`oid` required, `base` optional) |
+| GET | `refs` | List all refs/branches |
+| POST | `branches` | Create a branch |
+| DELETE | `branches/{name}` | Delete a branch |
+
+Branch names are normalized: short names like `"main"` become `refs/heads/main`.
+
+### Implementation
+
+- Service: `crates/server/src/services/session_git.rs`
+- API: `crates/server/src/api/session_git.rs`
+- Storage: `crates/server/src/storage/{memory,repositories}/session_git.rs`

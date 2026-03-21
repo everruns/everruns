@@ -970,6 +970,98 @@ impl StorageBackend {
         dispatch!(self, session_directory_has_children, session_id, path)
     }
 
+    /// Load all non-directory files with content for a session (single query, for git commit).
+    pub async fn load_all_session_files_with_content(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Vec<SessionFileRow>> {
+        dispatch!(self, load_all_session_files_with_content, session_id)
+    }
+
+    // ============================================
+    // Session Git Objects
+    // ============================================
+
+    pub async fn write_git_object(&self, input: CreateSessionGitObject) -> Result<()> {
+        dispatch!(self, write_git_object, input)
+    }
+
+    pub async fn write_git_objects_batch(
+        &self,
+        objects: Vec<CreateSessionGitObject>,
+    ) -> Result<()> {
+        dispatch!(self, write_git_objects_batch, objects)
+    }
+
+    pub async fn read_git_object(
+        &self,
+        session_id: Uuid,
+        oid: &[u8],
+    ) -> Result<Option<SessionGitObjectRow>> {
+        dispatch!(self, read_git_object, session_id, oid)
+    }
+
+    /// Load all git objects for a session in a single query (avoids N+1).
+    pub async fn load_all_git_objects(&self, session_id: Uuid) -> Result<Vec<SessionGitObjectRow>> {
+        dispatch!(self, load_all_git_objects, session_id)
+    }
+
+    pub async fn git_object_exists(&self, session_id: Uuid, oid: &[u8]) -> Result<bool> {
+        dispatch!(self, git_object_exists, session_id, oid)
+    }
+
+    pub async fn read_git_object_header(
+        &self,
+        session_id: Uuid,
+        oid: &[u8],
+    ) -> Result<Option<(i16, i64)>> {
+        dispatch!(self, read_git_object_header, session_id, oid)
+    }
+
+    pub async fn list_git_object_oids(&self, session_id: Uuid) -> Result<Vec<Vec<u8>>> {
+        dispatch!(self, list_git_object_oids, session_id)
+    }
+
+    pub async fn fork_git_objects(
+        &self,
+        source_session_id: Uuid,
+        target_session_id: Uuid,
+    ) -> Result<u64> {
+        dispatch!(self, fork_git_objects, source_session_id, target_session_id)
+    }
+
+    // ============================================
+    // Session Git Refs
+    // ============================================
+
+    pub async fn write_git_ref(&self, input: CreateSessionGitRef) -> Result<()> {
+        dispatch!(self, write_git_ref, input)
+    }
+
+    pub async fn read_git_ref(
+        &self,
+        session_id: Uuid,
+        name: &str,
+    ) -> Result<Option<SessionGitRefRow>> {
+        dispatch!(self, read_git_ref, session_id, name)
+    }
+
+    pub async fn delete_git_ref(&self, session_id: Uuid, name: &str) -> Result<bool> {
+        dispatch!(self, delete_git_ref, session_id, name)
+    }
+
+    pub async fn list_git_refs(&self, session_id: Uuid) -> Result<Vec<SessionGitRefRow>> {
+        dispatch!(self, list_git_refs, session_id)
+    }
+
+    pub async fn fork_git_refs(
+        &self,
+        source_session_id: Uuid,
+        target_session_id: Uuid,
+    ) -> Result<u64> {
+        dispatch!(self, fork_git_refs, source_session_id, target_session_id)
+    }
+
     // ============================================
     // MCP Servers
     // ============================================

@@ -407,4 +407,24 @@ impl Database {
 
         Ok(result.is_some())
     }
+
+    /// Load all non-directory files with content for a session (single query).
+    pub async fn load_all_session_files_with_content(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Vec<SessionFileRow>> {
+        let rows = sqlx::query_as::<_, SessionFileRow>(
+            r#"
+            SELECT id, session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            FROM session_files
+            WHERE session_id = $1 AND is_directory = false
+            ORDER BY path ASC
+            "#,
+        )
+        .bind(session_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
 }

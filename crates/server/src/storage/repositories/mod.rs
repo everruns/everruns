@@ -13,6 +13,7 @@ mod notifications;
 mod organizations;
 mod schedules;
 mod session_files;
+mod session_git;
 mod session_storage;
 mod sessions;
 mod skills;
