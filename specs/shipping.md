@@ -34,10 +34,10 @@ Relevant references:
 
 1. Safe branch state: no shipping from `main` or `master`; working tree clean before final push; rebased onto the latest `origin/main` before merge.
 2. Goal achieved with evidence: the requested behavior is implemented and validated with proof that matches the risk.
-3. Merge-ready code: touched code is reviewed for avoidable complexity plus security and performance risk, and issues found during that review are addressed or explicitly blocked.
+3. Merge-ready code: touched code is reviewed for avoidable complexity and performance risk. A structured security review is performed against the relevant threat model categories from `specs/threat-model.md` (see the Security Review section in the ship skill). Issues found during review are addressed or explicitly blocked.
 4. Synced artifacts: only the affected artifacts are updated, including specs, threat model, docs, OpenAPI, test cases, and agent instructions when relevant.
 5. Smoke test impacted functionality: always smoke test the flows affected by the change end-to-end. This is mandatory, not conditional on risk assessment. Docs-only or config-only changes that do not affect runtime behavior may skip smoke testing with explicit justification.
-6. Safe merge: the PR uses the repo template, CI is green, review comments from all reviewers, including async bot reviewers, are addressed after a final post-green sweep, and merge happens with squash only.
+6. Safe merge: the PR uses the repo template, CI is green, **every** review comment from all reviewers (including async bot reviewers and low-confidence suggestions) is explicitly analyzed, reasoned about, and resolved — either with a code change or a written explanation — after a final post-green sweep, and merge happens with squash only.
 
 ## Constraints
 
@@ -45,6 +45,8 @@ Relevant references:
 - Validation should start with the smallest high-signal proof and deepen only when risk or weak signals require it.
 - Bug fixes should prefer a failing test before the fix when practical, but the validation strategy may vary when a smaller or stronger proof exists.
 - Docs-only or config-only changes may skip code tests if that choice is justified and the relevant docs or build checks were run.
+- Security review is mandatory for all code, configuration, and infrastructure changes. The review must identify relevant threat model categories, check the diff against them, and document findings. Perceived low risk does not justify skipping the review.
+- Every review comment must be explicitly addressed before merge — including low-confidence suggestions, nits, and bot comments. For each comment, the agent must analyze the concern, reason about whether a change is warranted, and either apply a fix or reply with a clear explanation. Dismissing or ignoring comments without reasoning is not permitted.
 - Auto-merge must not bypass the final review pass; shipping should give async reviewer bots time to comment after the last push and after CI turns green, then re-check before merge.
 - If a blocker cannot be resolved safely by the agent alone, shipping must stop and report the blocker rather than guess.
 
@@ -54,5 +56,7 @@ Shipping output should make it easy to evaluate readiness:
 
 - what changed
 - what evidence was gathered
+- security review: which threat categories were checked, any findings, and how they were resolved
 - what was skipped and why
+- review comments: how each comment was addressed (code change or written reasoning)
 - what blockers or residual risks remain
