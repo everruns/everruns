@@ -18,9 +18,10 @@ impl OutputFormat {
 
     pub fn print_value<T: Serialize>(&self, value: &T) {
         match self {
-            OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(value).unwrap());
-            }
+            OutputFormat::Json => match serde_json::to_string_pretty(value) {
+                Ok(json) => println!("{}", json),
+                Err(err) => eprintln!("Failed to serialize JSON output: {}", err),
+            },
             OutputFormat::Text => {
                 // Text format is handled by each command
             }

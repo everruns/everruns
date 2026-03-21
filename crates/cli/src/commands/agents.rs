@@ -87,7 +87,7 @@ pub enum AgentsCommand {
 }
 
 /// Response from the import API
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 struct ImportedAgent {
     id: String,
     name: String,
@@ -111,6 +111,14 @@ pub async fn run(
             tag,
         } => {
             if let Some(path) = file {
+                if name.is_some()
+                    || system_prompt.is_some()
+                    || description.is_some()
+                    || model.is_some()
+                    || !tag.is_empty()
+                {
+                    eprintln!("Warning: CLI flag overrides are ignored when --file is used");
+                }
                 import_from_file(api_url, api_key, &path, output, quiet).await
             } else {
                 create_from_flags(
@@ -136,7 +144,13 @@ pub async fn run(
             tag,
         } => {
             if let Some(path) = file {
-                if agent_id.is_some() || name.is_some() || system_prompt.is_some() {
+                if agent_id.is_some()
+                    || name.is_some()
+                    || system_prompt.is_some()
+                    || description.is_some()
+                    || model.is_some()
+                    || !tag.is_empty()
+                {
                     eprintln!("Warning: CLI flag overrides are ignored when --file is used");
                 }
                 import_from_file(api_url, api_key, &path, output, quiet).await
@@ -207,13 +221,12 @@ async fn import_from_file(
             print_field("Name", &agent.name);
         }
     } else {
-        // Re-fetch full agent for JSON output
-        println!(
-            "{{\"id\":\"{}\",\"name\":\"{}\",\"action\":\"{}\"}}",
-            agent.id,
-            agent.name,
-            verb.to_lowercase()
-        );
+        let json = serde_json::json!({
+            "id": agent.id,
+            "name": agent.name,
+            "action": verb.to_lowercase(),
+        });
+        output.print_value(&json);
     }
 
     Ok(())

@@ -53,7 +53,7 @@ Agent CRUD. Create from YAML/JSON/Markdown files or CLI flags.
 
 - `create --file <path>` — send file to server import API (server handles parsing); upserts when `id:` present in frontmatter
 - `create --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--tag <t>]` — create from CLI flags
-- `update [<id>] --file <path>` — same as create but requires agent ID (positional or from frontmatter)
+- `update --file <path>` — send file to server import API; requires `id:` in file frontmatter for upsert
 - `update <id> --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--tag <t>]` — update from CLI flags
 - `list`
 - `get <id>`
