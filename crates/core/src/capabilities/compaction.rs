@@ -546,11 +546,24 @@ pub fn apply_hierarchical_memory(
         result.extend(protected_cold);
     }
 
-    // Warm tier: apply observation masking to tool outputs
-    // (observation masking already skips protected tool results)
+    // Warm tier: apply observation masking to tool outputs.
+    // Use the full message slice for protected-tool detection so that a tool
+    // result in warm tier whose assistant call is in cold tier is still recognized.
     if warm_start < hot_start {
         let warm_msgs = &messages[warm_start..hot_start];
-        let masked = apply_observation_masking(warm_msgs, masking_config);
+
+        // Pre-identify protected tool_call_ids using the full message list
+        let protected_call_ids: std::collections::HashSet<String> = warm_msgs
+            .iter()
+            .filter(|m| is_protected_tool_result(messages, m))
+            .filter_map(|m| m.tool_call_id.clone())
+            .collect();
+
+        let masked = apply_observation_masking_with_protected(
+            warm_msgs,
+            masking_config,
+            &protected_call_ids,
+        );
         result.extend(masked.messages);
     }
 
@@ -627,11 +640,29 @@ pub fn apply_observation_masking(
     messages: &[LlmMessage],
     config: &ObservationMaskingConfig,
 ) -> ObservationMaskingResult {
+    apply_observation_masking_with_protected(messages, config, &std::collections::HashSet::new())
+}
+
+/// Like `apply_observation_masking`, but accepts additional pre-identified protected
+/// tool_call_ids. This is needed when the message slice doesn't contain the
+/// assistant tool-call message (e.g. warm tier where the call is in cold tier).
+fn apply_observation_masking_with_protected(
+    messages: &[LlmMessage],
+    config: &ObservationMaskingConfig,
+    extra_protected_call_ids: &std::collections::HashSet<String>,
+) -> ObservationMaskingResult {
     // Separate protected vs maskable tool result indices
     let tool_indices: Vec<usize> = messages
         .iter()
         .enumerate()
-        .filter(|(_, m)| m.role == LlmMessageRole::Tool && !is_protected_tool_result(messages, m))
+        .filter(|(_, m)| {
+            m.role == LlmMessageRole::Tool
+                && !is_protected_tool_result(messages, m)
+                && !m
+                    .tool_call_id
+                    .as_ref()
+                    .is_some_and(|id| extra_protected_call_ids.contains(id))
+        })
         .map(|(i, _)| i)
         .collect();
 
@@ -2016,6 +2047,55 @@ mod tests {
         assert!(
             formatted.contains("[truncated, 5000 chars total]"),
             "Non-protected tool result should be truncated"
+        );
+    }
+
+    #[test]
+    fn test_hierarchical_memory_cross_tier_boundary_protection() {
+        // The activate_skill tool-call is in cold tier, but its tool-result
+        // lands in warm tier. The result must still be protected from masking.
+        let mut messages = Vec::new();
+
+        // Cold tier: skill call + filler to push result into warm tier
+        messages.push(make_assistant_with_tool_call("skill1", "activate_skill"));
+        for i in 0..9 {
+            let id = format!("cold_{i}");
+            messages.push(make_assistant_with_tool_call(&id, "read_file"));
+            messages.push(make_tool_result(&id, &format!("cold content {i}")));
+        }
+
+        // Warm tier starts here — skill result is first warm message
+        messages.push(make_tool_result(
+            "skill1",
+            "Cross-tier skill instructions that must survive",
+        ));
+        for i in 0..2 {
+            let id = format!("warm_{i}");
+            messages.push(make_assistant_with_tool_call(&id, "bash"));
+            messages.push(make_tool_result(&id, &format!("warm output {i}")));
+        }
+
+        // Hot tier
+        messages.push(make_user_msg("continue"));
+        messages.push(make_assistant_msg("ok"));
+
+        let config = HierarchicalMemoryConfig {
+            hot_messages: 2,
+            warm_messages: 5, // skill result + 2 bash pairs
+        };
+        let masking_config = ObservationMaskingConfig {
+            keep_recent_tool_outputs: 0,
+            summary_format: MaskingSummaryFormat::OneLine,
+        };
+
+        let result = apply_hierarchical_memory(&messages, &config, &masking_config, None);
+
+        let has_skill_instructions = result.iter().any(|m| {
+            extract_text(&m.content).contains("Cross-tier skill instructions that must survive")
+        });
+        assert!(
+            has_skill_instructions,
+            "Skill result in warm tier with call in cold tier must be protected"
         );
     }
 }
