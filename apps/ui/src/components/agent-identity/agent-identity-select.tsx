@@ -48,11 +48,7 @@ export function AgentIdentitySelect({
       <SelectContent>
         {includeNone && <SelectItem value="none">{noneLabel}</SelectItem>}
         {identities.map((identity) => (
-          <SelectItem
-            key={identity.id}
-            value={identity.id}
-            disabled={identity.status !== "active"}
-          >
+          <SelectItem key={identity.id} value={identity.id} disabled={identity.status !== "active"}>
             {identity.name}
             {identity.status !== "active" ? " (archived)" : ""}
           </SelectItem>

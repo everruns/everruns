@@ -31,22 +31,52 @@ export default function NewAgentIdentityPage() {
 
   return (
     <div className="container mx-auto p-6">
-      <Link href="/agent-identities" className="mb-6 inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="mr-2 h-4 w-4" />Back to Agent Identities
+      <Link
+        href="/agent-identities"
+        className="mb-6 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        Back to Agent Identities
       </Link>
       <Card>
-        <CardHeader><CardTitle>Create Agent Identity</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Create Agent Identity</CardTitle>
+        </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2"><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} required /></div>
-            <div className="space-y-2"><Label>Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} /></div>
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2"><Label>Locale</Label><Input value={locale} onChange={(e) => setLocale(e.target.value)} placeholder="en-US" /></div>
-              <div className="space-y-2"><Label>Timezone</Label><Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="America/Los_Angeles" /></div>
+              <div className="space-y-2">
+                <Label>Locale</Label>
+                <Input
+                  value={locale}
+                  onChange={(e) => setLocale(e.target.value)}
+                  placeholder="en-US"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Timezone</Label>
+                <Input
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  placeholder="America/Los_Angeles"
+                />
+              </div>
             </div>
             <div className="flex gap-3">
-              <Button type="submit" disabled={createIdentity.isPending || !name}>{createIdentity.isPending ? "Creating..." : "Create Identity"}</Button>
-              <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
+              <Button type="submit" disabled={createIdentity.isPending || !name}>
+                {createIdentity.isPending ? "Creating..." : "Create Identity"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => router.back()}>
+                Cancel
+              </Button>
             </div>
           </form>
         </CardContent>

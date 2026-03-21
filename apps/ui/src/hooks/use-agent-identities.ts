@@ -10,10 +10,7 @@ import {
   updateAgentIdentity,
 } from "@/lib/api/agent-identities";
 import { useOrg } from "@/providers/org-provider";
-import type {
-  CreateAgentIdentityRequest,
-  UpdateAgentIdentityRequest,
-} from "@/lib/api/types";
+import type { CreateAgentIdentityRequest, UpdateAgentIdentityRequest } from "@/lib/api/types";
 
 const agentIdentityKeys = {
   all: ["agent-identities"] as const,
@@ -57,8 +54,13 @@ export function useCreateAgentIdentity() {
 export function useUpdateAgentIdentity() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ identityId, request }: { identityId: string; request: UpdateAgentIdentityRequest }) =>
-      updateAgentIdentity(identityId, request),
+    mutationFn: ({
+      identityId,
+      request,
+    }: {
+      identityId: string;
+      request: UpdateAgentIdentityRequest;
+    }) => updateAgentIdentity(identityId, request),
     onSuccess: (identity) => {
       queryClient.invalidateQueries({ queryKey: agentIdentityKeys.all });
       queryClient.setQueryData(agentIdentityKeys.detail(identity.id), identity);

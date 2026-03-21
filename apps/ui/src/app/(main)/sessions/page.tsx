@@ -256,7 +256,10 @@ export default function SessionsPage() {
             </div>
             <div className="space-y-2">
               <Label>Agent identity (background runs)</Label>
-              <AgentIdentitySelect value={newSessionAgentIdentityId} onValueChange={setNewSessionAgentIdentityId} />
+              <AgentIdentitySelect
+                value={newSessionAgentIdentityId}
+                onValueChange={setNewSessionAgentIdentityId}
+              />
             </div>
           </div>
           <DialogFooter>
