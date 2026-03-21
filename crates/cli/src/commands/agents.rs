@@ -54,6 +54,8 @@ pub enum AgentsCommand {
 /// Agent definition from YAML/JSON file
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AgentFile {
+    /// Agent ID for upsert. When present, uses apply (create-or-update).
+    pub id: Option<String>,
     pub name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: Option<String>,
@@ -211,13 +213,23 @@ async fn create(
         req = req.tags(final_tags);
     }
 
-    let agent = client.agents().create_with_options(req).await?;
+    let agent = if let Some(id) = &file_config.id {
+        client.agents().apply_with_options(id, req).await?
+    } else {
+        client.agents().create_with_options(req).await?
+    };
+
+    let verb = if file_config.id.is_some() {
+        "Applied"
+    } else {
+        "Created"
+    };
 
     if output.is_text() {
         if quiet {
             println!("{}", agent.id);
         } else {
-            println!("Created agent: {}", agent.id);
+            println!("{} agent: {}", verb, agent.id);
             print_field("Name", &agent.name);
         }
     } else {
@@ -412,9 +424,39 @@ tags:
         let yaml = "name: minimal";
         let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(result.name, Some("minimal".to_string()));
+        assert_eq!(result.id, None);
         assert_eq!(result.description, None);
         assert_eq!(result.system_prompt, None);
         assert_eq!(result.default_model_id, None);
         assert!(result.tags.is_empty());
+    }
+
+    #[test]
+    fn test_agent_file_with_id() {
+        let yaml = r#"
+id: "agent_abc123"
+name: "upsert-agent"
+system_prompt: "You help."
+"#;
+        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(result.id, Some("agent_abc123".to_string()));
+        assert_eq!(result.name, Some("upsert-agent".to_string()));
+    }
+
+    #[test]
+    fn test_parse_markdown_frontmatter_with_id() {
+        let content = r#"---
+id: "agent_abc123"
+name: "test-agent"
+---
+You are a helpful assistant."#;
+
+        let result = parse_markdown_frontmatter(content).unwrap();
+        assert_eq!(result.id, Some("agent_abc123".to_string()));
+        assert_eq!(result.name, Some("test-agent".to_string()));
+        assert_eq!(
+            result.system_prompt,
+            Some("You are a helpful assistant.".to_string())
+        );
     }
 }

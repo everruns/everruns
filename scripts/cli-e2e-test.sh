@@ -99,7 +99,7 @@ echo ""
 # Test: Capabilities
 # ========================================
 log_test "capabilities list"
-CAPS_OUTPUT=$($CLI --api-url "$API_URL" capabilities --status all --output json 2>&1) || {
+CAPS_OUTPUT=$($CLI --api-url "$API_URL" capabilities list --status all --output json 2>&1) || {
   log_fail "capabilities list failed"
   echo "$CAPS_OUTPUT"
   exit 1
