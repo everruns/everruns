@@ -58,7 +58,10 @@ apply_port_prefix_defaults() {
     : "${DB_PORT:=9332}"
   fi
 
-  export PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT RUN_STATE_DIR
+  # COMPOSE_PROJECT_NAME is still used by example.just for the Docker-based example deployment
+  : "${COMPOSE_PROJECT_NAME:=everruns${PORT_PREFIX:+-$PORT_PREFIX}}"
+
+  export PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT COMPOSE_PROJECT_NAME RUN_STATE_DIR
 }
 
 # Check if npm dependencies need to be installed/updated
@@ -227,7 +230,7 @@ ensure_postgres_db() {
   local user="${3:-everruns}"
   local db="${4:-everruns}"
 
-  if ! command -v psql &> /dev/null && ! command -v createdb &> /dev/null; then
+  if ! command -v psql &> /dev/null; then
     return 0  # can't check, let the app fail with a clear error
   fi
 
@@ -237,7 +240,11 @@ ensure_postgres_db() {
   fi
 
   echo "   📦 Creating database '$db'..."
-  createdb -h "$host" -p "$port" -U "$user" "$db" 2>/dev/null || true
+  if command -v createdb &> /dev/null; then
+    createdb -h "$host" -p "$port" -U "$user" "$db" 2>/dev/null || true
+  else
+    psql -h "$host" -p "$port" -U "$user" -c "CREATE DATABASE \"$db\"" 2>/dev/null || true
+  fi
 }
 
 print_doppler_secret_hint() {

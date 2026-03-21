@@ -84,7 +84,7 @@ case "$cmd" in
       DB_PASS="${DB_PASS:-postgres}"
     else
       echo "   ⚠️  PostgreSQL not found. Starting via pg_ctl..."
-      "$PROJECT_ROOT/scripts/lib/infra.sh" start
+      "$PROJECT_ROOT/scripts/lib/infra.sh" start || true
       if check_postgres_ready "$DB_HOST" "$DB_PORT" everruns; then
         DB_USER="everruns"
         DB_PASS="everruns"

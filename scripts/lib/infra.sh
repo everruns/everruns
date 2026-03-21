@@ -29,9 +29,11 @@ run_pg() {
     if ! id postgres &>/dev/null; then
       useradd -r -s /bin/bash postgres 2>/dev/null || true
     fi
-    su -s /bin/bash postgres -c "export PATH=$PG_BIN:\$PATH; $*"
+    local quoted_cmd
+    quoted_cmd=$(printf 'export PATH=%q:$PATH; ' "$PG_BIN"; printf '%q ' "$@")
+    su -s /bin/bash postgres -c "$quoted_cmd"
   else
-    eval "$@"
+    "$@"
   fi
 }
 
@@ -75,7 +77,7 @@ detect_valkey_bin() {
 # --- PostgreSQL ---
 
 pg_is_running() {
-  run_pg "$PG_BIN/pg_ctl -D $PGDATA status" &>/dev/null
+  run_pg "$PG_BIN/pg_ctl" -D "$PGDATA" status &>/dev/null
 }
 
 start_postgres() {
@@ -93,7 +95,7 @@ start_postgres() {
     if [ "$(id -u)" -eq 0 ]; then
       chown postgres:postgres "$PGDATA"
     fi
-    run_pg "$PG_BIN/initdb -D $PGDATA --auth=trust -U $PG_USER" >/dev/null 2>&1
+    run_pg "$PG_BIN/initdb" -D "$PGDATA" --auth=trust -U "$PG_USER" >/dev/null 2>&1
 
     # Configure for local connections on the right port
     cat >> "$PGDATA/postgresql.conf" <<EOF
@@ -112,14 +114,14 @@ EOF
     touch "$PG_LOGFILE"
     chown postgres:postgres "$PG_LOGFILE"
   fi
-  run_pg "$PG_BIN/pg_ctl -D $PGDATA -l $PG_LOGFILE -o '-p ${DB_PORT}' start" >/dev/null 2>&1
+  run_pg "$PG_BIN/pg_ctl" -D "$PGDATA" -l "$PG_LOGFILE" -o "-p ${DB_PORT}" start >/dev/null 2>&1
 
   # Wait for ready
   for i in {1..15}; do
-    if run_pg "$PG_BIN/pg_isready -h localhost -p ${DB_PORT} -U $PG_USER -q -t 2" 2>/dev/null; then
+    if run_pg "$PG_BIN/pg_isready" -h localhost -p "${DB_PORT}" -U "$PG_USER" -q -t 2 2>/dev/null; then
       # Create database if missing (cut first column to avoid matching the owner name)
-      if ! run_pg "psql -h localhost -p ${DB_PORT} -U $PG_USER -lqt" 2>/dev/null | cut -d'|' -f1 | grep -qw "$PG_DB"; then
-        run_pg "$PG_BIN/createdb -h localhost -p ${DB_PORT} -U $PG_USER $PG_DB" 2>/dev/null || true
+      if ! run_pg psql -h localhost -p "${DB_PORT}" -U "$PG_USER" -lqt 2>/dev/null | cut -d'|' -f1 | grep -qw "$PG_DB"; then
+        run_pg "$PG_BIN/createdb" -h localhost -p "${DB_PORT}" -U "$PG_USER" "$PG_DB" 2>/dev/null || true
       fi
       echo "   ✅ PostgreSQL started on localhost:${DB_PORT}"
       return 0
@@ -134,7 +136,7 @@ EOF
 stop_postgres() {
   detect_pg_bin || return 0
   if pg_is_running; then
-    run_pg "$PG_BIN/pg_ctl -D $PGDATA stop -m fast" >/dev/null 2>&1
+    run_pg "$PG_BIN/pg_ctl" -D "$PGDATA" stop -m fast >/dev/null 2>&1
     echo "   ✅ PostgreSQL stopped"
   fi
 }
@@ -219,8 +221,11 @@ case "$cmd" in
     echo "🔄 Resetting infrastructure services..."
     stop_valkey
     stop_postgres
-    rm -rf "$PGDATA"
-    rm -rf "$VALKEY_DATA_DIR"
+    # Safety: only delete data dirs under the repo's .local/ directory
+    case "$PGDATA" in "$LOCAL_DATA_DIR"*) rm -rf "$PGDATA" ;; *)
+      echo "   ⚠️  PGDATA ($PGDATA) is outside $LOCAL_DATA_DIR — skipping removal" ;; esac
+    case "$VALKEY_DATA_DIR" in "$LOCAL_DATA_DIR"*) rm -rf "$VALKEY_DATA_DIR" ;; *)
+      echo "   ⚠️  VALKEY_DATA_DIR ($VALKEY_DATA_DIR) is outside $LOCAL_DATA_DIR — skipping removal" ;; esac
     echo "✅ Services reset (data removed)!"
     ;;
 

@@ -463,7 +463,7 @@ case "$cmd" in
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
     else
       echo "   ⚠️  PostgreSQL not found. Starting via pg_ctl..."
-      "$PROJECT_ROOT/scripts/lib/infra.sh" start
+      "$PROJECT_ROOT/scripts/lib/infra.sh" start || true
       if check_postgres_ready localhost "$DB_PORT" everruns; then
         export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
       else
@@ -728,7 +728,7 @@ case "$cmd" in
       export DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@localhost:${DB_PORT}/everruns}
     else
       echo "   ⚠️  PostgreSQL not found. Starting via pg_ctl..."
-      "$PROJECT_ROOT/scripts/lib/infra.sh" start
+      "$PROJECT_ROOT/scripts/lib/infra.sh" start || true
       if check_postgres_ready localhost "$DB_PORT" everruns; then
         export DATABASE_URL=${DATABASE_URL:-$DB_URL_DEFAULT}
       else

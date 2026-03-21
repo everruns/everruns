@@ -19,7 +19,7 @@ assert_eq() {
 }
 
 check_default_ports() {
-  unset PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT
+  unset PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT COMPOSE_PROJECT_NAME
   apply_port_prefix_defaults
 
   assert_eq "9300" "$PROXY_PORT" "default proxy port"
@@ -31,11 +31,12 @@ check_default_ports() {
   assert_eq "4318" "$OTEL_HTTP_PORT" "default OTLP HTTP port"
   assert_eq "6379" "$VALKEY_PORT" "default valkey port"
   assert_eq "9332" "$DB_PORT" "default db port"
+  assert_eq "everruns" "$COMPOSE_PROJECT_NAME" "default compose project"
 }
 
 check_prefixed_ports() {
   export PORT_PREFIX=271
-  unset API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT
+  unset API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT COMPOSE_PROJECT_NAME
   apply_port_prefix_defaults
 
   assert_eq "27100" "$PROXY_PORT" "prefixed proxy port"
@@ -47,6 +48,7 @@ check_prefixed_ports() {
   assert_eq "27118" "$OTEL_HTTP_PORT" "prefixed OTLP HTTP port"
   assert_eq "27179" "$VALKEY_PORT" "prefixed valkey port"
   assert_eq "27132" "$DB_PORT" "prefixed db port"
+  assert_eq "everruns-271" "$COMPOSE_PROJECT_NAME" "prefixed compose project"
 }
 
 check_example_ports() {
