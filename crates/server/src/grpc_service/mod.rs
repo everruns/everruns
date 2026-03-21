@@ -1,19 +1,15 @@
 // Internal gRPC Service for Worker Communication
 //
 // Decision: Workers communicate with control plane via gRPC for all database operations
+// Decision: This provides a clean boundary and simplifies worker deployment
+// Decision: gRPC service uses the same services layer as HTTP API for consistency
+// Decision: No direct database access - all operations go through services layer
 // Decision: Split into submodules for maintainability (EVE-101).
 
 mod worker_service_impl;
 
 #[cfg(test)]
 mod tests;
-
-// Internal gRPC Service for Worker Communication
-//
-// Decision: Workers communicate with control plane via gRPC for all database operations
-// Decision: This provides a clean boundary and simplifies worker deployment
-// Decision: gRPC service uses the same services layer as HTTP API for consistency
-// Decision: No direct database access - all operations go through services layer
 
 use crate::services::{
     AgentService, CapabilityService, EventService, HarnessService, LlmResolverService,
