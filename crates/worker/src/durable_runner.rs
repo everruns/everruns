@@ -1244,13 +1244,25 @@ mod tests {
         let runner_p = DurableRunner::new_in_memory();
         let sid_p = SessionId::new();
         runner_p
-            .start_run(DEFAULT_ORG_ID, sid_p, HarnessId::new(), Some(AgentId::new()), MessageId::new())
+            .start_run(
+                DEFAULT_ORG_ID,
+                sid_p,
+                HarnessId::new(),
+                Some(AgentId::new()),
+                MessageId::new(),
+            )
             .await
             .unwrap();
         // Leave workflow Pending
         let t0 = std::time::Instant::now();
         runner_p
-            .start_run(DEFAULT_ORG_ID, sid_p, HarnessId::new(), Some(AgentId::new()), MessageId::new())
+            .start_run(
+                DEFAULT_ORG_ID,
+                sid_p,
+                HarnessId::new(),
+                Some(AgentId::new()),
+                MessageId::new(),
+            )
             .await
             .unwrap();
         let pending_dur = t0.elapsed();
@@ -1259,7 +1271,13 @@ mod tests {
         let runner_r = DurableRunner::new_in_memory();
         let sid_r = SessionId::new();
         runner_r
-            .start_run(DEFAULT_ORG_ID, sid_r, HarnessId::new(), Some(AgentId::new()), MessageId::new())
+            .start_run(
+                DEFAULT_ORG_ID,
+                sid_r,
+                HarnessId::new(),
+                Some(AgentId::new()),
+                MessageId::new(),
+            )
             .await
             .unwrap();
         {
@@ -1281,7 +1299,13 @@ mod tests {
         });
         let t1 = std::time::Instant::now();
         runner_r
-            .start_run(DEFAULT_ORG_ID, sid_r, HarnessId::new(), Some(AgentId::new()), MessageId::new())
+            .start_run(
+                DEFAULT_ORG_ID,
+                sid_r,
+                HarnessId::new(),
+                Some(AgentId::new()),
+                MessageId::new(),
+            )
             .await
             .unwrap();
         let running_dur = t1.elapsed();
