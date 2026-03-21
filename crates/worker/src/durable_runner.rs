@@ -531,7 +531,21 @@ impl AgentRunner for DurableRunner {
                             );
                             break true;
                         }
-                        // Workflow is non-terminal — release lock and wait
+                        if status == WorkflowStatus::Pending {
+                            // Pending means no worker has claimed the task yet —
+                            // safe to take over immediately (cancel stale task,
+                            // enqueue new one). The race-condition wait only
+                            // applies to Running workflows.
+                            info!(
+                                session_id = %session_id,
+                                workflow_id = %workflow_id,
+                                "Previous workflow is Pending (unclaimed), taking over immediately"
+                            );
+                            break true;
+                        }
+                        // Workflow is Running — release lock and wait for it
+                        // to finish (race window: session idle before
+                        // schedule_next_activity marks Completed).
                         drop(store);
                         if std::time::Instant::now() > deadline {
                             return Err(anyhow::anyhow!(
@@ -864,6 +878,15 @@ mod tests {
 
         assert!(runner.is_running(session_id).await);
 
+        // Transition to Running so the polling loop actually waits
+        {
+            let mut store = runner.store.lock().await;
+            store
+                .update_workflow_status(session_id.uuid(), WorkflowStatus::Running, None, None)
+                .await
+                .expect("Should transition to Running");
+        }
+
         let store = runner.store.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(250)).await;
@@ -874,7 +897,7 @@ mod tests {
                 .expect("Should complete existing workflow");
         });
 
-        // Second message while still running - should wait, then reuse the workflow.
+        // Second message while Running — should wait, then reuse the workflow.
         let start = std::time::Instant::now();
         runner
             .start_run(
@@ -1151,6 +1174,61 @@ mod tests {
             err.to_string().contains("not in Completed status"),
             "Error should reject non-Completed workflow, got: {}",
             err
+        );
+    }
+
+    /// Test that a Pending workflow does NOT cause a 10s wait — the new turn
+    /// takes over immediately (EVE-168).
+    #[tokio::test]
+    async fn test_start_run_takes_over_pending_workflow_immediately() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let runner = DurableRunner::new_in_memory();
+
+        let session_id = SessionId::new();
+        let harness_id = HarnessId::new();
+        let agent_id = AgentId::new();
+        let message_id1 = MessageId::new();
+        let message_id2 = MessageId::new();
+
+        // First message — creates workflow (status becomes Pending)
+        runner
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                message_id1,
+            )
+            .await
+            .expect("First start_run should succeed");
+
+        // Workflow is Pending (no worker has claimed it).
+        // Don't transition to Running — leave it Pending to reproduce
+        // the exact scenario from EVE-168.
+
+        // Second message while workflow is still Pending — must succeed
+        // instantly (well under 1s, certainly not 10s).
+        let start = std::time::Instant::now();
+        runner
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                message_id2,
+            )
+            .await
+            .expect("Second start_run should take over Pending workflow immediately");
+
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(1),
+            "Should not wait for a Pending workflow — took {:?}",
+            start.elapsed(),
+        );
+        assert!(
+            runner.is_running(session_id).await,
+            "Workflow should be running after takeover"
         );
     }
 }
