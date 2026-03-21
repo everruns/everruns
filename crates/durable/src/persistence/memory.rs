@@ -642,6 +642,23 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         }
     }
 
+    async fn cancel_pending_tasks_for_workflow(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<u64, StoreError> {
+        let mut tasks = self.tasks.write();
+        let mut count = 0u64;
+        for task in tasks.values_mut() {
+            if task.definition.workflow_id == Some(workflow_id)
+                && task.status == TaskStatus::Pending
+            {
+                task.status = TaskStatus::Cancelled;
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
     async fn get_task(&self, task_id: Uuid) -> Result<TaskInfo, StoreError> {
         let tasks = self.tasks.read();
         let task = tasks

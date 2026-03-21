@@ -864,6 +864,33 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
+    async fn cancel_pending_tasks_for_workflow(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<u64, StoreError> {
+        let result = sqlx::query(
+            r#"
+            UPDATE durable_task_queue
+            SET status = 'cancelled'
+            WHERE workflow_id = $1 AND status = 'pending'
+            "#,
+        )
+        .bind(workflow_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to cancel pending tasks for workflow: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        let count = result.rows_affected();
+        if count > 0 {
+            debug!(%workflow_id, count, "cancelled pending tasks for workflow");
+        }
+        Ok(count)
+    }
+
+    #[instrument(skip(self))]
     async fn get_task(&self, task_id: Uuid) -> Result<TaskInfo, StoreError> {
         let row = sqlx::query(
             r#"

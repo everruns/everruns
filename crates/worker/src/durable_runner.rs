@@ -99,6 +99,9 @@ pub trait DurableStoreBackend: Send + Sync {
 
     async fn count_active_workflows(&mut self) -> Result<usize>;
 
+    /// Cancel all pending (unclaimed) tasks for a workflow.
+    async fn cancel_pending_tasks(&mut self, workflow_id: Uuid) -> Result<u64>;
+
     /// Append workflow events (for event sourcing)
     async fn append_events(
         &mut self,
@@ -152,6 +155,12 @@ impl DurableStoreBackend for GrpcDurableStore {
 
     async fn count_active_workflows(&mut self) -> Result<usize> {
         GrpcDurableStore::count_active_workflows(self).await
+    }
+
+    async fn cancel_pending_tasks(&mut self, _workflow_id: Uuid) -> Result<u64> {
+        // gRPC workers don't call start_run — only the control-plane does.
+        // If this is ever needed, add a CancelPendingTasks gRPC method.
+        Ok(0)
     }
 
     async fn append_events(
@@ -246,6 +255,13 @@ impl DurableStoreBackend for DirectDurableStore {
             .count_active_workflows()
             .await
             .map(|c| c as usize)
+            .map_err(Into::into)
+    }
+
+    async fn cancel_pending_tasks(&mut self, workflow_id: Uuid) -> Result<u64> {
+        self.store
+            .cancel_pending_tasks_for_workflow(workflow_id)
+            .await
             .map_err(Into::into)
     }
 
@@ -357,6 +373,13 @@ impl DurableStoreBackend for InMemoryDurableStore {
     async fn count_active_workflows(&mut self) -> Result<usize> {
         // In-memory store doesn't have count_active_workflows, return workflow count
         Ok(self.store.workflow_count())
+    }
+
+    async fn cancel_pending_tasks(&mut self, workflow_id: Uuid) -> Result<u64> {
+        self.store
+            .cancel_pending_tasks_for_workflow(workflow_id)
+            .await
+            .map_err(Into::into)
     }
 
     async fn append_events(
@@ -578,6 +601,22 @@ impl AgentRunner for DurableRunner {
         let activity_id = format!("input_{}", Uuid::now_v7());
 
         if workflow_exists {
+            // Cancel any stale pending tasks from the previous turn before
+            // enqueuing the new one. Without this, a worker could claim both
+            // the old and new task concurrently.
+            let cancelled = store
+                .cancel_pending_tasks(workflow_id)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to cancel stale tasks: {}", e))?;
+            if cancelled > 0 {
+                info!(
+                    session_id = %session_id,
+                    workflow_id = %workflow_id,
+                    cancelled,
+                    "Cancelled stale pending tasks before new turn"
+                );
+            }
+
             // Reset existing workflow to pending for new turn
             store
                 .update_workflow_status(workflow_id, WorkflowStatus::Pending, None, None)
@@ -1207,28 +1246,28 @@ mod tests {
         // Don't transition to Running — leave it Pending to reproduce
         // the exact scenario from EVE-168.
 
-        // Second message while workflow is still Pending — must succeed
-        // instantly (well under 1s, certainly not 10s).
-        let start = std::time::Instant::now();
-        runner
-            .start_run(
+        // Second message while workflow is still Pending — must complete
+        // within 1s (not 10s). Using timeout so a regression fails fast
+        // instead of blocking CI for 10s.
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            runner.start_run(
                 DEFAULT_ORG_ID,
                 session_id,
                 harness_id,
                 Some(agent_id),
                 message_id2,
-            )
-            .await
-            .expect("Second start_run should take over Pending workflow immediately");
+            ),
+        )
+        .await;
+
+        let inner = result
+            .expect("Second start_run should complete within 1s (Pending takeover, not 10s wait)");
+        inner.expect("Second start_run should succeed");
 
         assert!(
-            start.elapsed() < std::time::Duration::from_secs(1),
-            "Should not wait for a Pending workflow — took {:?}",
-            start.elapsed(),
-        );
-        assert!(
             runner.is_running(session_id).await,
-            "Workflow should be running after takeover"
+            "Workflow should be active (non-terminal) after takeover"
         );
     }
 
@@ -1407,17 +1446,28 @@ mod tests {
             .expect("Second start_run should take over");
 
         // Verify workflow is in non-terminal state (Pending with new task)
-        let (status, _, _) = {
-            let mut store = runner.store.lock().await;
-            store
-                .get_workflow_status(session_id.uuid())
-                .await
-                .expect("Should get workflow status")
-        };
+        let mut store = runner.store.lock().await;
+        let (status, _, _) = store
+            .get_workflow_status(session_id.uuid())
+            .await
+            .expect("Should get workflow status");
         assert_eq!(
             status,
             WorkflowStatus::Pending,
             "After Pending takeover, workflow should be reset to Pending (new task enqueued)"
+        );
+
+        // Only 1 pending task should remain (the new one); old task was cancelled.
+        // cancel_pending_tasks returns how many it cancels — calling it again
+        // should cancel the single remaining task from the second start_run.
+        let remaining = store
+            .cancel_pending_tasks(session_id.uuid())
+            .await
+            .expect("cancel_pending_tasks");
+        assert_eq!(
+            remaining, 1,
+            "Exactly 1 pending task should remain (the new turn); got {}",
+            remaining
         );
     }
 }
