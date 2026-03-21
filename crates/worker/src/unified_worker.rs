@@ -103,7 +103,7 @@ impl TaskWorkerConfig {
         let max_concurrent = std::env::var("MAX_CONCURRENT_TASKS")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(10);
+            .unwrap_or(1000);
 
         let worker_group = std::env::var("WORKER_GROUP").ok();
 

@@ -153,7 +153,7 @@ impl DurableWorkerConfig {
             worker_id: std::env::var("WORKER_ID")
                 .unwrap_or_else(|_| format!("worker-{}", Uuid::now_v7())),
             grpc_address: env_string("WORKER_GRPC_ADDRESS", "127.0.0.1:9001"),
-            max_concurrent_tasks: env_or("MAX_CONCURRENT_TASKS", 10),
+            max_concurrent_tasks: env_or("MAX_CONCURRENT_TASKS", 1000),
             connect_timeout: env_duration_secs(
                 "WORKER_GRPC_CONNECT_TIMEOUT",
                 defaults.connect_timeout,
