@@ -145,8 +145,8 @@ Always make sure you are working on top of latest main from remote.
 ### Local Dev
 
 ```bash
-just start-dev          # DEV MODE (in-memory, no Docker)
-just start-all          # Full mode (PostgreSQL)
+just start-dev          # DEV MODE (in-memory, no external services)
+just start-all          # Full mode (PostgreSQL + Valkey as processes)
 just --list             # All commands
 ```
 

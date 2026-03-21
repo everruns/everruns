@@ -19,7 +19,7 @@ assert_eq() {
 }
 
 check_default_ports() {
-  unset PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT COMPOSE_PROJECT_NAME
+  unset PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT
   apply_port_prefix_defaults
 
   assert_eq "9300" "$PROXY_PORT" "default proxy port"
@@ -31,12 +31,11 @@ check_default_ports() {
   assert_eq "4318" "$OTEL_HTTP_PORT" "default OTLP HTTP port"
   assert_eq "6379" "$VALKEY_PORT" "default valkey port"
   assert_eq "9332" "$DB_PORT" "default db port"
-  assert_eq "everruns" "$COMPOSE_PROJECT_NAME" "default compose project"
 }
 
 check_prefixed_ports() {
   export PORT_PREFIX=271
-  unset API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT COMPOSE_PROJECT_NAME
+  unset API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT
   apply_port_prefix_defaults
 
   assert_eq "27100" "$PROXY_PORT" "prefixed proxy port"
@@ -48,12 +47,10 @@ check_prefixed_ports() {
   assert_eq "27118" "$OTEL_HTTP_PORT" "prefixed OTLP HTTP port"
   assert_eq "27179" "$VALKEY_PORT" "prefixed valkey port"
   assert_eq "27132" "$DB_PORT" "prefixed db port"
-  assert_eq "everruns-271" "$COMPOSE_PROJECT_NAME" "prefixed compose project"
 }
 
 check_example_ports() {
   local compose_file="$PROJECT_ROOT/examples/docker-compose-full.yaml"
-  local local_compose_file="$PROJECT_ROOT/local/docker-compose.yml"
 
   if rg -q '^    container_name:' "$compose_file"; then
     echo "FAIL: example compose should not hardcode container_name" >&2
@@ -64,9 +61,6 @@ check_example_ports() {
   rg -q 'reverse_proxy server:9301' "$compose_file"
   rg -q 'reverse_proxy ui:9305' "$compose_file"
   rg -q '\$\{EXAMPLE_PROXY_PORT:-9300\}:9300' "$compose_file"
-  rg -q '\$\{VALKEY_PORT:-6379\}:6379' "$local_compose_file"
-  rg -q '\$\{OTEL_GRPC_PORT:-4317\}:4317' "$local_compose_file"
-  rg -q '\$\{OTEL_HTTP_PORT:-4318\}:4318' "$local_compose_file"
 }
 
 check_caddyfile() {

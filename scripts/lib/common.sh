@@ -35,47 +35,6 @@ require_command() {
   fi
 }
 
-# Resolve Docker Compose command (plugin or standalone)
-DOCKER_COMPOSE=()
-resolve_docker_compose() {
-  if docker compose version &> /dev/null; then
-    DOCKER_COMPOSE=(docker compose)
-    return 0
-  fi
-
-  if command -v docker-compose &> /dev/null && docker-compose version &> /dev/null; then
-    DOCKER_COMPOSE=(docker-compose)
-    return 0
-  fi
-
-  echo "❌ Docker Compose not found. Install Docker Desktop/Colima or the docker-compose plugin."
-  return 1
-}
-
-ensure_docker_daemon() {
-  local info_output
-  if info_output=$(docker info 2>&1); then
-    return 0
-  fi
-
-  echo "❌ Docker daemon not running or not accessible. Start Docker (Docker Desktop/Colima) and retry."
-  echo "   Details: $info_output"
-  return 1
-}
-
-docker_compose_service_running() {
-  local service="$1"
-
-  if ! command -v docker &> /dev/null; then
-    return 1
-  fi
-
-  docker ps \
-    --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" \
-    --filter "label=com.docker.compose.service=${service}" \
-    -q 2>/dev/null | grep -q .
-}
-
 apply_port_prefix_defaults() {
   if [ -n "${PORT_PREFIX:-}" ]; then
     : "${PROXY_PORT:=${PORT_PREFIX}00}"
@@ -87,7 +46,6 @@ apply_port_prefix_defaults() {
     : "${OTEL_HTTP_PORT:=${PORT_PREFIX}18}"
     : "${VALKEY_PORT:=${PORT_PREFIX}79}"
     : "${DB_PORT:=${PORT_PREFIX}32}"
-    : "${COMPOSE_PROJECT_NAME:=everruns-${PORT_PREFIX}}"
   else
     : "${PROXY_PORT:=9300}"
     : "${API_PORT:=9301}"
@@ -98,10 +56,9 @@ apply_port_prefix_defaults() {
     : "${OTEL_HTTP_PORT:=4318}"
     : "${VALKEY_PORT:=6379}"
     : "${DB_PORT:=9332}"
-    : "${COMPOSE_PROJECT_NAME:=everruns}"
   fi
 
-  export PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT COMPOSE_PROJECT_NAME RUN_STATE_DIR
+  export PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT RUN_STATE_DIR
 }
 
 # Check if npm dependencies need to be installed/updated

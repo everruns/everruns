@@ -71,46 +71,31 @@ case "$cmd" in
 
     DB_HOST="${DB_HOST:-localhost}"
     DB_NAME="${DB_NAME:-everruns_test}"
-    USING_DOCKER_POSTGRES=false
 
     echo "1️⃣  Checking PostgreSQL connection..."
 
-    if docker_compose_service_running postgres && check_postgres_ready "$DB_HOST" "$DB_PORT" everruns; then
-      echo "   ✅ Docker PostgreSQL is ready"
+    if check_postgres_ready "$DB_HOST" "$DB_PORT" everruns; then
+      echo "   ✅ PostgreSQL is ready"
       DB_USER="everruns"
       DB_PASS="everruns"
     elif check_postgres_ready "$DB_HOST" "$DB_PORT" "${DB_USER:-postgres}"; then
-      echo "   ✅ Local PostgreSQL is ready"
+      echo "   ✅ PostgreSQL is ready (user: ${DB_USER:-postgres})"
       DB_USER="${DB_USER:-postgres}"
       DB_PASS="${DB_PASS:-postgres}"
     else
-      echo "   ⚠️  PostgreSQL not found. Starting via Docker..."
-      if resolve_docker_compose; then
-        ensure_docker_daemon || exit 1
-        cd "$PROJECT_ROOT/local"
-        "${DOCKER_COMPOSE[@]}" up -d postgres
-        cd "$PROJECT_ROOT"
-        sleep 3
-        until check_postgres_ready "$DB_HOST" "$DB_PORT" everruns; do
-          echo "   Waiting for Postgres to be ready..."
-          sleep 1
-        done
-        echo "   ✅ Docker PostgreSQL started"
-        USING_DOCKER_POSTGRES=true
+      echo "   ⚠️  PostgreSQL not found. Starting via pg_ctl..."
+      "$PROJECT_ROOT/scripts/lib/docker.sh" start
+      if check_postgres_ready "$DB_HOST" "$DB_PORT" everruns; then
         DB_USER="everruns"
         DB_PASS="everruns"
       else
-        echo "   ❌ No PostgreSQL available. Start PostgreSQL or install Docker."
+        echo "   ❌ PostgreSQL failed to start. Install PostgreSQL and try again."
         exit 1
       fi
     fi
 
     # Set DATABASE_URL for benchmarks
-    if [ "$USING_DOCKER_POSTGRES" = true ]; then
-      export BENCHMARK_DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
-    else
-      export BENCHMARK_DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
-    fi
+    export BENCHMARK_DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 
     echo "2️⃣  Running benchmarks against PostgreSQL..."
     run_benchmarks
