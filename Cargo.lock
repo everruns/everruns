@@ -1700,6 +1700,7 @@ version = "0.8.6"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64",
  "chrono",
  "everruns-anthropic",
  "everruns-core",

@@ -15,6 +15,7 @@ pub mod events;
 pub mod feature_flags;
 pub mod harnesses;
 pub mod images;
+pub mod internal_images;
 pub mod llm_models;
 pub mod llm_providers;
 pub mod mcp_servers;

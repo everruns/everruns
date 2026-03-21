@@ -1776,7 +1776,34 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let image_id = parse_uuid(req.image_id.as_ref())?;
 
-        // Get image from storage (org-scoped)
+        // Prefer presigned URL to avoid sending image data over gRPC
+        if let Some(url) = self.presigned_image_url(image_id, req.org_id) {
+            // Metadata-only lookup — avoids loading the full image blob
+            let media_type = match self.db.get_image_info(req.org_id, image_id).await {
+                Ok(Some(info)) => info.content_type,
+                Ok(None) => {
+                    return Ok(Response::new(ResolveImageResponse {
+                        found: false,
+                        base64: String::new(),
+                        media_type: String::new(),
+                        url: String::new(),
+                    }));
+                }
+                Err(e) => {
+                    tracing::error!(%image_id, error = %e, "Failed to get image");
+                    return Err(Status::internal("Failed to get image"));
+                }
+            };
+
+            return Ok(Response::new(ResolveImageResponse {
+                found: true,
+                base64: String::new(),
+                media_type,
+                url,
+            }));
+        }
+
+        // Fallback: send base64 over gRPC (when API_BASE_URL is not configured)
         let image_row = match self.db.get_image(req.org_id, image_id).await {
             Ok(Some(row)) => row,
             Ok(None) => {
@@ -1784,6 +1811,7 @@ impl WorkerService for WorkerServiceImpl {
                     found: false,
                     base64: String::new(),
                     media_type: String::new(),
+                    url: String::new(),
                 }));
             }
             Err(e) => {
@@ -1792,13 +1820,13 @@ impl WorkerService for WorkerServiceImpl {
             }
         };
 
-        // Encode to base64
         let base64_data = base64::engine::general_purpose::STANDARD.encode(&image_row.data);
 
         Ok(Response::new(ResolveImageResponse {
             found: true,
             base64: base64_data,
             media_type: image_row.content_type,
+            url: String::new(),
         }))
     }
 
@@ -1813,28 +1841,55 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
 
         let mut images = std::collections::HashMap::new();
+        let use_presigned = self.api_base_url.is_some() && self.presign_secret.is_some();
 
         for proto_id in req.image_ids {
             let image_id = parse_uuid(Some(&proto_id))?;
 
-            // Get image from storage (org-scoped)
-            match self.db.get_image(req.org_id, image_id).await {
-                Ok(Some(row)) => {
-                    let base64_data = base64::engine::general_purpose::STANDARD.encode(&row.data);
-                    images.insert(
-                        image_id.to_string(),
-                        ResolvedImageData {
-                            base64: base64_data,
-                            media_type: row.content_type,
-                        },
-                    );
+            if use_presigned {
+                // Metadata-only lookup — avoids loading the full image blob
+                match self.db.get_image_info(req.org_id, image_id).await {
+                    Ok(Some(info)) => {
+                        let url = self
+                            .presigned_image_url(image_id, req.org_id)
+                            .unwrap_or_default();
+                        images.insert(
+                            image_id.to_string(),
+                            ResolvedImageData {
+                                base64: String::new(),
+                                media_type: info.content_type,
+                                url,
+                            },
+                        );
+                    }
+                    Ok(None) => {
+                        tracing::debug!(%image_id, "Image not found during batch resolution");
+                    }
+                    Err(e) => {
+                        tracing::warn!(%image_id, error = %e, "Failed to get image during batch resolution");
+                    }
                 }
-                Ok(None) => {
-                    // Image not found - skip it
-                    tracing::debug!(%image_id, "Image not found during batch resolution");
-                }
-                Err(e) => {
-                    tracing::warn!(%image_id, error = %e, "Failed to get image during batch resolution");
+            } else {
+                // Fallback: base64 over gRPC
+                match self.db.get_image(req.org_id, image_id).await {
+                    Ok(Some(row)) => {
+                        let base64_data =
+                            base64::engine::general_purpose::STANDARD.encode(&row.data);
+                        images.insert(
+                            image_id.to_string(),
+                            ResolvedImageData {
+                                base64: base64_data,
+                                media_type: row.content_type,
+                                url: String::new(),
+                            },
+                        );
+                    }
+                    Ok(None) => {
+                        tracing::debug!(%image_id, "Image not found during batch resolution");
+                    }
+                    Err(e) => {
+                        tracing::warn!(%image_id, error = %e, "Failed to get image during batch resolution");
+                    }
                 }
             }
         }
