@@ -183,8 +183,6 @@ async fn main() -> anyhow::Result<()> {
         } => {
             commands::chat::run(
                 &client,
-                &api_url,
-                &api_key,
                 output_format,
                 cli.quiet,
                 message,

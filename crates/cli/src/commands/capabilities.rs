@@ -38,8 +38,21 @@ pub async fn run(client: &Everruns, output: OutputFormat, status_filter: &str) -
             ]);
         }
     } else {
-        // For JSON/YAML output, return the filtered list
-        output.print_value(&serde_json::json!({ "data": filtered, "total": filtered.len() }));
+        // For JSON/YAML output, project to a stable field set
+        let items: Vec<_> = filtered
+            .iter()
+            .map(|c| {
+                serde_json::json!({
+                    "id": c.id,
+                    "name": c.name,
+                    "description": c.description,
+                    "status": c.status,
+                    "icon": c.icon,
+                    "category": c.category,
+                })
+            })
+            .collect();
+        output.print_value(&serde_json::json!({ "data": items, "total": items.len() }));
     }
 
     Ok(())

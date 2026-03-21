@@ -8,8 +8,6 @@ use std::time::{Duration, Instant};
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     client: &Everruns,
-    _api_url: &str,
-    _api_key: &str,
     output: OutputFormat,
     quiet: bool,
     message: String,
