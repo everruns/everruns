@@ -2,6 +2,9 @@
 //
 // Decision: Workers communicate with control plane via gRPC for all operations
 // Decision: This replaces direct database access in worker crates
+// Decision: 15 per-trait wrapper structs consolidated into 2 adapters (EVE-102):
+//   - GrpcAdapter      (session-scoped, no org_id)
+//   - GrpcOrgAdapter   (org-scoped, carries org_id)
 //
 // These implementations use the internal-protocol gRPC client to communicate
 // with the control-plane service (the API server's gRPC endpoint).
@@ -282,6 +285,60 @@ impl GrpcClient {
 }
 
 // ============================================================================
+// Consolidated adapter structs
+// ============================================================================
+
+/// Session-scoped gRPC adapter (no org_id needed).
+///
+/// Implements: MessageRetriever, SessionFileStore, EventEmitter,
+/// SessionStorageStore, UserConnectionResolver, LeasedResourceStore,
+/// SessionSqlDbStore.
+#[derive(Clone)]
+pub struct GrpcAdapter {
+    client: GrpcClient,
+}
+
+impl GrpcAdapter {
+    pub fn new(client: GrpcClient) -> Self {
+        Self { client }
+    }
+}
+
+/// Org-scoped gRPC adapter (carries org_id for authorization).
+///
+/// Implements: AgentStore, HarnessStore, SessionStore, LlmProviderStore,
+/// ImageResolver, SessionMutator, SessionScheduleStore, PlatformStore.
+#[derive(Clone)]
+pub struct GrpcOrgAdapter {
+    client: GrpcClient,
+    org_id: i64,
+}
+
+impl GrpcOrgAdapter {
+    pub fn new(client: GrpcClient, org_id: i64) -> Self {
+        Self { client, org_id }
+    }
+}
+
+// Type aliases for backward compatibility at call sites
+pub type GrpcMessageRetriever = GrpcAdapter;
+pub type GrpcSessionFileStore = GrpcAdapter;
+pub type GrpcEventEmitter = GrpcAdapter;
+pub type GrpcSessionStorageStore = GrpcAdapter;
+pub type GrpcConnectionResolver = GrpcAdapter;
+pub type GrpcLeasedResourceStore = GrpcAdapter;
+pub type GrpcSessionSqlDbStore = GrpcAdapter;
+
+pub type GrpcAgentStore = GrpcOrgAdapter;
+pub type GrpcHarnessStore = GrpcOrgAdapter;
+pub type GrpcSessionStore = GrpcOrgAdapter;
+pub type GrpcLlmProviderStore = GrpcOrgAdapter;
+pub type GrpcImageResolver = GrpcOrgAdapter;
+pub type GrpcSessionMutator = GrpcOrgAdapter;
+pub type GrpcScheduleStore = GrpcOrgAdapter;
+pub type GrpcPlatformStore = GrpcOrgAdapter;
+
+// ============================================================================
 // Helper functions for proto conversion
 // ============================================================================
 
@@ -323,24 +380,12 @@ fn non_empty_string(s: String) -> Option<String> {
 // MessageRetriever implementation
 // ============================================================================
 
-/// gRPC-backed message retriever
-///
-/// Retrieves conversation messages via gRPC from the control-plane.
-/// Message storage is handled via EventEmitter (messages are stored as events).
-pub struct GrpcMessageRetriever {
-    client: GrpcClient,
-}
-
-impl GrpcMessageRetriever {
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
-    }
-
+impl GrpcAdapter {
     /// Add a new message via gRPC
     ///
     /// Note: This is provided for API layer convenience.
     /// Messages are stored via gRPC call to control-plane.
-    pub async fn add(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
+    pub async fn add_message(&self, session_id: Uuid, input: InputMessage) -> Result<Message> {
         let mut client = self.client.inner.lock().await;
 
         // Convert content to prost ListValue
@@ -384,7 +429,7 @@ impl GrpcMessageRetriever {
 }
 
 #[async_trait]
-impl MessageRetriever for GrpcMessageRetriever {
+impl MessageRetriever for GrpcAdapter {
     async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
         let mut client = self.client.inner.lock().await;
 
@@ -489,20 +534,8 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
 // AgentStore implementation
 // ============================================================================
 
-/// gRPC-backed agent store
-pub struct GrpcAgentStore {
-    client: GrpcClient,
-    org_id: i64,
-}
-
-impl GrpcAgentStore {
-    pub fn new(client: GrpcClient, org_id: i64) -> Self {
-        Self { client, org_id }
-    }
-}
-
 #[async_trait]
-impl AgentStore for GrpcAgentStore {
+impl AgentStore for GrpcOrgAdapter {
     async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
         let mut client = self.client.inner.lock().await;
 
@@ -569,20 +602,8 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
 // HarnessStore implementation
 // ============================================================================
 
-/// gRPC-backed harness store
-pub struct GrpcHarnessStore {
-    client: GrpcClient,
-    org_id: i64,
-}
-
-impl GrpcHarnessStore {
-    pub fn new(client: GrpcClient, org_id: i64) -> Self {
-        Self { client, org_id }
-    }
-}
-
 #[async_trait]
-impl HarnessStore for GrpcHarnessStore {
+impl HarnessStore for GrpcOrgAdapter {
     async fn get_harness(&self, harness_id: everruns_core::HarnessId) -> Result<Option<Harness>> {
         let mut client = self.client.inner.lock().await;
 
@@ -653,20 +674,8 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
 // SessionStore implementation
 // ============================================================================
 
-/// gRPC-backed session store
-pub struct GrpcSessionStore {
-    client: GrpcClient,
-    org_id: i64,
-}
-
-impl GrpcSessionStore {
-    pub fn new(client: GrpcClient, org_id: i64) -> Self {
-        Self { client, org_id }
-    }
-}
-
 #[async_trait]
-impl SessionStore for GrpcSessionStore {
+impl SessionStore for GrpcOrgAdapter {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
         let mut client = self.client.inner.lock().await;
 
@@ -772,20 +781,8 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
 // LlmProviderStore implementation
 // ============================================================================
 
-/// gRPC-backed LLM provider store
-pub struct GrpcLlmProviderStore {
-    client: GrpcClient,
-    org_id: i64,
-}
-
-impl GrpcLlmProviderStore {
-    pub fn new(client: GrpcClient, org_id: i64) -> Self {
-        Self { client, org_id }
-    }
-}
-
 #[async_trait]
-impl LlmProviderStore for GrpcLlmProviderStore {
+impl LlmProviderStore for GrpcOrgAdapter {
     async fn get_model_with_provider(
         &self,
         model_id: ModelId,
@@ -862,19 +859,8 @@ fn proto_model_with_provider_to_model(
 // SessionFileStore implementation
 // ============================================================================
 
-/// gRPC-backed session file store
-pub struct GrpcSessionFileStore {
-    client: GrpcClient,
-}
-
-impl GrpcSessionFileStore {
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
-    }
-}
-
 #[async_trait]
-impl SessionFileStore for GrpcSessionFileStore {
+impl SessionFileStore for GrpcAdapter {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let mut client = self.client.inner.lock().await;
 
@@ -1121,19 +1107,8 @@ fn proto_file_stat_to_stat(proto: proto::FileStat) -> Result<FileStat> {
 // EventEmitter implementation
 // ============================================================================
 
-/// gRPC-backed event emitter
-pub struct GrpcEventEmitter {
-    client: GrpcClient,
-}
-
-impl GrpcEventEmitter {
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
-    }
-}
-
 #[async_trait]
-impl EventEmitter for GrpcEventEmitter {
+impl EventEmitter for GrpcAdapter {
     async fn emit(&self, request: EventRequest) -> Result<Event> {
         let mut client = self.client.inner.lock().await;
 
@@ -1276,21 +1251,7 @@ use everruns_core::traits::{
 };
 use std::collections::HashMap;
 
-/// gRPC-backed image resolver for resolving image_file content parts
-///
-/// This is used by ReasonAtom to resolve image_file references to actual
-/// image data before sending messages to LLM providers.
-pub struct GrpcImageResolver {
-    client: GrpcClient,
-    org_id: i64,
-}
-
-impl GrpcImageResolver {
-    /// Create a new GrpcImageResolver scoped to an organization
-    pub fn new(client: GrpcClient, org_id: i64) -> Self {
-        Self { client, org_id }
-    }
-
+impl GrpcOrgAdapter {
     /// Resolve multiple images in a batch (more efficient)
     ///
     /// Returns a HashMap mapping image_id to ResolvedImage for all found images.
@@ -1327,7 +1288,7 @@ impl GrpcImageResolver {
 }
 
 #[async_trait]
-impl ImageResolver for GrpcImageResolver {
+impl ImageResolver for GrpcOrgAdapter {
     /// Resolve a single image by ID
     ///
     /// Returns the base64-encoded image data and media type, or None if not found.
@@ -1358,19 +1319,8 @@ impl ImageResolver for GrpcImageResolver {
 // SessionStorageStore implementation
 // ============================================================================
 
-/// gRPC-backed session storage store for key/value and secret operations
-pub struct GrpcSessionStorageStore {
-    client: GrpcClient,
-}
-
-impl GrpcSessionStorageStore {
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
-    }
-}
-
 #[async_trait]
-impl SessionStorageStore for GrpcSessionStorageStore {
+impl SessionStorageStore for GrpcAdapter {
     async fn set_value(
         &self,
         session_id: everruns_core::SessionId,
@@ -1520,22 +1470,8 @@ impl SessionStorageStore for GrpcSessionStorageStore {
 // GrpcConnectionResolver - UserConnectionResolver over gRPC
 // ============================================================================
 
-/// gRPC-backed user connection resolver.
-///
-/// Proxies `get_connection_token` calls to the control-plane which has access
-/// to encrypted tokens and GitHub App credentials.
-pub struct GrpcConnectionResolver {
-    client: GrpcClient,
-}
-
-impl GrpcConnectionResolver {
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
-    }
-}
-
 #[async_trait]
-impl everruns_core::traits::UserConnectionResolver for GrpcConnectionResolver {
+impl everruns_core::traits::UserConnectionResolver for GrpcAdapter {
     async fn get_connection_token(
         &self,
         session_id: everruns_core::SessionId,
@@ -1595,22 +1531,8 @@ impl everruns_core::traits::UserConnectionResolver for GrpcConnectionResolver {
 // GrpcSessionMutator - SessionMutator over gRPC
 // ============================================================================
 
-/// gRPC-backed session mutator.
-///
-/// Proxies session mutation calls to the control-plane.
-pub struct GrpcSessionMutator {
-    client: GrpcClient,
-    org_id: i64,
-}
-
-impl GrpcSessionMutator {
-    pub fn new(client: GrpcClient, org_id: i64) -> Self {
-        Self { client, org_id }
-    }
-}
-
 #[async_trait]
-impl everruns_core::traits::SessionMutator for GrpcSessionMutator {
+impl everruns_core::traits::SessionMutator for GrpcOrgAdapter {
     async fn update_session_title(
         &self,
         session_id: everruns_core::SessionId,
@@ -1626,23 +1548,8 @@ impl everruns_core::traits::SessionMutator for GrpcSessionMutator {
 // GrpcLeasedResourceStore - LeasedResourceStore over gRPC
 // ============================================================================
 
-/// gRPC-backed leased resource store.
-///
-/// Tools use this to register/touch/release provider-owned remote resources so
-/// the control plane can later clean them through the durable leased-resource
-/// cleanup schedule.
-pub struct GrpcLeasedResourceStore {
-    client: GrpcClient,
-}
-
-impl GrpcLeasedResourceStore {
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
-    }
-}
-
 #[async_trait]
-impl LeasedResourceStore for GrpcLeasedResourceStore {
+impl LeasedResourceStore for GrpcAdapter {
     async fn upsert_resource(&self, input: UpsertLeasedResource) -> Result<LeasedResource> {
         let mut client = self.client.inner.lock().await;
         let response = client
@@ -1712,20 +1619,6 @@ impl LeasedResourceStore for GrpcLeasedResourceStore {
 // ============================================================================
 // GrpcScheduleStore - SessionScheduleStore over gRPC
 // ============================================================================
-
-/// gRPC-backed session schedule store.
-///
-/// Proxies schedule CRUD to the control-plane via gRPC RPCs.
-pub struct GrpcScheduleStore {
-    client: GrpcClient,
-    org_id: i64,
-}
-
-impl GrpcScheduleStore {
-    pub fn new(client: GrpcClient, org_id: i64) -> Self {
-        Self { client, org_id }
-    }
-}
 
 fn proto_leased_resource_to_schema(s: proto::LeasedResourceProto) -> Result<LeasedResource> {
     let id_uuid = proto_uuid_to_uuid(s.id.as_ref())?;
@@ -1816,7 +1709,7 @@ fn proto_schedule_to_schema(
 }
 
 #[async_trait]
-impl everruns_core::traits::SessionScheduleStore for GrpcScheduleStore {
+impl everruns_core::traits::SessionScheduleStore for GrpcOrgAdapter {
     async fn create_schedule(
         &self,
         session_id: everruns_core::SessionId,
@@ -1906,23 +1799,8 @@ impl everruns_core::traits::SessionScheduleStore for GrpcScheduleStore {
 // GrpcPlatformStore - PlatformStore implementation over gRPC
 // ============================================================================
 
-/// gRPC-backed platform store for org-scoped management operations.
-///
-/// Proxies all PlatformStore trait methods to the control-plane via gRPC RPCs.
-/// Used by gRPC workers to support the platform_management capability.
-pub struct GrpcPlatformStore {
-    client: GrpcClient,
-    org_id: i64,
-}
-
-impl GrpcPlatformStore {
-    pub fn new(client: GrpcClient, org_id: i64) -> Self {
-        Self { client, org_id }
-    }
-}
-
 #[async_trait]
-impl everruns_core::platform_store::PlatformStore for GrpcPlatformStore {
+impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
     // =========================================================================
     // Harness Operations
     // =========================================================================
@@ -2409,19 +2287,6 @@ use everruns_core::session_sqldb::{
 /// Alias std::result::Result to avoid shadowing by everruns_core::error::Result.
 type SqlDbResult<T> = std::result::Result<T, SessionSqlDbError>;
 
-/// gRPC-backed session SQL database store.
-///
-/// Proxies all SessionSqlDbStore trait methods to the control-plane via gRPC RPCs.
-pub struct GrpcSessionSqlDbStore {
-    client: GrpcClient,
-}
-
-impl GrpcSessionSqlDbStore {
-    pub fn new(client: GrpcClient) -> Self {
-        Self { client }
-    }
-}
-
 /// Convert a gRPC status to a SessionSqlDbError, preserving error semantics.
 fn grpc_status_to_sqldb_error(status: tonic::Status) -> SessionSqlDbError {
     let msg = status.message().to_string();
@@ -2448,7 +2313,7 @@ fn proto_db_info_to_core(info: proto::SessionSqlDbDatabaseInfo) -> DatabaseInfo 
 }
 
 #[async_trait]
-impl SessionSqlDbStore for GrpcSessionSqlDbStore {
+impl SessionSqlDbStore for GrpcAdapter {
     async fn create_database(
         &self,
         session_id: SessionId,
