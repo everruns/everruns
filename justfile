@@ -17,9 +17,9 @@ default:
 init:
     ./scripts/lib/setup.sh init
 
-# Install the everruns CLI (pre-built binary or --source)
-install-cli *args:
-    ./scripts/install-cli.sh {{args}}
+# Install the everruns CLI from local source
+install-cli:
+    cargo install --path crates/cli --force
 
 # Upload example agents from examples/agents/
 upload-agents:
