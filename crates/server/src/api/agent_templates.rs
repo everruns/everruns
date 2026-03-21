@@ -150,9 +150,7 @@ pub async fn use_example(
 
     // Check dev-only
     if seed.dev_only && !state.grade.experimental_features_enabled() {
-        return Err(ErrorResponse::not_found(&format!(
-            "agent example '{slug}'"
-        )));
+        return Err(ErrorResponse::not_found(&format!("agent example '{slug}'")));
     }
 
     // Check capabilities registered
