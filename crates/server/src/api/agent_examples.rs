@@ -42,9 +42,19 @@ pub struct AgentExample {
 }
 
 fn slug_from_name(name: &str) -> String {
-    name.to_lowercase()
+    let raw = name
+        .to_lowercase()
         .replace(' ', "-")
-        .replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "")
+        .replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "");
+    // Collapse consecutive hyphens
+    let mut result = String::with_capacity(raw.len());
+    for c in raw.chars() {
+        if c == '-' && result.ends_with('-') {
+            continue;
+        }
+        result.push(c);
+    }
+    result
 }
 
 fn seed_to_example(seed: &SeedAgent) -> AgentExample {
@@ -213,7 +223,7 @@ mod tests {
         assert_eq!(slug_from_name("Python Coder"), "python-coder");
         assert_eq!(
             slug_from_name("Cloud Cost & Security Auditor"),
-            "cloud-cost--security-auditor"
+            "cloud-cost-security-auditor"
         );
     }
 

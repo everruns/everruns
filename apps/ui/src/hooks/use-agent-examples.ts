@@ -2,7 +2,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listAgentExamples, adoptAgentExample } from "@/lib/api/agent-templates";
+import { listAgentExamples, adoptAgentExample } from "@/lib/api/agent-examples";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 
