@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::auth::CredentialStore;
+use crate::auth::{CredentialStore, credentials_path};
 
 pub fn run(profile: &str) -> Result<()> {
     let store = CredentialStore::load().unwrap_or_default();
@@ -40,7 +40,24 @@ pub fn run(profile: &str) -> Result<()> {
             println!("Org:     {}", org_id);
         }
     } else {
-        eprintln!("Not logged in. Run `everruns login` to authenticate.");
+        let path_hint = credentials_path()
+            .map(|p| {
+                let display = if let Some(home) = dirs::home_dir() {
+                    if let Ok(rel) = p.strip_prefix(&home) {
+                        format!("~/{}", rel.display())
+                    } else {
+                        p.display().to_string()
+                    }
+                } else {
+                    p.display().to_string()
+                };
+                format!(" (looked in {})", display)
+            })
+            .unwrap_or_default();
+        eprintln!(
+            "Not logged in. Run `everruns login` to authenticate.{}",
+            path_hint
+        );
         std::process::exit(1);
     }
 

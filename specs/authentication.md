@@ -57,7 +57,7 @@ Interactive CLI authentication via `everruns login`. Flow:
 6. CLI receives code, redirects browser to `/cli/login-success` (branded success page)
 7. CLI calls `POST /v1/auth/cli/exchange` with code + hostname + os
 8. Server creates API key with metadata, returns key + user + orgs
-9. CLI prompts for org selection (if multiple), stores credentials in `~/.config/everruns/credentials.json`
+9. CLI prompts for org selection (if multiple), stores credentials in the platform config file (`~/.config/everruns/credentials.json` on Linux, `~/Library/Application Support/everruns/credentials.json` on macOS)
 
 Endpoints: `POST /v1/auth/cli/start`, `GET /v1/auth/cli/callback`, `POST /v1/auth/cli/exchange`, `GET /cli/login-success`
 

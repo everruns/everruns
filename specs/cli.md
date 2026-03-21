@@ -14,7 +14,7 @@
 **Configuration (precedence order):**
 1. CLI flags (`--api-key`, `--api-url`)
 2. Environment variables (`EVERRUNS_API_KEY`, `EVERRUNS_API_URL`)
-3. Credential file (`~/.config/everruns/credentials.json`)
+3. Credential file (`<config_dir>/everruns/credentials.json` — Linux: `~/.config/everruns/`, macOS: `~/Library/Application Support/everruns/`)
 
 **Credential File:**
 - Multi-profile support: `{ "profiles": { "default": { "api_url", "api_key", "org_id" } }, "current_profile": "default" }`
