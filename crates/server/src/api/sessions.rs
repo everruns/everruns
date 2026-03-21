@@ -7,6 +7,7 @@ use crate::services::session::{SESSION_MANAGE, SESSION_VIEW};
 use crate::services::{EventService, SessionService};
 use crate::storage::StorageBackend;
 use anyhow::Context;
+use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -15,7 +16,9 @@ use axum::{
 };
 use everruns_core::capability_types::AgentCapabilityConfig;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId, TurnId};
+use everruns_core::typed_id::{
+    AgentId, AgentIdentityId, HarnessId, MessageId, ModelId, SessionId, TurnId,
+};
 use everruns_core::{
     BuiltInHarnessRole, Caller, Message, PlatformDefinition, ResourceConfigResponse, Session,
     evaluate_policies_with,
@@ -23,10 +26,11 @@ use everruns_core::{
 use everruns_worker::AgentRunner;
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse,
-    Pagination, impl_auth_state,
+    ApiOptionExt, ApiPolicyResultExt, ApiResultExt, ErrorResponse, PaginatedResponse, Pagination,
+    deserialize_nullable_update_field,
 };
 use super::validation::normalize_locale;
+use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -43,6 +47,10 @@ pub struct CreateSessionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
+    /// Optional resident agent identity used for unattended/background execution.
+    #[serde(default)]
+    #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
+    pub agent_identity_id: Option<AgentIdentityId>,
     /// Human-readable title for the session.
     #[serde(default)]
     #[schema(example = "Debug login issue")]
@@ -106,6 +114,14 @@ pub struct UpdateSessionRequest {
     #[serde(default)]
     #[schema(example = "Updated session title")]
     pub title: Option<String>,
+    /// Optional resident agent identity used for unattended/background execution.
+    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[schema(
+        value_type = Option<String>,
+        example = "identity_01933b5a00007000800000000000001",
+        nullable = true
+    )]
+    pub agent_identity_id: UpdateField<AgentIdentityId>,
     /// Session locale (BCP 47, e.g. `uk-UA`).
     #[serde(default)]
     #[schema(example = "uk-UA")]
@@ -188,7 +204,11 @@ impl AppState {
     }
 }
 
-impl_auth_state!(AppState);
+impl FromRef<AppState> for AuthState {
+    fn from_ref(input: &AppState) -> Self {
+        input.auth.clone()
+    }
+}
 
 /// Response for session statistics endpoint
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -376,7 +396,7 @@ async fn resolve_session_harness_id(
 pub async fn get_or_create_chat_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> ApiResult<Session> {
+) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
     // Use authenticated user_id, or fall back to anonymous user (auth=none mode)
     let user_id = org.user_id.unwrap_or(everruns_core::ANONYMOUS_USER_ID);
     let chat_harness_name = state.chat_harness_name.clone().ok_or((
@@ -438,7 +458,7 @@ pub async fn list_sessions(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListSessionsQuery>,
-) -> ApiResult<PaginatedResponse<Session>> {
+) -> Result<Json<PaginatedResponse<Session>>, (StatusCode, Json<ErrorResponse>)> {
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
     let pagination = Pagination::new(offset, limit);
@@ -491,7 +511,7 @@ pub async fn list_sessions(
 pub async fn get_session_stats(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> ApiResult<SessionStatsResponse> {
+) -> Result<Json<SessionStatsResponse>, (StatusCode, Json<ErrorResponse>)> {
     let caller = Caller::from(&org);
     let stats = state
         .session_service
@@ -527,7 +547,7 @@ pub async fn get_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> ApiResult<Session> {
+) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -576,7 +596,7 @@ pub async fn update_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Json(mut req): Json<UpdateSessionRequest>,
-) -> ApiResult<Session> {
+) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
     req.locale = normalize_locale(req.locale)
         .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
 
@@ -768,7 +788,7 @@ pub async fn cancel_turn(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> ApiResult<CancelTurnResponse> {
+) -> Result<Json<CancelTurnResponse>, (StatusCode, Json<ErrorResponse>)> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -953,8 +973,23 @@ mod tests {
         let json = r#"{}"#;
         let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.title, None);
+        assert_eq!(req.agent_identity_id, UpdateField::Unchanged);
         assert_eq!(req.locale, None);
         assert_eq!(req.tags, None);
+    }
+
+    #[test]
+    fn test_update_session_request_clears_agent_identity_when_null() {
+        let json = r#"{"agent_identity_id":null}"#;
+        let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.agent_identity_id, UpdateField::Clear);
+    }
+
+    #[test]
+    fn test_update_session_request_sets_agent_identity_when_present() {
+        let json = r#"{"agent_identity_id":"identity_550e8400e29b41d4a716446655440000"}"#;
+        let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
+        assert!(matches!(req.agent_identity_id, UpdateField::Set(_)));
     }
 
     #[test]

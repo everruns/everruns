@@ -11,12 +11,7 @@ import { useMemo, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FileText, Loader2 } from "lucide-react";
 import type { ContentPart, ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
-import { basename } from "@/lib/path-utils";
-import { formatFileSize } from "@/lib/formatting";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
-
-// Re-export from centralized registry for backward-compatible imports.
-export { isReadFileTool } from "@/lib/tool-registry";
 
 interface ReadFileToolCallCardProps {
   toolCall: ToolCallContent;
@@ -42,6 +37,12 @@ interface ParsedReadFileResult {
   encoding?: string;
   sizeBytes?: number;
   images: ParsedReadFileImage[];
+}
+
+function basename(value: string): string {
+  const clean = value.replace(/\/+$/, "");
+  const parts = clean.split("/");
+  return parts[parts.length - 1] || clean;
 }
 
 function getPathFromArguments(toolCall: ToolCallContent): string | undefined {
@@ -130,7 +131,16 @@ function getContentPreview(content: string | null): string | null {
     : firstNonEmptyLine;
 }
 
-// isReadFileTool is re-exported from @/lib/tool-registry at the top of this file.
+function formatSize(sizeBytes: number | undefined): string | null {
+  if (typeof sizeBytes !== "number" || sizeBytes < 0) return null;
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function isReadFileTool(toolName: string): boolean {
+  return toolName === "read_file" || toolName === "session_read_file";
+}
 
 export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -154,7 +164,7 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
     getContentPreview(parsed.content) ??
     (hasImages ? `${parsed.images.length} image${parsed.images.length === 1 ? "" : "s"}` : null) ??
     (isBinaryWithoutPreview
-      ? `binary file${formatFileSize(parsed.sizeBytes) ? ` (${formatFileSize(parsed.sizeBytes)})` : ""}`
+      ? `binary file${formatSize(parsed.sizeBytes) ? ` (${formatSize(parsed.sizeBytes)})` : ""}`
       : null);
   const title = parsed.path ? `Read ${basename(parsed.path)}` : "Read file";
   const showDetails = hasImages || isExpanded;

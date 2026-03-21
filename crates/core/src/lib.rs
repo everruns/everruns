@@ -43,6 +43,7 @@ pub mod typed_id;
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
+pub mod agent_identity;
 pub mod app;
 pub mod capability_dto;
 pub mod connection_provider;
@@ -208,6 +209,7 @@ pub use tool_types::{
 // Domain entity re-exports
 // Note: LlmProvider entity is in llm_models module. Import as: everruns_core::llm_models::LlmProvider
 pub use agent::{Agent, AgentStatus, generate_agent_public_id, validate_agent_public_id};
+pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
 pub use app::{App, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use events::{
@@ -258,9 +260,9 @@ pub use skill::{
     SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
 };
 pub use typed_id::{
-    AgentId, AppId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, LeasedResourceId,
-    McpServerId, MessageId, ModelId, NotificationId, OrgId, ProviderId, ScheduleId, SessionId,
-    SkillId, TurnId, TypedId,
+    AgentId, AgentIdentityId, AppId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId,
+    LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId, OrgId, ProviderId,
+    ScheduleId, SessionId, SkillId, TurnId, TypedId,
 };
 
 // Permissions re-exports

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AgentSelect } from "@/components/agent/agent-select";
+import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-select";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -20,6 +21,7 @@ export default function NewAppPage() {
   const [description, setDescription] = useState("");
   const [agentId, setAgentId] = useState("");
   const [harnessId, setHarnessId] = useState("");
+  const [agentIdentityId, setAgentIdentityId] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +31,7 @@ export default function NewAppPage() {
         name,
         description: description || undefined,
         agent_id: agentId,
+        agent_identity_id: agentIdentityId || undefined,
         harness_id: harnessId,
         channel_type: "slack",
       });
@@ -86,6 +89,10 @@ export default function NewAppPage() {
               <div className="space-y-2">
                 <Label htmlFor="agent">Agent</Label>
                 <AgentSelect value={agentId} onValueChange={setAgentId} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agent_identity">Agent identity</Label>
+                <AgentIdentitySelect value={agentIdentityId} onValueChange={setAgentIdentityId} />
               </div>
             </div>
 

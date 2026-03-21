@@ -21,6 +21,7 @@ impl InMemoryDatabase {
             org_id: input.org_id,
             harness_id: input.harness_id,
             agent_id: input.agent_id,
+            agent_identity_id: input.agent_identity_id,
             title: input.title,
             locale: input.locale,
             tags: input.tags,
@@ -187,6 +188,9 @@ impl InMemoryDatabase {
             if let Some(tags) = input.tags {
                 session.tags = tags;
             }
+            input
+                .agent_identity_id
+                .apply(&mut session.agent_identity_id);
             if let Some(status) = input.status {
                 session.status = status;
             }

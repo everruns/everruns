@@ -43,12 +43,42 @@ export function formatDurationSeconds(seconds: number): string {
 }
 
 /**
+ * Format a date relative to now and handle both past and future timestamps.
+ */
+export function formatDistanceToNow(
+  date: Date,
+  options?: { addSuffix?: boolean },
+): string {
+  const diff = new Date().getTime() - date.getTime();
+  const future = diff < 0;
+  const totalSeconds = Math.floor(Math.abs(diff) / 1000);
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const totalHours = Math.floor(totalMinutes / 60);
+  const totalDays = Math.floor(totalHours / 24);
+
+  let result = "less than a minute";
+  if (totalDays > 0) {
+    result = `${totalDays} day${totalDays > 1 ? "s" : ""}`;
+  } else if (totalHours > 0) {
+    result = `${totalHours} hour${totalHours > 1 ? "s" : ""}`;
+  } else if (totalMinutes > 0) {
+    result = `${totalMinutes} minute${totalMinutes > 1 ? "s" : ""}`;
+  }
+
+  if (!options?.addSuffix) return result;
+  return future ? `in ${result}` : `${result} ago`;
+}
+
+/**
  * Format a date as relative time (e.g., "5 min ago", "2 hours ago", "yesterday")
  */
 export function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
+  if (diffMs < 0) {
+    return formatDistanceToNow(date, { addSuffix: true });
+  }
   const diffSecs = Math.floor(diffMs / 1000);
   const diffMins = Math.floor(diffSecs / 60);
   const diffHours = Math.floor(diffMins / 60);
@@ -74,53 +104,4 @@ export function formatDate(dateString: string): string {
  */
 export function formatShortDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString();
-}
-
-/**
- * Format a Date as relative distance from now (e.g., "5 minutes ago", "in 2 hours").
- * Handles both past and future dates when addSuffix is true.
- */
-export function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean }): string {
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const seconds = Math.floor(Math.abs(diff) / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  let result = "";
-  if (days > 0) {
-    result = `${days} day${days > 1 ? "s" : ""}`;
-  } else if (hours > 0) {
-    result = `${hours} hour${hours > 1 ? "s" : ""}`;
-  } else if (minutes > 0) {
-    result = `${minutes} minute${minutes > 1 ? "s" : ""}`;
-  } else {
-    result = "less than a minute";
-  }
-
-  if (options?.addSuffix) {
-    return diff > 0 ? `${result} ago` : `in ${result}`;
-  }
-  return result;
-}
-
-/**
- * Format file size in human-readable form (B, KB, MB).
- */
-export function formatFileSize(sizeBytes: number | undefined): string | null {
-  if (typeof sizeBytes !== "number" || sizeBytes < 0) return null;
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/**
- * Format milliseconds as compact duration including minute range.
- * Unlike formatDuration which only handles ms/s, this also handles minutes.
- */
-export function formatDurationCompact(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60000).toFixed(1)}m`;
 }

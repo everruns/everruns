@@ -11,12 +11,7 @@ import { useMemo, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FilePenLine, Loader2 } from "lucide-react";
 import type { ContentPart, ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
-import { basename } from "@/lib/path-utils";
-import { formatFileSize } from "@/lib/formatting";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
-
-// Re-export from centralized registry for backward-compatible imports.
-export { isWriteLikeTool } from "@/lib/tool-registry";
 
 interface WriteFileToolCallCardProps {
   toolCall: ToolCallContent;
@@ -41,6 +36,12 @@ interface ParsedWriteFileResult {
   firstChangedLine?: number;
   diffTruncated: boolean;
   textContent: string | null;
+}
+
+function basename(value: string): string {
+  const clean = value.replace(/\/+$/, "");
+  const parts = clean.split("/");
+  return parts[parts.length - 1] || clean;
 }
 
 function getPathFromArguments(toolCall: ToolCallContent): string | undefined {
@@ -84,6 +85,13 @@ function parseWriteFilePayload(
   };
 }
 
+function formatSize(sizeBytes: number | undefined): string | null {
+  if (typeof sizeBytes !== "number" || sizeBytes < 0) return null;
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function getToolVerb(toolName: string): string {
   switch (toolName) {
     case "edit_file":
@@ -105,6 +113,15 @@ function getTextPreview(text: string | null): string | null {
     .find((line) => line.length > 0);
   if (!firstLine) return null;
   return firstLine.length > 120 ? `${firstLine.slice(0, 120)}...` : firstLine;
+}
+
+export function isWriteLikeTool(toolName: string): boolean {
+  return (
+    toolName === "write_file" ||
+    toolName === "edit_file" ||
+    toolName === "replace_in_file" ||
+    toolName === "append_file"
+  );
 }
 
 function formatEditPreview(
@@ -139,7 +156,7 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
       ? `${toolResult.duration_ms}ms`
       : `${(toolResult.duration_ms / 1000).toFixed(1)}s`
     : null;
-  const metadataPreview = [parsed.created ? "created" : "updated", formatFileSize(parsed.sizeBytes)]
+  const metadataPreview = [parsed.created ? "created" : "updated", formatSize(parsed.sizeBytes)]
     .filter(Boolean)
     .join(" · ");
   const preview =

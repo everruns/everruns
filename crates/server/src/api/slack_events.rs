@@ -39,7 +39,10 @@ use tokio::sync::RwLock;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
-use crate::services::{AppService, EventService, MessageService, SessionService};
+use crate::execution_metadata;
+use crate::services::{
+    AppService, CreateMessageContext, EventService, MessageService, SessionService,
+};
 use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
 use crate::storage::models::{UpdateApp, UpdateSession};
@@ -494,6 +497,7 @@ async fn process_slack_message(
                     title: Some(title),
                     locale: None,
                     tags: desired_tags.clone(),
+                    agent_identity_id: app.agent_identity_id,
                     model_id: None,
                     capabilities: vec![],
                     tools: vec![],
@@ -600,11 +604,17 @@ async fn process_slack_message(
     let message = state
         .message_service
         .create(
-            org_id,
-            None,
-            app.harness_id.uuid(),
-            Some(app.agent_id.uuid()),
-            session.id.uuid(),
+            CreateMessageContext {
+                org_id,
+                user_id: None,
+                harness_id: app.harness_id.uuid(),
+                agent_id: Some(app.agent_id.uuid()),
+                session_id: session.id.uuid(),
+                event_metadata: Some(execution_metadata::app_message_metadata(
+                    app.public_id,
+                    app.agent_identity_id,
+                )),
+            },
             create_msg,
         )
         .await?;
@@ -1770,6 +1780,7 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
             agent_id: AgentId::from_uuid(uuid::Uuid::nil()),
+            agent_identity_id: None,
             channel_type: ChannelType::Slack,
             channel_config: serde_json::json!({}),
             status: AppStatus::Published,
@@ -2018,6 +2029,7 @@ mod tests {
             agent_id: Some(everruns_core::typed_id::AgentId::from_uuid(
                 uuid::Uuid::nil(),
             )),
+            agent_identity_id: None,
             title: Some("test".to_string()),
             locale: None,
             tags: vec![],

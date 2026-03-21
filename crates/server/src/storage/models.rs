@@ -2,8 +2,8 @@
 
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    AgentId, EventId, HarnessId, ImageId, LeasedResourceId, McpServerId, MessageId, ModelId,
-    NotificationId, ProviderId, ScheduleId, SessionId, SkillId,
+    AgentId, AgentIdentityId, EventId, HarnessId, ImageId, LeasedResourceId, McpServerId,
+    MessageId, ModelId, NotificationId, ProviderId, ScheduleId, SessionId, SkillId,
 };
 use everruns_durable::UpdateField;
 use sqlx::FromRow;
@@ -376,6 +376,7 @@ pub struct SessionRow {
     #[sqlx(default)]
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
+    pub agent_identity_id: Option<AgentIdentityId>,
     pub title: Option<String>,
     #[sqlx(default)]
     pub locale: Option<String>,
@@ -423,6 +424,7 @@ pub struct CreateSessionRow {
     pub org_id: i64,
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
+    pub agent_identity_id: Option<AgentIdentityId>,
     pub title: Option<String>,
     pub locale: Option<String>,
     pub tags: Vec<String>,
@@ -438,6 +440,7 @@ pub struct CreateSessionRow {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateSession {
     pub title: Option<String>,
+    pub agent_identity_id: UpdateField<AgentIdentityId>,
     pub locale: Option<String>,
     pub tags: Option<Vec<String>>,
     pub model_id: Option<ModelId>,
@@ -1184,6 +1187,47 @@ pub struct ReleaseLeasedResourceRow {
 }
 
 // ============================================
+// Agent identity models (virtual principals)
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct AgentIdentityRow {
+    pub id: AgentIdentityId,
+    pub org_id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub avatar_url: Option<String>,
+    pub locale: Option<String>,
+    pub timezone: Option<String>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateAgentIdentityRow {
+    pub org_id: i64,
+    pub id: AgentIdentityId,
+    pub name: String,
+    pub description: Option<String>,
+    pub avatar_url: Option<String>,
+    pub locale: Option<String>,
+    pub timezone: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateAgentIdentity {
+    pub name: Option<String>,
+    pub description: UpdateField<String>,
+    pub avatar_url: UpdateField<String>,
+    pub locale: UpdateField<String>,
+    pub timezone: UpdateField<String>,
+    pub status: Option<String>,
+}
+
+// ============================================
 // App models (deployable agent+harness bundles)
 // ============================================
 
@@ -1197,6 +1241,7 @@ pub struct AppRow {
     pub description: Option<String>,
     pub harness_id: Uuid,
     pub agent_id: Uuid,
+    pub agent_identity_id: Option<Uuid>,
     pub channel_type: String,
     pub channel_config: serde_json::Value,
     pub channel_config_encrypted: Option<Vec<u8>>,
@@ -1216,6 +1261,7 @@ pub struct CreateAppRow {
     pub description: Option<String>,
     pub harness_id: Uuid,
     pub agent_id: Uuid,
+    pub agent_identity_id: Option<Uuid>,
     pub channel_type: String,
     pub channel_config: serde_json::Value,
     /// Encrypted channel_config bytes (envelope-encrypted JSON).
@@ -1229,6 +1275,7 @@ pub struct UpdateApp {
     pub description: Option<String>,
     pub harness_id: Option<Uuid>,
     pub agent_id: Option<Uuid>,
+    pub agent_identity_id: UpdateField<Uuid>,
     pub channel_type: Option<String>,
     pub channel_config: Option<serde_json::Value>,
     /// Encrypted channel_config bytes (envelope-encrypted JSON).

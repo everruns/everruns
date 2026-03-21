@@ -931,6 +931,7 @@ async fn create_session_in_org(backend: &StorageBackend, org_id: i64) -> everrun
             org_id,
             harness_id: None,
             agent_id: None,
+            agent_identity_id: None,
             title: Some("Test Session".to_string()),
             locale: None,
             tags: vec![],

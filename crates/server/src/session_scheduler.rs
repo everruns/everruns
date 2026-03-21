@@ -4,6 +4,7 @@
 // Each triggered schedule injects a user message into the session with
 // metadata.source = "schedule", then starts a turn workflow.
 
+use crate::execution_metadata;
 use crate::services::{EventService, SessionScheduleService};
 use crate::storage::StorageBackend;
 use chrono::Utc;
@@ -142,11 +143,17 @@ async fn poll_and_trigger(
         // Emit the input.message event
         let session_id_typed: SessionId = session_id;
         if let Err(e) = event_service
-            .emit(EventRequest::new(
-                session_id_typed,
-                EventContext::empty(),
-                InputMessageData::new(core_message),
-            ))
+            .emit(
+                EventRequest::new(
+                    session_id_typed,
+                    EventContext::empty(),
+                    InputMessageData::new(core_message),
+                )
+                .with_metadata(execution_metadata::scheduled_run_metadata(
+                    schedule_id,
+                    session.agent_identity_id,
+                )),
+            )
             .await
         {
             tracing::error!(

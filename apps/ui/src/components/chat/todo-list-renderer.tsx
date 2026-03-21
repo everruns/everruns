@@ -12,9 +12,6 @@ import { CheckSquare2, ChevronDown, ChevronRight, Loader2, Square } from "lucide
 import { cn } from "@/lib/utils";
 import type { ContentPart } from "@/lib/api/types";
 
-// Re-export from centralized registry for backward-compatible imports.
-export { isWriteTodosTool } from "@/lib/tool-registry";
-
 // Todo item structure from write_todos tool
 interface TodoItem {
   content: string;
@@ -225,4 +222,7 @@ export function TodoListRenderer({
   );
 }
 
-// isWriteTodosTool is re-exported from @/lib/tool-registry at the top of this file.
+// Check if a tool call is for write_todos
+export function isWriteTodosTool(toolName: string): boolean {
+  return toolName === "write_todos";
+}

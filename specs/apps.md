@@ -12,6 +12,7 @@ Top-level deployment entity. Composes existing building blocks (Harness, Agent) 
 
 - Each App references exactly one Harness (required)
 - Each App references exactly one Agent (required)
+- Each App may reference one Agent Identity (optional) for unattended/channel execution provenance
 - Each App has a channel type and channel-specific config (JSON)
 - Apps have a publish lifecycle: `draft` → `published` → `draft`
 - Apps also participate in the default building-block lifecycle: `active/draft/published -> archived -> deleted`
@@ -71,6 +72,7 @@ Key fields:
 - `description`: Optional
 - `harness_id`: Required FK to harness
 - `agent_id`: Required FK to agent
+- `agent_identity_id`: Optional FK to resident virtual principal
 - `channel_type`: Enum string (`slack`, etc.)
 - `channel_config`: JSONB with channel-specific settings
 - Slack `channel_config.reply_mode`: `all_messages` or `report_progress_only`

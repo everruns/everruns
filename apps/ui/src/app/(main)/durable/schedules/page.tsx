@@ -58,7 +58,31 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { CopyButton } from "@/components/ui/copy-button";
-import { formatDistanceToNow } from "@/lib/formatting";
+
+function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean }): string {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const seconds = Math.floor(Math.abs(diff) / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  let result = "";
+  if (days > 0) {
+    result = `${days} day${days > 1 ? "s" : ""}`;
+  } else if (hours > 0) {
+    result = `${hours} hour${hours > 1 ? "s" : ""}`;
+  } else if (minutes > 0) {
+    result = `${minutes} minute${minutes > 1 ? "s" : ""}`;
+  } else {
+    result = "less than a minute";
+  }
+
+  if (options?.addSuffix) {
+    return diff > 0 ? `${result} ago` : `in ${result}`;
+  }
+  return result;
+}
 
 function ScheduleRow({
   schedule,

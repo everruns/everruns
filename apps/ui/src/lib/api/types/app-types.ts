@@ -22,6 +22,7 @@ export interface App {
   description: string | null;
   harness_id: string;
   agent_id: string;
+  agent_identity_id?: string | null;
   channel_type: ChannelType;
   channel_config: SlackChannelConfig | Record<string, unknown>;
   status: AppStatus;
@@ -37,6 +38,7 @@ export interface CreateAppRequest {
   description?: string;
   harness_id: string;
   agent_id: string;
+  agent_identity_id?: string;
   channel_type: ChannelType;
   channel_config?: SlackChannelConfig | Record<string, unknown>;
 }
@@ -46,6 +48,7 @@ export interface UpdateAppRequest {
   description?: string;
   harness_id?: string;
   agent_id?: string;
+  agent_identity_id?: string | null;
   channel_type?: ChannelType;
   channel_config?: SlackChannelConfig | Record<string, unknown>;
   status?: AppStatus;

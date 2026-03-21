@@ -82,6 +82,7 @@ impl SessionStore for DbSessionStore {
                         .harness_id
                         .unwrap_or_else(|| HarnessId::from_uuid(BASE_HARNESS_ID)),
                     agent_id: row.agent_id,
+                    agent_identity_id: row.agent_identity_id,
                     title: row.title,
                     locale: row.locale,
                     preview: None,
