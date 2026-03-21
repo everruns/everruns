@@ -3,7 +3,6 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::SessionScheduleService;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -13,7 +12,7 @@ use axum::{
 use everruns_core::session_schedule::SessionSchedule;
 use everruns_core::typed_id::{ScheduleId, SessionId};
 
-use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse};
+use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -37,11 +36,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(state: &AppState) -> Self {
-        state.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 // ============================================
 // Request/Response types
@@ -90,7 +85,7 @@ pub async fn list_schedules(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<SessionId>,
-) -> Result<Json<Vec<SessionSchedule>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Vec<SessionSchedule>> {
     let schedules = state
         .schedule_service
         .list(org.org_id, session_id)
@@ -114,7 +109,7 @@ pub async fn get_schedule(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
-) -> Result<Json<SessionSchedule>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<SessionSchedule> {
     let schedule =
         get_schedule_in_session(&state, org.org_id, session_id, schedule_id, "get schedule")
             .await?;
@@ -138,7 +133,7 @@ pub async fn update_schedule(
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
     Json(req): Json<UpdateScheduleRequest>,
-) -> Result<Json<SessionSchedule>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<SessionSchedule> {
     let enabled = req.enabled.unwrap_or(true);
     get_schedule_in_session(
         &state,
@@ -215,7 +210,7 @@ pub async fn trigger_schedule(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
-) -> Result<Json<SessionSchedule>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<SessionSchedule> {
     get_schedule_in_session(
         &state,
         org.org_id,

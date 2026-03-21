@@ -1,6 +1,8 @@
 // Common DTOs for public API
 //
 // These types are shared across multiple API endpoints.
+// ApiResult: standard return type for API handlers
+// impl_auth_state!: macro to eliminate repeated FromRef<AppState> for AuthState impls
 
 use axum::Json;
 use axum::http::StatusCode;
@@ -10,6 +12,35 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::storage::StorageBackend;
+
+/// Standard return type for API handlers that return JSON with error responses.
+///
+/// Replaces the repeated pattern:
+/// ```ignore
+/// Result<Json<T>, (StatusCode, Json<ErrorResponse>)>
+/// ```
+pub type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
+
+/// Implement `FromRef<$state> for AuthState` for an API module's state struct.
+///
+/// Every API module with auth repeats the same 5-line impl. This macro eliminates
+/// that boilerplate. The state struct must have a field `auth: AuthState`.
+///
+/// Usage:
+/// ```ignore
+/// impl_auth_state!(AppState);
+/// impl_auth_state!(UsersState);
+/// ```
+macro_rules! impl_auth_state {
+    ($state:ty) => {
+        impl ::axum::extract::FromRef<$state> for crate::auth::AuthState {
+            fn from_ref(input: &$state) -> Self {
+                input.auth.clone()
+            }
+        }
+    };
+}
+pub(crate) use impl_auth_state;
 
 /// Standard error response for API endpoints.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

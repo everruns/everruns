@@ -13,14 +13,13 @@ use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
 use everruns_core::validate_org_public_id;
 
-use super::common::ListResponse;
+use super::common::{ListResponse, impl_auth_state};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::auth::middleware::{AuthState, AuthUser, ResolvedOrg};
 use crate::storage::models::UpdateUser;
-use axum::extract::FromRef;
 
 /// Cookie name for storing selected organization
 pub const ORG_COOKIE_NAME: &str = "everruns_org";
@@ -32,11 +31,7 @@ pub struct UsersState {
     pub auth: AuthState,
 }
 
-impl FromRef<UsersState> for AuthState {
-    fn from_ref(input: &UsersState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(UsersState);
 
 /// User response for listing
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

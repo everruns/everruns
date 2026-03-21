@@ -5,17 +5,15 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::LeasedResourceService;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
     routing::get,
 };
 use everruns_core::{LeasedResource, SessionId};
 use std::sync::Arc;
 
-use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse};
+use super::common::{ApiOptionExt, ApiResult, ApiResultExt, impl_auth_state};
 
 /// App state for session leased-resource routes.
 #[derive(Clone)]
@@ -33,11 +31,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(state: &AppState) -> Self {
-        state.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -59,7 +53,7 @@ pub async fn list_resources(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<SessionId>,
-) -> Result<Json<Vec<LeasedResource>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Vec<LeasedResource>> {
     let resources = state
         .leased_resource_service
         .list_for_session(org.org_id, session_id)

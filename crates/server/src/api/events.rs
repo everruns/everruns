@@ -4,7 +4,6 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -23,7 +22,7 @@ use everruns_core::typed_id::{EventId, SessionId};
 use everruns_core::{Caller, Event, EventListener, VALID_EVENT_TYPES};
 use serde::Deserialize;
 
-use super::common::{ErrorResponse, ListResponse};
+use super::common::{ErrorResponse, ListResponse, impl_auth_state};
 use super::sse::{DisconnectReason, SseConnectionTracker, SseStreamConfig};
 use crate::event_notifications::EventNotificationBroadcaster;
 use crate::services::EventService;
@@ -139,11 +138,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create event routes (nested under sessions)
 pub fn routes(state: AppState) -> Router {

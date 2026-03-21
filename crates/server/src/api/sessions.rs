@@ -7,7 +7,6 @@ use crate::services::session::{SESSION_MANAGE, SESSION_VIEW};
 use crate::services::{EventService, SessionService};
 use crate::storage::StorageBackend;
 use anyhow::Context;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -24,7 +23,8 @@ use everruns_core::{
 use everruns_worker::AgentRunner;
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResultExt, ErrorResponse, PaginatedResponse, Pagination,
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse,
+    Pagination, impl_auth_state,
 };
 use super::validation::normalize_locale;
 use serde::{Deserialize, Serialize};
@@ -188,11 +188,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Response for session statistics endpoint
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -380,7 +376,7 @@ async fn resolve_session_harness_id(
 pub async fn get_or_create_chat_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Session> {
     // Use authenticated user_id, or fall back to anonymous user (auth=none mode)
     let user_id = org.user_id.unwrap_or(everruns_core::ANONYMOUS_USER_ID);
     let chat_harness_name = state.chat_harness_name.clone().ok_or((
@@ -442,7 +438,7 @@ pub async fn list_sessions(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListSessionsQuery>,
-) -> Result<Json<PaginatedResponse<Session>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<PaginatedResponse<Session>> {
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
     let pagination = Pagination::new(offset, limit);
@@ -495,7 +491,7 @@ pub async fn list_sessions(
 pub async fn get_session_stats(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> Result<Json<SessionStatsResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<SessionStatsResponse> {
     let caller = Caller::from(&org);
     let stats = state
         .session_service
@@ -531,7 +527,7 @@ pub async fn get_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Session> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -580,7 +576,7 @@ pub async fn update_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Json(mut req): Json<UpdateSessionRequest>,
-) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Session> {
     req.locale = normalize_locale(req.locale)
         .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
 
@@ -772,7 +768,7 @@ pub async fn cancel_turn(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<Json<CancelTurnResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<CancelTurnResponse> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,

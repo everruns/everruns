@@ -13,7 +13,6 @@ use crate::services::session_git::{
     CommitResult, GitCommitInfo, GitDiff, GitRefInfo, SessionGitService,
 };
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -25,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::verify_session_ownership;
+use super::common::{impl_auth_state, verify_session_ownership};
 
 /// Request to create a commit
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -97,11 +96,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create session git routes
 pub fn routes(state: AppState) -> Router {

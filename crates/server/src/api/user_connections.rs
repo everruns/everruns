@@ -10,7 +10,7 @@ use crate::auth::oauth::GitHubAppService;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
-    extract::{FromRef, Path, Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::Redirect,
     routing::{delete, get, post, put},
@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
+use super::common::impl_auth_state;
 use crate::storage::models::CreateUserConnectionRow;
 
 /// App state for user connections routes
@@ -55,11 +56,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 // ============================================================================
 // Response / Request Types

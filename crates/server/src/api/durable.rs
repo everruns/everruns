@@ -33,10 +33,9 @@ use tokio::time::Instant;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::common::ErrorResponse;
+use super::common::{ApiResult, ErrorResponse, impl_auth_state};
 use super::sse::{DisconnectReason, SseStreamConfig};
 use crate::auth::middleware::{AdminUser, AuthState};
-use axum::extract::FromRef;
 
 /// App state for durable routes
 /// TM-DURABLE-010: All durable endpoints require admin role (not just authentication).
@@ -47,11 +46,7 @@ pub struct AppState {
     auth: AuthState,
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(state: &AppState) -> Self {
-        state.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 impl AppState {
     /// Create new state with an optional workflow event store
@@ -702,7 +697,7 @@ pub struct SendSignalRequest {
 pub async fn get_health(
     _auth: AdminUser,
     State(state): State<AppState>,
-) -> Result<Json<HealthResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<HealthResponse> {
     let store = state.get_store()?;
     let health = store.get_system_health().await.map_err(|e| {
         tracing::error!("Failed to get system health: {}", e);
@@ -729,7 +724,7 @@ pub async fn get_health(
 pub async fn get_metrics_timeseries(
     _auth: AdminUser,
     State(state): State<AppState>,
-) -> Result<Json<MetricsTimeSeriesResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<MetricsTimeSeriesResponse> {
     let points = state.metrics.get_points().await;
     let instance_count: u32 = std::env::var("EXPECTED_INSTANCES")
         .ok()
@@ -761,7 +756,7 @@ pub async fn list_workers(
     _auth: AdminUser,
     State(state): State<AppState>,
     Query(query): Query<ListWorkersQuery>,
-) -> Result<Json<WorkersListResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<WorkersListResponse> {
     let store = state.get_store()?;
     let filter = WorkerFilter {
         status: query.status,
@@ -888,7 +883,7 @@ pub async fn list_workflows(
     _auth: AdminUser,
     State(state): State<AppState>,
     Query(query): Query<ListWorkflowsQuery>,
-) -> Result<Json<WorkflowsListResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<WorkflowsListResponse> {
     let store = state.get_store()?;
     let status = query.status.and_then(|s| match s.as_str() {
         "pending" => Some(WorkflowStatus::Pending),
@@ -947,7 +942,7 @@ pub async fn get_workflow(
     _auth: AdminUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
-) -> Result<Json<WorkflowResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<WorkflowResponse> {
     let store = state.get_store()?;
     // Use list_workflows with a filter to get the extended info
     let filter = WorkflowFilter::default();
@@ -997,7 +992,7 @@ pub async fn get_workflow_events(
     _auth: AdminUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
-) -> Result<Json<WorkflowEventsListResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<WorkflowEventsListResponse> {
     let store = state.get_store()?;
     let events = store.get_workflow_events(workflow_id).await.map_err(|e| {
         tracing::error!("Failed to get workflow events: {}", e);
@@ -1124,7 +1119,7 @@ pub async fn list_tasks(
     _auth: AdminUser,
     State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
-) -> Result<Json<TasksListResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<TasksListResponse> {
     let store = state.get_store()?;
     let status = query.status.and_then(|s| match s.as_str() {
         "pending" => Some(TaskStatus::Pending),
@@ -1260,7 +1255,7 @@ pub async fn list_dlq(
     _auth: AdminUser,
     State(state): State<AppState>,
     Query(query): Query<ListDlqQuery>,
-) -> Result<Json<DlqListResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<DlqListResponse> {
     let store = state.get_store()?;
     let filter = DlqFilter {
         workflow_id: query.workflow_id,
@@ -1306,7 +1301,7 @@ pub async fn retry_dlq(
     _auth: AdminUser,
     State(state): State<AppState>,
     Path(dlq_id): Path<Uuid>,
-) -> Result<Json<Uuid>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Uuid> {
     let store = state.get_store()?;
     let task_id = store.requeue_from_dlq(dlq_id).await.map_err(|e| match e {
         everruns_durable::StoreError::TaskNotFound(_) => (
@@ -1342,7 +1337,7 @@ pub async fn retry_dlq(
 pub async fn list_circuit_breakers(
     _auth: AdminUser,
     State(state): State<AppState>,
-) -> Result<Json<CircuitBreakersListResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<CircuitBreakersListResponse> {
     let store = state.get_store()?;
     let circuit_breakers = store.list_circuit_breakers().await.map_err(|e| {
         tracing::error!("Failed to list circuit breakers: {}", e);
@@ -1381,7 +1376,7 @@ pub async fn get_circuit_breaker(
     _auth: AdminUser,
     State(state): State<AppState>,
     Path(key): Path<String>,
-) -> Result<Json<CircuitBreakerResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<CircuitBreakerResponse> {
     let store = state.get_store()?;
     let circuit_breakers = store.list_circuit_breakers().await.map_err(|e| {
         tracing::error!("Failed to list circuit breakers: {}", e);

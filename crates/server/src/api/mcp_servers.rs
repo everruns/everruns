@@ -5,7 +5,6 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::McpServerService;
 use crate::services::mcp_server::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::storage::{EncryptionService, StorageBackend};
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -18,7 +17,9 @@ use everruns_core::{
     evaluate_policies_with, validate_safe_url,
 };
 
-use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
+use super::common::{
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -120,11 +121,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create MCP server routes
 pub fn routes(state: AppState) -> Router {
@@ -231,7 +228,7 @@ pub async fn list_mcp_servers(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListMcpServersQuery>,
-) -> Result<Json<ListResponse<McpServer>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ListResponse<McpServer>> {
     let caller = Caller::from(&org);
     let servers = state
         .service
@@ -265,7 +262,7 @@ pub async fn get_mcp_server(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(server_id): Path<String>,
-) -> Result<Json<McpServer>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<McpServer> {
     let server_id: McpServerId = server_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -307,7 +304,7 @@ pub async fn update_mcp_server(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
     Json(req): Json<UpdateMcpServerRequest>,
-) -> Result<Json<McpServer>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<McpServer> {
     let server_id: McpServerId = server_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,

@@ -7,13 +7,14 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::CapabilityService;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::get,
 };
+
+use super::common::{ApiResult, ErrorResponse, impl_auth_state};
 use everruns_core::command::CommandDescriptor;
 use everruns_core::typed_id::SessionId;
 use serde::Serialize;
@@ -36,11 +37,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Response for listing available commands
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -67,7 +64,7 @@ async fn list_session_commands(
     State(state): State<AppState>,
     org: ResolvedOrg,
     Path(session_id): Path<SessionId>,
-) -> Result<Json<CommandsResponse>, (StatusCode, Json<super::ErrorResponse>)> {
+) -> ApiResult<CommandsResponse> {
     let _ = session_id; // Reserved for session-scoped command filtering
 
     // Collect system commands from all capabilities
@@ -83,7 +80,7 @@ async fn list_session_commands(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(super::ErrorResponse {
+                Json(ErrorResponse {
                     error: format!("Failed to list skill commands: {e}"),
                 }),
             )

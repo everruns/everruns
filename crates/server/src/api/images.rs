@@ -5,9 +5,9 @@
 // Supports PNG, JPEG, GIF, WebP (OpenAI Vision compatible formats).
 // Generates thumbnails on upload for efficient display.
 
+use super::common::impl_auth_state;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::{StorageBackend, models::CreateImageRow};
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     body::Body,
@@ -101,11 +101,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create images routes
 pub fn routes(state: AppState) -> Router {

@@ -8,7 +8,6 @@
 // Agent capabilities are managed through the agents API (POST/PATCH /v1/agents).
 
 use crate::auth::{AuthState, ResolvedOrg};
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -17,7 +16,7 @@ use axum::{
 };
 use everruns_core::{CapabilityId, CapabilityInfo};
 
-use super::common::ListResponse;
+use super::common::{ListResponse, impl_auth_state};
 use std::sync::Arc;
 
 use crate::services::CapabilityService;
@@ -35,11 +34,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create capability routes
 pub fn routes(state: AppState) -> Router {

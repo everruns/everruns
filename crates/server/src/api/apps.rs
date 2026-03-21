@@ -5,7 +5,6 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::app::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -17,7 +16,9 @@ use everruns_core::{
     App, AppStatus, Caller, ChannelType, ResourceConfigResponse, evaluate_policies_with,
 };
 
-use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
+use super::common::{
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
+};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -104,11 +105,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create app routes
 pub fn routes(state: AppState) -> Router {
@@ -189,7 +186,7 @@ pub async fn list_apps(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListAppsQuery>,
-) -> Result<Json<ListResponse<App>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ListResponse<App>> {
     let caller = Caller::from(&org);
     let apps = state
         .service
@@ -221,7 +218,7 @@ pub async fn get_app(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(app_id): Path<String>,
-) -> Result<Json<App>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<App> {
     let app_id: AppId = app_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -256,7 +253,7 @@ pub async fn update_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
     Json(req): Json<UpdateAppRequest>,
-) -> Result<Json<App>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<App> {
     let app_id: AppId = app_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -348,7 +345,7 @@ pub async fn publish_app(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(app_id): Path<String>,
-) -> Result<Json<App>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<App> {
     let app_id: AppId = app_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -381,7 +378,7 @@ pub async fn unpublish_app(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(app_id): Path<String>,
-) -> Result<Json<App>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<App> {
     let app_id: AppId = app_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;

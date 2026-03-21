@@ -4,7 +4,6 @@
 // Routes under /v1/sessions/{session_id}/databases.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -19,7 +18,7 @@ use utoipa::ToSchema;
 
 use crate::storage::StorageBackend;
 
-use super::common::{ListResponse, verify_session_ownership};
+use super::common::{ListResponse, impl_auth_state, verify_session_ownership};
 
 /// Request body for creating a database.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -79,11 +78,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create session database routes.
 pub fn routes(state: AppState) -> Router {

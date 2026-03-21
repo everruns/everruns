@@ -7,7 +7,6 @@ use crate::services::harness::{
     HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW, merge_preview_layer, resolve_effective_harness,
 };
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -20,7 +19,9 @@ use everruns_core::{
     ToolDefinition, evaluate_policies_with,
 };
 
-use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
+use super::common::{
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
+};
 use super::validation::{validate_create_agent_input, validate_update_agent_input};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -139,11 +140,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create harness routes (no import/export)
 pub fn routes(state: AppState) -> Router {
@@ -240,7 +237,7 @@ pub async fn list_harnesses(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListHarnessesQuery>,
-) -> Result<Json<ListResponse<Harness>>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<ListResponse<Harness>> {
     let caller = Caller::from(&org);
     let harnesses = state
         .service
@@ -275,7 +272,7 @@ pub async fn get_harness(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(harness_id): Path<String>,
-) -> Result<Json<Harness>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Harness> {
     let harness_id: HarnessId = harness_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -318,7 +315,7 @@ pub async fn update_harness(
     State(state): State<AppState>,
     Path(harness_id): Path<String>,
     Json(req): Json<UpdateHarnessRequest>,
-) -> Result<Json<Harness>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<Harness> {
     let harness_id: HarnessId = harness_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -489,7 +486,7 @@ pub async fn preview_harness(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<PreviewHarnessRequest>,
-) -> Result<Json<HarnessPreviewResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<HarnessPreviewResponse> {
     let parent = match req.parent_harness_id {
         Some(parent_harness_id) => Some(
             resolve_effective_harness(state.service.db().as_ref(), org.org_id, parent_harness_id)

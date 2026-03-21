@@ -11,7 +11,6 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::{EventService, SessionService};
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -24,7 +23,7 @@ use everruns_core::message::ContentPart;
 use everruns_core::typed_id::{MessageId, SessionId, TurnId};
 use everruns_worker::AgentRunner;
 
-use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse};
+use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
 use everruns_core::Caller;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -81,11 +80,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 /// Create tool results routes
 pub fn routes(state: AppState) -> Router {
@@ -122,7 +117,7 @@ pub async fn submit_tool_results(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Json(req): Json<SubmitToolResultsRequest>,
-) -> Result<Json<SubmitToolResultsResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> ApiResult<SubmitToolResultsResponse> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
