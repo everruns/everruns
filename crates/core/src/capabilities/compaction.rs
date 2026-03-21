@@ -113,6 +113,7 @@ fn default_preserve() -> Vec<String> {
         "files_modified".to_string(),
         "errors".to_string(),
         "current_plan".to_string(),
+        "skill_instructions".to_string(),
     ]
 }
 
@@ -306,8 +307,9 @@ pub fn should_compact_proactively(
 
 /// Drop oldest messages to fit within a target token count.
 ///
-/// Preserves the system prompt (index 0 if present) and the most recent messages.
-/// This is the last resort — lossy, no recovery.
+/// Preserves the system prompt (index 0 if present), protected messages
+/// (e.g. `activate_skill` results and their tool call messages), and the
+/// most recent messages. This is the last resort — lossy, no recovery.
 pub fn aggressive_trim(
     messages: &[LlmMessage],
     target_tokens: usize,
@@ -328,22 +330,73 @@ pub fn aggressive_trim(
         0
     };
 
-    // Walk from newest to oldest, collecting messages that fit
     let conversation = &messages[start_idx..];
-    let mut keep_from_end = Vec::new();
 
-    for msg in conversation.iter().rev() {
+    // Identify protected messages (skill tool results and their call messages).
+    // Reserve budget for them first so they are never dropped.
+    let protected_indices: std::collections::HashSet<usize> = conversation
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| {
+            is_protected_tool_result(conversation, m) || is_protected_tool_call_message(m)
+        })
+        .map(|(i, _)| i)
+        .collect();
+
+    let mut protected_budget: usize = 0;
+    for &idx in &protected_indices {
+        protected_budget += estimate_tokens(&conversation[idx]);
+    }
+
+    // If protected messages alone exceed the remaining budget, keep as many
+    // protected messages as possible (newest first) and skip non-protected.
+    if protected_budget > token_budget {
+        let mut protected_with_indices: Vec<(usize, LlmMessage)> = protected_indices
+            .iter()
+            .map(|&idx| (idx, conversation[idx].clone()))
+            .collect();
+        protected_with_indices.sort_by_key(|(i, _)| *i);
+
+        let mut remaining = token_budget;
+        let mut kept: Vec<(usize, LlmMessage)> = Vec::new();
+        for (idx, msg) in protected_with_indices.into_iter().rev() {
+            let t = estimate_tokens(&msg);
+            if t <= remaining {
+                kept.push((idx, msg));
+                remaining -= t;
+            }
+        }
+        kept.sort_by_key(|(i, _)| *i);
+        result.extend(kept.into_iter().map(|(_, m)| m));
+        return result;
+    }
+
+    token_budget -= protected_budget;
+
+    // Walk from newest to oldest, collecting non-protected messages that fit
+    let mut keep_from_end = Vec::new();
+    for (i, msg) in conversation.iter().enumerate().rev() {
+        if protected_indices.contains(&i) {
+            continue; // handled separately
+        }
         let msg_tokens = estimate_tokens(msg);
         if msg_tokens <= token_budget {
-            keep_from_end.push(msg.clone());
+            keep_from_end.push((i, msg.clone()));
             token_budget -= msg_tokens;
         } else {
             break;
         }
     }
 
-    keep_from_end.reverse();
-    result.extend(keep_from_end);
+    // Merge protected + kept messages in original order
+    let mut all_kept: Vec<(usize, LlmMessage)> = Vec::new();
+    for &idx in &protected_indices {
+        all_kept.push((idx, conversation[idx].clone()));
+    }
+    all_kept.extend(keep_from_end);
+    all_kept.sort_by_key(|(i, _)| *i);
+
+    result.extend(all_kept.into_iter().map(|(_, m)| m));
     result
 }
 
@@ -460,6 +513,9 @@ pub fn classify_memory_tiers<'a>(
 ///
 /// Returns the processed messages ready for LLM context. Cold-tier messages are
 /// replaced with a `[CONVERSATION_SUMMARY]` if a summary is provided.
+///
+/// Protected messages (e.g. `activate_skill` results) in cold/warm tiers are
+/// promoted to the output verbatim — they are never dropped or masked.
 pub fn apply_hierarchical_memory(
     messages: &[LlmMessage],
     config: &HierarchicalMemoryConfig,
@@ -472,17 +528,42 @@ pub fn apply_hierarchical_memory(
 
     let mut result = Vec::new();
 
-    // Cold tier: replace with summary if available, otherwise drop
-    if warm_start > 0
-        && let Some(summary) = cold_summary
-    {
-        result.push(build_summary_message(summary));
+    // Cold tier: replace with summary if available, but rescue protected messages
+    if warm_start > 0 {
+        // Extract protected messages from cold tier before dropping
+        let cold_msgs = &messages[..warm_start];
+        let protected_cold: Vec<LlmMessage> = cold_msgs
+            .iter()
+            .filter(|m| is_protected_tool_result(cold_msgs, m) || is_protected_tool_call_message(m))
+            .cloned()
+            .collect();
+
+        if let Some(summary) = cold_summary {
+            result.push(build_summary_message(summary));
+        }
+
+        // Re-insert protected messages after the summary
+        result.extend(protected_cold);
     }
 
-    // Warm tier: apply observation masking to tool outputs
+    // Warm tier: apply observation masking to tool outputs.
+    // Use the full message slice for protected-tool detection so that a tool
+    // result in warm tier whose assistant call is in cold tier is still recognized.
     if warm_start < hot_start {
         let warm_msgs = &messages[warm_start..hot_start];
-        let masked = apply_observation_masking(warm_msgs, masking_config);
+
+        // Pre-identify protected tool_call_ids using the full message list
+        let protected_call_ids: std::collections::HashSet<String> = warm_msgs
+            .iter()
+            .filter(|m| is_protected_tool_result(messages, m))
+            .filter_map(|m| m.tool_call_id.clone())
+            .collect();
+
+        let masked = apply_observation_masking_with_protected(
+            warm_msgs,
+            masking_config,
+            &protected_call_ids,
+        );
         result.extend(masked.messages);
     }
 
@@ -495,10 +576,49 @@ pub fn apply_hierarchical_memory(
 }
 
 // ============================================================================
-// Observation Masking
+// Protected Tool Detection
 // ============================================================================
 
 use crate::llm_driver_registry::{LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole};
+
+/// Tool names whose results must be protected from compaction.
+///
+/// Skill activation results contain durable behavioral instructions that silently
+/// degrade agent behavior when masked, summarized, or trimmed. The agentskills.io
+/// client implementation guide recommends exempting skill content from pruning.
+///
+/// See: specs/compaction.md (Tier 3: tool-aware masking), specs/skills-registry.md
+const PROTECTED_TOOL_NAMES: &[&str] = &["activate_skill"];
+
+/// Check if a tool result message corresponds to a protected tool.
+///
+/// Looks up the tool_call_id in preceding assistant messages to find the tool name.
+/// Returns `true` if the tool name is in `PROTECTED_TOOL_NAMES`.
+fn is_protected_tool_result(messages: &[LlmMessage], tool_msg: &LlmMessage) -> bool {
+    if tool_msg.role != LlmMessageRole::Tool {
+        return false;
+    }
+    let tool_name = find_tool_call_name(messages, tool_msg);
+    PROTECTED_TOOL_NAMES.contains(&tool_name.as_str())
+}
+
+/// Check if an assistant message contains a tool call to a protected tool.
+///
+/// Returns `true` if any tool call in the message targets a protected tool name.
+fn is_protected_tool_call_message(msg: &LlmMessage) -> bool {
+    if msg.role != LlmMessageRole::Assistant {
+        return false;
+    }
+    msg.tool_calls.as_ref().is_some_and(|calls| {
+        calls
+            .iter()
+            .any(|tc| PROTECTED_TOOL_NAMES.contains(&tc.name.as_str()))
+    })
+}
+
+// ============================================================================
+// Observation Masking
+// ============================================================================
 
 /// Result of applying observation masking to a message list.
 #[derive(Debug)]
@@ -513,14 +633,36 @@ pub struct ObservationMaskingResult {
 ///
 /// Keeps the last `keep_recent_tool_outputs` tool results verbatim and replaces
 /// older ones with compact summaries. Message count is preserved (replace, not remove).
+///
+/// Protected tool results (e.g. `activate_skill`) are never masked — they contain
+/// durable behavioral instructions that must survive compaction.
 pub fn apply_observation_masking(
     messages: &[LlmMessage],
     config: &ObservationMaskingConfig,
 ) -> ObservationMaskingResult {
+    apply_observation_masking_with_protected(messages, config, &std::collections::HashSet::new())
+}
+
+/// Like `apply_observation_masking`, but accepts additional pre-identified protected
+/// tool_call_ids. This is needed when the message slice doesn't contain the
+/// assistant tool-call message (e.g. warm tier where the call is in cold tier).
+fn apply_observation_masking_with_protected(
+    messages: &[LlmMessage],
+    config: &ObservationMaskingConfig,
+    extra_protected_call_ids: &std::collections::HashSet<String>,
+) -> ObservationMaskingResult {
+    // Separate protected vs maskable tool result indices
     let tool_indices: Vec<usize> = messages
         .iter()
         .enumerate()
-        .filter(|(_, m)| m.role == LlmMessageRole::Tool)
+        .filter(|(_, m)| {
+            m.role == LlmMessageRole::Tool
+                && !is_protected_tool_result(messages, m)
+                && !m
+                    .tool_call_id
+                    .as_ref()
+                    .is_some_and(|id| extra_protected_call_ids.contains(id))
+        })
         .map(|(i, _)| i)
         .collect();
 
@@ -673,6 +815,9 @@ agent needs to continue working.
 <format>
 Produce a structured summary. Use sections. Be concise but complete.
 Do not include tool output verbatim — reference files by path.
+IMPORTANT: Any activate_skill tool results contain durable skill instructions.
+Include them verbatim in a dedicated "Active Skills" section — do not summarize
+or paraphrase skill instructions.
 </format>"#
     )
 }
@@ -690,8 +835,12 @@ pub fn format_messages_for_summarization(messages: &[LlmMessage]) -> String {
 
         let content = extract_text(&msg.content);
 
+        // Protected tool results (skill instructions) are never truncated —
+        // the summarizer must see the full text to reproduce them verbatim.
+        let is_protected = is_protected_tool_result(messages, msg);
+
         // Truncate very long messages to avoid blowing up the summarization prompt
-        let truncated = if content.len() > 2000 {
+        let truncated = if !is_protected && content.len() > 2000 {
             format!(
                 "{}... [truncated, {} chars total]",
                 &content[..2000],
@@ -825,7 +974,7 @@ mod tests {
             MaskingSummaryFormat::OneLine
         );
         assert!(config.summarization.model.is_none());
-        assert_eq!(config.summarization.preserve.len(), 4);
+        assert_eq!(config.summarization.preserve.len(), 5);
         assert!(config.summarization.instructions.is_none());
     }
 
@@ -1633,6 +1782,320 @@ mod tests {
         assert_eq!(
             serde_json::to_value(MemoryTier::Cold).unwrap(),
             json!("cold")
+        );
+    }
+
+    // ====================================================================
+    // Skill content protection tests
+    // ====================================================================
+
+    #[test]
+    fn test_masking_skips_activate_skill_results() {
+        // 3 tool results: activate_skill (protected), read_file, bash
+        // With keep_recent=1, only read_file should be masked (activate_skill exempt)
+        let messages = vec![
+            make_assistant_with_tool_call("call_skill", "activate_skill"),
+            make_tool_result(
+                "call_skill",
+                "You are a code review agent. Follow these instructions...",
+            ),
+            make_assistant_msg("Skill activated"),
+            make_assistant_with_tool_call("call_read", "read_file"),
+            make_tool_result(
+                "call_read",
+                "file contents that are long enough to be masked by observation masking because they exceed one hundred characters easily",
+            ),
+            make_assistant_msg("got it"),
+            make_assistant_with_tool_call("call_bash", "bash"),
+            make_tool_result("call_bash", "command output"),
+        ];
+
+        let config = ObservationMaskingConfig {
+            keep_recent_tool_outputs: 1,
+            summary_format: MaskingSummaryFormat::OneLine,
+        };
+        let result = apply_observation_masking(&messages, &config);
+
+        // activate_skill result should be verbatim
+        assert_eq!(
+            extract_text(&result.messages[1].content),
+            "You are a code review agent. Follow these instructions..."
+        );
+        // read_file result should be masked (it's the only maskable old one)
+        assert!(extract_text(&result.messages[4].content).starts_with('['));
+        // bash result should be verbatim (most recent maskable)
+        assert_eq!(extract_text(&result.messages[7].content), "command output");
+        assert_eq!(result.masked_count, 1);
+    }
+
+    #[test]
+    fn test_masking_all_activate_skill_exempt_from_count() {
+        // 2 activate_skill results + 1 regular tool result
+        // With keep_recent=0, only the regular one should be masked
+        let messages = vec![
+            make_assistant_with_tool_call("s1", "activate_skill"),
+            make_tool_result("s1", "Skill 1 instructions"),
+            make_assistant_with_tool_call("s2", "activate_skill"),
+            make_tool_result("s2", "Skill 2 instructions"),
+            make_assistant_with_tool_call("c1", "bash"),
+            make_tool_result("c1", "output"),
+        ];
+
+        let config = ObservationMaskingConfig {
+            keep_recent_tool_outputs: 0,
+            summary_format: MaskingSummaryFormat::OneLine,
+        };
+        let result = apply_observation_masking(&messages, &config);
+
+        assert_eq!(result.masked_count, 1);
+        // Both skill results preserved
+        assert_eq!(
+            extract_text(&result.messages[1].content),
+            "Skill 1 instructions"
+        );
+        assert_eq!(
+            extract_text(&result.messages[3].content),
+            "Skill 2 instructions"
+        );
+    }
+
+    #[test]
+    fn test_aggressive_trim_preserves_skill_messages() {
+        // Create messages where budget only fits ~2 messages, but skill messages
+        // should always be preserved
+        let messages = vec![
+            make_user_msg(&"s".repeat(400)), // system: 100 tokens
+            make_assistant_with_tool_call("skill1", "activate_skill"),
+            make_tool_result("skill1", "Important skill instructions"),
+            make_user_msg(&"a".repeat(400)),      // old: 100 tokens
+            make_assistant_msg(&"b".repeat(400)), // old: 100 tokens
+            make_user_msg(&"c".repeat(400)),      // recent: 100 tokens
+            make_assistant_msg(&"d".repeat(400)), // recent: 100 tokens
+        ];
+
+        // Budget for system + skill call + skill result + 1 recent = ~400 tokens
+        // Should keep: system, skill call, skill result, and as many recent as fit
+        let target_tokens = 400;
+        let result = aggressive_trim(&messages, target_tokens, true);
+
+        // Verify skill messages are preserved
+        let has_skill_result = result.iter().any(|m| {
+            m.role == LlmMessageRole::Tool
+                && extract_text(&m.content) == "Important skill instructions"
+        });
+        assert!(
+            has_skill_result,
+            "Skill tool result must survive aggressive trim"
+        );
+
+        let has_skill_call = result.iter().any(|m| {
+            m.tool_calls
+                .as_ref()
+                .is_some_and(|calls| calls.iter().any(|tc| tc.name == "activate_skill"))
+        });
+        assert!(
+            has_skill_call,
+            "Skill tool call must survive aggressive trim"
+        );
+    }
+
+    #[test]
+    fn test_hierarchical_memory_rescues_skill_from_cold_tier() {
+        let mut messages = Vec::new();
+
+        // Cold tier: old messages including a skill activation
+        messages.push(make_assistant_with_tool_call("skill1", "activate_skill"));
+        messages.push(make_tool_result(
+            "skill1",
+            "You must always validate input.",
+        ));
+        for i in 0..8 {
+            let id = format!("old_{i}");
+            messages.push(make_assistant_with_tool_call(&id, "read_file"));
+            messages.push(make_tool_result(&id, &format!("old content {i}")));
+        }
+
+        // Warm tier
+        for i in 0..3 {
+            let id = format!("mid_{i}");
+            messages.push(make_assistant_with_tool_call(&id, "bash"));
+            messages.push(make_tool_result(&id, &format!("mid output {i}")));
+        }
+
+        // Hot tier
+        messages.push(make_user_msg("what now?"));
+        messages.push(make_assistant_msg("let me check"));
+
+        let config = HierarchicalMemoryConfig {
+            hot_messages: 2,
+            warm_messages: 6,
+        };
+        let masking_config = ObservationMaskingConfig::default();
+
+        let result = apply_hierarchical_memory(
+            &messages,
+            &config,
+            &masking_config,
+            Some("Summary of old work"),
+        );
+
+        // The protected skill messages from cold tier should be rescued
+        let has_skill_instructions = result
+            .iter()
+            .any(|m| extract_text(&m.content).contains("You must always validate input."));
+        assert!(
+            has_skill_instructions,
+            "Skill instructions from cold tier must be rescued into output"
+        );
+
+        // Summary should still be present
+        assert!(extract_text(&result[0].content).contains("CONVERSATION_SUMMARY"));
+    }
+
+    #[test]
+    fn test_is_protected_tool_result_detection() {
+        let messages = vec![
+            make_assistant_with_tool_call("s1", "activate_skill"),
+            make_tool_result("s1", "skill content"),
+            make_assistant_with_tool_call("r1", "read_file"),
+            make_tool_result("r1", "file content"),
+        ];
+
+        // activate_skill result is protected
+        assert!(is_protected_tool_result(&messages, &messages[1]));
+        // read_file result is not
+        assert!(!is_protected_tool_result(&messages, &messages[3]));
+        // non-tool message is not
+        assert!(!is_protected_tool_result(&messages, &messages[0]));
+    }
+
+    #[test]
+    fn test_is_protected_tool_call_message_detection() {
+        let skill_call = make_assistant_with_tool_call("s1", "activate_skill");
+        let regular_call = make_assistant_with_tool_call("r1", "read_file");
+        let user_msg = make_user_msg("hello");
+
+        assert!(is_protected_tool_call_message(&skill_call));
+        assert!(!is_protected_tool_call_message(&regular_call));
+        assert!(!is_protected_tool_call_message(&user_msg));
+    }
+
+    #[test]
+    fn test_default_preserve_includes_skill_instructions() {
+        let config = SummarizationConfig::default();
+        assert!(
+            config.preserve.contains(&"skill_instructions".to_string()),
+            "Default preserve list must include skill_instructions"
+        );
+    }
+
+    #[test]
+    fn test_summarization_prompt_mentions_skill_protection() {
+        let config = SummarizationConfig::default();
+        let prompt = build_summarization_prompt(&config);
+        assert!(
+            prompt.contains("activate_skill"),
+            "Summarization prompt must instruct LLM to preserve skill content"
+        );
+    }
+
+    #[test]
+    fn test_aggressive_trim_protected_exceed_budget() {
+        // When protected messages alone exceed the budget, keep as many as
+        // fit (newest first) and drop non-protected entirely.
+        let messages = vec![
+            make_user_msg(&"s".repeat(400)), // system ~100 tokens
+            make_assistant_with_tool_call("skill1", "activate_skill"), // protected
+            make_tool_result("skill1", &"x".repeat(800)), // protected ~200 tokens
+            make_assistant_with_tool_call("skill2", "activate_skill"), // protected
+            make_tool_result("skill2", &"y".repeat(800)), // protected ~200 tokens
+            make_user_msg(&"z".repeat(400)), // non-protected
+        ];
+
+        // Budget only fits system + ~1 protected pair
+        let result = aggressive_trim(&messages, 200, true);
+
+        // Must not exceed budget — non-protected messages dropped
+        let has_non_protected = result
+            .iter()
+            .any(|m| m.role == LlmMessageRole::User && extract_text(&m.content).contains('z'));
+        assert!(
+            !has_non_protected,
+            "Non-protected messages must be dropped when protected exceed budget"
+        );
+    }
+
+    #[test]
+    fn test_format_messages_no_truncate_protected_tool_result() {
+        // Protected tool results should not be truncated at 2000 chars
+        let long_instructions = "a".repeat(5000);
+        let messages = vec![
+            make_assistant_with_tool_call("s1", "activate_skill"),
+            make_tool_result("s1", &long_instructions),
+            make_assistant_with_tool_call("r1", "read_file"),
+            make_tool_result("r1", &"b".repeat(5000)),
+        ];
+
+        let formatted = format_messages_for_summarization(&messages);
+
+        // Skill result: full 5000-char content present, not truncated
+        assert!(
+            formatted.contains(&long_instructions),
+            "Protected tool result must not be truncated"
+        );
+        // Regular result: should be truncated
+        assert!(
+            formatted.contains("[truncated, 5000 chars total]"),
+            "Non-protected tool result should be truncated"
+        );
+    }
+
+    #[test]
+    fn test_hierarchical_memory_cross_tier_boundary_protection() {
+        // The activate_skill tool-call is in cold tier, but its tool-result
+        // lands in warm tier. The result must still be protected from masking.
+        let mut messages = Vec::new();
+
+        // Cold tier: skill call + filler to push result into warm tier
+        messages.push(make_assistant_with_tool_call("skill1", "activate_skill"));
+        for i in 0..9 {
+            let id = format!("cold_{i}");
+            messages.push(make_assistant_with_tool_call(&id, "read_file"));
+            messages.push(make_tool_result(&id, &format!("cold content {i}")));
+        }
+
+        // Warm tier starts here — skill result is first warm message
+        messages.push(make_tool_result(
+            "skill1",
+            "Cross-tier skill instructions that must survive",
+        ));
+        for i in 0..2 {
+            let id = format!("warm_{i}");
+            messages.push(make_assistant_with_tool_call(&id, "bash"));
+            messages.push(make_tool_result(&id, &format!("warm output {i}")));
+        }
+
+        // Hot tier
+        messages.push(make_user_msg("continue"));
+        messages.push(make_assistant_msg("ok"));
+
+        let config = HierarchicalMemoryConfig {
+            hot_messages: 2,
+            warm_messages: 5, // skill result + 2 bash pairs
+        };
+        let masking_config = ObservationMaskingConfig {
+            keep_recent_tool_outputs: 0,
+            summary_format: MaskingSummaryFormat::OneLine,
+        };
+
+        let result = apply_hierarchical_memory(&messages, &config, &masking_config, None);
+
+        let has_skill_instructions = result.iter().any(|m| {
+            extract_text(&m.content).contains("Cross-tier skill instructions that must survive")
+        });
+        assert!(
+            has_skill_instructions,
+            "Skill result in warm tier with call in cold tier must be protected"
         );
     }
 }
