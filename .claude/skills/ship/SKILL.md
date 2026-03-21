@@ -77,7 +77,8 @@ For every shipped change, explicitly perform these steps:
    - `TM-TOOL` — tool registration, MCP servers, tool execution paths
    - `TM-LLM` — prompt construction, API key handling, model parameters
    - `TM-TENANT` — data queries, org scoping, cross-tenant boundaries
-   - `TM-FS` / `TM-SQL` — file paths, database queries, sandbox boundaries
+   - `TM-FS` — file paths, sandbox boundaries
+   - `TM-SQL` — database queries, sandbox boundaries
    - `TM-BASH` — sandbox configuration, command execution
    - `TM-WEB` — frontend rendering, CORS, CSP, cookie handling
    - `TM-DOS` — unbounded inputs, missing pagination, resource limits

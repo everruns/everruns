@@ -209,7 +209,7 @@ If checks fail, auto-fix with `just fmt`, then re-run `just pre-push`.
 
 "Ship" means: achieve the requested goal, produce enough evidence that it works, perform a structured security review, create a mergeable PR, address every review comment, and merge only after CI is green.
 
-Use [`/ship`](.claude/skills/ship/SKILL.md) for the canonical shipping workflow. It is an invokable skill and intentionally goal-oriented: start from the goal and changed risk surface, choose the smallest evidence that proves the change, and expand only when risk demands it. Security review against `specs/threat-model.md` categories is mandatory for all code changes.
+Use [`/ship`](.claude/skills/ship/SKILL.md) for the canonical shipping workflow. It is an invokable skill and intentionally goal-oriented: start from the goal and changed risk surface, choose the smallest evidence that proves the change, and expand only when risk demands it. Security review against `specs/threat-model.md` categories is mandatory for all code, configuration, and infrastructure changes.
 
 See [`specs/shipping.md`](specs/shipping.md) for the shipping success bar and constraints. When asked to "fix and ship", implement the fix first, then run `/ship`.
 
