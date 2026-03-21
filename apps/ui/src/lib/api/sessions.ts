@@ -130,7 +130,7 @@ export async function submitToolResults(
  * Get or create the global chat session for the current user.
  * Returns a singleton session per user per org.
  */
-export async function getOrCreateChatSession(): Promise<Session> {
-  const response = await api.post<Session>("/v1/sessions/chat");
+export async function getOrCreateChatSession(locale?: string): Promise<Session> {
+  const response = await api.post<Session>("/v1/sessions/chat", locale ? { locale } : {});
   return response.data;
 }

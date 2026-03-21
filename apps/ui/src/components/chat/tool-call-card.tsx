@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Message } from "@/lib/api/types";
 import { isToolCallContent, isToolResultContent } from "@/lib/api/types";
+import { useLocale } from "@/providers/locale-provider";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 import {
   extractToolCallContent,
@@ -20,6 +21,7 @@ interface ToolCallCardProps {
 }
 
 export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
+  const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Handle new ContentPart[] format; fall back to runtime guard for legacy shapes
@@ -73,7 +75,9 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
       {/* Result or executing state */}
       {isComplete ? (
         hasError ? (
-          <div className="text-red-600">&gt; Error: {resultContent?.error}</div>
+          <div className="text-red-600">
+            &gt; {t("error_prefix", { value: resultContent?.error ?? "" })}
+          </div>
         ) : resultPreview ? (
           <div className="space-y-0.5">
             <div className="whitespace-pre-wrap">&gt; {resultPreview.preview}</div>
@@ -82,7 +86,7 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="text-xs text-blue-600 hover:underline"
               >
-                {isExpanded ? "show less" : "> see more..."}
+                {isExpanded ? t("show_less") : t("see_more")}
               </button>
             )}
             {isExpanded && resultContent?.result !== undefined && (
@@ -93,7 +97,7 @@ export function ToolCallCard({ toolCall, toolResult }: ToolCallCardProps) {
           </div>
         ) : null
       ) : (
-        <div>&gt; ... executing ...</div>
+        <div>{t("executing")}</div>
       )}
     </div>
   );

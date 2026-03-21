@@ -8,6 +8,7 @@
  */
 
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/providers/locale-provider";
 
 interface ThinkingIndicatorProps {
   className?: string;
@@ -16,9 +17,10 @@ interface ThinkingIndicatorProps {
 }
 
 export function ThinkingIndicator({ className, model }: ThinkingIndicatorProps) {
+  const { t } = useLocale();
   return (
     <div className={cn("flex items-center gap-1", className)}>
-      <span className="text-xs text-muted-foreground/60">thinking</span>
+      <span className="text-xs text-muted-foreground/60">{t("thinking")}</span>
       {model && <span className="text-xs text-muted-foreground/40">{model}</span>}
       <span className="flex gap-0.5 ml-0.5">
         <span

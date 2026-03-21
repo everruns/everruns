@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { basename } from "@/lib/path-utils";
 import { formatFileSize } from "@/lib/formatting";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
+import { useLocale } from "@/providers/locale-provider";
 
 // Re-export from centralized registry for backward-compatible imports.
 export { isReadFileTool } from "@/lib/tool-registry";
@@ -133,6 +134,7 @@ function getContentPreview(content: string | null): string | null {
 // isReadFileTool is re-exported from @/lib/tool-registry at the top of this file.
 
 export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallCardProps) {
+  const { locale, t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
   const parsed = useMemo(
     () => parseReadFileResult(toolCall, toolResult?.result),
@@ -152,11 +154,20 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
     : null;
   const preview =
     getContentPreview(parsed.content) ??
-    (hasImages ? `${parsed.images.length} image${parsed.images.length === 1 ? "" : "s"}` : null) ??
+    (hasImages
+      ? t("image_count", {
+          count: parsed.images.length,
+          suffix: parsed.images.length === 1 ? "" : locale === "uk" ? "я" : "s",
+        })
+      : null) ??
     (isBinaryWithoutPreview
-      ? `binary file${formatFileSize(parsed.sizeBytes) ? ` (${formatFileSize(parsed.sizeBytes)})` : ""}`
+      ? t("binary_file", {
+          value: formatFileSize(parsed.sizeBytes) ? ` (${formatFileSize(parsed.sizeBytes)})` : "",
+        })
       : null);
-  const title = parsed.path ? `Read ${basename(parsed.path)}` : "Read file";
+  const title = parsed.path
+    ? t("read_tool_title", { value: basename(parsed.path) })
+    : t("read_file");
   const showDetails = hasImages || isExpanded;
 
   const statusIcon = isComplete ? (
@@ -192,7 +203,7 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
             type="button"
             onClick={() => setIsExpanded((current) => !current)}
             className="flex-shrink-0 opacity-40 transition-opacity hover:opacity-70"
-            aria-label={isExpanded ? "Collapse file output" : "Expand file output"}
+            aria-label={isExpanded ? t("collapse_file_output") : t("expand_file_output")}
           >
             {isExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -204,7 +215,9 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
       </div>
 
       {hasError && (
-        <div className="ml-[22px] mt-0.5 text-[10px] text-red-600">Error: {toolResult?.error}</div>
+        <div className="ml-[22px] mt-0.5 text-[10px] text-red-600">
+          {t("error_prefix", { value: toolResult?.error ?? "" })}
+        </div>
       )}
 
       {!hasError && preview && !showDetails && (

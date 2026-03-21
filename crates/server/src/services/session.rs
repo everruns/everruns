@@ -494,6 +494,7 @@ impl SessionService {
         user_id: Uuid,
         harness_id: Uuid,
         title: &str,
+        locale: Option<String>,
     ) -> Result<Session> {
         let org_id = caller.org_id;
         let org_public_id = &caller.org_public_id;
@@ -515,7 +516,7 @@ impl SessionService {
             harness_id: Some(harness_id_typed),
             agent_id: None,
             title: Some(title.to_string()),
-            locale: None,
+            locale,
             tags: vec!["global-chat".to_string(), user_tag],
             model_id: None,
             capabilities: serde_json::json!([]),

@@ -27,6 +27,7 @@ import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
 import type { CommandDescriptor, Controls, LlmModel, ReasoningEffortConfig } from "@/lib/api/types";
 import type { PendingImage } from "@/lib/api/images";
 import { useEffect, useRef, useState } from "react";
+import { useLocale } from "@/providers/locale-provider";
 
 export function ChatComposer({
   commands,
@@ -89,12 +90,11 @@ export function ChatComposer({
   sendPending: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
 }) {
+  const { backendLocale, t } = useLocale();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showCommands, setShowCommands] = useState(false);
   const hasCommands = commands.length > 0;
-  const inputPlaceholder = hasCommands
-    ? "Type a message or / for commands... (Enter to send)"
-    : "Type a message... (Enter to send)";
+  const inputPlaceholder = hasCommands ? t("type_message_or_commands") : t("type_message");
 
   useEffect(() => {
     if (!hasCommands && showCommands) {
@@ -106,9 +106,10 @@ export function ChatComposer({
     selectedModelId || reasoningEffort
       ? {
           ...(selectedModelId && { model_id: selectedModelId }),
+          locale: backendLocale,
           ...(reasoningEffort && supportsReasoning && { reasoning: { effort: reasoningEffort } }),
         }
-      : undefined;
+      : { locale: backendLocale };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -188,14 +189,14 @@ export function ChatComposer({
               size="icon-lg"
               className={chatSurfaceStyles.composerIconButton}
               onClick={() => fileInputRef.current?.click()}
-              title="Attach images (PNG, JPEG, GIF, WebP)"
+              title={t("attach_images")}
             >
               <ImagePlus className="icon-sharp h-4 w-4" />
             </Button>
 
             <div className={chatSurfaceStyles.composerControlChip}>
               <span className="shrink-0 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                Model
+                {t("model")}
               </span>
               <Select value={selectedModelId} onValueChange={onModelChange}>
                 <SelectTrigger
@@ -221,7 +222,7 @@ export function ChatComposer({
               <div className={chatSurfaceStyles.composerControlChip}>
                 <Brain className="icon-sharp h-3.5 w-3.5 text-muted-foreground" />
                 <span className="shrink-0 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                  Reasoning
+                  {t("reasoning")}
                 </span>
                 <Select
                   value={reasoningEffort}
@@ -234,11 +235,13 @@ export function ChatComposer({
                     className="h-7 w-[116px] min-w-0 cursor-pointer border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
                   >
                     <SelectValue>
-                      {reasoningEffort ? getReasoningEffortName(reasoningEffort) : "Default"}
+                      {reasoningEffort ? getReasoningEffortName(reasoningEffort) : t("default")}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">{`Default (${defaultEffortName})`}</SelectItem>
+                    <SelectItem value="">
+                      {t("default_with_value", { value: defaultEffortName })}
+                    </SelectItem>
                     {reasoningEffortConfig.values.map((effort) => (
                       <SelectItem key={effort.value} value={effort.value}>
                         {effort.name}
@@ -259,7 +262,7 @@ export function ChatComposer({
                 className={chatSurfaceStyles.composerDangerButton}
                 disabled={cancelCurrentTurn.isPending}
                 onClick={() => cancelCurrentTurn.mutate()}
-                title="Cancel current turn"
+                title={t("cancel_current_turn")}
               >
                 {cancelCurrentTurn.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -274,7 +277,7 @@ export function ChatComposer({
               size="icon-lg"
               className={chatSurfaceStyles.composerSubmitButton}
               disabled={!canSubmit}
-              title={isUploading ? "Uploading images..." : undefined}
+              title={isUploading ? t("uploading_images") : undefined}
             >
               {sendPending || isUploading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

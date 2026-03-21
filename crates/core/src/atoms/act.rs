@@ -36,7 +36,9 @@ use crate::events::{
     ToolStartedData,
 };
 use crate::message::ContentPart;
-use crate::tool_narration::{ToolNarrationPhase, render_group_headline, render_tool_narration};
+use crate::tool_narration::{
+    ToolNarrationPhase, render_group_headline_with_locale, render_tool_narration_with_locale,
+};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{
     AgentStore, EventEmitter, SessionFileStore, SessionMutator, SessionStore, ToolContext,
@@ -66,6 +68,9 @@ pub struct ActInput {
     pub tool_calls: Vec<ToolCall>,
     /// Available tool definitions for resolution
     pub tool_definitions: Vec<ToolDefinition>,
+    /// Resolved locale for backend-authored tool narration and labels.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
 }
 
 /// Result of a single tool call execution
@@ -315,6 +320,7 @@ where
             context,
             tool_calls,
             tool_definitions,
+            locale,
             .. // agent_id/org_id not needed here, just passed through workflow
         } = input;
 
@@ -377,6 +383,7 @@ where
                 &mut result,
                 &tool_definitions,
                 &self.event_emitter,
+                locale.as_deref(),
             )
             .await;
             return Ok(result);
@@ -429,7 +436,11 @@ where
             .emit(EventRequest::new(
                 context.session_id,
                 event_context.clone(),
-                ActStartedData::with_definitions(&tool_calls, &tool_definitions),
+                ActStartedData::with_definitions_and_locale(
+                    &tool_calls,
+                    &tool_definitions,
+                    locale.as_deref(),
+                ),
             ))
             .await
         {
@@ -451,6 +462,7 @@ where
                     tool_def,
                     &trace_id,
                     &act_span_id,
+                    locale.as_deref(),
                 )
             })
             .collect();
@@ -470,20 +482,19 @@ where
             act_span_id.clone(), // Same span_id as started
             Some(parent_span_id.clone()),
         );
-        let mut completed_headline = render_group_headline(
+        let mut completed_headline = render_group_headline_with_locale(
             &tool_calls,
             &tool_definitions,
             ToolNarrationPhase::Completed,
+            locale.as_deref(),
         );
         if error_count > 0 {
-            let suffix = format!(
-                " with {} error{}",
-                error_count,
-                if error_count == 1 { "" } else { "s" }
-            );
+            let suffix = crate::localization::format_error_suffix(locale.as_deref(), error_count);
             completed_headline = Some(match completed_headline {
                 Some(text) => format!("{text}{suffix}"),
-                None => format!("Completed tool batch{suffix}"),
+                None => {
+                    crate::localization::format_completed_tool_batch(locale.as_deref(), error_count)
+                }
             });
         }
 
@@ -535,6 +546,7 @@ where
             &mut act_result,
             &tool_definitions,
             &self.event_emitter,
+            locale.as_deref(),
         )
         .await;
 
@@ -559,6 +571,7 @@ where
         tool_def: Option<&ToolDefinition>,
         trace_id: &str,
         act_span_id: &str,
+        locale: Option<&str>,
     ) -> ToolCallResult {
         tracing::debug!(
             session_id = %context.session_id,
@@ -582,7 +595,11 @@ where
         let tool_start = Instant::now();
 
         // Resolve display name from tool definition
-        let display_name = tool_def.and_then(|d| d.display_name().map(|s| s.to_string()));
+        let display_name = crate::localization::localized_tool_display_name(
+            &tool_call.name,
+            tool_def.and_then(|d| d.display_name()),
+            locale,
+        );
 
         // Emit tool.started event (child of act.started)
         if let Err(e) = self
@@ -593,10 +610,11 @@ where
                 ToolStartedData {
                     tool_call: tool_call.clone(),
                     display_name: display_name.clone(),
-                    narration: Some(render_tool_narration(
+                    narration: Some(render_tool_narration_with_locale(
                         tool_def,
                         &tool_call,
                         ToolNarrationPhase::Started,
+                        locale,
                     )),
                 },
             ))
@@ -628,10 +646,11 @@ where
                         error_msg.clone(),
                         Some(tool_duration_ms),
                     )
-                    .with_narration(Some(render_tool_narration(
+                    .with_narration(Some(render_tool_narration_with_locale(
                         None,
                         &tool_call,
                         ToolNarrationPhase::Failed,
+                        locale,
                     ))),
                 ))
                 .await
@@ -742,10 +761,11 @@ where
                         Some(tool_duration_ms),
                     )
                     .with_display_name(display_name.clone())
-                    .with_narration(Some(render_tool_narration(
+                    .with_narration(Some(render_tool_narration_with_locale(
                         Some(tool_def),
                         &tool_call,
                         ToolNarrationPhase::Completed,
+                        locale,
                     )))
                 } else {
                     ToolCompletedData::failure(
@@ -756,10 +776,11 @@ where
                         Some(tool_duration_ms),
                     )
                     .with_display_name(display_name.clone())
-                    .with_narration(Some(render_tool_narration(
+                    .with_narration(Some(render_tool_narration_with_locale(
                         Some(tool_def),
                         &tool_call,
                         ToolNarrationPhase::Failed,
+                        locale,
                     )))
                 };
 
@@ -815,11 +836,14 @@ where
                             Some(tool_duration_ms),
                         )
                         .with_display_name(display_name.clone())
-                        .with_narration(Some(render_tool_narration(
-                            Some(tool_def),
-                            &tool_call,
-                            ToolNarrationPhase::Failed,
-                        ))),
+                        .with_narration(Some(
+                            render_tool_narration_with_locale(
+                                Some(tool_def),
+                                &tool_call,
+                                ToolNarrationPhase::Failed,
+                                locale,
+                            ),
+                        )),
                     ))
                     .await
                 {
@@ -883,6 +907,7 @@ mod tests {
             agent_id: Some(AgentId::new()),
             tool_calls: vec![],
             tool_definitions: vec![],
+            locale: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -911,6 +936,7 @@ mod tests {
                 arguments: json!({}),
             }],
             tool_definitions: vec![],
+            locale: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -975,6 +1001,7 @@ mod tests {
                 arguments: json!({"operation": "list"}),
             }],
             tool_definitions: vec![manage_harnesses_tool_def()],
+            locale: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1018,6 +1045,7 @@ mod tests {
                 arguments: json!({"operation": "list"}),
             }],
             tool_definitions: vec![manage_harnesses_tool_def()],
+            locale: None,
         };
 
         let result = atom.execute(input).await.unwrap();

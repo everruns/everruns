@@ -54,6 +54,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
         )],
         controls: Some(Controls {
             model_id: None,
+            locale: None,
             reasoning: Some(ReasoningConfig {
                 effort: Some("high".into()),
             }),
@@ -131,6 +132,7 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
         content: vec![ContentPart::text("What's the current time in UTC?")],
         controls: Some(Controls {
             model_id: None,
+            locale: None,
             reasoning: Some(ReasoningConfig {
                 effort: Some("low".into()),
             }),

@@ -12,6 +12,7 @@ import type { ToolCompletedData } from "@/lib/api/types";
 import type { ToolCallContent } from "./tool-call-utils";
 import { summarizeToolCalls } from "./tool-activity-utils";
 import { ToolActivityRow } from "./tool-activity-row";
+import { useLocale } from "@/providers/locale-provider";
 
 export function GroupedActivityCard({
   toolCalls,
@@ -22,6 +23,7 @@ export function GroupedActivityCard({
   toolResultsMap: Map<string, ToolCompletedData>;
   mode: "server" | "client";
 }) {
+  const { backendLocale, t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(true);
   const activityCompletedCount = useMemo(
     () => toolCalls.filter((toolCall) => toolResultsMap.has(toolCall.id)).length,
@@ -36,6 +38,7 @@ export function GroupedActivityCard({
         toolCall={toolCall}
         toolResult={toolResultsMap.get(toolCall.id)}
         mode={mode}
+        locale={backendLocale}
       />
     );
   }
@@ -46,7 +49,7 @@ export function GroupedActivityCard({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground/70">
-              {summarizeToolCalls(toolCalls)}
+              {summarizeToolCalls(toolCalls, backendLocale)}
             </div>
             <div className="text-[10px] text-muted-foreground/50">
               {activityCompletedCount}/{toolCalls.length}
@@ -63,7 +66,7 @@ export function GroupedActivityCard({
             type="button"
             onClick={() => setIsExpanded((current) => !current)}
             className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-            aria-label={isExpanded ? "Collapse tool activity" : "Expand tool activity"}
+            aria-label={isExpanded ? t("collapse_tool_activity") : t("expand_tool_activity")}
           >
             {isExpanded ? (
               <ChevronDown className="h-4 w-4" />
@@ -88,6 +91,7 @@ export function GroupedActivityCard({
                 toolCall={toolCall}
                 toolResult={toolResultsMap.get(toolCall.id)}
                 mode={mode}
+                locale={backendLocale}
               />
             ))}
           </div>

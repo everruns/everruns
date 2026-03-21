@@ -119,9 +119,19 @@ fn extract_locale_override(messages: &[Message]) -> Option<String> {
         .iter()
         .rev()
         .find(|message| message.role == MessageRole::User)
-        .and_then(|message| message.metadata.as_ref())
-        .and_then(|metadata| metadata.get("locale"))
-        .and_then(|value| value.as_str())
+        .and_then(|message| {
+            message
+                .controls
+                .as_ref()
+                .and_then(|controls| controls.locale.as_deref())
+                .or_else(|| {
+                    message
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("locale"))
+                        .and_then(|value| value.as_str())
+                })
+        })
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
@@ -190,6 +200,9 @@ pub struct ReasonResult {
     /// LLM provider's response ID for chaining with `previous_response_id`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
+    /// Resolved locale used for this turn's prompt and backend-authored strings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
 }
 
 fn default_max_iterations() -> usize {
@@ -498,6 +511,7 @@ impl Atom for ReasonAtom {
                     error: Some(error_msg),
                     usage: None,
                     response_id: None,
+                    locale: None,
                 }
             }
         };
@@ -577,9 +591,10 @@ impl ReasonAtom {
         // 6. Build runtime agent: harness (base) → agent (optional) → session caps
         //    Uses async builder methods so capabilities can resolve dynamic system
         //    prompt content (e.g., reading AGENTS.md, discovering skills).
+        let resolved_locale = extract_locale_override(&messages).or_else(|| session.locale.clone());
         let prompt_ctx = crate::capabilities::SystemPromptContext {
             session_id,
-            locale: extract_locale_override(&messages).or_else(|| session.locale.clone()),
+            locale: resolved_locale.clone(),
             file_store: self.file_store.clone(),
         };
 
@@ -1744,6 +1759,7 @@ impl ReasonAtom {
             error: None,
             usage,
             response_id,
+            locale: resolved_locale,
         })
     }
 
@@ -1951,5 +1967,26 @@ mod tests {
         assert_eq!(patched.len(), 4);
         assert_eq!(patched[2].role, MessageRole::ToolResult);
         assert_eq!(patched[2].tool_call_id(), Some("call_456"));
+    }
+
+    #[test]
+    fn test_extract_locale_override_prefers_controls_locale() {
+        let mut message = Message::user("Привіт");
+        message.controls = Some(crate::Controls {
+            model_id: None,
+            locale: Some("uk-UA".to_string()),
+            reasoning: None,
+            hints: None,
+        });
+        message.metadata = Some(
+            [("locale".to_string(), serde_json::json!("en-US"))]
+                .into_iter()
+                .collect(),
+        );
+
+        assert_eq!(
+            extract_locale_override(&[message]),
+            Some("uk-UA".to_string())
+        );
     }
 }

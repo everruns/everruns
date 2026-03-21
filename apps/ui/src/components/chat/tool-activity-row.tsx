@@ -19,16 +19,20 @@ import type { ToolCompletedData } from "@/lib/api/types";
 import type { ToolCallContent } from "./tool-call-utils";
 import { formatResultDetails, getResultPreview, getToolLabel } from "./tool-activity-utils";
 import { getFullText } from "./tool-call-utils";
+import { useLocale } from "@/providers/locale-provider";
 
 export function ToolActivityRow({
   toolCall,
   toolResult,
   mode,
+  locale,
 }: {
   toolCall: ToolCallContent;
   toolResult?: ToolCompletedData;
   mode: "server" | "client";
+  locale: string;
 }) {
+  const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
   const fullText = getFullText(toolResult?.result);
   const detailsId = `tool-activity-details-${toolCall.id}`;
@@ -59,10 +63,12 @@ export function ToolActivityRow({
             {mode === "client" && (
               <MonitorSmartphone className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary/75" />
             )}
-            <span className="truncate text-sm text-foreground">{getToolLabel(toolCall)}</span>
+            <span className="truncate text-sm text-foreground">
+              {getToolLabel(toolCall, locale)}
+            </span>
             {isRunning && (
               <span className="animate-tool-pulse text-[10px] uppercase tracking-[0.18em] text-accent-foreground/70">
-                {mode === "client" ? "waiting" : "running"}
+                {mode === "client" ? t("waiting") : t("running")}
               </span>
             )}
           </div>
@@ -90,7 +96,7 @@ export function ToolActivityRow({
               ) : (
                 <ChevronRight className="h-3 w-3" />
               )}
-              {isExpanded ? "hide details" : "details"}
+              {isExpanded ? t("hide_details") : t("details")}
             </button>
           )}
 

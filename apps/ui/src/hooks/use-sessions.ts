@@ -24,6 +24,7 @@ import type {
   PaginationParams,
 } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
+import { useLocale } from "@/providers/locale-provider";
 import { createReconnectTracker } from "@/lib/sse-reconnect";
 
 /**
@@ -88,11 +89,13 @@ export function useSession(
 
 export function useCreateSession() {
   const queryClient = useQueryClient();
+  const { backendLocale } = useLocale();
 
   return useMutation({
     mutationFn: ({ request }: { request: CreateSessionRequest }) =>
       createSession({
         ...request,
+        locale: request.locale ?? backendLocale,
         // Auto-declare setup_connection hint so the worker emits synthetic
         // setup_connection tool calls that the Chat UI can render inline.
         hints: { setup_connection: true, ...request.hints },

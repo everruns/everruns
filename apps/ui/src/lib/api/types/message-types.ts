@@ -89,6 +89,8 @@ export interface Controls {
    * Examples: `{ setup_connection: true, rich_media: true }`
    */
   hints?: Record<string, unknown>;
+  /** Locale override for this message turn (BCP 47, e.g. `uk-UA`) */
+  locale?: string;
 }
 
 /**

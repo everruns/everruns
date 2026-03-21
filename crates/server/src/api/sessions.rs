@@ -116,6 +116,13 @@ pub struct UpdateSessionRequest {
     pub tags: Option<Vec<String>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GetOrCreateChatSessionRequest {
+    /// Browser locale for seeding the global chat session (BCP 47, e.g. `uk-UA`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+}
+
 /// Query parameters for listing sessions with pagination.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListSessionsQuery {
@@ -366,6 +373,7 @@ async fn resolve_session_harness_id(
 #[utoipa::path(
     post,
     path = "/v1/sessions/chat",
+    request_body = Option<GetOrCreateChatSessionRequest>,
     responses(
         (status = 200, description = "Chat session returned", body = Session),
         (status = 401, description = "Authentication required"),
@@ -376,7 +384,11 @@ async fn resolve_session_harness_id(
 pub async fn get_or_create_chat_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
+    payload: Option<Json<GetOrCreateChatSessionRequest>>,
 ) -> ApiResult<Session> {
+    let locale = normalize_locale(payload.and_then(|Json(body)| body.locale))
+        .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
+
     // Use authenticated user_id, or fall back to anonymous user (auth=none mode)
     let user_id = org.user_id.unwrap_or(everruns_core::ANONYMOUS_USER_ID);
     let chat_harness_name = state.chat_harness_name.clone().ok_or((
@@ -401,6 +413,7 @@ pub async fn get_or_create_chat_session(
                 .chat_session_title
                 .as_deref()
                 .unwrap_or(chat_harness_name.as_str()),
+            locale,
         )
         .await
         .map_policy_or_internal("get or create chat session")?;

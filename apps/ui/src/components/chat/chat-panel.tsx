@@ -20,8 +20,10 @@ import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { StreamingMessage } from "@/components/streaming-message";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
+import { useLocale } from "@/providers/locale-provider";
 
 export function ChatPanel() {
+  const { t } = useLocale();
   const {
     agentId,
     events,
@@ -202,7 +204,7 @@ export function ChatPanel() {
               <div className={chatSurfaceStyles.agentMessage}>
                 {streamingIteration && streamingIteration > 1 && (
                   <div className="mb-1 text-xs text-muted-foreground">
-                    Iteration {streamingIteration}
+                    {t("iteration", { value: streamingIteration })}
                   </div>
                 )}
                 {isThinking && !streamingText ? (
@@ -224,7 +226,7 @@ export function ChatPanel() {
             className={chatSurfaceStyles.floatingNotice}
           >
             <ArrowDown className="h-3 w-3" />
-            New messages
+            {t("new_messages")}
           </button>
         )}
       </div>

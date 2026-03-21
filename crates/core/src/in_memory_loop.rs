@@ -669,6 +669,7 @@ impl InMemoryAgenticLoop {
                             agent_id: Some(self.agent_id),
                             tool_calls: reason_result.tool_calls,
                             tool_definitions: reason_result.tool_definitions,
+                            locale: reason_result.locale,
                         })
                         .await?;
                     state_machine.on_act_completed();
