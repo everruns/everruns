@@ -19,13 +19,24 @@ BINARY_NAME="everruns"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 VERSION=""
 FROM_SOURCE=false
+CURL_OPTS=(--connect-timeout 10 --max-time 120 --retry 3 --retry-delay 2)
 
 # --- Parse args ---
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --version) VERSION="$2"; shift 2 ;;
+    --version)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --version requires a value (e.g. v0.9.0)" >&2; exit 1
+      fi
+      VERSION="$2"; shift 2
+      ;;
     --source)  FROM_SOURCE=true; shift ;;
-    --install-dir) INSTALL_DIR="$2"; shift 2 ;;
+    --install-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: --install-dir requires a directory path" >&2; exit 1
+      fi
+      INSTALL_DIR="$2"; shift 2
+      ;;
     -h|--help)
       echo "Usage: install-cli.sh [OPTIONS]"
       echo ""
@@ -51,13 +62,23 @@ if $FROM_SOURCE; then
   command -v cargo >/dev/null 2>&1 || error "cargo not found. Install Rust: https://rustup.rs"
   info "Building from source via cargo install..."
 
-  # If we're inside the repo, use local path
+  CARGO_ROOT="$(mktemp -d)"
+  trap 'rm -rf "$CARGO_ROOT"' EXIT
+
   if [[ -f "crates/cli/Cargo.toml" ]]; then
-    cargo install --path crates/cli --force
+    cargo install --path crates/cli --root "$CARGO_ROOT" --force
   else
-    cargo install --git "https://github.com/${REPO}" everruns-cli --force
+    cargo install --git "https://github.com/${REPO}" everruns-cli --root "$CARGO_ROOT" --force
   fi
-  info "Installed $(everruns --version)"
+
+  mkdir -p "$INSTALL_DIR"
+  if [[ -w "$INSTALL_DIR" ]]; then
+    mv "$CARGO_ROOT/bin/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+  else
+    sudo mv "$CARGO_ROOT/bin/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+  fi
+
+  info "Installed $("$INSTALL_DIR/$BINARY_NAME" --version) to $INSTALL_DIR/$BINARY_NAME"
   exit 0
 fi
 
@@ -93,7 +114,7 @@ ARCHIVE="${BINARY_NAME}-${TARGET}.tar.gz"
 # --- Resolve version ---
 if [[ -z "$VERSION" ]]; then
   info "Fetching latest release..."
-  VERSION="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')"
+  VERSION="$(curl -fsSL "${CURL_OPTS[@]}" "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')"
   [[ -n "$VERSION" ]] || error "Could not determine latest release version"
 fi
 info "Version: $VERSION"
@@ -106,10 +127,10 @@ TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 info "Downloading ${ARCHIVE}..."
-curl -fSL -o "$TMPDIR/$ARCHIVE" "$DOWNLOAD_URL" || error "Download failed. Check that release $VERSION has pre-built binaries for $TARGET."
+curl -fSL "${CURL_OPTS[@]}" -o "$TMPDIR/$ARCHIVE" "$DOWNLOAD_URL" || error "Download failed. Check that release $VERSION has pre-built binaries for $TARGET."
 
 info "Downloading checksum..."
-if curl -fSL -o "$TMPDIR/${ARCHIVE}.sha256" "$CHECKSUM_URL" 2>/dev/null; then
+if curl -fSL "${CURL_OPTS[@]}" -o "$TMPDIR/${ARCHIVE}.sha256" "$CHECKSUM_URL" 2>/dev/null; then
   info "Verifying checksum..."
   cd "$TMPDIR"
   if command -v sha256sum >/dev/null 2>&1; then
@@ -129,15 +150,17 @@ info "Extracting..."
 tar xzf "$TMPDIR/$ARCHIVE" -C "$TMPDIR"
 
 info "Installing to $INSTALL_DIR..."
-mkdir -p "$INSTALL_DIR"
-if [[ -w "$INSTALL_DIR" ]]; then
+if [[ -w "$INSTALL_DIR" ]] || [[ -w "$(dirname "$INSTALL_DIR")" ]]; then
+  mkdir -p "$INSTALL_DIR"
   mv "$TMPDIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+  chmod +x "$INSTALL_DIR/$BINARY_NAME"
 else
+  sudo mkdir -p "$INSTALL_DIR"
   sudo mv "$TMPDIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+  sudo chmod +x "$INSTALL_DIR/$BINARY_NAME"
 fi
-chmod +x "$INSTALL_DIR/$BINARY_NAME"
 
-info "Installed $($INSTALL_DIR/$BINARY_NAME --version) to $INSTALL_DIR/$BINARY_NAME"
+info "Installed $("$INSTALL_DIR/$BINARY_NAME" --version) to $INSTALL_DIR/$BINARY_NAME"
 
 # --- PATH check ---
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
