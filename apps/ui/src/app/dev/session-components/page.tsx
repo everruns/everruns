@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Zap } from "lucide-react";
 import type { TokenUsage } from "@/lib/api/types";
+import { formatTokens } from "@/lib/formatting";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -46,17 +47,6 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
 // ============================================
 // Token Usage Display
 // ============================================
-
-// Helper function to format token counts in a compact way
-function formatTokens(tokens: number): string {
-  if (tokens >= 1000000) {
-    return `${(tokens / 1000000).toFixed(1)}M`;
-  }
-  if (tokens >= 1000) {
-    return `${(tokens / 1000).toFixed(1)}K`;
-  }
-  return tokens.toString();
-}
 
 // Helper function to calculate total tokens
 function totalTokens(usage: TokenUsage): number {

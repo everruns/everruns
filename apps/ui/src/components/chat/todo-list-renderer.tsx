@@ -11,6 +11,10 @@ import { useState } from "react";
 import { CheckSquare2, ChevronDown, ChevronRight, Loader2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ContentPart } from "@/lib/api/types";
+import { useLocale } from "@/providers/locale-provider";
+
+// Re-export from centralized registry for backward-compatible imports.
+export { isWriteTodosTool } from "@/lib/tool-registry";
 
 // Todo item structure from write_todos tool
 interface TodoItem {
@@ -114,8 +118,10 @@ function TodoItemRow({ todo, isActive }: { todo: TodoItem; isActive?: boolean })
 }
 
 function TodoListFromItems({ todos, isActive }: { todos: TodoItem[]; isActive?: boolean }) {
+  const { t } = useLocale();
+
   if (!todos || todos.length === 0) {
-    return <div className="text-sm text-muted-foreground italic">No tasks</div>;
+    return <div className="text-sm text-muted-foreground italic">{t("no_tasks")}</div>;
   }
 
   return (
@@ -137,6 +143,7 @@ export function TodoListRenderer({
   isExecuting,
   error,
 }: TodoListRendererProps) {
+  const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(true);
 
   // Parse todos from arguments (tool_call) or result (tool_result)
@@ -159,7 +166,7 @@ export function TodoListRenderer({
 
   // Handle error state
   if (error) {
-    return <div className="text-xs text-red-600">Error: {error}</div>;
+    return <div className="text-xs text-red-600">{t("error_prefix", { value: error })}</div>;
   }
 
   // Handle warning from result
@@ -175,21 +182,21 @@ export function TodoListRenderer({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <div className="text-sm text-foreground">
-              {completedCount} of {totalCount} todos completed
+              {t("todos_completed_summary", { completed: completedCount, total: totalCount })}
             </div>
             {isExecuting && (
               <span className="animate-tool-pulse inline-flex h-1.5 w-1.5 bg-accent" aria-hidden />
             )}
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground/70">
-            {activeTodo ? activeTodo.activeForm : "Plan captured from write_todos"}
+            {activeTodo ? activeTodo.activeForm : t("write_todos_plan_captured")}
           </div>
         </div>
         <button
           type="button"
           onClick={() => setIsExpanded((current) => !current)}
           className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-          aria-label={isExpanded ? "Collapse execution plan" : "Expand execution plan"}
+          aria-label={isExpanded ? t("collapse_execution_plan") : t("expand_execution_plan")}
         >
           {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
@@ -222,7 +229,4 @@ export function TodoListRenderer({
   );
 }
 
-// Check if a tool call is for write_todos
-export function isWriteTodosTool(toolName: string): boolean {
-  return toolName === "write_todos";
-}
+// isWriteTodosTool is re-exported from @/lib/tool-registry at the top of this file.

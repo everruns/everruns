@@ -11,7 +11,14 @@ import { useMemo, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FileText, Loader2 } from "lucide-react";
 import type { ContentPart, ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { basename } from "@/lib/path-utils";
+import { formatFileSize } from "@/lib/formatting";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
+import { formatImageCount } from "@/lib/i18n";
+import { useLocale } from "@/providers/locale-provider";
+
+// Re-export from centralized registry for backward-compatible imports.
+export { isReadFileTool } from "@/lib/tool-registry";
 
 interface ReadFileToolCallCardProps {
   toolCall: ToolCallContent;
@@ -37,12 +44,6 @@ interface ParsedReadFileResult {
   encoding?: string;
   sizeBytes?: number;
   images: ParsedReadFileImage[];
-}
-
-function basename(value: string): string {
-  const clean = value.replace(/\/+$/, "");
-  const parts = clean.split("/");
-  return parts[parts.length - 1] || clean;
 }
 
 function getPathFromArguments(toolCall: ToolCallContent): string | undefined {
@@ -131,18 +132,10 @@ function getContentPreview(content: string | null): string | null {
     : firstNonEmptyLine;
 }
 
-function formatSize(sizeBytes: number | undefined): string | null {
-  if (typeof sizeBytes !== "number" || sizeBytes < 0) return null;
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-export function isReadFileTool(toolName: string): boolean {
-  return toolName === "read_file" || toolName === "session_read_file";
-}
+// isReadFileTool is re-exported from @/lib/tool-registry at the top of this file.
 
 export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallCardProps) {
+  const { locale, t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
   const parsed = useMemo(
     () => parseReadFileResult(toolCall, toolResult?.result),
@@ -162,11 +155,15 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
     : null;
   const preview =
     getContentPreview(parsed.content) ??
-    (hasImages ? `${parsed.images.length} image${parsed.images.length === 1 ? "" : "s"}` : null) ??
+    (hasImages ? formatImageCount(locale, parsed.images.length) : null) ??
     (isBinaryWithoutPreview
-      ? `binary file${formatSize(parsed.sizeBytes) ? ` (${formatSize(parsed.sizeBytes)})` : ""}`
+      ? t("binary_file", {
+          value: formatFileSize(parsed.sizeBytes) ? ` (${formatFileSize(parsed.sizeBytes)})` : "",
+        })
       : null);
-  const title = parsed.path ? `Read ${basename(parsed.path)}` : "Read file";
+  const title = parsed.path
+    ? t("read_tool_title", { value: basename(parsed.path) })
+    : t("read_file");
   const showDetails = hasImages || isExpanded;
 
   const statusIcon = isComplete ? (
@@ -202,7 +199,7 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
             type="button"
             onClick={() => setIsExpanded((current) => !current)}
             className="flex-shrink-0 opacity-40 transition-opacity hover:opacity-70"
-            aria-label={isExpanded ? "Collapse file output" : "Expand file output"}
+            aria-label={isExpanded ? t("collapse_file_output") : t("expand_file_output")}
           >
             {isExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -214,7 +211,9 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
       </div>
 
       {hasError && (
-        <div className="ml-[22px] mt-0.5 text-[10px] text-red-600">Error: {toolResult?.error}</div>
+        <div className="ml-[22px] mt-0.5 text-[10px] text-red-600">
+          {t("error_prefix", { value: toolResult?.error ?? "" })}
+        </div>
       )}
 
       {!hasError && preview && !showDetails && (

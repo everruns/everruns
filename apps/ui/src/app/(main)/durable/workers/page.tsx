@@ -26,30 +26,8 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
-
-function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean }): string {
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const future = diff < 0;
-  const seconds = Math.floor(Math.abs(diff) / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  let result = "";
-  if (days > 0) {
-    result = `${days} day${days > 1 ? "s" : ""}`;
-  } else if (hours > 0) {
-    result = `${hours} hour${hours > 1 ? "s" : ""}`;
-  } else if (minutes > 0) {
-    result = `${minutes} minute${minutes > 1 ? "s" : ""}`;
-  } else {
-    result = "less than a minute";
-  }
-
-  if (!options?.addSuffix) return result;
-  return future ? `in ${result}` : `${result} ago`;
-}
+import { formatDistanceToNow, formatDurationCompact } from "@/lib/formatting";
+import { getWorkerStatusBadgeVariant } from "@/lib/status-utils";
 
 function getStatusColor(status: WorkerStatus) {
   switch (status) {
@@ -64,27 +42,6 @@ function getStatusColor(status: WorkerStatus) {
     default:
       return "bg-gray-500";
   }
-}
-
-function getStatusBadgeVariant(status: WorkerStatus) {
-  switch (status) {
-    case "active":
-      return "default" as const;
-    case "draining":
-      return "secondary" as const;
-    case "stopped":
-      return "destructive" as const;
-    case "stale":
-      return "outline" as const;
-    default:
-      return "outline" as const;
-  }
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms.toFixed(0)}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60000).toFixed(1)}m`;
 }
 
 function WorkerRow({
@@ -111,7 +68,7 @@ function WorkerRow({
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant={getStatusBadgeVariant(worker.status)}>{worker.status}</Badge>
+        <Badge variant={getWorkerStatusBadgeVariant(worker.status)}>{worker.status}</Badge>
       </TableCell>
       <TableCell>
         <Badge variant="outline">{worker.worker_group}</Badge>
@@ -181,7 +138,7 @@ function WorkerRow({
         </div>
       </TableCell>
       <TableCell>
-        <span className="text-sm">{formatDuration(worker.avg_task_duration_ms ?? 0)}</span>
+        <span className="text-sm">{formatDurationCompact(worker.avg_task_duration_ms ?? 0)}</span>
       </TableCell>
       <TableCell>
         <TooltipProvider>

@@ -11,7 +11,14 @@ import { useMemo, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FilePenLine, Loader2 } from "lucide-react";
 import type { ContentPart, ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { basename } from "@/lib/path-utils";
+import { formatEditCount } from "@/lib/i18n";
+import { formatFileSize } from "@/lib/formatting";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
+import { useLocale } from "@/providers/locale-provider";
+
+// Re-export from centralized registry for backward-compatible imports.
+export { isWriteLikeTool } from "@/lib/tool-registry";
 
 interface WriteFileToolCallCardProps {
   toolCall: ToolCallContent;
@@ -36,12 +43,6 @@ interface ParsedWriteFileResult {
   firstChangedLine?: number;
   diffTruncated: boolean;
   textContent: string | null;
-}
-
-function basename(value: string): string {
-  const clean = value.replace(/\/+$/, "");
-  const parts = clean.split("/");
-  return parts[parts.length - 1] || clean;
 }
 
 function getPathFromArguments(toolCall: ToolCallContent): string | undefined {
@@ -85,23 +86,16 @@ function parseWriteFilePayload(
   };
 }
 
-function formatSize(sizeBytes: number | undefined): string | null {
-  if (typeof sizeBytes !== "number" || sizeBytes < 0) return null;
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function getToolVerb(toolName: string): string {
+function getToolVerb(toolName: string, t: ReturnType<typeof useLocale>["t"]): string {
   switch (toolName) {
     case "edit_file":
-      return "Edit";
+      return t("write_tool_edit");
     case "replace_in_file":
-      return "Replace in";
+      return t("write_tool_replace");
     case "append_file":
-      return "Append to";
+      return t("write_tool_append");
     default:
-      return "Write";
+      return t("write_tool_default");
   }
 }
 
@@ -115,30 +109,23 @@ function getTextPreview(text: string | null): string | null {
   return firstLine.length > 120 ? `${firstLine.slice(0, 120)}...` : firstLine;
 }
 
-export function isWriteLikeTool(toolName: string): boolean {
-  return (
-    toolName === "write_file" ||
-    toolName === "edit_file" ||
-    toolName === "replace_in_file" ||
-    toolName === "append_file"
-  );
-}
-
 function formatEditPreview(
   appliedEdits: number | undefined,
   firstChangedLine: number | undefined,
+  locale: ReturnType<typeof useLocale>,
 ): string | null {
   const parts = [];
   if (typeof appliedEdits === "number") {
-    parts.push(`${appliedEdits} ${appliedEdits === 1 ? "edit" : "edits"}`);
+    parts.push(formatEditCount(locale.locale, appliedEdits));
   }
   if (typeof firstChangedLine === "number") {
-    parts.push(`line ${firstChangedLine}`);
+    parts.push(locale.t("line_number", { value: firstChangedLine }));
   }
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCallCardProps) {
+  const locale = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
   const parsed = useMemo(
     () => parseWriteFilePayload(toolCall, toolResult?.result),
@@ -149,22 +136,25 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
   const hasError = toolResult?.error !== undefined && toolResult?.error !== null;
   const resolvedPath = parsed.path ?? getPathFromArguments(toolCall);
   const title = resolvedPath
-    ? `${getToolVerb(toolCall.name)} ${basename(resolvedPath)}`
-    : `${getToolVerb(toolCall.name)} file`;
+    ? `${getToolVerb(toolCall.name, locale.t)} ${basename(resolvedPath)}`
+    : `${getToolVerb(toolCall.name, locale.t)} ${locale.t("write_tool_file_suffix")}`;
   const durationLabel = toolResult?.duration_ms
     ? toolResult.duration_ms < 1000
       ? `${toolResult.duration_ms}ms`
       : `${(toolResult.duration_ms / 1000).toFixed(1)}s`
     : null;
-  const metadataPreview = [parsed.created ? "created" : "updated", formatSize(parsed.sizeBytes)]
+  const metadataPreview = [
+    parsed.created ? locale.t("created") : locale.t("updated"),
+    formatFileSize(parsed.sizeBytes),
+  ]
     .filter(Boolean)
     .join(" · ");
   const preview =
-    formatEditPreview(parsed.appliedEdits, parsed.firstChangedLine) ||
+    formatEditPreview(parsed.appliedEdits, parsed.firstChangedLine, locale) ||
     metadataPreview ||
     getTextPreview(parsed.textContent);
   const detailLabel =
-    parsed.diffTruncated && toolCall.name === "edit_file" ? "Diff truncated" : null;
+    parsed.diffTruncated && toolCall.name === "edit_file" ? locale.t("diff_truncated") : null;
   const hasTextDetails = !!parsed.textContent;
 
   const statusIcon = isComplete ? (
@@ -200,7 +190,9 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
             type="button"
             onClick={() => setIsExpanded((current) => !current)}
             className="flex-shrink-0 opacity-40 transition-opacity hover:opacity-70"
-            aria-label={isExpanded ? "Collapse write output" : "Expand write output"}
+            aria-label={
+              isExpanded ? locale.t("collapse_write_output") : locale.t("expand_write_output")
+            }
           >
             {isExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -212,7 +204,9 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
       </div>
 
       {hasError && (
-        <div className="ml-[22px] mt-0.5 text-[10px] text-red-600">Error: {toolResult?.error}</div>
+        <div className="ml-[22px] mt-0.5 text-[10px] text-red-600">
+          {locale.t("error_prefix", { value: toolResult?.error ?? "" })}
+        </div>
       )}
 
       {!hasError && preview && !isExpanded && (
