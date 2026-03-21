@@ -3466,6 +3466,289 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/git/branches": {
+      "post": {
+        "tags": [
+          "Session Git"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/git/branches",
+        "operationId": "create_branch",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBranchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Branch created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/git/branches/{name}": {
+      "delete": {
+        "tags": [
+          "Session Git"
+        ],
+        "summary": "DELETE /v1/sessions/{session_id}/git/branches/{name}",
+        "operationId": "delete_branch",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Branch name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Branch deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Branch not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/git/commit": {
+      "post": {
+        "tags": [
+          "Session Git"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/git/commit",
+        "operationId": "commit",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Commit created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/git/diff": {
+      "get": {
+        "tags": [
+          "Session Git"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/git/diff",
+        "operationId": "diff",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "oid",
+            "in": "query",
+            "description": "Commit OID to diff",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "base",
+            "in": "query",
+            "description": "Base commit OID (default: parent)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Diff result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitDiff"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid commit OID"
+          },
+          "404": {
+            "description": "Commit not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/git/log": {
+      "get": {
+        "tags": [
+          "Session Git"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/git/log",
+        "operationId": "log",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "description": "Ref to start from (default: HEAD)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max commits (default: 50)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Commit log",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GitCommitInfo"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or ref not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/git/refs": {
+      "get": {
+        "tags": [
+          "Session Git"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/git/refs",
+        "operationId": "list_refs",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of refs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GitRefInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/messages": {
       "get": {
         "tags": [
@@ -4754,6 +5037,61 @@
           }
         }
       },
+      "CommitRequest": {
+        "type": "object",
+        "description": "Request to create a commit",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "author_email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Author email (defaults to \"agent@everruns.local\")"
+          },
+          "author_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Author name (defaults to \"Agent\")"
+          },
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Branch name (defaults to \"refs/heads/main\"); short names like \"main\" are normalized"
+          },
+          "message": {
+            "type": "string",
+            "description": "Commit message"
+          }
+        }
+      },
+      "CommitResult": {
+        "type": "object",
+        "description": "Result of a commit operation",
+        "required": [
+          "oid",
+          "tree_oid",
+          "objects_created"
+        ],
+        "properties": {
+          "objects_created": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "oid": {
+            "type": "string"
+          },
+          "tree_oid": {
+            "type": "string"
+          }
+        }
+      },
       "CompactionReason": {
         "type": "string",
         "description": "Reason why compaction was triggered.",
@@ -5139,6 +5477,24 @@
               "$ref": "#/components/schemas/ToolDefinition"
             },
             "description": "Client-side tools for this agent.\nThese tools are sent to the LLM but executed by the client, not the server."
+          }
+        }
+      },
+      "CreateBranchRequest": {
+        "type": "object",
+        "description": "Request to create a branch",
+        "required": [
+          "name",
+          "commit_oid"
+        ],
+        "properties": {
+          "commit_oid": {
+            "type": "string",
+            "description": "Commit OID (hex) to point to"
+          },
+          "name": {
+            "type": "string",
+            "description": "Branch name (e.g., \"feature-xyz\")"
           }
         }
       },
@@ -5603,6 +5959,26 @@
           }
         }
       },
+      "DiffQuery": {
+        "type": "object",
+        "description": "Query for diff endpoint",
+        "required": [
+          "oid"
+        ],
+        "properties": {
+          "base": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base commit OID (optional, defaults to parent)"
+          },
+          "oid": {
+            "type": "string",
+            "description": "Commit OID to diff (required)"
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "description": "Standard error response for API endpoints.",
@@ -5980,6 +6356,132 @@
           }
         ],
         "description": "Unified response for GET that can be file or directory listing"
+      },
+      "GitCommitInfo": {
+        "type": "object",
+        "description": "A commit entry in the log",
+        "required": [
+          "oid",
+          "message",
+          "author_name",
+          "author_email",
+          "timestamp",
+          "parent_oids"
+        ],
+        "properties": {
+          "author_email": {
+            "type": "string"
+          },
+          "author_name": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "oid": {
+            "type": "string"
+          },
+          "parent_oids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "GitDiff": {
+        "type": "object",
+        "description": "A diff with full patch output",
+        "required": [
+          "entries",
+          "stats"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitDiffEntry"
+            }
+          },
+          "patch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stats": {
+            "$ref": "#/components/schemas/GitDiffStats"
+          }
+        }
+      },
+      "GitDiffEntry": {
+        "type": "object",
+        "description": "A diff entry between two commits",
+        "required": [
+          "path",
+          "status"
+        ],
+        "properties": {
+          "old_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "GitDiffStats": {
+        "type": "object",
+        "description": "Diff statistics",
+        "required": [
+          "files_changed",
+          "insertions",
+          "deletions"
+        ],
+        "properties": {
+          "deletions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "files_changed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "insertions": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "GitRefInfo": {
+        "type": "object",
+        "description": "A git ref (branch pointer)",
+        "required": [
+          "name",
+          "target",
+          "is_symbolic"
+        ],
+        "properties": {
+          "is_symbolic": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        }
       },
       "GrepMatch": {
         "type": "object",
@@ -8345,6 +8847,27 @@
           }
         }
       },
+      "LogQuery": {
+        "type": "object",
+        "description": "Query for log endpoint",
+        "properties": {
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Max commits to return (default: 50)",
+            "minimum": 0
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Ref to start from (default: HEAD)"
+          }
+        }
+      },
       "McpServer": {
         "type": "object",
         "description": "MCP Server configuration.\nRepresents a remote MCP server that can provide tools and resources.",
@@ -10349,6 +10872,18 @@
           "status": {
             "type": "string",
             "description": "Session status after submission"
+          }
+        }
+      },
+      "SuccessResponse": {
+        "type": "object",
+        "description": "Generic success response",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
           }
         }
       },
