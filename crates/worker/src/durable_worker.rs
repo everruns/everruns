@@ -1388,6 +1388,7 @@ impl DurableWorker {
                             agent_id: input.agent_id,
                             tool_calls: reason_result.tool_calls,
                             tool_definitions: reason_result.tool_definitions,
+                            locale: reason_result.locale,
                         },
                     };
                     let mut act_input_json = serde_json::to_value(&act_task_input)?;

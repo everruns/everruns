@@ -142,6 +142,7 @@ pub(super) async fn run_post_act_hooks<E: EventEmitter>(
     result: &mut ActResult,
     tool_definitions: &[ToolDefinition],
     event_emitter: &E,
+    locale: Option<&str>,
 ) {
     for hook in hooks {
         let actions = hook.on_completed(result, tool_definitions);
@@ -154,7 +155,11 @@ pub(super) async fn run_post_act_hooks<E: EventEmitter>(
                     let event = EventRequest::new(
                         context.session_id,
                         EventContext::turn(context.turn_id, context.input_message_id),
-                        ToolCallRequestedData::with_definitions(&tool_calls, &action_defs),
+                        ToolCallRequestedData::with_definitions_and_locale(
+                            &tool_calls,
+                            &action_defs,
+                            locale,
+                        ),
                     );
                     if let Err(e) = event_emitter.emit(event).await {
                         tracing::warn!(

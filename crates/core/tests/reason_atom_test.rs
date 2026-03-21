@@ -1346,6 +1346,7 @@ async fn test_previous_response_id_round_trips_through_serde() {
         max_iterations: 10,
         error: None,
         usage: None,
+        locale: None,
         response_id: Some("resp_out_456".to_string()),
     };
     let result_json = serde_json::to_value(&result).unwrap();

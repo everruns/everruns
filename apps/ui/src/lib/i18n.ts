@@ -1,0 +1,197 @@
+/**
+ * Decisions:
+ * - Keep catalogs in code for now so adding new locales is a small, typed change.
+ * - Separate UI locale (`en`/`uk`) from backend locale (`en-US`, `uk-UA`, etc.).
+ * - Fall back to English for unsupported browser languages until more locales land.
+ */
+
+export type SupportedLocale = "en" | "uk";
+
+const messages = {
+  en: {
+    thinking: "thinking",
+    iteration: "Iteration {value}",
+    new_messages: "New messages",
+    no_messages_yet: "No messages yet",
+    start_with_prompt: "Start with a prompt, screenshot, or slash command.",
+    loading_older_messages: "Loading older messages...",
+    waiting_on_tools: "Waiting on tools",
+    scheduled: "Scheduled",
+    worked_for: "Worked for {duration}",
+    type_message_or_commands: "Type a message or / for commands... (Enter to send)",
+    type_message: "Type a message... (Enter to send)",
+    attach_images: "Attach images (PNG, JPEG, GIF, WebP)",
+    model: "Model",
+    reasoning: "Reasoning",
+    default: "Default",
+    default_with_value: "Default ({value})",
+    cancel_current_turn: "Cancel current turn",
+    uploading_images: "Uploading images...",
+    running: "running",
+    waiting: "waiting",
+    details: "details",
+    hide_details: "hide details",
+    current_directory: "current directory",
+    shell: "Shell",
+    list_files_in: "List files in {value}",
+    read_file: "Read file",
+    read_named_file: "Read {value}",
+    find_value: "Find {value}",
+    search_files: "Search files",
+    search_web: "Search web",
+    search_web_for: "Search web for {value}",
+    write_file: "Write file",
+    write_named_file: "Write {value}",
+    edit_file: "Edit file",
+    edit_named_file: "Edit {value}",
+    list_secrets: "List secrets",
+    secret_store: "Secret Store",
+    list_stored_values: "List stored values",
+    key_value_store: "Key Value Store",
+    working: "Working",
+    exploring: "Exploring {value}",
+    read_count: "{count} {label}",
+    read_label_one: "read",
+    read_label_many: "reads",
+    search_label_one: "search",
+    search_label_many: "searches",
+    write_label_one: "write",
+    write_label_many: "writes",
+    shell_label_one: "shell",
+    shell_label_many: "shells",
+    tool_label_one: "tool",
+    tool_label_many: "tools",
+    collapse_tool_activity: "Collapse tool activity",
+    expand_tool_activity: "Expand tool activity",
+    collapse_activity_group: "Collapse activity group",
+    expand_activity_group: "Expand activity group",
+    error_prefix: "Error: {value}",
+    binary_file: "binary file{value}",
+    image_count: "{count} image{suffix}",
+    read_tool_title: "Read {value}",
+    collapse_file_output: "Collapse file output",
+    expand_file_output: "Expand file output",
+    write_tool_default: "Write",
+    write_tool_edit: "Edit",
+    write_tool_replace: "Replace in",
+    write_tool_append: "Append to",
+    write_tool_file_suffix: "file",
+    created: "created",
+    updated: "updated",
+    diff_truncated: "Diff truncated",
+    collapse_write_output: "Collapse write output",
+    expand_write_output: "Expand write output",
+    edit_count: "{count} edit{suffix}",
+    line_number: "line {value}",
+  },
+  uk: {
+    thinking: "думаю",
+    iteration: "Ітерація {value}",
+    new_messages: "Нові повідомлення",
+    no_messages_yet: "Повідомлень ще немає",
+    start_with_prompt: "Почніть із запиту, скриншота або slash-команди.",
+    loading_older_messages: "Завантажую старіші повідомлення...",
+    waiting_on_tools: "Очікування інструментів",
+    scheduled: "За розкладом",
+    worked_for: "Працював {duration}",
+    type_message_or_commands: "Введіть повідомлення або / для команд... (Enter, щоб надіслати)",
+    type_message: "Введіть повідомлення... (Enter, щоб надіслати)",
+    attach_images: "Додати зображення (PNG, JPEG, GIF, WebP)",
+    model: "Модель",
+    reasoning: "Міркування",
+    default: "За замовчуванням",
+    default_with_value: "За замовчуванням ({value})",
+    cancel_current_turn: "Скасувати поточний хід",
+    uploading_images: "Завантажую зображення...",
+    running: "виконується",
+    waiting: "очікування",
+    details: "деталі",
+    hide_details: "сховати деталі",
+    current_directory: "поточній директорії",
+    shell: "Командний рядок",
+    list_files_in: "Показати файли у {value}",
+    read_file: "Прочитати файл",
+    read_named_file: "Прочитати {value}",
+    find_value: "Знайти {value}",
+    search_files: "Пошук у файлах",
+    search_web: "Пошук у вебі",
+    search_web_for: "Шукати у вебі: {value}",
+    write_file: "Записати файл",
+    write_named_file: "Записати {value}",
+    edit_file: "Редагувати файл",
+    edit_named_file: "Редагувати {value}",
+    list_secrets: "Показати секрети",
+    secret_store: "Сховище секретів",
+    list_stored_values: "Показати збережені значення",
+    key_value_store: "Сховище ключів і значень",
+    working: "Працюю",
+    exploring: "Досліджую: {value}",
+    read_count: "{count} {label}",
+    read_label_one: "читання",
+    read_label_many: "читань",
+    search_label_one: "пошук",
+    search_label_many: "пошуків",
+    write_label_one: "запис",
+    write_label_many: "записів",
+    shell_label_one: "команда",
+    shell_label_many: "команд",
+    tool_label_one: "інструмент",
+    tool_label_many: "інструментів",
+    collapse_tool_activity: "Згорнути активність інструментів",
+    expand_tool_activity: "Розгорнути активність інструментів",
+    collapse_activity_group: "Згорнути групу активності",
+    expand_activity_group: "Розгорнути групу активності",
+    error_prefix: "Помилка: {value}",
+    binary_file: "бінарний файл{value}",
+    image_count: "{count} зображенн{suffix}",
+    read_tool_title: "Прочитати {value}",
+    collapse_file_output: "Згорнути вивід файла",
+    expand_file_output: "Розгорнути вивід файла",
+    write_tool_default: "Записати",
+    write_tool_edit: "Редагувати",
+    write_tool_replace: "Замінити у",
+    write_tool_append: "Дописати у",
+    write_tool_file_suffix: "файл",
+    created: "створено",
+    updated: "оновлено",
+    diff_truncated: "Diff обрізано",
+    collapse_write_output: "Згорнути вивід запису",
+    expand_write_output: "Розгорнути вивід запису",
+    edit_count: "{count} змін{suffix}",
+    line_number: "рядок {value}",
+  },
+} as const;
+
+export type MessageKey = keyof typeof messages.en;
+
+export function normalizeBackendLocale(input?: string | null): string {
+  const normalized = input?.trim().replace(/_/g, "-");
+  return normalized && normalized.length > 0 ? normalized : "en-US";
+}
+
+export function detectBrowserLocale(
+  navigatorLike?: Pick<Navigator, "language" | "languages">,
+): string {
+  const candidate =
+    navigatorLike?.languages?.find((value) => value && value.trim().length > 0) ??
+    navigatorLike?.language;
+  return normalizeBackendLocale(candidate);
+}
+
+export function getSupportedLocale(locale: string): SupportedLocale {
+  return locale.toLowerCase().startsWith("uk") ? "uk" : "en";
+}
+
+export function formatMessage(
+  locale: SupportedLocale,
+  key: MessageKey,
+  values?: Record<string, string | number>,
+): string {
+  const template = messages[locale][key] ?? messages.en[key];
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`));
+}
+
+export function pluralSuffix(locale: SupportedLocale, count: number, one: string, many: string) {
+  return locale === "uk" ? (count === 1 ? one : many) : count === 1 ? one : many;
+}

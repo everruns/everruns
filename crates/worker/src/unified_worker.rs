@@ -686,6 +686,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
             error: Some("dependency_unavailable".to_string()),
             usage: None,
             response_id: None,
+            locale: None,
         })?);
     }
 
@@ -917,6 +918,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                     agent_id: input.agent_id,
                     tool_calls: reason_result.tool_calls,
                     tool_definitions: reason_result.tool_definitions,
+                    locale: reason_result.locale,
                 };
                 let mut act_input_json = serde_json::to_value(&act_input)?;
                 if let Some(rid) = &response_id {

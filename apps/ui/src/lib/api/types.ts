@@ -370,6 +370,8 @@ export interface ReasoningConfig {
 export interface Controls {
   /** UUID of the model to use for this message (overrides session/agent settings) */
   model_id?: string;
+  /** Locale override for this message turn (BCP 47, e.g. `uk-UA`) */
+  locale?: string;
   reasoning?: ReasoningConfig;
   max_tokens?: number;
   temperature?: number;

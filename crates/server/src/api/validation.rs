@@ -173,6 +173,17 @@ pub fn normalize_locale(locale: Option<String>) -> Result<Option<String>, Valida
     Ok(Some(normalized))
 }
 
+/// Validate and normalize a locale override inside message controls.
+pub fn normalize_controls_locale(
+    controls: Option<everruns_core::Controls>,
+) -> Result<Option<everruns_core::Controls>, ValidationError> {
+    let Some(mut controls) = controls else {
+        return Ok(None);
+    };
+    controls.locale = normalize_locale(controls.locale)?;
+    Ok(Some(controls))
+}
+
 /// Validate starter files collection and per-file shape.
 pub fn validate_initial_files(initial_files: &[InitialFile]) -> Result<(), ValidationError> {
     if initial_files.len() > MAX_INITIAL_FILES {
@@ -348,6 +359,19 @@ mod tests {
         assert!(normalize_locale(Some("".to_string())).is_err());
         assert!(normalize_locale(Some("uk UA".to_string())).is_err());
         assert!(normalize_locale(Some("-uk".to_string())).is_err());
+    }
+
+    #[test]
+    fn test_normalize_controls_locale_updates_message_controls() {
+        let controls = everruns_core::Controls {
+            model_id: None,
+            locale: Some("uk_UA".to_string()),
+            reasoning: None,
+            hints: None,
+        };
+
+        let normalized = normalize_controls_locale(Some(controls)).unwrap().unwrap();
+        assert_eq!(normalized.locale.as_deref(), Some("uk-UA"));
     }
 
     #[test]

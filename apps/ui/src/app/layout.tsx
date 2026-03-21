@@ -5,6 +5,7 @@ import { QueryProvider } from "@/providers/query-provider";
 import { FeatureFlagsProvider } from "@/providers/feature-flags-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { OrgProvider } from "@/providers/org-provider";
+import { LocaleProvider } from "@/providers/locale-provider";
 
 // Self-hosted via next/font/local to avoid any runtime or build-time dependency
 // on fonts.googleapis.com. Downstream apps with strict CSP (font-src 'self')
@@ -29,13 +30,15 @@ export default function RootLayout({
   return (
     <html lang="en" className={caveat.variable}>
       <body className="font-sans antialiased bg-brand-dots">
-        <QueryProvider>
-          <FeatureFlagsProvider>
-            <AuthProvider>
-              <OrgProvider>{children}</OrgProvider>
-            </AuthProvider>
-          </FeatureFlagsProvider>
-        </QueryProvider>
+        <LocaleProvider>
+          <QueryProvider>
+            <FeatureFlagsProvider>
+              <AuthProvider>
+                <OrgProvider>{children}</OrgProvider>
+              </AuthProvider>
+            </FeatureFlagsProvider>
+          </QueryProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

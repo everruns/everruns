@@ -25,6 +25,7 @@ pub mod deployment;
 
 // Feature flags
 pub mod feature_flags;
+pub mod localization;
 
 // Telemetry (OpenTelemetry with gen-ai semantic conventions)
 pub mod telemetry;

@@ -25,6 +25,7 @@ use uuid::Uuid;
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
+use crate::localization::localized_tool_display_name;
 use crate::typed_id::{AgentId, EventId, ExecId, HarnessId, MessageId, ModelId, SessionId, TurnId};
 
 // ============================================================================
@@ -374,7 +375,9 @@ impl Event {
 // ============================================================================
 
 use crate::message::{ContentPart, Message};
-use crate::tool_narration::{ToolNarrationPhase, render_group_headline, render_tool_narration};
+use crate::tool_narration::{
+    ToolNarrationPhase, render_group_headline_with_locale, render_tool_narration_with_locale,
+};
 use crate::tool_types::ToolCall;
 
 /// Metadata about the model used for generation
@@ -701,9 +704,18 @@ pub struct ActStartedData {
 
 impl ActStartedData {
     pub fn new(tool_calls: &[ToolCall]) -> Self {
+        Self::new_with_locale(tool_calls, None)
+    }
+
+    pub fn new_with_locale(tool_calls: &[ToolCall], locale: Option<&str>) -> Self {
         Self {
             tool_calls: tool_calls.iter().map(ToolCallSummary::from).collect(),
-            headline: render_group_headline(tool_calls, &[], ToolNarrationPhase::Started),
+            headline: render_group_headline_with_locale(
+                tool_calls,
+                &[],
+                ToolNarrationPhase::Started,
+                locale,
+            ),
         }
     }
 
@@ -712,6 +724,14 @@ impl ActStartedData {
         tool_calls: &[ToolCall],
         tool_defs: &[crate::tool_types::ToolDefinition],
     ) -> Self {
+        Self::with_definitions_and_locale(tool_calls, tool_defs, None)
+    }
+
+    pub fn with_definitions_and_locale(
+        tool_calls: &[ToolCall],
+        tool_defs: &[crate::tool_types::ToolDefinition],
+        locale: Option<&str>,
+    ) -> Self {
         let def_map: std::collections::HashMap<&str, &crate::tool_types::ToolDefinition> =
             tool_defs.iter().map(|d| (d.name(), d)).collect();
         Self {
@@ -719,21 +739,30 @@ impl ActStartedData {
                 .iter()
                 .map(|tc| {
                     let tool_def = def_map.get(tc.name.as_str()).copied();
-                    let display_name =
-                        tool_def.and_then(|d| d.display_name().map(|s| s.to_string()));
+                    let display_name = localized_tool_display_name(
+                        &tc.name,
+                        tool_def.and_then(|d| d.display_name()),
+                        locale,
+                    );
                     ToolCallSummary {
                         id: tc.id.clone(),
                         name: tc.name.clone(),
                         display_name,
-                        narration: Some(render_tool_narration(
+                        narration: Some(render_tool_narration_with_locale(
                             tool_def,
                             tc,
                             ToolNarrationPhase::Started,
+                            locale,
                         )),
                     }
                 })
                 .collect(),
-            headline: render_group_headline(tool_calls, tool_defs, ToolNarrationPhase::Started),
+            headline: render_group_headline_with_locale(
+                tool_calls,
+                tool_defs,
+                ToolNarrationPhase::Started,
+                locale,
+            ),
         }
     }
 }
@@ -884,6 +913,14 @@ impl ToolCallRequestedData {
         tool_calls: &[ToolCall],
         tool_defs: &[crate::tool_types::ToolDefinition],
     ) -> Self {
+        Self::with_definitions_and_locale(tool_calls, tool_defs, None)
+    }
+
+    pub fn with_definitions_and_locale(
+        tool_calls: &[ToolCall],
+        tool_defs: &[crate::tool_types::ToolDefinition],
+        locale: Option<&str>,
+    ) -> Self {
         let def_map: std::collections::HashMap<&str, &crate::tool_types::ToolDefinition> =
             tool_defs.iter().map(|d| (d.name(), d)).collect();
 
@@ -894,12 +931,16 @@ impl ToolCallRequestedData {
                 ToolCallSummary {
                     id: tool_call.id.clone(),
                     name: tool_call.name.clone(),
-                    display_name: tool_def
-                        .and_then(|def| def.display_name().map(|value| value.to_string())),
-                    narration: Some(render_tool_narration(
+                    display_name: localized_tool_display_name(
+                        &tool_call.name,
+                        tool_def.and_then(|def| def.display_name()),
+                        locale,
+                    ),
+                    narration: Some(render_tool_narration_with_locale(
                         tool_def,
                         tool_call,
                         ToolNarrationPhase::Waiting,
+                        locale,
                     )),
                 }
             })
@@ -908,7 +949,12 @@ impl ToolCallRequestedData {
         Self {
             tool_calls: tool_calls.to_vec(),
             tool_summaries,
-            headline: render_group_headline(tool_calls, tool_defs, ToolNarrationPhase::Waiting),
+            headline: render_group_headline_with_locale(
+                tool_calls,
+                tool_defs,
+                ToolNarrationPhase::Waiting,
+                locale,
+            ),
         }
     }
 }

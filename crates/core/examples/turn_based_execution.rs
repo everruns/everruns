@@ -319,6 +319,7 @@ async fn main() -> anyhow::Result<()> {
                 agent_id: Some(AgentId::from_uuid(agent_id)),
                 tool_calls: reason_result.tool_calls.clone(),
                 tool_definitions: reason_result.tool_definitions.clone(),
+                locale: reason_result.locale.clone(),
             })
             .await?;
 

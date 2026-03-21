@@ -26,7 +26,7 @@ use everruns_worker::AgentRunner;
 use super::common::{
     ApiOptionExt, ApiPolicyResultExt, ApiResultExt, ErrorResponse, PaginatedResponse, Pagination,
 };
-use super::validation::normalize_locale;
+use super::validation::{VALIDATION_ERROR_MESSAGE, normalize_locale};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -114,6 +114,13 @@ pub struct UpdateSessionRequest {
     #[serde(default)]
     #[schema(example = json!(["resolved"]))]
     pub tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GetOrCreateChatSessionRequest {
+    /// Browser locale for seeding the global chat session (BCP 47, e.g. `uk-UA`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
 }
 
 /// Query parameters for listing sessions with pagination.
@@ -380,7 +387,17 @@ async fn resolve_session_harness_id(
 pub async fn get_or_create_chat_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
+    payload: Option<Json<GetOrCreateChatSessionRequest>>,
 ) -> Result<Json<Session>, (StatusCode, Json<ErrorResponse>)> {
+    let locale = normalize_locale(payload.and_then(|Json(body)| body.locale)).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: VALIDATION_ERROR_MESSAGE.to_string(),
+            }),
+        )
+    })?;
+
     // Use authenticated user_id, or fall back to anonymous user (auth=none mode)
     let user_id = org.user_id.unwrap_or(everruns_core::ANONYMOUS_USER_ID);
     let chat_harness_name = state.chat_harness_name.clone().ok_or((
@@ -405,6 +422,7 @@ pub async fn get_or_create_chat_session(
                 .chat_session_title
                 .as_deref()
                 .unwrap_or(chat_harness_name.as_str()),
+            locale,
         )
         .await
         .map_policy_or_internal("get or create chat session")?;
