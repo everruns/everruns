@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::warn;
 
 use crate::typed_id::SkillId;
 
@@ -238,11 +239,28 @@ pub struct SkillValidationResult {
 // SKILL.md Parser
 // ============================================================================
 
-/// Parse a SKILL.md string into structured data
+/// Parse a SKILL.md string into structured data.
+///
+/// Uses a two-pass strategy: strict `serde_yaml` first, then a lenient
+/// fallback that auto-fixes common issues (unquoted colons, special chars)
+/// before rejecting the skill entirely. Logs a warning when fallback is used.
 pub fn parse_skill_md(content: &str) -> Result<ParsedSkillMd, Vec<String>> {
     let (frontmatter_str, body) = extract_frontmatter(content)?;
-    let fm: SkillFrontmatter = serde_yaml::from_str(&frontmatter_str)
-        .map_err(|e| vec![format!("invalid YAML frontmatter: {e}")])?;
+    let fm: SkillFrontmatter = match serde_yaml::from_str(&frontmatter_str) {
+        Ok(fm) => fm,
+        Err(strict_err) => match try_lenient_yaml_parse(&frontmatter_str) {
+            Ok(fm) => {
+                warn!(
+                    strict_error = %strict_err,
+                    "SKILL.md YAML frontmatter required lenient parsing; skill authors should fix their YAML."
+                );
+                fm
+            }
+            Err(_) => {
+                return Err(vec![format!("invalid YAML frontmatter: {strict_err}")]);
+            }
+        },
+    };
 
     let mut errors = Vec::new();
 
@@ -449,6 +467,67 @@ fn extract_frontmatter(content: &str) -> Result<(String, String), Vec<String>> {
     };
 
     Ok((frontmatter.to_string(), body))
+}
+
+/// Attempt lenient YAML parsing by auto-fixing common issues:
+/// - Unquoted values containing colons (e.g., `description: Use this: it works`)
+/// - Unquoted values with special YAML characters (`{`, `}`, `[`, `]`, `#`)
+/// - Strip invalid control characters (except tab; newlines consumed by line iteration)
+fn try_lenient_yaml_parse(frontmatter: &str) -> Result<SkillFrontmatter, serde_yaml::Error> {
+    let fixed = fix_yaml_values(frontmatter);
+    serde_yaml::from_str(&fixed)
+}
+
+/// Auto-quote YAML values that contain problematic characters.
+///
+/// For each line that looks like `key: value`, if the value is not already
+/// quoted and contains characters that break strict YAML parsing (`:`, `{`,
+/// `}`, `[`, `]`, `#`), wrap it in double quotes (escaping inner quotes).
+/// Also strips control characters (except `\t`; `\n` is consumed by line iteration).
+fn fix_yaml_values(frontmatter: &str) -> String {
+    let problematic_chars: &[char] = &[':', '{', '}', '[', ']', '#'];
+
+    frontmatter
+        .lines()
+        .map(|line| {
+            // Strip invalid control characters (keep \t)
+            let line: String = line
+                .chars()
+                .filter(|c| !c.is_control() || *c == '\t')
+                .collect();
+
+            // Match `key: value` pattern (top-level only, no leading whitespace for nested)
+            if let Some(colon_pos) = line.find(": ") {
+                let key = &line[..colon_pos];
+                let value = line[colon_pos + 2..].trim();
+
+                // Skip if already quoted, empty, or a nested/list structure
+                if value.is_empty()
+                    || value.starts_with('"')
+                    || value.starts_with('\'')
+                    || value.starts_with('|')
+                    || value.starts_with('>')
+                    || key.starts_with(' ')
+                    || key.starts_with('\t')
+                {
+                    return line;
+                }
+
+                // If value contains problematic chars, quote it.
+                // Skip values that look like YAML flow collections (start with { or [).
+                if value.contains(problematic_chars)
+                    && !value.starts_with('{')
+                    && !value.starts_with('[')
+                {
+                    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+                    return format!("{key}: \"{escaped}\"");
+                }
+            }
+
+            line
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 // ============================================================================
@@ -1443,5 +1522,81 @@ Body.
         let content = "Result: !`unknown-cmd`";
         let result = preprocess_command_injections(content, &exec).await;
         assert!(result.contains("[Command failed: unknown-cmd"));
+    }
+
+    // -- lenient YAML fallback tests --
+
+    #[test]
+    fn test_lenient_parse_unquoted_colon_in_description() {
+        let content = r#"---
+name: my-skill
+description: Use this skill: it handles edge cases
+---
+
+Instructions.
+"#;
+        let parsed = parse_skill_md(content).unwrap();
+        assert_eq!(parsed.name, "my-skill");
+        assert_eq!(parsed.description, "Use this skill: it handles edge cases");
+    }
+
+    #[test]
+    fn test_lenient_parse_hash_in_value() {
+        let content = "---\nname: my-skill\ndescription: Process C# files\n---\n\nBody.\n";
+        let parsed = parse_skill_md(content).unwrap();
+        assert_eq!(parsed.description, "Process C# files");
+    }
+
+    #[test]
+    fn test_lenient_parse_brackets_in_value() {
+        let content =
+            "---\nname: my-skill\ndescription: Parse [markdown] and {templates}\n---\n\nBody.\n";
+        let parsed = parse_skill_md(content).unwrap();
+        assert_eq!(parsed.description, "Parse [markdown] and {templates}");
+    }
+
+    #[test]
+    fn test_lenient_parse_already_quoted_value_unchanged() {
+        let content = "---\nname: my-skill\ndescription: \"Already quoted: value\"\n---\n\nBody.\n";
+        let parsed = parse_skill_md(content).unwrap();
+        assert_eq!(parsed.description, "Already quoted: value");
+    }
+
+    #[test]
+    fn test_fix_yaml_values_preserves_clean_yaml() {
+        let input = "name: my-skill\ndescription: A simple skill";
+        assert_eq!(fix_yaml_values(input), input);
+    }
+
+    #[test]
+    fn test_fix_yaml_values_quotes_colons() {
+        let input = "name: my-skill\ndescription: Use this: it works";
+        let fixed = fix_yaml_values(input);
+        assert!(fixed.contains("description: \"Use this: it works\""));
+    }
+
+    #[test]
+    fn test_fix_yaml_values_escapes_inner_quotes() {
+        let input = "name: my-skill\ndescription: Say \"hello\": world";
+        let fixed = fix_yaml_values(input);
+        assert!(fixed.contains(r#"description: "Say \"hello\": world""#));
+    }
+
+    #[test]
+    fn test_fix_yaml_values_skips_nested_keys() {
+        let input = "metadata:\n  version: 1.0\n  key: value: nested";
+        let fixed = fix_yaml_values(input);
+        // Nested keys (indented) should not be modified
+        assert!(fixed.contains("  version: 1.0"));
+        assert!(fixed.contains("  key: value: nested"));
+    }
+
+    #[test]
+    fn test_fix_yaml_values_preserves_flow_collections() {
+        let input = "name: my-skill\nmetadata: { version: \"1.0\" }\ntags: [a, b]";
+        let fixed = fix_yaml_values(input);
+        // Flow collections should NOT be quoted
+        assert!(fixed.contains("metadata: { version: \"1.0\" }"));
+        assert!(fixed.contains("tags: [a, b]"));
     }
 }
