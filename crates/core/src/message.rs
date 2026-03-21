@@ -194,6 +194,11 @@ pub struct Controls {
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
     pub model_id: Option<ModelId>,
 
+    /// Locale override for this message turn (BCP 47, e.g. `uk-UA`).
+    /// Overrides the session locale for backend-authored strings and prompts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+
     /// Reasoning configuration
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<ReasoningConfig>,

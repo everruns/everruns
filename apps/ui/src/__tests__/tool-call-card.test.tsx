@@ -1,6 +1,12 @@
 import { render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { ToolCallCard } from "@/components/chat/tool-call-card";
 import type { Message } from "@/lib/api/types";
+import { LocaleProvider } from "@/providers/locale-provider";
+
+function renderWithLocale(ui: ReactElement) {
+  return render(<LocaleProvider>{ui}</LocaleProvider>);
+}
 
 // Helper to create tool call message (as agent message with tool_call in content)
 function createToolCallMessage(overrides?: Partial<Message>): Message {
@@ -47,14 +53,14 @@ describe("ToolCallCard", () => {
   describe("rendering", () => {
     it("renders tool call name with colon", () => {
       const toolCall = createToolCallMessage();
-      render(<ToolCallCard toolCall={toolCall} />);
+      renderWithLocale(<ToolCallCard toolCall={toolCall} />);
 
       expect(screen.getByText("get_current_time:")).toBeInTheDocument();
     });
 
     it("renders arguments inline", () => {
       const toolCall = createToolCallMessage();
-      render(<ToolCallCard toolCall={toolCall} />);
+      renderWithLocale(<ToolCallCard toolCall={toolCall} />);
 
       expect(screen.getByText("timezone: UTC")).toBeInTheDocument();
     });
@@ -70,7 +76,7 @@ describe("ToolCallCard", () => {
           },
         ],
       });
-      render(<ToolCallCard toolCall={toolCall} />);
+      renderWithLocale(<ToolCallCard toolCall={toolCall} />);
 
       expect(screen.getByText("noop:")).toBeInTheDocument();
     });
@@ -79,7 +85,7 @@ describe("ToolCallCard", () => {
   describe("status display", () => {
     it("shows executing indicator when no tool result provided", () => {
       const toolCall = createToolCallMessage();
-      render(<ToolCallCard toolCall={toolCall} />);
+      renderWithLocale(<ToolCallCard toolCall={toolCall} />);
 
       expect(screen.getByText("> ... executing ...")).toBeInTheDocument();
     });
@@ -87,7 +93,7 @@ describe("ToolCallCard", () => {
     it("shows result when tool result is successful", () => {
       const toolCall = createToolCallMessage();
       const toolResult = createToolResultMessage();
-      render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
+      renderWithLocale(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
       expect(screen.getByText(/2025-01-01T12:00:00Z/)).toBeInTheDocument();
       expect(screen.queryByText("> ... executing ...")).not.toBeInTheDocument();
@@ -104,7 +110,7 @@ describe("ToolCallCard", () => {
           },
         ],
       });
-      render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
+      renderWithLocale(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
       expect(screen.getByText("> Error: Something went wrong")).toBeInTheDocument();
     });
@@ -122,14 +128,14 @@ describe("ToolCallCard", () => {
           },
         ],
       });
-      render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
+      renderWithLocale(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
       expect(screen.getByText(/2025-01-01T12:00:00Z/)).toBeInTheDocument();
     });
 
     it("does not display result section when incomplete", () => {
       const toolCall = createToolCallMessage();
-      render(<ToolCallCard toolCall={toolCall} />);
+      renderWithLocale(<ToolCallCard toolCall={toolCall} />);
 
       expect(screen.queryByText(/Result:/)).not.toBeInTheDocument();
     });
@@ -152,7 +158,7 @@ describe("ToolCallCard", () => {
           },
         ],
       });
-      render(<ToolCallCard toolCall={toolCall} />);
+      renderWithLocale(<ToolCallCard toolCall={toolCall} />);
 
       expect(screen.getByText("http_get:")).toBeInTheDocument();
     });
@@ -168,7 +174,7 @@ describe("ToolCallCard", () => {
           },
         ],
       });
-      render(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
+      renderWithLocale(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
       // Should not show executing indicator when complete
       expect(screen.queryByText("> ... executing ...")).not.toBeInTheDocument();

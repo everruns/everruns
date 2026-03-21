@@ -5,6 +5,7 @@ import { AlertCircle, Check, ChevronDown, ChevronRight, Loader2 } from "lucide-r
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { getFullText } from "./tool-call-utils";
+import { useLocale } from "@/providers/locale-provider";
 
 export interface TimelineToolRow {
   id: string;
@@ -35,6 +36,7 @@ function resultPreview(result?: ToolCompletedData): string | null {
 }
 
 function TimelineRow({ row }: { row: TimelineToolRow }) {
+  const { t } = useLocale();
   const [expanded, setExpanded] = useState(false);
   const fullText = getFullText(row.result?.result);
   const preview = resultPreview(row.result);
@@ -75,7 +77,7 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
               ) : (
                 <ChevronRight className="h-3 w-3" />
               )}
-              {expanded ? "hide details" : "details"}
+              {expanded ? t("hide_details") : t("details")}
             </button>
           )}
 
@@ -104,6 +106,7 @@ export function ToolActivityTimelineGroup({
   completedHeadline,
   rows,
 }: ToolActivityTimelineGroupProps) {
+  const { t } = useLocale();
   const completedCount = useMemo(
     () => rows.filter((row) => row.state === "completed" || row.state === "error").length,
     [rows],
@@ -124,7 +127,7 @@ export function ToolActivityTimelineGroup({
         type="button"
         onClick={() => setExpanded((current) => !current)}
         className="inline-flex items-start gap-2 text-left text-muted-foreground transition-colors hover:text-foreground"
-        aria-label={expanded ? "Collapse activity group" : "Expand activity group"}
+        aria-label={expanded ? t("collapse_activity_group") : t("expand_activity_group")}
       >
         {expanded ? (
           <ChevronDown className="mt-[2px] h-4 w-4 flex-shrink-0" />

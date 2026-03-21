@@ -15,6 +15,7 @@ import {
   isWriteLikeTool,
   type ToolCategory,
 } from "@/lib/tool-registry";
+import { formatMessage, getSupportedLocale, type SupportedLocale } from "@/lib/i18n";
 import { parseBashOutput } from "./bash-tool-call-card";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 
@@ -24,10 +25,6 @@ export type ActivitySegment =
   | { type: "read_file"; toolCall: ToolCallContent }
   | { type: "write_file"; toolCall: ToolCallContent };
 
-function pluralize(count: number, singular: string, plural: string) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
 function toTitleCase(value: string): string {
   return value
     .split(/[_\s]+/)
@@ -36,61 +33,73 @@ function toTitleCase(value: string): string {
     .join(" ");
 }
 
-function formatLocation(value: unknown): string {
-  if (typeof value !== "string" || value.trim().length === 0) return "current directory";
-  if (value === "." || value === "/workspace") return "current directory";
+function uiLocale(locale: string): SupportedLocale {
+  return getSupportedLocale(locale);
+}
+
+function formatLocation(value: unknown, locale: string): string {
+  if (typeof value !== "string" || value.trim().length === 0)
+    return formatMessage(uiLocale(locale), "current_directory");
+  if (value === "." || value === "/workspace")
+    return formatMessage(uiLocale(locale), "current_directory");
   return value;
 }
 
-export function getToolLabel(toolCall: ToolCallContent): string {
+export function getToolLabel(toolCall: ToolCallContent, locale: string): string {
+  const currentLocale = uiLocale(locale);
   const { arguments: args, name } = toolCall;
 
   if (isBashTool(name)) {
     const command = args.command;
-    return typeof command === "string" && command.trim().length > 0 ? `$ ${command}` : "Shell";
+    return typeof command === "string" && command.trim().length > 0
+      ? `$ ${command}`
+      : formatMessage(currentLocale, "shell");
   }
 
-  if (name === "list_files") return `List files in ${formatLocation(args.path)}`;
+  if (name === "list_files")
+    return formatMessage(currentLocale, "list_files_in", {
+      value: formatLocation(args.path, locale),
+    });
 
   if (isReadFileTool(name)) {
     const path = args.path;
     return typeof path === "string" && path.trim().length > 0
-      ? `Read ${basename(path)}`
-      : "Read file";
+      ? formatMessage(currentLocale, "read_named_file", { value: basename(path) })
+      : formatMessage(currentLocale, "read_file");
   }
 
   if (name === "grep_files") {
     const pattern = args.pattern;
     return typeof pattern === "string" && pattern.trim().length > 0
-      ? `Find ${pattern}`
-      : "Search files";
+      ? formatMessage(currentLocale, "find_value", { value: pattern })
+      : formatMessage(currentLocale, "search_files");
   }
 
   if (name === "search_web" || name === "search" || name.endsWith("__search")) {
     const query = args.query ?? args.search ?? args.q;
     return typeof query === "string" && query.trim().length > 0
-      ? `Search web for ${query}`
-      : "Search web";
+      ? formatMessage(currentLocale, "search_web_for", { value: query })
+      : formatMessage(currentLocale, "search_web");
   }
 
   if (name === "write_file") {
     const path = args.path;
     return typeof path === "string" && path.trim().length > 0
-      ? `Write ${basename(path)}`
-      : "Write file";
+      ? formatMessage(currentLocale, "write_named_file", { value: basename(path) })
+      : formatMessage(currentLocale, "write_file");
   }
 
   if (name === "replace_in_file" || name === "edit_file") {
     const path = args.path;
     return typeof path === "string" && path.trim().length > 0
-      ? `Edit ${basename(path)}`
-      : "Edit file";
+      ? formatMessage(currentLocale, "edit_named_file", { value: basename(path) })
+      : formatMessage(currentLocale, "edit_file");
   }
 
   if (name === "secret_store") {
     const operation = args.operation;
     const secretName = args.name;
-    if (operation === "list") return "List secrets";
+    if (operation === "list") return formatMessage(currentLocale, "list_secrets");
     if (
       typeof operation === "string" &&
       typeof secretName === "string" &&
@@ -98,25 +107,26 @@ export function getToolLabel(toolCall: ToolCallContent): string {
     ) {
       return `${toTitleCase(operation)} ${secretName}`;
     }
-    return "Secret Store";
+    return formatMessage(currentLocale, "secret_store");
   }
 
   if (name === "kv_store") {
     const operation = args.operation;
     const key = args.key;
-    if (operation === "list") return "List stored values";
+    if (operation === "list") return formatMessage(currentLocale, "list_stored_values");
     if (typeof operation === "string" && typeof key === "string" && key.trim().length > 0) {
       return `${toTitleCase(operation)} ${key}`;
     }
-    return "Key Value Store";
+    return formatMessage(currentLocale, "key_value_store");
   }
 
   return toolCall.display_name ?? toTitleCase(name);
 }
 
-export function summarizeToolCalls(toolCalls: ToolCallContent[]): string {
-  if (toolCalls.length === 0) return "Working";
-  if (toolCalls.length === 1) return getToolLabel(toolCalls[0]);
+export function summarizeToolCalls(toolCalls: ToolCallContent[], locale: string): string {
+  const currentLocale = uiLocale(locale);
+  if (toolCalls.length === 0) return formatMessage(currentLocale, "working");
+  if (toolCalls.length === 1) return getToolLabel(toolCalls[0], locale);
 
   const counts: Record<ToolCategory, number> = {
     read: 0,
@@ -132,13 +142,58 @@ export function summarizeToolCalls(toolCalls: ToolCallContent[]): string {
   }
 
   const parts: string[] = [];
-  if (counts.read > 0) parts.push(pluralize(counts.read, "read", "reads"));
-  if (counts.search > 0) parts.push(pluralize(counts.search, "search", "searches"));
-  if (counts.write > 0) parts.push(pluralize(counts.write, "write", "writes"));
-  if (counts.shell > 0) parts.push(pluralize(counts.shell, "shell", "shells"));
-  if (counts.tool > 0) parts.push(pluralize(counts.tool, "tool", "tools"));
+  if (counts.read > 0)
+    parts.push(
+      formatMessage(currentLocale, "read_count", {
+        count: counts.read,
+        label:
+          counts.read === 1
+            ? formatMessage(currentLocale, "read_label_one")
+            : formatMessage(currentLocale, "read_label_many"),
+      }),
+    );
+  if (counts.search > 0)
+    parts.push(
+      formatMessage(currentLocale, "read_count", {
+        count: counts.search,
+        label:
+          counts.search === 1
+            ? formatMessage(currentLocale, "search_label_one")
+            : formatMessage(currentLocale, "search_label_many"),
+      }),
+    );
+  if (counts.write > 0)
+    parts.push(
+      formatMessage(currentLocale, "read_count", {
+        count: counts.write,
+        label:
+          counts.write === 1
+            ? formatMessage(currentLocale, "write_label_one")
+            : formatMessage(currentLocale, "write_label_many"),
+      }),
+    );
+  if (counts.shell > 0)
+    parts.push(
+      formatMessage(currentLocale, "read_count", {
+        count: counts.shell,
+        label:
+          counts.shell === 1
+            ? formatMessage(currentLocale, "shell_label_one")
+            : formatMessage(currentLocale, "shell_label_many"),
+      }),
+    );
+  if (counts.tool > 0)
+    parts.push(
+      formatMessage(currentLocale, "read_count", {
+        count: counts.tool,
+        label:
+          counts.tool === 1
+            ? formatMessage(currentLocale, "tool_label_one")
+            : formatMessage(currentLocale, "tool_label_many"),
+      }),
+    );
 
-  return `Exploring ${parts.join(", ")}`;
+  return formatMessage(currentLocale, "exploring", { value: parts.join(", ") });
 }
 
 function parseStructuredText(text: string): unknown | null {

@@ -251,6 +251,7 @@ pub async fn reason_activity(
             error: Some("dependency_unavailable".to_string()),
             usage: None,
             response_id: None,
+            locale: None,
         });
     }
 
@@ -591,6 +592,7 @@ mod tests {
                 category: None,
                 deferrable: DeferrablePolicy::default(),
             })],
+            locale: None,
         };
 
         let json = serde_json::to_string(&input).unwrap();
@@ -611,6 +613,7 @@ mod tests {
             error: None,
             usage: None,
             response_id: None,
+            locale: None,
         };
 
         let json = serde_json::to_string(&result).unwrap();

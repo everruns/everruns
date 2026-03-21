@@ -1,9 +1,15 @@
 import { render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { ToolActivityTimelineGroup } from "@/components/chat/tool-activity-timeline-group";
+import { LocaleProvider } from "@/providers/locale-provider";
+
+function renderWithLocale(ui: ReactElement) {
+  return render(<LocaleProvider>{ui}</LocaleProvider>);
+}
 
 describe("ToolActivityTimelineGroup", () => {
   it("renders single row inline without duplicate headline", () => {
-    render(
+    renderWithLocale(
       <ToolActivityTimelineGroup
         headline="Ran List Capabilities"
         completedHeadline="Ran List Capabilities"
@@ -17,7 +23,7 @@ describe("ToolActivityTimelineGroup", () => {
   });
 
   it("renders narrated group headline and child rows", () => {
-    render(
+    renderWithLocale(
       <ToolActivityTimelineGroup
         headline="Reading AGENTS.md and searching files"
         completedHeadline="Read AGENTS.md and searched files"

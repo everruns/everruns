@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight, MonitorSmartphone } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
+import { useLocale } from "@/providers/locale-provider";
 import { formatArguments, getFullText, type ToolCallContent } from "./tool-call-utils";
 
 interface ClientToolCallCardProps {
@@ -16,6 +17,7 @@ interface ClientToolCallCardProps {
  * to indicate the tool runs on the client, not the server.
  */
 export function ClientToolCallCard({ toolCall, toolResult }: ClientToolCallCardProps) {
+  const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const isComplete = !!toolResult;
@@ -46,13 +48,19 @@ export function ClientToolCallCard({ toolCall, toolResult }: ClientToolCallCardP
           {toolResult?.display_name ?? toolCall.display_name ?? toolCall.name}
         </span>
         {!isComplete && (
-          <span className="text-amber-500/70 italic text-[10px] ml-1">Waiting for client...</span>
+          <span className="text-amber-500/70 italic text-[10px] ml-1">
+            {t("waiting_for_client")}
+          </span>
         )}
         {argsPreview && <span className="opacity-60">{argsPreview}</span>}
       </div>
 
       {/* Error message */}
-      {hasError && <div className="text-red-600 ml-4 mt-0.5">Error: {toolResult?.error}</div>}
+      {hasError && (
+        <div className="text-red-600 ml-4 mt-0.5">
+          {t("error_prefix", { value: toolResult?.error ?? "" })}
+        </div>
+      )}
 
       {/* Expanded output */}
       {isExpanded && hasOutput && (
@@ -72,7 +80,7 @@ export function ClientToolCallCard({ toolCall, toolResult }: ClientToolCallCardP
           ) : (
             <ChevronRight className="h-2.5 w-2.5" />
           )}
-          {isExpanded ? "hide" : "output"}
+          {isExpanded ? t("hide_details") : t("output")}
         </button>
       )}
     </div>

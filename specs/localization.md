@@ -10,7 +10,9 @@ This spec covers:
 - execution-context resolution precedence
 - backend localization of system-generated strings
 
-This spec does not define UI localization.
+This spec also defines the first iteration of UI localization plumbing and
+shared string-catalog rules so new locales do not require hard-coded strings
+throughout the product.
 
 ## Goals
 
@@ -66,17 +68,23 @@ Design rule:
 
 ## Per-Turn Overrides
 
-Message metadata may carry one-turn overrides:
-- `message.metadata.locale`
+Message controls may carry one-turn overrides:
+- `message.controls.locale`
+- `message.metadata.locale` (legacy/reserved compatibility path)
 - `message.metadata.timezone`
 
 These values affect only the triggered turn. They do not mutate durable user or session preferences by themselves.
 
 For browser clients, the expected source of truth is:
-- locale: explicit client locale if provided, otherwise `Accept-Language` only for default seeding
+- locale: explicit client locale in controls if provided, otherwise `Accept-Language` only for default seeding
 - timezone: explicit browser timezone sent by the client
 
 Recommended browser contract:
+- send current browser locale explicitly in `controls.locale` on interactive requests
+- seed `session.locale` from the browser locale when creating browser-originated sessions
+- allow per-message `controls.locale` to override session locale without mutating the session
+- message controls win over session defaults for a single turn
+- message metadata locale remains reserved for compatibility and internal callers
 - send current browser timezone explicitly on interactive requests
 - do not infer timezone from locale
 
@@ -110,12 +118,13 @@ The resolved values should be attached to turn-scoped tracing metadata and may b
 
 #### Locale precedence
 
-1. `message.metadata.locale`
-2. explicit request locale
-3. `session.locale`
-4. `user.locale`
-5. locale seeded from `Accept-Language`
-6. system default `en`
+1. `message.controls.locale`
+2. `message.metadata.locale`
+3. explicit request locale
+4. `session.locale`
+5. `user.locale`
+6. locale seeded from `Accept-Language`
+7. system default `en`
 
 #### Timezone precedence
 
@@ -192,6 +201,7 @@ Backend localization applies only to deterministic backend-authored strings:
 - schedule-triggered inbox text
 - tool/system messages authored by the platform
 - generic validation and policy error messages exposed to users
+- tool display names, narration, and activity headlines emitted in events
 
 It does not apply to:
 - LLM-generated content
@@ -205,6 +215,15 @@ Use stable message keys with parameter interpolation, for example:
 - `session.cancel.agent_response`
 - `validation.input_limits_exceeded`
 - `schedule.trigger.message`
+- `tool.label.read_file`
+- `tool.narration.read.started`
+- `chat.empty_state.title`
+
+Implementation rule:
+- UI strings and backend-authored strings must live in locale catalogs rather than
+  inline string literals inside rendering/business-logic code
+- catalogs may stay code-native in the first iteration; Fluent/ICU are not required yet
+- adding a new locale should primarily mean adding catalog entries, not rewriting logic
 
 Recommended API:
 
@@ -243,8 +262,29 @@ This preserves the rendered message while keeping enough context for future anal
 ### Messages
 
 `POST /v1/sessions/{session_id}/messages`
+- `controls.locale` is the preferred per-turn locale override
 - `metadata.locale` is reserved for per-turn locale override
 - `metadata.timezone` is reserved for per-turn timezone override
+
+`POST /v1/sessions/chat`
+- may accept optional `locale` for seeding the singleton global chat session on first creation
+
+## UI Localization
+
+### Browser locale detection
+
+- The browser client should detect locale from `navigator.languages` / `navigator.language`
+- UI copy should switch by supported language family (`uk*` → Ukrainian, otherwise English in the first iteration)
+- The raw normalized browser locale (for example `uk-UA`) should still be forwarded to the backend so later locales can be enabled without changing the transport
+
+### Catalog structure
+
+- Keep a typed UI string catalog keyed by stable message IDs
+- Keep a backend string catalog keyed by stable message IDs or semantic helpers
+- Use the same fallback rule everywhere:
+  1. exact locale if present
+  2. language family if supported
+  3. default English
 
 ### Users
 

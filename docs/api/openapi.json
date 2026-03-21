@@ -2513,6 +2513,50 @@
         }
       }
     },
+    "/v1/sessions/chat": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/sessions/chat - Get or create global chat session",
+        "description": "Returns the user's singleton global chat session. Creates one if it doesn't exist.\nUses the Platform Chat harness and tags for per-user singleton management.",
+        "operationId": "get_or_create_chat_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GetOrCreateChatSessionRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat session returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}": {
       "get": {
         "tags": [
@@ -5331,6 +5375,13 @@
             ],
             "description": "Generic client hints — arbitrary key-value pairs declared by the client.\nSession-level defaults are set at session creation; per-message values\noverride session hints key-by-key (shallow merge).\n\nExamples: `{\"setup_connection\": true, \"rich_media\": true}`"
           },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Locale override for this message turn (BCP 47, e.g. `uk-UA`).\nOverrides the session locale for backend-authored strings and prompts."
+          },
           "model_id": {
             "type": [
               "string",
@@ -6343,6 +6394,18 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "GetOrCreateChatSessionRequest": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Browser locale for seeding the global chat session (BCP 47, e.g. `uk-UA`)."
           }
         }
       },

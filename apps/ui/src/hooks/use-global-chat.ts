@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOrg } from "@/providers/org-provider";
 import { getOrCreateChatSession } from "@/lib/api/sessions";
+import { useLocale } from "@/providers/locale-provider";
 
 interface UseGlobalChatResult {
   sessionId: string | null;
@@ -16,6 +17,7 @@ interface UseGlobalChatResult {
 
 export function useGlobalChat(): UseGlobalChatResult {
   const { currentOrg } = useOrg();
+  const { backendLocale } = useLocale();
   const orgId = currentOrg?.public_id;
 
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -29,14 +31,14 @@ export function useGlobalChat(): UseGlobalChatResult {
     setError(null);
 
     try {
-      const session = await getOrCreateChatSession();
+      const session = await getOrCreateChatSession(backendLocale);
       setSessionId(session.id);
     } catch (e) {
       setError(e instanceof Error ? e : new Error("Failed to initialize global chat"));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [backendLocale]);
 
   useEffect(() => {
     if (!orgId) return;

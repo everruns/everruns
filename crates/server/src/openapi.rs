@@ -43,6 +43,7 @@ use utoipa::OpenApi;
         api::sessions::get_session,
         api::sessions::update_session,
         api::sessions::delete_session,
+        api::sessions::get_or_create_chat_session,
         api::sessions::pin_session,
         api::sessions::unpin_session,
         api::sessions::cancel_turn,

@@ -33,6 +33,7 @@ import {
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { CompactionDivider } from "@/components/chat/compaction-divider";
 import type { ToolCallContent } from "@/components/chat/tool-call-utils";
+import { useLocale } from "@/providers/locale-provider";
 
 interface ChatMessageListProps {
   events: Event[] | undefined;
@@ -60,7 +61,7 @@ function getMessageImages(content: ContentPart[]): Array<{ image_id: string; fil
   }));
 }
 
-function buildActGroups(chatEvents: Event[]) {
+function buildActGroups(chatEvents: Event[], workingLabel: string) {
   const groupsByExecId = new Map<string, ActGroup>();
 
   const ensureRow = (
@@ -89,7 +90,7 @@ function buildActGroups(chatEvents: Event[]) {
     if (actStarted) {
       groupsByExecId.set(execId, {
         startEventId: event.id,
-        headline: actStarted.headline ?? "Working",
+        headline: actStarted.headline ?? workingLabel,
         rows: (actStarted.tool_calls ?? []).map((toolCall: ToolCallSummary) => ({
           id: toolCall.id,
           label: toolCall.narration ?? toolCall.display_name ?? toolCall.name,
@@ -140,14 +141,18 @@ function buildActGroups(chatEvents: Event[]) {
   return new Map(Array.from(groupsByExecId.values()).map((group) => [group.startEventId, group]));
 }
 
-function renderTurnDivider(eventId: string, turnDurationByEventId: Map<string, number>) {
+function renderTurnDivider(
+  eventId: string,
+  turnDurationByEventId: Map<string, number>,
+  workedForText: string | null,
+) {
   const durationMs = turnDurationByEventId.get(eventId);
-  if (durationMs == null) return null;
+  if (durationMs == null || !workedForText) return null;
 
   return (
     <div className="flex items-center gap-4 pt-3 text-xs font-medium text-muted-foreground sm:text-sm">
       <div className="h-px flex-1 bg-border" />
-      <span className="whitespace-nowrap">{`Worked for ${formatWorkedDuration(durationMs)}`}</span>
+      <span className="whitespace-nowrap">{workedForText}</span>
       <div className="h-px flex-1 bg-border" />
     </div>
   );
@@ -164,6 +169,7 @@ export function ChatMessageList({
   getMessageText,
   getToolCalls,
 }: ChatMessageListProps) {
+  const { t } = useLocale();
   const clientRequestedToolCallIds = useMemo(() => {
     const ids = new Set<string>();
     for (const event of chatEvents) {
@@ -184,7 +190,10 @@ export function ChatMessageList({
     () => chatEvents.some((event) => event.type === "act.started"),
     [chatEvents],
   );
-  const actGroupsByStartEventId = useMemo(() => buildActGroups(chatEvents), [chatEvents]);
+  const actGroupsByStartEventId = useMemo(
+    () => buildActGroups(chatEvents, t("working")),
+    [chatEvents, t],
+  );
 
   if (eventsLoading) {
     return (
@@ -203,8 +212,8 @@ export function ChatMessageList({
           <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center border border-border/70 bg-background text-muted-foreground">
             <Bot className="h-5 w-5 opacity-65" />
           </div>
-          <p className="text-lg font-medium text-foreground">No messages yet</p>
-          <p className="mt-1 text-sm">Start with a prompt, screenshot, or slash command.</p>
+          <p className="text-lg font-medium text-foreground">{t("no_messages_yet")}</p>
+          <p className="mt-1 text-sm">{t("start_with_prompt")}</p>
         </div>
       </div>
     );
@@ -215,7 +224,7 @@ export function ChatMessageList({
       {loadingOlderEvents && hasMoreEvents && (
         <div className="flex items-center justify-center py-3">
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-xs text-muted-foreground">Loading older messages...</span>
+          <span className="ml-2 text-xs text-muted-foreground">{t("loading_older_messages")}</span>
         </div>
       )}
       {chatEvents.map((event) => {
@@ -244,7 +253,13 @@ export function ChatMessageList({
                   rows={group.rows}
                 />
               </div>
-              {renderTurnDivider(event.id, turnDurationByEventId)}
+              {renderTurnDivider(
+                event.id,
+                turnDurationByEventId,
+                t("worked_for", {
+                  duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                }),
+              )}
             </div>
           );
         }
@@ -265,11 +280,17 @@ export function ChatMessageList({
                 <div key={event.id} className="space-y-3">
                   <div className="ml-9 space-y-1">
                     <ToolActivityTimelineGroup
-                      headline={reqData.headline ?? "Waiting on tools"}
+                      headline={reqData.headline ?? t("waiting_on_tools")}
                       rows={rows}
                     />
                   </div>
-                  {renderTurnDivider(event.id, turnDurationByEventId)}
+                  {renderTurnDivider(
+                    event.id,
+                    turnDurationByEventId,
+                    t("worked_for", {
+                      duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                    }),
+                  )}
                 </div>
               );
             }
@@ -302,7 +323,13 @@ export function ChatMessageList({
                   />
                 )}
               </div>
-              {renderTurnDivider(event.id, turnDurationByEventId)}
+              {renderTurnDivider(
+                event.id,
+                turnDurationByEventId,
+                t("worked_for", {
+                  duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                }),
+              )}
             </div>
           );
         }
@@ -333,7 +360,13 @@ export function ChatMessageList({
               <div className="ml-9 space-y-1">
                 <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
               </div>
-              {renderTurnDivider(event.id, turnDurationByEventId)}
+              {renderTurnDivider(
+                event.id,
+                turnDurationByEventId,
+                t("worked_for", {
+                  duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                }),
+              )}
             </div>
           );
         }
@@ -347,7 +380,7 @@ export function ChatMessageList({
                     {isScheduleTriggered && (
                       <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
                         <CalendarClock className="h-3 w-3" />
-                        <span>Scheduled</span>
+                        <span>{t("scheduled")}</span>
                       </div>
                     )}
                     <div className="flex items-start gap-2">
@@ -401,7 +434,7 @@ export function ChatMessageList({
               </div>
             )}
 
-            {renderTurnDivider(event.id, turnDurationByEventId)}
+            {renderTurnDivider(event.id, turnDurationByEventId, t("worked_for"))}
           </div>
         );
       })}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
+import { useLocale } from "@/providers/locale-provider";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 import { BashToolCallCard, isBashTool } from "./bash-tool-call-card";
 import { ReadFileToolCallCard, isReadFileTool } from "./read-file-tool-call-card";
@@ -27,6 +28,7 @@ export function ToolCallCardFromEvent({
   toolResult,
   isClientSide,
 }: ToolCallCardFromEventProps) {
+  const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Delegate to ClientToolCallCard for client-side tool calls
@@ -91,7 +93,11 @@ export function ToolCallCardFromEvent({
       </div>
 
       {/* Error message */}
-      {hasError && <div className="text-red-600 ml-4 mt-0.5">Error: {toolResult?.error}</div>}
+      {hasError && (
+        <div className="text-red-600 ml-4 mt-0.5">
+          {t("error_prefix", { value: toolResult?.error ?? "" })}
+        </div>
+      )}
 
       {/* Expanded output */}
       {isExpanded && hasOutput && (
@@ -111,7 +117,7 @@ export function ToolCallCardFromEvent({
           ) : (
             <ChevronRight className="h-2.5 w-2.5" />
           )}
-          {isExpanded ? "hide" : "output"}
+          {isExpanded ? t("hide_details") : t("output")}
         </button>
       )}
     </div>
