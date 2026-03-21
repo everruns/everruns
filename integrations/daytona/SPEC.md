@@ -77,7 +77,7 @@ This avoids entering the key in chat (see TM-AGENT-016).
 
 | Method | Path | Purpose | Request Body |
 |--------|------|---------|-------------|
-| POST | `/sandbox` | Create sandbox | `{ name?, image?, autoStopInterval, autoArchiveInterval, autoDeleteInterval, labels? }` |
+| POST | `/sandbox` | Create sandbox | `{ name?, image?, resources?: { cpu?, memory?, disk? }, autoStopInterval, autoArchiveInterval, autoDeleteInterval, labels? }` |
 | GET | `/sandbox/{id}` | Get sandbox info | — |
 | POST | `/sandbox/{id}/start` | Start sandbox | — |
 | POST | `/sandbox/{id}/stop` | Stop sandbox | — |
@@ -104,6 +104,9 @@ Creates a new sandbox. Optionally uploads files from session storage.
 - **Parameters**:
   - `title`: string (optional) — sandbox name
   - `image`: string (optional) — container image
+  - `cpu`: integer (optional) — vCPUs, 1-4 (default: 1)
+  - `memory`: integer (optional) — GiB RAM, 1-8 (default: 1)
+  - `disk`: integer (optional) — GiB disk, 1-10 (default: 3)
   - `upload_files`: array (optional) — `[{session_path, sandbox_path}]`
 - **Returns**: `{ sandbox_id, status, workspace_path }`
 

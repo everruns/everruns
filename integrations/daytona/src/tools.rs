@@ -45,6 +45,18 @@ impl Tool for DaytonaCreateSandboxTool {
                     "type": "string",
                     "description": "Container image (optional, uses Daytona default if omitted)"
                 },
+                "cpu": {
+                    "type": "integer",
+                    "description": "Number of vCPUs (1-4, default: 1)"
+                },
+                "memory": {
+                    "type": "integer",
+                    "description": "Memory in GiB (1-8, default: 1)"
+                },
+                "disk": {
+                    "type": "integer",
+                    "description": "Disk size in GiB (1-10, default: 3)"
+                },
                 "upload_files": {
                     "type": "array",
                     "description": "Files to upload from session storage (optional)",
@@ -118,6 +130,24 @@ impl Tool for DaytonaCreateSandboxTool {
         });
         if let Some(image) = arguments.get("image").and_then(|v| v.as_str()) {
             create_body["image"] = json!(image);
+        }
+
+        // Add resource constraints if any are specified
+        let cpu = arguments.get("cpu").and_then(|v| v.as_u64());
+        let memory = arguments.get("memory").and_then(|v| v.as_u64());
+        let disk = arguments.get("disk").and_then(|v| v.as_u64());
+        if cpu.is_some() || memory.is_some() || disk.is_some() {
+            let mut resources = serde_json::Map::new();
+            if let Some(cpu) = cpu {
+                resources.insert("cpu".to_string(), json!(cpu));
+            }
+            if let Some(memory) = memory {
+                resources.insert("memory".to_string(), json!(memory));
+            }
+            if let Some(disk) = disk {
+                resources.insert("disk".to_string(), json!(disk));
+            }
+            create_body["resources"] = json!(resources);
         }
 
         // Create sandbox
