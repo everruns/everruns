@@ -221,9 +221,17 @@ async fn extract_auth_user(
             .to_str()
             .map_err(|_| AuthError::unauthorized("Invalid authorization header"))?;
 
-        // Check for Bearer token (JWT or API key)
-        // Canonical API key format: "Authorization: Bearer evr_..."
-        if let Some(token) = auth_str.strip_prefix("Bearer ") {
+        // Parse scheme + token per RFC 7235 (case-insensitive scheme)
+        let token_after_bearer = {
+            let mut parts = auth_str.splitn(2, ' ');
+            match (parts.next(), parts.next()) {
+                (Some(scheme), Some(token)) if scheme.eq_ignore_ascii_case("bearer") => Some(token),
+                _ => None,
+            }
+        };
+
+        // Bearer token: either API key (evr_ prefix) or JWT
+        if let Some(token) = token_after_bearer {
             if token.starts_with(API_KEY_PREFIX) {
                 return auth_state.backend.validate_api_key(token).await;
             }
@@ -231,9 +239,19 @@ async fn extract_auth_user(
         }
 
         // Legacy: bare API key or "ApiKey" prefix (kept for backward compat)
-        if auth_str.starts_with(API_KEY_PREFIX) || auth_str.starts_with("ApiKey ") {
-            let api_key = auth_str.strip_prefix("ApiKey ").unwrap_or(auth_str);
+        let api_key_after_scheme = {
+            let mut parts = auth_str.splitn(2, ' ');
+            match (parts.next(), parts.next()) {
+                (Some(scheme), Some(key)) if scheme.eq_ignore_ascii_case("apikey") => Some(key),
+                _ => None,
+            }
+        };
+
+        if let Some(api_key) = api_key_after_scheme {
             return auth_state.backend.validate_api_key(api_key).await;
+        }
+        if auth_str.starts_with(API_KEY_PREFIX) {
+            return auth_state.backend.validate_api_key(auth_str).await;
         }
     }
 
@@ -659,5 +677,131 @@ mod tests {
         assert!(OrgRole::Member.has_permission(OrgRole::Member));
         assert!(!OrgRole::Member.has_permission(OrgRole::Admin));
         assert!(!OrgRole::Member.has_permission(OrgRole::Owner));
+    }
+
+    // --- extract_auth_user routing tests ---
+
+    use crate::auth::{
+        backend::AuthBackend,
+        config::{AuthConfig, AuthMode},
+        routes::AuthConfigResponse,
+    };
+    use async_trait::async_trait;
+    use axum::Router;
+    use axum::http::{Request, header};
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// Mock backend that records which validation method was called.
+    struct MockBackend {
+        token_calls: AtomicU32,
+        api_key_calls: AtomicU32,
+    }
+
+    impl MockBackend {
+        fn new() -> Self {
+            Self {
+                token_calls: AtomicU32::new(0),
+                api_key_calls: AtomicU32::new(0),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl AuthBackend for MockBackend {
+        async fn validate_token(&self, _token: &str) -> Result<AuthUser, AuthError> {
+            self.token_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(AuthUser::anonymous())
+        }
+
+        async fn validate_api_key(&self, _key: &str) -> Result<AuthUser, AuthError> {
+            self.api_key_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(AuthUser::anonymous())
+        }
+
+        fn auth_routes(&self) -> Option<Router> {
+            None
+        }
+
+        fn auth_config_response(&self) -> AuthConfigResponse {
+            AuthConfigResponse {
+                mode: "full".into(),
+                password_auth_enabled: false,
+                oauth_providers: vec![],
+                signup_enabled: false,
+            }
+        }
+    }
+
+    fn make_auth_state(backend: Arc<MockBackend>) -> AuthState {
+        let mut config = AuthConfig::default();
+        config.mode = AuthMode::Full;
+        AuthState::new(config, backend)
+    }
+
+    async fn call_extract(auth_header: &str) -> (u32, u32) {
+        let backend = Arc::new(MockBackend::new());
+        let state = make_auth_state(backend.clone());
+
+        let (mut parts, _body) = Request::builder()
+            .header(header::AUTHORIZATION, auth_header)
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let _ = extract_auth_user(&mut parts, &state).await;
+
+        (
+            backend.token_calls.load(Ordering::SeqCst),
+            backend.api_key_calls.load(Ordering::SeqCst),
+        )
+    }
+
+    #[tokio::test]
+    async fn test_bearer_api_key_routes_to_validate_api_key() {
+        let (token, api_key) = call_extract("Bearer evr_testkey123").await;
+        assert_eq!(token, 0, "should not call validate_token");
+        assert_eq!(api_key, 1, "should call validate_api_key");
+    }
+
+    #[tokio::test]
+    async fn test_bearer_jwt_routes_to_validate_token() {
+        let (token, api_key) = call_extract("Bearer eyJhbGciOiJIUzI1NiJ9.x.y").await;
+        assert_eq!(token, 1, "should call validate_token");
+        assert_eq!(api_key, 0, "should not call validate_api_key");
+    }
+
+    #[tokio::test]
+    async fn test_bearer_case_insensitive() {
+        let (token, api_key) = call_extract("bearer evr_testkey123").await;
+        assert_eq!(api_key, 1, "lowercase bearer should route to api_key");
+        assert_eq!(token, 0);
+
+        let (token, api_key) = call_extract("BEARER evr_testkey123").await;
+        assert_eq!(api_key, 1, "uppercase BEARER should route to api_key");
+        assert_eq!(token, 0);
+    }
+
+    #[tokio::test]
+    async fn test_legacy_bare_api_key() {
+        let (token, api_key) = call_extract("evr_testkey123").await;
+        assert_eq!(api_key, 1, "bare evr_ should route to validate_api_key");
+        assert_eq!(token, 0);
+    }
+
+    #[tokio::test]
+    async fn test_legacy_apikey_prefix() {
+        let (token, api_key) = call_extract("ApiKey evr_testkey123").await;
+        assert_eq!(api_key, 1, "ApiKey prefix should route to validate_api_key");
+        assert_eq!(token, 0);
+    }
+
+    #[tokio::test]
+    async fn test_legacy_apikey_prefix_case_insensitive() {
+        let (token, api_key) = call_extract("apikey evr_testkey123").await;
+        assert_eq!(
+            api_key, 1,
+            "lowercase apikey should route to validate_api_key"
+        );
+        assert_eq!(token, 0);
     }
 }

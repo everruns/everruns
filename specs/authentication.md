@@ -39,6 +39,7 @@ Authorization: Bearer <api_key>
 ```
 
 - API keys prefixed with `evr_` for identification — the `evr_` prefix distinguishes API keys from JWTs within the `Bearer` scheme
+- Auth scheme matching is case-insensitive per RFC 7235 (`bearer`, `BEARER`, `Bearer` all accepted)
 - Full key shown only at creation, stored hashed (SHA-256)
 - Supports scopes and expiration
 - Used for programmatic access
