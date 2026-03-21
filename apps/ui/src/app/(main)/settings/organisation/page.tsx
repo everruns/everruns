@@ -98,7 +98,7 @@ export default function OrganisationPage() {
     setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
     setNewOrgName("");
     setCreateDialogOpen(false);
-    router.push(`/orgs/${org.id}/setup`);
+    router.push("/dashboard");
   };
 
   if (error) {

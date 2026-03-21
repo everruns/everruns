@@ -392,7 +392,7 @@ describe("Create Organisation dialog", () => {
         name: "New Org",
         role: "owner",
       });
-      expect(mockPush).toHaveBeenCalledWith("/orgs/org_new123/setup");
+      expect(mockPush).toHaveBeenCalledWith("/dashboard");
     });
   });
 
