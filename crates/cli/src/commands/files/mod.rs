@@ -1,10 +1,10 @@
 // File sync CLI commands
 //
-// TODO(sdk): Replace RemoteClient (raw reqwest) with SDK session_files() methods
-// once everruns-sdk ships support (see https://github.com/everruns/sdk/issues/60).
+// TODO(sdk): Replace RemoteClient (raw reqwest) with SDK session_files() methods.
+// SDK v0.1.5 ships session filesystem support (https://github.com/everruns/sdk/issues/60 resolved).
+// Migration is tracked separately — involves adapting to SDK's FileInfo/SessionFile types.
 //
 // Design Decision: All file operations grouped under `everruns files` subcommand.
-// Design Decision: Remote API client uses reqwest directly (session filesystem not in SDK yet).
 
 pub mod ls;
 pub mod pull;
