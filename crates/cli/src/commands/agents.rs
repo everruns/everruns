@@ -3,12 +3,13 @@
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use everruns_sdk::{CreateAgentRequest, Everruns};
+use everruns_sdk::{AgentCapabilityConfig, CreateAgentRequest, Everruns, InitialFile};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Subcommand)]
 pub enum AgentsCommand {
-    /// Create a new agent
+    /// Create a new agent (upserts if id: is present in frontmatter)
     Create {
         /// YAML/JSON/Markdown file with agent definition
         #[arg(short, long)]
@@ -33,6 +34,44 @@ pub enum AgentsCommand {
         /// Tags (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
+
+        /// Directory to glob for initial_files (uploaded as session starter files)
+        #[arg(long)]
+        initial_files_dir: Option<String>,
+    },
+
+    /// Update an existing agent from a file definition
+    Update {
+        /// Agent ID (e.g. agent_xxx). If omitted, uses id from file frontmatter.
+        agent_id: Option<String>,
+
+        /// YAML/JSON/Markdown file with agent definition
+        #[arg(short, long)]
+        file: Option<String>,
+
+        /// Agent name
+        #[arg(long)]
+        name: Option<String>,
+
+        /// System prompt
+        #[arg(long)]
+        system_prompt: Option<String>,
+
+        /// Agent description
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Default model ID (e.g. mod_xxx)
+        #[arg(long)]
+        model: Option<String>,
+
+        /// Tags (repeatable)
+        #[arg(long, short)]
+        tag: Vec<String>,
+
+        /// Directory to glob for initial_files (uploaded as session starter files)
+        #[arg(long)]
+        initial_files_dir: Option<String>,
     },
 
     /// List all agents
@@ -62,6 +101,86 @@ pub struct AgentFile {
     pub default_model_id: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Capabilities - supports both string IDs and objects with ref/config
+    #[serde(default)]
+    pub capabilities: Vec<AgentFileCapability>,
+    #[serde(default)]
+    pub initial_files: Vec<InitialFile>,
+}
+
+/// Capability entry in agent file - supports both string and object formats
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AgentFileCapability {
+    /// Legacy format: just capability ID string
+    Simple(String),
+    /// New format: object with ref and config
+    WithConfig {
+        #[serde(rename = "ref")]
+        capability_ref: String,
+        #[serde(default)]
+        config: serde_json::Value,
+    },
+}
+
+impl AgentFileCapability {
+    fn to_sdk_config(&self) -> AgentCapabilityConfig {
+        match self {
+            AgentFileCapability::Simple(id) => AgentCapabilityConfig::new(id.clone()),
+            AgentFileCapability::WithConfig {
+                capability_ref,
+                config,
+            } => AgentCapabilityConfig::new(capability_ref.clone()).config(config.clone()),
+        }
+    }
+}
+
+/// Glob a directory and collect all files as InitialFile entries.
+/// Walks the directory recursively; file paths are stored relative to `dir`.
+fn glob_initial_files(dir: &str) -> Result<Vec<InitialFile>> {
+    let base = Path::new(dir)
+        .canonicalize()
+        .with_context(|| format!("Cannot resolve initial-files-dir: {}", dir))?;
+
+    let mut files = Vec::new();
+    collect_files(&base, &base, &mut files)?;
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(files)
+}
+
+fn collect_files(root: &Path, current: &Path, out: &mut Vec<InitialFile>) -> Result<()> {
+    for entry in std::fs::read_dir(current)
+        .with_context(|| format!("Failed to read directory: {}", current.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            // Skip hidden directories
+            if path
+                .file_name()
+                .map(|n| n.to_string_lossy().starts_with('.'))
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            collect_files(root, &path, out)?;
+        } else {
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .to_string();
+            // Skip hidden files and binary-looking extensions
+            if rel.starts_with('.') {
+                continue;
+            }
+            let content = std::fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read file: {}", path.display()))?;
+            let file_path = format!("/{}", rel);
+            out.push(InitialFile::new(file_path, content).is_readonly(true));
+        }
+    }
+    Ok(())
 }
 
 /// Parse markdown file with YAML front matter.
@@ -113,8 +232,9 @@ pub async fn run(
             description,
             model,
             tag,
+            initial_files_dir,
         } => {
-            create(
+            create_or_update(
                 client,
                 output,
                 quiet,
@@ -124,6 +244,33 @@ pub async fn run(
                 description,
                 model,
                 tag,
+                initial_files_dir,
+                None, // no explicit agent_id override
+            )
+            .await
+        }
+        AgentsCommand::Update {
+            agent_id,
+            file,
+            name,
+            system_prompt,
+            description,
+            model,
+            tag,
+            initial_files_dir,
+        } => {
+            create_or_update(
+                client,
+                output,
+                quiet,
+                file,
+                name,
+                system_prompt,
+                description,
+                model,
+                tag,
+                initial_files_dir,
+                agent_id,
             )
             .await
         }
@@ -134,7 +281,7 @@ pub async fn run(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn create(
+async fn create_or_update(
     client: &Everruns,
     output: OutputFormat,
     quiet: bool,
@@ -144,6 +291,8 @@ async fn create(
     description: Option<String>,
     model: Option<String>,
     tags: Vec<String>,
+    initial_files_dir: Option<String>,
+    agent_id_override: Option<String>,
 ) -> Result<()> {
     // Load from file if provided
     let file_config = if let Some(path) = file {
@@ -186,6 +335,9 @@ async fn create(
         AgentFile::default()
     };
 
+    // Resolve agent ID: CLI arg > file frontmatter > none (pure create)
+    let resolved_id = agent_id_override.or(file_config.id);
+
     // CLI args override file values
     let final_name = name
         .or(file_config.name)
@@ -201,6 +353,20 @@ async fn create(
         tags
     };
 
+    // Resolve capabilities from file
+    let final_capabilities: Vec<AgentCapabilityConfig> = file_config
+        .capabilities
+        .iter()
+        .map(|c| c.to_sdk_config())
+        .collect();
+
+    // Resolve initial_files: --initial-files-dir overrides file-defined initial_files
+    let final_initial_files = if let Some(dir) = initial_files_dir {
+        glob_initial_files(&dir)?
+    } else {
+        file_config.initial_files
+    };
+
     // Build the request
     let mut req = CreateAgentRequest::new(&final_name, &final_system_prompt);
     if let Some(desc) = final_description {
@@ -212,14 +378,20 @@ async fn create(
     if !final_tags.is_empty() {
         req = req.tags(final_tags);
     }
+    if !final_capabilities.is_empty() {
+        req = req.capabilities(final_capabilities);
+    }
+    if !final_initial_files.is_empty() {
+        req = req.initial_files(final_initial_files);
+    }
 
-    let agent = if let Some(id) = &file_config.id {
+    let agent = if let Some(id) = &resolved_id {
         client.agents().apply_with_options(id, req).await?
     } else {
         client.agents().create_with_options(req).await?
     };
 
-    let verb = if file_config.id.is_some() {
+    let verb = if resolved_id.is_some() {
         "Applied"
     } else {
         "Created"
@@ -429,6 +601,8 @@ tags:
         assert_eq!(result.system_prompt, None);
         assert_eq!(result.default_model_id, None);
         assert!(result.tags.is_empty());
+        assert!(result.capabilities.is_empty());
+        assert!(result.initial_files.is_empty());
     }
 
     #[test]
@@ -458,5 +632,112 @@ You are a helpful assistant."#;
             result.system_prompt,
             Some("You are a helpful assistant.".to_string())
         );
+    }
+
+    #[test]
+    fn test_agent_file_capabilities_simple() {
+        let yaml = r#"
+name: "cap-agent"
+capabilities:
+  - current_time
+  - web_fetch
+"#;
+        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(result.capabilities.len(), 2);
+        let sdk_caps: Vec<_> = result
+            .capabilities
+            .iter()
+            .map(|c| c.to_sdk_config())
+            .collect();
+        assert_eq!(sdk_caps[0].capability_ref, "current_time");
+        assert_eq!(sdk_caps[1].capability_ref, "web_fetch");
+    }
+
+    #[test]
+    fn test_agent_file_capabilities_with_config() {
+        let yaml = r#"
+name: "cap-agent"
+capabilities:
+  - ref: current_time
+    config: {}
+  - ref: web_fetch
+    config:
+      max_size: 1024
+"#;
+        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(result.capabilities.len(), 2);
+        let sdk_caps: Vec<_> = result
+            .capabilities
+            .iter()
+            .map(|c| c.to_sdk_config())
+            .collect();
+        assert_eq!(sdk_caps[0].capability_ref, "current_time");
+        assert_eq!(sdk_caps[1].capability_ref, "web_fetch");
+        assert!(sdk_caps[1].config.is_some());
+    }
+
+    #[test]
+    fn test_agent_file_capabilities_mixed() {
+        let yaml = r#"
+name: "cap-agent"
+capabilities:
+  - current_time
+  - ref: web_fetch
+    config: {}
+"#;
+        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(result.capabilities.len(), 2);
+    }
+
+    #[test]
+    fn test_agent_file_initial_files_inline() {
+        let yaml = r##"
+name: "files-agent"
+initial_files:
+  - path: "/README.md"
+    content: "# Hello"
+  - path: "/data.txt"
+    content: "some data"
+    is_readonly: true
+"##;
+        let result: AgentFile = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(result.initial_files.len(), 2);
+        assert_eq!(result.initial_files[0].path, "/README.md");
+        assert_eq!(result.initial_files[0].content, "# Hello");
+    }
+
+    #[test]
+    fn test_parse_markdown_frontmatter_with_capabilities() {
+        let content = r#"---
+name: "cap-agent"
+capabilities:
+  - current_time
+  - ref: web_fetch
+    config: {}
+---
+You are helpful."#;
+
+        let result = parse_markdown_frontmatter(content).unwrap();
+        assert_eq!(result.capabilities.len(), 2);
+    }
+
+    #[test]
+    fn test_glob_initial_files() {
+        let tmp = std::env::temp_dir().join("everruns_test_glob");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("sub")).unwrap();
+        std::fs::write(tmp.join("README.md"), "# Hello").unwrap();
+        std::fs::write(tmp.join("sub/data.txt"), "data").unwrap();
+        std::fs::write(tmp.join(".hidden"), "skip").unwrap();
+
+        let files = glob_initial_files(tmp.to_str().unwrap()).unwrap();
+        assert_eq!(files.len(), 2);
+        // Sorted by path
+        assert_eq!(files[0].path, "/README.md");
+        assert_eq!(files[0].content, "# Hello");
+        assert_eq!(files[1].path, "/sub/data.txt");
+        assert_eq!(files[1].content, "data");
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
