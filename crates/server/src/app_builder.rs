@@ -530,6 +530,7 @@ impl ServerAppBuilder {
             notifications_enabled,
         );
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
+        let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), auth_state.clone());
         let session_databases_state = api::session_databases::AppState::new(
@@ -627,6 +628,7 @@ impl ServerAppBuilder {
             .merge(api::mcp_servers::routes(mcp_servers_state))
             .merge(api::capabilities::routes(capabilities_state))
             .merge(api::session_files::routes(session_files_state))
+            .merge(api::session_git::routes(session_git_state))
             .merge(api::session_resources::routes(session_resources_state))
             .merge(api::session_storage::routes(session_storage_state))
             .merge(api::session_databases::routes(session_databases_state))

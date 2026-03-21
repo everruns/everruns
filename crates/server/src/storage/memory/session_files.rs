@@ -351,4 +351,21 @@ impl InMemoryDatabase {
                 && f.is_readonly
         }))
     }
+
+    /// Load all non-directory files with content for a session (single pass).
+    pub async fn load_all_session_files_with_content(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Vec<SessionFileRow>> {
+        let session_id = SessionId::from_uuid(session_id);
+        let mut files: Vec<_> = self
+            .session_files
+            .read()
+            .values()
+            .filter(|f| f.session_id == session_id && !f.is_directory)
+            .cloned()
+            .collect();
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(files)
+    }
 }

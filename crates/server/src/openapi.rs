@@ -6,6 +6,7 @@
 
 use crate::api;
 use crate::api::{ListResponse, PaginatedResponse};
+use crate::services;
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{
     Agent, AgentStatus, CapabilityInfo, Event, EventContext, EventData, FileInfo, FileStat,
@@ -72,6 +73,13 @@ use utoipa::OpenApi;
         api::session_files::copy_file,
         api::session_files::grep_files,
         api::session_files::stat_file,
+        // Session Git
+        api::session_git::commit,
+        api::session_git::log,
+        api::session_git::diff,
+        api::session_git::list_refs,
+        api::session_git::create_branch,
+        api::session_git::delete_branch,
         api::session_resources::list_resources,
         api::mcp_servers::create_mcp_server,
         api::mcp_servers::list_mcp_servers,
@@ -173,6 +181,13 @@ use utoipa::OpenApi;
             api::session_files::GetQuery, api::session_files::DeleteQuery, api::session_files::GetResponse,
             ListResponse<FileInfo>,
             ListResponse<GrepResult>,
+            // Session Git types
+            api::session_git::CommitRequest, api::session_git::LogQuery,
+            api::session_git::DiffQuery, api::session_git::CreateBranchRequest,
+            api::session_git::SuccessResponse,
+            services::session_git::CommitResult, services::session_git::GitCommitInfo,
+            services::session_git::GitDiff, services::session_git::GitDiffEntry,
+            services::session_git::GitDiffStats, services::session_git::GitRefInfo,
             // Tool types
             ToolCall,
             everruns_core::ToolDefinition, everruns_core::BuiltinTool, everruns_core::ClientSideTool,

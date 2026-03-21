@@ -19,6 +19,7 @@ mod notifications;
 mod organizations;
 mod schedules;
 mod session_files;
+mod session_git;
 mod session_storage;
 mod sessions;
 mod skills;
@@ -84,6 +85,10 @@ pub struct InMemoryDatabase {
     harnesses: RwLock<HashMap<HarnessId, HarnessRow>>,
     harness_capabilities: RwLock<HashMap<(HarnessId, String), HarnessCapabilityRow>>,
     session_files: RwLock<HashMap<Uuid, SessionFileRow>>,
+    // Session git objects: (session_id, oid) -> object row
+    git_objects: RwLock<HashMap<(SessionId, Vec<u8>), SessionGitObjectRow>>,
+    // Session git refs: (session_id, name) -> ref row
+    git_refs: RwLock<HashMap<(SessionId, String), SessionGitRefRow>>,
     mcp_servers: RwLock<HashMap<McpServerId, McpServerRow>>,
     images: RwLock<HashMap<ImageId, ImageRow>>,
     skills: RwLock<HashMap<SkillId, SkillRow>>,
@@ -147,6 +152,8 @@ impl Default for InMemoryDatabase {
             harnesses: RwLock::new(HashMap::new()),
             harness_capabilities: RwLock::new(HashMap::new()),
             session_files: RwLock::new(HashMap::new()),
+            git_objects: RwLock::new(HashMap::new()),
+            git_refs: RwLock::new(HashMap::new()),
             mcp_servers: RwLock::new(HashMap::new()),
             images: RwLock::new(HashMap::new()),
             skills: RwLock::new(HashMap::new()),

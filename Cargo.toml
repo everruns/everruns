@@ -96,6 +96,7 @@ jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 sha2 = "0.10"
 hmac = "0.12"
 hex = "0.4"
+git2 = "0.20"
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls-native-certs", "blocking", "form"] }
 clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"

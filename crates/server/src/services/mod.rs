@@ -17,6 +17,7 @@ pub mod model_sync;
 pub mod notification;
 pub mod session;
 pub mod session_file;
+pub mod session_git;
 pub mod session_schedule;
 pub mod skill;
 pub mod usage_tracking;

@@ -60,6 +60,7 @@ inventory.workspace = true
 moka.workspace = true
 zip = { version = "2", default-features = false, features = ["deflate"] }
 urlencoding = "2"
+git2.workspace = true
 
 everruns-core = { path = "../core", features = ["openapi", "sqlx"] }
 everruns-macros = { path = "../macros" }
