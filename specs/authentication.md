@@ -35,14 +35,15 @@ Authorization: Bearer <access_token>
 #### 2. API Key
 
 ```
-Authorization: <api_key>
-Authorization: ApiKey <api_key>
+Authorization: Bearer <api_key>
 ```
 
-- API keys prefixed with `evr_` for identification
+- API keys prefixed with `evr_` for identification — the `evr_` prefix distinguishes API keys from JWTs within the `Bearer` scheme
+- Auth scheme matching is case-insensitive per RFC 7235 (`bearer`, `BEARER`, `Bearer` all accepted)
 - Full key shown only at creation, stored hashed (SHA-256)
 - Supports scopes and expiration
 - Used for programmatic access
+- Legacy formats (`Authorization: evr_...`, `Authorization: ApiKey evr_...`) are still accepted for backward compatibility
 - `metadata` JSONB column stores creation context: `source` (cli_login, web_ui, api), `hostname`, `os`, `ip`
 
 #### 3. CLI Login (localhost OAuth callback)
