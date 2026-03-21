@@ -225,8 +225,13 @@ impl InMemoryDatabase {
                 server.status = status;
             }
             if let Some(api_key_encrypted) = input.api_key_encrypted {
-                server.api_key_encrypted = Some(api_key_encrypted);
-                server.api_key_set = true;
+                if api_key_encrypted.is_empty() {
+                    server.api_key_encrypted = None;
+                    server.api_key_set = false;
+                } else {
+                    server.api_key_encrypted = Some(api_key_encrypted);
+                    server.api_key_set = true;
+                }
             }
             if let Some(headers) = input.headers {
                 server.headers = headers;

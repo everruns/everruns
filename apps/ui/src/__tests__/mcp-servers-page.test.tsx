@@ -32,6 +32,7 @@ describe("McpServersPage", () => {
           url: "https://learn.microsoft.com/api/mcp",
           transport_type: "http",
           status: "active",
+          auth_mode: "api_key",
           api_key_set: false,
           headers: {},
           created_at: "2024-01-01T00:00:00Z",

@@ -26,6 +26,40 @@ pub enum McpServerTransportType {
     Http,
 }
 
+/// MCP server authentication mode.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum McpServerAuthMode {
+    /// No authentication required.
+    #[default]
+    None,
+    /// Organization-scoped API key stored on the MCP server config.
+    ApiKey,
+    /// User-scoped OAuth token resolved at runtime.
+    OAuth,
+}
+
+impl std::fmt::Display for McpServerAuthMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            McpServerAuthMode::None => write!(f, "none"),
+            McpServerAuthMode::ApiKey => write!(f, "api_key"),
+            McpServerAuthMode::OAuth => write!(f, "oauth"),
+        }
+    }
+}
+
+impl From<&str> for McpServerAuthMode {
+    fn from(s: &str) -> Self {
+        match s {
+            "api_key" => McpServerAuthMode::ApiKey,
+            "oauth" => McpServerAuthMode::OAuth,
+            _ => McpServerAuthMode::None,
+        }
+    }
+}
+
 impl std::fmt::Display for McpServerTransportType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -112,6 +146,12 @@ pub struct McpServer {
     pub transport_type: McpServerTransportType,
     /// Current lifecycle status of the MCP server.
     pub status: McpServerStatus,
+    /// Authentication mode for this MCP server.
+    #[serde(default)]
+    pub auth_mode: McpServerAuthMode,
+    /// Stable provider id used for user-scoped OAuth connections.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oauth_provider_id: Option<String>,
     /// Whether an API key has been configured.
     pub api_key_set: bool,
     /// Additional HTTP headers for authentication.
@@ -293,6 +333,16 @@ pub fn parse_mcp_tool_name(tool_name: &str) -> Option<(String, String)> {
         }
     }
     None
+}
+
+/// Stable connection-provider id for an OAuth-enabled MCP server.
+pub fn mcp_oauth_provider_id_for_uuid(server_id: uuid::Uuid) -> String {
+    format!("mcp_oauth_{}", server_id)
+}
+
+/// Secret name for a session-scoped MCP OAuth token field.
+pub fn mcp_oauth_session_secret_name(server_id: uuid::Uuid, field: &str) -> String {
+    format!("mcp_oauth:{}:{}", server_id, field)
 }
 
 #[cfg(test)]

@@ -10,6 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -25,7 +32,7 @@ import {
 } from "@/hooks/use-mcp-servers";
 import { usePolicies } from "@/hooks/use-policies";
 import { Plus, Plug, Trash2, Key, Globe } from "lucide-react";
-import type { McpServer, CreateMcpServerRequest } from "@/lib/api/types";
+import type { McpServer, CreateMcpServerRequest, McpServerAuthMode } from "@/lib/api/types";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { ArchiveFilter } from "@/components/archive-filter";
 
@@ -72,7 +79,14 @@ function McpServerCard({
           <div className="flex items-center gap-2">
             <Key className="h-4 w-4 text-muted-foreground" />
             <span className="text-muted-foreground">
-              API Key: {server.api_key_set ? "Configured" : "Not set"}
+              Auth:{" "}
+              {server.auth_mode === "oauth"
+                ? "OAuth"
+                : server.auth_mode === "api_key"
+                  ? server.api_key_set
+                    ? "API key configured"
+                    : "API key missing"
+                  : "None"}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -82,10 +96,12 @@ function McpServerCard({
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 mt-4">
-          <Button variant="outline" size="sm" onClick={() => onSetApiKey(server)}>
-            <Key className="h-4 w-4 mr-1" />
-            {server.api_key_set ? "Update Key" : "Set Key"}
-          </Button>
+          {server.auth_mode === "api_key" && (
+            <Button variant="outline" size="sm" onClick={() => onSetApiKey(server)}>
+              <Key className="h-4 w-4 mr-1" />
+              {server.api_key_set ? "Update Key" : "Set Key"}
+            </Button>
+          )}
           {!isArchived && !isDeleted && (
             <Button variant="outline" size="sm" onClick={() => onArchive(server)}>
               Archive
@@ -114,6 +130,7 @@ function AddMcpServerDialog({
   const [description, setDescription] = useState("");
   const [url, setUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [authMode, setAuthMode] = useState<McpServerAuthMode>("none");
 
   const createServer = useCreateMcpServer();
 
@@ -124,7 +141,8 @@ function AddMcpServerDialog({
       description: description || undefined,
       url,
       transport_type: "http",
-      api_key: apiKey || undefined,
+      auth_mode: authMode,
+      api_key: authMode === "api_key" ? apiKey || undefined : undefined,
     };
     await createServer.mutateAsync(data);
     onOpenChange(false);
@@ -132,6 +150,7 @@ function AddMcpServerDialog({
     setDescription("");
     setUrl("");
     setApiKey("");
+    setAuthMode("none");
   };
 
   return (
@@ -178,20 +197,44 @@ function AddMcpServerDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="api-key">API Key (optional)</Label>
-            <Input
-              id="api-key"
-              type="password"
-              value={apiKey}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
-              placeholder="your-api-key"
-            />
+            <Label htmlFor="auth-mode">Authentication</Label>
+            <Select
+              value={authMode}
+              onValueChange={(value) => setAuthMode(value as McpServerAuthMode)}
+            >
+              <SelectTrigger id="auth-mode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="api_key">API Key</SelectItem>
+                <SelectItem value="oauth">OAuth per user</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+          {authMode === "api_key" && (
+            <div className="space-y-2">
+              <Label htmlFor="api-key">API Key</Label>
+              <Input
+                id="api-key"
+                type="password"
+                value={apiKey}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
+                placeholder="your-api-key"
+                required
+              />
+            </div>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createServer.isPending || !name || !url}>
+            <Button
+              type="submit"
+              disabled={
+                createServer.isPending || !name || !url || (authMode === "api_key" && !apiKey)
+              }
+            >
               {createServer.isPending ? "Creating..." : "Create Server"}
             </Button>
           </DialogFooter>

@@ -13,8 +13,8 @@ use axum::{
 };
 use everruns_core::typed_id::McpServerId;
 use everruns_core::{
-    Caller, McpServer, McpServerStatus, McpServerTransportType, ResourceConfigResponse,
-    evaluate_policies_with, validate_safe_url,
+    Caller, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
+    ResourceConfigResponse, evaluate_policies_with, validate_safe_url,
 };
 
 use super::common::{
@@ -50,6 +50,9 @@ pub struct CreateMcpServerRequest {
     /// Transport type. Currently only "http" is supported.
     #[serde(default = "default_transport_type")]
     pub transport_type: McpServerTransportType,
+    /// Authentication mode. Defaults to `api_key` when `api_key` is provided, otherwise `none`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_mode: Option<McpServerAuthMode>,
     /// API key for authentication (optional).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
@@ -80,6 +83,9 @@ pub struct UpdateMcpServerRequest {
     /// Transport type.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transport_type: Option<McpServerTransportType>,
+    /// Authentication mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_mode: Option<McpServerAuthMode>,
     /// The status of the MCP server. Set to "disabled" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<McpServerStatus>,

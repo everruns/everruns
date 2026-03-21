@@ -199,8 +199,21 @@ impl Database {
         id: Uuid,
         input: UpdateMcpServer,
     ) -> Result<Option<McpServerRow>> {
+        let clear_api_key = input
+            .api_key_encrypted
+            .as_ref()
+            .is_some_and(|bytes| bytes.is_empty());
         // Handle api_key_set: if we're updating the encrypted key, also update the flag
-        let api_key_set = input.api_key_encrypted.as_ref().map(|_| true);
+        let api_key_set = match input.api_key_encrypted.as_ref() {
+            Some(bytes) if bytes.is_empty() => Some(false),
+            Some(_) => Some(true),
+            None => None,
+        };
+        let api_key_encrypted = match input.api_key_encrypted.as_ref() {
+            Some(bytes) if bytes.is_empty() => None,
+            Some(bytes) => Some(bytes.clone()),
+            None => None,
+        };
 
         let row = sqlx::query_as::<_, McpServerRow>(
             r#"
@@ -211,7 +224,7 @@ impl Database {
                 url = COALESCE($5, url),
                 transport_type = COALESCE($6, transport_type),
                 status = COALESCE($7, status),
-                api_key_encrypted = COALESCE($8, api_key_encrypted),
+                api_key_encrypted = CASE WHEN $12 THEN NULL ELSE COALESCE($8, api_key_encrypted) END,
                 api_key_set = COALESCE($9, api_key_set),
                 headers = COALESCE($10, headers),
                 settings = COALESCE($11, settings)
@@ -226,10 +239,11 @@ impl Database {
         .bind(&input.url)
         .bind(&input.transport_type)
         .bind(&input.status)
-        .bind(&input.api_key_encrypted)
+        .bind(&api_key_encrypted)
         .bind(api_key_set)
         .bind(&input.headers)
         .bind(&input.settings)
+        .bind(clear_api_key)
         .fetch_optional(&self.pool)
         .await?;
 
