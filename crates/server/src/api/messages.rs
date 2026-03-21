@@ -27,7 +27,7 @@ use utoipa::ToSchema;
 
 use everruns_core::Caller;
 
-use super::validation::{VALIDATION_ERROR_MESSAGE, normalize_controls_locale};
+use super::validation::normalize_controls_locale;
 use crate::services::{MessageService, SessionService};
 
 // Re-export core types with ToSchema for OpenAPI
@@ -217,14 +217,8 @@ pub async fn create_message(
     Path(session_id): Path<String>,
     Json(mut req): Json<CreateMessageRequest>,
 ) -> Result<(StatusCode, Json<Message>), (StatusCode, Json<ErrorResponse>)> {
-    req.controls = normalize_controls_locale(req.controls).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: VALIDATION_ERROR_MESSAGE.to_string(),
-            }),
-        )
-    })?;
+    req.controls = normalize_controls_locale(req.controls)
+        .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
 
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (

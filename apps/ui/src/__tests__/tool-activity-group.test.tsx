@@ -85,13 +85,12 @@ describe("ToolActivityGroup", () => {
 
     render(<ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />);
 
-    expect(screen.getByText("exit 101")).toBeInTheDocument();
+    expect(screen.getByText("exit code 101")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /\$ cargo test exit 101/i }));
+    fireEvent.click(screen.getByRole("button", { name: /\$ cargo test exit code 101/i }));
 
     expect(screen.getByText(/running 4 tests\s+3 passed/)).toBeInTheDocument();
     expect(screen.getByText("test suite failed")).toBeInTheDocument();
-    expect(screen.queryByText("exit code 101")).not.toBeInTheDocument();
     expect(screen.queryByText(/^output$/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^stderr$/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/"stdout":/)).not.toBeInTheDocument();
@@ -136,7 +135,9 @@ describe("ToolActivityGroup", () => {
     const root = container.firstElementChild as HTMLElement;
     const shellCard = root.firstElementChild as HTMLElement;
 
-    expect(screen.getByRole("button", { name: /\$ cargo test exit 101/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /\$ cargo test exit code 101/i }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/^Shell$/)).not.toBeInTheDocument();
     expect(screen.queryByText("1 of 1 complete")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Tool activity info")).not.toBeInTheDocument();

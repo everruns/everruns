@@ -144,17 +144,15 @@ function buildActGroups(chatEvents: Event[], workingLabel: string) {
 function renderTurnDivider(
   eventId: string,
   turnDurationByEventId: Map<string, number>,
-  workedForLabel: string,
+  workedForText: string | null,
 ) {
   const durationMs = turnDurationByEventId.get(eventId);
-  if (durationMs == null) return null;
+  if (durationMs == null || !workedForText) return null;
 
   return (
     <div className="flex items-center gap-4 pt-3 text-xs font-medium text-muted-foreground sm:text-sm">
       <div className="h-px flex-1 bg-border" />
-      <span className="whitespace-nowrap">
-        {workedForLabel.replace("{duration}", formatWorkedDuration(durationMs))}
-      </span>
+      <span className="whitespace-nowrap">{workedForText}</span>
       <div className="h-px flex-1 bg-border" />
     </div>
   );
@@ -255,7 +253,13 @@ export function ChatMessageList({
                   rows={group.rows}
                 />
               </div>
-              {renderTurnDivider(event.id, turnDurationByEventId, t("worked_for"))}
+              {renderTurnDivider(
+                event.id,
+                turnDurationByEventId,
+                t("worked_for", {
+                  duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                }),
+              )}
             </div>
           );
         }
@@ -280,7 +284,13 @@ export function ChatMessageList({
                       rows={rows}
                     />
                   </div>
-                  {renderTurnDivider(event.id, turnDurationByEventId, t("worked_for"))}
+                  {renderTurnDivider(
+                    event.id,
+                    turnDurationByEventId,
+                    t("worked_for", {
+                      duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                    }),
+                  )}
                 </div>
               );
             }
@@ -313,7 +323,13 @@ export function ChatMessageList({
                   />
                 )}
               </div>
-              {renderTurnDivider(event.id, turnDurationByEventId, t("worked_for"))}
+              {renderTurnDivider(
+                event.id,
+                turnDurationByEventId,
+                t("worked_for", {
+                  duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                }),
+              )}
             </div>
           );
         }
@@ -344,7 +360,13 @@ export function ChatMessageList({
               <div className="ml-9 space-y-1">
                 <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
               </div>
-              {renderTurnDivider(event.id, turnDurationByEventId, t("worked_for"))}
+              {renderTurnDivider(
+                event.id,
+                turnDurationByEventId,
+                t("worked_for", {
+                  duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                }),
+              )}
             </div>
           );
         }

@@ -1,9 +1,15 @@
 import { render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
+import { LocaleProvider } from "@/providers/locale-provider";
+
+function renderWithLocale(ui: ReactElement) {
+  return render(<LocaleProvider>{ui}</LocaleProvider>);
+}
 
 describe("TodoListRenderer", () => {
   it("renders a progress header and uses activeForm for in-progress items", () => {
-    const { container } = render(
+    const { container } = renderWithLocale(
       <TodoListRenderer
         arguments={{
           todos: [

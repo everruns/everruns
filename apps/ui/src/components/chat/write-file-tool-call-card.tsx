@@ -12,6 +12,7 @@ import { Check, ChevronDown, ChevronRight, FilePenLine, Loader2 } from "lucide-r
 import type { ContentPart, ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { basename } from "@/lib/path-utils";
+import { formatEditCount } from "@/lib/i18n";
 import { formatFileSize } from "@/lib/formatting";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
@@ -115,12 +116,7 @@ function formatEditPreview(
 ): string | null {
   const parts = [];
   if (typeof appliedEdits === "number") {
-    parts.push(
-      locale.t("edit_count", {
-        count: appliedEdits,
-        suffix: appliedEdits === 1 ? "" : locale.locale === "uk" ? "" : "s",
-      }),
-    );
+    parts.push(formatEditCount(locale.locale, appliedEdits));
   }
   if (typeof firstChangedLine === "number") {
     parts.push(locale.t("line_number", { value: firstChangedLine }));

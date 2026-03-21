@@ -4,6 +4,7 @@
  * Decisions:
  * - Detect browser locale once on mount and reuse it across the app.
  * - Expose both UI locale and backend locale so browser-driven overrides stay explicit.
+ * - Fall back to English when components render outside the app shell (tests, isolated stories).
  */
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -21,7 +22,13 @@ interface LocaleContextValue {
   t: (key: MessageKey, values?: Record<string, string | number>) => string;
 }
 
-const LocaleContext = createContext<LocaleContextValue | null>(null);
+const fallbackLocaleContext: LocaleContextValue = {
+  locale: "en",
+  backendLocale: "en-US",
+  t: (key, values) => formatMessage("en", key, values),
+};
+
+const LocaleContext = createContext<LocaleContextValue>(fallbackLocaleContext);
 
 function getInitialBrowserLocale(): string {
   if (typeof window === "undefined") {
@@ -57,9 +64,5 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 }
 
 export function useLocale() {
-  const context = useContext(LocaleContext);
-  if (!context) {
-    throw new Error("useLocale must be used within a LocaleProvider");
-  }
-  return context;
+  return useContext(LocaleContext);
 }

@@ -67,7 +67,8 @@ const messages = {
     expand_activity_group: "Expand activity group",
     error_prefix: "Error: {value}",
     binary_file: "binary file{value}",
-    image_count: "{count} image{suffix}",
+    image_count_one: "{count} image",
+    image_count_many: "{count} images",
     read_tool_title: "Read {value}",
     collapse_file_output: "Collapse file output",
     expand_file_output: "Expand file output",
@@ -81,7 +82,8 @@ const messages = {
     diff_truncated: "Diff truncated",
     collapse_write_output: "Collapse write output",
     expand_write_output: "Expand write output",
-    edit_count: "{count} edit{suffix}",
+    edit_count_one: "{count} edit",
+    edit_count_many: "{count} edits",
     line_number: "line {value}",
     no_tasks: "No tasks",
     todos_completed_summary: "{completed} of {total} todos completed",
@@ -162,7 +164,9 @@ const messages = {
     expand_activity_group: "Розгорнути групу активності",
     error_prefix: "Помилка: {value}",
     binary_file: "бінарний файл{value}",
-    image_count: "{count} зображенн{suffix}",
+    image_count_one: "{count} зображення",
+    image_count_few: "{count} зображення",
+    image_count_many: "{count} зображень",
     read_tool_title: "Прочитати {value}",
     collapse_file_output: "Згорнути вивід файла",
     expand_file_output: "Розгорнути вивід файла",
@@ -176,7 +180,9 @@ const messages = {
     diff_truncated: "Diff обрізано",
     collapse_write_output: "Згорнути вивід запису",
     expand_write_output: "Розгорнути вивід запису",
-    edit_count: "{count} змін{suffix}",
+    edit_count_one: "{count} зміна",
+    edit_count_few: "{count} зміни",
+    edit_count_many: "{count} змін",
     line_number: "рядок {value}",
     no_tasks: "Завдань немає",
     todos_completed_summary: "Завершено {completed} із {total} завдань",
@@ -230,6 +236,52 @@ export function formatMessage(
   return template.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? `{${name}}`));
 }
 
-export function pluralSuffix(locale: SupportedLocale, count: number, one: string, many: string) {
-  return locale === "uk" ? (count === 1 ? one : many) : count === 1 ? one : many;
+function getUkrainianPluralForm(count: number): "one" | "few" | "many" {
+  const absCount = Math.abs(count);
+  const lastTwoDigits = absCount % 100;
+  const lastDigit = absCount % 10;
+
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
+    return "many";
+  }
+
+  if (lastDigit === 1) {
+    return "one";
+  }
+
+  if (lastDigit >= 2 && lastDigit <= 4) {
+    return "few";
+  }
+
+  return "many";
+}
+
+export function formatImageCount(locale: SupportedLocale, count: number): string {
+  if (locale === "uk") {
+    const form = getUkrainianPluralForm(count);
+    if (form === "one") {
+      return formatMessage(locale, "image_count_one", { count });
+    }
+    if (form === "few") {
+      return formatMessage(locale, "image_count_few", { count });
+    }
+    return formatMessage(locale, "image_count_many", { count });
+  }
+
+  return formatMessage(locale, count === 1 ? "image_count_one" : "image_count_many", { count });
+}
+
+export function formatEditCount(locale: SupportedLocale, count: number): string {
+  if (locale === "uk") {
+    const form = getUkrainianPluralForm(count);
+    if (form === "one") {
+      return formatMessage(locale, "edit_count_one", { count });
+    }
+    if (form === "few") {
+      return formatMessage(locale, "edit_count_few", { count });
+    }
+    return formatMessage(locale, "edit_count_many", { count });
+  }
+
+  return formatMessage(locale, count === 1 ? "edit_count_one" : "edit_count_many", { count });
 }

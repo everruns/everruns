@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { basename } from "@/lib/path-utils";
 import { formatFileSize } from "@/lib/formatting";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
+import { formatImageCount } from "@/lib/i18n";
 import { useLocale } from "@/providers/locale-provider";
 
 // Re-export from centralized registry for backward-compatible imports.
@@ -154,12 +155,7 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
     : null;
   const preview =
     getContentPreview(parsed.content) ??
-    (hasImages
-      ? t("image_count", {
-          count: parsed.images.length,
-          suffix: parsed.images.length === 1 ? "" : locale === "uk" ? "я" : "s",
-        })
-      : null) ??
+    (hasImages ? formatImageCount(locale, parsed.images.length) : null) ??
     (isBinaryWithoutPreview
       ? t("binary_file", {
           value: formatFileSize(parsed.sizeBytes) ? ` (${formatFileSize(parsed.sizeBytes)})` : "",
