@@ -23,11 +23,13 @@ pub struct ParsedDataUrl {
     pub data: String,
 }
 
-/// Parse a data URL into its media type and base64 data components.
+/// Parse a data URL into its media type and data components.
 ///
-/// Handles the format: `data:<media_type>;base64,<data>`
+/// Handles formats like `data:<media_type>;base64,<data>` and `data:<media_type>,<data>`.
+/// The `;base64` suffix is stripped from the media type if present, but its presence
+/// is not enforced — callers should assume data may be base64-encoded.
 ///
-/// Returns `None` if the URL doesn't start with `data:` or can't be parsed.
+/// Returns `None` if the URL doesn't start with `data:` or has no comma separator.
 /// Unlike the previous per-driver implementations, this does NOT silently
 /// fall back to `image/jpeg` on parse failure — callers handle fallback.
 pub fn parse_data_url(url: &str) -> Option<ParsedDataUrl> {
@@ -57,10 +59,10 @@ pub fn parse_data_url(url: &str) -> Option<ParsedDataUrl> {
 ///
 /// Detects common patterns across LLM providers:
 /// - HTTP 413 Payload Too Large
-/// - HTTP 400 with context length / token limit errors
-/// - Generic "too long" / "exceeds maximum" patterns
+/// - HTTP 4xx with context length / token limit errors
+/// - Generic "too long" / "exceeds maximum" patterns (with token/context qualifiers)
 ///
-/// Provider-specific patterns can be checked via `extra_patterns`.
+/// Provider-specific patterns (must be lowercase) can be checked via `extra_patterns`.
 pub fn is_request_too_large(status: StatusCode, error_text: &str, extra_patterns: &[&str]) -> bool {
     let error_lower = error_text.to_lowercase();
 
@@ -69,18 +71,25 @@ pub fn is_request_too_large(status: StatusCode, error_text: &str, extra_patterns
         return true;
     }
 
-    // Generic patterns that apply across providers
-    if error_lower.contains("input is too long")
-        || error_lower.contains("exceeds the maximum")
-        || error_lower.contains("maximum context")
-    {
-        return true;
-    }
-
-    // Provider-specific patterns
-    for pattern in extra_patterns {
-        if error_lower.contains(&pattern.to_lowercase()) {
+    // Only check text patterns for client errors
+    if status.is_client_error() {
+        // Generic patterns that apply across providers
+        if error_lower.contains("input is too long") || error_lower.contains("maximum context") {
             return true;
+        }
+
+        // Require a token/context qualifier with "exceeds the maximum" to avoid false positives
+        if error_lower.contains("exceeds the maximum")
+            && (error_lower.contains("token") || error_lower.contains("context"))
+        {
+            return true;
+        }
+
+        // Provider-specific patterns (already lowercase, no allocation needed)
+        for pattern in extra_patterns {
+            if error_lower.contains(pattern) {
+                return true;
+            }
         }
     }
 
@@ -104,8 +113,8 @@ pub const GEMINI_TOO_LARGE_PATTERNS: &[&str] = &[
 
 /// Check if an HTTP error indicates the model was not found.
 ///
-/// Only matches on 404 status. Uses provider-specific patterns to avoid
-/// false positives on generic 404s (e.g., "Endpoint not found").
+/// Only matches on 404 status. Uses provider-specific patterns (must be lowercase)
+/// to avoid false positives on generic 404s (e.g., "Endpoint not found").
 pub fn is_model_not_found(status: StatusCode, error_text: &str, patterns: &[&str]) -> bool {
     if status != StatusCode::NOT_FOUND {
         return false;
@@ -113,8 +122,9 @@ pub fn is_model_not_found(status: StatusCode, error_text: &str, patterns: &[&str
 
     let error_lower = error_text.to_lowercase();
 
+    // Provider-specific patterns (already lowercase, no allocation needed)
     for pattern in patterns {
-        if error_lower.contains(&pattern.to_lowercase()) {
+        if error_lower.contains(pattern) {
             return true;
         }
     }
