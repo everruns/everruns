@@ -922,19 +922,19 @@ impl Tool for SessionInteractTool {
                     "description": "Session ID (required for all operations)"
                 },
                 "content": {
-                    "type": "string",
-                    "description": "Message content (required for send_message)"
+                    "type": ["string", "null"],
+                    "description": "Message content (required for send_message, null for other operations)"
                 },
                 "limit": {
-                    "type": "integer",
-                    "description": "Max messages to return (default 10, for get_messages)"
+                    "type": ["integer", "null"],
+                    "description": "Max messages to return (null to use default 10, for get_messages)"
                 },
                 "timeout_secs": {
-                    "type": "integer",
-                    "description": "Timeout in seconds (default 120, for wait_for_idle)"
+                    "type": ["integer", "null"],
+                    "description": "Timeout in seconds (null to use default 120, for wait_for_idle)"
                 }
             },
-            "required": ["operation", "session_id"],
+            "required": ["operation", "session_id", "content", "limit", "timeout_secs"],
             "additionalProperties": false
         })
     }
@@ -1863,5 +1863,58 @@ mod tests {
         let prompt = cap.system_prompt_addition().expect("should have prompt");
         assert!(prompt.contains("list_capabilities"));
         assert!(prompt.contains("Capabilities"));
+    }
+
+    #[test]
+    fn session_interact_schema_all_properties_required_and_nullable() {
+        // OpenAI models with additionalProperties:false need all properties in
+        // the required array. Operation-specific params use nullable types so
+        // models can pass null when the param doesn't apply.
+        let tool = SessionInteractTool;
+        let schema = tool.parameters_schema();
+        let required = schema["required"].as_array().unwrap();
+        let props = schema["properties"].as_object().unwrap();
+
+        // Every property must be listed in required (no extras/duplicates)
+        for key in props.keys() {
+            assert!(
+                required.iter().any(|v| v.as_str() == Some(key)),
+                "property {key} must be in required array for OpenAI compatibility"
+            );
+        }
+        assert_eq!(
+            required.len(),
+            props.len(),
+            "required array must contain all and only the schema properties"
+        );
+
+        // Operation-specific params must accept null AND their concrete type
+        for (nullable_key, concrete_type) in [
+            ("content", "string"),
+            ("limit", "integer"),
+            ("timeout_secs", "integer"),
+        ] {
+            let ty = &props[nullable_key]["type"];
+            let types: Vec<&str> = ty
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap())
+                .collect();
+            assert!(types.contains(&"null"), "{nullable_key} must be nullable");
+            assert!(
+                types.contains(&concrete_type),
+                "{nullable_key} must accept {concrete_type}"
+            );
+        }
+
+        // Core params must NOT be nullable
+        for non_null_key in ["operation", "session_id"] {
+            let ty = &props[non_null_key]["type"];
+            assert!(
+                ty.is_string(),
+                "{non_null_key} must have a simple string type"
+            );
+        }
     }
 }
