@@ -51,10 +51,13 @@ Organization management.
 
 Agent CRUD. Create from YAML/JSON/Markdown (YAML front matter + body = system prompt).
 
-- `create --file <path>` | `--name <n> --system-prompt <s>`
+- `create --file <path> [--initial-files-dir <dir>]` | `--name <n> --system-prompt <s>` — upserts when `id:` present in frontmatter
+- `update [<id>] --file <path> [--initial-files-dir <dir>]` — same as create but requires agent ID (positional or from frontmatter)
 - `list`
 - `get <id>`
 - `delete <id>` (soft archive)
+
+`--initial-files-dir <dir>` globs a directory recursively and uploads all files as readonly `initial_files`. Hidden files/dirs are skipped. File frontmatter supports `capabilities` (string IDs or `{ref, config}` objects) and inline `initial_files`.
 
 ### `everruns sessions`
 
