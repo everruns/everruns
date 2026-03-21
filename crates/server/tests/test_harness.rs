@@ -214,8 +214,6 @@ impl TestServer {
             db.clone(),
             auth_state.clone(),
             platform_definition.built_in_harnesses().to_vec(),
-            Arc::new(platform_definition.clone()),
-            grade,
         );
         let session_schedules_state = api::session_schedules::AppState::new(
             Arc::new(services::SessionScheduleService::new(db.clone())),

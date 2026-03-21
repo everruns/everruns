@@ -566,8 +566,6 @@ impl ServerAppBuilder {
             db.clone(),
             auth_state.clone(),
             platform_definition.built_in_harnesses().to_vec(),
-            platform_definition.clone(),
-            everruns_core::DeploymentGrade::from_env(),
         );
         let audit_logs_state = api::audit_logs::AppState::new(db.clone(), auth_state.clone());
         let user_connections_state = api::user_connections::AppState::new(
