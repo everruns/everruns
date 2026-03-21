@@ -1,8 +1,14 @@
 name: Publish CLI Binaries
 
+# GITHUB_TOKEN-created releases don't trigger `release: published` (anti-recursion).
+# The Release workflow dispatches this workflow explicitly, same pattern as Docker Publish.
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v0.8.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -27,6 +33,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -60,6 +68,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
+          gh release upload "${{ inputs.tag }}" \
             "${{ matrix.archive }}" \
             "${{ matrix.archive }}.sha256"

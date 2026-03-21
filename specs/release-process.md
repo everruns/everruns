@@ -62,10 +62,10 @@ The workflow will extract release notes from CHANGELOG.md and create the GitHub 
 2. Release title: `vX.Y.Z`
 3. Release body: Extracted from CHANGELOG.md section for that version
 4. Docker images tagged with version (triggered via `workflow_dispatch` from Release workflow)
-5. Pre-built CLI binaries attached as release assets (triggered by `release: published` event)
+5. Pre-built CLI binaries attached as release assets (triggered via `workflow_dispatch` from Release workflow)
 
 > **Note:** Tags created by `GITHUB_TOKEN` don't trigger other workflows (GitHub anti-recursion).
-> The Release workflow explicitly dispatches Docker Publish after creating the release.
+> The Release workflow explicitly dispatches Docker Publish and CLI Binaries after creating the release.
 
 ### CLI Binary Assets
 
