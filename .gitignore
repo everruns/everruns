@@ -40,5 +40,8 @@ build/
 .claude/*.local.json
 
 
+# Local data (PostgreSQL, Valkey, etc.)
+.local/
+
 # Tools
 .sqlx.envrc

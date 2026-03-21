@@ -9,11 +9,15 @@ cmd="${1:-}"
 apply_port_prefix_defaults
 
 # --- Paths & config ---
+# Store data under $PROJECT_ROOT/.local/data/ so it persists across reboots
+# and is isolated per repo/worktree. The .local/ dir is gitignored.
 
-PGDATA="${PGDATA:-${TMPDIR:-/tmp}/everruns-pgdata-${DB_PORT}}"
+LOCAL_DATA_DIR="${PROJECT_ROOT}/.local/data"
+PGDATA="${PGDATA:-${LOCAL_DATA_DIR}/pgdata-${DB_PORT}}"
 PG_LOGFILE="${PGDATA}/pg.log"
-VALKEY_PIDFILE="${TMPDIR:-/tmp}/everruns-valkey-${VALKEY_PORT}.pid"
-VALKEY_LOGFILE="${TMPDIR:-/tmp}/everruns-valkey-${VALKEY_PORT}.log"
+VALKEY_DATA_DIR="${LOCAL_DATA_DIR}/valkey-${VALKEY_PORT}"
+VALKEY_PIDFILE="${VALKEY_DATA_DIR}/valkey.pid"
+VALKEY_LOGFILE="${VALKEY_DATA_DIR}/valkey.log"
 PG_USER="${PG_USER:-everruns}"
 PG_DB="${PG_DB:-everruns}"
 
@@ -112,10 +116,10 @@ EOF
 
   # Wait for ready
   for i in {1..15}; do
-    if pg_isready -h localhost -p "${DB_PORT}" -U "$PG_USER" -q -t 2 2>/dev/null; then
-      # Create database if missing
-      if ! psql -h localhost -p "${DB_PORT}" -U "$PG_USER" -lqt 2>/dev/null | grep -qw "$PG_DB"; then
-        run_pg "createdb -h localhost -p ${DB_PORT} -U $PG_USER $PG_DB" 2>/dev/null || true
+    if run_pg "$PG_BIN/pg_isready -h localhost -p ${DB_PORT} -U $PG_USER -q -t 2" 2>/dev/null; then
+      # Create database if missing (cut first column to avoid matching the owner name)
+      if ! run_pg "psql -h localhost -p ${DB_PORT} -U $PG_USER -lqt" 2>/dev/null | cut -d'|' -f1 | grep -qw "$PG_DB"; then
+        run_pg "$PG_BIN/createdb -h localhost -p ${DB_PORT} -U $PG_USER $PG_DB" 2>/dev/null || true
       fi
       echo "   ✅ PostgreSQL started on localhost:${DB_PORT}"
       return 0
@@ -158,6 +162,7 @@ start_valkey() {
   fi
 
   echo "   Starting Valkey on port ${VALKEY_PORT}..."
+  mkdir -p "$VALKEY_DATA_DIR"
   $VALKEY_SERVER \
     --port "$VALKEY_PORT" \
     --daemonize yes \
@@ -215,7 +220,7 @@ case "$cmd" in
     stop_valkey
     stop_postgres
     rm -rf "$PGDATA"
-    rm -f "$VALKEY_LOGFILE"
+    rm -rf "$VALKEY_DATA_DIR"
     echo "✅ Services reset (data removed)!"
     ;;
 
