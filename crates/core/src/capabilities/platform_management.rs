@@ -927,11 +927,11 @@ impl Tool for SessionInteractTool {
                 },
                 "limit": {
                     "type": ["integer", "null"],
-                    "description": "Max messages to return (default 10, for get_messages)"
+                    "description": "Max messages to return (null to use default 10, for get_messages)"
                 },
                 "timeout_secs": {
                     "type": ["integer", "null"],
-                    "description": "Timeout in seconds (default 120, for wait_for_idle)"
+                    "description": "Timeout in seconds (null to use default 120, for wait_for_idle)"
                 }
             },
             "required": ["operation", "session_id", "content", "limit", "timeout_secs"],
@@ -1875,16 +1875,25 @@ mod tests {
         let required = schema["required"].as_array().unwrap();
         let props = schema["properties"].as_object().unwrap();
 
-        // Every property must be listed in required
+        // Every property must be listed in required (no extras/duplicates)
         for key in props.keys() {
             assert!(
                 required.iter().any(|v| v.as_str() == Some(key)),
                 "property {key} must be in required array for OpenAI compatibility"
             );
         }
+        assert_eq!(
+            required.len(),
+            props.len(),
+            "required array must contain all and only the schema properties"
+        );
 
-        // Operation-specific params must accept null
-        for nullable_key in ["content", "limit", "timeout_secs"] {
+        // Operation-specific params must accept null AND their concrete type
+        for (nullable_key, concrete_type) in [
+            ("content", "string"),
+            ("limit", "integer"),
+            ("timeout_secs", "integer"),
+        ] {
             let ty = &props[nullable_key]["type"];
             let types: Vec<&str> = ty
                 .as_array()
@@ -1893,6 +1902,10 @@ mod tests {
                 .map(|v| v.as_str().unwrap())
                 .collect();
             assert!(types.contains(&"null"), "{nullable_key} must be nullable");
+            assert!(
+                types.contains(&concrete_type),
+                "{nullable_key} must accept {concrete_type}"
+            );
         }
 
         // Core params must NOT be nullable
