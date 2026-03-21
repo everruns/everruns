@@ -14,8 +14,8 @@
 # max_retries(5), sessions running >25 min would exhaust retries.
 #
 # Prerequisites:
-#   - Running server on :9301 (via `just start-dev` or no-docker setup)
-#   - Caddy installed (`apt install caddy` or via no-docker setup)
+#   - Running server on :9301 (via `just start-dev` or `just start-all`)
+#   - Caddy installed (`just init` or `apt install caddy`)
 #   - curl, jq
 #
 # Usage:

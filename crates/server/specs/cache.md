@@ -47,9 +47,8 @@ For per-worker LLM rate limiting (TPM/RPM), the control-plane mediates: workers 
 ### Infrastructure
 
 - `local/docker-compose.yml` — Valkey service (valkey/valkey:8-alpine, port 6379)
-- `examples/docker-compose-full.yaml` — Includes Valkey with healthcheck
+- `scripts/lib/docker.sh` — Starts Valkey as native process (no Docker)
 - `scripts/lib/services.sh` — Auto-starts Valkey in `start-all` and `start-production`
-- `.claude/skills/no-docker-setup/scripts/_valkey.sh` — No-docker Valkey setup
 
 ## In-Process Caching Opportunities
 
