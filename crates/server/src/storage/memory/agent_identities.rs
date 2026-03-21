@@ -57,9 +57,8 @@ impl InMemoryDatabase {
             .read()
             .values()
             .filter(|row| row.org_id == org_id)
-            .filter(|row| {
-                include_archived || !matches!(row.status.as_str(), "archived" | "deleted")
-            })
+            .filter(|row| row.status != "deleted")
+            .filter(|row| include_archived || row.status != "archived")
             .filter(|row| match &search {
                 Some(search) => {
                     row.name.to_lowercase().contains(search)
