@@ -1,23 +1,18 @@
-// Organization initialization: built-in harnesses and seed agents
+// Organization initialization: built-in harnesses
 //
 // Decision: Built-in harnesses are readonly, system-managed, provisioned per-org
-// Decision: Seed agents are provisioned per-org during org creation (same as harnesses)
-// Decision: New orgs get built-in harnesses and seed agents during creation
-// Decision: Reconciliation ensures all orgs stay up-to-date with built-in definitions
+// Decision: Seed agents are NOT auto-seeded; they live as examples (GET /v1/agent-examples)
+//   and are adopted on demand (POST /v1/agent-examples/{slug}/use). This prevents duplicates.
+// Decision: Reconciliation ensures all orgs stay up-to-date with built-in harness definitions
 // Decision: Default org uses fixed seed UUIDs for backward compat; other orgs get fresh UUIDs
 // Decision: Org settings keep separate default and base harness pointers
 
-use crate::api::common::Pagination;
-use crate::seed::{SEED_AGENTS, sync_agent_capabilities};
 use crate::storage::{
     StorageBackend,
-    models::{CreateAgentRow, CreateHarnessRow, UpdateOrganizationSettings},
+    models::{CreateHarnessRow, UpdateOrganizationSettings},
 };
 use anyhow::{Context, Result};
-use everruns_core::{
-    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, DeploymentGrade,
-    PlatformDefinition,
-};
+use everruns_core::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
 use everruns_durable::UpdateField;
 use uuid::Uuid;
 /// Well-known seed IDs for default org harnesses (backward compat)
@@ -339,156 +334,6 @@ async fn sync_harness_capabilities(
         .collect();
     db.set_harness_capabilities(harness_id, cap_tuples).await?;
     Ok(true)
-}
-
-// ============================================
-// Seed Agent Initialization (per-org)
-// ============================================
-
-/// Initialize seed agents for a specific organization.
-///
-/// For `DEFAULT_ORG_ID`, uses fixed seed UUIDs for backward compatibility.
-/// For other orgs, creates agents with fresh UUIDs (skips if already exists by name).
-///
-/// Filters out dev-only agents when deployment grade disallows experimental features,
-/// and skips agents whose capabilities are not registered in the platform definition.
-pub async fn initialize_org_agents(
-    db: &StorageBackend,
-    org_id: i64,
-    grade: DeploymentGrade,
-    platform_definition: &PlatformDefinition,
-) -> Result<InitResult> {
-    use everruns_core::DEFAULT_ORG_ID;
-
-    let mut result = InitResult::default();
-    let is_default_org = org_id == DEFAULT_ORG_ID;
-    let include_dev_only = grade.experimental_features_enabled();
-
-    for seed in SEED_AGENTS {
-        if seed.dev_only && !include_dev_only {
-            tracing::debug!(
-                name = seed.name,
-                org_id,
-                "Skipping dev-only agent (deployment_grade={})",
-                grade
-            );
-            continue;
-        }
-
-        let missing_capabilities: Vec<&str> = seed
-            .capabilities
-            .iter()
-            .map(|cap| cap.id)
-            .filter(|cap_id| !platform_definition.capability_registry().has(cap_id))
-            .collect();
-        if !missing_capabilities.is_empty() {
-            tracing::debug!(
-                name = seed.name,
-                org_id,
-                missing = ?missing_capabilities,
-                "Skipping seed agent — missing capabilities in platform definition"
-            );
-            continue;
-        }
-
-        let input = CreateAgentRow {
-            public_id: everruns_core::AgentId::from_uuid(seed.id).to_string(),
-            name: seed.name.to_string(),
-            description: Some(seed.description.to_string()),
-            system_prompt: seed.system_prompt.to_string(),
-            default_model_id: None,
-            tags: seed.tags.iter().map(|s| s.to_string()).collect(),
-            initial_files: serde_json::json!([]),
-            tools: serde_json::json!([]),
-        };
-
-        if is_default_org {
-            // Default org: use fixed seed UUIDs for backward compat
-            match db
-                .create_agent_with_id(org_id, seed.id.into(), input)
-                .await?
-            {
-                Some(row) => {
-                    sync_agent_capabilities(db, row.id.uuid(), seed.capabilities).await?;
-                    if row.created_at == row.updated_at {
-                        tracing::info!(name = seed.name, org_id, "Created seed agent");
-                        result.created += 1;
-                    } else {
-                        tracing::info!(name = seed.name, org_id, "Updated seed agent");
-                        result.updated += 1;
-                    }
-                }
-                None => {
-                    let caps_changed =
-                        sync_agent_capabilities(db, seed.id, seed.capabilities).await?;
-                    if caps_changed {
-                        tracing::info!(name = seed.name, org_id, "Updated seed agent capabilities");
-                        result.updated += 1;
-                    } else {
-                        tracing::debug!(name = seed.name, org_id, "Seed agent up to date");
-                        result.unchanged += 1;
-                    }
-                }
-            }
-        } else {
-            // Non-default org: check if agent already exists by name
-            let (existing, _) = db
-                .list_agents(org_id, Some(seed.name), false, Pagination::new(0, 1))
-                .await?;
-            let already_exists = existing.iter().any(|a| a.name == seed.name);
-
-            if already_exists {
-                result.unchanged += 1;
-            } else {
-                let row = db.create_agent(org_id, input).await?;
-                sync_agent_capabilities(db, row.id.uuid(), seed.capabilities).await?;
-                tracing::info!(
-                    name = seed.name,
-                    org_id,
-                    id = %row.id,
-                    "Created seed agent for org"
-                );
-                result.created += 1;
-            }
-        }
-    }
-
-    Ok(result)
-}
-
-/// Reconcile seed agents across all organizations.
-///
-/// Ensures every org has up-to-date seed agents. Called during seeding
-/// and can be triggered for upgrades when seed definitions change.
-pub async fn reconcile_built_in_agents(
-    db: &StorageBackend,
-    grade: DeploymentGrade,
-    platform_definition: &PlatformDefinition,
-) -> Result<InitResult> {
-    let orgs = db.list_organizations().await?;
-    let mut total = InitResult::default();
-
-    for org in &orgs {
-        let org_result = initialize_org_agents(db, org.org_id, grade, platform_definition).await?;
-        tracing::debug!(
-            org_id = org.org_id,
-            created = org_result.created,
-            updated = org_result.updated,
-            unchanged = org_result.unchanged,
-            "Reconciled seed agents for org"
-        );
-        total.merge(org_result);
-    }
-
-    tracing::info!(
-        org_count = orgs.len(),
-        created = total.created,
-        updated = total.updated,
-        unchanged = total.unchanged,
-        "Seed agent reconciliation complete"
-    );
-
-    Ok(total)
 }
 
 /// Result of org initialization
@@ -860,96 +705,6 @@ mod tests {
             unchanged: 3,
         };
         assert!(!result3.has_changes());
-    }
-
-    // --- Agent initialization tests ---
-
-    fn platform() -> PlatformDefinition {
-        crate::platform::oss_platform_definition()
-    }
-
-    #[tokio::test]
-    async fn test_initialize_default_org_creates_agents() {
-        let db = make_db();
-        seed_default_org(&db).await;
-        // Harnesses must exist first (agents may reference them indirectly)
-        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
-
-        let pd = platform();
-        let result = initialize_org_agents(&db, DEFAULT_ORG_ID, DeploymentGrade::Dev, &pd)
-            .await
-            .unwrap();
-        assert!(result.created > 0, "Should create at least one agent");
-
-        let (agents, _) = db
-            .list_agents(DEFAULT_ORG_ID, None, false, Pagination::new(0, 100))
-            .await
-            .unwrap();
-        assert!(!agents.is_empty(), "Agents should exist after init");
-    }
-
-    #[tokio::test]
-    async fn test_initialize_agents_idempotent() {
-        let db = make_db();
-        seed_default_org(&db).await;
-        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
-
-        let pd = platform();
-        let r1 = initialize_org_agents(&db, DEFAULT_ORG_ID, DeploymentGrade::Dev, &pd)
-            .await
-            .unwrap();
-        assert!(r1.created > 0);
-
-        let r2 = initialize_org_agents(&db, DEFAULT_ORG_ID, DeploymentGrade::Dev, &pd)
-            .await
-            .unwrap();
-        assert_eq!(r2.created, 0, "Second run should create nothing");
-        assert!(r2.unchanged > 0);
-    }
-
-    #[tokio::test]
-    async fn test_initialize_agents_new_org() {
-        let db = make_db();
-        seed_default_org(&db).await;
-
-        let org2 = db
-            .create_organization(crate::storage::models::CreateOrganizationRow {
-                public_id: "org_00000000000000000000000000000099".to_string(),
-                name: "Agent Test Org".to_string(),
-                created_by: None,
-            })
-            .await
-            .unwrap();
-        initialize_org_harnesses(&db, org2.org_id).await.unwrap();
-
-        let pd = platform();
-        let result = initialize_org_agents(&db, org2.org_id, DeploymentGrade::Dev, &pd)
-            .await
-            .unwrap();
-        assert!(result.created > 0, "New org should get seed agents");
-
-        // Second call should be idempotent
-        let r2 = initialize_org_agents(&db, org2.org_id, DeploymentGrade::Dev, &pd)
-            .await
-            .unwrap();
-        assert_eq!(r2.created, 0);
-    }
-
-    #[tokio::test]
-    async fn test_seed_agents_respect_deployment_grade() {
-        // Verify the filtering logic itself: dev-only agents exist in SEED_AGENTS
-        let dev_only_count = SEED_AGENTS.iter().filter(|a| a.dev_only).count();
-        assert!(
-            dev_only_count > 0,
-            "SEED_AGENTS should contain at least one dev-only agent"
-        );
-
-        // Non-dev-only agents count
-        let non_dev_count = SEED_AGENTS.iter().filter(|a| !a.dev_only).count();
-        assert!(
-            non_dev_count > 0,
-            "SEED_AGENTS should contain at least one non-dev-only agent"
-        );
     }
 
     async fn seed_default_org(db: &StorageBackend) {

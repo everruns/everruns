@@ -154,33 +154,6 @@ impl SeedResult {
     }
 }
 
-/// Sync capabilities for an agent, only writing if the set actually changed.
-/// Returns true if capabilities were updated.
-pub(crate) async fn sync_agent_capabilities(
-    db: &StorageBackend,
-    agent_id: Uuid,
-    desired: &[SeedCapability],
-) -> anyhow::Result<bool> {
-    let current = db.get_agent_capabilities(agent_id).await?;
-    let current_ids: Vec<&str> = current.iter().map(|c| c.capability_id.as_str()).collect();
-    let desired_ids: Vec<&str> = desired.iter().map(|c| c.id).collect();
-
-    if current_ids == desired_ids {
-        return Ok(false);
-    }
-
-    let cap_tuples: Vec<(String, i32, serde_json::Value)> = desired
-        .iter()
-        .enumerate()
-        .map(|(idx, cap)| {
-            let config = cap.config.map_or_else(|| serde_json::json!({}), |f| f());
-            (cap.id.to_string(), idx as i32, config)
-        })
-        .collect();
-    db.set_agent_capabilities(agent_id, cap_tuples).await?;
-    Ok(true)
-}
-
 // ============================================
 // Default Organization Seeder
 // ============================================
@@ -348,8 +321,10 @@ impl std::fmt::Display for SeedCapability {
         f.write_str(self.id)
     }
 }
-/// Seed agent definition
+/// Seed agent definition (used by agent examples API, not auto-seeded into DB)
 pub(crate) struct SeedAgent {
+    /// Retained for stable identification; not auto-seeded into DB.
+    #[allow(dead_code)]
     pub(crate) id: Uuid,
     pub(crate) name: &'static str,
     pub(crate) description: &'static str,
@@ -1019,7 +994,8 @@ User: "Analyze my codebase and suggest improvements"
     },
 ];
 
-// Agent seeding has moved to org_init::initialize_org_agents (per-org, mirrors harness pattern).
+// Agents are NOT auto-seeded. They live as examples (agent_examples.rs) and are adopted on
+// demand via POST /v1/agent-examples/{slug}/use. This prevents duplicate agents.
 
 // ============================================
 // LLM Provider Seeder
@@ -1822,8 +1798,9 @@ async fn run_seed_with_retry(
 }
 
 /// Run all seeders in order
-/// Order: organization → users → providers → models → mcp_servers → agents
+/// Order: organization → users → providers → models → mcp_servers → harnesses
 /// Organization must be seeded first (all resources have org_id FK)
+/// Note: Agents are NOT seeded; they live as examples and are adopted on demand.
 pub async fn seed_all(
     db: &StorageBackend,
     grade: DeploymentGrade,
@@ -1836,7 +1813,7 @@ pub async fn seed_all(
 /// Run all seeders in order using an explicit platform definition.
 pub async fn seed_all_with_platform_definition(
     db: &StorageBackend,
-    grade: DeploymentGrade,
+    _grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
     platform_definition: &PlatformDefinition,
 ) -> anyhow::Result<SeedResult> {
@@ -1932,17 +1909,9 @@ pub async fn seed_all_with_platform_definition(
     result.updated += harness_result.updated;
     result.unchanged += harness_result.unchanged;
 
-    // Reconcile built-in agents across all orgs (mirrors harness reconciliation)
-    let agent_result = org_init::reconcile_built_in_agents(db, grade, platform_definition).await?;
-    tracing::debug!(
-        created = agent_result.created,
-        updated = agent_result.updated,
-        unchanged = agent_result.unchanged,
-        "Built-in agents reconciled"
-    );
-    result.created += agent_result.created;
-    result.updated += agent_result.updated;
-    result.unchanged += agent_result.unchanged;
+    // Seed agents are available as examples (GET /v1/agent-examples) and adopted
+    // on demand via POST /v1/agent-examples/{slug}/use. No automatic seeding —
+    // this prevents duplicate agents when users adopt from the examples gallery.
 
     Ok(result)
 }
@@ -1952,7 +1921,7 @@ mod tests {
     use super::*;
     use crate::storage::StorageBackend;
     use crate::storage::models::{
-        UpdateAgent, UpdateHarness, UpdateLlmModel, UpdateLlmProvider, UpdateMcpServer,
+        UpdateHarness, UpdateLlmModel, UpdateLlmProvider, UpdateMcpServer,
     };
 
     fn make_db() -> StorageBackend {
@@ -2246,50 +2215,29 @@ mod tests {
         assert!(!second.has_changes());
     }
 
-    // --- Agent upsert ---
+    // --- Agent seeding regression ---
 
     #[tokio::test]
-    async fn test_agent_seed_detects_name_change() {
+    async fn test_seed_all_does_not_create_agents() {
+        // Agents should NOT be auto-seeded; they live as examples and are adopted on demand.
         let db = make_db();
-        let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
             .await
             .unwrap();
 
-        // Mutate agent name via public API to simulate DB drift
-        let agent_id = everruns_core::AgentId::from_uuid(seed_ids::DAD_JOKES_AGENT);
-        db.update_agent(
-            DEFAULT_ORG_ID,
-            agent_id,
-            UpdateAgent {
-                name: Some("STALE NAME".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-
-        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+        let (agents, _) = db
+            .list_agents(
+                DEFAULT_ORG_ID,
+                None,
+                false,
+                crate::api::common::Pagination::new(0, 100),
+            )
             .await
             .unwrap();
-        assert!(result.updated >= 1, "should detect agent name change");
-    }
-
-    #[tokio::test]
-    async fn test_agent_seed_detects_capability_change() {
-        let db = make_db();
-        let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-
-        // Remove capabilities to simulate drift
-        db.set_agent_capabilities(seed_ids::DAD_JOKES_AGENT, vec![])
-            .await
-            .unwrap();
-
-        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-        assert!(result.updated >= 1, "should detect capability change");
+        assert!(
+            agents.is_empty(),
+            "seed_all should not create agents; they are adopted from examples"
+        );
     }
 
     // --- Model upsert ---
@@ -2417,40 +2365,6 @@ mod tests {
             result.updated >= 1,
             "should detect harness description change"
         );
-    }
-
-    // --- Dev-only filtering ---
-
-    #[tokio::test]
-    async fn test_seed_prod_skips_dev_only_agents() {
-        let db = make_db();
-        let result = seed_all(&db, DeploymentGrade::Prod, &SeedAuthContext::default())
-            .await
-            .unwrap();
-
-        // Python Coder is dev_only — should not be created in prod
-        let python_coder_id = everruns_core::AgentId::from_uuid(seed_ids::PYTHON_CODER_AGENT);
-        let agent = db.get_agent(DEFAULT_ORG_ID, python_coder_id).await.unwrap();
-        assert!(agent.is_none(), "dev-only agent should not exist in prod");
-
-        // But non-dev agents should exist
-        let dad_jokes_id = everruns_core::AgentId::from_uuid(seed_ids::DAD_JOKES_AGENT);
-        let agent = db.get_agent(DEFAULT_ORG_ID, dad_jokes_id).await.unwrap();
-        assert!(agent.is_some(), "non-dev agent should exist");
-
-        assert!(result.created > 0);
-    }
-
-    #[tokio::test]
-    async fn test_seed_dev_includes_dev_only_agents() {
-        let db = make_db();
-        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-
-        let python_coder_id = everruns_core::AgentId::from_uuid(seed_ids::PYTHON_CODER_AGENT);
-        let agent = db.get_agent(DEFAULT_ORG_ID, python_coder_id).await.unwrap();
-        assert!(agent.is_some(), "dev-only agent should exist in dev mode");
     }
 
     // --- SeedResult ---
