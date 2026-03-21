@@ -1,6 +1,6 @@
-// Agent Examples API — read-only examples defined in code, adoptable as real Agents
+// Agent Examples API — read-only examples defined in code, adoptable as real Agents.
 //
-// Decision: Examples live in code (SEED_AGENTS), not in DB
+// Decision: Examples live in code (SEED_AGENTS), not in DB.
 // Decision: "Use" creates a real Agent via the existing create flow
 // Decision: Examples use a slug (kebab-case name) as their identifier
 
