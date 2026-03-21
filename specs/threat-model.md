@@ -502,6 +502,7 @@ Indirect prompt injection via tool results or user messages is an inherent LLM l
 | TM-DURABLE-008 | Worker impersonation | High | Bearer token auth + optional mTLS prevents unauthorized access (see TM-DURABLE-002) | MITIGATED |
 | TM-DURABLE-009 | Replay attack on workflow events | Low | Event store is append-only; events processed in sequence order | MITIGATED |
 | TM-DURABLE-010 | Durable API endpoints unauthenticated | High | All `/v1/durable/*` endpoints require `AuthUser` extractor | MITIGATED |
+| TM-DURABLE-011 | Presigned image URL forgery | Medium | HMAC-SHA256 signed with `WORKER_GRPC_AUTH_TOKEN`; 5-min expiry; signature covers image_id + org_id + expires; constant-time comparison | MITIGATED |
 
 ### Mitigation Details
 
