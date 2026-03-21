@@ -152,7 +152,7 @@
           "agents"
         ],
         "summary": "POST /v1/agents/import - Import agent from Markdown, YAML, or JSON",
-        "description": "Accepts agent definition in multiple formats:\n- Markdown with YAML front matter (if starts with ---)\n- Pure YAML\n- Pure JSON\n- Plain text (treated as system prompt, name auto-generated)",
+        "description": "Accepts agent definition in multiple formats:\n- Markdown with YAML front matter (if starts with ---)\n- Pure YAML\n- Pure JSON\n- Plain text (treated as system prompt, name auto-generated)\n\nIf the file contains an `id` field and an agent with that ID already exists,\nthe agent is updated (upsert). Returns 201 on create, 200 on update.",
         "operationId": "import_agent",
         "requestBody": {
           "content": {
@@ -165,6 +165,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "description": "Agent updated via import",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Agent imported successfully",
             "content": {

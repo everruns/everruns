@@ -725,11 +725,15 @@ pub async fn export_agent(
 /// - Pure YAML
 /// - Pure JSON
 /// - Plain text (treated as system prompt, name auto-generated)
+///
+/// If the file contains an `id` field and an agent with that ID already exists,
+/// the agent is updated (upsert). Returns 201 on create, 200 on update.
 #[utoipa::path(
     post,
     path = "/v1/agents/import",
     request_body(content = String, content_type = "text/plain"),
     responses(
+        (status = 200, description = "Agent updated via import", body = Agent),
         (status = 201, description = "Agent imported successfully", body = Agent),
         (status = 400, description = "Invalid format or input exceeds limits", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -792,20 +796,34 @@ pub async fn import_agent(
     require_admin_for_high_risk(&org, &request.capabilities, &state.capability_service)?;
 
     let caller = Caller::from(&org);
-    let agent = state
-        .service
-        .create(&caller, client_id, request)
-        .await
-        .map_err(|e| {
-            let msg = e.to_string();
-            if msg.contains("duplicate key") || msg.contains("already exists") {
-                return ErrorResponse::conflict("Agent with this ID already exists");
-            }
-            tracing::error!("Failed to import agent: {}", msg);
-            ErrorResponse::internal_error()
-        })?;
 
-    Ok((StatusCode::CREATED, Json(agent)))
+    // If the file has an ID, upsert (create or update). Otherwise, always create.
+    if let Some(ref id) = client_id {
+        let (agent, was_created) = state
+            .service
+            .upsert(&caller, &id.to_string(), request)
+            .await
+            .map_policy_or_internal("import agent")?;
+
+        let status = if was_created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        };
+
+        Ok((status, Json(agent)))
+    } else {
+        let agent = state
+            .service
+            .create(&caller, None, request)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to import agent: {}", e);
+                ErrorResponse::internal_error()
+            })?;
+
+        Ok((StatusCode::CREATED, Json(agent)))
+    }
 }
 
 /// Convert agent to Markdown format with YAML front matter
