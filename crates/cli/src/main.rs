@@ -68,11 +68,10 @@ pub enum Commands {
         command: commands::agents::AgentsCommand,
     },
 
-    /// List available capabilities
+    /// Manage capabilities
     Capabilities {
-        /// Filter by status
-        #[arg(long, default_value = "available", value_parser = ["available", "coming_soon", "all"])]
-        status: String,
+        #[command(subcommand)]
+        command: Option<CapabilitiesCommand>,
     },
 
     /// Manage sessions
@@ -110,6 +109,16 @@ pub enum Commands {
 pub enum OrgsCommand {
     /// Interactive organization picker
     Select,
+}
+
+#[derive(Subcommand)]
+pub enum CapabilitiesCommand {
+    /// List available capabilities
+    List {
+        /// Filter by status
+        #[arg(long, default_value = "available", value_parser = ["available", "coming_soon", "all"])]
+        status: String,
+    },
 }
 
 #[tokio::main]
@@ -153,19 +162,15 @@ async fn main() -> anyhow::Result<()> {
         Commands::Agents { command } => {
             commands::agents::run(command, &client, output_format, cli.quiet).await
         }
-        Commands::Capabilities { status } => {
+        Commands::Capabilities { command } => {
+            let status = match &command {
+                Some(CapabilitiesCommand::List { status }) => status.clone(),
+                None => "available".to_string(),
+            };
             commands::capabilities::run(&api_url, &api_key, output_format, &status).await
         }
         Commands::Sessions { command } => {
-            commands::sessions::run(
-                command,
-                &client,
-                &api_url,
-                &api_key,
-                output_format,
-                cli.quiet,
-            )
-            .await
+            commands::sessions::run(command, &client, output_format, cli.quiet).await
         }
         Commands::Files { command } => {
             commands::files::run(command, &api_url, &api_key, output_format, cli.quiet).await
@@ -178,6 +183,8 @@ async fn main() -> anyhow::Result<()> {
         } => {
             commands::chat::run(
                 &client,
+                &api_url,
+                &api_key,
                 output_format,
                 cli.quiet,
                 message,
@@ -243,10 +250,24 @@ mod tests {
                 model,
             } = command
             {
-                assert_eq!(harness, "harness_abc");
+                assert_eq!(harness, Some("harness_abc".to_string()));
                 assert_eq!(agent, Some("agt_abc".to_string()));
                 assert_eq!(title, Some("Test Session".to_string()));
                 assert_eq!(model, None);
+            } else {
+                panic!("Expected Create command");
+            }
+        } else {
+            panic!("Expected Sessions command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_sessions_create_no_harness() {
+        let cli = Cli::try_parse_from(["everruns", "sessions", "create"]).unwrap();
+        if let Commands::Sessions { command } = cli.command {
+            if let commands::sessions::SessionsCommand::Create { harness, .. } = command {
+                assert_eq!(harness, None); // org default
             } else {
                 panic!("Expected Create command");
             }
@@ -323,19 +344,39 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_parse_capabilities() {
+    fn test_cli_parse_capabilities_bare() {
         let cli = Cli::try_parse_from(["everruns", "capabilities"]).unwrap();
-        if let Commands::Capabilities { status } = cli.command {
-            assert_eq!(status, "available"); // default
+        if let Commands::Capabilities { command } = cli.command {
+            assert!(command.is_none()); // bare defaults to list with available
         } else {
             panic!("Expected Capabilities command");
         }
+    }
 
-        let cli = Cli::try_parse_from(["everruns", "capabilities", "--status", "all"]).unwrap();
-        if let Commands::Capabilities { status } = cli.command {
+    #[test]
+    fn test_cli_parse_capabilities_list() {
+        let cli = Cli::try_parse_from(["everruns", "capabilities", "list"]).unwrap();
+        if let Commands::Capabilities {
+            command: Some(CapabilitiesCommand::List { status }),
+        } = cli.command
+        {
+            assert_eq!(status, "available"); // default
+        } else {
+            panic!("Expected Capabilities List command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_capabilities_list_status() {
+        let cli =
+            Cli::try_parse_from(["everruns", "capabilities", "list", "--status", "all"]).unwrap();
+        if let Commands::Capabilities {
+            command: Some(CapabilitiesCommand::List { status }),
+        } = cli.command
+        {
             assert_eq!(status, "all");
         } else {
-            panic!("Expected Capabilities command");
+            panic!("Expected Capabilities List command");
         }
     }
 
