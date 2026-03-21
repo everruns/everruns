@@ -531,16 +531,7 @@ pub struct InMemoryAgenticLoop {
     event_emitter: BridgingEventEmitter,
     tool_registry: ToolRegistry,
     input_atom: Arc<InputAtom<InMemoryMessageRetriever>>,
-    reason_atom: Arc<
-        ReasonAtom<
-            InMemoryHarnessStore,
-            InMemoryAgentStore,
-            InMemorySessionStore,
-            InMemoryMessageRetriever,
-            InMemoryLlmProviderStore,
-            BridgingEventEmitter,
-        >,
-    >,
+    reason_atom: Arc<ReasonAtom>,
     act_atom: Arc<ActAtom<ToolRegistry, BridgingEventEmitter>>,
     max_iterations: usize,
 }

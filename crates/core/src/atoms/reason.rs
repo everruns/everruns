@@ -214,23 +214,15 @@ fn default_max_iterations() -> usize {
 /// 9. Stores the assistant response
 /// 10. Emits reason.completed event
 /// 11. Returns the result with tool calls (if any)
-pub struct ReasonAtom<H, A, S, M, P, E>
-where
-    H: HarnessStore,
-    A: AgentStore,
-    S: SessionStore,
-    M: MessageRetriever,
-    P: LlmProviderStore,
-    E: EventEmitter,
-{
-    harness_store: H,
-    agent_store: A,
-    session_store: S,
-    message_retriever: M,
-    provider_store: P,
+pub struct ReasonAtom {
+    harness_store: Arc<dyn HarnessStore>,
+    agent_store: Arc<dyn AgentStore>,
+    session_store: Arc<dyn SessionStore>,
+    message_retriever: Arc<dyn MessageRetriever>,
+    provider_store: Arc<dyn LlmProviderStore>,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
-    event_emitter: E,
+    event_emitter: Arc<dyn EventEmitter>,
     /// Optional image resolver for resolving image_file content parts
     image_resolver: Option<Arc<dyn ImageResolver>>,
     /// Optional file store for capabilities that need filesystem access
@@ -238,36 +230,28 @@ where
     file_store: Option<Arc<dyn crate::traits::SessionFileStore>>,
 }
 
-impl<H, A, S, M, P, E> ReasonAtom<H, A, S, M, P, E>
-where
-    H: HarnessStore,
-    A: AgentStore,
-    S: SessionStore,
-    M: MessageRetriever,
-    P: LlmProviderStore,
-    E: EventEmitter,
-{
+impl ReasonAtom {
     /// Create a new ReasonAtom
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        harness_store: H,
-        agent_store: A,
-        session_store: S,
-        message_retriever: M,
-        provider_store: P,
+        harness_store: impl HarnessStore + 'static,
+        agent_store: impl AgentStore + 'static,
+        session_store: impl SessionStore + 'static,
+        message_retriever: impl MessageRetriever + 'static,
+        provider_store: impl LlmProviderStore + 'static,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
-        event_emitter: E,
+        event_emitter: impl EventEmitter + 'static,
     ) -> Self {
         Self {
-            harness_store,
-            agent_store,
-            session_store,
-            message_retriever,
-            provider_store,
+            harness_store: Arc::new(harness_store),
+            agent_store: Arc::new(agent_store),
+            session_store: Arc::new(session_store),
+            message_retriever: Arc::new(message_retriever),
+            provider_store: Arc::new(provider_store),
             capability_registry,
             driver_registry,
-            event_emitter,
+            event_emitter: Arc::new(event_emitter),
             image_resolver: None,
             file_store: None,
         }
@@ -303,15 +287,7 @@ where
 }
 
 #[async_trait]
-impl<H, A, S, M, P, E> Atom for ReasonAtom<H, A, S, M, P, E>
-where
-    H: HarnessStore + Send + Sync,
-    A: AgentStore + Send + Sync,
-    S: SessionStore + Send + Sync,
-    M: MessageRetriever + Send + Sync,
-    P: LlmProviderStore + Send + Sync,
-    E: EventEmitter + Send + Sync,
-{
+impl Atom for ReasonAtom {
     type Input = ReasonInput;
     type Output = ReasonResult;
 
@@ -530,15 +506,7 @@ where
     }
 }
 
-impl<H, A, S, M, P, E> ReasonAtom<H, A, S, M, P, E>
-where
-    H: HarnessStore + Send + Sync,
-    A: AgentStore + Send + Sync,
-    S: SessionStore + Send + Sync,
-    M: MessageRetriever + Send + Sync,
-    P: LlmProviderStore + Send + Sync,
-    E: EventEmitter + Send + Sync,
-{
+impl ReasonAtom {
     /// Execute the actual LLM call
     #[allow(clippy::too_many_arguments)]
     async fn execute_llm_call(
