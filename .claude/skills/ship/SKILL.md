@@ -50,6 +50,7 @@ Use this skill when the user asks to:
    - Check the PR conversation, review threads, and review state from all reviewers, including bots.
    - After each push and again after CI turns green, wait at least 2 minutes for async reviewer bots to finish, then re-check for new comments before merge.
    - Address actionable review comments with code or doc changes, or reply with the resolution when no code change is needed.
+   - Analyze **all** review comments, including non-blocking ones (COMMENTED state, bot suggestions). Non-blocking comments often contain valid improvements (UX, robustness, doc clarity). Evaluate each on merit and fix worthwhile ones before merge — do not dismiss comments solely because they are non-blocking.
    - Do not merge while substantive review feedback is still outstanding.
    - Wait for CI to go green.
    - Merge with squash only after CI is green and the final review/comment sweep above is clean.
