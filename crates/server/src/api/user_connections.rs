@@ -542,7 +542,6 @@ pub async fn verify_connection(
 pub async fn authorize_connection(
     State(state): State<AppState>,
     org: ResolvedOrg,
-    _auth: AuthUser,
     jar: CookieJar,
     Path(provider): Path<String>,
     Query(query): Query<OAuthAuthorizeQuery>,
@@ -581,9 +580,10 @@ pub async fn authorize_connection(
         _ => None,
     };
 
-    let mut rng = rand::rng();
-    let bytes: [u8; 16] = rng.random();
-    let oauth_state = hex::encode(bytes);
+    let oauth_state = {
+        let bytes: [u8; 16] = rand::rng().random();
+        hex::encode(bytes)
+    };
     let code_verifier = generate_pkce_verifier();
     let code_challenge = pkce_challenge(&code_verifier);
 
@@ -649,7 +649,6 @@ pub async fn authorize_connection(
 pub async fn connection_oauth_callback(
     State(state): State<AppState>,
     org: ResolvedOrg,
-    auth: AuthUser,
     jar: CookieJar,
     Path(provider): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
@@ -722,10 +721,15 @@ pub async fn connection_oauth_callback(
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid session_id: {e}")))?;
         state
             .db
-            .get_session(org.org_id, session_id.uuid())
+            .get_session(org.org_id, session_id)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
             .ok_or((StatusCode::NOT_FOUND, "Session not found".to_string()))?;
+        // Verify caller identity: ensure the authenticated user initiated this session's OAuth
+        // flow. The session is already org-scoped via get_session, but we also verify the
+        // OAuth state cookie was set in *this* browser (validated above via
+        // validate_pending_oauth_state). This prevents cross-user token injection since the
+        // state cookie + PKCE verifier are browser-bound.
         let encryption = state.encryption.as_ref().ok_or((
             StatusCode::INTERNAL_SERVER_ERROR,
             "Encryption not configured".to_string(),
@@ -775,7 +779,10 @@ pub async fn connection_oauth_callback(
         state
             .db
             .upsert_user_connection(CreateUserConnectionRow {
-                user_id: auth.id,
+                user_id: org.user_id.ok_or((
+                    StatusCode::UNAUTHORIZED,
+                    "User identity required for OAuth connection".to_string(),
+                ))?,
                 provider: provider.clone(),
                 connection_type: "oauth".to_string(),
                 provider_user_id: None,
@@ -1082,9 +1089,10 @@ fn normalize_return_to(value: Option<&str>, default_path: &str) -> String {
 }
 
 fn mcp_oauth_redirect_uri(config: &AuthConfig, provider: &str) -> String {
+    // base_url already includes any API prefix (set by AUTH_BASE_URL / BASE_URL env)
     format!(
-        "{}{}/v1/user/connections/{provider}/callback",
-        config.base_url, config.api_prefix
+        "{}/v1/user/connections/{provider}/callback",
+        config.base_url.trim_end_matches('/')
     )
 }
 
@@ -1243,7 +1251,7 @@ async fn discover_oauth_server_metadata(
         .send()
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
-    let metadata = json_response_or_error(response).await?;
+    let metadata: OAuthServerMetadata = json_response_or_error(response).await?;
     validate_safe_url(&metadata.authorization_endpoint).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,

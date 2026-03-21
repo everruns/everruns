@@ -335,6 +335,16 @@ pub fn parse_mcp_tool_name(tool_name: &str) -> Option<(String, String)> {
     None
 }
 
+/// Stable connection-provider id for an OAuth-enabled MCP server.
+pub fn mcp_oauth_provider_id_for_uuid(server_id: uuid::Uuid) -> String {
+    format!("mcp_oauth_{}", server_id)
+}
+
+/// Secret name for a session-scoped MCP OAuth token field.
+pub fn mcp_oauth_session_secret_name(server_id: uuid::Uuid, field: &str) -> String {
+    format!("mcp_oauth:{}:{}", server_id, field)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -446,14 +456,4 @@ mod tests {
             Some(("microsoft_learn".to_string(), "docs_search".to_string()))
         );
     }
-}
-
-/// Stable connection-provider id for an OAuth-enabled MCP server.
-pub fn mcp_oauth_provider_id_for_uuid(server_id: uuid::Uuid) -> String {
-    format!("mcp_oauth_{}", server_id)
-}
-
-/// Secret name for a session-scoped MCP OAuth token field.
-pub fn mcp_oauth_session_secret_name(server_id: uuid::Uuid, field: &str) -> String {
-    format!("mcp_oauth:{}:{}", server_id, field)
 }

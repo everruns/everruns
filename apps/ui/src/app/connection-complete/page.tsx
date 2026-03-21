@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function ConnectionCompletePage() {
+function ConnectionCompleteInner() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -23,5 +23,13 @@ export default function ConnectionCompletePage() {
     <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
       Connection complete. You can close this window.
     </div>
+  );
+}
+
+export default function ConnectionCompletePage() {
+  return (
+    <Suspense>
+      <ConnectionCompleteInner />
+    </Suspense>
   );
 }

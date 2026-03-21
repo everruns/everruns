@@ -88,7 +88,7 @@ impl McpServerService {
 
     pub fn settings_from_row(row: &McpServerRow) -> McpServerSettings {
         let mut settings =
-            serde_json::from_value(row.settings.clone()).unwrap_or_else(|_| McpServerSettings {
+            serde_json::from_value(row.settings.clone()).unwrap_or(McpServerSettings {
                 auth_mode: McpServerAuthMode::None,
                 oauth: None,
             });
@@ -126,7 +126,7 @@ impl McpServerService {
         let bytes = BASE64_STANDARD
             .decode(value)
             .map_err(|e| anyhow!("Invalid encrypted value: {e}"))?;
-        Ok(encryption.decrypt_to_string(&bytes)?)
+        encryption.decrypt_to_string(&bytes)
     }
 
     #[policy(MCP_SERVER_MANAGE)]

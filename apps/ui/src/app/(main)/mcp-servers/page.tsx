@@ -79,7 +79,14 @@ function McpServerCard({
           <div className="flex items-center gap-2">
             <Key className="h-4 w-4 text-muted-foreground" />
             <span className="text-muted-foreground">
-              Auth: {server.auth_mode === "oauth" ? "OAuth" : server.auth_mode === "api_key" ? (server.api_key_set ? "API key configured" : "API key missing") : "None"}
+              Auth:{" "}
+              {server.auth_mode === "oauth"
+                ? "OAuth"
+                : server.auth_mode === "api_key"
+                  ? server.api_key_set
+                    ? "API key configured"
+                    : "API key missing"
+                  : "None"}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -191,7 +198,10 @@ function AddMcpServerDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="auth-mode">Authentication</Label>
-            <Select value={authMode} onValueChange={(value) => setAuthMode(value as McpServerAuthMode)}>
+            <Select
+              value={authMode}
+              onValueChange={(value) => setAuthMode(value as McpServerAuthMode)}
+            >
               <SelectTrigger id="auth-mode">
                 <SelectValue />
               </SelectTrigger>
@@ -204,15 +214,15 @@ function AddMcpServerDialog({
           </div>
           {authMode === "api_key" && (
             <div className="space-y-2">
-            <Label htmlFor="api-key">API Key</Label>
-            <Input
-              id="api-key"
-              type="password"
-              value={apiKey}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
-              placeholder="your-api-key"
-              required
-            />
+              <Label htmlFor="api-key">API Key</Label>
+              <Input
+                id="api-key"
+                type="password"
+                value={apiKey}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
+                placeholder="your-api-key"
+                required
+              />
             </div>
           )}
           <DialogFooter>
@@ -221,7 +231,9 @@ function AddMcpServerDialog({
             </Button>
             <Button
               type="submit"
-              disabled={createServer.isPending || !name || !url || (authMode === "api_key" && !apiKey)}
+              disabled={
+                createServer.isPending || !name || !url || (authMode === "api_key" && !apiKey)
+              }
             >
               {createServer.isPending ? "Creating..." : "Create Server"}
             </Button>
