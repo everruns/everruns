@@ -1,39 +1,15 @@
 // Chat command - send message and stream response
-//
-// Design Decision: Use raw reqwest for event polling instead of SDK's events().list()
-// because the server's ListResponse for events only has `data` while the SDK's
-// ListResponse expects `total`, `offset`, `limit` — causing deserialization failures.
-// TODO(sdk): Switch back to client.events().list() once https://github.com/everruns/sdk/issues/63 lands.
 
 use crate::output::OutputFormat;
 use anyhow::Result;
 use everruns_sdk::Everruns;
-use serde::Deserialize;
 use std::time::{Duration, Instant};
-
-/// Minimal event response matching what the server actually returns.
-/// The server's ListResponse only contains `data` (no total/offset/limit),
-/// which differs from the SDK's ListResponse that requires those fields.
-#[derive(Debug, Deserialize)]
-struct EventsResponse {
-    data: Vec<EventEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct EventEntry {
-    id: String,
-    #[serde(rename = "type")]
-    event_type: String,
-    ts: String,
-    session_id: String,
-    data: serde_json::Value,
-}
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     client: &Everruns,
-    api_url: &str,
-    api_key: &str,
+    _api_url: &str,
+    _api_key: &str,
     output: OutputFormat,
     quiet: bool,
     message: String,
@@ -59,9 +35,6 @@ pub async fn run(
     let mut last_event_id: Option<String> = None;
     let mut agent_content = String::new();
 
-    // Build a raw HTTP client for event polling to avoid SDK ListResponse mismatch
-    let http = reqwest::Client::new();
-
     loop {
         if start.elapsed() > timeout {
             if output.is_text() {
@@ -70,19 +43,8 @@ pub async fn run(
             anyhow::bail!("Timeout waiting for response");
         }
 
-        // Fetch events via raw HTTP to avoid SDK deserialization issues
-        let url = format!(
-            "{}/v1/sessions/{}/events",
-            api_url.trim_end_matches('/'),
-            session_id
-        );
-        let response: EventsResponse = http
-            .get(&url)
-            .header("Authorization", api_key)
-            .send()
-            .await?
-            .json()
-            .await?;
+        // Fetch events via SDK (ListResponse pagination fields are optional since SDK v0.1.5)
+        let response = client.events().list(&session_id).await?;
 
         // Filter events since last seen
         let events: Vec<_> = if let Some(ref last_id) = last_event_id {

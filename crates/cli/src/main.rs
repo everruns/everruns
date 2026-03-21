@@ -167,7 +167,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(CapabilitiesCommand::List { status }) => status.clone(),
                 None => "available".to_string(),
             };
-            commands::capabilities::run(&api_url, &api_key, output_format, &status).await
+            commands::capabilities::run(&client, output_format, &status).await
         }
         Commands::Sessions { command } => {
             commands::sessions::run(command, &client, output_format, cli.quiet).await

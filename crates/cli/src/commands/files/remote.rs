@@ -1,10 +1,10 @@
 // Remote session filesystem API client
 //
-// TODO(sdk): Replace all raw reqwest calls with SDK methods once everruns-sdk
-// ships session filesystem support (see https://github.com/everruns/sdk/issues/60).
+// TODO(sdk): Replace all raw reqwest calls with SDK session_files() methods.
+// SDK v0.1.5 ships session filesystem support (https://github.com/everruns/sdk/issues/60 resolved).
+// Migration is tracked separately — involves adapting to SDK's FileInfo/SessionFile types.
 // Affected methods: list, read_file, write_file, create_dir, delete.
 //
-// Design Decision: Direct reqwest calls since session filesystem is not in the SDK yet.
 // Design Decision: Binary detection mirrors server logic (null bytes in first 8KB).
 
 use anyhow::{Context, Result};
@@ -76,7 +76,6 @@ impl RemoteClient {
     }
 
     /// List files at a path. If recursive, lists the entire tree.
-    // TODO(sdk): Replace with sdk.session_files().list(session_id, path, recursive)
     pub async fn list(&self, path: &str, recursive: bool) -> Result<Vec<RemoteFileEntry>> {
         let mut url = self.fs_url(path);
         if recursive {
@@ -118,7 +117,6 @@ impl RemoteClient {
     }
 
     /// Read file content.
-    // TODO(sdk): Replace with sdk.session_files().read(session_id, path)
     pub async fn read_file(&self, path: &str) -> Result<RemoteFileContent> {
         let url = self.fs_url(path);
         let resp = self
@@ -151,7 +149,6 @@ impl RemoteClient {
     }
 
     /// Create or update a file on remote.
-    // TODO(sdk): Replace with sdk.session_files().create() / .update()
     pub async fn write_file(&self, path: &str, content: &[u8], create: bool) -> Result<()> {
         let url = self.fs_url(path);
 
@@ -226,7 +223,6 @@ impl RemoteClient {
     }
 
     /// Delete a file or directory on remote.
-    // TODO(sdk): Replace with sdk.session_files().delete(session_id, path, recursive)
     pub async fn delete(&self, path: &str, recursive: bool) -> Result<()> {
         let mut url = self.fs_url(path);
         if recursive {
