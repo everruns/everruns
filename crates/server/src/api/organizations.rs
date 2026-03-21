@@ -41,7 +41,7 @@ impl AppState {
         }
     }
 
-    pub fn with_platform(
+    pub fn with_harnesses(
         db: Arc<StorageBackend>,
         auth: AuthState,
         built_in_harnesses: Vec<BuiltInHarnessDefinition>,

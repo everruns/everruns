@@ -1798,8 +1798,9 @@ async fn run_seed_with_retry(
 }
 
 /// Run all seeders in order
-/// Order: organization → users → providers → models → mcp_servers → agents
+/// Order: organization → users → providers → models → mcp_servers → harnesses
 /// Organization must be seeded first (all resources have org_id FK)
+/// Note: Agents are NOT seeded; they live as examples and are adopted on demand.
 pub async fn seed_all(
     db: &StorageBackend,
     grade: DeploymentGrade,
@@ -2212,6 +2213,31 @@ mod tests {
             .await
             .unwrap();
         assert!(!second.has_changes());
+    }
+
+    // --- Agent seeding regression ---
+
+    #[tokio::test]
+    async fn test_seed_all_does_not_create_agents() {
+        // Agents should NOT be auto-seeded; they live as examples and are adopted on demand.
+        let db = make_db();
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+
+        let (agents, _) = db
+            .list_agents(
+                DEFAULT_ORG_ID,
+                None,
+                false,
+                crate::api::common::Pagination::new(0, 100),
+            )
+            .await
+            .unwrap();
+        assert!(
+            agents.is_empty(),
+            "seed_all should not create agents; they are adopted from examples"
+        );
     }
 
     // --- Model upsert ---

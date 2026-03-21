@@ -210,7 +210,7 @@ impl TestServer {
             api::schedules::ScheduleAppState::new(Some(durable_store), auth_state.clone());
         let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
-        let organizations_state = api::organizations::AppState::with_platform(
+        let organizations_state = api::organizations::AppState::with_harnesses(
             db.clone(),
             auth_state.clone(),
             platform_definition.built_in_harnesses().to_vec(),
