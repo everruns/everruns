@@ -1,105 +1,25 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Send,
-  Bot,
-  Loader2,
-  Brain,
-  ImagePlus,
-  StopCircle,
-  CalendarClock,
-  ArrowDown,
-} from "lucide-react";
-import type { Controls, ContentPart, CommandDescriptor, ToolCallSummary } from "@/lib/api/types";
-import { isImageFilePart, getEventData } from "@/lib/api/types";
-import { MessageInfoIcon } from "@/components/chat/message-info-icon";
-import { ImageAttachments, MessageImage } from "@/components/chat/image-attachments";
-import {
-  CommandAutocomplete,
-  shouldShowCommandAutocomplete,
-} from "@/components/chat/command-autocomplete";
-import { ThinkingIndicator } from "@/components/thinking-indicator";
-import { StreamingMessage } from "@/components/streaming-message";
-import { MessageContent } from "@/components/chat/message-content";
-import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
-import { SetupConnectionToolCall } from "@/components/chat/setup-connection-tool-call";
-import {
-  ToolActivityTimelineGroup,
-  type TimelineToolRow,
-} from "@/components/chat/tool-activity-timeline-group";
-import {
-  formatWorkedDuration,
-  getCompletedTurnDurationsByEvent,
-} from "@/components/chat/turn-delimiter";
+import { useCallback, useEffect, useState } from "react";
+import { ArrowDown, Bot } from "lucide-react";
+import type { CommandDescriptor, Controls } from "@/lib/api/types";
+import { cn } from "@/lib/utils";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
 import {
-  useLlmModels,
   useImageAttachments,
-  useSessionCommands,
-  useScrollManager,
   useImageDropZone,
+  useLlmModels,
+  useScrollManager,
+  useSessionCommands,
 } from "@/hooks";
+import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
 import { useMutation } from "@tanstack/react-query";
-import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
-import { cn } from "@/lib/utils";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
-
-/** Expandable compaction divider — click to see cascade details. */
-function CompactionDivider({ data }: { data: import("@/lib/api/types").ContextCompactedData }) {
-  const [expanded, setExpanded] = useState(false);
-  const saved = data.messages_before - data.messages_after;
-
-  return (
-    <div className="space-y-1">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full cursor-pointer items-center gap-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground sm:text-sm"
-      >
-        <div className="h-px flex-1 bg-border" />
-        <span className="whitespace-nowrap">
-          Context compacted · {data.messages_before} → {data.messages_after} messages
-          {data.strategy_used !== "none" && ` · ${data.strategy_used}`}
-        </span>
-        <span className="text-[10px]">{expanded ? "▲" : "▼"}</span>
-        <div className="h-px flex-1 bg-border" />
-      </button>
-      {expanded && (
-        <div className="mx-auto max-w-md rounded-md border bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
-          <div className="space-y-1">
-            <div>
-              <span className="font-medium">Saved:</span> {saved} messages in {data.duration_ms}ms
-            </div>
-            {data.steps.length > 0 && (
-              <div>
-                <span className="font-medium">Cascade steps:</span>
-                <ol className="mt-1 list-inside list-decimal space-y-0.5">
-                  {data.steps.map((step, i) => (
-                    <li key={i}>
-                      {step.strategy} → {step.messages_after} messages ({step.duration_ms}ms)
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { ChatComposer } from "@/components/chat/chat-composer";
+import { StreamingMessage } from "@/components/streaming-message";
+import { ThinkingIndicator } from "@/components/thinking-indicator";
 
 export function ChatPanel() {
   const {
@@ -127,18 +47,27 @@ export function ChatPanel() {
   } = useSessionContext();
 
   const { data: llmModels = [] } = useLlmModels();
-
   const [inputValue, setInputValue] = useState("");
-  const [selectedModelId, setSelectedModelId] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const hasUserSelectedModel = useRef(false);
-  const modelSelectionStorageKey = useMemo(
-    () => `everruns:chat:model-selection:${agentId}:${sessionId}`,
-    [agentId, sessionId],
-  );
 
-  // Image attachments management
+  const {
+    selectedModelId,
+    supportsReasoning,
+    reasoningEffortConfig,
+    defaultEffortName,
+    modelTriggerLabel,
+    defaultModelOptionLabel,
+    getReasoningEffortName,
+    handleModelChange,
+    persistSelection,
+  } = useChatModelSelection({
+    agentId,
+    sessionId,
+    llmModels,
+    defaultModel: llmModel,
+    reasoningEffort,
+    setReasoningEffort,
+  });
+
   const {
     pendingImages,
     allUploaded,
@@ -150,7 +79,6 @@ export function ChatPanel() {
     isUploading,
   } = useImageAttachments({ sessionId });
 
-  // Scroll management
   const { scrollContainerRef, messagesEndRef, hasNewMessages, dismissNewMessages, handleScrollUp } =
     useScrollManager({
       eventCount: chatEvents.length,
@@ -162,226 +90,25 @@ export function ChatPanel() {
       scrollDeps: [streamingText, isThinking],
     });
 
-  // Image drag-drop and paste
   const { isDraggingOver, dropZoneProps, handlePaste } = useImageDropZone({
     onImageFiles: addFiles,
   });
 
-  // Commands autocomplete
   const { data: commandsData } = useSessionCommands(sessionId);
   const commands = commandsData?.commands ?? [];
-  const hasCommands = commands.length > 0;
-  const [showCommands, setShowCommands] = useState(false);
-  const inputPlaceholder = hasCommands
-    ? "Type a message or / for commands... (Enter to send)"
-    : "Type a message... (Enter to send)";
 
-  const clientRequestedToolCallIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const event of chatEvents) {
-      const data = getEventData(event, "tool.call_requested");
-      if (!data) continue;
-      for (const toolCall of data.tool_calls ?? []) {
-        ids.add(toolCall.id);
-      }
-    }
-    return ids;
-  }, [chatEvents]);
-
-  const turnDurationByEventId = useMemo(
-    () => getCompletedTurnDurationsByEvent(events ?? []),
-    [events],
-  );
-
-  const hasNarratedActEvents = useMemo(
-    () => chatEvents.some((event) => event.type === "act.started"),
-    [chatEvents],
-  );
-
-  const actGroupsByStartEventId = useMemo(() => {
-    type GroupState = {
-      startEventId: string;
-      headline: string;
-      completedHeadline?: string;
-      rows: TimelineToolRow[];
-    };
-
-    const groupsByExecId = new Map<string, GroupState>();
-
-    const ensureRow = (
-      group: GroupState,
-      id: string,
-      fallbackLabel: string,
-      state: TimelineToolRow["state"],
-    ) => {
-      const existing = group.rows.find((row) => row.id === id);
-      if (existing) {
-        existing.label = existing.label || fallbackLabel;
-        existing.state = state;
-        return existing;
-      }
-
-      const row: TimelineToolRow = { id, label: fallbackLabel, state };
-      group.rows.push(row);
-      return row;
-    };
-
-    for (const event of chatEvents) {
-      const execId = event.context?.exec_id;
-      if (!execId) continue;
-
-      {
-        const actStarted = getEventData(event, "act.started");
-        if (actStarted) {
-          groupsByExecId.set(execId, {
-            startEventId: event.id,
-            headline: actStarted.headline ?? "Working",
-            rows: (actStarted.tool_calls ?? []).map((toolCall: ToolCallSummary) => ({
-              id: toolCall.id,
-              label: toolCall.narration ?? toolCall.display_name ?? toolCall.name,
-              state: "running",
-            })),
-          });
-          continue;
-        }
-      }
-
-      const group = groupsByExecId.get(execId);
-      if (!group) continue;
-
-      {
-        const toolStarted = getEventData(event, "tool.started");
-        if (toolStarted) {
-          const row = ensureRow(
-            group,
-            toolStarted.tool_call.id,
-            toolStarted.narration ?? toolStarted.display_name ?? toolStarted.tool_call.name,
-            "running",
-          );
-          row.label = toolStarted.narration ?? row.label;
-          continue;
-        }
-      }
-
-      {
-        const toolCompleted = getEventData(event, "tool.completed");
-        if (toolCompleted) {
-          const row = ensureRow(
-            group,
-            toolCompleted.tool_call_id,
-            toolCompleted.narration ??
-              toolCompleted.display_name ??
-              toolCompleted.tool_name ??
-              "Tool call",
-            toolCompleted.success ? "completed" : "error",
-          );
-          row.label = toolCompleted.narration ?? row.label;
-          row.result = toolCompleted;
-          row.state = toolCompleted.success ? "completed" : "error";
-          continue;
-        }
-      }
-
-      {
-        const actCompleted = getEventData(event, "act.completed");
-        if (actCompleted) {
-          group.completedHeadline = actCompleted.headline;
-        }
-      }
-    }
-
-    return new Map(
-      Array.from(groupsByExecId.values()).map((group) => [group.startEventId, group] as const),
-    );
-  }, [chatEvents]);
-
-  const handleCommandSelect = useCallback(
-    (cmd: CommandDescriptor) => {
-      setShowCommands(false);
-      if (cmd.source === "system") {
-        // System commands: send as slash message directly
-        setInputValue(`/${cmd.name}`);
-        // Submit immediately
-        const controls: Controls | undefined = selectedModelId
-          ? { model_id: selectedModelId }
-          : undefined;
-        sendMessage.mutateAsync({
-          sessionId,
-          content: `/${cmd.name}`,
-          controls,
-        });
-        setInputValue("");
-        setIsWaitingForResponse(true);
-        textareaRef.current?.focus();
-      } else {
-        // Skill commands: inject as message to trigger prompt expansion
-        setInputValue(`/${cmd.name} `);
-        textareaRef.current?.focus();
-      }
-    },
-    [sessionId, selectedModelId, sendMessage, setIsWaitingForResponse],
-  );
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const storedSelection = window.localStorage.getItem(modelSelectionStorageKey);
-    if (storedSelection !== null && !hasUserSelectedModel.current) {
-      setSelectedModelId(storedSelection);
-    }
-  }, [modelSelectionStorageKey]);
-
-  // Derived guard: if commands disappear while dropdown is open, close it inline
-  if (!hasCommands && showCommands) {
-    setShowCommands(false);
-  }
-
-  const selectedModel = useMemo(
-    () => llmModels.find((model) => model.id === selectedModelId),
-    [llmModels, selectedModelId],
-  );
-
-  const activeModel = selectedModel ?? llmModel;
-  const reasoningEffortConfig = activeModel?.profile?.reasoning_effort;
-  const supportsReasoning = !!(
-    activeModel?.profile?.reasoning && activeModel?.profile?.reasoning_effort
-  );
-
-  const getReasoningEffortName = (value: string): string => {
-    const effort = reasoningEffortConfig?.values.find((item) => item.value === value);
-    return effort?.name ?? value;
-  };
-
-  const defaultEffortName = reasoningEffortConfig?.default
-    ? getReasoningEffortName(reasoningEffortConfig.default)
-    : "Medium";
-  const modelTriggerLabel = selectedModel?.display_name ?? "Default";
-  const defaultModelOptionLabel = llmModel?.display_name
-    ? `Default (${llmModel.display_name})`
-    : "Default";
-
-  useEffect(() => {
-    if (!supportsReasoning) {
-      setReasoningEffort("");
-      return;
-    }
-
-    if (
-      reasoningEffortConfig &&
-      reasoningEffort &&
-      !reasoningEffortConfig.values.some((effort) => effort.value === reasoningEffort)
-    ) {
-      setReasoningEffort("");
-    }
-  }, [supportsReasoning, reasoningEffortConfig, reasoningEffort, setReasoningEffort]);
-
-  // Auto-focus message input when session loads
   useEffect(() => {
     if (!eventsLoading) {
-      textareaRef.current?.focus();
+      const focusTimer = window.setTimeout(() => {
+        const textarea = document.querySelector("textarea");
+        if (textarea instanceof HTMLTextAreaElement) {
+          textarea.focus();
+        }
+      }, 0);
+      return () => window.clearTimeout(focusTimer);
     }
   }, [eventsLoading]);
 
-  // Mutation for sending message with images
   const sendMessageWithImages = useMutation({
     mutationFn: async ({
       text,
@@ -391,35 +118,20 @@ export function ChatPanel() {
       text: string;
       images: Array<{ imageId: string; filename?: string }>;
       controls?: Controls;
-    }) => {
-      return sendUserMessageWithImages(sessionId, text, images, controls);
-    },
+    }) => sendUserMessageWithImages(sessionId, text, images, controls),
   });
 
-  // Check if can submit (has content and all images uploaded)
-  const hasContent = inputValue.trim() || hasImages;
   const canSubmit =
-    hasContent && allUploaded && !sendMessage.isPending && !sendMessageWithImages.isPending;
+    (inputValue.trim().length > 0 || hasImages) &&
+    allUploaded &&
+    !sendMessage.isPending &&
+    !sendMessageWithImages.isPending;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitMessage = async (controls?: Controls) => {
     if (!canSubmit) return;
-
-    // Build controls with reasoning effort if selected
-    const controls: Controls | undefined =
-      selectedModelId || reasoningEffort
-        ? {
-            ...(selectedModelId && { model_id: selectedModelId }),
-            ...(reasoningEffort &&
-              supportsReasoning && {
-                reasoning: { effort: reasoningEffort },
-              }),
-          }
-        : undefined;
 
     try {
       if (hasImages) {
-        // Send with images
         await sendMessageWithImages.mutateAsync({
           text: inputValue.trim(),
           images: uploadedImageIds,
@@ -427,7 +139,6 @@ export function ChatPanel() {
         });
         clearImages();
       } else {
-        // Use the regular sendMessage for text-only (has optimistic UI)
         await sendMessage.mutateAsync({
           sessionId,
           content: inputValue.trim(),
@@ -435,63 +146,32 @@ export function ChatPanel() {
         });
       }
 
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(modelSelectionStorageKey, selectedModelId);
-      }
+      persistSelection();
       setInputValue("");
-      // Start polling for the response
       setIsWaitingForResponse(true);
-      // Refocus textarea after send
-      textareaRef.current?.focus();
     } catch (error) {
       console.error("Failed to send message:", error);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Let command autocomplete handle keyboard when visible
-    if (showCommands) return;
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
-    }
-  };
+  const handleCommandSelect = useCallback(
+    async (cmd: CommandDescriptor, controls?: Controls) => {
+      if (cmd.source === "system") {
+        setInputValue(`/${cmd.name}`);
+        await sendMessage.mutateAsync({
+          sessionId,
+          content: `/${cmd.name}`,
+          controls,
+        });
+        setInputValue("");
+        setIsWaitingForResponse(true);
+        return;
+      }
 
-  // Handle file input change
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      addFiles(Array.from(files));
-    }
-    // Reset input so same file can be selected again
-    e.target.value = "";
-  };
-
-  // Extract image files from message content
-  const getMessageImages = (
-    content: ContentPart[],
-  ): Array<{ image_id: string; filename?: string }> => {
-    return content.filter(isImageFilePart).map((part) => ({
-      image_id: part.image_id,
-      filename: part.filename,
-    }));
-  };
-
-  const renderTurnDivider = (eventId: string) => {
-    const durationMs = turnDurationByEventId.get(eventId);
-
-    if (durationMs == null) {
-      return null;
-    }
-
-    return (
-      <div className="flex items-center gap-4 pt-3 text-xs font-medium text-muted-foreground sm:text-sm">
-        <div className="h-px flex-1 bg-border" />
-        <span className="whitespace-nowrap">{`Worked for ${formatWorkedDuration(durationMs)}`}</span>
-        <div className="h-px flex-1 bg-border" />
-      </div>
-    );
-  };
+      setInputValue(`/${cmd.name} `);
+    },
+    [sendMessage, sessionId, setIsWaitingForResponse],
+  );
 
   return (
     <>
@@ -503,226 +183,17 @@ export function ChatPanel() {
           !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-end",
         )}
       >
-        {eventsLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="ml-auto h-20 w-3/4" />
-            <Skeleton className="h-20 w-3/4" />
-            <Skeleton className="h-20 w-2/3" />
-          </div>
-        ) : chatEvents.length === 0 ? (
-          <div className="flex flex-col items-center justify-end text-center text-muted-foreground">
-            <div className={chatSurfaceStyles.emptyStateCard}>
-              <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center border border-border/70 bg-background text-muted-foreground">
-                <Bot className="h-5 w-5 opacity-65" />
-              </div>
-              <p className="text-lg font-medium text-foreground">No messages yet</p>
-              <p className="mt-1 text-sm">Start with a prompt, screenshot, or slash command.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {loadingOlderEvents && (
-              <div className="flex items-center justify-center py-3">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                <span className="ml-2 text-xs text-muted-foreground">
-                  Loading older messages...
-                </span>
-              </div>
-            )}
-            {chatEvents.map((event) => {
-              if (event.type === "tool.started" || event.type === "tool.completed") {
-                return null;
-              }
-
-              if (event.type === "act.completed") {
-                return null;
-              }
-
-              if (event.type === "context.compacted") {
-                const compactedData = getEventData(event, "context.compacted");
-                if (!compactedData) return null;
-                return <CompactionDivider key={event.id} data={compactedData} />;
-              }
-
-              if (event.type === "act.started") {
-                const group = actGroupsByStartEventId.get(event.id);
-                if (!group || group.rows.length === 0) return null;
-                return (
-                  <div key={event.id} className="space-y-3">
-                    <div className="ml-9 space-y-1">
-                      <ToolActivityTimelineGroup
-                        headline={group.headline}
-                        completedHeadline={group.completedHeadline}
-                        rows={group.rows}
-                      />
-                    </div>
-                    {renderTurnDivider(event.id)}
-                  </div>
-                );
-              }
-
-              if (event.type === "tool.call_requested") {
-                const reqData = getEventData(event, "tool.call_requested");
-                if (!reqData) return null;
-                if (!reqData.tool_calls || reqData.tool_calls.length === 0) return null;
-
-                if (reqData.headline || reqData.tool_summaries?.length) {
-                  const rows: TimelineToolRow[] = (reqData.tool_summaries ?? []).map((summary) => ({
-                    id: summary.id,
-                    label: summary.narration ?? summary.display_name ?? summary.name,
-                    state: "waiting",
-                  }));
-
-                  if (rows.length > 0) {
-                    return (
-                      <div key={event.id} className="space-y-3">
-                        <div className="ml-9 space-y-1">
-                          <ToolActivityTimelineGroup
-                            headline={reqData.headline ?? "Waiting on tools"}
-                            rows={rows}
-                          />
-                        </div>
-                        {renderTurnDivider(event.id)}
-                      </div>
-                    );
-                  }
-                }
-
-                // Check for setup_connection tool calls (inline connection prompt)
-                const connectionCalls = reqData.tool_calls.filter(
-                  (tc) => tc.name === "setup_connection",
-                );
-                const otherCalls = reqData.tool_calls.filter(
-                  (tc) => tc.name !== "setup_connection",
-                );
-
-                return (
-                  <div key={event.id} className="space-y-3">
-                    <div className="ml-9 space-y-1">
-                      {connectionCalls.map((tc) => (
-                        <SetupConnectionToolCall
-                          key={tc.id}
-                          sessionId={sessionId}
-                          toolCallId={tc.id}
-                          provider={(tc.arguments as { provider?: string })?.provider ?? "unknown"}
-                          toolResultsMap={toolResultsMap}
-                        />
-                      ))}
-                      {otherCalls.length > 0 && (
-                        <ToolActivityGroup
-                          toolCalls={otherCalls}
-                          toolResultsMap={toolResultsMap}
-                          mode="client"
-                        />
-                      )}
-                    </div>
-                    {renderTurnDivider(event.id)}
-                  </div>
-                );
-              }
-
-              const isUser = event.type === "input.message";
-              const inputData = getEventData(event, "input.message");
-              const outputData = getEventData(event, "output.message.completed");
-              const data = inputData ?? outputData;
-              if (!data) return null;
-              const textContent = getMessageText(data);
-              const toolCalls = isUser
-                ? []
-                : outputData
-                  ? getToolCalls(outputData).filter(
-                      (toolCall) => !clientRequestedToolCallIds.has(toolCall.id),
-                    )
-                  : [];
-              const images = data.message?.content ? getMessageImages(data.message.content) : [];
-              const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
-              const isToolOnlyMessage =
-                !isUser && toolCalls.length > 0 && !textContent && images.length === 0;
-
-              if (isToolOnlyMessage) {
-                if (hasNarratedActEvents) {
-                  return null;
-                }
-
-                return (
-                  <div key={event.id} className="space-y-3">
-                    <div className="ml-9 space-y-1">
-                      <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
-                    </div>
-                    {renderTurnDivider(event.id)}
-                  </div>
-                );
-              }
-
-              return (
-                <div key={event.id} className="space-y-2">
-                  {(textContent || images.length > 0) && (
-                    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-                      {isUser ? (
-                        <div className={chatSurfaceStyles.userMessage}>
-                          {isScheduleTriggered && (
-                            <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                              <CalendarClock className="h-3 w-3" />
-                              <span>Scheduled</span>
-                            </div>
-                          )}
-                          <div className="flex items-start gap-2">
-                            <div className="flex-1 space-y-2">
-                              {textContent && <p className="whitespace-pre-wrap">{textContent}</p>}
-                              {images.length > 0 && (
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  {images.map((img) => (
-                                    <MessageImage
-                                      key={img.image_id}
-                                      imageId={img.image_id}
-                                      filename={img.filename}
-                                    />
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <MessageInfoIcon event={event} />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className={chatSurfaceStyles.agentMessageRow}>
-                          <div className={chatSurfaceStyles.agentIcon}>
-                            <Bot className="h-3.5 w-3.5" />
-                          </div>
-                          <div className="flex flex-1 items-start gap-2">
-                            <div className={chatSurfaceStyles.agentMessage}>
-                              {textContent && <MessageContent text={textContent} />}
-                              {images.length > 0 && (
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  {images.map((img) => (
-                                    <MessageImage
-                                      key={img.image_id}
-                                      imageId={img.image_id}
-                                      filename={img.filename}
-                                    />
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <MessageInfoIcon event={event} />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {toolCalls.length > 0 && !hasNarratedActEvents && (
-                    <div className="ml-9 space-y-1">
-                      <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
-                    </div>
-                  )}
-
-                  {renderTurnDivider(event.id)}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <ChatMessageList
+          events={events}
+          chatEvents={chatEvents}
+          sessionId={sessionId}
+          toolResultsMap={toolResultsMap}
+          eventsLoading={eventsLoading}
+          hasMoreEvents={hasMoreEvents}
+          loadingOlderEvents={loadingOlderEvents}
+          getMessageText={getMessageText}
+          getToolCalls={getToolCalls}
+        />
 
         {(isThinking || streamingText) && (
           <div className="mt-6 flex justify-start">
@@ -760,162 +231,36 @@ export function ChatPanel() {
         )}
       </div>
 
-      <div className={chatSurfaceStyles.composerSection}>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ALLOWED_IMAGE_TYPES.join(",")}
-            multiple
-            className="hidden"
-            onChange={handleFileChange}
-          />
-
-          {hasImages && <ImageAttachments images={pendingImages} onRemove={removeImage} />}
-
-          <div
-            className={cn(
-              chatSurfaceStyles.composerInputShell,
-              isDraggingOver && "bg-[hsl(var(--accent)/0.07)] ring-1 ring-accent/60",
-            )}
-            {...dropZoneProps}
-          >
-            <CommandAutocomplete
-              commands={commands}
-              inputValue={inputValue}
-              visible={showCommands}
-              onSelect={handleCommandSelect}
-              onDismiss={() => setShowCommands(false)}
-            />
-            <Textarea
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => {
-                const val = e.target.value;
-                setInputValue(val);
-                setShowCommands(hasCommands && shouldShowCommandAutocomplete(val));
-              }}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              placeholder={inputPlaceholder}
-              className={chatSurfaceStyles.composerTextarea}
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-lg"
-                className={chatSurfaceStyles.composerIconButton}
-                onClick={() => fileInputRef.current?.click()}
-                title="Attach images (PNG, JPEG, GIF, WebP)"
-              >
-                <ImagePlus className="icon-sharp h-4 w-4" />
-              </Button>
-
-              <div className={chatSurfaceStyles.composerControlChip}>
-                <span className="shrink-0 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                  Model
-                </span>
-                <Select
-                  value={selectedModelId}
-                  onValueChange={(value) => {
-                    hasUserSelectedModel.current = true;
-                    setSelectedModelId(value);
-                  }}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    nativeButton={false}
-                    render={<div />}
-                    className="h-7 w-[156px] min-w-0 cursor-pointer border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
-                  >
-                    <SelectValue>{modelTriggerLabel}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">{defaultModelOptionLabel}</SelectItem>
-                    {llmModels.map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        {model.display_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {supportsReasoning && reasoningEffortConfig && (
-                <div className={chatSurfaceStyles.composerControlChip}>
-                  <Brain className="icon-sharp h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="shrink-0 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                    Reasoning
-                  </span>
-                  <Select
-                    value={reasoningEffort}
-                    onValueChange={(value) => setReasoningEffort(value as typeof reasoningEffort)}
-                  >
-                    <SelectTrigger
-                      size="sm"
-                      nativeButton={false}
-                      render={<div />}
-                      className="h-7 w-[116px] min-w-0 cursor-pointer border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
-                    >
-                      <SelectValue>
-                        {reasoningEffort ? getReasoningEffortName(reasoningEffort) : "Default"}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">{`Default (${defaultEffortName})`}</SelectItem>
-                      {reasoningEffortConfig.values.map((effort) => (
-                        <SelectItem key={effort.value} value={effort.value}>
-                          {effort.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {isActive && !inputValue.trim() && !hasImages && (
-                <Button
-                  type="button"
-                  size="icon-lg"
-                  variant="destructive"
-                  className={chatSurfaceStyles.composerDangerButton}
-                  disabled={cancelCurrentTurn.isPending}
-                  onClick={() => cancelCurrentTurn.mutate()}
-                  title="Cancel current turn"
-                >
-                  {cancelCurrentTurn.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <StopCircle className="icon-sharp h-4 w-4" />
-                  )}
-                </Button>
-              )}
-
-              <Button
-                type="submit"
-                size="icon-lg"
-                className={chatSurfaceStyles.composerSubmitButton}
-                disabled={!canSubmit}
-                title={isUploading ? "Uploading images..." : undefined}
-              >
-                {sendMessage.isPending || sendMessageWithImages.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : isUploading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="icon-sharp h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-        </form>
-      </div>
+      <ChatComposer
+        commands={commands}
+        llmModels={llmModels}
+        inputValue={inputValue}
+        onInputChange={setInputValue}
+        onSubmit={submitMessage}
+        onCommandSelect={handleCommandSelect}
+        pendingImages={pendingImages}
+        hasImages={hasImages}
+        removeImage={removeImage}
+        addFiles={addFiles}
+        isDraggingOver={isDraggingOver}
+        dropZoneProps={dropZoneProps}
+        handlePaste={handlePaste}
+        selectedModelId={selectedModelId}
+        onModelChange={handleModelChange}
+        modelTriggerLabel={modelTriggerLabel}
+        defaultModelOptionLabel={defaultModelOptionLabel}
+        supportsReasoning={supportsReasoning}
+        reasoningEffort={reasoningEffort}
+        reasoningEffortConfig={reasoningEffortConfig}
+        defaultEffortName={defaultEffortName}
+        getReasoningEffortName={getReasoningEffortName}
+        onReasoningEffortChange={(value) => setReasoningEffort(value as typeof reasoningEffort)}
+        isActive={isActive}
+        cancelCurrentTurn={cancelCurrentTurn}
+        canSubmit={canSubmit}
+        isUploading={isUploading}
+        sendPending={sendMessage.isPending || sendMessageWithImages.isPending}
+      />
     </>
   );
 }
