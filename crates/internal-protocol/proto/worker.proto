@@ -894,16 +894,20 @@ message ResolveImageRequest {
 }
 
 // Response with resolved image data
-// Returns base64-encoded image data and media type for LLM consumption
+// Returns either a presigned URL or base64-encoded image data for LLM consumption.
+// When `url` is present, workers should fetch image data via HTTP instead of using `base64`.
 message ResolveImageResponse {
     // True if image was found
     bool found = 1;
     // Base64-encoded image data (without data URL prefix)
-    // Empty string when found=false
+    // Empty when url is provided or when found=false
     string base64 = 2;
     // MIME type (e.g., "image/png", "image/jpeg")
     // Empty string when found=false
     string media_type = 3;
+    // Presigned URL to fetch the image binary via HTTP GET
+    // When present, workers should use this instead of the base64 field
+    string url = 4;
 }
 
 // Batch request to resolve multiple images
@@ -923,9 +927,13 @@ message ResolveImagesResponse {
 // Resolved image data for batch response
 message ResolvedImageData {
     // Base64-encoded image data (without data URL prefix)
+    // Empty when url is provided
     string base64 = 1;
     // MIME type (e.g., "image/png", "image/jpeg")
     string media_type = 2;
+    // Presigned URL to fetch the image binary via HTTP GET
+    // When present, workers should use this instead of the base64 field
+    string url = 3;
 }
 
 // === Record success ===

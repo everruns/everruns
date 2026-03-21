@@ -17,7 +17,7 @@ use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, LeasedResourceStore, LlmProviderStore,
-    ModelWithProvider, SessionFileStore, SessionStore,
+    ModelWithProvider, ResolvedImage, SessionFileStore, SessionStore,
 };
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{Agent, Harness, HarnessStatus, Message, Session};
@@ -81,19 +81,44 @@ fn grpc_missing_field(field: &str) -> AgentLoopError {
     AgentLoopError::store(format!("gRPC response error: {field}"))
 }
 
+/// Fetch image binary from a presigned URL and return as base64-encoded ResolvedImage.
+///
+/// Used when the control plane returns presigned URLs instead of inline base64 data,
+/// keeping gRPC messages small while still providing base64 data to LLM providers.
+async fn fetch_image_from_url(url: &str, media_type: &str) -> Result<ResolvedImage> {
+    let response = reqwest::get(url).await.map_err(|e| {
+        AgentLoopError::store(format!("Failed to fetch image from presigned URL: {e}"))
+    })?;
+
+    if !response.status().is_success() {
+        return Err(AgentLoopError::store(format!(
+            "Presigned image fetch returned status {}",
+            response.status()
+        )));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| AgentLoopError::store(format!("Failed to read image response body: {e}")))?;
+
+    use base64::Engine;
+    let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(ResolvedImage::new(base64_data, media_type))
+}
+
 /// gRPC client wrapper for worker operations
 #[derive(Clone)]
 pub struct GrpcClient {
     inner: Arc<Mutex<WorkerServiceClient<InterceptedService<Channel, GrpcClientAuth>>>>,
 }
 
-/// Max gRPC message size (150MB for base64-encoded images + overhead)
+/// Max gRPC message size (16MB)
 ///
-/// TODO: Sending large images over gRPC is inefficient. Future improvements:
-/// - Use presigned URLs to fetch images directly from storage
-/// - Stream images in chunks instead of single large messages
-/// - Move to S3/blob storage with direct worker access
-const MAX_GRPC_MESSAGE_SIZE: usize = 150 * 1024 * 1024;
+/// Image data no longer flows through gRPC — workers fetch images via presigned
+/// HTTP URLs returned by resolve_image/resolve_images RPCs. The limit only needs
+/// to accommodate metadata, proto messages, and session file content.
+const MAX_GRPC_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 
 impl GrpcClient {
     /// Connect to the control plane gRPC server
@@ -1246,9 +1271,7 @@ fn proto_mcp_tool_def_to_tool_definition(
 // ImageResolver implementation
 // ============================================================================
 
-use everruns_core::traits::{
-    ImageResolver, KeyInfo, ResolvedImage, SecretInfo, SessionStorageStore,
-};
+use everruns_core::traits::{ImageResolver, KeyInfo, SecretInfo, SessionStorageStore};
 use std::collections::HashMap;
 
 impl GrpcOrgAdapter {
@@ -1256,6 +1279,7 @@ impl GrpcOrgAdapter {
     ///
     /// Returns a HashMap mapping image_id to ResolvedImage for all found images.
     /// Missing images are silently skipped.
+    /// When the server returns presigned URLs, images are fetched via HTTP.
     pub async fn resolve_images_batch(
         &self,
         image_ids: &[Uuid],
@@ -1279,7 +1303,12 @@ impl GrpcOrgAdapter {
         let mut result = HashMap::new();
         for (id_str, data) in response.into_inner().images {
             if let Ok(id) = Uuid::parse_str(&id_str) {
-                result.insert(id, ResolvedImage::new(data.base64, data.media_type));
+                let resolved = if !data.url.is_empty() {
+                    fetch_image_from_url(&data.url, &data.media_type).await?
+                } else {
+                    ResolvedImage::new(data.base64, data.media_type)
+                };
+                result.insert(id, resolved);
             }
         }
 
@@ -1292,6 +1321,7 @@ impl ImageResolver for GrpcOrgAdapter {
     /// Resolve a single image by ID
     ///
     /// Returns the base64-encoded image data and media type, or None if not found.
+    /// When the server returns a presigned URL, the image is fetched via HTTP.
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
         let mut client = self.client.inner.lock().await;
 
@@ -1307,10 +1337,15 @@ impl ImageResolver for GrpcOrgAdapter {
 
         let inner = response.into_inner();
 
-        if inner.found {
-            Ok(Some(ResolvedImage::new(inner.base64, inner.media_type)))
+        if !inner.found {
+            return Ok(None);
+        }
+
+        if !inner.url.is_empty() {
+            let resolved = fetch_image_from_url(&inner.url, &inner.media_type).await?;
+            Ok(Some(resolved))
         } else {
-            Ok(None)
+            Ok(Some(ResolvedImage::new(inner.base64, inner.media_type)))
         }
     }
 }

@@ -184,6 +184,7 @@ case "$cmd" in
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
     export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
+    export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
     cargo run -p everruns-server
     ;;
 
@@ -201,6 +202,7 @@ case "$cmd" in
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
     export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
+    export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
     cargo watch -w crates -x 'run -p everruns-server'
     ;;
 
@@ -282,6 +284,7 @@ case "$cmd" in
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
     export AUTH_BASE_URL=${AUTH_BASE_URL:-${PROXY_URL_DEFAULT}/api}
     export FRONTEND_URL=${FRONTEND_URL:-$PROXY_URL_DEFAULT}
+    export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
     export RUST_LOG=${RUST_LOG:-info}
 
     # Set encryption key if not provided (standard dev key from .env.example)
@@ -522,6 +525,7 @@ case "$cmd" in
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
     export AUTH_BASE_URL=${AUTH_BASE_URL:-${PROXY_URL_DEFAULT}/api}
     export FRONTEND_URL=${FRONTEND_URL:-$PROXY_URL_DEFAULT}
+    export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
     export DEPLOYMENT_GRADE=dev
     export RUST_LOG=${RUST_LOG:-info}
     if [ "$NO_WATCH" = true ]; then

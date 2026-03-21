@@ -636,6 +636,13 @@ impl ServerAppBuilder {
             .merge(api::durable::routes(durable_state))
             .merge(schedules_state)
             .merge(api::images::routes(images_state))
+            .merge({
+                let signing_secret = std::env::var("WORKER_GRPC_AUTH_TOKEN").unwrap_or_default();
+                api::internal_images::routes(api::internal_images::AppState {
+                    db: db.clone(),
+                    signing_secret,
+                })
+            })
             .merge(api::skills::routes(skills_state))
             .merge(api::organizations::routes(organizations_state))
             .merge(api::user_connections::routes(user_connections_state))

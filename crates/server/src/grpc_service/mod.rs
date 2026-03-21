@@ -341,6 +341,11 @@ pub struct WorkerServiceImpl {
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     /// Lazy connection token resolver (decrypts stored tokens / mints GitHub App tokens)
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
+    /// Base URL for generating presigned image URLs (e.g., "http://127.0.0.1:9000")
+    /// When set, image resolution returns presigned URLs instead of base64 data.
+    api_base_url: Option<String>,
+    /// Signing secret for presigned URLs (WORKER_GRPC_AUTH_TOKEN)
+    presign_secret: Option<String>,
 }
 
 impl WorkerServiceImpl {
@@ -405,6 +410,13 @@ impl WorkerServiceImpl {
                 sqldb_backend,
             )));
 
+        // Presigned URL support: when API_BASE_URL is set, image resolution
+        // returns presigned HTTP URLs instead of base64 data over gRPC.
+        let api_base_url = std::env::var("API_BASE_URL").ok().filter(|s| !s.is_empty());
+        let presign_secret = std::env::var("WORKER_GRPC_AUTH_TOKEN")
+            .ok()
+            .filter(|s| !s.is_empty());
+
         Self {
             event_service,
             agent_service,
@@ -421,12 +433,26 @@ impl WorkerServiceImpl {
             sqldb_store,
             runner,
             connection_resolver,
+            api_base_url,
+            presign_secret,
         }
     }
 
     /// Set the task notification broadcaster (must be called after async initialization)
     pub fn set_task_broadcaster(&mut self, broadcaster: Arc<TaskNotificationBroadcaster>) {
         self.task_broadcaster = Some(broadcaster);
+    }
+
+    /// Generate a presigned URL for an image, or None if presigned URLs are not configured.
+    fn presigned_image_url(&self, image_id: uuid::Uuid, org_id: i64) -> Option<String> {
+        match (&self.api_base_url, &self.presign_secret) {
+            (Some(base_url), Some(secret)) => {
+                Some(crate::api::internal_images::generate_presigned_url(
+                    base_url, image_id, org_id, secret,
+                ))
+            }
+            _ => None,
+        }
     }
 
     /// Get durable store or return unavailable error
@@ -504,13 +530,12 @@ impl WorkerServiceImpl {
             .ok_or_else(|| Status::unavailable("Session SQL database not available"))
     }
 
-    /// Max gRPC message size (150MB for base64-encoded images + overhead)
+    /// Max gRPC message size (16MB)
     ///
-    /// TODO: Sending large images over gRPC is inefficient. Future improvements:
-    /// - Use presigned URLs for workers to fetch images directly from storage
-    /// - Stream images in chunks instead of single large messages
-    /// - Move to S3/blob storage with direct worker access
-    const MAX_GRPC_MESSAGE_SIZE: usize = 150 * 1024 * 1024;
+    /// Image data no longer flows through gRPC — workers fetch images via presigned
+    /// HTTP URLs returned by resolve_image/resolve_images RPCs. The limit only needs
+    /// to accommodate metadata, proto messages, and session file content.
+    const MAX_GRPC_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 
     /// Create a tonic server for this service
     pub fn into_server(self) -> WorkerServiceServer<Self> {
