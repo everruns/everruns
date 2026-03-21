@@ -3,6 +3,7 @@
 // Design Decision: Use raw reqwest for event polling instead of SDK's events().list()
 // because the server's ListResponse for events only has `data` while the SDK's
 // ListResponse expects `total`, `offset`, `limit` — causing deserialization failures.
+// TODO(sdk): Switch back to client.events().list() once https://github.com/everruns/sdk/issues/63 lands.
 
 use crate::output::OutputFormat;
 use anyhow::Result;
