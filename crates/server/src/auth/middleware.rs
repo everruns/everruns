@@ -221,12 +221,16 @@ async fn extract_auth_user(
             .to_str()
             .map_err(|_| AuthError::unauthorized("Invalid authorization header"))?;
 
-        // Check for Bearer token (JWT)
+        // Check for Bearer token (JWT or API key)
+        // Canonical API key format: "Authorization: Bearer evr_..."
         if let Some(token) = auth_str.strip_prefix("Bearer ") {
+            if token.starts_with(API_KEY_PREFIX) {
+                return auth_state.backend.validate_api_key(token).await;
+            }
             return auth_state.backend.validate_token(token).await;
         }
 
-        // Check for API key
+        // Legacy: bare API key or "ApiKey" prefix (kept for backward compat)
         if auth_str.starts_with(API_KEY_PREFIX) || auth_str.starts_with("ApiKey ") {
             let api_key = auth_str.strip_prefix("ApiKey ").unwrap_or(auth_str);
             return auth_state.backend.validate_api_key(api_key).await;
