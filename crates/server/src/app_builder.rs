@@ -511,6 +511,13 @@ impl ServerAppBuilder {
         );
         let commands_state =
             api::commands::AppState::new(capability_service.clone(), auth_state.clone());
+        let agent_templates_state = api::agent_templates::AppState {
+            agent_service: Arc::new(services::AgentService::new(db.clone())),
+            capability_service: capability_service.clone(),
+            auth: auth_state.clone(),
+            grade: everruns_core::DeploymentGrade::from_env(),
+            platform_definition: platform_definition.clone(),
+        };
         let agents_state =
             api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
         let apps_state =
@@ -607,6 +614,7 @@ impl ServerAppBuilder {
         // Phase 6: Build API router
         // =====================================================================
         let mut api_routes = Router::new()
+            .merge(api::agent_templates::routes(agent_templates_state))
             .merge(api::agents::routes(agents_state))
             .merge(api::apps::routes(apps_state))
             .merge(api::harnesses::routes(harnesses_state))

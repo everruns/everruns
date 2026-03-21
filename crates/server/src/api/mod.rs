@@ -3,6 +3,7 @@
 // This module contains all HTTP route handlers for the public API.
 // Each submodule handles a specific resource type with its own AppState.
 
+pub mod agent_templates;
 pub mod agents;
 pub mod apps;
 pub mod audit_logs;

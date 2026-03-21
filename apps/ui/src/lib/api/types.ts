@@ -73,6 +73,16 @@ export interface UpdateAgentRequest {
   tools?: ToolDefinition[];
 }
 
+/** Read-only agent template defined in code, installable as a real Agent */
+export interface AgentTemplate {
+  slug: string;
+  name: string;
+  description: string;
+  tags: string[];
+  capabilities: AgentCapabilityConfig[];
+  dev_only: boolean;
+}
+
 // ============================================
 // Harness types
 // ============================================

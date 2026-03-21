@@ -281,7 +281,7 @@ pub fn routes(state: AppState) -> Router {
 
 /// TM-AGENT-005: Reject if any requested capabilities are high-risk and the
 /// caller does not have at least Admin role.
-fn require_admin_for_high_risk(
+pub(crate) fn require_admin_for_high_risk(
     org: &ResolvedOrg,
     caps: &[AgentCapabilityConfig],
     capability_service: &CapabilityService,
