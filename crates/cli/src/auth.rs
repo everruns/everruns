@@ -259,16 +259,19 @@ mod tests {
     #[cfg(target_os = "macos")]
     fn test_credentials_path_macos_uses_application_support() {
         let path = credentials_path().unwrap();
-        let path_str = path.to_str().unwrap();
+        let expected_prefix =
+            dirs::config_dir().expect("dirs::config_dir() should succeed on macOS");
         assert!(
-            path_str.contains("Library/Application Support"),
-            "macOS credentials path should use ~/Library/Application Support, got: {}",
-            path_str
+            path.starts_with(&expected_prefix),
+            "macOS credentials path should start with {}, got: {}",
+            expected_prefix.display(),
+            path.display()
         );
         assert!(
-            !path_str.contains(".config"),
-            "macOS credentials path must not use ~/.config, got: {}",
-            path_str
+            path.to_string_lossy()
+                .contains("Library/Application Support"),
+            "macOS credentials path should use ~/Library/Application Support, got: {}",
+            path.display()
         );
     }
 }
