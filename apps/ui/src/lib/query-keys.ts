@@ -19,10 +19,10 @@ export const queryKeys = {
     detail: (agentId: string) => ["agent", agentId] as const,
   },
 
-  // Agent template queries
-  agentTemplates: {
-    all: ["agent-templates"] as const,
-    list: () => ["agent-templates"] as const,
+  // Agent example queries
+  agentExamples: {
+    all: ["agent-examples"] as const,
+    list: () => ["agent-examples"] as const,
   },
 
   // Harness queries

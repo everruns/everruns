@@ -4,44 +4,44 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Download } from "lucide-react";
-import type { AgentTemplate, Capability, CapabilityId } from "@/lib/api/types";
+import { Plus } from "lucide-react";
+import type { AgentExample, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 
-interface TemplateCardProps {
-  template: AgentTemplate;
+interface ExampleCardProps {
+  example: AgentExample;
   allCapabilities?: Capability[];
-  onInstall: (slug: string) => void;
-  installing?: boolean;
+  onUse: (slug: string) => void;
+  adopting?: boolean;
 }
 
-export function TemplateCard({
-  template,
+export function ExampleCard({
+  example,
   allCapabilities,
-  onInstall,
-  installing = false,
-}: TemplateCardProps) {
+  onUse,
+  adopting = false,
+}: ExampleCardProps) {
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
 
   return (
     <Card className="bg-background transition-colors hover:bg-card">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <CardTitle className="text-lg">{template.name}</CardTitle>
-        {template.dev_only && (
+        <CardTitle className="text-lg">{example.name}</CardTitle>
+        {example.dev_only && (
           <Badge variant="outline" className="text-xs">
             dev
           </Badge>
         )}
       </CardHeader>
       <CardContent>
-        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{template.description}</p>
+        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{example.description}</p>
 
         {/* Capabilities display */}
-        {template.capabilities.length > 0 && (
+        {example.capabilities.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
             <TooltipProvider>
-              {template.capabilities.map((capConfig) => {
+              {example.capabilities.map((capConfig) => {
                 const cap = getCapabilityInfo(capConfig.ref);
                 if (!cap) return null;
                 const IconComponent = getCapabilityIcon(cap.icon);
@@ -64,9 +64,9 @@ export function TemplateCard({
         )}
 
         {/* Tags */}
-        {template.tags.length > 0 && (
+        {example.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
-            {template.tags.map((tag) => (
+            {example.tags.map((tag) => (
               <Badge key={tag} variant="outline" className="text-xs">
                 {tag}
               </Badge>
@@ -74,16 +74,16 @@ export function TemplateCard({
           </div>
         )}
 
-        {/* Install button */}
+        {/* Use button */}
         <div className="flex items-center justify-end">
           <Button
             variant="accent"
             size="sm"
-            onClick={() => onInstall(template.slug)}
-            disabled={installing}
+            onClick={() => onUse(example.slug)}
+            disabled={adopting}
           >
-            <Download className="w-4 h-4 mr-2" />
-            {installing ? "Installing..." : "Install"}
+            <Plus className="w-4 h-4 mr-2" />
+            {adopting ? "Adding..." : "Use"}
           </Button>
         </div>
       </CardContent>

@@ -1,14 +1,14 @@
-// Agent Templates API — read-only templates installable as real Agents
+// Agent Examples API — read-only examples adoptable as real Agents
 
 import { api } from "./client";
-import type { Agent, AgentTemplate } from "./types";
+import type { Agent, AgentExample } from "./types";
 
-export async function listAgentTemplates(): Promise<AgentTemplate[]> {
-  const response = await api.get<AgentTemplate[]>("/v1/agent-templates");
+export async function listAgentExamples(): Promise<AgentExample[]> {
+  const response = await api.get<AgentExample[]>("/v1/agent-examples");
   return response.data;
 }
 
-export async function installAgentTemplate(slug: string): Promise<Agent> {
-  const response = await api.post<Agent>(`/v1/agent-templates/${slug}/install`);
+export async function adoptAgentExample(slug: string): Promise<Agent> {
+  const response = await api.post<Agent>(`/v1/agent-examples/${slug}/use`);
   return response.data;
 }

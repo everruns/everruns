@@ -73,8 +73,8 @@ export interface UpdateAgentRequest {
   tools?: ToolDefinition[];
 }
 
-/** Read-only agent template defined in code, installable as a real Agent */
-export interface AgentTemplate {
+/** Read-only agent example defined in code, adoptable as a real Agent */
+export interface AgentExample {
   slug: string;
   name: string;
   description: string;

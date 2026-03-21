@@ -1,18 +1,18 @@
-// Agent template hooks
+// Agent example hooks
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listAgentTemplates, installAgentTemplate } from "@/lib/api/agent-templates";
+import { listAgentExamples, adoptAgentExample } from "@/lib/api/agent-templates";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 
-export function useAgentTemplates() {
+export function useAgentExamples() {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: [...queryKeys.agentTemplates.list(), org],
-    queryFn: () => listAgentTemplates(),
+    queryKey: [...queryKeys.agentExamples.list(), org],
+    queryFn: () => listAgentExamples(),
     enabled: !!org,
   });
 
@@ -22,11 +22,11 @@ export function useAgentTemplates() {
   };
 }
 
-export function useInstallAgentTemplate() {
+export function useAdoptAgentExample() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (slug: string) => installAgentTemplate(slug),
+    mutationFn: (slug: string) => adoptAgentExample(slug),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },

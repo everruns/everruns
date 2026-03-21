@@ -1,19 +1,20 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useMemo } from "react";
 import {
   useAgents,
-  useAgentTemplates,
-  useInstallAgentTemplate,
+  useAgentExamples,
+  useAdoptAgentExample,
   useCapabilities,
   useImportAgent,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Plus, Upload } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, Upload, Search } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import { AgentCard, TemplateCard } from "@/components/agents";
+import { AgentCard, ExampleCard } from "@/components/agents";
 import { ArchiveFilter } from "@/components/archive-filter";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
@@ -21,18 +22,19 @@ export default function AgentsPage() {
   const router = useRouter();
   const [tab, setTab] = useState("agents");
   const [showArchived, setShowArchived] = useState(false);
+  const [exampleSearch, setExampleSearch] = useState("");
   const { data: agents, isLoading, error } = useAgents({ includeArchived: showArchived });
   const { data: allCapabilities } = useCapabilities();
   const {
-    data: templates,
-    isLoading: templatesLoading,
-    error: templatesError,
-  } = useAgentTemplates();
+    data: examples,
+    isLoading: examplesLoading,
+    error: examplesError,
+  } = useAgentExamples();
   const importAgent = useImportAgent();
-  const installTemplate = useInstallAgentTemplate();
+  const adoptExample = useAdoptAgentExample();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
-  const [installingSlug, setInstallingSlug] = useState<string | null>(null);
+  const [adoptingSlug, setAdoptingSlug] = useState<string | null>(null);
 
   const handleImportClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -62,20 +64,31 @@ export default function AgentsPage() {
     [importAgent, router],
   );
 
-  const handleInstall = useCallback(
+  const handleUse = useCallback(
     async (slug: string) => {
-      setInstallingSlug(slug);
+      setAdoptingSlug(slug);
       try {
-        const agent = await installTemplate.mutateAsync(slug);
+        const agent = await adoptExample.mutateAsync(slug);
         router.push(`/agents/${agent.id}`);
       } catch (err) {
-        console.error("Failed to install template:", err);
+        console.error("Failed to use example:", err);
       } finally {
-        setInstallingSlug(null);
+        setAdoptingSlug(null);
       }
     },
-    [installTemplate, router],
+    [adoptExample, router],
   );
+
+  const filteredExamples = useMemo(() => {
+    if (!examples || !exampleSearch.trim()) return examples;
+    const query = exampleSearch.toLowerCase();
+    return examples.filter(
+      (ex) =>
+        ex.name.toLowerCase().includes(query) ||
+        ex.description.toLowerCase().includes(query) ||
+        ex.tags.some((tag) => tag.toLowerCase().includes(query)),
+    );
+  }, [examples, exampleSearch]);
 
   return (
     <div className="container mx-auto p-6">
@@ -108,6 +121,17 @@ export default function AgentsPage() {
               </Link>
             </>
           )}
+          {tab === "examples" && (
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search examples..."
+                value={exampleSearch}
+                onChange={(e) => setExampleSearch(e.target.value)}
+                className="pl-8 w-64"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -120,7 +144,7 @@ export default function AgentsPage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="agents">Agents</TabsTrigger>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
+          <TabsTrigger value="examples">Examples</TabsTrigger>
         </TabsList>
 
         <TabsContent value="agents">
@@ -139,8 +163,8 @@ export default function AgentsPage() {
                       Create your first agent
                     </Button>
                   </Link>
-                  <Button variant="outline" onClick={() => setTab("templates")}>
-                    Browse templates
+                  <Button variant="outline" onClick={() => setTab("examples")}>
+                    Browse examples
                   </Button>
                 </div>
               </div>
@@ -161,27 +185,29 @@ export default function AgentsPage() {
           </QueryStateWrapper>
         </TabsContent>
 
-        <TabsContent value="templates">
+        <TabsContent value="examples">
           <QueryStateWrapper
-            isLoading={templatesLoading}
-            error={templatesError}
-            data={templates}
-            errorMessagePrefix="Failed to load templates"
+            isLoading={examplesLoading}
+            error={examplesError}
+            data={filteredExamples}
+            errorMessagePrefix="Failed to load examples"
             emptyState={
               <div className="text-center py-12">
-                <p className="text-muted-foreground">No templates available</p>
+                <p className="text-muted-foreground">
+                  {exampleSearch.trim() ? "No examples match your search" : "No examples available"}
+                </p>
               </div>
             }
           >
             {(items) => (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {items.map((template) => (
-                  <TemplateCard
-                    key={template.slug}
-                    template={template}
+                {items.map((example) => (
+                  <ExampleCard
+                    key={example.slug}
+                    example={example}
                     allCapabilities={allCapabilities}
-                    onInstall={handleInstall}
-                    installing={installingSlug === template.slug}
+                    onUse={handleUse}
+                    adopting={adoptingSlug === example.slug}
                   />
                 ))}
               </div>

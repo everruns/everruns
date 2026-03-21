@@ -1,8 +1,8 @@
-// Agent Templates API — read-only templates defined in code, installable as real Agents
+// Agent Examples API — read-only examples defined in code, adoptable as real Agents
 //
-// Decision: Templates live in code (SEED_AGENTS), not in DB
-// Decision: "Install" creates a real Agent via the existing create flow
-// Decision: Templates use a slug (kebab-case name) as their identifier
+// Decision: Examples live in code (SEED_AGENTS), not in DB
+// Decision: "Use" creates a real Agent via the existing create flow
+// Decision: Examples use a slug (kebab-case name) as their identifier
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::seed::{SEED_AGENTS, SeedAgent};
@@ -24,9 +24,9 @@ use super::common::{ApiPolicyResultExt, ErrorResponse};
 
 use crate::services::AgentService;
 
-/// A read-only agent template defined in code
+/// A read-only agent example defined in code
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct AgentTemplate {
+pub struct AgentExample {
     /// URL-safe identifier (kebab-case of name)
     pub slug: String,
     /// Display name
@@ -35,9 +35,9 @@ pub struct AgentTemplate {
     pub description: String,
     /// Tags for categorization
     pub tags: Vec<String>,
-    /// Capability IDs this template uses
+    /// Capability IDs this example uses
     pub capabilities: Vec<AgentCapabilityConfig>,
-    /// Whether this template requires dev/experimental mode
+    /// Whether this example requires dev/experimental mode
     pub dev_only: bool,
 }
 
@@ -47,8 +47,8 @@ fn slug_from_name(name: &str) -> String {
         .replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "")
 }
 
-fn seed_to_template(seed: &SeedAgent) -> AgentTemplate {
-    AgentTemplate {
+fn seed_to_example(seed: &SeedAgent) -> AgentExample {
+    AgentExample {
         slug: slug_from_name(seed.name),
         name: seed.name.to_string(),
         description: seed.description.to_string(),
@@ -69,7 +69,7 @@ fn find_seed_by_slug(slug: &str) -> Option<&'static SeedAgent> {
     SEED_AGENTS.iter().find(|s| slug_from_name(s.name) == slug)
 }
 
-/// App state for agent template routes
+/// App state for agent example routes
 #[derive(Clone)]
 pub struct AppState {
     pub agent_service: Arc<AgentService>,
@@ -85,73 +85,73 @@ impl FromRef<AppState> for AuthState {
     }
 }
 
-/// Create agent template routes
+/// Create agent example routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/agent-templates", get(list_templates))
-        .route("/v1/agent-templates/{slug}/install", post(install_template))
+        .route("/v1/agent-examples", get(list_examples))
+        .route("/v1/agent-examples/{slug}/use", post(use_example))
         .with_state(state)
 }
 
-/// GET /v1/agent-templates — list all available templates
+/// GET /v1/agent-examples — list all available examples
 #[utoipa::path(
     get,
-    path = "/v1/agent-templates",
+    path = "/v1/agent-examples",
     responses(
-        (status = 200, description = "List of agent templates", body = Vec<AgentTemplate>),
+        (status = 200, description = "List of agent examples", body = Vec<AgentExample>),
     ),
-    tag = "agent-templates"
+    tag = "agent-examples"
 )]
-pub async fn list_templates(
+pub async fn list_examples(
     _org: ResolvedOrg,
     State(state): State<AppState>,
-) -> Json<Vec<AgentTemplate>> {
+) -> Json<Vec<AgentExample>> {
     let include_dev = state.grade.experimental_features_enabled();
     let platform = &state.platform_definition;
 
-    let templates: Vec<AgentTemplate> = SEED_AGENTS
+    let examples: Vec<AgentExample> = SEED_AGENTS
         .iter()
         .filter(|s| {
             if s.dev_only && !include_dev {
                 return false;
             }
-            // Only show templates whose capabilities are all registered
+            // Only show examples whose capabilities are all registered
             s.capabilities
                 .iter()
                 .all(|cap| platform.capability_registry().has(cap.id))
         })
-        .map(seed_to_template)
+        .map(seed_to_example)
         .collect();
 
-    Json(templates)
+    Json(examples)
 }
 
-/// POST /v1/agent-templates/{slug}/install — create a real Agent from a template
+/// POST /v1/agent-examples/{slug}/use — create a real Agent from an example
 #[utoipa::path(
     post,
-    path = "/v1/agent-templates/{slug}/install",
+    path = "/v1/agent-examples/{slug}/use",
     params(
-        ("slug" = String, Path, description = "Template slug (kebab-case name)")
+        ("slug" = String, Path, description = "Example slug (kebab-case name)")
     ),
     responses(
-        (status = 201, description = "Agent created from template", body = Agent),
-        (status = 404, description = "Template not found"),
+        (status = 201, description = "Agent created from example", body = Agent),
+        (status = 404, description = "Example not found"),
         (status = 403, description = "High-risk capabilities require admin role"),
     ),
-    tag = "agent-templates"
+    tag = "agent-examples"
 )]
-pub async fn install_template(
+pub async fn use_example(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
     let seed = find_seed_by_slug(&slug)
-        .ok_or_else(|| ErrorResponse::not_found(&format!("agent template '{slug}'")))?;
+        .ok_or_else(|| ErrorResponse::not_found(&format!("agent example '{slug}'")))?;
 
     // Check dev-only
     if seed.dev_only && !state.grade.experimental_features_enabled() {
         return Err(ErrorResponse::not_found(&format!(
-            "agent template '{slug}'"
+            "agent example '{slug}'"
         )));
     }
 
@@ -166,7 +166,7 @@ pub async fn install_template(
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
-                error: format!("Template requires unregistered capabilities: {missing:?}"),
+                error: format!("Example requires unregistered capabilities: {missing:?}"),
             }),
         ));
     }
@@ -200,7 +200,7 @@ pub async fn install_template(
         .agent_service
         .create(&caller, None, req)
         .await
-        .map_policy_or_internal("install agent template")?;
+        .map_policy_or_internal("use agent example")?;
 
     Ok((StatusCode::CREATED, Json(agent)))
 }
@@ -225,7 +225,7 @@ mod tests {
         let mut unique = slugs.clone();
         unique.sort();
         unique.dedup();
-        assert_eq!(slugs.len(), unique.len(), "Duplicate template slugs");
+        assert_eq!(slugs.len(), unique.len(), "Duplicate example slugs");
     }
 
     #[test]
