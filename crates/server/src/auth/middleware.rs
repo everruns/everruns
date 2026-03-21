@@ -733,9 +733,13 @@ mod tests {
     }
 
     fn make_auth_state(backend: Arc<MockBackend>) -> AuthState {
-        let mut config = AuthConfig::default();
-        config.mode = AuthMode::Full;
-        AuthState::new(config, backend)
+        AuthState::new(
+            AuthConfig {
+                mode: AuthMode::Full,
+                ..AuthConfig::default()
+            },
+            backend,
+        )
     }
 
     async fn call_extract(auth_header: &str) -> (u32, u32) {
