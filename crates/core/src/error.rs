@@ -1,7 +1,7 @@
 // Error types for the agent loop
 //
-// StoreResultExt: extension trait to replace 912+ .map_err(|e| AgentLoopError::store(...))? sites
-// json_val / from_json: helpers to replace 137 serde_json::to_value/from_value boilerplate
+// StoreResultExt: extension trait to replace repeated .map_err(|e| AgentLoopError::store(...))? patterns
+// json_val / from_json: helpers to replace repeated serde_json::to_value/from_value boilerplate
 
 use crate::typed_id::{AgentId, HarnessId, SessionId};
 use serde::{Serialize, de::DeserializeOwned};
