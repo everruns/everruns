@@ -86,7 +86,13 @@ fn grpc_missing_field(field: &str) -> AgentLoopError {
 /// Used when the control plane returns presigned URLs instead of inline base64 data,
 /// keeping gRPC messages small while still providing base64 data to LLM providers.
 async fn fetch_image_from_url(url: &str, media_type: &str) -> Result<ResolvedImage> {
-    let response = reqwest::get(url).await.map_err(|e| {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| AgentLoopError::store(format!("Failed to build HTTP client: {e}")))?;
+
+    let response = client.get(url).send().await.map_err(|e| {
         AgentLoopError::store(format!("Failed to fetch image from presigned URL: {e}"))
     })?;
 

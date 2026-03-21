@@ -637,11 +637,20 @@ impl ServerAppBuilder {
             .merge(schedules_state)
             .merge(api::images::routes(images_state))
             .merge({
-                let signing_secret = std::env::var("WORKER_GRPC_AUTH_TOKEN").unwrap_or_default();
-                api::internal_images::routes(api::internal_images::AppState {
-                    db: db.clone(),
-                    signing_secret,
-                })
+                // Only mount presigned image routes when WORKER_GRPC_AUTH_TOKEN is set.
+                // Without a signing secret, presigned URLs would be trivially forgeable.
+                match std::env::var("WORKER_GRPC_AUTH_TOKEN")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                {
+                    Some(signing_secret) => {
+                        api::internal_images::routes(api::internal_images::AppState {
+                            db: db.clone(),
+                            signing_secret,
+                        })
+                    }
+                    None => Router::new(),
+                }
             })
             .merge(api::skills::routes(skills_state))
             .merge(api::organizations::routes(organizations_state))

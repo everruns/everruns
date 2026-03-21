@@ -1778,9 +1778,9 @@ impl WorkerService for WorkerServiceImpl {
 
         // Prefer presigned URL to avoid sending image data over gRPC
         if let Some(url) = self.presigned_image_url(image_id, req.org_id) {
-            // Still need media_type for LLM provider formatting — look up metadata only
-            let media_type = match self.db.get_image(req.org_id, image_id).await {
-                Ok(Some(row)) => row.content_type,
+            // Metadata-only lookup — avoids loading the full image blob
+            let media_type = match self.db.get_image_info(req.org_id, image_id).await {
+                Ok(Some(info)) => info.content_type,
                 Ok(None) => {
                     return Ok(Response::new(ResolveImageResponse {
                         found: false,
@@ -1846,10 +1846,10 @@ impl WorkerService for WorkerServiceImpl {
         for proto_id in req.image_ids {
             let image_id = parse_uuid(Some(&proto_id))?;
 
-            match self.db.get_image(req.org_id, image_id).await {
-                Ok(Some(row)) => {
-                    if use_presigned {
-                        // Return presigned URL — no image data over gRPC
+            if use_presigned {
+                // Metadata-only lookup — avoids loading the full image blob
+                match self.db.get_image_info(req.org_id, image_id).await {
+                    Ok(Some(info)) => {
                         let url = self
                             .presigned_image_url(image_id, req.org_id)
                             .unwrap_or_default();
@@ -1857,12 +1857,22 @@ impl WorkerService for WorkerServiceImpl {
                             image_id.to_string(),
                             ResolvedImageData {
                                 base64: String::new(),
-                                media_type: row.content_type,
+                                media_type: info.content_type,
                                 url,
                             },
                         );
-                    } else {
-                        // Fallback: base64 over gRPC
+                    }
+                    Ok(None) => {
+                        tracing::debug!(%image_id, "Image not found during batch resolution");
+                    }
+                    Err(e) => {
+                        tracing::warn!(%image_id, error = %e, "Failed to get image during batch resolution");
+                    }
+                }
+            } else {
+                // Fallback: base64 over gRPC
+                match self.db.get_image(req.org_id, image_id).await {
+                    Ok(Some(row)) => {
                         let base64_data =
                             base64::engine::general_purpose::STANDARD.encode(&row.data);
                         images.insert(
@@ -1874,12 +1884,12 @@ impl WorkerService for WorkerServiceImpl {
                             },
                         );
                     }
-                }
-                Ok(None) => {
-                    tracing::debug!(%image_id, "Image not found during batch resolution");
-                }
-                Err(e) => {
-                    tracing::warn!(%image_id, error = %e, "Failed to get image during batch resolution");
+                    Ok(None) => {
+                        tracing::debug!(%image_id, "Image not found during batch resolution");
+                    }
+                    Err(e) => {
+                        tracing::warn!(%image_id, error = %e, "Failed to get image during batch resolution");
+                    }
                 }
             }
         }
