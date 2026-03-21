@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AgentSelect } from "@/components/agent/agent-select";
+import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-select";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import {
   Dialog,
@@ -78,6 +79,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const [editDescription, setEditDescription] = useState("");
   const [editAgentId, setEditAgentId] = useState("");
   const [editHarnessId, setEditHarnessId] = useState("");
+  const [editAgentIdentityId, setEditAgentIdentityId] = useState("");
 
   // Slack config edit state
   const [editSigningSecret, setEditSigningSecret] = useState("");
@@ -126,6 +128,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditDescription(app.description ?? "");
     setEditAgentId(app.agent_id);
     setEditHarnessId(app.harness_id);
+    setEditAgentIdentityId(app.agent_identity_id ?? "");
     setEditingBasic(true);
   };
 
@@ -137,6 +140,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         name: editName,
         description: editDescription || undefined,
         agent_id: editAgentId,
+        agent_identity_id: editAgentIdentityId || null,
         harness_id: editHarnessId,
       },
     });
@@ -629,6 +633,14 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                   <div>
                     <Label>Agent</Label>
                     <AgentSelect value={editAgentId} onValueChange={setEditAgentId} />
+                  </div>
+
+                  <div>
+                    <Label>Agent identity</Label>
+                    <AgentIdentitySelect
+                      value={editAgentIdentityId}
+                      onValueChange={setEditAgentIdentityId}
+                    />
                   </div>
 
                   <div className="flex gap-2">

@@ -19,3 +19,4 @@ export * from "./use-mount-effect";
 export * from "./use-scroll-manager";
 export * from "./use-image-drop-zone";
 export * from "./use-chat-model-selection";
+export * from "./use-agent-identities";

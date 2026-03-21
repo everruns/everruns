@@ -12,7 +12,17 @@ import { ArrowLeft, CircleOff, Wrench, FileText, Code, Link as LinkIcon } from "
 import { CopyButton } from "@/components/ui/copy-button";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
-import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
+
+function getStatusBadgeVariant(status: CapabilityStatus): "default" | "secondary" | "outline" {
+  switch (status) {
+    case "available":
+      return "default";
+    case "coming_soon":
+      return "secondary";
+    case "deprecated":
+      return "outline";
+  }
+}
 
 function getStatusLabel(status: CapabilityStatus): string {
   switch (status) {
@@ -123,7 +133,7 @@ export default function CapabilityDetailPage({
             <h1 className="text-2xl font-bold flex items-center gap-3">
               {capability.name}
               <CopyButton value={capability.id} />
-              <Badge variant={getCapabilityStatusBadgeVariant(capability.status)}>
+              <Badge variant={getStatusBadgeVariant(capability.status)}>
                 {getStatusLabel(capability.status)}
               </Badge>
             </h1>
@@ -196,10 +206,7 @@ export default function CapabilityDetailPage({
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm font-medium">Status</p>
-                <Badge
-                  variant={getCapabilityStatusBadgeVariant(capability.status)}
-                  className="mt-1"
-                >
+                <Badge variant={getStatusBadgeVariant(capability.status)} className="mt-1">
                   {getStatusLabel(capability.status)}
                 </Badge>
               </div>

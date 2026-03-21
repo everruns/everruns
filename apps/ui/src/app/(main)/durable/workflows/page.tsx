@@ -41,10 +41,32 @@ import {
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { CopyButton } from "@/components/ui/copy-button";
-import { formatDistanceToNow } from "@/lib/formatting";
-import { getWorkflowStatusBadgeVariant } from "@/lib/status-utils";
 
 type TabValue = "workflows" | "tasks" | "dlq";
+
+function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean }): string {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const future = diff < 0;
+  const seconds = Math.floor(Math.abs(diff) / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  let result = "";
+  if (days > 0) {
+    result = `${days} day${days > 1 ? "s" : ""}`;
+  } else if (hours > 0) {
+    result = `${hours} hour${hours > 1 ? "s" : ""}`;
+  } else if (minutes > 0) {
+    result = `${minutes} minute${minutes > 1 ? "s" : ""}`;
+  } else {
+    result = "less than a minute";
+  }
+
+  if (!options?.addSuffix) return result;
+  return future ? `in ${result}` : `${result} ago`;
+}
 
 function getStatusIcon(status: WorkflowStatus) {
   switch (status) {
@@ -58,6 +80,22 @@ function getStatusIcon(status: WorkflowStatus) {
       return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
     default:
       return <Clock className="h-4 w-4 text-gray-500" />;
+  }
+}
+
+function getStatusBadgeVariant(status: WorkflowStatus) {
+  switch (status) {
+    case "completed":
+      return "default" as const;
+    case "running":
+      return "secondary" as const;
+    case "failed":
+      return "destructive" as const;
+    case "cancelled":
+    case "pending":
+      return "outline" as const;
+    default:
+      return "outline" as const;
   }
 }
 
@@ -78,7 +116,7 @@ function WorkflowRow({
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant={getWorkflowStatusBadgeVariant(workflow.status)}>{workflow.status}</Badge>
+        <Badge variant={getStatusBadgeVariant(workflow.status)}>{workflow.status}</Badge>
       </TableCell>
       <TableCell>
         <TooltipProvider>

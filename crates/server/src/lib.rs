@@ -38,6 +38,7 @@ pub use platform::{
 
 // Direct worker adapters for in-process task worker
 pub mod direct_worker_adapters;
+pub mod execution_metadata;
 pub use direct_worker_adapters::DirectWorkerAdapters;
 
 // Task notification broadcaster for push-based notifications

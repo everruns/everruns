@@ -8,6 +8,7 @@
 use super::EventService;
 use super::NotificationService;
 use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
+use crate::execution_metadata;
 use crate::storage::StorageBackend;
 use anyhow::Result;
 use chrono::Utc;
@@ -26,6 +27,15 @@ pub struct MessageService {
     notification_service: NotificationService,
     notifications_enabled: bool,
     runner: Arc<dyn AgentRunner>,
+}
+
+pub struct CreateMessageContext {
+    pub org_id: i64,
+    pub user_id: Option<Uuid>,
+    pub harness_id: Uuid,
+    pub agent_id: Option<Uuid>,
+    pub session_id: Uuid,
+    pub event_metadata: Option<serde_json::Value>,
 }
 
 impl MessageService {
@@ -52,17 +62,13 @@ impl MessageService {
     /// - Triggers workflow execution for the session
     pub async fn create(
         &self,
-        org_id: i64,
-        user_id: Option<Uuid>,
-        harness_id: Uuid,
-        agent_id: Option<Uuid>,
-        session_id: Uuid,
+        ctx: CreateMessageContext,
         req: CreateMessageRequest,
     ) -> Result<Message> {
         tracing::info!(
-            session_id = %session_id,
-            harness_id = %harness_id,
-            agent_id = ?agent_id,
+            session_id = %ctx.session_id,
+            harness_id = %ctx.harness_id,
+            agent_id = ?ctx.agent_id,
             "Creating user message"
         );
 
@@ -93,20 +99,24 @@ impl MessageService {
         };
 
         // Convert to typed IDs for emit/runner
-        let session_id_typed = SessionId::from_uuid(session_id);
-        let harness_id_typed = HarnessId::from_uuid(harness_id);
-        let agent_id_typed = agent_id.map(AgentId::from_uuid);
+        let session_id_typed = SessionId::from_uuid(ctx.session_id);
+        let harness_id_typed = HarnessId::from_uuid(ctx.harness_id);
+        let agent_id_typed = ctx.agent_id.map(AgentId::from_uuid);
         let message_id_typed = MessageId::from_uuid(message_id);
 
         // Emit as typed event using EventService
-        let stored_event = self
-            .event_service
-            .emit(EventRequest::new(
-                session_id_typed,
-                EventContext::empty(),
-                InputMessageData::new(core_message),
-            ))
-            .await?;
+        let event_metadata = ctx
+            .event_metadata
+            .or_else(|| execution_metadata::interactive_user_metadata(ctx.user_id));
+        let mut event_request = EventRequest::new(
+            session_id_typed,
+            EventContext::empty(),
+            InputMessageData::new(core_message),
+        );
+        if let Some(metadata) = event_metadata {
+            event_request = event_request.with_metadata(metadata);
+        }
+        let stored_event = self.event_service.emit(event_request).await?;
 
         // Construct API Message
         let message = Message {
@@ -122,10 +132,10 @@ impl MessageService {
         };
 
         if self.notifications_enabled
-            && let Some(user_id) = user_id
+            && let Some(user_id) = ctx.user_id
         {
             self.notification_service
-                .create_turn_request(org_id, user_id, session_id_typed, message_id_typed)
+                .create_turn_request(ctx.org_id, user_id, session_id_typed, message_id_typed)
                 .await?;
         }
 
@@ -135,7 +145,7 @@ impl MessageService {
         tokio::spawn(async move {
             if let Err(e) = runner
                 .start_run(
-                    org_id,
+                    ctx.org_id,
                     session_id_typed,
                     harness_id_typed,
                     agent_id_typed,
@@ -144,14 +154,14 @@ impl MessageService {
                 .await
             {
                 tracing::error!(
-                    session_id = %session_id,
+                    session_id = %ctx.session_id,
                     input_message_id = %message_id,
                     error = %e,
                     "Failed to start turn workflow"
                 );
             } else {
                 tracing::info!(
-                    session_id = %session_id,
+                    session_id = %ctx.session_id,
                     input_message_id = %message_id,
                     "Turn workflow started"
                 );

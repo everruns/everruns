@@ -15,7 +15,9 @@ use axum::{
 };
 use everruns_core::capability_types::AgentCapabilityConfig;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId, TurnId};
+use everruns_core::typed_id::{
+    AgentId, AgentIdentityId, HarnessId, MessageId, ModelId, SessionId, TurnId,
+};
 use everruns_core::{
     BuiltInHarnessRole, Caller, Message, PlatformDefinition, ResourceConfigResponse, Session,
     evaluate_policies_with,
@@ -24,9 +26,10 @@ use everruns_worker::AgentRunner;
 
 use super::common::{
     ApiOptionExt, ApiPolicyResultExt, ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse,
-    Pagination, impl_auth_state,
+    Pagination, deserialize_nullable_update_field, impl_auth_state,
 };
 use super::validation::normalize_locale;
+use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -43,6 +46,10 @@ pub struct CreateSessionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
+    /// Optional resident agent identity used for unattended/background execution.
+    #[serde(default)]
+    #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
+    pub agent_identity_id: Option<AgentIdentityId>,
     /// Human-readable title for the session.
     #[serde(default)]
     #[schema(example = "Debug login issue")]
@@ -106,6 +113,14 @@ pub struct UpdateSessionRequest {
     #[serde(default)]
     #[schema(example = "Updated session title")]
     pub title: Option<String>,
+    /// Optional resident agent identity used for unattended/background execution.
+    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[schema(
+        value_type = Option<String>,
+        example = "identity_01933b5a00007000800000000000001",
+        nullable = true
+    )]
+    pub agent_identity_id: UpdateField<AgentIdentityId>,
     /// Session locale (BCP 47, e.g. `uk-UA`).
     #[serde(default)]
     #[schema(example = "uk-UA")]
@@ -966,8 +981,23 @@ mod tests {
         let json = r#"{}"#;
         let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.title, None);
+        assert_eq!(req.agent_identity_id, UpdateField::Unchanged);
         assert_eq!(req.locale, None);
         assert_eq!(req.tags, None);
+    }
+
+    #[test]
+    fn test_update_session_request_clears_agent_identity_when_null() {
+        let json = r#"{"agent_identity_id":null}"#;
+        let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.agent_identity_id, UpdateField::Clear);
+    }
+
+    #[test]
+    fn test_update_session_request_sets_agent_identity_when_present() {
+        let json = r#"{"agent_identity_id":"identity_550e8400e29b41d4a716446655440000"}"#;
+        let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
+        assert!(matches!(req.agent_identity_id, UpdateField::Set(_)));
     }
 
     #[test]

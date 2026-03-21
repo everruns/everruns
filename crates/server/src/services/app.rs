@@ -9,7 +9,7 @@ use crate::storage::{
 };
 use anyhow::Result;
 use chrono::Utc;
-use everruns_core::typed_id::{AgentId, HarnessId};
+use everruns_core::typed_id::{AgentId, AgentIdentityId, HarnessId};
 use everruns_core::{App, AppId, AppStatus, Caller, ChannelType, Permission, Policy, Rule};
 use everruns_durable::UpdateField;
 use everruns_macros::policy;
@@ -124,6 +124,19 @@ impl AppService {
         if agent_row.status != "active" {
             anyhow::bail!("Archived or deleted agents cannot be assigned");
         }
+        let agent_identity_id = if let Some(identity_id) = req.agent_identity_id {
+            let identity = self
+                .db
+                .get_agent_identity(caller.org_id, identity_id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Agent identity not found"))?;
+            if identity.status != "active" {
+                anyhow::bail!("Archived or deleted agent identities cannot be assigned");
+            }
+            Some(identity.id.uuid())
+        } else {
+            None
+        };
 
         let channel_config = req.channel_config.unwrap_or_default();
         let channel_config_encrypted = self.encrypt_channel_config(&channel_config)?;
@@ -142,6 +155,7 @@ impl AppService {
             description: req.description,
             harness_id: harness_row.id.uuid(),
             agent_id: agent_row.id.uuid(),
+            agent_identity_id,
             channel_type: req.channel_type.to_string(),
             channel_config: stored_plaintext,
             channel_config_encrypted,
@@ -270,11 +284,28 @@ impl AppService {
             (None, None)
         };
 
+        let agent_identity_id = match req.agent_identity_id {
+            UpdateField::Set(identity_id) => {
+                let identity = self
+                    .db
+                    .get_agent_identity(caller.org_id, identity_id)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("Agent identity not found"))?;
+                if identity.status != "active" {
+                    anyhow::bail!("Archived or deleted agent identities cannot be assigned");
+                }
+                UpdateField::Set(identity.id.uuid())
+            }
+            UpdateField::Clear => UpdateField::Clear,
+            UpdateField::Unchanged => UpdateField::Unchanged,
+        };
+
         let input = UpdateApp {
             name: req.name,
             description: req.description,
             harness_id,
             agent_id,
+            agent_identity_id,
             channel_type: req.channel_type.map(|ct| ct.to_string()),
             channel_config,
             channel_config_encrypted,
@@ -397,6 +428,7 @@ impl AppService {
             description: row.description,
             harness_id,
             agent_id,
+            agent_identity_id: row.agent_identity_id.map(AgentIdentityId::from_uuid),
             channel_type: ChannelType::from_str_opt(&row.channel_type)
                 .unwrap_or(ChannelType::Slack),
             channel_config: self.decrypt_channel_config(

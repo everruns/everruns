@@ -15,7 +15,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::typed_id::{AgentId, AppId, HarnessId};
+use crate::typed_id::{AgentId, AgentIdentityId, AppId, HarnessId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -108,6 +108,10 @@ pub struct App {
     /// ID of the agent to use (format: agent_{32-hex}).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agent_01933b5a00007000800000000000001"))]
     pub agent_id: AgentId,
+    /// Optional virtual identity that represents the app in unattended/channel execution.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001"))]
+    pub agent_identity_id: Option<AgentIdentityId>,
     /// Distribution channel type.
     pub channel_type: ChannelType,
     /// Channel-specific configuration (validated per channel type).
@@ -356,6 +360,7 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_uuid(Uuid::nil()),
             agent_id: AgentId::from_uuid(Uuid::nil()),
+            agent_identity_id: None,
             channel_type: ChannelType::Slack,
             channel_config: config_json,
             status: AppStatus::Draft,
@@ -379,6 +384,7 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_uuid(Uuid::nil()),
             agent_id: AgentId::from_uuid(Uuid::nil()),
+            agent_identity_id: None,
             channel_type: ChannelType::Slack,
             channel_config: serde_json::json!({"bad": "data"}),
             status: AppStatus::Draft,
@@ -401,6 +407,7 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_uuid(Uuid::nil()),
             agent_id: AgentId::from_uuid(Uuid::nil()),
+            agent_identity_id: None,
             channel_type: ChannelType::Slack,
             channel_config: serde_json::json!({}),
             status: AppStatus::Draft,

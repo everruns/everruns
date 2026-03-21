@@ -1,6 +1,7 @@
 // Repository layer for database operations
 // Decision: PostgreSQL-backed, split into per-entity modules (EVE-100).
 
+mod agent_identities;
 mod agents;
 mod apps;
 mod audit_logs;

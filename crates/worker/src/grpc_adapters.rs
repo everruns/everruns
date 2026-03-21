@@ -781,6 +781,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         id: id.into(),
         organization_id: proto_session.organization_id,
         agent_id: agent_id.map(|u| u.into()),
+        agent_identity_id: None,
         harness_id: harness_id.into(),
         title: non_empty_string(proto_session.title),
         locale: non_empty_string(proto_session.locale),

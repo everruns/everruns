@@ -7,7 +7,11 @@
 use axum::Json;
 use axum::http::StatusCode;
 use everruns_core::typed_id::SessionId;
-use serde::{Deserialize, Serialize};
+use everruns_durable::UpdateField;
+use serde::{
+    Deserialize, Deserializer, Serialize,
+    de::{DeserializeOwned, Error as DeError},
+};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -225,6 +229,24 @@ impl<T> ApiOptionExt<T> for Option<T> {
 
     fn ok_or_not_found_json(self, resource: &str) -> Result<T, (StatusCode, Json<ErrorResponse>)> {
         self.ok_or_else(|| ErrorResponse::not_found(resource))
+    }
+}
+
+/// Deserialize PATCH-style nullable fields into explicit tri-state semantics.
+pub fn deserialize_nullable_update_field<'de, D, T>(
+    deserializer: D,
+) -> Result<UpdateField<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    if value.is_null() {
+        Ok(UpdateField::Clear)
+    } else {
+        serde_json::from_value(value)
+            .map(UpdateField::Set)
+            .map_err(D::Error::custom)
     }
 }
 

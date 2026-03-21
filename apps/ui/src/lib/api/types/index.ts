@@ -4,6 +4,7 @@
 
 export * from "./common-types";
 export * from "./agent-types";
+export * from "./agent-identity-types";
 export * from "./session-types";
 export * from "./message-types";
 export * from "./event-types";

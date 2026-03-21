@@ -32,8 +32,30 @@ import {
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import Link from "next/link";
-import { formatDistanceToNow } from "@/lib/formatting";
-import { getWorkflowStatusBadgeVariant } from "@/lib/status-utils";
+
+function formatDistanceToNow(date: Date, options?: { addSuffix?: boolean }): string {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const future = diff < 0;
+  const seconds = Math.floor(Math.abs(diff) / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  let result = "";
+  if (days > 0) {
+    result = `${days} day${days > 1 ? "s" : ""}`;
+  } else if (hours > 0) {
+    result = `${hours} hour${hours > 1 ? "s" : ""}`;
+  } else if (minutes > 0) {
+    result = `${minutes} minute${minutes > 1 ? "s" : ""}`;
+  } else {
+    result = "less than a minute";
+  }
+
+  if (!options?.addSuffix) return result;
+  return future ? `in ${result}` : `${result} ago`;
+}
 
 function getStatusIcon(status: WorkflowStatus, size: "sm" | "lg" = "sm") {
   const sizeClass = size === "lg" ? "h-6 w-6" : "h-4 w-4";
@@ -48,6 +70,22 @@ function getStatusIcon(status: WorkflowStatus, size: "sm" | "lg" = "sm") {
       return <AlertTriangle className={`${sizeClass} text-yellow-500`} />;
     default:
       return <Clock className={`${sizeClass} text-gray-500`} />;
+  }
+}
+
+function getStatusBadgeVariant(status: WorkflowStatus) {
+  switch (status) {
+    case "completed":
+      return "default" as const;
+    case "running":
+      return "secondary" as const;
+    case "failed":
+      return "destructive" as const;
+    case "cancelled":
+    case "pending":
+      return "outline" as const;
+    default:
+      return "outline" as const;
   }
 }
 
@@ -239,10 +277,7 @@ export default function WorkflowDetailPage({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge
-              variant={getWorkflowStatusBadgeVariant(workflow.status)}
-              className="text-lg px-3 py-1"
-            >
+            <Badge variant={getStatusBadgeVariant(workflow.status)} className="text-lg px-3 py-1">
               {workflow.status}
             </Badge>
             {workflow.status === "running" && (

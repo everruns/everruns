@@ -3,12 +3,8 @@
 import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight, Terminal } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
-import { useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
-
-// Re-export from centralized registry for backward-compatible imports.
-export { isBashTool } from "@/lib/tool-registry";
 
 interface BashToolCallCardProps {
   toolCall: ToolCallContent;
@@ -123,7 +119,6 @@ export function BashToolResultDetails({
  * Output separates stdout/stderr with visual distinction.
  */
 export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps) {
-  const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const command = toolCall.arguments.command as string | undefined;
@@ -143,9 +138,7 @@ export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps
     : fullText.length > 0;
   const exitedWithError = bashOutput ? !bashOutput.success : hasError;
   const exitCodeLabel =
-    bashOutput && bashOutput.exit_code !== 0
-      ? t("exit_code", { value: bashOutput.exit_code })
-      : null;
+    bashOutput && bashOutput.exit_code !== 0 ? `exit ${bashOutput.exit_code}` : null;
 
   // Status icon
   const statusIcon = isComplete ? (
@@ -211,9 +204,7 @@ export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps
 
       {/* Tool-level error (not bash stderr) */}
       {hasError && !bashOutput && (
-        <div className="text-red-600 ml-[22px] mt-0.5 text-[10px]">
-          {t("error_prefix", { value: toolResult?.error ?? "" })}
-        </div>
+        <div className="text-red-600 ml-[22px] mt-0.5 text-[10px]">Error: {toolResult?.error}</div>
       )}
 
       {/* Expanded output */}
@@ -226,4 +217,9 @@ export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps
   );
 }
 
-// isBashTool is re-exported from @/lib/tool-registry at the top of this file.
+/**
+ * Check if a tool name is the bash/shell tool.
+ */
+export function isBashTool(toolName: string): boolean {
+  return toolName === "bash" || toolName === "shell" || toolName === "execute_bash";
+}
