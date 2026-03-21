@@ -3,6 +3,8 @@
 /** MCP Server transport type */
 export type McpServerTransportType = "http";
 
+/** MCP Server auth mode */
+export type McpServerAuthMode = "none" | "api_key" | "oauth";
 /** MCP Server status */
 export type McpServerStatus = "active" | "disabled" | "archived" | "deleted";
 
@@ -14,6 +16,8 @@ export interface McpServer {
   url: string;
   transport_type: McpServerTransportType;
   status: McpServerStatus;
+  auth_mode: McpServerAuthMode;
+  oauth_provider_id?: string;
   api_key_set: boolean;
   headers: Record<string, string>;
   created_at: string;
@@ -28,6 +32,7 @@ export interface CreateMcpServerRequest {
   description?: string;
   url: string;
   transport_type?: McpServerTransportType;
+  auth_mode?: McpServerAuthMode;
   api_key?: string;
   headers?: Record<string, string>;
 }
@@ -39,6 +44,7 @@ export interface UpdateMcpServerRequest {
   url?: string;
   transport_type?: McpServerTransportType;
   status?: McpServerStatus;
+  auth_mode?: McpServerAuthMode;
   api_key?: string;
   headers?: Record<string, string>;
 }

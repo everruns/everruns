@@ -237,9 +237,10 @@ pub use llm_models::{
     Modality, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
 pub use mcp_server::{
-    McpContent, McpError, McpServer, McpServerStatus, McpServerTransportType, McpToolCallParams,
-    McpToolCallRequest, McpToolCallResponse, McpToolCallResult, McpToolDefinition,
-    McpToolsListRequest, McpToolsListResponse, McpToolsListResult, is_mcp_tool, mcp_tool_name,
+    McpContent, McpError, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
+    McpToolCallParams, McpToolCallRequest, McpToolCallResponse, McpToolCallResult,
+    McpToolDefinition, McpToolsListRequest, McpToolsListResponse, McpToolsListResult, is_mcp_tool,
+    mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
     parse_mcp_tool_name,
 };
 pub use organization::{

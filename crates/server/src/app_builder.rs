@@ -574,6 +574,10 @@ impl ServerAppBuilder {
             auth_state.clone(),
             auth_config.clone(),
             platform_definition.connection_providers().clone(),
+            Arc::new(crate::services::McpServerService::new(
+                db.clone(),
+                encryption.clone(),
+            )),
         );
         let session_schedule_service =
             Arc::new(crate::services::SessionScheduleService::new(db.clone()));

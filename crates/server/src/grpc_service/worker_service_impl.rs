@@ -1925,6 +1925,8 @@ impl WorkerService for WorkerServiceImpl {
             url: r.url,
             api_key: r.api_key,
             headers: r.headers,
+            auth_mode: r.auth_mode.to_string(),
+            oauth_provider_id: r.oauth_provider_id,
         });
 
         Ok(Response::new(GetMcpServerByPrefixResponse {

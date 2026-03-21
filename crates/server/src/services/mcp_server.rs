@@ -6,12 +6,15 @@ use crate::storage::{
     models::{CreateMcpServerRow, UpdateMcpServer, UpdateMcpServerTools},
 };
 use anyhow::{Result, anyhow};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    Caller, McpServer, McpServerStatus, McpServerTransportType, McpToolDefinition,
-    McpToolsListRequest, McpToolsListResponse, Permission, Policy, Rule,
+    Caller, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
+    McpToolDefinition, McpToolsListRequest, McpToolsListResponse, Permission, Policy, Rule,
+    mcp_oauth_provider_id_for_uuid,
 };
 use everruns_macros::policy;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,15 +51,103 @@ pub struct McpServerService {
     encryption: Option<Arc<EncryptionService>>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpServerSettings {
+    #[serde(default)]
+    pub auth_mode: McpServerAuthMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oauth: Option<McpServerOAuthSettings>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpServerOAuthSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorization_endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registration_endpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scopes_supported: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_secret_encrypted: Option<String>,
+}
+
 impl McpServerService {
     pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
         Self { db, encryption }
     }
 
+    pub fn oauth_provider_id(server_id: Uuid) -> String {
+        mcp_oauth_provider_id_for_uuid(server_id)
+    }
+
+    pub fn settings_from_row(row: &McpServerRow) -> McpServerSettings {
+        let mut settings =
+            serde_json::from_value(row.settings.clone()).unwrap_or_else(|_| McpServerSettings {
+                auth_mode: McpServerAuthMode::None,
+                oauth: None,
+            });
+
+        if row.settings.get("auth_mode").is_none() {
+            settings.auth_mode = if settings.oauth.is_some() {
+                McpServerAuthMode::OAuth
+            } else if row.api_key_set {
+                McpServerAuthMode::ApiKey
+            } else {
+                McpServerAuthMode::None
+            };
+        }
+
+        settings
+    }
+
+    fn settings_to_value(settings: &McpServerSettings) -> serde_json::Value {
+        serde_json::to_value(settings).unwrap_or_else(|_| serde_json::json!({}))
+    }
+
+    pub fn encrypt_string_to_b64(&self, value: &str) -> Result<String> {
+        let encryption = self
+            .encryption
+            .as_ref()
+            .ok_or_else(|| anyhow!("Encryption not configured"))?;
+        Ok(BASE64_STANDARD.encode(encryption.encrypt_string(value)?))
+    }
+
+    pub fn decrypt_string_from_b64(&self, value: &str) -> Result<String> {
+        let encryption = self
+            .encryption
+            .as_ref()
+            .ok_or_else(|| anyhow!("Encryption not configured"))?;
+        let bytes = BASE64_STANDARD
+            .decode(value)
+            .map_err(|e| anyhow!("Invalid encrypted value: {e}"))?;
+        Ok(encryption.decrypt_to_string(&bytes)?)
+    }
+
     #[policy(MCP_SERVER_MANAGE)]
     pub async fn create(&self, caller: &Caller, req: CreateMcpServerRequest) -> Result<McpServer> {
+        let auth_mode = req.auth_mode.clone().unwrap_or_else(|| {
+            if req.api_key.is_some() {
+                McpServerAuthMode::ApiKey
+            } else {
+                McpServerAuthMode::None
+            }
+        });
+        if req.api_key.is_some() && auth_mode != McpServerAuthMode::ApiKey {
+            anyhow::bail!("Only API key MCP servers can store an API key");
+        }
         // Encrypt API key if provided
-        let api_key_encrypted = if let Some(api_key) = &req.api_key {
+        let api_key_encrypted = if auth_mode == McpServerAuthMode::ApiKey {
+            let api_key = req
+                .api_key
+                .as_ref()
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| anyhow!("API key auth mode requires an API key"))?;
             let encryption = self
                 .encryption
                 .as_ref()
@@ -64,6 +155,11 @@ impl McpServerService {
             Some(encryption.encrypt_string(api_key)?)
         } else {
             None
+        };
+
+        let settings = McpServerSettings {
+            auth_mode,
+            oauth: None,
         };
 
         let input = CreateMcpServerRow {
@@ -75,7 +171,7 @@ impl McpServerService {
             headers: req
                 .headers
                 .map(|h| serde_json::to_value(h).unwrap_or_default()),
-            settings: None,
+            settings: Some(Self::settings_to_value(&settings)),
         };
 
         let row = self.db.create_mcp_server(caller.org_id, input).await?;
@@ -137,13 +233,43 @@ impl McpServerService {
         {
             anyhow::bail!("Archived or deleted MCP servers cannot be edited");
         }
+        let existing_row = self.db.get_mcp_server(caller.org_id, id).await?;
+        let existing_row = existing_row.ok_or_else(|| anyhow!("MCP server not found"))?;
+        let mut settings = Self::settings_from_row(&existing_row);
+        if let Some(auth_mode) = req.auth_mode.clone() {
+            settings.auth_mode = auth_mode;
+            if settings.auth_mode != McpServerAuthMode::OAuth {
+                settings.oauth = None;
+            }
+        }
+        if req.api_key.is_some() && settings.auth_mode != McpServerAuthMode::ApiKey {
+            anyhow::bail!("Only API key MCP servers can store an API key");
+        }
+        if settings.auth_mode == McpServerAuthMode::ApiKey
+            && !existing_row.api_key_set
+            && req
+                .api_key
+                .as_deref()
+                .filter(|value| !value.is_empty())
+                .is_none()
+        {
+            anyhow::bail!("API key auth mode requires an API key");
+        }
+
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
             let encryption = self
                 .encryption
                 .as_ref()
                 .ok_or_else(|| anyhow!("Encryption not configured. Cannot store API key."))?;
+            if api_key.is_empty() {
+                anyhow::bail!("API key auth mode requires a non-empty API key");
+            }
             Some(encryption.encrypt_string(api_key)?)
+        } else if req.auth_mode == Some(McpServerAuthMode::None)
+            || req.auth_mode == Some(McpServerAuthMode::OAuth)
+        {
+            Some(Vec::new())
         } else {
             None
         };
@@ -158,7 +284,7 @@ impl McpServerService {
             headers: req
                 .headers
                 .map(|h| serde_json::to_value(h).unwrap_or_default()),
-            settings: None,
+            settings: Some(Self::settings_to_value(&settings)),
         };
 
         let row = self.db.update_mcp_server(caller.org_id, id, input).await?;
@@ -207,9 +333,10 @@ impl McpServerService {
             .get_mcp_server(caller.org_id, id)
             .await?
             .ok_or_else(|| anyhow!("MCP server not found"))?;
+        let settings = Self::settings_from_row(&row);
 
         // Get decrypted API key if set
-        let api_key = if row.api_key_set {
+        let api_key = if settings.auth_mode == McpServerAuthMode::ApiKey && row.api_key_set {
             if let Some(encrypted) = &row.api_key_encrypted {
                 let encryption = self
                     .encryption
@@ -227,6 +354,17 @@ impl McpServerService {
         let headers: HashMap<String, String> =
             serde_json::from_value(row.headers.clone()).unwrap_or_default();
 
+        if settings.auth_mode == McpServerAuthMode::OAuth {
+            let tools: Vec<McpToolDefinition> =
+                serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
+            if !tools.is_empty() {
+                return Ok(tools);
+            }
+            anyhow::bail!(
+                "OAuth MCP servers require a user connection before tools can be refreshed"
+            );
+        }
+
         // Fetch tools from MCP server
         let tools = fetch_mcp_tools(&row.url, api_key.as_deref(), &headers).await?;
 
@@ -236,6 +374,27 @@ impl McpServerService {
             .update_mcp_server_tools(caller.org_id, id, UpdateMcpServerTools { cached_tools })
             .await?;
 
+        Ok(tools)
+    }
+
+    pub async fn cache_tools_for_bearer_token(
+        &self,
+        caller: &Caller,
+        id: Uuid,
+        token: &str,
+    ) -> Result<Vec<McpToolDefinition>> {
+        let row = self
+            .db
+            .get_mcp_server(caller.org_id, id)
+            .await?
+            .ok_or_else(|| anyhow!("MCP server not found"))?;
+        let headers: HashMap<String, String> =
+            serde_json::from_value(row.headers.clone()).unwrap_or_default();
+        let tools = fetch_mcp_tools(&row.url, Some(token), &headers).await?;
+        let cached_tools = serde_json::to_value(&tools)?;
+        self.db
+            .update_mcp_server_tools(caller.org_id, id, UpdateMcpServerTools { cached_tools })
+            .await?;
         Ok(tools)
     }
 
@@ -342,7 +501,7 @@ impl McpServerService {
             None => return Ok(None),
         };
 
-        let api_key = if server.api_key_set {
+        let api_key = if server.auth_mode == McpServerAuthMode::ApiKey && server.api_key_set {
             self.decrypt_api_key(caller, server.id.uuid()).await?
         } else {
             None
@@ -352,6 +511,8 @@ impl McpServerService {
             id: server.id.uuid(),
             name: server.name,
             url: server.url,
+            auth_mode: server.auth_mode,
+            oauth_provider_id: server.oauth_provider_id,
             api_key,
             headers: server.headers,
         }))
@@ -361,6 +522,9 @@ impl McpServerService {
         // Parse headers from JSON
         let headers: HashMap<String, String> =
             serde_json::from_value(row.headers.clone()).unwrap_or_default();
+        let settings = Self::settings_from_row(row);
+        let oauth_provider_id = (settings.auth_mode == McpServerAuthMode::OAuth)
+            .then(|| Self::oauth_provider_id(row.id.uuid()));
 
         McpServer {
             id: row.id,
@@ -369,6 +533,8 @@ impl McpServerService {
             url: row.url.clone(),
             transport_type: McpServerTransportType::from(row.transport_type.as_str()),
             status: McpServerStatus::from(row.status.as_str()),
+            auth_mode: settings.auth_mode,
+            oauth_provider_id,
             api_key_set: row.api_key_set,
             headers,
             created_at: row.created_at,
@@ -408,6 +574,8 @@ pub struct McpServerResolved {
     pub id: Uuid,
     pub name: String,
     pub url: String,
+    pub auth_mode: McpServerAuthMode,
+    pub oauth_provider_id: Option<String>,
     pub api_key: Option<String>,
     pub headers: HashMap<String, String>,
 }
@@ -713,6 +881,55 @@ mod tests {
         // Service without encryption
         let svc = McpServerService::new(db, None);
         let result = svc.resolve_by_prefix(&test_caller(1), "no_enc").await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn settings_from_row_defaults_auth_mode_for_legacy_api_key_servers() {
+        let row = McpServerRow {
+            id: everruns_core::typed_id::McpServerId::new(),
+            org_id: 1,
+            name: "legacy".into(),
+            description: None,
+            url: "https://example.com/mcp".into(),
+            transport_type: "http".into(),
+            status: "active".into(),
+            api_key_encrypted: Some(vec![1, 2, 3]),
+            api_key_set: true,
+            headers: serde_json::json!({}),
+            settings: serde_json::json!({}),
+            cached_tools: serde_json::json!([]),
+            tools_cached_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
+        };
+
+        let settings = McpServerService::settings_from_row(&row);
+        assert_eq!(settings.auth_mode, McpServerAuthMode::ApiKey);
+    }
+
+    #[tokio::test]
+    async fn create_rejects_api_key_when_auth_mode_is_not_api_key() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db, Some(test_encryption()));
+
+        let result = svc
+            .create(
+                &test_caller(1),
+                CreateMcpServerRequest {
+                    name: "bad-server".into(),
+                    description: None,
+                    url: "https://example.com/mcp".into(),
+                    transport_type: McpServerTransportType::Http,
+                    auth_mode: Some(McpServerAuthMode::None),
+                    api_key: Some("secret".into()),
+                    headers: None,
+                },
+            )
+            .await;
+
         assert!(result.is_err());
     }
 }

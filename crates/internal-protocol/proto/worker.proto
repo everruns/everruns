@@ -999,6 +999,8 @@ message McpServerInfo {
     string url = 3;
     optional string api_key = 4;  // Decrypted by control plane
     map<string, string> headers = 5;
+    string auth_mode = 6;
+    optional string oauth_provider_id = 7;
 }
 
 // Request to get MCP server by name prefix (e.g., "microsoft_learn" from tool name "mcp_microsoft_learn__search")

@@ -766,6 +766,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
             url: resolved.url,
             api_key: resolved.api_key,
             headers: resolved.headers,
+            auth_mode: resolved.auth_mode,
+            oauth_provider_id: resolved.oauth_provider_id,
         })
     }
 

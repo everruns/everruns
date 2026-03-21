@@ -234,12 +234,20 @@ impl GrpcClient {
             AgentLoopError::store(format!("MCP server not found for prefix: {server_prefix}"))
         })?;
 
+        let auth_mode = if proto_server.auth_mode.is_empty() && proto_server.api_key.is_some() {
+            everruns_core::McpServerAuthMode::ApiKey
+        } else {
+            everruns_core::McpServerAuthMode::from(proto_server.auth_mode.as_str())
+        };
+
         Ok(crate::mcp_executor::McpServerInfo {
             id: proto_uuid_to_uuid(proto_server.id.as_ref())?,
             name: proto_server.name,
             url: proto_server.url,
             api_key: proto_server.api_key,
             headers: proto_server.headers,
+            auth_mode,
+            oauth_provider_id: proto_server.oauth_provider_id,
         })
     }
 

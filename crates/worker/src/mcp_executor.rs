@@ -7,8 +7,9 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::traits::{ToolContext, ToolExecutor};
 use everruns_core::{
-    McpContent, McpToolCallRequest, McpToolCallResponse, ToolCall, ToolDefinition, ToolResult,
-    ToolResultImage, is_mcp_tool, parse_mcp_tool_name, validate_safe_url,
+    McpContent, McpServerAuthMode, McpToolCallRequest, McpToolCallResponse, ToolCall,
+    ToolDefinition, ToolResult, ToolResultImage, is_mcp_tool, mcp_oauth_session_secret_name,
+    parse_mcp_tool_name, validate_safe_url,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -28,6 +29,8 @@ pub struct McpServerInfo {
     pub url: String,
     pub api_key: Option<String>,
     pub headers: HashMap<String, String>,
+    pub auth_mode: McpServerAuthMode,
+    pub oauth_provider_id: Option<String>,
 }
 
 /// MCP Tool Executor - executes tools by calling remote MCP servers
@@ -48,7 +51,11 @@ impl McpToolExecutor {
     }
 
     /// Execute an MCP tool by calling the remote server
-    pub async fn execute_mcp_tool(&self, tool_call: &ToolCall) -> Result<ToolResult> {
+    pub async fn execute_mcp_tool(
+        &self,
+        tool_call: &ToolCall,
+        context: Option<&ToolContext>,
+    ) -> Result<ToolResult> {
         // Parse tool name to get server prefix and original tool name
         let (server_prefix, original_tool_name) = parse_mcp_tool_name(&tool_call.name)
             .ok_or_else(|| anyhow!("Invalid MCP tool name: {}", tool_call.name))?;
@@ -57,10 +64,26 @@ impl McpToolExecutor {
         let server_info = self.get_server_info(&server_prefix).await?;
 
         // Call the MCP server
+        let auth_header = self.resolve_auth_header(&server_info, context).await?;
+        if server_info.auth_mode == McpServerAuthMode::OAuth && auth_header.is_none() {
+            let provider = server_info
+                .oauth_provider_id
+                .clone()
+                .ok_or_else(|| anyhow!("OAuth MCP server missing oauth_provider_id"))?;
+            return Ok(ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                result: Some(json!({ "connection_required": provider })),
+                images: None,
+                error: None,
+                connection_required: Some(provider),
+            });
+        }
+
         let (result, images) = call_mcp_tool(
             &server_info,
             &original_tool_name,
             tool_call.arguments.clone(),
+            auth_header.as_deref(),
         )
         .await?;
 
@@ -106,6 +129,42 @@ impl McpToolExecutor {
     pub fn is_mcp_tool(tool_name: &str) -> bool {
         is_mcp_tool(tool_name)
     }
+
+    async fn resolve_auth_header(
+        &self,
+        server_info: &McpServerInfo,
+        context: Option<&ToolContext>,
+    ) -> Result<Option<String>> {
+        match server_info.auth_mode {
+            McpServerAuthMode::None => Ok(None),
+            McpServerAuthMode::ApiKey => Ok(server_info
+                .api_key
+                .as_ref()
+                .map(|token| format!("Bearer {}", token))),
+            McpServerAuthMode::OAuth => {
+                let Some(context) = context else {
+                    return Ok(None);
+                };
+                if let Some(storage) = &context.storage_store {
+                    let secret_name = mcp_oauth_session_secret_name(server_info.id, "access_token");
+                    if let Some(token) =
+                        storage.get_secret(context.session_id, &secret_name).await?
+                    {
+                        return Ok(Some(format!("Bearer {}", token)));
+                    }
+                }
+                if let (Some(resolver), Some(provider)) =
+                    (&context.connection_resolver, &server_info.oauth_provider_id)
+                    && let Some(token) = resolver
+                        .get_connection_token(context.session_id, provider)
+                        .await?
+                {
+                    return Ok(Some(format!("Bearer {}", token)));
+                }
+                Ok(None)
+            }
+        }
+    }
 }
 
 /// Call an MCP server's tools/call endpoint.
@@ -114,6 +173,7 @@ async fn call_mcp_tool(
     server_info: &McpServerInfo,
     tool_name: &str,
     arguments: serde_json::Value,
+    authorization_header: Option<&str>,
 ) -> Result<(serde_json::Value, Vec<ToolResultImage>)> {
     // Re-validate URL at execution time to catch TOCTOU / post-registration changes
     validate_safe_url(&server_info.url).map_err(|e| {
@@ -139,9 +199,9 @@ async fn call_mcp_tool(
 
     let mut req_builder = client.post(&server_info.url).json(&request);
 
-    // Add API key if provided
-    if let Some(ref api_key) = server_info.api_key {
-        req_builder = req_builder.header("Authorization", format!("Bearer {}", api_key));
+    // Add Authorization header (API key, OAuth token, etc.) if provided
+    if let Some(auth_header) = authorization_header {
+        req_builder = req_builder.header("Authorization", auth_header);
     }
 
     // Add custom headers
@@ -307,10 +367,13 @@ impl ToolExecutor for CompositeToolExecutor {
     ) -> everruns_core::Result<ToolResult> {
         if McpToolExecutor::is_mcp_tool(&tool_call.name) {
             // Execute MCP tool
-            self.mcp.execute_mcp_tool(tool_call).await.map_err(|e| {
-                tracing::error!(error = %e, "MCP tool execution failed");
-                everruns_core::AgentLoopError::tool(e.to_string())
-            })
+            self.mcp
+                .execute_mcp_tool(tool_call, None)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "MCP tool execution failed");
+                    everruns_core::AgentLoopError::tool(e.to_string())
+                })
         } else {
             // Execute built-in tool
             self.builtin.execute(tool_call, tool_def).await
@@ -325,10 +388,13 @@ impl ToolExecutor for CompositeToolExecutor {
     ) -> everruns_core::Result<ToolResult> {
         if McpToolExecutor::is_mcp_tool(&tool_call.name) {
             // MCP tools don't use context - execute directly
-            self.mcp.execute_mcp_tool(tool_call).await.map_err(|e| {
-                tracing::error!(error = %e, "MCP tool execution failed");
-                everruns_core::AgentLoopError::tool(e.to_string())
-            })
+            self.mcp
+                .execute_mcp_tool(tool_call, Some(context))
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "MCP tool execution failed");
+                    everruns_core::AgentLoopError::tool(e.to_string())
+                })
         } else {
             // Execute built-in tool with context
             self.builtin
@@ -481,8 +547,10 @@ data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1
             url: "http://localhost:9999/mcp".into(),
             api_key: None,
             headers: HashMap::new(),
+            auth_mode: McpServerAuthMode::None,
+            oauth_provider_id: None,
         };
-        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({})).await;
+        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({}), None).await;
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(
@@ -499,8 +567,10 @@ data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1
             url: "http://10.0.0.1/mcp".into(),
             api_key: None,
             headers: HashMap::new(),
+            auth_mode: McpServerAuthMode::None,
+            oauth_provider_id: None,
         };
-        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({})).await;
+        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({}), None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("blocked"));
     }
@@ -513,8 +583,10 @@ data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1
             url: "http://169.254.169.254/latest/meta-data/".into(),
             api_key: None,
             headers: HashMap::new(),
+            auth_mode: McpServerAuthMode::None,
+            oauth_provider_id: None,
         };
-        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({})).await;
+        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({}), None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("blocked"));
     }
@@ -527,8 +599,10 @@ data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1
             url: "http://[::1]:8080/mcp".into(),
             api_key: None,
             headers: HashMap::new(),
+            auth_mode: McpServerAuthMode::None,
+            oauth_provider_id: None,
         };
-        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({})).await;
+        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({}), None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("blocked"));
     }
