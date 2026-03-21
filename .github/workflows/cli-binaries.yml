@@ -70,4 +70,5 @@ jobs:
         run: |
           gh release upload "${{ inputs.tag }}" \
             "${{ matrix.archive }}" \
-            "${{ matrix.archive }}.sha256"
+            "${{ matrix.archive }}.sha256" \
+            --clobber
