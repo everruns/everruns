@@ -1,6 +1,10 @@
 // Error types for the agent loop
+//
+// StoreResultExt: extension trait to replace repeated .map_err(|e| AgentLoopError::store(...))? patterns
+// json_val / from_json: helpers to replace repeated serde_json::to_value/from_value boilerplate
 
 use crate::typed_id::{AgentId, HarnessId, SessionId};
+use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 /// Result type alias for agent loop operations
@@ -238,6 +242,55 @@ impl AgentLoopError {
     }
 }
 
+// ============================================================================
+// Store Result Extension Trait
+// ============================================================================
+
+/// Extension trait that converts any `Result<T, E: Display>` into `Result<T, AgentLoopError>`
+/// via `AgentLoopError::store(e.to_string())`.
+///
+/// Replaces the boilerplate pattern:
+/// ```ignore
+/// .map_err(|e| AgentLoopError::store(e.to_string()))?
+/// ```
+/// with:
+/// ```ignore
+/// .store_err()?
+/// ```
+pub trait StoreResultExt<T> {
+    fn store_err(self) -> Result<T>;
+}
+
+impl<T, E: std::fmt::Display> StoreResultExt<T> for std::result::Result<T, E> {
+    fn store_err(self) -> Result<T> {
+        self.map_err(|e| AgentLoopError::store(e.to_string()))
+    }
+}
+
+// ============================================================================
+// JSON Helpers
+// ============================================================================
+
+/// Convert a serializable value to `serde_json::Value`, falling back to `Value::Null` on error.
+///
+/// Replaces the boilerplate pattern:
+/// ```ignore
+/// serde_json::to_value(&x).unwrap_or_default()
+/// ```
+pub fn json_val<T: Serialize>(value: &T) -> serde_json::Value {
+    serde_json::to_value(value).unwrap_or_default()
+}
+
+/// Deserialize a `serde_json::Value` into `T`, falling back to `T::default()` on error.
+///
+/// Replaces the boilerplate pattern:
+/// ```ignore
+/// serde_json::from_value(v).unwrap_or_default()
+/// ```
+pub fn from_json<T: DeserializeOwned + Default>(value: serde_json::Value) -> T {
+    serde_json::from_value(value).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,5 +439,39 @@ mod tests {
     fn test_user_facing_message_request_too_large() {
         let err = AgentLoopError::request_too_large("context length exceeded");
         assert!(err.user_facing_message().contains("too long"));
+    }
+
+    #[test]
+    fn test_store_result_ext_ok() {
+        let result: std::result::Result<i32, String> = Ok(42);
+        assert_eq!(result.store_err().unwrap(), 42);
+    }
+
+    #[test]
+    fn test_store_result_ext_err() {
+        let result: std::result::Result<i32, String> = Err("db error".to_string());
+        let err = result.store_err().unwrap_err();
+        assert!(matches!(err, AgentLoopError::MessageStore(_)));
+        assert!(err.to_string().contains("db error"));
+    }
+
+    #[test]
+    fn test_json_val() {
+        let v = json_val(&vec![1, 2, 3]);
+        assert_eq!(v, serde_json::json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn test_from_json() {
+        let v = serde_json::json!(["a", "b"]);
+        let result: Vec<String> = from_json(v);
+        assert_eq!(result, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn test_from_json_default_on_mismatch() {
+        let v = serde_json::json!("not a number");
+        let result: i32 = from_json(v);
+        assert_eq!(result, 0);
     }
 }

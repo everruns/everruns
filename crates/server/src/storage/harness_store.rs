@@ -8,7 +8,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentCapabilityConfig, AgentLoopError, HarnessId, Result,
+    AgentCapabilityConfig, AgentLoopError, HarnessId, Result, StoreResultExt, from_json,
     harness::{Harness, HarnessStatus},
     merge_harness,
     traits::HarnessStore,
@@ -55,7 +55,7 @@ impl HarnessStore for DbHarnessStore {
                 .db
                 .get_harness(self.org_id, current_harness_id)
                 .await
-                .map_err(|e| AgentLoopError::store(e.to_string()))?
+                .store_err()?
             else {
                 if chain.is_empty() {
                     return Ok(None);
@@ -69,7 +69,7 @@ impl HarnessStore for DbHarnessStore {
                 .db
                 .get_harness_capabilities(current_harness_id.uuid())
                 .await
-                .map_err(|e| AgentLoopError::store(e.to_string()))?;
+                .store_err()?;
 
             let capabilities: Vec<AgentCapabilityConfig> = capability_rows
                 .into_iter()
@@ -86,7 +86,7 @@ impl HarnessStore for DbHarnessStore {
                 default_model_id: row.default_model_id,
                 tags: row.tags,
                 capabilities,
-                initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+                initial_files: from_json(row.initial_files),
                 is_built_in: row.is_built_in,
                 status: HarnessStatus::from(row.status.as_str()),
                 created_at: row.created_at,

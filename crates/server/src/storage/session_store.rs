@@ -9,7 +9,7 @@
 use crate::org_init::BASE_HARNESS_ID;
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, HarnessId, Result, SessionId, TokenUsage,
+    HarnessId, Result, SessionId, StoreResultExt, TokenUsage,
     session::{Session, SessionStatus, SubagentStatus},
     traits::SessionStore,
 };
@@ -48,7 +48,7 @@ impl SessionStore for DbSessionStore {
             .db
             .get_session(self.org_id, session_id)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         match session_row {
             Some(row) => {

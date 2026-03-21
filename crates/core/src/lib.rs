@@ -103,7 +103,7 @@ pub mod turn;
 // This enables dependency inversion - provider crates register their drivers at startup.
 
 // Re-exports for convenience
-pub use error::{AgentLoopError, Result};
+pub use error::{AgentLoopError, Result, StoreResultExt, from_json, json_val};
 pub use message::{
     ContentPart, ContentType, Controls, ExternalActor, ImageContentPart, ImageFileContentPart,
     InputContentPart, Message, MessageRole, ReasoningConfig, TextContentPart, ToolCallContentPart,

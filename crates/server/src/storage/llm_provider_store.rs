@@ -8,7 +8,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, ModelId, Result,
+    AgentLoopError, ModelId, Result, StoreResultExt,
     llm_models::LlmProviderType,
     traits::{LlmProviderStore, ModelWithProvider},
 };
@@ -53,7 +53,7 @@ impl LlmProviderStore for DbLlmProviderStore {
             .db
             .get_llm_model(self.org_id, model_id.uuid())
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         let model_row = match model_row {
             Some(row) => row,
@@ -65,7 +65,7 @@ impl LlmProviderStore for DbLlmProviderStore {
             .db
             .get_llm_provider(self.org_id, model_row.provider_id.uuid())
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         let provider_row = match provider_row {
             Some(row) => row,
@@ -76,7 +76,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         let provider_with_key = self
             .db
             .get_provider_with_api_key(&provider_row, &self.encryption)
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         // Parse provider type
         let provider_type = parse_provider_type(&provider_with_key.provider_type)?;
@@ -95,7 +95,7 @@ impl LlmProviderStore for DbLlmProviderStore {
             .db
             .get_default_llm_model(self.org_id)
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         let model_row = match model_row {
             Some(row) => row,
@@ -107,7 +107,7 @@ impl LlmProviderStore for DbLlmProviderStore {
             .db
             .get_llm_provider(self.org_id, model_row.provider_id.uuid())
             .await
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         let provider_row = match provider_row {
             Some(row) => row,
@@ -118,7 +118,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         let provider_with_key = self
             .db
             .get_provider_with_api_key(&provider_row, &self.encryption)
-            .map_err(|e| AgentLoopError::store(e.to_string()))?;
+            .store_err()?;
 
         // Parse provider type
         let provider_type = parse_provider_type(&provider_with_key.provider_type)?;
