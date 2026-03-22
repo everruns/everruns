@@ -4,7 +4,7 @@ use crate::output::{OutputFormat, print_field, print_table_header, print_table_r
 use anyhow::Result;
 use clap::Subcommand;
 use everruns_sdk::{CreateSessionRequest, Everruns};
-use std::time::Duration;
+use futures::StreamExt;
 
 #[derive(Subcommand)]
 pub enum SessionsCommand {
@@ -193,41 +193,45 @@ async fn watch(client: &Everruns, output: OutputFormat, session_id: String) -> R
         eprintln!("Press Ctrl+C to stop\n");
     }
 
-    let poll_interval = Duration::from_millis(500);
-    let mut last_event_id: Option<String> = None;
+    let mut stream = client.events().stream(&session_id);
 
     loop {
-        let response = client.events().list(&session_id).await?;
-
-        let events: Vec<_> = if let Some(ref last_id) = last_event_id {
-            response
-                .data
-                .into_iter()
-                .skip_while(|e| &e.id != last_id)
-                .skip(1)
-                .collect()
-        } else {
-            response.data
-        };
-
-        for event in events {
-            last_event_id = Some(event.id.clone());
-
-            if output.is_text() {
-                format_event_text(&event.event_type, &event.data, &event.ts);
-            } else {
-                let event_json = serde_json::json!({
-                    "id": event.id,
-                    "type": event.event_type,
-                    "ts": event.ts,
-                    "session_id": event.session_id,
-                    "data": event.data,
-                });
-                output.print_value(&event_json);
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                if output.is_text() {
+                    eprintln!("\nStopped watching");
+                }
+                return Ok(());
+            }
+            item = stream.next() => {
+                match item {
+                    Some(Ok(event)) => {
+                        if output.is_text() {
+                            format_event_text(&event.event_type, &event.data, &event.ts);
+                        } else {
+                            let event_json = serde_json::json!({
+                                "id": event.id,
+                                "type": event.event_type,
+                                "ts": event.ts,
+                                "session_id": event.session_id,
+                                "data": event.data,
+                            });
+                            output.print_value(&event_json);
+                        }
+                    }
+                    Some(Err(e)) => {
+                        eprintln!("Stream error: {e}");
+                    }
+                    None => {
+                        // Stream ended (server closed connection)
+                        if output.is_text() {
+                            eprintln!("Stream ended");
+                        }
+                        return Ok(());
+                    }
+                }
             }
         }
-
-        tokio::time::sleep(poll_interval).await;
     }
 }
 
@@ -251,27 +255,25 @@ fn format_event_text(event_type: &str, data: &serde_json::Value, ts: &str) {
             eprintln!("[{ts}] Turn cancelled");
         }
         "tool.started" => {
+            // ToolStartedData has tool_call.name
             let name = data
-                .get("name")
+                .get("tool_call")
+                .and_then(|tc| tc.get("name"))
                 .and_then(|n| n.as_str())
                 .unwrap_or("unknown");
             eprintln!("[{ts}] Tool started: {name}");
         }
         "tool.completed" => {
+            // ToolCompletedData has tool_name and status
             let name = data
-                .get("name")
+                .get("tool_name")
                 .and_then(|n| n.as_str())
                 .unwrap_or("unknown");
-            let truncated = data
-                .get("result")
-                .and_then(|r| r.as_str())
-                .map(|r| truncate_str(r, 200))
-                .unwrap_or_default();
-            if truncated.is_empty() {
-                eprintln!("[{ts}] Tool completed: {name}");
-            } else {
-                eprintln!("[{ts}] Tool completed: {name} -> {truncated}");
-            }
+            let status = data
+                .get("status")
+                .and_then(|s| s.as_str())
+                .unwrap_or("unknown");
+            eprintln!("[{ts}] Tool completed: {name} [{status}]");
         }
         "tool.call_requested" => {
             let name = data
@@ -293,14 +295,9 @@ fn format_event_text(event_type: &str, data: &serde_json::Value, ts: &str) {
             }
         }
         "output.message.delta" => {
-            // Delta text fragments — print inline without newline
-            if let Some(text) = data
-                .get("delta")
-                .and_then(|d| d.get("text"))
-                .and_then(|t| t.as_str())
-            {
+            // OutputMessageDeltaData has delta: String (plain text chunk)
+            if let Some(text) = data.get("delta").and_then(|d| d.as_str()) {
                 print!("{text}");
-                // Flush so partial lines appear immediately
                 use std::io::Write;
                 let _ = std::io::stdout().flush();
             }
@@ -311,11 +308,16 @@ fn format_event_text(event_type: &str, data: &serde_json::Value, ts: &str) {
             eprintln!("[{ts}] {phase}");
         }
         "input.message" => {
+            // InputMessageData has message.content: Vec<ContentPart>
             let text = data
                 .get("message")
                 .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_str())
-                .or_else(|| data.get("content").and_then(|c| c.as_str()));
+                .and_then(|c| c.as_array())
+                .and_then(|parts| {
+                    parts
+                        .iter()
+                        .find_map(|p| p.get("text").and_then(|t| t.as_str()))
+                });
             if let Some(text) = text {
                 let preview = truncate_str(text, 120);
                 eprintln!("[{ts}] Input: {preview}");
