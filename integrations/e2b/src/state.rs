@@ -37,9 +37,11 @@ pub struct E2BSandboxDetail {
     #[serde(alias = "clientID")]
     pub client_id: String,
     pub cpu_count: i64,
+    #[serde(alias = "diskSizeMB")]
     pub disk_size_mb: i64,
     pub end_at: String,
     pub envd_version: String,
+    #[serde(alias = "memoryMB")]
     pub memory_mb: i64,
     #[serde(alias = "sandboxID")]
     pub sandbox_id: String,
