@@ -22,6 +22,7 @@ import type {
   Controls,
   ReasoningEffort,
   ToolCompletedData,
+  ToolProgressData,
   InputMessageData,
   OutputMessageCompletedData,
   Message,
@@ -41,6 +42,7 @@ interface SessionContextValue {
   llmModel: LlmModelWithProvider | undefined;
   chatEvents: Event[];
   toolResultsMap: Map<string, ToolCompletedData>;
+  toolProgressMap: Map<string, ToolProgressData>;
   // Loading states
   sessionLoading: boolean;
   eventsLoading: boolean;
@@ -388,6 +390,19 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     return map;
   }, [events]);
 
+  // Build latest tool progress lookup by tool_call_id (keeps last progress per tool)
+  const toolProgressMap = useMemo(() => {
+    const map = new Map<string, ToolProgressData>();
+    if (!events) return map;
+    for (const event of events) {
+      const data = getEventData(event, "tool.progress");
+      if (data) {
+        map.set(data.tool_call_id, data);
+      }
+    }
+    return map;
+  }, [events]);
+
   // Incremental token usage accumulation — O(1) per new event instead of O(n).
   // Tracks how many events have been processed so only new events are scanned.
   const usageRef = useRef({
@@ -492,6 +507,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     llmModel,
     chatEvents,
     toolResultsMap,
+    toolProgressMap,
     sessionLoading,
     eventsLoading,
     effectiveStatus,

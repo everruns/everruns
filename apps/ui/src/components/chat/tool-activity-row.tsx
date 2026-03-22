@@ -24,11 +24,14 @@ import { useLocale } from "@/providers/locale-provider";
 export function ToolActivityRow({
   toolCall,
   toolResult,
+  progressMessage,
   mode,
   locale,
 }: {
   toolCall: ToolCallContent;
   toolResult?: ToolCompletedData;
+  /** Latest tool.progress message for this tool call */
+  progressMessage?: string;
   mode: "server" | "client";
   locale: string;
 }) {
@@ -68,7 +71,7 @@ export function ToolActivityRow({
             </span>
             {isRunning && (
               <span className="animate-tool-pulse text-[10px] uppercase tracking-[0.18em] text-accent-foreground/70">
-                {mode === "client" ? t("waiting") : t("running")}
+                {progressMessage ?? (mode === "client" ? t("waiting") : t("running"))}
               </span>
             )}
           </div>

@@ -508,6 +508,18 @@ pub struct ToolContext {
     pub platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
     /// Optional leased resource store for lifecycle-managed provider resources.
     pub leased_resource_store: Option<Arc<dyn LeasedResourceStore>>,
+
+    /// Optional event emitter for tools that need to stream progress updates.
+    /// When set, tools can emit `tool.progress` events during execution.
+    pub event_emitter: Option<Arc<dyn EventEmitter>>,
+
+    /// Event context for correlating progress events with the current tool call.
+    /// Set by ActAtom when constructing the ToolContext.
+    pub event_context: Option<crate::events::EventContext>,
+
+    /// The tool call ID for the current execution (set by ActAtom).
+    /// Used by tools to emit correlated progress events.
+    pub tool_call_id: Option<String>,
 }
 
 impl ToolContext {
@@ -526,6 +538,9 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            event_emitter: None,
+            event_context: None,
+            tool_call_id: None,
         }
     }
 
@@ -544,6 +559,9 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            event_emitter: None,
+            event_context: None,
+            tool_call_id: None,
         }
     }
 
@@ -565,6 +583,9 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            event_emitter: None,
+            event_context: None,
+            tool_call_id: None,
         }
     }
 
@@ -587,6 +608,9 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            event_emitter: None,
+            event_context: None,
+            tool_call_id: None,
         }
     }
 
@@ -649,6 +673,38 @@ impl ToolContext {
         self.leased_resource_store = Some(store);
         self
     }
+
+    /// Emit a `tool.progress` event if an event emitter and context are available.
+    ///
+    /// This is a best-effort helper: failures are logged but not propagated,
+    /// so tools never fail just because a progress event couldn't be sent.
+    pub async fn emit_progress(&self, tool_name: &str, message: &str) {
+        let (Some(emitter), Some(ctx), Some(call_id)) =
+            (&self.event_emitter, &self.event_context, &self.tool_call_id)
+        else {
+            return;
+        };
+        if let Err(e) = emitter
+            .emit(EventRequest::new(
+                self.session_id,
+                ctx.clone(),
+                crate::events::ToolProgressData {
+                    tool_call_id: call_id.clone(),
+                    tool_name: tool_name.to_string(),
+                    message: message.to_string(),
+                    display_name: None,
+                },
+            ))
+            .await
+        {
+            tracing::debug!(
+                tool_call_id = call_id,
+                tool_name,
+                error = %e,
+                "Failed to emit tool.progress event"
+            );
+        }
+    }
 }
 
 impl std::fmt::Debug for ToolContext {
@@ -669,6 +725,7 @@ impl std::fmt::Debug for ToolContext {
                 "leased_resource_store",
                 &self.leased_resource_store.is_some(),
             )
+            .field("event_emitter", &self.event_emitter.is_some())
             .finish()
     }
 }
@@ -696,6 +753,14 @@ pub trait EventEmitter: Send + Sync {
     /// Takes an EventRequest (without id/sequence) and returns the stored Event
     /// with id and sequence assigned by the storage layer.
     async fn emit(&self, request: EventRequest) -> Result<Event>;
+}
+
+/// Blanket impl: `Arc<E>` delegates to the inner emitter.
+#[async_trait]
+impl<E: EventEmitter + ?Sized> EventEmitter for Arc<E> {
+    async fn emit(&self, request: EventRequest) -> Result<Event> {
+        (**self).emit(request).await
+    }
 }
 
 /// No-op event emitter for when event emission is not needed
