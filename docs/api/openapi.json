@@ -1363,8 +1363,7 @@
             "description": "Optional: session ID stored as metadata for tracking (not required for upload)",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
