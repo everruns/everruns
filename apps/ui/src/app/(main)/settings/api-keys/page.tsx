@@ -160,27 +160,26 @@ function ShowApiKeyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>API Key Created</DialogTitle>
           <DialogDescription>
             Copy your API key now. You won&apos;t be able to see it again!
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="bg-muted p-3 rounded-md font-mono text-sm break-all">{apiKey}</div>
-          <Button onClick={handleCopy} className="w-full" variant="outline">
-            {copied ? (
-              <>
-                <Check className="mr-2 h-4 w-4" />
-                Copied!
-              </>
-            ) : (
-              <>
-                <Copy className="mr-2 h-4 w-4" />
-                Copy to clipboard
-              </>
-            )}
+        <div className="flex items-center gap-2">
+          <div className="bg-muted p-3 rounded-md font-mono text-sm flex-1 min-w-0 max-w-full whitespace-nowrap overflow-x-auto">
+            {apiKey}
+          </div>
+          <Button
+            onClick={handleCopy}
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            aria-label={copied ? "API key copied" : "Copy API key"}
+            title={copied ? "API key copied" : "Copy API key"}
+          >
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </Button>
         </div>
         <DialogFooter>
