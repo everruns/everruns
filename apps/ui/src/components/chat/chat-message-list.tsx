@@ -15,6 +15,7 @@ import type {
   OutputMessageCompletedData,
   ToolCallSummary,
   ToolCompletedData,
+  ToolProgressData,
 } from "@/lib/api/types";
 import { getEventData, isImageFilePart } from "@/lib/api/types";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
@@ -40,6 +41,7 @@ interface ChatMessageListProps {
   chatEvents: Event[];
   sessionId: string;
   toolResultsMap: Map<string, ToolCompletedData>;
+  toolProgressMap: Map<string, ToolProgressData>;
   eventsLoading: boolean;
   hasMoreEvents: boolean;
   loadingOlderEvents: boolean;
@@ -163,6 +165,7 @@ export function ChatMessageList({
   chatEvents,
   sessionId,
   toolResultsMap,
+  toolProgressMap,
   eventsLoading,
   hasMoreEvents,
   loadingOlderEvents,
@@ -319,6 +322,7 @@ export function ChatMessageList({
                   <ToolActivityGroup
                     toolCalls={otherCalls}
                     toolResultsMap={toolResultsMap}
+                    toolProgressMap={toolProgressMap}
                     mode="client"
                   />
                 )}
@@ -358,7 +362,7 @@ export function ChatMessageList({
           return (
             <div key={event.id} className="space-y-3">
               <div className="ml-9 space-y-1">
-                <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
+                <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} toolProgressMap={toolProgressMap} />
               </div>
               {renderTurnDivider(
                 event.id,
@@ -430,7 +434,7 @@ export function ChatMessageList({
 
             {toolCalls.length > 0 && !hasNarratedActEvents && (
               <div className="ml-9 space-y-1">
-                <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />
+                <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} toolProgressMap={toolProgressMap} />
               </div>
             )}
 

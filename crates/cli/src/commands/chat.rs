@@ -80,6 +80,19 @@ pub async fn run(
                     }
                 }
 
+                // Handle tool.progress event
+                if event.event_type == "tool.progress"
+                    && let Some(message) = event.data.get("message").and_then(|m| m.as_str())
+                {
+                    let tool = event
+                        .data
+                        .get("display_name")
+                        .or_else(|| event.data.get("tool_name"))
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("tool");
+                    eprintln!("  [{tool}] {message}");
+                }
+
                 // Handle turn.completed event
                 if event.event_type == "turn.completed" {
                     if !agent_content.is_empty() {

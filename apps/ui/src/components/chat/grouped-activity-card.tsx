@@ -8,7 +8,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ToolCompletedData } from "@/lib/api/types";
+import type { ToolCompletedData, ToolProgressData } from "@/lib/api/types";
 import type { ToolCallContent } from "./tool-call-utils";
 import { summarizeToolCalls } from "./tool-activity-utils";
 import { ToolActivityRow } from "./tool-activity-row";
@@ -17,10 +17,12 @@ import { useLocale } from "@/providers/locale-provider";
 export function GroupedActivityCard({
   toolCalls,
   toolResultsMap,
+  toolProgressMap,
   mode,
 }: {
   toolCalls: ToolCallContent[];
   toolResultsMap: Map<string, ToolCompletedData>;
+  toolProgressMap?: Map<string, ToolProgressData>;
   mode: "server" | "client";
 }) {
   const { backendLocale, t } = useLocale();
@@ -37,6 +39,7 @@ export function GroupedActivityCard({
       <ToolActivityRow
         toolCall={toolCall}
         toolResult={toolResultsMap.get(toolCall.id)}
+        progressMessage={toolProgressMap?.get(toolCall.id)?.message}
         mode={mode}
         locale={backendLocale}
       />
@@ -90,6 +93,7 @@ export function GroupedActivityCard({
                 key={toolCall.id}
                 toolCall={toolCall}
                 toolResult={toolResultsMap.get(toolCall.id)}
+                progressMessage={toolProgressMap?.get(toolCall.id)?.message}
                 mode={mode}
                 locale={backendLocale}
               />

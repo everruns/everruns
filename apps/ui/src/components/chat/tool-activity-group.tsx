@@ -10,7 +10,7 @@
  */
 
 import { useMemo } from "react";
-import type { ToolCompletedData } from "@/lib/api/types";
+import type { ToolCompletedData, ToolProgressData } from "@/lib/api/types";
 import { isWriteTodosTool } from "@/lib/tool-registry";
 import { BashToolCallCard } from "./bash-tool-call-card";
 import { GroupedActivityCard } from "./grouped-activity-card";
@@ -23,12 +23,14 @@ import { WriteFileToolCallCard } from "./write-file-tool-call-card";
 interface ToolActivityGroupProps {
   toolCalls: ToolCallContent[];
   toolResultsMap: Map<string, ToolCompletedData>;
+  toolProgressMap?: Map<string, ToolProgressData>;
   mode?: "server" | "client";
 }
 
 export function ToolActivityGroup({
   toolCalls,
   toolResultsMap,
+  toolProgressMap,
   mode = "server",
 }: ToolActivityGroupProps) {
   const todoToolCalls = toolCalls.filter((toolCall) => isWriteTodosTool(toolCall.name));
@@ -78,6 +80,7 @@ export function ToolActivityGroup({
             key={`${segment.toolCalls[0]?.id ?? "group"}-${index}`}
             toolCalls={segment.toolCalls}
             toolResultsMap={toolResultsMap}
+            toolProgressMap={toolProgressMap}
             mode={mode}
           />
         );

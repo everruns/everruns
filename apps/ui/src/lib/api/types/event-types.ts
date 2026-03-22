@@ -183,6 +183,15 @@ export interface ToolCallRequestedData {
   headline?: string;
 }
 
+/** Data for tool.progress event (interim status during execution) */
+export interface ToolProgressData {
+  tool_call_id: string;
+  tool_name: string;
+  /** Human-readable status message (e.g., "Connecting to browser…") */
+  message: string;
+  display_name?: string;
+}
+
 /** Data for tool.completed event */
 export interface ToolCompletedData {
   tool_call_id: string;
@@ -329,6 +338,7 @@ export type EventData =
   | ActCompletedData
   | ToolStartedData
   | ToolCallRequestedData
+  | ToolProgressData
   | ToolCompletedData
   | LlmGenerationData
   | SessionStartedData
@@ -362,6 +372,7 @@ export interface EventTypeMap {
   "act.completed": ActCompletedData;
   "tool.started": ToolStartedData;
   "tool.call_requested": ToolCallRequestedData;
+  "tool.progress": ToolProgressData;
   "tool.completed": ToolCompletedData;
   "llm.generation": LlmGenerationData;
   "session.started": SessionStartedData;

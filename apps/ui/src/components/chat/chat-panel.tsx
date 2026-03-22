@@ -31,6 +31,7 @@ export function ChatPanel() {
     llmModel,
     chatEvents,
     toolResultsMap,
+    toolProgressMap,
     eventsLoading,
     isActive,
     reasoningEffort,
@@ -188,6 +189,7 @@ export function ChatPanel() {
           chatEvents={chatEvents}
           sessionId={sessionId}
           toolResultsMap={toolResultsMap}
+          toolProgressMap={toolProgressMap}
           eventsLoading={eventsLoading}
           hasMoreEvents={hasMoreEvents}
           loadingOlderEvents={loadingOlderEvents}
