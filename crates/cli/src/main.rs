@@ -95,9 +95,9 @@ pub enum Commands {
         #[arg(long, short)]
         session: String,
 
-        /// Max wait time in seconds
-        #[arg(long, default_value = "300")]
-        timeout: u64,
+        /// Max wait time in seconds (default: unlimited)
+        #[arg(long)]
+        timeout: Option<u64>,
 
         /// Send message and exit immediately without waiting for response
         #[arg(long)]
@@ -295,7 +295,7 @@ mod tests {
         {
             assert_eq!(message, "Hello world");
             assert_eq!(session, "ses_xyz");
-            assert_eq!(timeout, 300); // default
+            assert_eq!(timeout, None); // default: no timeout
             assert!(!no_stream);
         } else {
             panic!("Expected Chat command");
@@ -324,7 +324,7 @@ mod tests {
         {
             assert_eq!(message, "Test message");
             assert_eq!(session, "ses_xyz");
-            assert_eq!(timeout, 60);
+            assert_eq!(timeout, Some(60));
             assert!(no_stream);
         } else {
             panic!("Expected Chat command");

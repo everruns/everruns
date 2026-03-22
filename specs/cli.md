@@ -72,7 +72,8 @@ Session management.
 Send message and poll for response.
 
 - `chat --session <id> "<message>" [--timeout <s>] [--no-stream]`
-- Polls `/v1/sessions/{id}/events` every 500ms until `turn.completed` or timeout (default 300s)
+- Polls `/v1/sessions/{id}/events` every 500ms until `turn.completed` or timeout
+- No timeout by default (waits indefinitely); use `--timeout <s>` to set a limit
 
 ### `everruns capabilities`
 
