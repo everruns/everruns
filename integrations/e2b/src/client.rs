@@ -329,14 +329,13 @@ impl E2BClient {
             HeaderValue::from_str(&E2B_ENVD_PORT.to_string())
                 .map_err(|e| format!("Invalid sandbox port header: {e}"))?,
         );
-        let token = state.envd_access_token.as_ref().ok_or_else(|| {
-            "Missing envd access token; cannot authenticate envd request".to_string()
-        })?;
-        headers.insert(
-            "X-Access-Token",
-            HeaderValue::from_str(token)
-                .map_err(|e| format!("Invalid envd access token header: {e}"))?,
-        );
+        if let Some(token) = state.envd_access_token.as_ref() {
+            headers.insert(
+                "X-Access-Token",
+                HeaderValue::from_str(token)
+                    .map_err(|e| format!("Invalid envd access token header: {e}"))?,
+            );
+        }
         Ok(headers)
     }
 
@@ -419,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn envd_headers_require_access_token() {
+    fn envd_headers_omit_access_token_when_absent() {
         let client = E2BClient::new("key".to_string());
         let state = SandboxState {
             sandbox_id: "sb_test".to_string(),
@@ -431,9 +430,8 @@ mod tests {
             timeout_seconds: 3600,
         };
 
-        let error = client
-            .envd_headers(&state)
-            .expect_err("missing token should fail");
-        assert!(error.contains("Missing envd access token"));
+        let headers = client.envd_headers(&state).unwrap();
+        assert_eq!(headers.get("e2b-sandbox-id").unwrap(), "sb_test");
+        assert!(headers.get("x-access-token").is_none());
     }
 }
