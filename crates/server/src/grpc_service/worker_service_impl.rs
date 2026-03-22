@@ -3022,19 +3022,29 @@ impl WorkerService for WorkerServiceImpl {
             hints: None,
         };
 
-        let session = self
-            .session_service
-            .create_with_blueprint(
-                &internal_caller,
-                harness_id,
-                agent_uuid,
-                create_req.agent_id,
-                create_req,
-                req.blueprint_id,
-                blueprint_config,
-            )
-            .await
-            .map_err(|e| Status::internal(format!("Failed to create session: {}", e)))?;
+        let session = if let Some(blueprint_id) = req.blueprint_id {
+            self.session_service
+                .create_blueprint_session(
+                    &internal_caller,
+                    harness_id,
+                    blueprint_id,
+                    blueprint_config,
+                    create_req,
+                )
+                .await
+                .map_err(|e| Status::internal(format!("Failed to create session: {}", e)))?
+        } else {
+            self.session_service
+                .create(
+                    &internal_caller,
+                    harness_id,
+                    agent_uuid,
+                    create_req.agent_id,
+                    create_req,
+                )
+                .await
+                .map_err(|e| Status::internal(format!("Failed to create session: {}", e)))?
+        };
 
         Ok(Response::new(PlatformCreateSessionResponse {
             session: Some(schema_session_to_proto(&session)),

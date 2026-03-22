@@ -113,6 +113,7 @@ pub trait PlatformStore: Send + Sync {
     /// When `blueprint_id` is set, the session runs a blueprint agent instead
     /// of inheriting from `harness_id`/`agent_id`. `blueprint_config` is
     /// validated config for the blueprint (JSON, optional).
+    #[allow(clippy::too_many_arguments)]
     async fn create_session(
         &self,
         harness_id: HarnessId,

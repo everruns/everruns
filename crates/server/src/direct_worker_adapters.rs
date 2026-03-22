@@ -1725,17 +1725,17 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             ));
         }
         // Skip agent validation for blueprint sessions (agent_id may be None)
-        if blueprint_id.is_none() {
-            if let Some(agent_id) = agent_id {
-                let agent = self
-                    .db
-                    .get_agent(self.org_id, agent_id)
-                    .await
-                    .map_err(|e| store_error(format!("Failed to get agent: {e}")))?
-                    .ok_or_else(|| store_error("Agent not found"))?;
-                if agent.status != "active" {
-                    return Err(store_error("Archived or deleted agents cannot be assigned"));
-                }
+        if blueprint_id.is_none()
+            && let Some(agent_id) = agent_id
+        {
+            let agent = self
+                .db
+                .get_agent(self.org_id, agent_id)
+                .await
+                .map_err(|e| store_error(format!("Failed to get agent: {e}")))?
+                .ok_or_else(|| store_error("Agent not found"))?;
+            if agent.status != "active" {
+                return Err(store_error("Archived or deleted agents cannot be assigned"));
             }
         }
 
