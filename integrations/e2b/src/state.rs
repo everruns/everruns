@@ -14,9 +14,12 @@ use crate::{E2B_API_KEY_SECRET, E2B_DEFAULT_WORKSPACE_PATH, E2B_SANDBOX_SECRET_P
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct E2BSandboxCreateResponse {
+    #[serde(alias = "clientID")]
     pub client_id: String,
     pub envd_version: String,
+    #[serde(alias = "sandboxID")]
     pub sandbox_id: String,
+    #[serde(alias = "templateID")]
     pub template_id: String,
     #[serde(default)]
     pub alias: Option<String>,
@@ -31,15 +34,18 @@ pub struct E2BSandboxCreateResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct E2BSandboxDetail {
+    #[serde(alias = "clientID")]
     pub client_id: String,
     pub cpu_count: i64,
     pub disk_size_mb: i64,
     pub end_at: String,
     pub envd_version: String,
     pub memory_mb: i64,
+    #[serde(alias = "sandboxID")]
     pub sandbox_id: String,
     pub started_at: String,
     pub state: String,
+    #[serde(alias = "templateID")]
     pub template_id: String,
     #[serde(default)]
     pub alias: Option<String>,

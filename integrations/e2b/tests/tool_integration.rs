@@ -153,10 +153,10 @@ async fn test_create_sandbox_via_client() {
             "envVars": {}
         })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "clientId": "client_1",
+            "clientID": "client_1",
             "envdVersion": "0.1.0",
-            "sandboxId": "sb_create",
-            "templateId": "base",
+            "sandboxID": "sb_create",
+            "templateID": "base",
             "alias": null,
             "domain": "e2b.app",
             "envdAccessToken": "envd_token_123"
@@ -186,16 +186,16 @@ async fn test_get_sandbox_via_client() {
         .and(path("/sandboxes/sb_detail"))
         .and(header("X-API-KEY", "test_key"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "clientId": "client_1",
+            "clientID": "client_1",
             "cpuCount": 2,
             "diskSizeMb": 512,
             "endAt": "2026-03-22T01:00:00Z",
             "envdVersion": "0.1.0",
             "memoryMb": 256,
-            "sandboxId": "sb_detail",
+            "sandboxID": "sb_detail",
             "startedAt": "2026-03-22T00:00:00Z",
             "state": "running",
-            "templateId": "base",
+            "templateID": "base",
             "domain": "e2b.app",
             "envdAccessToken": "envd_token_456"
         })))
@@ -228,10 +228,10 @@ async fn test_sandbox_lifecycle_via_client() {
     Mock::given(method("POST"))
         .and(path("/sandboxes/sb_lifecycle/resume"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "clientId": "client_1",
+            "clientID": "client_1",
             "envdVersion": "0.1.0",
-            "sandboxId": "sb_lifecycle",
-            "templateId": "base",
+            "sandboxID": "sb_lifecycle",
+            "templateID": "base",
             "domain": "e2b.app",
             "envdAccessToken": "envd_token_resumed"
         })))
@@ -284,16 +284,16 @@ async fn test_client_sends_api_key_header() {
         .and(path("/sandboxes/sb_auth"))
         .and(header("X-API-KEY", "secret_key_abc"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "clientId": "c1",
+            "clientID": "c1",
             "cpuCount": 1,
             "diskSizeMb": 256,
             "endAt": "",
             "envdVersion": "0.1.0",
             "memoryMb": 128,
-            "sandboxId": "sb_auth",
+            "sandboxID": "sb_auth",
             "startedAt": "",
             "state": "running",
-            "templateId": "base"
+            "templateID": "base"
         })))
         .expect(1)
         .mount(&mock_server)
