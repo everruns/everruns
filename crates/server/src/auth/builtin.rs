@@ -229,11 +229,12 @@ impl AuthBackend for BuiltinAuthBackend {
         let auth_routes = routes::routes(self.clone());
         let auth_state =
             super::middleware::AuthState::new(self.config.clone(), Arc::new(self.clone()));
+        let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
         let cli_state = super::cli_auth::CliAuthState {
             db: self.db.clone(),
             auth: auth_state,
             frontend_url: self.config.frontend_url.clone(),
-            base_url: self.config.base_url.clone(),
+            base_url: format!("{}{}", self.config.base_url, api_prefix),
         };
         let cli_routes = super::cli_auth::cli_auth_routes(cli_state);
         Some(auth_routes.merge(cli_routes))

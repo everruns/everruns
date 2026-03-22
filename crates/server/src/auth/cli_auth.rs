@@ -105,9 +105,10 @@ pub struct CliUserInfo {
 pub struct CliAuthState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
-    /// Frontend URL for login redirects (e.g. https://app.example.com)
+    /// Frontend URL for login redirects (e.g. `https://app.example.com`)
     pub frontend_url: String,
-    /// Backend base URL for callback construction (e.g. https://app.example.com/api)
+    /// Full backend base URL including any path prefix (e.g. `https://app.example.com/api`).
+    /// Used directly to construct callback URLs — no env-var lookup is performed.
     pub base_url: String,
 }
 
@@ -164,11 +165,12 @@ async fn cli_auth_start(
         })?;
 
     // Build auth URL — points to the server's login page with a redirect back to
-    // the CLI callback endpoint on the server
-    let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
+    // the CLI callback endpoint on the server.
+    // base_url already includes any API prefix (e.g. "/api"), so no env lookup needed.
     let callback_url = format!(
-        "{}{}/v1/auth/cli/callback?state={}",
-        state.base_url, api_prefix, auth_state
+        "{}/v1/auth/cli/callback?state={}",
+        state.base_url.trim_end_matches('/'),
+        auth_state
     );
 
     // Redirect to the frontend login page with a redirect_to parameter

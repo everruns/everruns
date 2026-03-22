@@ -134,7 +134,7 @@ Embedders may extend execution by:
 
 CLI authentication routes (`/v1/auth/cli/*`) are decoupled from any specific auth backend via `CliAuthState`. Embedders with external auth providers can mount CLI login without duplicating handler code.
 
-Construct `CliAuthState` with your storage backend, `AuthState`, and URLs, then mount via `cli_auth_routes()`:
+Construct `CliAuthState` with your storage backend, `AuthState`, and URLs, then mount via `cli_auth_routes()`. `base_url` must include any API path prefix (e.g. `/api`) — no env-var lookup is performed at runtime:
 
 ```rust
 use everruns_server::auth::cli_auth::{CliAuthState, cli_auth_routes};
@@ -142,7 +142,9 @@ use everruns_server::auth::cli_auth::{CliAuthState, cli_auth_routes};
 let cli_state = CliAuthState {
     db: db.clone(),
     auth: auth_state.clone(),
+    // Frontend origin for login page redirects
     frontend_url: "https://my-saas.example.com".into(),
+    // Full backend URL including API prefix — used directly in callback URLs
     base_url: "https://my-saas.example.com/api".into(),
 };
 // In AuthBackend::auth_routes():
