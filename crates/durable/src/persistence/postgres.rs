@@ -28,6 +28,34 @@ use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSig
 #[cfg(feature = "failpoints")]
 use fail::fail_point;
 
+/// Recursively strip `\0` (null bytes) from all string values in a JSON tree.
+///
+/// PostgreSQL `jsonb` rejects `\u0000`; LLM tool output or other external inputs
+/// may contain them, so all JSONB writes in this module use this helper before binding.
+fn sanitize_json_null_bytes(mut value: serde_json::Value) -> serde_json::Value {
+    fn sanitize_in_place(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::String(s) => {
+                s.retain(|c| c != '\0');
+            }
+            serde_json::Value::Array(arr) => {
+                for item in arr.iter_mut() {
+                    sanitize_in_place(item);
+                }
+            }
+            serde_json::Value::Object(map) => {
+                for (_k, val) in map.iter_mut() {
+                    sanitize_in_place(val);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    sanitize_in_place(&mut value);
+    value
+}
+
 /// PostgreSQL implementation of WorkflowEventStore
 ///
 /// Uses a connection pool for efficient database access.
@@ -76,6 +104,8 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         let (trace_id, span_id) = trace_context
             .map(|tc| (Some(tc.trace_id.clone()), Some(tc.span_id.clone())))
             .unwrap_or((None, None));
+
+        let input = sanitize_json_null_bytes(input);
 
         sqlx::query(
             r#"
@@ -205,6 +235,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         for event in events {
             let event_type = event_type_name(&event);
             let event_data = serde_json::to_value(&event)
+                .map(sanitize_json_null_bytes)
                 .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
             sqlx::query(
@@ -499,6 +530,9 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             "#
         };
 
+        let result = result.map(sanitize_json_null_bytes);
+        let error_json = error_json.map(sanitize_json_null_bytes);
+
         sqlx::query(query)
             .bind(workflow_id)
             .bind(&status_str)
@@ -568,7 +602,9 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         }
 
         let task_id = Uuid::now_v7();
+        let task_input = sanitize_json_null_bytes(task.input.clone());
         let options_json = serde_json::to_value(&task.options)
+            .map(sanitize_json_null_bytes)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
         sqlx::query(
@@ -585,7 +621,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         .bind(task.workflow_id)
         .bind(&task.activity_id)
         .bind(&task.activity_type)
-        .bind(&task.input)
+        .bind(&task_input)
         .bind(&options_json)
         .bind(task.options.retry_policy.max_attempts as i32)
         .bind(task.options.priority)
@@ -1355,6 +1391,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         error_history: Vec<String>,
     ) -> Result<(), StoreError> {
         let error_json = serde_json::to_value(&error_history)
+            .map(sanitize_json_null_bytes)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
         // Get task details and move to DLQ
@@ -2060,10 +2097,12 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         snapshot_data: Vec<u8>,
     ) -> Result<Uuid, StoreError> {
         let new_workflow_id = Uuid::now_v7();
+        let input = sanitize_json_null_bytes(input);
         let start_event = WorkflowEvent::WorkflowStarted {
             input: input.clone(),
         };
         let event_data = serde_json::to_value(&start_event)
+            .map(sanitize_json_null_bytes)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
         let mut tx = self.pool.begin().await.map_err(|e| {
@@ -3069,6 +3108,53 @@ fn event_type_name(event: &WorkflowEvent) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    // Integration tests require a PostgreSQL database
-    // Run with: cargo test -p everruns-durable --test integration_test -- --test-threads=1
+    // Unit tests for JSON sanitization that do not require a PostgreSQL database.
+    // PostgreSQL-backed integration tests can be run with:
+    // cargo test -p everruns-durable --test integration_test -- --test-threads=1
+
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn sanitize_removes_null_bytes_from_strings() {
+        let input = json!({"key": "hello\0world"});
+        let result = sanitize_json_null_bytes(input);
+        assert_eq!(result, json!({"key": "helloworld"}));
+    }
+
+    #[test]
+    fn sanitize_handles_nested_structures() {
+        let input = json!({
+            "outer": {
+                "inner": "has\0null",
+                "clean": "no nulls"
+            },
+            "arr": ["a\0b", "clean"]
+        });
+        let result = sanitize_json_null_bytes(input);
+        assert_eq!(
+            result,
+            json!({
+                "outer": {
+                    "inner": "hasnull",
+                    "clean": "no nulls"
+                },
+                "arr": ["ab", "clean"]
+            })
+        );
+    }
+
+    #[test]
+    fn sanitize_preserves_non_string_values() {
+        let input = json!({"num": 42, "bool": true, "null": null});
+        let result = sanitize_json_null_bytes(input.clone());
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn sanitize_noop_when_no_null_bytes() {
+        let input = json!({"key": "normal string", "nested": [1, 2, 3]});
+        let result = sanitize_json_null_bytes(input.clone());
+        assert_eq!(result, input);
+    }
 }
