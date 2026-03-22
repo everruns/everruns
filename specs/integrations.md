@@ -2,6 +2,27 @@
 
 Index of external service integrations. Each spec lives alongside the code that implements it.
 
+## Integration Parity Requirements
+
+Every sandbox/execution integration crate must ship with the following artifacts to be considered production-ready. Use Daytona as the reference implementation.
+
+| Requirement | Description |
+|---|---|
+| **SPEC.md** | Co-located specification: architecture, tool surface, state management, security review. |
+| **Connection provider** | User connection (OAuth or API-key form) with validation and fallback env vars for operator/test use. |
+| **Unit tests** | Plugin registration, parameter validation, state serialization, tool schemas. |
+| **Integration tests** | `tests/tool_integration.rs` — tool `execute_with_context` flows against mocked storage/connections (wiremock for HTTP APIs, mock storage for websocket APIs). |
+| **Live API tests** | `tests/live_api_test.rs` — feature-gated (`<name>-live-tests`), optional Doppler credentials. |
+| **CI: unit tests** | Crate listed in the `unit-test` job: `cargo test -p everruns-integrations-<name>`. |
+| **CI: change detection** | Path filter in `changes` job: `<name>: integrations/<name>/**`. |
+| **CI: live-test job** | Dedicated `<name>-live-test` job, conditional on change detection + `push` event. |
+| **User docs** | `docs/integrations/<name>.md` — quick start, tool table, lifecycle, security. |
+| **UI test case** | `test_cases/ui/<name>_connection/TC001_*.md` — manual test for connection + sandbox lifecycle. |
+| **Seed agent** | Entry in `crates/server/src/seed.rs` with capabilities wired. |
+| **Threat model** | Section in `specs/threat-model.md` covering integration-specific threats. |
+
+New integrations should check off every row before merging. Existing integrations that are missing items should be brought up to parity incrementally.
+
 ## Integration Crates (`integrations/`)
 
 Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.

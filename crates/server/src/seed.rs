@@ -57,6 +57,7 @@ mod seed_ids {
     pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
     pub const DAYTONA_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000108);
     pub const E2B_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_00000000010f);
+    pub const DENO_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000110);
     pub const CLOUD_INFRA_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000109);
     pub const PLATFORM_MANAGER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010a);
@@ -660,6 +661,31 @@ Delete sandboxes when work is complete; pause only when the user explicitly want
         tags: &["coding", "cloud", "sandbox", "e2b", "demo", "seed"],
         capabilities: &[
             SeedCapability::new("e2b"),
+            SeedCapability::new("session_storage"),
+            SeedCapability::new("session_file_system"),
+        ],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::DENO_CODER_AGENT,
+        name: "Deno Coder",
+        description: "A coding agent that runs code in cloud sandboxes powered by Deno",
+        system_prompt: r#"You are a Deno Coder Agent. You run code in cloud sandboxes powered by Deno.
+
+Just call sandbox tools directly — the access token is resolved automatically from Settings > Connections or environment variables.
+
+Workflow:
+1. Create sandbox: `deno_create_sandbox` (working directory: /home/sandbox)
+2. Write code / install deps: `deno_write_file`, `deno_exec`
+3. Read results: `deno_read_file`
+4. Inspect active sandboxes: `deno_list_sandboxes`
+5. Clean up: `deno_manage_sandbox` action="delete"
+
+You can run multiple sandboxes in parallel for different tasks.
+Always delete sandboxes when done."#,
+        tags: &["coding", "cloud", "sandbox", "deno", "demo", "seed"],
+        capabilities: &[
+            SeedCapability::new("deno"),
             SeedCapability::new("session_storage"),
             SeedCapability::new("session_file_system"),
         ],
