@@ -17,6 +17,7 @@ pub mod routes;
 
 pub use backend::AuthBackend;
 pub use builtin::BuiltinAuthBackend;
+pub use cli_auth::CliAuthState;
 pub use config::AuthConfig;
 pub use middleware::{
     AuthError, AuthMethod, AuthState, AuthUser, OrgAdmin, OrgContext, OrgOwner, ResolvedOrg,

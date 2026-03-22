@@ -130,6 +130,29 @@ Embedders may extend execution by:
 - Replacing the `PlatformDefinition`
 - Reusing Everruns worker runtime and lifecycle handling
 
+## CLI Auth Extension Point
+
+CLI authentication routes (`/v1/auth/cli/*`) are decoupled from any specific auth backend via `CliAuthState`. Embedders with external auth providers can mount CLI login without duplicating handler code.
+
+Construct `CliAuthState` with your storage backend, `AuthState`, and URLs, then mount via `cli_auth_routes()`. `base_url` must include any API path prefix (e.g. `/api`) — no env-var lookup is performed at runtime:
+
+```rust
+use everruns_server::auth::cli_auth::{CliAuthState, cli_auth_routes};
+
+let cli_state = CliAuthState {
+    db: db.clone(),
+    auth: auth_state.clone(),
+    // Frontend origin for login page redirects
+    frontend_url: "https://my-saas.example.com".into(),
+    // Full backend URL including API prefix — used directly in callback URLs
+    base_url: "https://my-saas.example.com/api".into(),
+};
+// In AuthBackend::auth_routes():
+Some(my_auth_routes.merge(cli_auth_routes(cli_state)))
+```
+
+See `crates/server/src/auth/cli_auth.rs` for the full implementation.
+
 ## Non-goals
 
 This spec does not require:
@@ -144,6 +167,7 @@ Those may be added later, but they are outside the current embedding contract.
 
 - `crates/core/src/platform_definition.rs`
 - `crates/core/src/connection_provider.rs`
+- `crates/server/src/auth/cli_auth.rs`
 - `crates/server/src/app_builder.rs`
 - `crates/server/src/platform.rs`
 - `crates/server/src/seed.rs`
