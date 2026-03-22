@@ -100,7 +100,7 @@ sha2 = "0.10"
 hmac = "0.12"
 hex = "0.4"
 git2 = "0.20"
-reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls-native-certs", "blocking", "form"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["json", "stream", "rustls", "blocking", "form"] }
 clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"
 eventsource-stream = "0.2"
@@ -141,8 +141,8 @@ rstest = "0.25"
 tempfile = "3"
 
 # File watching and gitignore
-notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
-notify-debouncer-mini = { version = "0.5", default-features = false }
+notify = { version = "8.2", default-features = false, features = ["macos_kqueue"] }
+notify-debouncer-mini = { version = "0.7", default-features = false }
 ignore = "0.4"
 
 # Plugin system for external integrations
