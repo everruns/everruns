@@ -101,7 +101,16 @@ impl Database {
     ) -> Result<Option<Vec<u8>>> {
         let row: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
             r#"
-            WITH identity_conn AS (
+            WITH has_identity_conn AS (
+                SELECT 1 AS v
+                FROM sessions s
+                JOIN agent_identity_connections aic
+                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
+                WHERE s.id = $1
+                  AND s.agent_identity_id IS NOT NULL
+                LIMIT 1
+            ),
+            identity_conn AS (
                 SELECT aic.access_token_encrypted
                 FROM sessions s
                 JOIN agent_identity_connections aic
@@ -118,7 +127,8 @@ impl Database {
                 JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
                 WHERE s.id = $1
                   AND uc.access_token_encrypted IS NOT NULL
-                  AND NOT EXISTS (SELECT 1 FROM identity_conn)
+                  AND NOT EXISTS (SELECT 1 FROM has_identity_conn)
+                ORDER BY uc.created_at ASC
                 LIMIT 1
             )
             SELECT access_token_encrypted FROM identity_conn
@@ -221,7 +231,16 @@ impl Database {
     ) -> Result<Option<i64>> {
         let row: Option<(i64,)> = sqlx::query_as(
             r#"
-            WITH identity_conn AS (
+            WITH has_identity_conn AS (
+                SELECT 1 AS v
+                FROM sessions s
+                JOIN agent_identity_connections aic
+                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
+                WHERE s.id = $1
+                  AND s.agent_identity_id IS NOT NULL
+                LIMIT 1
+            ),
+            identity_conn AS (
                 SELECT aic.installation_id
                 FROM sessions s
                 JOIN agent_identity_connections aic
@@ -238,7 +257,8 @@ impl Database {
                 JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
                 WHERE s.id = $1
                   AND uc.installation_id IS NOT NULL
-                  AND NOT EXISTS (SELECT 1 FROM identity_conn)
+                  AND NOT EXISTS (SELECT 1 FROM has_identity_conn)
+                ORDER BY uc.created_at ASC
                 LIMIT 1
             )
             SELECT installation_id FROM identity_conn

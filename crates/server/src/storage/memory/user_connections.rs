@@ -84,18 +84,24 @@ impl InMemoryDatabase {
         let agent_identity_id = session.agent_identity_id;
         drop(sessions);
 
-        // Try agent identity connection first
+        // Check identity connections first — if any exist for this provider,
+        // they take full precedence (even if the specific credential field is absent).
         if let Some(identity_id) = agent_identity_id {
             let id_connections = self.agent_identity_connections.read();
-            for conn in id_connections.values() {
-                if conn.agent_identity_id == identity_id
-                    && conn.provider == provider
-                    && conn.access_token_encrypted.is_some()
-                {
-                    return Ok(conn.access_token_encrypted.clone());
-                }
+            let has_any = id_connections
+                .values()
+                .any(|c| c.agent_identity_id == identity_id && c.provider == provider);
+            if has_any {
+                // Return the token if present, None otherwise (caller uses installation_id path)
+                return Ok(id_connections
+                    .values()
+                    .find(|c| {
+                        c.agent_identity_id == identity_id
+                            && c.provider == provider
+                            && c.access_token_encrypted.is_some()
+                    })
+                    .and_then(|c| c.access_token_encrypted.clone()));
             }
-            drop(id_connections);
         }
 
         // Fall back to user connections via org membership
@@ -201,18 +207,23 @@ impl InMemoryDatabase {
         let agent_identity_id = session.agent_identity_id;
         drop(sessions);
 
-        // Try agent identity connection first
+        // Check identity connections first — if any exist for this provider,
+        // they take full precedence (even if the specific credential field is absent).
         if let Some(identity_id) = agent_identity_id {
             let id_connections = self.agent_identity_connections.read();
-            for conn in id_connections.values() {
-                if conn.agent_identity_id == identity_id
-                    && conn.provider == provider
-                    && conn.installation_id.is_some()
-                {
-                    return Ok(conn.installation_id);
-                }
+            let has_any = id_connections
+                .values()
+                .any(|c| c.agent_identity_id == identity_id && c.provider == provider);
+            if has_any {
+                return Ok(id_connections
+                    .values()
+                    .find(|c| {
+                        c.agent_identity_id == identity_id
+                            && c.provider == provider
+                            && c.installation_id.is_some()
+                    })
+                    .and_then(|c| c.installation_id));
             }
-            drop(id_connections);
         }
 
         // Fall back to user connections via org membership
