@@ -12,7 +12,7 @@ pub async fn run(
     quiet: bool,
     message: String,
     session_id: String,
-    timeout_secs: u64,
+    timeout_secs: Option<u64>,
     no_stream: bool,
 ) -> Result<()> {
     // Create the message
@@ -28,13 +28,15 @@ pub async fn run(
 
     // Poll for events until turn.completed or timeout
     let start = Instant::now();
-    let timeout = Duration::from_secs(timeout_secs);
+    let timeout = timeout_secs.map(Duration::from_secs);
     let poll_interval = Duration::from_millis(500);
     let mut last_event_id: Option<String> = None;
     let mut agent_content = String::new();
 
     loop {
-        if start.elapsed() > timeout {
+        if let Some(timeout) = timeout
+            && start.elapsed() > timeout
+        {
             if output.is_text() {
                 eprintln!("\nTimeout waiting for response");
             }
