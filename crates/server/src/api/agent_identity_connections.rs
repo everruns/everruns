@@ -9,7 +9,6 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::agent_identity::AGENT_IDENTITY_MANAGE;
 use crate::storage::models::CreateAgentIdentityConnectionRow;
 use crate::storage::{EncryptionService, StorageBackend};
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -22,7 +21,7 @@ use everruns_core::{AgentIdentityId, Caller};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use super::common::ErrorResponse;
+use super::common::{ErrorResponse, impl_auth_state};
 
 /// App state for identity connection routes
 #[derive(Clone)]
@@ -49,11 +48,7 @@ impl AppState {
     }
 }
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
-    }
-}
+impl_auth_state!(AppState);
 
 // ============================================================================
 // Response / Request Types

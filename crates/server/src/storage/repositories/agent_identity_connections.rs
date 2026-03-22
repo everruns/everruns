@@ -11,23 +11,31 @@ impl Database {
     // ============================================
 
     /// Create or replace an identity connection for a provider.
+    /// Uses ON CONFLICT to atomically upsert, avoiding data loss from a
+    /// DELETE+INSERT race if the INSERT were to fail after the DELETE.
     pub async fn upsert_agent_identity_connection(
         &self,
         input: CreateAgentIdentityConnectionRow,
     ) -> Result<AgentIdentityConnectionRow> {
-        sqlx::query(
-            "DELETE FROM agent_identity_connections WHERE agent_identity_id = $1 AND provider = $2",
-        )
-        .bind(input.agent_identity_id)
-        .bind(&input.provider)
-        .execute(&self.pool)
-        .await?;
-
         let row = sqlx::query_as::<_, AgentIdentityConnectionRow>(
             r#"
-            INSERT INTO agent_identity_connections (agent_identity_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id)
+            INSERT INTO agent_identity_connections
+                (agent_identity_id, provider, connection_type, provider_user_id, provider_username,
+                 access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id, agent_identity_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
+            ON CONFLICT (agent_identity_id, provider) DO UPDATE SET
+                connection_type = EXCLUDED.connection_type,
+                provider_user_id = EXCLUDED.provider_user_id,
+                provider_username = EXCLUDED.provider_username,
+                access_token_encrypted = EXCLUDED.access_token_encrypted,
+                refresh_token_encrypted = EXCLUDED.refresh_token_encrypted,
+                scopes = EXCLUDED.scopes,
+                expires_at = EXCLUDED.expires_at,
+                installation_id = EXCLUDED.installation_id,
+                updated_at = NOW()
+            RETURNING id, agent_identity_id, provider, connection_type, provider_user_id,
+                      provider_username, access_token_encrypted, refresh_token_encrypted,
+                      scopes, expires_at, installation_id, created_at, updated_at
             "#,
         )
         .bind(input.agent_identity_id)

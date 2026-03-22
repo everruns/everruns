@@ -2746,3 +2746,77 @@ async fn test_list_connections_initially_empty() {
 
     assert!(resp.is_empty());
 }
+
+// ============================================================================
+// Agent Identity Connection tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_identity_connections_list_empty() {
+    let server = TestServer::in_memory().await;
+
+    // Create an identity first
+    let identity: Value = server
+        .post("/v1/agent-identities", json!({"name": "ConnTest"}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let id = identity["id"].as_str().unwrap();
+
+    // List connections — should be empty
+    let connections: Vec<Value> = server
+        .get(&format!("/v1/agent-identities/{id}/connections"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert!(connections.is_empty());
+}
+
+#[tokio::test]
+async fn test_identity_connections_not_found_for_missing_identity() {
+    let server = TestServer::in_memory().await;
+
+    server
+        .get("/v1/agent-identities/identity_019d166cd0147e638c72892ecb30ffff/connections")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_identity_connections_delete_not_found() {
+    let server = TestServer::in_memory().await;
+
+    let identity: Value = server
+        .post("/v1/agent-identities", json!({"name": "ConnDel"}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let id = identity["id"].as_str().unwrap();
+
+    server
+        .delete(&format!(
+            "/v1/agent-identities/{id}/connections/nonexistent"
+        ))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_identity_connections_create_unknown_provider() {
+    let server = TestServer::in_memory().await;
+
+    let identity: Value = server
+        .post("/v1/agent-identities", json!({"name": "ConnProv"}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let id = identity["id"].as_str().unwrap();
+
+    server
+        .post(
+            &format!("/v1/agent-identities/{id}/connections/nonexistent"),
+            json!({"api_key": "test"}),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
