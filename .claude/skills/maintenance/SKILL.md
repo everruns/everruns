@@ -43,6 +43,7 @@ Use this skill when the task is about repo maintenance rather than a single feat
 
 - Start from goals and risk surface, not checklist order.
 - Prefer the highest-signal path first: recent diffs, flaky areas, failing checks, stale specs, outdated dependencies, or known security/performance hotspots.
+- Always run `cargo outdated` (or `cargo search` per-crate) and `npm outdated` during release-readiness or dependency-scoped maintenance — even when no security advisory exists. Patch/minor bumps are cheap to miss and cheap to apply; skipping them silently accumulates drift.
 - Check Linear issues in the OSS project (EVE team) already in `In Progress` when maintenance covers release readiness or workflow hygiene. Treat issues whose `updatedAt` is older than 2 days as stale by default, then triage or report them.
 - Skip untouched areas when there is a clear reason. Say why they were skipped.
 - Prefer fixing over reporting.
