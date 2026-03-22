@@ -20,7 +20,9 @@ use tracing::debug;
 
 use crate::client::BrowserlessClient;
 use crate::session_tools::{keep_session_alive, try_get_cdp_session};
-use crate::state::{get_api_token, required_str, resolve_step_secrets, substitute_step_secrets};
+use crate::state::{
+    extract_secret_refs, get_api_token, required_str, resolve_step_secrets, substitute_step_secrets,
+};
 use crate::validation::{validate_browserless_url, validate_interaction_steps};
 
 const MAX_HTML_BYTES: usize = 100_000;
@@ -665,7 +667,7 @@ impl Tool for BrowserlessInteractTool {
         };
 
         // THREAT: Block secret references in URL param to prevent exfiltration
-        if url.contains("${{secrets.") {
+        if !extract_secret_refs(url).is_empty() {
             return ToolExecutionResult::tool_error(
                 "Secret references (${{secrets.*}}) are not allowed in the 'url' parameter.",
             );
@@ -689,7 +691,7 @@ impl Tool for BrowserlessInteractTool {
         for step in &steps {
             if step.get("action").and_then(|v| v.as_str()) == Some("navigate")
                 && let Some(val) = step.get("value").and_then(|v| v.as_str())
-                && val.contains("${{secrets.")
+                && !extract_secret_refs(val).is_empty()
             {
                 return ToolExecutionResult::tool_error(
                     "Secret references (${{secrets.*}}) are not allowed in 'navigate' step values.",

@@ -197,12 +197,35 @@ pub fn extract_secret_refs(s: &str) -> Vec<String> {
 }
 
 /// Replace all `${{secrets.<name>}}` patterns in `s` with resolved values.
+/// Uses a single left-to-right pass to avoid order-dependent or nested substitution.
 pub fn substitute_secrets(s: &str, resolved: &std::collections::HashMap<String, String>) -> String {
-    let mut result = s.to_string();
-    for (name, value) in resolved {
-        let pattern = format!("{SECRET_REF_PREFIX}{name}{SECRET_REF_SUFFIX}");
-        result = result.replace(&pattern, value);
+    let mut result = String::with_capacity(s.len());
+    let mut pos = 0;
+
+    while let Some(rel_start) = s[pos..].find(SECRET_REF_PREFIX) {
+        let start = pos + rel_start;
+        result.push_str(&s[pos..start]);
+
+        let name_start = start + SECRET_REF_PREFIX.len();
+        let Some(rel_end) = s[name_start..].find(SECRET_REF_SUFFIX) else {
+            // No closing suffix — push the rest verbatim
+            result.push_str(&s[start..]);
+            return result;
+        };
+        let name_end = name_start + rel_end;
+        let name = &s[name_start..name_end];
+
+        if let Some(value) = resolved.get(name) {
+            result.push_str(value);
+        } else {
+            // Unknown secret — leave placeholder as-is
+            result.push_str(&s[start..name_end + SECRET_REF_SUFFIX.len()]);
+        }
+
+        pos = name_end + SECRET_REF_SUFFIX.len();
     }
+
+    result.push_str(&s[pos..]);
     result
 }
 
@@ -449,6 +472,22 @@ mod tests {
             substitute_secrets("Bearer ${{secrets.token}}", &resolved),
             "Bearer abc123"
         );
+    }
+
+    /// Nested `${{secrets.*}}` inside a resolved value must NOT be recursively expanded.
+    /// Single-pass left-to-right substitution guarantees deterministic behavior.
+    #[test]
+    fn test_substitute_secrets_nested_placeholder_in_value() {
+        let mut resolved = std::collections::HashMap::new();
+        resolved.insert("inner".to_string(), "INNER_VALUE".to_string());
+        resolved.insert(
+            "outer".to_string(),
+            "prefix ${{secrets.inner}} suffix".to_string(),
+        );
+
+        let result = substitute_secrets("${{secrets.outer}}", &resolved);
+        // Only the top-level placeholder is substituted; nested placeholder stays as-is
+        assert_eq!(result, "prefix ${{secrets.inner}} suffix");
     }
 
     #[test]
