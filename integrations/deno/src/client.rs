@@ -615,10 +615,18 @@ impl DenoSandboxSession {
         while !collectors.is_complete() {
             let next = match timeout(self.stream_idle_timeout, self.ws.next()).await {
                 Ok(message) => message,
-                Err(_) => break,
+                Err(_) => {
+                    return Err(format!(
+                        "Timed out waiting for Deno sandbox streams to finish: {}",
+                        collectors.pending_streams().join(", ")
+                    ));
+                }
             };
             let Some(message) = next else {
-                break;
+                return Err(format!(
+                    "Deno sandbox websocket closed before streams completed: {}",
+                    collectors.pending_streams().join(", ")
+                ));
             };
             let message = message.map_err(|e| format!("Deno sandbox websocket error: {e}"))?;
             if let Some(value) = decode_message(message)?
@@ -627,7 +635,6 @@ impl DenoSandboxSession {
                 collectors.handle_notification(notification_method, value.get("params"));
             }
         }
-        collectors.finish_missing();
         Ok(())
     }
 }
@@ -727,15 +734,6 @@ impl StreamCollectors {
                 .is_none_or(StreamCollector::is_complete)
     }
 
-    fn finish_missing(&mut self) {
-        if let Some(stdout) = &mut self.stdout {
-            stdout.ended = true;
-        }
-        if let Some(stderr) = &mut self.stderr {
-            stderr.ended = true;
-        }
-    }
-
     fn stdout_string(&self) -> String {
         self.stdout
             .as_ref()
@@ -766,6 +764,25 @@ impl StreamCollectors {
             return self.stderr.as_mut();
         }
         None
+    }
+
+    fn pending_streams(&self) -> Vec<&'static str> {
+        let mut pending = Vec::new();
+        if self
+            .stdout
+            .as_ref()
+            .is_some_and(|stream| !stream.is_complete())
+        {
+            pending.push("stdout");
+        }
+        if self
+            .stderr
+            .as_ref()
+            .is_some_and(|stream| !stream.is_complete())
+        {
+            pending.push("stderr");
+        }
+        pending
     }
 }
 
@@ -826,6 +843,15 @@ mod tests {
 
         assert!(collectors.is_complete());
         assert_eq!(collectors.stdout_string(), "hello");
+    }
+
+    #[test]
+    fn stream_collectors_report_pending_stream_names() {
+        let mut collectors = StreamCollectors::new(Some(7), Some(8));
+        collectors.handle_notification("$sandbox.stream.start", Some(&json!({"streamId": 7})));
+        collectors.handle_notification("$sandbox.stream.end", Some(&json!({"streamId": 7})));
+
+        assert_eq!(collectors.pending_streams(), vec!["stderr"]);
     }
 
     #[test]
