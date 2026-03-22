@@ -5,20 +5,33 @@ use everruns_integrations_e2b::state::SandboxState;
 use everruns_integrations_e2b::{E2B_DEFAULT_TIMEOUT_SECS, E2B_DEFAULT_WORKSPACE_PATH};
 use serde_json::json;
 
-fn require_api_key() -> String {
+fn get_api_key() -> Option<String> {
     std::env::var("E2B_API_KEY")
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .expect("E2B_API_KEY must be set for e2b-live-tests")
+}
+
+/// Skip test if E2B_API_KEY is not set. Returns the key.
+macro_rules! require_api_key {
+    () => {
+        match get_api_key() {
+            Some(key) => key,
+            None => {
+                eprintln!("[skip] E2B_API_KEY not set, skipping live test");
+                return;
+            }
+        }
+    };
 }
 
 struct SandboxGuard {
+    api_key: String,
     sandbox_id: String,
 }
 
 impl Drop for SandboxGuard {
     fn drop(&mut self) {
-        let client = E2BClient::new(require_api_key());
+        let client = E2BClient::new(self.api_key.clone());
         let sandbox_id = self.sandbox_id.clone();
         let handle =
             tokio::runtime::Handle::try_current().expect("tokio runtime required for cleanup");
@@ -30,7 +43,8 @@ impl Drop for SandboxGuard {
 
 #[tokio::test]
 async fn smoke_live_sandbox_exec_and_files() {
-    let client = E2BClient::new(require_api_key());
+    let api_key = require_api_key!();
+    let client = E2BClient::new(api_key.clone());
     let created = client
         .create_sandbox(
             "base",
@@ -41,6 +55,7 @@ async fn smoke_live_sandbox_exec_and_files() {
         .await
         .expect("create sandbox");
     let _guard = SandboxGuard {
+        api_key,
         sandbox_id: created.sandbox_id.clone(),
     };
 
