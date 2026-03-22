@@ -347,10 +347,11 @@ fn format_event_text(event_type: &str, data: &serde_json::Value, ts: &str) {
 }
 
 fn truncate_str(s: &str, max: usize) -> String {
-    if s.len() <= max {
+    if s.chars().count() <= max {
         s.to_string()
     } else {
-        format!("{}...", &s[..max])
+        let truncated: String = s.chars().take(max).collect();
+        format!("{truncated}...")
     }
 }
 
