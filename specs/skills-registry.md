@@ -326,11 +326,11 @@ When the agent calls `activate_skill`:
 
 For archive-based skills, extracted files are mounted into the session's virtual filesystem when the skill is activated. This reuses the existing `MountPoint` / `MountSource` system that capabilities already use.
 
-**Mount path**: `/skills/{skill-name}/`
+**Mount path**: `/.agents/skills/{skill-name}/`
 
 Example: A skill named `pdf-processing` with files `scripts/extract.py` and `references/REFERENCE.md` would be mounted as:
 ```
-/skills/pdf-processing/
+/.agents/skills/pdf-processing/
 ├── SKILL.md
 ├── scripts/extract.py
 └── references/REFERENCE.md
@@ -340,8 +340,8 @@ The agent can then read these files using existing session filesystem tools (`re
 
 **Mounting strategy**:
 1. On `activate_skill` call, the worker fetches skill files from the `skill_files` table via gRPC
-2. Files are mounted into the session VFS at `/skills/{skill-name}/`
-3. The `activate_skill` tool result includes the SKILL.md body only — no separate file listing
+2. Files are mounted into the session VFS at `/.agents/skills/{skill-name}/`
+3. The `activate_skill` tool result includes instructions and metadata (`skill`, `description`, and fork-mode fields when applicable), but does not include a separate companion-file listing
 4. Text files become `MountSource::InlineFile` with `encoding: "text"`
 5. Binary files become `MountSource::InlineFile` with `encoding: "base64"`
 
