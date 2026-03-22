@@ -451,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn test_attach_skill_mounts_with_bundled_files() {
+    fn test_attach_skill_mounts_with_files() {
         let skill_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let cap = AttachSkillCapability::from_registry(
             skill_id,
