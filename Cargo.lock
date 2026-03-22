@@ -1623,7 +1623,7 @@ dependencies = [
  "futures-util",
  "http",
  "inventory",
- "reqwest 0.13.1",
+ "reqwest 0.13.2",
  "serde",
  "serde_json",
  "tokio",
