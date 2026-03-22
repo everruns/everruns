@@ -18,7 +18,7 @@ use axum::{
 };
 use axum_extra::extract::Multipart;
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::ImageId;
+use everruns_core::typed_id::{ImageId, SessionId};
 use image::ImageFormat;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
@@ -81,7 +81,7 @@ fn default_limit() -> i64 {
 #[derive(Debug, Deserialize)]
 pub struct UploadImageQuery {
     /// Optional session ID stored as metadata for tracking (not required for upload)
-    pub session_id: Option<Uuid>,
+    pub session_id: Option<SessionId>,
 }
 
 // ============================================
@@ -164,7 +164,7 @@ fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, Strin
     post,
     path = "/v1/images",
     params(
-        ("session_id" = Option<Uuid>, Query, description = "Optional: session ID stored as metadata for tracking (not required for upload)")
+        ("session_id" = Option<String>, Query, description = "Optional: session ID stored as metadata for tracking (not required for upload)")
     ),
     request_body(content = String, description = "Multipart form data with 'file' field", content_type = "multipart/form-data"),
     responses(
@@ -495,6 +495,28 @@ mod tests {
         assert!(is_valid_content_type("image/webp"));
         assert!(!is_valid_content_type("image/svg+xml"));
         assert!(!is_valid_content_type("application/pdf"));
+    }
+
+    #[test]
+    fn test_upload_query_session_id_parsing() {
+        // Typed SessionId with prefix parses correctly
+        let query: UploadImageQuery =
+            serde_html_form::from_str("session_id=session_01933b5a00007000800000000000001a")
+                .expect("typed session ID should parse");
+        assert!(query.session_id.is_some());
+
+        // Omitted session_id is fine (it's optional)
+        let query: UploadImageQuery =
+            serde_html_form::from_str("").expect("empty query should parse");
+        assert!(query.session_id.is_none());
+
+        // Raw UUID without prefix is rejected
+        let result: Result<UploadImageQuery, _> =
+            serde_html_form::from_str("session_id=01933b5a-0000-7000-8000-00000000001a");
+        assert!(
+            result.is_err(),
+            "raw UUID without prefix should be rejected"
+        );
     }
 
     #[test]
