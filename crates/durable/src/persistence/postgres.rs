@@ -1242,6 +1242,47 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         Ok(())
     }
 
+    #[instrument(skip(self))]
+    async fn consume_pending_signals(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<WorkflowSignal>, StoreError> {
+        // Atomic: UPDATE ... RETURNING in a single statement.
+        // Marks all pending signals as processed and returns them.
+        let rows = sqlx::query(
+            r#"
+            UPDATE durable_signals
+            SET processed_at = NOW()
+            WHERE id IN (
+                SELECT id FROM durable_signals
+                WHERE workflow_id = $1 AND processed_at IS NULL
+                ORDER BY sequence_num
+                FOR UPDATE
+            )
+            RETURNING signal_type, payload, sent_at
+            "#,
+        )
+        .bind(workflow_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to consume pending signals: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        let signals = rows
+            .into_iter()
+            .map(|row| WorkflowSignal {
+                signal_type: row.get("signal_type"),
+                payload: row.get("payload"),
+                sent_at: row.get("sent_at"),
+            })
+            .collect::<Vec<_>>();
+
+        debug!(%workflow_id, count = signals.len(), "consumed pending signals atomically");
+        Ok(signals)
+    }
+
     #[instrument(skip(self, worker))]
     async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
         // Default worker_group to "default" if not specified

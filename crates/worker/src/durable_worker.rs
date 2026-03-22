@@ -1412,7 +1412,7 @@ impl DurableWorker {
                     let pending_signals = store
                         .get_and_consume_signals(workflow_id)
                         .await
-                        .unwrap_or_default();
+                        .map_err(|e| anyhow::anyhow!("Failed to consume pending signals: {}", e))?;
 
                     let steering_message = pending_signals.iter().rev().find_map(|sig| {
                         if sig.signal_type == everruns_durable::signal_types::USER_MESSAGE {

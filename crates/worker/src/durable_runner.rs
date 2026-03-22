@@ -339,12 +339,7 @@ impl DurableStoreBackend for DirectDurableStore {
         &mut self,
         workflow_id: Uuid,
     ) -> Result<Vec<everruns_durable::WorkflowSignal>> {
-        let signals = self.store.get_pending_signals(workflow_id).await?;
-        if !signals.is_empty() {
-            self.store
-                .mark_signals_processed(workflow_id, signals.len())
-                .await?;
-        }
+        let signals = self.store.consume_pending_signals(workflow_id).await?;
         Ok(signals)
     }
 }
@@ -487,12 +482,7 @@ impl DurableStoreBackend for InMemoryDurableStore {
         &mut self,
         workflow_id: Uuid,
     ) -> Result<Vec<everruns_durable::WorkflowSignal>> {
-        let signals = self.store.get_pending_signals(workflow_id).await?;
-        if !signals.is_empty() {
-            self.store
-                .mark_signals_processed(workflow_id, signals.len())
-                .await?;
-        }
+        let signals = self.store.consume_pending_signals(workflow_id).await?;
         Ok(signals)
     }
 }
@@ -659,7 +649,7 @@ impl AgentRunner for DurableRunner {
                 );
 
                 let activity_id = format!("input_{}", Uuid::now_v7());
-                store
+                if let Err(e) = store
                     .enqueue_task(
                         workflow_id,
                         activity_id,
@@ -667,7 +657,13 @@ impl AgentRunner for DurableRunner {
                         input_json,
                     )
                     .await
-                    .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {}", e))?;
+                {
+                    // Rollback: set workflow back to Completed so future claims can succeed.
+                    let _ = store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
+                        .await;
+                    return Err(anyhow::anyhow!("Failed to enqueue task: {}", e));
+                }
             }
             Ok(false) => {
                 // Workflow is Running — a turn is active.
@@ -712,14 +708,6 @@ impl AgentRunner for DurableRunner {
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to create workflow: {}", e))?;
 
-                    // Set to Running immediately
-                    store
-                        .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
-                        .await
-                        .map_err(|e| {
-                            anyhow::anyhow!("Failed to set new workflow to Running: {}", e)
-                        })?;
-
                     let activity_id = format!("input_{}", Uuid::now_v7());
 
                     // Append WorkflowStarted event
@@ -743,6 +731,15 @@ impl AgentRunner for DurableRunner {
                         )
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {}", e))?;
+
+                    // Set to Running only after task is enqueued, so a failure above
+                    // leaves the workflow in Pending (not stuck in Running with no task).
+                    store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to set new workflow to Running: {}", e)
+                        })?;
 
                     // Append ActivityScheduled event
                     let scheduled_event = WorkflowEvent::ActivityScheduled {

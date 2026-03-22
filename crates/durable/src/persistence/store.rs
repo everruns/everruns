@@ -660,6 +660,22 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         count: usize,
     ) -> Result<(), StoreError>;
 
+    /// Atomically get and consume all pending signals for a workflow.
+    ///
+    /// Default implementation calls `get_pending_signals` + `mark_signals_processed`,
+    /// but stores should override with an atomic implementation to avoid races.
+    async fn consume_pending_signals(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<WorkflowSignal>, StoreError> {
+        let signals = self.get_pending_signals(workflow_id).await?;
+        if !signals.is_empty() {
+            self.mark_signals_processed(workflow_id, signals.len())
+                .await?;
+        }
+        Ok(signals)
+    }
+
     // =========================================================================
     // Worker Registry Operations (optional, default no-op)
     // =========================================================================

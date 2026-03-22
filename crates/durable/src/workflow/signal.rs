@@ -75,7 +75,13 @@ pub mod signal_types {
     pub const SHUTDOWN: &str = "shutdown";
 
     /// User message arrived while a turn is already running (steering).
-    /// Payload: `{ "input_message_id": "<MessageId>" }`
+    ///
+    /// Payload:
+    /// - Required: `input_message_id` (`<MessageId>`)
+    /// - Optional (used for follow-on turn, with fallbacks if omitted):
+    ///   `org_id`, `harness_id`, `agent_id`
+    ///
+    /// Example: `{ "input_message_id": "<id>", "org_id": 1, "harness_id": "<id>", "agent_id": "<id>" }`
     pub const USER_MESSAGE: &str = "user_message";
 }
 

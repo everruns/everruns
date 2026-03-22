@@ -762,6 +762,19 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         Ok(())
     }
 
+    async fn consume_pending_signals(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<WorkflowSignal>, StoreError> {
+        let mut workflows = self.workflows.write();
+        let workflow = workflows
+            .get_mut(&workflow_id)
+            .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
+
+        let signals = std::mem::take(&mut workflow.signals);
+        Ok(signals)
+    }
+
     async fn move_to_dlq(
         &self,
         task_id: Uuid,

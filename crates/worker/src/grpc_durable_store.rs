@@ -424,19 +424,27 @@ impl GrpcDurableStore {
             .into_inner()
             .signals
             .into_iter()
-            .map(|s| {
+            .filter_map(|s| {
                 let payload = s
                     .payload
                     .as_ref()
                     .map(everruns_internal_protocol::proto_value_to_json)
                     .unwrap_or(serde_json::json!({}));
-                let sent_at = chrono::DateTime::parse_from_rfc3339(&s.sent_at)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .unwrap_or_else(|_| chrono::Utc::now());
-                everruns_durable::WorkflowSignal {
-                    signal_type: s.signal_type,
-                    payload,
-                    sent_at,
+                match chrono::DateTime::parse_from_rfc3339(&s.sent_at) {
+                    Ok(dt) => Some(everruns_durable::WorkflowSignal {
+                        signal_type: s.signal_type,
+                        payload,
+                        sent_at: dt.with_timezone(&chrono::Utc),
+                    }),
+                    Err(err) => {
+                        tracing::warn!(
+                            sent_at = %s.sent_at,
+                            signal_type = %s.signal_type,
+                            error = %err,
+                            "Skipping workflow signal with malformed sent_at"
+                        );
+                        None
+                    }
                 }
             })
             .collect();
