@@ -167,7 +167,7 @@ jobs:
         run: |
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini -p everruns-internal-protocol -p everruns-core --lib --all-features
           cargo test -p everruns-integrations-daytona --all-features
-          cargo test -p everruns-integrations-e2b --all-features
+          cargo test -p everruns-integrations-e2b
 
   # Live Daytona API tests — only when integrations/daytona/** changes and secret exists
   daytona-live-test:

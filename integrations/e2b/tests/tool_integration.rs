@@ -144,6 +144,14 @@ async fn test_create_sandbox_via_client() {
     Mock::given(method("POST"))
         .and(path("/sandboxes"))
         .and(header("X-API-KEY", "test_key"))
+        .and(wiremock::matchers::body_json(json!({
+            "templateID": "base",
+            "timeout": 3600,
+            "autoPause": true,
+            "allowInternetAccess": true,
+            "metadata": {"everruns": "true"},
+            "envVars": {}
+        })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "clientId": "client_1",
             "envdVersion": "0.1.0",
@@ -557,34 +565,48 @@ async fn test_create_sandbox_tool_no_storage_context() {
 
 #[tokio::test]
 async fn test_api_key_resolved_from_session_secret() {
-    // This tests that when E2B_API_KEY is set as a session secret,
-    // it's used even without the env var
-    let tool = get_tool("e2b_exec");
+    // Verify that session-secret API key resolution works by contrasting
+    // behavior with and without a seeded E2B_API_KEY secret.
+    // Uses read_file which requires API key + sandbox state — the error
+    // changes from "API key not configured" to "not found" when the key
+    // is present, proving the resolution path works without any network call.
+    let tool = get_tool("e2b_read_file");
     let session_id = SessionId::new();
-    let store = Arc::new(MockStorageStore::new());
 
-    // Set API key via session secret
-    setup_api_key(session_id, &store).await;
-    // Set sandbox state
-    setup_context_with_sandbox(session_id, &store, "sb_secret").await;
-
-    let context = ToolContext::with_storage_store(session_id, store);
-
-    // The tool will try to reach the envd endpoint which won't exist,
-    // but it should get past the API key check
+    // Without API key — should fail on key resolution
+    let store_no_key = Arc::new(MockStorageStore::new());
+    let ctx_no_key = ToolContext::with_storage_store(session_id, store_no_key);
     let result = tool
         .execute_with_context(
-            json!({"sandbox_id": "sb_secret", "command": "echo hello"}),
-            &context,
+            json!({"sandbox_id": "sb_secret", "path": "/tmp/x"}),
+            &ctx_no_key,
         )
         .await;
+    match &result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(msg.contains("API key not configured"), "Got: {msg}");
+        }
+        other => panic!("Expected ToolError about API key, got: {other:?}"),
+    }
 
-    // It should fail at the network level (trying to reach sandbox),
-    // not at the API key level
-    if let ToolExecutionResult::ToolError(msg) = result {
-        assert!(
-            !msg.contains("API key not configured"),
-            "Should not fail on API key: {msg}"
-        );
+    // With API key seeded as session secret — should get past key check
+    // and fail on missing sandbox state instead
+    let store_with_key = Arc::new(MockStorageStore::new());
+    setup_api_key(session_id, &store_with_key).await;
+    let ctx_with_key = ToolContext::with_storage_store(session_id, store_with_key);
+    let result = tool
+        .execute_with_context(
+            json!({"sandbox_id": "sb_secret", "path": "/tmp/x"}),
+            &ctx_with_key,
+        )
+        .await;
+    match &result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(
+                msg.contains("not found"),
+                "Should fail on missing sandbox, not API key: {msg}"
+            );
+        }
+        other => panic!("Expected ToolError about sandbox not found, got: {other:?}"),
     }
 }
