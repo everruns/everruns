@@ -1444,6 +1444,7 @@ dependencies = [
  "dialoguer",
  "dirs",
  "everruns-sdk",
+ "futures",
  "hostname",
  "ignore",
  "notify",

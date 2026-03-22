@@ -4,6 +4,7 @@ use crate::output::{OutputFormat, print_field, print_table_header, print_table_r
 use anyhow::Result;
 use clap::Subcommand;
 use everruns_sdk::{CreateSessionRequest, Everruns};
+use futures::StreamExt;
 
 #[derive(Subcommand)]
 pub enum SessionsCommand {
@@ -34,6 +35,12 @@ pub enum SessionsCommand {
         /// Session ID (e.g. ses_xxx)
         session: String,
     },
+
+    /// Watch session events in real time
+    Watch {
+        /// Session ID (e.g. ses_xxx)
+        session: String,
+    },
 }
 
 pub async fn run(
@@ -51,6 +58,7 @@ pub async fn run(
         } => create(client, output, quiet, harness, agent, title, model).await,
         SessionsCommand::List => list(client, output).await,
         SessionsCommand::Get { session } => get(client, output, session).await,
+        SessionsCommand::Watch { session } => watch(client, output, session).await,
     }
 }
 
@@ -169,4 +177,190 @@ async fn get(client: &Everruns, output: OutputFormat, session_id: String) -> Res
     }
 
     Ok(())
+}
+
+async fn watch(client: &Everruns, output: OutputFormat, session_id: String) -> Result<()> {
+    // Verify session exists
+    let session = client
+        .sessions()
+        .get(&session_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("Session not found: {} ({})", session_id, e))?;
+
+    if output.is_text() {
+        let title = session.title.as_deref().unwrap_or("(untitled)");
+        eprintln!("Watching session {} [{}]", session_id, title);
+        eprintln!("Press Ctrl+C to stop\n");
+    }
+
+    let mut stream = client.events().stream(&session_id);
+
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                if output.is_text() {
+                    eprintln!("\nStopped watching");
+                }
+                return Ok(());
+            }
+            item = stream.next() => {
+                match item {
+                    Some(Ok(event)) => {
+                        if output.is_text() {
+                            format_event_text(&event.event_type, &event.data, &event.ts);
+                        } else {
+                            let event_json = serde_json::json!({
+                                "id": event.id,
+                                "type": event.event_type,
+                                "ts": event.ts,
+                                "session_id": event.session_id,
+                                "data": event.data,
+                            });
+                            output.print_value(&event_json);
+                        }
+                    }
+                    Some(Err(e)) => {
+                        eprintln!("Stream error: {e}");
+                    }
+                    None => {
+                        // Stream ended (server closed connection)
+                        if output.is_text() {
+                            eprintln!("Stream ended");
+                        }
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Format a single event for human-readable text output.
+fn format_event_text(event_type: &str, data: &serde_json::Value, ts: &str) {
+    match event_type {
+        "turn.started" => {
+            eprintln!("[{ts}] Turn started");
+        }
+        "turn.completed" => {
+            eprintln!("[{ts}] Turn completed");
+        }
+        "turn.failed" => {
+            let error = data
+                .get("error")
+                .and_then(|e| e.as_str())
+                .unwrap_or("unknown");
+            eprintln!("[{ts}] Turn failed: {error}");
+        }
+        "turn.cancelled" => {
+            eprintln!("[{ts}] Turn cancelled");
+        }
+        "tool.started" => {
+            // ToolStartedData has tool_call.name
+            let name = data
+                .get("tool_call")
+                .and_then(|tc| tc.get("name"))
+                .and_then(|n| n.as_str())
+                .unwrap_or("unknown");
+            eprintln!("[{ts}] Tool started: {name}");
+        }
+        "tool.completed" => {
+            // ToolCompletedData has tool_name and status
+            let name = data
+                .get("tool_name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("unknown");
+            let status = data
+                .get("status")
+                .and_then(|s| s.as_str())
+                .unwrap_or("unknown");
+            eprintln!("[{ts}] Tool completed: {name} [{status}]");
+        }
+        "tool.call_requested" => {
+            let name = data
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("unknown");
+            eprintln!("[{ts}] Tool call requested: {name}");
+        }
+        "output.message.completed" => {
+            let content = data
+                .get("content")
+                .or_else(|| data.get("message").and_then(|m| m.get("content")));
+            if let Some(parts) = content.and_then(|c| c.as_array()) {
+                for part in parts {
+                    if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                        println!("{text}");
+                    }
+                }
+            }
+        }
+        "output.message.delta" => {
+            // OutputMessageDeltaData has delta: String (plain text chunk)
+            if let Some(text) = data.get("delta").and_then(|d| d.as_str()) {
+                print!("{text}");
+                use std::io::Write;
+                let _ = std::io::stdout().flush();
+            }
+        }
+        "reason.started" | "reason.completed" | "act.started" | "act.completed" => {
+            let phase = event_type.replace('.', " ");
+            let phase = capitalize_first(&phase);
+            eprintln!("[{ts}] {phase}");
+        }
+        "input.message" => {
+            // InputMessageData has message.content: Vec<ContentPart>
+            let text = data
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array())
+                .and_then(|parts| {
+                    parts
+                        .iter()
+                        .find_map(|p| p.get("text").and_then(|t| t.as_str()))
+                });
+            if let Some(text) = text {
+                let preview = truncate_str(text, 120);
+                eprintln!("[{ts}] Input: {preview}");
+            } else {
+                eprintln!("[{ts}] Input message");
+            }
+        }
+        "session.started" | "session.activated" | "session.idled" => {
+            let label = event_type.replace('.', " ");
+            let label = capitalize_first(&label);
+            eprintln!("[{ts}] {label}");
+        }
+        "subagent.spawned" => {
+            eprintln!("[{ts}] Subagent spawned");
+        }
+        "subagent.completed" => {
+            eprintln!("[{ts}] Subagent completed");
+        }
+        "subagent.failed" => {
+            eprintln!("[{ts}] Subagent failed");
+        }
+        "subagent.cancelled" => {
+            eprintln!("[{ts}] Subagent cancelled");
+        }
+        _ => {
+            eprintln!("[{ts}] {event_type}");
+        }
+    }
+}
+
+fn truncate_str(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max).collect();
+        format!("{truncated}...")
+    }
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+    }
 }
