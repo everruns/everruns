@@ -8,14 +8,14 @@
 use super::{
     api_key::generate_api_key,
     audit,
-    builtin::BuiltinAuthBackend,
-    middleware::{AuthError, AuthUser},
+    middleware::{AuthError, AuthState, AuthUser},
     routes::OrgMembershipResponse,
 };
+use crate::storage::StorageBackend;
 use crate::storage::models::{CreateApiKeyRow, CreateCliAuthSessionRow};
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{FromRef, Query, State},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -23,6 +23,7 @@ use axum::{
 use chrono::{Duration, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use utoipa::ToSchema;
 
 /// CLI auth session TTL (5 minutes)
@@ -94,11 +95,34 @@ pub struct CliUserInfo {
 }
 
 // ============================================
+// State
+// ============================================
+
+/// State for CLI auth routes — decoupled from any specific AuthBackend.
+///
+/// Embedders construct this with their own URLs and mount via `cli_auth_routes()`.
+#[derive(Clone)]
+pub struct CliAuthState {
+    pub db: Arc<StorageBackend>,
+    pub auth: AuthState,
+    /// Frontend URL for login redirects (e.g. https://app.example.com)
+    pub frontend_url: String,
+    /// Backend base URL for callback construction (e.g. https://app.example.com/api)
+    pub base_url: String,
+}
+
+impl FromRef<CliAuthState> for AuthState {
+    fn from_ref(state: &CliAuthState) -> Self {
+        state.auth.clone()
+    }
+}
+
+// ============================================
 // Routes
 // ============================================
 
 /// Create CLI auth routes
-pub fn cli_auth_routes(state: BuiltinAuthBackend) -> Router {
+pub fn cli_auth_routes(state: CliAuthState) -> Router {
     Router::new()
         .route("/v1/auth/cli/start", post(cli_auth_start))
         .route("/v1/auth/cli/callback", get(cli_auth_callback))
@@ -112,7 +136,7 @@ pub fn cli_auth_routes(state: BuiltinAuthBackend) -> Router {
 /// Creates a pending CLI auth session and returns the login URL.
 /// The CLI should open this URL in the user's browser.
 async fn cli_auth_start(
-    State(state): State<BuiltinAuthBackend>,
+    State(state): State<CliAuthState>,
     headers: HeaderMap,
     Json(req): Json<CliAuthStartRequest>,
 ) -> Result<Json<CliAuthStartResponse>, AuthError> {
@@ -144,14 +168,15 @@ async fn cli_auth_start(
     let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
     let callback_url = format!(
         "{}{}/v1/auth/cli/callback?state={}",
-        state.config.base_url, api_prefix, auth_state
+        state.base_url, api_prefix, auth_state
     );
 
-    // For OSS (built-in auth), redirect to the frontend login page with a
-    // redirect_to parameter pointing back to our CLI callback.
+    // Redirect to the frontend login page with a redirect_to parameter
+    // pointing back to our CLI callback. Works for both OSS (built-in login)
+    // and external auth providers (login page handles redirect_to).
     let auth_url = format!(
         "{}/login?redirect_to={}",
-        state.config.frontend_url.trim_end_matches('/'),
+        state.frontend_url.trim_end_matches('/'),
         urlencoding::encode(&callback_url)
     );
 
@@ -175,7 +200,7 @@ async fn cli_auth_start(
 /// Called after the user completes login. Associates the authenticated user
 /// with the pending CLI session and redirects to the CLI's localhost server.
 async fn cli_auth_callback(
-    State(state): State<BuiltinAuthBackend>,
+    State(state): State<CliAuthState>,
     headers: HeaderMap,
     user: AuthUser,
     Query(query): Query<CliCallbackQuery>,
@@ -230,7 +255,7 @@ async fn cli_auth_callback(
 /// CLI sends the exchange code received via localhost callback.
 /// Server creates an API key and returns it with user/org info.
 async fn cli_auth_exchange(
-    State(state): State<BuiltinAuthBackend>,
+    State(state): State<CliAuthState>,
     headers: HeaderMap,
     Json(req): Json<CliExchangeRequest>,
 ) -> Result<(StatusCode, Json<CliExchangeResponse>), AuthError> {

@@ -227,7 +227,15 @@ impl AuthBackend for BuiltinAuthBackend {
 
     fn auth_routes(&self) -> Option<Router> {
         let auth_routes = routes::routes(self.clone());
-        let cli_routes = super::cli_auth::cli_auth_routes(self.clone());
+        let auth_state =
+            super::middleware::AuthState::new(self.config.clone(), Arc::new(self.clone()));
+        let cli_state = super::cli_auth::CliAuthState {
+            db: self.db.clone(),
+            auth: auth_state,
+            frontend_url: self.config.frontend_url.clone(),
+            base_url: self.config.base_url.clone(),
+        };
+        let cli_routes = super::cli_auth::cli_auth_routes(cli_state);
         Some(auth_routes.merge(cli_routes))
     }
 
