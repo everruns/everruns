@@ -20,6 +20,7 @@ members = [
     "integrations/brave-search",
     "integrations/duckduckgo",
     "integrations/browserless",
+    "integrations/e2b",
 ]
 
 exclude = [

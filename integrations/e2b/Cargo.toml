@@ -1,0 +1,38 @@
+[package]
+name = "everruns-integrations-e2b"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "E2B cloud sandbox integration for Everruns"
+build = "build.rs"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+inventory.workspace = true
+reqwest = { workspace = true, features = ["multipart"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+urlencoding = "2"
+http = "1"
+http-body = "1"
+futures.workspace = true
+connectrpc = { version = "0.2.1", features = ["client", "client-tls"] }
+buffa = "0.2.0"
+rustls = "0.23"
+rustls-native-certs = "0.8"
+anyhow.workspace = true
+
+everruns-core = { path = "../../crates/core" }
+
+[build-dependencies]
+connectrpc-build = "0.2.0"
+
+[dev-dependencies]
+wiremock = "0.6"
+tokio.workspace = true
+
+[features]
+e2b-live-tests = []

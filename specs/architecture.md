@@ -58,6 +58,7 @@ graph TB
    - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
    - `integrations/docker/` → `everruns-integrations-docker` - Docker container integration (auto-registered via `inventory` plugin system)
    - `integrations/daytona/` → `everruns-integrations-daytona` - Daytona cloud sandbox integration (auto-registered via `inventory` plugin system)
+   - `integrations/e2b/` → `everruns-integrations-e2b` - E2B cloud sandbox integration (auto-registered via `inventory` plugin system)
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
    - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
@@ -80,7 +81,8 @@ everruns/
 │   └── anthropic/        # Anthropic provider
 ├── integrations/
 │   ├── docker/           # Docker container (inventory plugin)
-│   └── daytona/          # Daytona cloud sandbox (inventory plugin)
+│   ├── daytona/          # Daytona cloud sandbox (inventory plugin)
+│   └── e2b/              # E2B cloud sandbox (inventory plugin)
 ├── docs/                 # Documentation content (symlinked to apps/docs)
 ├── specs/                # Feature specifications
 ├── test_cases/           # Manual test cases
@@ -129,7 +131,7 @@ This keeps the existing OSS runtime as the default while allowing embedders to r
 
 ### Integration Plugin Force-Linking
 
-Integration crates (`docker`, `daytona`) register capabilities at startup via `inventory::submit!`. The `inventory` crate uses linker sections — if the crate is not explicitly referenced, Rust's linker will optimize it out and the `submit!` registrations silently disappear.
+Integration crates (`docker`, `daytona`, `e2b`) register capabilities at startup via `inventory::submit!`. The `inventory` crate uses linker sections — if the crate is not explicitly referenced, Rust's linker will optimize it out and the `submit!` registrations silently disappear.
 
 **Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must have `extern crate` statements for every integration crate** (see those files for the current list).
 

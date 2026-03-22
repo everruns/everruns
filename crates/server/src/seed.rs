@@ -56,6 +56,7 @@ mod seed_ids {
     pub const SHELL_ASSISTANT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000105);
     pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
     pub const DAYTONA_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000108);
+    pub const E2B_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_00000000010f);
     pub const CLOUD_INFRA_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000109);
     pub const PLATFORM_MANAGER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010a);
@@ -634,6 +635,31 @@ Always delete sandboxes when done."#,
         tags: &["coding", "cloud", "sandbox", "daytona", "demo", "seed"],
         capabilities: &[
             SeedCapability::new("daytona"),
+            SeedCapability::new("session_storage"),
+            SeedCapability::new("session_file_system"),
+        ],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::E2B_CODER_AGENT,
+        name: "E2B Coder",
+        description: "A coding agent that runs code in cloud sandboxes powered by E2B",
+        system_prompt: r#"You are an E2B Coder Agent. You run code in cloud sandboxes powered by E2B.
+
+The E2B API key is resolved automatically from the platform environment or session secrets.
+
+Workflow:
+1. Create sandbox: `e2b_create_sandbox` (workspace: /home/user)
+2. Write files / install deps: `e2b_write_file`, `e2b_exec`
+3. Read results: `e2b_read_file`
+4. Inspect active sandboxes: `e2b_list_sandboxes`
+5. Clean up: `e2b_manage_sandbox` action="pause" or action="delete"
+
+You can run multiple sandboxes in parallel for separate tasks.
+Delete sandboxes when work is complete; pause only when the user explicitly wants to keep state around."#,
+        tags: &["coding", "cloud", "sandbox", "e2b", "demo", "seed"],
+        capabilities: &[
+            SeedCapability::new("e2b"),
             SeedCapability::new("session_storage"),
             SeedCapability::new("session_file_system"),
         ],

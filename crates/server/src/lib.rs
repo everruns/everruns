@@ -9,6 +9,7 @@ extern crate everruns_integrations_browserless;
 extern crate everruns_integrations_daytona;
 extern crate everruns_integrations_docker;
 extern crate everruns_integrations_duckduckgo;
+extern crate everruns_integrations_e2b;
 
 // API routes and types (shared for OpenAPI generation)
 pub mod api;
