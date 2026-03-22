@@ -16,7 +16,7 @@ use anyhow::{Context, Result};
 use everruns_core::ToolRegistry;
 use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
 use everruns_core::capabilities::{SystemPromptContext, collect_capabilities, is_mcp_capability};
-use everruns_core::traits::AgentStore;
+use everruns_core::traits::{AgentStore, SessionStore};
 use everruns_core::{Message, PlatformDefinition};
 use std::sync::Arc;
 
