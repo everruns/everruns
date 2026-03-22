@@ -66,6 +66,7 @@ Session management.
 - `create --harness <id> [--agent <id>] [--title <t>] [--model <m>]`
 - `list`
 - `get <id>`
+- `watch <id>` — stream session events to stdout in real time (like `kubectl logs -f`). Polls `/v1/sessions/{id}/events` every 500ms. Text mode shows tool calls, messages, and turn lifecycle. JSON mode emits each event as a JSON object. Exits on Ctrl+C.
 
 ### `everruns chat`
 

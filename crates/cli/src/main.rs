@@ -283,6 +283,20 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_parse_sessions_watch() {
+        let cli = Cli::try_parse_from(["everruns", "sessions", "watch", "ses_abc"]).unwrap();
+        if let Commands::Sessions { command } = cli.command {
+            if let commands::sessions::SessionsCommand::Watch { session } = command {
+                assert_eq!(session, "ses_abc");
+            } else {
+                panic!("Expected Watch command");
+            }
+        } else {
+            panic!("Expected Sessions command");
+        }
+    }
+
+    #[test]
     fn test_cli_parse_chat() {
         let cli = Cli::try_parse_from(["everruns", "chat", "--session", "ses_xyz", "Hello world"])
             .unwrap();
