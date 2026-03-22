@@ -160,7 +160,7 @@ function ShowApiKeyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>API Key Created</DialogTitle>
           <DialogDescription>
@@ -168,8 +168,17 @@ function ShowApiKeyDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-2">
-          <div className="bg-muted p-3 rounded-md font-mono text-sm flex-1 min-w-0">{apiKey}</div>
-          <Button onClick={handleCopy} variant="outline" size="icon" className="shrink-0">
+          <div className="bg-muted p-3 rounded-md font-mono text-sm flex-1 min-w-0 max-w-full whitespace-nowrap overflow-x-auto">
+            {apiKey}
+          </div>
+          <Button
+            onClick={handleCopy}
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            aria-label={copied ? "API key copied" : "Copy API key"}
+            title={copied ? "API key copied" : "Copy API key"}
+          >
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </Button>
         </div>
