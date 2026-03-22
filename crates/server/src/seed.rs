@@ -880,7 +880,7 @@ Set `return_screenshot: true` to get a screenshot after interactions.
 ## Prerequisites
 
 Browserless API token must be configured in Settings > Connections.
-Get a token at https://cloud.browserless.io/"#,
+Get a token at https://www.browserless.io/account/home"#,
         tags: &[
             "browser",
             "testing",

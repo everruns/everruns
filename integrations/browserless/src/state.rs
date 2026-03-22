@@ -39,7 +39,7 @@ pub async fn get_api_token(context: &ToolContext) -> Result<String, ToolExecutio
     Err(ToolExecutionResult::tool_error(
         "Browserless API token not configured.\n\n\
          Set up your API token in **Settings > Connections > Browserless**.\n\n\
-         Get your token at https://cloud.browserless.io/ under API Keys.",
+         Get your token at https://www.browserless.io/account/home under API Keys.",
     ))
 }
 

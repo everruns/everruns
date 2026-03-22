@@ -1,7 +1,7 @@
 // Browserless Connection Provider
 //
 // Decision: API-token-based connection (not OAuth). User enters token from Browserless dashboard.
-// Decision: Validate token by calling GET /active — 200 means valid, 401 means invalid.
+// Decision: Validate token by calling GET /active — 200/204 means valid, 401 means invalid.
 
 use async_trait::async_trait;
 use everruns_core::connection_provider::{
@@ -46,7 +46,7 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
                 help_text: None,
             }],
             instructions_markdown: "\
-1. Go to [Browserless Dashboard](https://cloud.browserless.io)\n\
+1. Go to [Browserless Dashboard](https://www.browserless.io/account/home)\n\
 2. Navigate to **API Keys** in your account settings\n\
 3. Copy your API token and paste it below"
                 .to_string(),
@@ -62,7 +62,8 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
             .map_err(|e| format!("Failed to reach Browserless API: {e}"))?;
 
         match response.status().as_u16() {
-            200 => Ok(ConnectionValidation {
+            // Browserless v2 /active returns 204 No Content; v1 returned 200.
+            200 | 204 => Ok(ConnectionValidation {
                 provider_username: None,
             }),
             401 | 403 => {
@@ -95,10 +96,6 @@ mod tests {
         assert_eq!(schema.fields.len(), 1);
         assert_eq!(schema.fields[0].name, "api_key");
         assert!(schema.fields[0].required);
-        assert!(
-            schema
-                .instructions_markdown
-                .contains("cloud.browserless.io")
-        );
+        assert!(schema.instructions_markdown.contains("browserless.io"));
     }
 }

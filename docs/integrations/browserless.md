@@ -17,7 +17,7 @@ Everruns integrates with [Browserless](https://www.browserless.io/) to provide c
 
 ### 1. Get Your API Token
 
-1. Go to the [Browserless Dashboard](https://cloud.browserless.io)
+1. Go to the [Browserless Dashboard](https://www.browserless.io/account/home)
 2. Navigate to **API Keys** in your account settings
 3. Copy your API token
 
@@ -83,5 +83,5 @@ Use `browserless_open_browser` to create a persistent browser via Chrome DevTool
 ## Links
 
 - [Browserless Website](https://www.browserless.io/)
-- [Browserless Dashboard](https://cloud.browserless.io)
+- [Browserless Dashboard](https://www.browserless.io/account/home)
 - [Browserless Documentation](https://docs.browserless.io/)

@@ -55,7 +55,7 @@ The Browserless API token is resolved via **user connection** for the `browserle
 
 Browserless registers as a `ConnectionProviderPlugin` (API-key type). Users configure their token in **Settings > Connections > Browserless**:
 
-1. User enters API token (from [Browserless Dashboard](https://cloud.browserless.io))
+1. User enters API token (from [Browserless Dashboard](https://www.browserless.io/account/home))
 2. Token validated via `GET /active` endpoint
 3. Token encrypted and stored in `user_connections` table
 
