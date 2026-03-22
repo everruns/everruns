@@ -478,20 +478,6 @@ impl Tool for ActivateSkillFromVfsTool {
                     parsed.name, preprocessed
                 );
 
-                // List bundled files in the skill directory
-                let skill_dir = format!("{}/{}", SKILLS_PATH, name);
-                let bundled_files = match file_store
-                    .list_directory(context.session_id, &skill_dir)
-                    .await
-                {
-                    Ok(entries) => entries
-                        .iter()
-                        .filter(|e| !e.is_directory && e.name != "SKILL.md")
-                        .map(|e| workspace_path(&e.path))
-                        .collect::<Vec<_>>(),
-                    Err(_) => vec![],
-                };
-
                 let mut result = serde_json::json!({
                     "skill": parsed.name,
                     "instructions": instructions,
@@ -506,10 +492,6 @@ impl Tool for ActivateSkillFromVfsTool {
                     if let Some(ref model) = parsed.model {
                         result["model"] = serde_json::json!(model);
                     }
-                }
-
-                if !bundled_files.is_empty() {
-                    result["bundled_files"] = serde_json::json!(bundled_files);
                 }
 
                 ToolExecutionResult::success(result)
@@ -1056,8 +1038,6 @@ mod tests {
                 assert!(instructions.contains("<skill name=\"pdf-tool\">"));
                 assert!(instructions.contains("# Instructions"));
                 assert!(instructions.contains("</skill>"));
-                // No bundled_files key when no extra files
-                assert!(val.get("bundled_files").is_none());
             }
             other => panic!("Expected Success, got: {:?}", other),
         }
@@ -1105,46 +1085,6 @@ mod tests {
                 assert!(msg.contains("Invalid SKILL.md"));
             }
             other => panic!("Expected ToolError, got: {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_activate_skill_with_bundled_files() {
-        let fs = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        fs.add_file(
-            session_id,
-            "/.agents/skills/data-tool/SKILL.md",
-            &valid_skill_md("data-tool", "Analyze data"),
-        );
-        fs.add_file(
-            session_id,
-            "/.agents/skills/data-tool/scripts/run.py",
-            "print('hello')",
-        );
-        fs.add_file(
-            session_id,
-            "/.agents/skills/data-tool/README.md",
-            "# Reference",
-        );
-
-        let context = ToolContext::with_file_store(session_id, fs);
-        let tool = ActivateSkillFromVfsTool;
-
-        let result = tool
-            .execute_with_context(serde_json::json!({"name": "data-tool"}), &context)
-            .await;
-        match result {
-            ToolExecutionResult::Success(val) => {
-                assert_eq!(val["skill"], "data-tool");
-                let bundled = val["bundled_files"].as_array().unwrap();
-                // Should have the extra files (not SKILL.md)
-                assert!(!bundled.is_empty());
-                let paths: Vec<&str> = bundled.iter().map(|f| f.as_str().unwrap()).collect();
-                assert!(paths.contains(&"/workspace/.agents/skills/data-tool/README.md"));
-                // scripts/run.py is nested so won't be a direct child
-            }
-            other => panic!("Expected Success, got: {:?}", other),
         }
     }
 
@@ -1655,7 +1595,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_attach_skill_with_bundled_files_discovered() {
+    async fn test_attach_skill_with_files_discovered() {
         use crate::capabilities::attach_skill::AttachSkillCapability;
 
         let skill_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
@@ -1685,21 +1625,6 @@ mod tests {
         match result {
             ToolExecutionResult::Success(val) => {
                 assert_eq!(val["skills"][0]["name"], "data-pipeline");
-            }
-            other => panic!("Expected Success, got: {:?}", other),
-        }
-
-        // activate_skill returns bundled files
-        let tool = ActivateSkillFromVfsTool;
-        let result = tool
-            .execute_with_context(serde_json::json!({"name": "data-pipeline"}), &context)
-            .await;
-        match result {
-            ToolExecutionResult::Success(val) => {
-                assert_eq!(val["skill"], "data-pipeline");
-                let bundled = val["bundled_files"].as_array().unwrap();
-                // Should list non-SKILL.md files as bundled
-                assert!(!bundled.is_empty());
             }
             other => panic!("Expected Success, got: {:?}", other),
         }

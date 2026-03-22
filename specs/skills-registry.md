@@ -326,11 +326,11 @@ When the agent calls `activate_skill`:
 
 For archive-based skills, extracted files are mounted into the session's virtual filesystem when the skill is activated. This reuses the existing `MountPoint` / `MountSource` system that capabilities already use.
 
-**Mount path**: `/skills/{skill-name}/`
+**Mount path**: `/.agents/skills/{skill-name}/`
 
 Example: A skill named `pdf-processing` with files `scripts/extract.py` and `references/REFERENCE.md` would be mounted as:
 ```
-/skills/pdf-processing/
+/.agents/skills/pdf-processing/
 ├── SKILL.md
 ├── scripts/extract.py
 └── references/REFERENCE.md
@@ -340,8 +340,8 @@ The agent can then read these files using existing session filesystem tools (`re
 
 **Mounting strategy**:
 1. On `activate_skill` call, the worker fetches skill files from the `skill_files` table via gRPC
-2. Files are mounted into the session VFS at `/skills/{skill-name}/`
-3. The `activate_skill` tool result includes the SKILL.md body AND a note about mounted file paths
+2. Files are mounted into the session VFS at `/.agents/skills/{skill-name}/`
+3. The `activate_skill` tool result includes instructions and metadata (`skill`, `description`, and fork-mode fields when applicable), but does not include a separate companion-file listing
 4. Text files become `MountSource::InlineFile` with `encoding: "text"`
 5. Binary files become `MountSource::InlineFile` with `encoding: "base64"`
 
@@ -349,6 +349,8 @@ This approach:
 - Reuses existing VFS infrastructure (no new tool needed)
 - Files are accessible via the same `read_file` / `list_files` tools the agent already has
 - Consistent with how other capabilities mount content (e.g., `sample_data`)
+
+**No `bundled_files` in tool result**: The `activate_skill` tool result does not include a separate list of companion file paths. The agent discovers referenced files from relative paths in the SKILL.md instructions (per the [agentskills.io progressive disclosure model](https://agentskills.io/specification)), or via `list_files` on the skill directory. A well-written SKILL.md already references every file the agent needs.
 
 ## Database Schema
 
@@ -589,5 +591,6 @@ Example skills are provided in `examples/skills/`:
 | Why per-org uniqueness? | Multitenancy | Different orgs can have skills with same name. |
 | Why 10 MB archive limit? | Practical bound | Skills are instructions, not large binary packages. |
 | Why keep original ZIP + extracted files? | Both needed | ZIP for reference/re-download. Extracted rows for fast reads and VFS mounting (no runtime extraction). |
+| Why no `bundled_files` in activate result? | Redundant | SKILL.md already references companion files via relative paths (agentskills.io spec). Agent can also use `list_files`. Listing paths wastes tokens. |
 | Why `skill_files` table? | VFS mounting | Session VFS needs individual file content. Extracting from ZIP on every activation is wasteful. |
 | Why VFS mounting instead of `read_skill_file` tool? | Reuse existing infra | Session filesystem tools (`read_file`, `list_files`) already exist. No new tool needed. Consistent with how `sample_data` capability mounts files. |
