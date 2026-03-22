@@ -351,6 +351,7 @@ impl Event {
                 | ACT_COMPLETED
                 | TOOL_STARTED
                 | TOOL_COMPLETED
+                | TOOL_PROGRESS
                 | TOOL_CALL_REQUESTED
         )
     }

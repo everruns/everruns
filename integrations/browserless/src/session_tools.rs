@@ -212,13 +212,30 @@ impl Tool for BrowserlessOpenBrowserTool {
             .and_then(|v| v.as_str())
             .filter(|u| !u.is_empty())
         {
-            context
-                .emit_progress("browserless_open_browser", &format!("Navigating to {url}…"))
-                .await;
             if let Err(e) = validate_browserless_url(url) {
                 session.disconnect().await;
                 return e;
             }
+            // Emit progress with host only to avoid leaking query params/tokens
+            let host = url
+                .split("//")
+                .nth(1)
+                .unwrap_or(url)
+                .split('/')
+                .next()
+                .unwrap_or("site")
+                .split('?')
+                .next()
+                .unwrap_or("site")
+                .split('#')
+                .next()
+                .unwrap_or("site");
+            context
+                .emit_progress(
+                    "browserless_open_browser",
+                    &format!("Navigating to {host}…"),
+                )
+                .await;
             if let Err(e) = session.navigate(url).await {
                 session.disconnect().await;
                 return ToolExecutionResult::tool_error(format!(

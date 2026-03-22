@@ -676,7 +676,7 @@ impl ToolContext {
 
     /// Emit a tool.progress event if an event emitter and context are available.
     ///
-    /// This is a fire-and-forget helper: failures are logged but not propagated,
+    /// This is a best-effort helper: failures are logged but not propagated,
     /// so tools never fail just because a progress event couldn't be sent.
     pub async fn emit_progress(&self, tool_name: &str, message: &str) {
         let (Some(emitter), Some(ctx), Some(call_id)) =
