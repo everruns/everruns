@@ -17,8 +17,19 @@ See `specs/release-process.md` for the full release process specification.
 
 2. **Generate commit list using git log**
    ```bash
-   # List commits since last tag (or last 50 if no tags)
-   git log $(git describe --tags --abbrev=0 2>/dev/null || echo HEAD~50)..HEAD --oneline
+   # Unshallow if needed (cloud agents often have shallow clones)
+   git rev-parse --is-shallow-repository | grep -q true && git fetch --unshallow origin main
+
+   # Find previous release: tag first, then chore(release) commit, then all commits
+   PREV=$(git describe --tags --abbrev=0 2>/dev/null \
+     || git log --oneline --grep='chore(release): prepare v' --format='%H' | head -1)
+
+   # List commits since previous release (or all if no release found)
+   if [ -n "$PREV" ]; then
+     git log "$PREV"..HEAD --oneline
+   else
+     git log --oneline
+   fi
    ```
 
 3. **Show the generated list to the user** and ask them to:
