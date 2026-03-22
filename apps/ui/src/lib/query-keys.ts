@@ -128,6 +128,12 @@ export const queryKeys = {
     members: (orgId: string) => ["organization", orgId, "members"] as const,
   },
 
+  // Agent Identity Connection queries
+  identityConnections: {
+    all: ["identity-connections"] as const,
+    list: (identityId: string) => ["identity-connections", identityId] as const,
+  },
+
   // User Connection queries
   userConnections: {
     all: ["user-connections"] as const,

@@ -1096,6 +1096,43 @@ pub struct CreateUserConnectionRow {
 }
 
 // ============================================
+// Agent Identity Connection models
+// ============================================
+
+/// Agent identity connection row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct AgentIdentityConnectionRow {
+    pub id: Uuid,
+    pub agent_identity_id: AgentIdentityId,
+    pub provider: String,
+    pub connection_type: String,
+    pub provider_user_id: Option<String>,
+    pub provider_username: Option<String>,
+    pub access_token_encrypted: Option<Vec<u8>>,
+    pub refresh_token_encrypted: Option<Vec<u8>>,
+    pub scopes: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub installation_id: Option<i64>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating an agent identity connection
+#[derive(Debug, Clone)]
+pub struct CreateAgentIdentityConnectionRow {
+    pub agent_identity_id: AgentIdentityId,
+    pub provider: String,
+    pub connection_type: String,
+    pub provider_user_id: Option<String>,
+    pub provider_username: Option<String>,
+    pub access_token_encrypted: Option<Vec<u8>>,
+    pub refresh_token_encrypted: Option<Vec<u8>>,
+    pub scopes: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub installation_id: Option<i64>,
+}
+
+// ============================================
 // Session Schedule models
 // ============================================
 

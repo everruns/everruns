@@ -5,6 +5,7 @@
 
 pub mod agent_examples;
 pub mod agent_identities;
+pub mod agent_identity_connections;
 pub mod agents;
 pub mod apps;
 pub mod audit_logs;

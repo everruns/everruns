@@ -401,6 +401,18 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "channel_config_encrypted",
         id_column: "id",
     },
+    // Agent identity connection access tokens are encrypted at rest
+    EncryptedColumn {
+        table: "agent_identity_connections",
+        column: "access_token_encrypted",
+        id_column: "id",
+    },
+    // Agent identity connection refresh tokens are encrypted at rest
+    EncryptedColumn {
+        table: "agent_identity_connections",
+        column: "refresh_token_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]
