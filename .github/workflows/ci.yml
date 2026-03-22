@@ -30,6 +30,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       daytona: ${{ steps.filter.outputs.daytona }}
       deno: ${{ steps.filter.outputs.deno }}
+      browserless: ${{ steps.filter.outputs.browserless }}
       e2b: ${{ steps.filter.outputs.e2b }}
       sdk_compat: ${{ steps.filter.outputs.sdk_compat }}
       ui: ${{ steps.filter.outputs.ui }}
@@ -53,6 +54,8 @@ jobs:
               - 'integrations/daytona/**'
             deno:
               - 'integrations/deno/**'
+            browserless:
+              - 'integrations/browserless/**'
             e2b:
               - 'integrations/e2b/**'
             sdk_compat:
@@ -171,6 +174,7 @@ jobs:
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini -p everruns-internal-protocol -p everruns-core --lib --all-features
           cargo test -p everruns-integrations-daytona --all-features
           cargo test -p everruns-integrations-deno
+          cargo test -p everruns-integrations-browserless
           cargo test -p everruns-integrations-e2b
 
   # Live Daytona API tests — only when integrations/daytona/** changes and secret exists
@@ -223,6 +227,57 @@ jobs:
       - name: Run Daytona live integration tests
         if: steps.check-key.outputs.skip != 'true'
         run: doppler run -- cargo test -p everruns-integrations-daytona --features daytona-live-tests --test live_api_test -- --test-threads=1
+
+  # Live Browserless API tests — only when integrations/browserless/** changes and secret exists
+  browserless-live-test:
+    name: Browserless Live API Tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.browserless == 'true' && github.event_name == 'push'
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for Doppler token
+        id: check-key
+        run: |
+          if [ -z "$DOPPLER_TOKEN" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "⏭️ DOPPLER_TOKEN not configured, skipping live tests"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Doppler CLI
+        if: steps.check-key.outputs.skip != 'true'
+        uses: dopplerhq/cli-action@v3
+
+      - name: Install Rust toolchain
+        if: steps.check-key.outputs.skip != 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        if: steps.check-key.outputs.skip != 'true'
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Setup sccache
+        if: steps.check-key.outputs.skip != 'true'
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: steps.check-key.outputs.skip != 'true' && env.DOPPLER_TOKEN != ''
+        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
+
+      - name: Cache Rust
+        if: steps.check-key.outputs.skip != 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "test"
+
+      - name: Run Browserless live integration tests
+        if: steps.check-key.outputs.skip != 'true'
+        run: doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests --test live_api -- --test-threads=1
 
   # Live E2B API tests — only when integrations/e2b/** changes and secret exists
   e2b-live-test:
@@ -920,6 +975,10 @@ jobs:
       - ui-build
       - docs-build
       - docker-build
+      - browserless-live-test
+      - daytona-live-test
+      - e2b-live-test
+      - deno-live-test
     steps:
       - name: Verify all jobs passed
         run: |
