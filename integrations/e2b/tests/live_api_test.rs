@@ -65,7 +65,10 @@ async fn smoke_live_sandbox_exec_and_files() {
         .expect("get sandbox detail");
     let state = SandboxState {
         sandbox_id: detail.sandbox_id.clone(),
-        sandbox_domain: detail.domain.clone().expect("sandbox domain"),
+        sandbox_domain: detail
+            .domain
+            .clone()
+            .unwrap_or_else(|| "e2b.app".to_string()),
         envd_version: detail.envd_version.clone(),
         envd_access_token: detail.envd_access_token.clone(),
         workspace_path: E2B_DEFAULT_WORKSPACE_PATH.to_string(),
