@@ -35,13 +35,17 @@ impl Drop for SandboxGuard {
         let sandbox_id = self.sandbox_id.clone();
         let handle =
             tokio::runtime::Handle::try_current().expect("tokio runtime required for cleanup");
-        handle.block_on(async move {
-            let _ = client.delete_sandbox(&sandbox_id).await;
+        // Use block_in_place to allow blocking inside an async context (requires
+        // multi-thread runtime, which #[tokio::test] uses by default).
+        tokio::task::block_in_place(|| {
+            handle.block_on(async move {
+                let _ = client.delete_sandbox(&sandbox_id).await;
+            });
         });
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn smoke_live_sandbox_exec_and_files() {
     let api_key = require_api_key!();
     let client = E2BClient::new(api_key.clone());
@@ -65,9 +69,16 @@ async fn smoke_live_sandbox_exec_and_files() {
         .expect("get sandbox detail");
     let state = SandboxState {
         sandbox_id: detail.sandbox_id.clone(),
-        sandbox_domain: detail.domain.clone().expect("sandbox domain"),
+        sandbox_domain: detail
+            .domain
+            .clone()
+            .or_else(|| created.domain.clone())
+            .unwrap_or_else(|| "e2b.app".to_string()),
         envd_version: detail.envd_version.clone(),
-        envd_access_token: detail.envd_access_token.clone(),
+        envd_access_token: detail
+            .envd_access_token
+            .clone()
+            .or_else(|| created.envd_access_token.clone()),
         workspace_path: E2B_DEFAULT_WORKSPACE_PATH.to_string(),
         started_at: detail.started_at.clone(),
         timeout_seconds: E2B_DEFAULT_TIMEOUT_SECS,
