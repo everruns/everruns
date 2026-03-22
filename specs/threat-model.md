@@ -603,7 +603,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-002 | Indirect prompt injection via tool results | High | Tool results use `tool_result` role, not `system`; LLM may still follow adversarial instructions in results | **ACCEPTED** |
 | TM-AGENT-003 | Indirect prompt injection via MCP tool descriptions | Medium | MCP tool names/descriptions fed to LLM as tool schema; adversarial descriptions could influence behavior | **ACCEPTED** |
 | TM-AGENT-004 | Agent jailbreak via system prompt | Medium | System prompt set by org member at agent creation; no sanitization of prompt content | **BY DESIGN** |
-| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (docker, daytona) require Admin role to assign via API | MITIGATED |
+| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (docker, daytona, e2b) require Admin role to assign via API | MITIGATED |
 | TM-AGENT-006 | Cost runaway — unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
@@ -617,7 +617,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | When agent asks user for API key in chat, plaintext value stored in events table as message content; session secrets encrypt separately but chat retains plaintext | **OPEN** |
 | TM-AGENT-017 | Agent-initiated entity management | High | Agents with `platform_management` can create/update/delete harnesses, agents, sessions org-wide; no fine-grained RBAC within org; capability must be explicitly assigned | **OPEN** |
 | TM-AGENT-018 | No outbound URL filtering on web_fetch | Medium | Agent with `web_fetch` can POST session data to any URL; no allowlist/blocklist for outbound destinations; prompt injection could chain file read + web_fetch for exfiltration | **OPEN** |
-| TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` provides full network access by design; `docker_container` uses host networking in dev mode; both rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
+| TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` and `e2b` provide full network access by design; `docker_container` uses host networking in dev mode; all rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
 
 ### Mitigation Details
 
@@ -645,7 +645,7 @@ Combined prompt sent to LLM as system message
 The agent creator is trusted within their org. A malicious system prompt can instruct the agent to misuse its capabilities, but only within the sandbox (session files, SQLite, bash sandbox). The blast radius is limited to the session.
 
 **TM-AGENT-005 — Capability Escalation (MITIGATED):**
-Each capability declares a `RiskLevel` (Low, Medium, High) via the `Capability` trait. High-risk capabilities (`docker_container`, `daytona`) require `OrgRole::Admin` to assign. The check runs in create/update/upsert/import agent API handlers, returning 403 if a non-admin user attempts to assign a high-risk capability. The `risk_level` field is exposed in the capabilities list API for UI display.
+Each capability declares a `RiskLevel` (Low, Medium, High) via the `Capability` trait. High-risk capabilities (`docker_container`, `daytona`, `e2b`) require `OrgRole::Admin` to assign. The check runs in create/update/upsert/import agent API handlers, returning 403 if a non-admin user attempts to assign a high-risk capability. The `risk_level` field is exposed in the capabilities list API for UI display.
 
 **TM-AGENT-006 — Iteration Limit:**
 ```rust
@@ -702,6 +702,7 @@ An agent influenced by prompt injection (via tool results or user messages) coul
 **TM-AGENT-019 — Internal Network Probing via High-Risk Execution Capabilities (ACCEPTED):**
 Some execution capabilities intentionally originate network traffic outside the worker process:
 - `daytona` sandboxes have full Linux and network access by design
+- `e2b` sandboxes have full Linux and network access by design
 - `docker_container` uses host networking and is experimental/dev-only
 
 This means an agent with one of these capabilities can probe whatever network the sandbox/container can reach. Current mitigations are:
@@ -848,7 +849,30 @@ Session B stores: daytona_sandbox:sb_xyz → {sandbox_id, workspace_path, starte
 Session A cannot access sb_xyz (different session_id in storage query)
 ```
 
-## 17. Client-Side Tools (TM-CLIENT)
+
+## 17. E2B Cloud Sandbox (TM-E2B)
+
+E2B sandboxes are remote Linux environments managed through the E2B Management API plus per-sandbox envd runtime endpoints. Everruns uses a platform-owned `E2B_API_KEY` from environment or session secret override, and stores per-sandbox envd access tokens in session-scoped secrets.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-E2B-001 | Platform-owned E2B API key compromise | High | `E2B_API_KEY` stays in server/worker environment or encrypted session secret override; never emitted in tool output | MITIGATED |
+| TM-E2B-002 | envd access token disclosure | Medium | envd access token stored only in encrypted session secrets and sent only to E2B runtime headers | MITIGATED |
+| TM-E2B-003 | Cross-session sandbox access | Critical | Sandbox IDs + envd tokens stored under `e2b_sandbox:{id}` in session-scoped secrets; storage queries enforce session isolation | MITIGATED |
+| TM-E2B-004 | Sandbox not deleted or paused — resource leak | Low | E2B timeout + auto-pause on create/resume, plus Everruns leased-resource cleanup | MITIGATED |
+| TM-E2B-005 | Full-network sandbox misuse | High | Capability is high-risk/Admin-gated via capability assignment policy; residual network exposure depends on deployment egress isolation | **CALLER RISK** |
+
+### Mitigation Details
+
+**TM-E2B-003 — Cross-Session Isolation:**
+```
+Session A stores: e2b_sandbox:sb_abc → {sandbox_id, sandbox_domain, envd_access_token, ...}
+Session B stores: e2b_sandbox:sb_xyz → {sandbox_id, sandbox_domain, envd_access_token, ...}
+
+Session A cannot access sb_xyz because storage lookups are scoped by session_id.
+```
+
+## 18. Client-Side Tools (TM-CLIENT)
 
 Client-side tools pause server execution and wait for client to submit results via API. Attack surface includes tool call ID spoofing and timeout abuse.
 
@@ -858,7 +882,7 @@ Client-side tools pause server execution and wait for client to submit results v
 | TM-CLIENT-002 | Tool result size explosion | Medium | Per-result size capped at 100 KB | MITIGATED |
 | TM-CLIENT-003 | Client timeout abuse | Low | Default 5 min timeout; session transitions to failed state on expiry | MITIGATED |
 
-## 18. Brave Search (TM-LLM)
+## 19. Brave Search (TM-LLM)
 
 Search results from Brave Search are returned as tool results. Adversarial content in search results could influence LLM behavior.
 
@@ -912,6 +936,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High-risk capabilities are Admin-gated; residual exposure depends on deployment network isolation |
 | TM-DURABLE-006 | DLQ growth | Tasks preserved for debugging; manual cleanup |
 | TM-DAYTONA-001 | Git token on sandbox disk | Same trust boundary as exec; `/tmp` cleared on stop; short-lived token |
+| TM-E2B-005 | Full-network sandbox misuse | Same residual risk class as other cloud sandboxes; require deployment egress isolation where needed |
 
 ### Caller Responsibilities
 
@@ -929,7 +954,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | System prompt review | TM-AGENT-004 | Review agent system prompts for jailbreak patterns before deployment |
 | Block cloud metadata | TM-API-009 | Defense-in-depth: enable IMDSv2 (AWS), metadata concealment (GCP), or equivalent; fetchkit v0.1.2 blocks 169.254.0.0/16 at application level |
 | Worker network isolation | TM-API-008, TM-API-010, TM-API-011 | Defense-in-depth: restrict worker container egress; fetchkit v0.1.2 blocks private IPs at application level |
-| Sandbox/container egress isolation | TM-AGENT-019 | Restrict Daytona sandbox and any Docker-backed execution environment from reaching internal networks unless explicitly intended |
+| Sandbox/container egress isolation | TM-AGENT-019, TM-E2B-005 | Restrict Daytona, E2B, and any Docker-backed execution environment from reaching internal networks unless explicitly intended |
 | Review GitHub App permissions | TM-DAYTONA-003 | Audit which repositories the GitHub App installation can access; Everruns does not enforce per-repo restrictions |
 
 ## Security Controls Matrix
@@ -952,6 +977,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | Resource limits | TM-DOS, TM-BASH | Input sizes, iteration limits, query timeouts, bash limits |
 | Task ownership | TM-DURABLE | Verified on completion, heartbeat-based reclaim |
 | Daytona sandbox isolation | TM-DAYTONA | Session-scoped secrets, encrypted API key, auto-stop, short-lived git tokens |
+| E2B sandbox isolation | TM-E2B | Session-scoped secrets, envd access tokens, timeout refresh, leased-resource cleanup |
 | Slack webhook forgery | TM-SLACK-001 | HMAC-SHA256 signing secret verification, 5-min replay window |
 | Slack bot loop | TM-SLACK-002 | Skip events with `bot_id` or `subtype` to prevent infinite loops |
 | Slack signing secret exposure | TM-SLACK-003 | Stored in `channel_config` (org-scoped access), not logged |
@@ -974,6 +1000,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 - `specs/capabilities.md` — Agent capabilities system
 - `specs/bashkit-requirements.md` — Bashkit integration requirements
 - `integrations/daytona/SPEC.md` — Daytona cloud sandbox integration
+- `integrations/e2b/SPEC.md` — E2B cloud sandbox integration
 - `specs/client-side-tools.md` — Client-side tools for API/SDK consumers
 - `specs/apps.md` — Apps system (agent deployment to channels)
 - `crates/server/specs/slack-integration.md` — Slack bot integration

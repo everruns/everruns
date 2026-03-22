@@ -11,6 +11,7 @@ Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
 | Brave Search | [`integrations/brave-search/SPEC.md`](../integrations/brave-search/SPEC.md) | Web search via Brave Search API. Experimental (Dev only). |
 | DuckDuckGo | [`integrations/duckduckgo/SPEC.md`](../integrations/duckduckgo/SPEC.md) | Instant answers via DuckDuckGo API. Experimental (Dev only). |
 | Browserless | [`integrations/browserless/SPEC.md`](../integrations/browserless/SPEC.md) | Cloud browser automation — screenshots, DOM, scraping, multi-step interactions. REST and CDP modes. |
+| E2B | [`integrations/e2b/SPEC.md`](../integrations/e2b/SPEC.md) | Cloud sandbox environments via E2B management API + envd runtime endpoints. Platform-owned token, multiple sandboxes per session. |
 | Daytona | [`integrations/daytona/SPEC.md`](../integrations/daytona/SPEC.md) | Cloud sandbox environments via Daytona REST API. Multiple sandboxes per session. |
 | Docker | `integrations/docker/` | Container-based agent execution. Experimental (Dev only). No spec yet. |
 

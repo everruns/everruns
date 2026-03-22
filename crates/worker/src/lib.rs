@@ -4,6 +4,7 @@ extern crate everruns_integrations_browserless;
 extern crate everruns_integrations_daytona;
 extern crate everruns_integrations_docker;
 extern crate everruns_integrations_duckduckgo;
+extern crate everruns_integrations_e2b;
 
 pub mod activities;
 pub mod adapters;
