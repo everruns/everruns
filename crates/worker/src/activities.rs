@@ -425,20 +425,21 @@ pub async fn act_activity(
     if let Some(ref blueprint_id) = blueprint_id {
         // Blueprint path: load tools from the blueprint definition
         let capability_registry = platform_definition.capability_registry().clone();
-        if let Some(blueprint) = capability_registry.blueprint(blueprint_id) {
-            for tool in blueprint.tools {
-                builtin_executor.register_boxed(tool);
-            }
-            tracing::debug!(
-                blueprint_id = blueprint_id,
-                "Registered blueprint tools for act_activity"
-            );
-        } else {
-            tracing::warn!(
-                blueprint_id = blueprint_id,
-                "Blueprint not found in registry for act_activity"
-            );
+        let blueprint = capability_registry
+            .blueprint(blueprint_id)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Blueprint \"{}\" not found in registry. Session has blueprint_id but no matching blueprint.",
+                    blueprint_id
+                )
+            })?;
+        for tool in blueprint.tools {
+            builtin_executor.register_boxed(tool);
         }
+        tracing::debug!(
+            blueprint_id = blueprint_id,
+            "Registered blueprint tools for act_activity"
+        );
     } else {
         // Standard path: load capabilities from agent or harness.
         // When agent_id is present, use agent capabilities.

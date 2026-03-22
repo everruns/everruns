@@ -107,8 +107,8 @@ impl SessionStore for DbSessionStore {
                     subagent_status: row
                         .subagent_status
                         .map(|s| SubagentStatus::from(s.as_str())),
-                    blueprint_id: None,
-                    blueprint_config: None,
+                    blueprint_id: row.blueprint_id,
+                    blueprint_config: row.blueprint_config,
                 }))
             }
             None => Ok(None),
