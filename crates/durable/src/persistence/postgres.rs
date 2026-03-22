@@ -28,6 +28,31 @@ use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSig
 #[cfg(feature = "failpoints")]
 use fail::fail_point;
 
+/// Recursively strip `\0` (null bytes) from all string values in a JSON tree.
+///
+/// PostgreSQL `jsonb` rejects `\u0000`; LLM tool output may contain them.
+/// Applied at the persistence boundary so callers don't need to worry about it.
+fn sanitize_json_null_bytes(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::String(s) => {
+            if s.contains('\0') {
+                serde_json::Value::String(s.replace('\0', ""))
+            } else {
+                serde_json::Value::String(s)
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(sanitize_json_null_bytes).collect())
+        }
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.into_iter()
+                .map(|(k, v)| (k, sanitize_json_null_bytes(v)))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
 /// PostgreSQL implementation of WorkflowEventStore
 ///
 /// Uses a connection pool for efficient database access.
@@ -205,6 +230,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         for event in events {
             let event_type = event_type_name(&event);
             let event_data = serde_json::to_value(&event)
+                .map(sanitize_json_null_bytes)
                 .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
             sqlx::query(
@@ -498,6 +524,9 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             WHERE id = $1
             "#
         };
+
+        let result = result.map(sanitize_json_null_bytes);
+        let error_json = error_json.map(sanitize_json_null_bytes);
 
         sqlx::query(query)
             .bind(workflow_id)
@@ -3071,4 +3100,50 @@ fn event_type_name(event: &WorkflowEvent) -> &'static str {
 mod tests {
     // Integration tests require a PostgreSQL database
     // Run with: cargo test -p everruns-durable --test integration_test -- --test-threads=1
+
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn sanitize_removes_null_bytes_from_strings() {
+        let input = json!({"key": "hello\0world"});
+        let result = sanitize_json_null_bytes(input);
+        assert_eq!(result, json!({"key": "helloworld"}));
+    }
+
+    #[test]
+    fn sanitize_handles_nested_structures() {
+        let input = json!({
+            "outer": {
+                "inner": "has\0null",
+                "clean": "no nulls"
+            },
+            "arr": ["a\0b", "clean"]
+        });
+        let result = sanitize_json_null_bytes(input);
+        assert_eq!(
+            result,
+            json!({
+                "outer": {
+                    "inner": "hasnull",
+                    "clean": "no nulls"
+                },
+                "arr": ["ab", "clean"]
+            })
+        );
+    }
+
+    #[test]
+    fn sanitize_preserves_non_string_values() {
+        let input = json!({"num": 42, "bool": true, "null": null});
+        let result = sanitize_json_null_bytes(input.clone());
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn sanitize_noop_when_no_null_bytes() {
+        let input = json!({"key": "normal string", "nested": [1, 2, 3]});
+        let result = sanitize_json_null_bytes(input.clone());
+        assert_eq!(result, input);
+    }
 }
