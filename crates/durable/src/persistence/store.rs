@@ -608,6 +608,16 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     async fn fail_task(&self, task_id: Uuid, error: &str)
     -> Result<TaskFailureOutcome, StoreError>;
 
+    /// Atomically claim a workflow for a new turn.
+    ///
+    /// Transitions the workflow from any terminal status (or pending) to Running
+    /// in a single atomic operation. Returns true if the claim succeeded,
+    /// false if the workflow is Running (an active turn owns it).
+    ///
+    /// Also cancels any stale pending tasks as part of the atomic operation.
+    /// This is safe for horizontal scaling — only one caller wins the claim.
+    async fn try_claim_workflow_for_new_turn(&self, workflow_id: Uuid) -> Result<bool, StoreError>;
+
     /// Cancel all pending (unclaimed) tasks for a workflow.
     ///
     /// Returns the number of tasks cancelled. Does NOT affect claimed or

@@ -642,6 +642,37 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         }
     }
 
+    async fn try_claim_workflow_for_new_turn(&self, workflow_id: Uuid) -> Result<bool, StoreError> {
+        let mut workflows = self.workflows.write();
+        let workflow = workflows
+            .get_mut(&workflow_id)
+            .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
+
+        if workflow.status == WorkflowStatus::Running {
+            return Ok(false);
+        }
+
+        // Claim: set to Running, clear transient fields
+        workflow.status = WorkflowStatus::Running;
+        workflow.result = None;
+        workflow.error = None;
+        workflow.started_at = Some(chrono::Utc::now());
+        workflow.completed_at = None;
+        drop(workflows);
+
+        // Cancel stale pending tasks
+        let mut tasks = self.tasks.write();
+        for task in tasks.values_mut() {
+            if task.definition.workflow_id == Some(workflow_id)
+                && task.status == TaskStatus::Pending
+            {
+                task.status = TaskStatus::Cancelled;
+            }
+        }
+
+        Ok(true)
+    }
+
     async fn cancel_pending_tasks_for_workflow(
         &self,
         workflow_id: Uuid,

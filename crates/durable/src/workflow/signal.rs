@@ -73,6 +73,10 @@ pub mod signal_types {
 
     /// Request graceful shutdown (complete current activity, then stop)
     pub const SHUTDOWN: &str = "shutdown";
+
+    /// User message arrived while a turn is already running (steering).
+    /// Payload: `{ "input_message_id": "<MessageId>" }`
+    pub const USER_MESSAGE: &str = "user_message";
 }
 
 #[cfg(test)]
