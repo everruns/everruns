@@ -6226,6 +6226,9 @@
             "$ref": "#/components/schemas/ToolCompletedData"
           },
           {
+            "$ref": "#/components/schemas/ToolProgressData"
+          },
+          {
             "$ref": "#/components/schemas/ToolCallRequestedData"
           },
           {
@@ -11415,6 +11418,36 @@
           "requires_approval",
           "client_side"
         ]
+      },
+      "ToolProgressData": {
+        "type": "object",
+        "description": "Data for tool.progress event\n\nEmitted by tools during execution to report interim status updates.\nThis allows long-running tools (e.g., browser operations, sandbox setup)\nto stream progress feedback between tool.started and tool.completed.",
+        "required": [
+          "tool_call_id",
+          "tool_name",
+          "message"
+        ],
+        "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name for UI rendering"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable status message (e.g., \"Connecting to browser…\")"
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "Tool call ID this progress belongs to"
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "Tool name"
+          }
+        }
       },
       "ToolResultContentPart": {
         "type": "object",
