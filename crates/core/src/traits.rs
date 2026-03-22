@@ -674,7 +674,7 @@ impl ToolContext {
         self
     }
 
-    /// Emit a tool.progress event if an event emitter and context are available.
+    /// Emit a `tool.progress` event if an event emitter and context are available.
     ///
     /// This is a best-effort helper: failures are logged but not propagated,
     /// so tools never fail just because a progress event couldn't be sent.

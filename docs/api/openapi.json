@@ -11421,7 +11421,7 @@
       },
       "ToolProgressData": {
         "type": "object",
-        "description": "Data for tool.progress event\n\nEmitted by tools during execution to report interim status updates.\nThis allows long-running tools (e.g., browser operations, sandbox setup)\nto stream progress feedback between tool.started and tool.completed.",
+        "description": "Data for tool.progress event.\n\nEmitted by tools during execution to report interim status updates.\nThis allows long-running tools (e.g., browser operations, sandbox setup)\nto stream progress feedback between tool.started and tool.completed.",
         "required": [
           "tool_call_id",
           "tool_name",
