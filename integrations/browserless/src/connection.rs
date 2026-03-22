@@ -1,7 +1,7 @@
 // Browserless Connection Provider
 //
 // Decision: API-token-based connection (not OAuth). User enters token from Browserless dashboard.
-// Decision: Validate token by calling GET /active — 200/204 means valid, 401 means invalid.
+// Decision: Validate token by calling GET /active — 200/204 means valid, 401/403 means invalid.
 
 use async_trait::async_trait;
 use everruns_core::connection_provider::{
@@ -96,6 +96,10 @@ mod tests {
         assert_eq!(schema.fields.len(), 1);
         assert_eq!(schema.fields[0].name, "api_key");
         assert!(schema.fields[0].required);
-        assert!(schema.instructions_markdown.contains("browserless.io"));
+        assert!(
+            schema
+                .instructions_markdown
+                .contains("https://www.browserless.io/account/home")
+        );
     }
 }
