@@ -166,7 +166,7 @@ This avoids filesystem I/O entirely — the git repository exists only in memory
 - `session_git_objects` — session-scoped content-addressable store (session_id, 20-byte SHA1 OID, type, data)
 - `session_git_refs` — session-scoped refdb (session_id, name, target OID)
 - CHECK constraints enforce OID length (20 bytes) and object type (1–4)
-- See `crates/server/migrations/012_session_git.sql` for DDL
+- See `crates/server/migrations/008_v0.8.7.sql` for DDL
 
 ### API Endpoints
 
