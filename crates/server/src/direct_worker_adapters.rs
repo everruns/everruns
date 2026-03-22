@@ -253,6 +253,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 subagent_name: None,
                 subagent_task: None,
                 subagent_status: None,
+                blueprint_id: r.blueprint_id,
+                blueprint_config: r.blueprint_config,
             }
         }))
     }
