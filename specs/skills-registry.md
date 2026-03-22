@@ -318,7 +318,7 @@ Skills provide a virtual tool for activation:
 
 When the agent calls `activate_skill`:
 1. Worker resolves skill by name from the registry (via gRPC)
-2. Full SKILL.md body returned as tool result
+2. The tool result returns the SKILL.md instructions alongside skill metadata
 3. Agent uses the loaded instructions to perform the task
 4. For archive-based skills, file paths in instructions can be resolved via additional tool calls
 
@@ -425,7 +425,7 @@ CREATE INDEX idx_skill_files_skill_id ON skill_files(skill_id);
 |-------|----------------|
 | `everruns-core` | Skill types, SKILL.md parser, name validation, `AttachSkillCapability` + `SkillsCapability` |
 | `everruns-server` | API routes, gRPC services, database operations, ZIP handling |
-| `everruns-worker` | `SkillToolExecutor` for `activate_skill` and `read_skill_file` tool execution |
+| `everruns-worker` | `SkillToolExecutor` for `activate_skill` tool execution and skill-file VFS mounting |
 
 ### Key Components
 
