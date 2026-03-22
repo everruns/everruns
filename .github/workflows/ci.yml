@@ -284,7 +284,7 @@ jobs:
     name: E2B Live API Tests
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.e2b == 'true'
+    if: needs.changes.outputs.e2b == 'true' && github.event_name == 'push'
     timeout-minutes: 10
 
     steps:
