@@ -478,18 +478,27 @@ impl Tool for ActivateSkillFromVfsTool {
                     parsed.name, preprocessed
                 );
 
-                // List bundled files in the skill directory
+                // Recursively list bundled files in the skill directory
                 let skill_dir = format!("{}/{}", SKILLS_PATH, name);
-                let bundled_files = match file_store
-                    .list_directory(context.session_id, &skill_dir)
-                    .await
-                {
-                    Ok(entries) => entries
-                        .iter()
-                        .filter(|e| !e.is_directory && e.name != "SKILL.md")
-                        .map(|e| workspace_path(&e.path))
-                        .collect::<Vec<_>>(),
-                    Err(_) => vec![],
+                let bundled_files = {
+                    let mut files = Vec::new();
+                    let mut dirs_to_visit = vec![skill_dir.clone()];
+                    while let Some(dir) = dirs_to_visit.pop() {
+                        if let Ok(entries) =
+                            file_store.list_directory(context.session_id, &dir).await
+                        {
+                            for entry in entries {
+                                if entry.is_directory {
+                                    dirs_to_visit.push(entry.path);
+                                } else if entry.name != "SKILL.md"
+                                    || entry.path != format!("{}/SKILL.md", skill_dir)
+                                {
+                                    files.push(workspace_path(&entry.path));
+                                }
+                            }
+                        }
+                    }
+                    files
                 };
 
                 let mut result = serde_json::json!({
@@ -1142,7 +1151,57 @@ mod tests {
                 assert!(!bundled.is_empty());
                 let paths: Vec<&str> = bundled.iter().map(|f| f.as_str().unwrap()).collect();
                 assert!(paths.contains(&"/workspace/.agents/skills/data-tool/README.md"));
-                // scripts/run.py is nested so won't be a direct child
+                // Nested files in subdirectories should also be included
+                assert!(paths.contains(&"/workspace/.agents/skills/data-tool/scripts/run.py"));
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_activate_skill_bundled_files_includes_nested_subdirs() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        fs.add_file(
+            session_id,
+            "/.agents/skills/auditor/SKILL.md",
+            &valid_skill_md("auditor", "Audit tool"),
+        );
+        fs.add_file(
+            session_id,
+            "/.agents/skills/auditor/references/page-checks.md",
+            "# Page checks",
+        );
+        fs.add_file(
+            session_id,
+            "/.agents/skills/auditor/references/report-format.md",
+            "# Report format",
+        );
+        fs.add_file(
+            session_id,
+            "/.agents/skills/auditor/scripts/run.sh",
+            "#!/bin/bash",
+        );
+
+        let context = ToolContext::with_file_store(session_id, fs);
+        let tool = ActivateSkillFromVfsTool;
+
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "auditor"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                let bundled = val["bundled_files"].as_array().unwrap();
+                let paths: Vec<&str> = bundled.iter().map(|f| f.as_str().unwrap()).collect();
+                assert_eq!(paths.len(), 3, "Expected 3 bundled files, got: {:?}", paths);
+                assert!(
+                    paths.contains(&"/workspace/.agents/skills/auditor/references/page-checks.md")
+                );
+                assert!(
+                    paths
+                        .contains(&"/workspace/.agents/skills/auditor/references/report-format.md")
+                );
+                assert!(paths.contains(&"/workspace/.agents/skills/auditor/scripts/run.sh"));
             }
             other => panic!("Expected Success, got: {:?}", other),
         }
