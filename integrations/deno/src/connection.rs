@@ -1,7 +1,8 @@
 // Deno Deploy connection provider.
 //
-// Decision: expose token + optional org slug because Deno personal tokens need
-// an org, while org tokens do not.
+// Decision: this generic connection uses a single organization access token
+// (`ddo_...`). Personal tokens (`ddp_...`) that require org metadata are not
+// supported here yet.
 
 use crate::client::DenoClient;
 use async_trait::async_trait;
