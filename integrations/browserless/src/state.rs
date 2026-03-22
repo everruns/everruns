@@ -169,6 +169,121 @@ pub async fn delete_browser_session(context: &ToolContext) -> Result<(), ToolExe
 }
 
 // ============================================================================
+// Secret Reference Resolution
+// ============================================================================
+
+/// Pattern: `${{secrets.name}}` where `name` is a session secret key.
+/// Double-brace avoids collision with JS template literals.
+const SECRET_REF_PREFIX: &str = "${{secrets.";
+const SECRET_REF_SUFFIX: &str = "}}";
+
+/// Extract all secret names referenced in `${{secrets.<name>}}` patterns within a string.
+pub fn extract_secret_refs(s: &str) -> Vec<String> {
+    let mut refs = Vec::new();
+    let mut search_from = 0;
+    while let Some(start) = s[search_from..].find(SECRET_REF_PREFIX) {
+        let abs_start = search_from + start + SECRET_REF_PREFIX.len();
+        if let Some(end) = s[abs_start..].find(SECRET_REF_SUFFIX) {
+            let name = &s[abs_start..abs_start + end];
+            if !name.is_empty() && !refs.contains(&name.to_string()) {
+                refs.push(name.to_string());
+            }
+            search_from = abs_start + end + SECRET_REF_SUFFIX.len();
+        } else {
+            break;
+        }
+    }
+    refs
+}
+
+/// Replace all `${{secrets.<name>}}` patterns in `s` with resolved values.
+pub fn substitute_secrets(s: &str, resolved: &std::collections::HashMap<String, String>) -> String {
+    let mut result = s.to_string();
+    for (name, value) in resolved {
+        let pattern = format!("{SECRET_REF_PREFIX}{name}{SECRET_REF_SUFFIX}");
+        result = result.replace(&pattern, value);
+    }
+    result
+}
+
+/// Resolve all `${{secrets.<name>}}` references found in interaction step `value` fields.
+/// Returns a map of secret_name → plaintext_value.
+/// Fails if any referenced secret is missing or session storage is unavailable.
+pub async fn resolve_step_secrets(
+    context: &ToolContext,
+    steps: &[Value],
+) -> Result<std::collections::HashMap<String, String>, ToolExecutionResult> {
+    // Collect all unique secret names from step value fields
+    let mut secret_names: Vec<String> = Vec::new();
+    for step in steps {
+        if let Some(val) = step.get("value").and_then(|v| v.as_str()) {
+            for name in extract_secret_refs(val) {
+                if !secret_names.contains(&name) {
+                    secret_names.push(name);
+                }
+            }
+        }
+    }
+
+    if secret_names.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    let storage = context.storage_store.as_ref().ok_or_else(|| {
+        ToolExecutionResult::tool_error(
+            "Session storage not available. Secret references require the 'session_storage' capability.",
+        )
+    })?;
+
+    let mut resolved = std::collections::HashMap::new();
+    for name in &secret_names {
+        match storage.get_secret(context.session_id, name).await {
+            Ok(Some(value)) => {
+                resolved.insert(name.clone(), value);
+            }
+            Ok(None) => {
+                return Err(ToolExecutionResult::tool_error(format!(
+                    "Secret '{name}' not found. Store it first with: secret_store set {name} <value>"
+                )));
+            }
+            Err(e) => {
+                return Err(ToolExecutionResult::tool_error(format!(
+                    "Failed to resolve secret '{name}': {e}"
+                )));
+            }
+        }
+    }
+
+    Ok(resolved)
+}
+
+/// Apply secret substitution to a cloned list of steps, replacing `${{secrets.*}}`
+/// in `value` fields with resolved plaintext. Returns new steps (originals unchanged).
+pub fn substitute_step_secrets(
+    steps: &[Value],
+    resolved: &std::collections::HashMap<String, String>,
+) -> Vec<Value> {
+    if resolved.is_empty() {
+        return steps.to_vec();
+    }
+    steps
+        .iter()
+        .map(|step| {
+            let mut step = step.clone();
+            if let Some(val) = step.get("value").and_then(|v| v.as_str()) {
+                let substituted = substitute_secrets(val, resolved);
+                if substituted != val {
+                    step.as_object_mut()
+                        .unwrap()
+                        .insert("value".to_string(), Value::String(substituted));
+                }
+            }
+            step
+        })
+        .collect()
+}
+
+// ============================================================================
 // Parameter Helpers
 // ============================================================================
 
@@ -279,5 +394,99 @@ mod tests {
                 "Session state must not contain secret-like field: {key}"
             );
         }
+    }
+
+    // ====================================================================
+    // Secret reference tests
+    // ====================================================================
+
+    #[test]
+    fn test_extract_secret_refs_none() {
+        assert!(extract_secret_refs("plain text").is_empty());
+        assert!(extract_secret_refs("").is_empty());
+    }
+
+    #[test]
+    fn test_extract_secret_refs_single() {
+        let refs = extract_secret_refs("${{secrets.my_password}}");
+        assert_eq!(refs, vec!["my_password"]);
+    }
+
+    #[test]
+    fn test_extract_secret_refs_multiple() {
+        let refs = extract_secret_refs("user=${{secrets.user}} pass=${{secrets.pass}}");
+        assert_eq!(refs, vec!["user", "pass"]);
+    }
+
+    #[test]
+    fn test_extract_secret_refs_deduplicates() {
+        let refs = extract_secret_refs("${{secrets.token}} and again ${{secrets.token}}");
+        assert_eq!(refs, vec!["token"]);
+    }
+
+    #[test]
+    fn test_extract_secret_refs_ignores_empty_name() {
+        assert!(extract_secret_refs("${{secrets.}}").is_empty());
+    }
+
+    #[test]
+    fn test_extract_secret_refs_ignores_unclosed() {
+        assert!(extract_secret_refs("${{secrets.name").is_empty());
+    }
+
+    #[test]
+    fn test_substitute_secrets_basic() {
+        let mut resolved = std::collections::HashMap::new();
+        resolved.insert("pw".to_string(), "hunter2".to_string());
+        assert_eq!(substitute_secrets("${{secrets.pw}}", &resolved), "hunter2");
+    }
+
+    #[test]
+    fn test_substitute_secrets_mixed() {
+        let mut resolved = std::collections::HashMap::new();
+        resolved.insert("token".to_string(), "abc123".to_string());
+        assert_eq!(
+            substitute_secrets("Bearer ${{secrets.token}}", &resolved),
+            "Bearer abc123"
+        );
+    }
+
+    #[test]
+    fn test_substitute_secrets_no_match() {
+        let resolved = std::collections::HashMap::new();
+        assert_eq!(
+            substitute_secrets("no refs here", &resolved),
+            "no refs here"
+        );
+    }
+
+    #[test]
+    fn test_substitute_step_secrets_replaces_value_only() {
+        let steps = vec![
+            serde_json::json!({
+                "action": "type",
+                "selector": "#password",
+                "value": "${{secrets.pw}}"
+            }),
+            serde_json::json!({
+                "action": "click",
+                "selector": "#submit"
+            }),
+        ];
+        let mut resolved = std::collections::HashMap::new();
+        resolved.insert("pw".to_string(), "hunter2".to_string());
+
+        let result = substitute_step_secrets(&steps, &resolved);
+        assert_eq!(result[0]["value"], "hunter2");
+        assert_eq!(result[0]["selector"], "#password"); // untouched
+        assert_eq!(result[1]["selector"], "#submit"); // untouched
+    }
+
+    #[test]
+    fn test_substitute_step_secrets_empty_resolved() {
+        let steps = vec![serde_json::json!({"action": "click", "selector": "#btn"})];
+        let resolved = std::collections::HashMap::new();
+        let result = substitute_step_secrets(&steps, &resolved);
+        assert_eq!(result, steps);
     }
 }

@@ -870,12 +870,24 @@ Set `return_screenshot: true` to get a screenshot after interactions.
 - **Content verification**: Scrape specific elements and validate their text/attributes
 - **Visual QA**: Take screenshots before/after interactions to verify UI changes
 
+## Secure Login Flows
+
+For login-protected pages, use **secret references** to avoid exposing credentials:
+
+1. Store credentials first: `secret_store set login_email user@example.com` and `secret_store set login_password s3cret`
+2. In browserless_interact steps, set the value field to a secret reference pattern: dollar-sign followed by double-braces around secrets.NAME — for example a type step with value set to the pattern referencing secrets.login_password
+3. Secrets are resolved server-side — you never see the plaintext values
+4. Secret references only work in step value fields (not in url or navigate actions)
+
+**Important**: Never ask users to paste credentials into chat. Always use secret_store + secret references in browserless_interact.
+
 ## Guidelines
 
 - Each tool call uses a fresh browser — no state carries between calls
 - Use `wait_for_selector` or `wait_for_timeout` for pages with dynamic content
-- For login-protected pages, use `browserless_interact` with type/click steps
-- Always clean up: Browserless handles this automatically (no resources to manage)
+- For login-protected pages, use secret references (see above) with `browserless_interact`
+- Use `browserless_open_browser` for multi-step workflows that need persistent cookies/sessions
+- Always clean up persistent sessions with `browserless_close_browser` when done
 
 ## Prerequisites
 
@@ -890,7 +902,10 @@ Get a token at https://www.browserless.io/account/home"#,
             "demo",
             "seed",
         ],
-        capabilities: &[SeedCapability::new("browserless")],
+        capabilities: &[
+            SeedCapability::new("browserless"),
+            SeedCapability::new("session_storage"),
+        ],
         dev_only: false,
     },
     SeedAgent {
