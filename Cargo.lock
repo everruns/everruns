@@ -1516,6 +1516,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-deno"
+version = "0.8.7"
+dependencies = [
+ "async-trait",
+ "base64",
+ "chrono",
+ "everruns-core",
+ "futures-util",
+ "http",
+ "inventory",
+ "reqwest 0.13.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tracing",
+ "urlencoding",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-integrations-docker"
 version = "0.8.7"
 dependencies = [
@@ -1636,6 +1657,7 @@ dependencies = [
  "everruns-integrations-brave-search",
  "everruns-integrations-browserless",
  "everruns-integrations-daytona",
+ "everruns-integrations-deno",
  "everruns-integrations-docker",
  "everruns-integrations-duckduckgo",
  "everruns-internal-protocol",
@@ -1720,6 +1742,7 @@ dependencies = [
  "everruns-integrations-brave-search",
  "everruns-integrations-browserless",
  "everruns-integrations-daytona",
+ "everruns-integrations-deno",
  "everruns-integrations-docker",
  "everruns-integrations-duckduckgo",
  "everruns-internal-protocol",

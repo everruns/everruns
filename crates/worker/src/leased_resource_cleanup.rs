@@ -18,6 +18,7 @@ use tracing::{info, warn};
 use crate::worker_adapters::WorkerAdapters;
 
 const DAYTONA_SNAPSHOT_SECRET_PREFIX: &str = "daytona_sandbox:";
+const DENO_SNAPSHOT_SECRET_PREFIX: &str = "deno_sandbox:";
 const BROWSERLESS_SESSION_KEY: &str = "browserless_browser_session";
 
 /// Durable activity input for leased-resource cleanup.
@@ -195,6 +196,7 @@ async fn cleanup_resource(
 
     match (resource.provider.as_str(), resource.resource_type.as_str()) {
         ("daytona", "sandbox") => cleanup_daytona(resource, storage_store, &token).await,
+        ("deno", "sandbox") => cleanup_deno(resource, storage_store, &token).await,
         ("browserless", "browser_session") => {
             cleanup_browserless(resource, storage_store, &token).await
         }
@@ -222,6 +224,13 @@ async fn resolve_provider_token(
         && let Some(token) = resolver
             .get_connection_token(session_id, &resource.provider)
             .await?
+    {
+        return Ok(token);
+    }
+
+    if resource.provider == "deno"
+        && let Ok(token) = std::env::var("DENO_DEPLOY_TOKEN")
+        && !token.is_empty()
     {
         return Ok(token);
     }
@@ -263,6 +272,43 @@ async fn cleanup_daytona(
     }
 
     Ok(format!("Deleted Daytona sandbox {}", resource.external_id))
+}
+
+async fn cleanup_deno(
+    resource: &LeasedResource,
+    storage_store: &dyn SessionStorageStore,
+    token: &str,
+) -> Result<String> {
+    let region = resource
+        .metadata
+        .get("region")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| anyhow!("Deno leased resource missing metadata.region"))?;
+    let org = deno_cleanup_org(resource);
+
+    let client = everruns_integrations_deno::client::DenoClient::new(token.to_string(), org);
+    match client.delete_sandbox(&resource.external_id, region).await {
+        Ok(()) => {}
+        Err(error) if is_deno_not_found(&error) => {
+            warn!(
+                sandbox_id = %resource.external_id,
+                error = %error,
+                "Deno sandbox already gone during cleanup"
+            );
+        }
+        Err(error) => return Err(anyhow!("Deno cleanup failed: {error}")),
+    }
+
+    if let Some(session_id) = resource.session_id {
+        let _ = storage_store
+            .delete_secret(
+                session_id,
+                &format!("{DENO_SNAPSHOT_SECRET_PREFIX}{}", resource.external_id),
+            )
+            .await;
+    }
+
+    Ok(format!("Deleted Deno sandbox {}", resource.external_id))
 }
 
 async fn cleanup_browserless(
@@ -342,6 +388,24 @@ fn is_daytona_not_found(error: &str) -> bool {
     error.contains("404") || error.to_ascii_lowercase().contains("not found")
 }
 
+fn deno_cleanup_org(resource: &LeasedResource) -> Option<String> {
+    resource
+        .metadata
+        .get("org")
+        .and_then(serde_json::Value::as_str)
+        .filter(|org| !org.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            std::env::var("DENO_DEPLOY_ORG")
+                .ok()
+                .filter(|org| !org.is_empty())
+        })
+}
+
+fn is_deno_not_found(error: &str) -> bool {
+    error.contains("404") || error.to_ascii_lowercase().contains("not found")
+}
+
 fn is_browserless_already_gone(error: &str) -> bool {
     let error = error.to_ascii_lowercase();
     error.contains("404")
@@ -373,11 +437,43 @@ mod tests {
     #[test]
     fn error_classifiers_match_expected_patterns() {
         assert!(is_daytona_not_found("Daytona API error (404): not found"));
+        assert!(is_deno_not_found(
+            "Deno sandbox delete error (404): not found"
+        ));
         assert!(is_browserless_already_gone(
             "CDP WebSocket connection failed: HTTP error: 404 Not Found"
         ));
         assert!(!is_browserless_already_gone(
             "CDP WebSocket connection failed: dns error"
         ));
+    }
+
+    #[test]
+    fn deno_cleanup_org_prefers_metadata() {
+        let resource = LeasedResource {
+            id: uuid::Uuid::nil().into(),
+            session_id: None,
+            provider: "deno".to_string(),
+            resource_type: "sandbox".to_string(),
+            external_id: "sb_123".to_string(),
+            display_name: None,
+            status: everruns_core::LeasedResourceStatus::Active,
+            owner_user_id: None,
+            lease_duration_seconds: 60,
+            last_touched_at: chrono::Utc::now(),
+            lease_expires_at: chrono::Utc::now(),
+            cleanup_started_at: None,
+            cleanup_completed_at: None,
+            cleanup_attempts: 0,
+            last_cleanup_error: None,
+            metadata: serde_json::json!({
+                "region": "ord",
+                "org": "everruns",
+            }),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        assert_eq!(deno_cleanup_org(&resource).as_deref(), Some("everruns"));
     }
 }

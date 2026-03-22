@@ -12,6 +12,7 @@ Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
 | DuckDuckGo | [`integrations/duckduckgo/SPEC.md`](../integrations/duckduckgo/SPEC.md) | Instant answers via DuckDuckGo API. Experimental (Dev only). |
 | Browserless | [`integrations/browserless/SPEC.md`](../integrations/browserless/SPEC.md) | Cloud browser automation — screenshots, DOM, scraping, multi-step interactions. REST and CDP modes. |
 | Daytona | [`integrations/daytona/SPEC.md`](../integrations/daytona/SPEC.md) | Cloud sandbox environments via Daytona REST API. Multiple sandboxes per session. |
+| Deno | [`integrations/deno/SPEC.md`](../integrations/deno/SPEC.md) | Cloud sandbox environments via Deno websocket sandbox API. Multiple sandboxes per session. |
 | Docker | `integrations/docker/` | Container-based agent execution. Experimental (Dev only). No spec yet. |
 
 ## Server Integrations (`crates/server/specs/`)

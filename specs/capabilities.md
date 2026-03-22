@@ -248,7 +248,7 @@ Each capability declares a `RiskLevel` via the `Capability` trait. The API enfor
 | `medium` | Logged but allowed for org members. | Any org member |
 | `high` | Can access external compute or resources. | Requires Admin role |
 
-High-risk built-in capabilities: `docker_container`, `daytona`.
+High-risk built-in capabilities: `docker_container`, `daytona`, `deno`.
 
 See `crates/core/src/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents.rs` for `require_admin_for_high_risk()`.
 

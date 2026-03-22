@@ -17,6 +17,7 @@ members = [
     "crates/session-sqldb",
     "integrations/docker",
     "integrations/daytona",
+    "integrations/deno",
     "integrations/brave-search",
     "integrations/duckduckgo",
     "integrations/browserless",

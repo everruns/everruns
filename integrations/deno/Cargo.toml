@@ -1,0 +1,33 @@
+# Deno Sandbox Integration
+# Decision: External integration crate, auto-registered via inventory plugin system.
+
+[package]
+name = "everruns-integrations-deno"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Deno Sandbox integration for Everruns"
+
+[dependencies]
+everruns-core = { path = "../../crates/core" }
+inventory.workspace = true
+reqwest = { workspace = true, features = ["multipart"] }
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+futures-util.workspace = true
+tokio-tungstenite.workspace = true
+base64.workspace = true
+http = "1"
+urlencoding = "2.1"
+
+[features]
+deno-live-tests = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"

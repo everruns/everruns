@@ -848,6 +848,18 @@ Session B stores: daytona_sandbox:sb_xyz → {sandbox_id, workspace_path, starte
 Session A cannot access sb_xyz (different session_id in storage query)
 ```
 
+## 16A. Deno Sandbox (TM-DENO)
+
+Deno sandboxes are remote Linux microVMs managed over a websocket + REST control plane. Everruns creates sandboxes with a fixed timeout, reconnects for each tool call, and deletes them via leased-resource cleanup.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-DENO-001 | Service-wide token misuse via env fallback | High | Prefer user connections; env fallback is operator-controlled and intended for managed deployments/tests | **CALLER RISK** |
+| TM-DENO-002 | Cross-session sandbox access | Critical | Sandbox IDs stored in session-scoped secrets (`deno_sandbox:{id}`); tool access requires matching session state | MITIGATED |
+| TM-DENO-003 | Sandbox leak from default `session` timeout | Medium | `deno_create_sandbox` forbids `timeout="session"`; Everruns always uses explicit TTLs plus leased-resource cleanup | MITIGATED |
+| TM-API-015 | Lease metadata exposure | Medium | Deno lease metadata stores only non-secret routing/debug fields (`region`, optional `org`, workspace path, timestamps); tokens still resolve from connections/env at cleanup time | MITIGATED |
+| TM-DENO-004 | Network probing from remote sandbox | High | Capability is Admin-gated; residual exposure depends on operator egress controls | **ACCEPTED** |
+
 ## 17. Client-Side Tools (TM-CLIENT)
 
 Client-side tools pause server execution and wait for client to submit results via API. Attack surface includes tool call ID spoofing and timeout abuse.
@@ -912,6 +924,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High-risk capabilities are Admin-gated; residual exposure depends on deployment network isolation |
 | TM-DURABLE-006 | DLQ growth | Tasks preserved for debugging; manual cleanup |
 | TM-DAYTONA-001 | Git token on sandbox disk | Same trust boundary as exec; `/tmp` cleared on stop; short-lived token |
+| TM-DENO-004 | Network probing from Deno sandbox | Same residual risk as other remote execution capabilities; requires Admin + operator egress controls |
 
 ### Caller Responsibilities
 
@@ -974,6 +987,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 - `specs/capabilities.md` — Agent capabilities system
 - `specs/bashkit-requirements.md` — Bashkit integration requirements
 - `integrations/daytona/SPEC.md` — Daytona cloud sandbox integration
+- `integrations/deno/SPEC.md` — Deno sandbox integration
 - `specs/client-side-tools.md` — Client-side tools for API/SDK consumers
 - `specs/apps.md` — Apps system (agent deployment to channels)
 - `crates/server/specs/slack-integration.md` — Slack bot integration
