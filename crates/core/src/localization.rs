@@ -4,6 +4,147 @@
 //! - Keep locale fallback simple: Ukrainian (`uk*`) or default English.
 //! - Centralize string catalogs here so backend-authored copy stays externalized
 //!   as we add more locales.
+//! - Allowed locale and timezone lists are the single source of truth for the
+//!   backend. The UI mirrors these in `apps/ui/src/lib/locale-data.ts`.
+
+/// Allowed BCP 47 locale tags. Russia excluded per policy.
+/// UI mirror: `apps/ui/src/lib/locale-data.ts` LOCALE_OPTIONS.
+pub const ALLOWED_LOCALES: &[&str] = &[
+    "af-ZA", "am-ET", "ar-AE", "ar-EG", "ar-SA", "az-AZ", "be-BY", "bg-BG", "bn-BD", "bn-IN",
+    "bs-BA", "ca-ES", "cs-CZ", "cy-GB", "da-DK", "de-AT", "de-CH", "de-DE", "el-GR", "en", "en-AU",
+    "en-CA", "en-GB", "en-IE", "en-IN", "en-NZ", "en-US", "en-ZA", "es-AR", "es-CL", "es-CO",
+    "es-ES", "es-MX", "es-PE", "et-EE", "eu-ES", "fa-IR", "fi-FI", "fil-PH", "fr-BE", "fr-CA",
+    "fr-CH", "fr-FR", "ga-IE", "gl-ES", "gu-IN", "he-IL", "hi-IN", "hr-HR", "hu-HU", "hy-AM",
+    "id-ID", "is-IS", "it-CH", "it-IT", "ja-JP", "ka-GE", "kk-KZ", "km-KH", "kn-IN", "ko-KR",
+    "lo-LA", "lt-LT", "lv-LV", "mk-MK", "ml-IN", "mn-MN", "mr-IN", "ms-MY", "mt-MT", "my-MM",
+    "nb-NO", "ne-NP", "nl-BE", "nl-NL", "pa-IN", "pl-PL", "pt-BR", "pt-PT", "ro-RO", "si-LK",
+    "sk-SK", "sl-SI", "sq-AL", "sr-RS", "sv-SE", "sw-KE", "ta-IN", "te-IN", "th-TH", "tr-TR", "uk",
+    "uk-UA", "ur-PK", "uz-UZ", "vi-VN", "zh-CN", "zh-HK", "zh-TW", "zu-ZA",
+];
+
+/// Allowed IANA timezone names. Russia-specific zones excluded per policy.
+/// UI mirror: `apps/ui/src/lib/locale-data.ts` TIMEZONE_OPTIONS.
+pub const ALLOWED_TIMEZONES: &[&str] = &[
+    "UTC",
+    "Africa/Abidjan",
+    "Africa/Accra",
+    "Africa/Addis_Ababa",
+    "Africa/Algiers",
+    "Africa/Cairo",
+    "Africa/Casablanca",
+    "Africa/Dar_es_Salaam",
+    "Africa/Johannesburg",
+    "Africa/Lagos",
+    "Africa/Nairobi",
+    "Africa/Tunis",
+    "America/Anchorage",
+    "America/Argentina/Buenos_Aires",
+    "America/Bogota",
+    "America/Cancun",
+    "America/Chicago",
+    "America/Denver",
+    "America/Edmonton",
+    "America/Halifax",
+    "America/Havana",
+    "America/Lima",
+    "America/Los_Angeles",
+    "America/Manaus",
+    "America/Mexico_City",
+    "America/New_York",
+    "America/Panama",
+    "America/Phoenix",
+    "America/Santiago",
+    "America/Sao_Paulo",
+    "America/St_Johns",
+    "America/Toronto",
+    "America/Vancouver",
+    "America/Winnipeg",
+    "Asia/Almaty",
+    "Asia/Amman",
+    "Asia/Baghdad",
+    "Asia/Baku",
+    "Asia/Bangkok",
+    "Asia/Beirut",
+    "Asia/Colombo",
+    "Asia/Dhaka",
+    "Asia/Dubai",
+    "Asia/Ho_Chi_Minh",
+    "Asia/Hong_Kong",
+    "Asia/Istanbul",
+    "Asia/Jakarta",
+    "Asia/Jerusalem",
+    "Asia/Kabul",
+    "Asia/Karachi",
+    "Asia/Kathmandu",
+    "Asia/Kolkata",
+    "Asia/Kuala_Lumpur",
+    "Asia/Manila",
+    "Asia/Riyadh",
+    "Asia/Seoul",
+    "Asia/Shanghai",
+    "Asia/Singapore",
+    "Asia/Taipei",
+    "Asia/Tashkent",
+    "Asia/Tbilisi",
+    "Asia/Tehran",
+    "Asia/Tokyo",
+    "Asia/Ulaanbaatar",
+    "Asia/Yangon",
+    "Asia/Yerevan",
+    "Atlantic/Azores",
+    "Atlantic/Reykjavik",
+    "Australia/Adelaide",
+    "Australia/Brisbane",
+    "Australia/Darwin",
+    "Australia/Hobart",
+    "Australia/Melbourne",
+    "Australia/Perth",
+    "Australia/Sydney",
+    "Europe/Amsterdam",
+    "Europe/Athens",
+    "Europe/Belgrade",
+    "Europe/Berlin",
+    "Europe/Brussels",
+    "Europe/Bucharest",
+    "Europe/Budapest",
+    "Europe/Copenhagen",
+    "Europe/Dublin",
+    "Europe/Helsinki",
+    "Europe/Istanbul",
+    "Europe/Kyiv",
+    "Europe/Lisbon",
+    "Europe/London",
+    "Europe/Luxembourg",
+    "Europe/Madrid",
+    "Europe/Oslo",
+    "Europe/Paris",
+    "Europe/Prague",
+    "Europe/Riga",
+    "Europe/Rome",
+    "Europe/Sofia",
+    "Europe/Stockholm",
+    "Europe/Tallinn",
+    "Europe/Vienna",
+    "Europe/Vilnius",
+    "Europe/Warsaw",
+    "Europe/Zurich",
+    "Indian/Maldives",
+    "Indian/Mauritius",
+    "Pacific/Auckland",
+    "Pacific/Fiji",
+    "Pacific/Guam",
+    "Pacific/Honolulu",
+];
+
+/// Check whether a locale tag is in the allowed set.
+pub fn is_allowed_locale(locale: &str) -> bool {
+    ALLOWED_LOCALES.contains(&locale)
+}
+
+/// Check whether a timezone name is in the allowed set.
+pub fn is_allowed_timezone(tz: &str) -> bool {
+    ALLOWED_TIMEZONES.contains(&tz)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackendLocale {
