@@ -53,6 +53,7 @@ pub const ACT_STARTED: &str = "act.started";
 pub const ACT_COMPLETED: &str = "act.completed";
 pub const TOOL_STARTED: &str = "tool.started";
 pub const TOOL_COMPLETED: &str = "tool.completed";
+pub const TOOL_PROGRESS: &str = "tool.progress";
 pub const TOOL_CALL_REQUESTED: &str = "tool.call_requested";
 
 // LLM events
@@ -99,6 +100,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     ACT_COMPLETED,
     TOOL_STARTED,
     TOOL_COMPLETED,
+    TOOL_PROGRESS,
     TOOL_CALL_REQUESTED,
     LLM_GENERATION,
     REASON_THINKING_STARTED,
@@ -891,6 +893,28 @@ impl ToolCompletedData {
     }
 }
 
+/// Data for tool.progress event
+///
+/// Emitted by tools during execution to report interim status updates.
+/// This allows long-running tools (e.g., browser operations, sandbox setup)
+/// to stream progress feedback between tool.started and tool.completed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ToolProgressData {
+    /// Tool call ID this progress belongs to
+    pub tool_call_id: String,
+
+    /// Tool name
+    pub tool_name: String,
+
+    /// Human-readable status message (e.g., "Connecting to browser…")
+    pub message: String,
+
+    /// Human-readable display name for UI rendering
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+}
+
 /// Data for tool.call_requested event
 ///
 /// Emitted when the agent needs client-side tool calls executed.
@@ -1619,6 +1643,7 @@ pub enum EventData {
     ActCompleted(ActCompletedData),
     ToolStarted(ToolStartedData),
     ToolCompleted(ToolCompletedData),
+    ToolProgress(ToolProgressData),
     ToolCallRequested(ToolCallRequestedData),
 
     // LLM events
@@ -1684,6 +1709,7 @@ impl EventData {
             EventData::ActCompleted(_) => ACT_COMPLETED,
             EventData::ToolStarted(_) => TOOL_STARTED,
             EventData::ToolCompleted(_) => TOOL_COMPLETED,
+            EventData::ToolProgress(_) => TOOL_PROGRESS,
             EventData::ToolCallRequested(_) => TOOL_CALL_REQUESTED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
             EventData::ReasonThinkingDelta(_) => REASON_THINKING_DELTA,
@@ -1771,6 +1797,8 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
             }
             TOOL_COMPLETED => serde_json::from_value::<ToolCompletedData>(data.clone())
                 .map(EventData::ToolCompleted),
+            TOOL_PROGRESS => serde_json::from_value::<ToolProgressData>(data.clone())
+                .map(EventData::ToolProgress),
             TOOL_CALL_REQUESTED => serde_json::from_value::<ToolCallRequestedData>(data.clone())
                 .map(EventData::ToolCallRequested),
             LLM_GENERATION => serde_json::from_value::<LlmGenerationData>(data.clone())
@@ -1848,6 +1876,7 @@ impl_from_event_data! {
     ActCompletedData => ActCompleted,
     ToolStartedData => ToolStarted,
     ToolCompletedData => ToolCompleted,
+    ToolProgressData => ToolProgress,
     ToolCallRequestedData => ToolCallRequested,
     LlmGenerationData => LlmGeneration,
     ReasonThinkingStartedData => ReasonThinkingStarted,

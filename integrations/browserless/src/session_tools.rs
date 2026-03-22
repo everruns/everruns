@@ -139,6 +139,10 @@ impl Tool for BrowserlessOpenBrowserTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
+        context
+            .emit_progress("browserless_open_browser", "Resolving connection…")
+            .await;
+
         let api_token = match get_api_token(context).await {
             Ok(v) => v,
             Err(e) => return e,
@@ -191,6 +195,10 @@ impl Tool for BrowserlessOpenBrowserTool {
         }
 
         // Open a new browser session
+        context
+            .emit_progress("browserless_open_browser", "Connecting to browser…")
+            .await;
+
         let ws_url = format!("{}?token={}", crate::BROWSERLESS_WS_BASE, api_token);
 
         let mut session = match CdpSession::connect(&ws_url).await {
@@ -199,7 +207,14 @@ impl Tool for BrowserlessOpenBrowserTool {
         };
 
         // Navigate to initial URL if provided
-        if let Some(url) = arguments.get("url").and_then(|v| v.as_str()) {
+        if let Some(url) = arguments
+            .get("url")
+            .and_then(|v| v.as_str())
+            .filter(|u| !u.is_empty())
+        {
+            context
+                .emit_progress("browserless_open_browser", &format!("Navigating to {url}…"))
+                .await;
             if let Err(e) = validate_browserless_url(url) {
                 session.disconnect().await;
                 return e;
@@ -219,6 +234,13 @@ impl Tool for BrowserlessOpenBrowserTool {
             .get("timeout_ms")
             .and_then(|v| v.as_u64())
             .unwrap_or(DEFAULT_RECONNECT_TIMEOUT_MS);
+
+        context
+            .emit_progress(
+                "browserless_open_browser",
+                "Registering session for persistence…",
+            )
+            .await;
 
         let ws_endpoint = match session.reconnect(timeout_ms).await {
             Ok(endpoint) => endpoint,

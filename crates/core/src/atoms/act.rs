@@ -144,7 +144,7 @@ where
     E: EventEmitter,
 {
     tool_executor: T,
-    event_emitter: E,
+    event_emitter: Arc<E>,
     /// Optional file store for context-aware tools
     file_store: Option<Arc<dyn SessionFileStore>>,
     /// Optional SQL database store for sql_execute/sql_query/sql_schema tools
@@ -179,7 +179,7 @@ where
     pub fn new(tool_executor: T, event_emitter: E) -> Self {
         Self {
             tool_executor,
-            event_emitter,
+            event_emitter: Arc::new(event_emitter),
             file_store: None,
             sqldb_store: None,
             storage_store: None,
@@ -202,7 +202,7 @@ where
     ) -> Self {
         Self {
             tool_executor,
-            event_emitter,
+            event_emitter: Arc::new(event_emitter),
             file_store: Some(file_store),
             sqldb_store: None,
             storage_store: None,
@@ -306,7 +306,7 @@ where
 impl<T, E> Atom for ActAtom<T, E>
 where
     T: ToolExecutor + Send + Sync,
-    E: EventEmitter + Send + Sync,
+    E: EventEmitter + Send + Sync + 'static,
 {
     type Input = ActInput;
     type Output = ActResult;
@@ -557,7 +557,7 @@ where
 impl<T, E> ActAtom<T, E>
 where
     T: ToolExecutor + Send + Sync,
-    E: EventEmitter + Send + Sync,
+    E: EventEmitter + Send + Sync + 'static,
 {
     /// Execute a single tool call
     ///
@@ -678,56 +678,48 @@ where
             };
         };
 
-        // Execute the tool
-        let result = if self.file_store.is_some()
-            || self.sqldb_store.is_some()
-            || self.storage_store.is_some()
-            || self.connection_resolver.is_some()
-            || self.session_store.is_some()
-            || self.session_mutator.is_some()
-            || self.agent_store.is_some()
-            || self.schedule_store.is_some()
-            || self.platform_store.is_some()
-            || self.leased_resource_store.is_some()
-        {
-            let mut tool_context = if let Some(ref store) = self.file_store {
-                ToolContext::with_file_store(context.session_id, store.clone())
-            } else {
-                ToolContext::new(context.session_id)
-            };
-            if let Some(ref store) = self.sqldb_store {
-                tool_context.sqldb_store = Some(store.clone());
-            }
-            if let Some(ref store) = self.storage_store {
-                tool_context.storage_store = Some(store.clone());
-            }
-            if let Some(ref resolver) = self.connection_resolver {
-                tool_context.connection_resolver = Some(resolver.clone());
-            }
-            if let Some(ref store) = self.session_store {
-                tool_context.session_store = Some(store.clone());
-            }
-            if let Some(ref mutator) = self.session_mutator {
-                tool_context.session_mutator = Some(mutator.clone());
-            }
-            if let Some(ref store) = self.agent_store {
-                tool_context.agent_store = Some(store.clone());
-            }
-            if let Some(ref store) = self.schedule_store {
-                tool_context.schedule_store = Some(store.clone());
-            }
-            if let Some(ref store) = self.platform_store {
-                tool_context.platform_store = Some(store.clone());
-            }
-            if let Some(ref store) = self.leased_resource_store {
-                tool_context.leased_resource_store = Some(store.clone());
-            }
-            self.tool_executor
-                .execute_with_context(&tool_call, tool_def, &tool_context)
-                .await
+        // Execute the tool (always with context so tools can emit progress events)
+        let mut tool_context = if let Some(ref store) = self.file_store {
+            ToolContext::with_file_store(context.session_id, store.clone())
         } else {
-            self.tool_executor.execute(&tool_call, tool_def).await
+            ToolContext::new(context.session_id)
         };
+        if let Some(ref store) = self.sqldb_store {
+            tool_context.sqldb_store = Some(store.clone());
+        }
+        if let Some(ref store) = self.storage_store {
+            tool_context.storage_store = Some(store.clone());
+        }
+        if let Some(ref resolver) = self.connection_resolver {
+            tool_context.connection_resolver = Some(resolver.clone());
+        }
+        if let Some(ref store) = self.session_store {
+            tool_context.session_store = Some(store.clone());
+        }
+        if let Some(ref mutator) = self.session_mutator {
+            tool_context.session_mutator = Some(mutator.clone());
+        }
+        if let Some(ref store) = self.agent_store {
+            tool_context.agent_store = Some(store.clone());
+        }
+        if let Some(ref store) = self.schedule_store {
+            tool_context.schedule_store = Some(store.clone());
+        }
+        if let Some(ref store) = self.platform_store {
+            tool_context.platform_store = Some(store.clone());
+        }
+        if let Some(ref store) = self.leased_resource_store {
+            tool_context.leased_resource_store = Some(store.clone());
+        }
+        // Provide event emitter + context so tools can emit tool.progress events
+        tool_context.event_emitter = Some(self.event_emitter.clone() as Arc<dyn EventEmitter>);
+        tool_context.event_context = Some(event_context.clone());
+        tool_context.tool_call_id = Some(tool_call.id.clone());
+
+        let result = self
+            .tool_executor
+            .execute_with_context(&tool_call, tool_def, &tool_context)
+            .await;
 
         match result {
             Ok(tool_result) => {
@@ -1029,8 +1021,8 @@ mod tests {
         }
         let event_emitter = NoopEventEmitter;
 
-        // No stores set → ActAtom uses plain `execute()` which the tool
-        // returns a ToolError from ("requires context").
+        // No platform_store set → tool returns ToolError about platform management
+        // not being available (execute_with_context is always used now).
         let atom = ActAtom::new(executor, event_emitter);
 
         let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
@@ -1057,8 +1049,8 @@ mod tests {
         let result_body = result.results[0].result.result.as_ref().unwrap();
         let err_msg = result_body["error"].as_str().unwrap();
         assert!(
-            err_msg.contains("requires context"),
-            "Expected 'requires context' error, got: {err_msg}"
+            err_msg.contains("Platform management not available"),
+            "Expected platform management error, got: {err_msg}"
         );
     }
 

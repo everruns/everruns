@@ -609,6 +609,61 @@ pub fn render_tool_narration_with_locale(
             Some("task list".to_string()),
             phase,
         ),
+        "browserless_open_browser" => {
+            let target = arg_str(args, &["url"]).map(|url| truncate(url, 48));
+            generic_phrase(
+                "Opening browser",
+                "Opened browser",
+                "Failed to open browser",
+                target,
+                phase,
+            )
+        }
+        "browserless_close_browser" => generic_phrase(
+            "Closing browser",
+            "Closed browser",
+            "Failed to close browser",
+            None,
+            phase,
+        ),
+        "browserless_navigate" => {
+            let target = arg_str(args, &["url"]).map(|url| truncate(url, 48));
+            generic_phrase(
+                "Navigating to",
+                "Navigated to",
+                "Failed to navigate to",
+                target,
+                phase,
+            )
+        }
+        "browserless_screenshot" => generic_phrase(
+            "Taking screenshot",
+            "Took screenshot",
+            "Failed to take screenshot",
+            None,
+            phase,
+        ),
+        "browserless_content" => generic_phrase(
+            "Reading page content",
+            "Read page content",
+            "Failed to read page content",
+            None,
+            phase,
+        ),
+        "browserless_scrape" => generic_phrase(
+            "Scraping page",
+            "Scraped page",
+            "Failed to scrape page",
+            None,
+            phase,
+        ),
+        "browserless_interact" => generic_phrase(
+            "Interacting with page",
+            "Interacted with page",
+            "Failed to interact with page",
+            None,
+            phase,
+        ),
         _ => generic_phrase(
             "Running",
             "Ran",
