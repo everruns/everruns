@@ -362,7 +362,11 @@ export function ChatMessageList({
           return (
             <div key={event.id} className="space-y-3">
               <div className="ml-9 space-y-1">
-                <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} toolProgressMap={toolProgressMap} />
+                <ToolActivityGroup
+                  toolCalls={toolCalls}
+                  toolResultsMap={toolResultsMap}
+                  toolProgressMap={toolProgressMap}
+                />
               </div>
               {renderTurnDivider(
                 event.id,
@@ -434,7 +438,11 @@ export function ChatMessageList({
 
             {toolCalls.length > 0 && !hasNarratedActEvents && (
               <div className="ml-9 space-y-1">
-                <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} toolProgressMap={toolProgressMap} />
+                <ToolActivityGroup
+                  toolCalls={toolCalls}
+                  toolResultsMap={toolResultsMap}
+                  toolProgressMap={toolProgressMap}
+                />
               </div>
             )}
 
