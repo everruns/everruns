@@ -20,6 +20,7 @@ everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }
 everruns-integrations-duckduckgo = { path = "../../integrations/duckduckgo" }
 everruns-integrations-daytona = { path = "../../integrations/daytona" }
+everruns-integrations-deno = { path = "../../integrations/deno" }
 everruns-integrations-browserless = { path = "../../integrations/browserless" }
 everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-openai = { path = "../openai" }
