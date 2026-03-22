@@ -371,10 +371,15 @@ impl DenoClient {
             json!(request.memory_mb.unwrap_or(DENO_DEFAULT_MEMORY_MB)),
         );
         if let Some(timeout_seconds) = request.timeout_seconds {
-            config.insert(
-                "stop_at_ms".to_string(),
-                json!(chrono::Utc::now().timestamp_millis() + (timeout_seconds as i64 * 1000)),
-            );
+            let timeout_ms = i64::try_from(timeout_seconds)
+                .ok()
+                .and_then(|s| s.checked_mul(1000))
+                .ok_or_else(|| "Requested timeout is too large".to_string())?;
+            let stop_at_ms = chrono::Utc::now()
+                .timestamp_millis()
+                .checked_add(timeout_ms)
+                .ok_or_else(|| "Requested timeout is too large".to_string())?;
+            config.insert("stop_at_ms".to_string(), json!(stop_at_ms));
         }
         if !request.labels.is_empty() {
             config.insert("labels".to_string(), Value::Object(request.labels.clone()));

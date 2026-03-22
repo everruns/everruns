@@ -14,7 +14,7 @@ use crate::state::{
     SandboxState, delete_sandbox_state, get_credentials, get_sandbox_state, list_sandbox_states,
     release_sandbox_lease, required_str, save_sandbox_state, touch_sandbox_lease,
 };
-use crate::{DENO_MAX_MEMORY_MB, DENO_SANDBOX_TIMEOUT};
+use crate::{DENO_DEFAULT_MEMORY_MB, DENO_MAX_MEMORY_MB, DENO_SANDBOX_TIMEOUT};
 
 fn parse_memory_mb(arguments: &Value) -> Result<Option<u64>, String> {
     let Some(value) = arguments.get("memory_mb") else {
@@ -36,13 +36,15 @@ fn parse_memory_mb(arguments: &Value) -> Result<Option<u64>, String> {
 
 fn parse_timeout_seconds(timeout: &str) -> Result<u64, String> {
     if timeout == "session" {
-        return Err("Deno sandboxes can not use timeout='session' because Everruns closes the creator websocket after each tool. Use a concrete duration like '20m'.".to_string());
+        return Err("Deno sandboxes cannot use timeout='session' because Everruns closes the creator websocket after each tool. Use a concrete duration like '20m'.".to_string());
     }
     if let Some(minutes) = timeout.strip_suffix('m') {
         let minutes = minutes
             .parse::<u64>()
             .map_err(|_| "Invalid timeout: expected e.g. '20m' or '600s'".to_string())?;
-        return Ok(minutes * 60);
+        return minutes
+            .checked_mul(60)
+            .ok_or_else(|| "Timeout too large".to_string());
     }
     if let Some(seconds) = timeout.strip_suffix('s') {
         return seconds
@@ -71,7 +73,7 @@ impl Tool for DenoCreateSandboxTool {
                 "title": { "type": "string", "description": "Sandbox label shown in Deno" },
                 "region": { "type": "string", "description": "Region (for example 'ord' or 'ams')" },
                 "timeout": { "type": "string", "description": "Sandbox lifetime, e.g. '20m' or '600s'", "default": DENO_SANDBOX_TIMEOUT },
-                "memory_mb": { "type": "integer", "description": "Sandbox memory in MiB (1-16384)", "minimum": 1, "maximum": DENO_MAX_MEMORY_MB, "default": 1280 },
+                "memory_mb": { "type": "integer", "description": "Sandbox memory in MiB (1-16384)", "minimum": 1, "maximum": DENO_MAX_MEMORY_MB, "default": DENO_DEFAULT_MEMORY_MB },
                 "allow_net": {
                     "type": "array",
                     "items": { "type": "string" },
