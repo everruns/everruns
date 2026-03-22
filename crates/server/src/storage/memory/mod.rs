@@ -8,6 +8,7 @@
 // Split into per-entity modules for maintainability (EVE-99).
 
 mod agent_identities;
+mod agent_identity_connections;
 mod agents;
 mod apps;
 mod audit_logs;
@@ -117,6 +118,8 @@ pub struct InMemoryDatabase {
     apps: RwLock<HashMap<Uuid, AppRow>>,
     // Agent identities (virtual principals)
     agent_identities: RwLock<HashMap<AgentIdentityId, AgentIdentityRow>>,
+    // Agent identity connections (identity-scoped external accounts)
+    agent_identity_connections: RwLock<HashMap<Uuid, AgentIdentityConnectionRow>>,
     // Organization settings (default model, etc.)
     org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
 }
@@ -174,6 +177,7 @@ impl Default for InMemoryDatabase {
             audit_logs: RwLock::new(Vec::new()),
             apps: RwLock::new(HashMap::new()),
             agent_identities: RwLock::new(HashMap::new()),
+            agent_identity_connections: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
         }
     }

@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CopyButton } from "@/components/ui/copy-button";
 import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import { IdentityConnections } from "@/components/agent-identity/identity-connections";
 
 export default function AgentIdentityDetailPage({
   params,
@@ -88,6 +89,7 @@ export default function AgentIdentityDetailPage({
               }
             />
           </div>
+          <IdentityConnections identityId={identityId} />
           <div className="flex gap-3">
             {identity.status === "active" ? (
               <Button

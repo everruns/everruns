@@ -1613,6 +1613,45 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Agent Identity Connections
+    // ============================================
+
+    pub async fn upsert_agent_identity_connection(
+        &self,
+        input: CreateAgentIdentityConnectionRow,
+    ) -> Result<AgentIdentityConnectionRow> {
+        dispatch!(self, upsert_agent_identity_connection, input)
+    }
+
+    pub async fn get_agent_identity_connection(
+        &self,
+        identity_id: AgentIdentityId,
+        provider: &str,
+    ) -> Result<Option<AgentIdentityConnectionRow>> {
+        dispatch!(self, get_agent_identity_connection, identity_id, provider)
+    }
+
+    pub async fn list_agent_identity_connections(
+        &self,
+        identity_id: AgentIdentityId,
+    ) -> Result<Vec<AgentIdentityConnectionRow>> {
+        dispatch!(self, list_agent_identity_connections, identity_id)
+    }
+
+    pub async fn delete_agent_identity_connection(
+        &self,
+        identity_id: AgentIdentityId,
+        provider: &str,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            delete_agent_identity_connection,
+            identity_id,
+            provider
+        )
+    }
+
+    // ============================================
     // Session Schedules
     // ============================================
 

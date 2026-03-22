@@ -2,6 +2,7 @@
 // Decision: PostgreSQL-backed, split into per-entity modules (EVE-100).
 
 mod agent_identities;
+mod agent_identity_connections;
 mod agents;
 mod apps;
 mod audit_logs;
