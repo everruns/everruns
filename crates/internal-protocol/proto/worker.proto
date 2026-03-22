@@ -88,6 +88,12 @@ service WorkerService {
     // Count active (non-terminal) workflows
     rpc CountActiveDurableWorkflows(CountActiveDurableWorkflowsRequest) returns (CountActiveDurableWorkflowsResponse);
 
+    // Send a signal to a running workflow (e.g. user_message steering)
+    rpc SendDurableWorkflowSignal(SendDurableWorkflowSignalRequest) returns (SendDurableWorkflowSignalResponse);
+
+    // Get and consume pending signals for a workflow
+    rpc GetAndConsumeDurableWorkflowSignals(GetAndConsumeDurableWorkflowSignalsRequest) returns (GetAndConsumeDurableWorkflowSignalsResponse);
+
     // Register a durable worker
     rpc RegisterDurableWorker(RegisterDurableWorkerRequest) returns (RegisterDurableWorkerResponse);
 
@@ -817,6 +823,29 @@ message CountActiveDurableWorkflowsRequest {}
 
 message CountActiveDurableWorkflowsResponse {
     int64 count = 1;
+}
+
+// === Workflow signals ===
+
+message DurableWorkflowSignal {
+    string signal_type = 1;
+    google.protobuf.Value payload = 2;
+    string sent_at = 3;  // ISO 8601 timestamp
+}
+
+message SendDurableWorkflowSignalRequest {
+    string workflow_id = 1;
+    DurableWorkflowSignal signal = 2;
+}
+
+message SendDurableWorkflowSignalResponse {}
+
+message GetAndConsumeDurableWorkflowSignalsRequest {
+    string workflow_id = 1;
+}
+
+message GetAndConsumeDurableWorkflowSignalsResponse {
+    repeated DurableWorkflowSignal signals = 1;
 }
 
 // === Register worker ===

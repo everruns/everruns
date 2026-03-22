@@ -383,6 +383,74 @@ impl GrpcDurableStore {
         Ok(response.into_inner().count as usize)
     }
 
+    /// Send a signal to a running workflow
+    pub async fn send_signal(
+        &mut self,
+        workflow_id: Uuid,
+        signal: everruns_durable::WorkflowSignal,
+    ) -> Result<()> {
+        use everruns_internal_protocol::proto::{
+            DurableWorkflowSignal, SendDurableWorkflowSignalRequest,
+        };
+        let proto_signal = DurableWorkflowSignal {
+            signal_type: signal.signal_type,
+            payload: Some(everruns_internal_protocol::json_to_proto_value(
+                &signal.payload,
+            )),
+            sent_at: signal.sent_at.to_rfc3339(),
+        };
+        let request = SendDurableWorkflowSignalRequest {
+            workflow_id: workflow_id.to_string(),
+            signal: Some(proto_signal),
+        };
+        self.client.send_durable_workflow_signal(request).await?;
+        Ok(())
+    }
+
+    /// Get and consume pending signals for a workflow
+    pub async fn get_and_consume_signals(
+        &mut self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>> {
+        use everruns_internal_protocol::proto::GetAndConsumeDurableWorkflowSignalsRequest;
+        let request = GetAndConsumeDurableWorkflowSignalsRequest {
+            workflow_id: workflow_id.to_string(),
+        };
+        let response = self
+            .client
+            .get_and_consume_durable_workflow_signals(request)
+            .await?;
+        let signals = response
+            .into_inner()
+            .signals
+            .into_iter()
+            .filter_map(|s| {
+                let payload = s
+                    .payload
+                    .as_ref()
+                    .map(everruns_internal_protocol::proto_value_to_json)
+                    .unwrap_or(serde_json::json!({}));
+                match chrono::DateTime::parse_from_rfc3339(&s.sent_at) {
+                    Ok(dt) => Some(everruns_durable::WorkflowSignal {
+                        signal_type: s.signal_type,
+                        payload,
+                        sent_at: dt.with_timezone(&chrono::Utc),
+                    }),
+                    Err(err) => {
+                        tracing::warn!(
+                            sent_at = %s.sent_at,
+                            signal_type = %s.signal_type,
+                            error = %err,
+                            "Skipping workflow signal with malformed sent_at"
+                        );
+                        None
+                    }
+                }
+            })
+            .collect();
+        Ok(signals)
+    }
+
     /// Register this worker with the control-plane
     pub async fn register_worker(
         &mut self,

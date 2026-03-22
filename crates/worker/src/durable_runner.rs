@@ -109,6 +109,26 @@ pub trait DurableStoreBackend: Send + Sync {
         expected_sequence: i32,
         events: Vec<WorkflowEvent>,
     ) -> Result<i32>;
+
+    /// Atomically try to claim a workflow for a new turn.
+    /// Transitions the workflow from terminal/pending → Running.
+    /// Returns Ok(true) if claimed, Ok(false) if workflow is Running (active turn).
+    /// This provides database-level atomicity for horizontal scaling.
+    async fn try_claim_workflow_for_new_turn(&mut self, workflow_id: Uuid) -> Result<bool>;
+
+    /// Send a signal to a running workflow (e.g. user_message steering signal).
+    async fn send_signal(
+        &mut self,
+        workflow_id: Uuid,
+        signal: everruns_durable::WorkflowSignal,
+    ) -> Result<()>;
+
+    /// Get and consume all pending signals for a workflow.
+    /// Returns the signals and marks them as processed atomically.
+    async fn get_and_consume_signals(
+        &mut self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>>;
 }
 
 // =============================================================================
@@ -157,6 +177,11 @@ impl DurableStoreBackend for GrpcDurableStore {
         GrpcDurableStore::count_active_workflows(self).await
     }
 
+    async fn try_claim_workflow_for_new_turn(&mut self, _workflow_id: Uuid) -> Result<bool> {
+        // gRPC workers don't call start_run — only the control-plane does.
+        Ok(false)
+    }
+
     async fn cancel_pending_tasks(&mut self, _workflow_id: Uuid) -> Result<u64> {
         // gRPC workers don't call start_run — only the control-plane does.
         // If this is ever needed, add a CancelPendingTasks gRPC method.
@@ -172,6 +197,21 @@ impl DurableStoreBackend for GrpcDurableStore {
         // gRPC mode doesn't support append_events directly yet
         // Events are appended by the control-plane
         Ok(0)
+    }
+
+    async fn send_signal(
+        &mut self,
+        workflow_id: Uuid,
+        signal: everruns_durable::WorkflowSignal,
+    ) -> Result<()> {
+        GrpcDurableStore::send_signal(self, workflow_id, signal).await
+    }
+
+    async fn get_and_consume_signals(
+        &mut self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>> {
+        GrpcDurableStore::get_and_consume_signals(self, workflow_id).await
     }
 }
 
@@ -258,6 +298,13 @@ impl DurableStoreBackend for DirectDurableStore {
             .map_err(Into::into)
     }
 
+    async fn try_claim_workflow_for_new_turn(&mut self, workflow_id: Uuid) -> Result<bool> {
+        self.store
+            .try_claim_workflow_for_new_turn(workflow_id)
+            .await
+            .map_err(Into::into)
+    }
+
     async fn cancel_pending_tasks(&mut self, workflow_id: Uuid) -> Result<u64> {
         self.store
             .cancel_pending_tasks_for_workflow(workflow_id)
@@ -275,6 +322,25 @@ impl DurableStoreBackend for DirectDurableStore {
             .append_events(workflow_id, expected_sequence, events)
             .await
             .map_err(Into::into)
+    }
+
+    async fn send_signal(
+        &mut self,
+        workflow_id: Uuid,
+        signal: everruns_durable::WorkflowSignal,
+    ) -> Result<()> {
+        self.store
+            .send_signal(workflow_id, signal)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn get_and_consume_signals(
+        &mut self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>> {
+        let signals = self.store.consume_pending_signals(workflow_id).await?;
+        Ok(signals)
     }
 }
 
@@ -375,6 +441,13 @@ impl DurableStoreBackend for InMemoryDurableStore {
         Ok(self.store.workflow_count())
     }
 
+    async fn try_claim_workflow_for_new_turn(&mut self, workflow_id: Uuid) -> Result<bool> {
+        self.store
+            .try_claim_workflow_for_new_turn(workflow_id)
+            .await
+            .map_err(Into::into)
+    }
+
     async fn cancel_pending_tasks(&mut self, workflow_id: Uuid) -> Result<u64> {
         self.store
             .cancel_pending_tasks_for_workflow(workflow_id)
@@ -392,6 +465,25 @@ impl DurableStoreBackend for InMemoryDurableStore {
             .append_events(workflow_id, expected_sequence, events)
             .await
             .map_err(Into::into)
+    }
+
+    async fn send_signal(
+        &mut self,
+        workflow_id: Uuid,
+        signal: everruns_durable::WorkflowSignal,
+    ) -> Result<()> {
+        self.store
+            .send_signal(workflow_id, signal)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn get_and_consume_signals(
+        &mut self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>> {
+        let signals = self.store.consume_pending_signals(workflow_id).await?;
+        Ok(signals)
     }
 }
 
@@ -534,150 +626,144 @@ impl AgentRunner for DurableRunner {
         let workflow_id = session_id.uuid();
         let input_json = serde_json::to_value(&input)?;
 
-        // Check if workflow already exists and wait for it to complete if needed.
-        // Race condition: session becomes idle (in execute_reason_activity) BEFORE
-        // schedule_next_activity marks the workflow as Completed. If a new message
-        // arrives during this window, the workflow is still non-terminal. We wait
-        // briefly instead of silently dropping the new turn.
-        let workflow_exists = {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-            loop {
-                let mut store = self.store.lock().await;
-                match store.get_workflow_status(workflow_id).await {
-                    Ok((status, _, _)) => {
-                        if status.is_terminal() {
-                            info!(
-                                session_id = %session_id,
-                                workflow_id = %workflow_id,
-                                status = ?status,
-                                "Existing workflow is terminal, resetting for new turn"
-                            );
-                            break true;
-                        }
-                        if status == WorkflowStatus::Pending {
-                            // Pending means no worker has claimed the task yet —
-                            // safe to take over immediately (cancel stale task,
-                            // enqueue new one). The race-condition wait only
-                            // applies to Running workflows.
-                            info!(
-                                session_id = %session_id,
-                                workflow_id = %workflow_id,
-                                "Previous workflow is Pending (unclaimed), taking over immediately"
-                            );
-                            break true;
-                        }
-                        // Workflow is Running — release lock and wait for it
-                        // to finish (race window: session idle before
-                        // schedule_next_activity marks Completed).
-                        drop(store);
-                        if std::time::Instant::now() > deadline {
-                            return Err(anyhow::anyhow!(
-                                "Timeout waiting for previous workflow to complete for session {}",
-                                session_id
-                            ));
-                        }
-                        info!(
-                            session_id = %session_id,
-                            workflow_id = %workflow_id,
-                            status = ?status,
-                            "Workflow still running, waiting for completion before starting new turn"
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                    }
-                    Err(e) => {
-                        let err_str = e.to_string();
-                        if err_str.contains("not found") || err_str.contains("NOT_FOUND") {
-                            break false;
-                        }
-                        return Err(anyhow::anyhow!("Failed to check workflow status: {}", e));
-                    }
-                }
-            }
-        };
-
+        // Atomically try to claim the workflow for a new turn.
+        //
+        // try_claim_workflow_for_new_turn uses SELECT FOR UPDATE (Postgres) to
+        // atomically transition terminal/pending → Running AND cancel stale tasks.
+        // This is safe under horizontal scaling — only one replica wins the claim.
+        //
+        // If the workflow is Running (active turn), the claim fails and we send
+        // a steering signal instead of starting a concurrent turn.
         let mut store = self.store.lock().await;
 
-        // Enqueue the initial activity (input processing)
-        let activity_id = format!("input_{}", Uuid::now_v7());
+        let claim_result = store.try_claim_workflow_for_new_turn(workflow_id).await;
 
-        if workflow_exists {
-            // Cancel any stale pending tasks from the previous turn before
-            // enqueuing the new one. Without this, a worker could claim both
-            // the old and new task concurrently.
-            let cancelled = store
-                .cancel_pending_tasks(workflow_id)
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to cancel stale tasks: {}", e))?;
-            if cancelled > 0 {
+        match claim_result {
+            Ok(true) => {
+                // Claimed successfully — workflow is now Running.
+                // Enqueue process_input task for the new turn.
                 info!(
                     session_id = %session_id,
                     workflow_id = %workflow_id,
-                    cancelled,
-                    "Cancelled stale pending tasks before new turn"
+                    "Claimed existing workflow for new turn"
                 );
+
+                let activity_id = format!("input_{}", Uuid::now_v7());
+                if let Err(e) = store
+                    .enqueue_task(
+                        workflow_id,
+                        activity_id,
+                        "process_input".to_string(),
+                        input_json,
+                    )
+                    .await
+                {
+                    // Rollback: set workflow back to Completed so future claims can succeed.
+                    let _ = store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
+                        .await;
+                    return Err(anyhow::anyhow!("Failed to enqueue task: {}", e));
+                }
             }
+            Ok(false) => {
+                // Workflow is Running — a turn is active.
+                // Send a steering signal so the running turn picks up this message.
+                // The message is already stored in the events table.
+                info!(
+                    session_id = %session_id,
+                    workflow_id = %workflow_id,
+                    input_message_id = %input_message_id,
+                    "Turn already running — sending steering signal instead of starting concurrent turn"
+                );
+                let signal = everruns_durable::WorkflowSignal::new(
+                    everruns_durable::signal_types::USER_MESSAGE,
+                    serde_json::json!({
+                        "input_message_id": input_message_id.to_string(),
+                        "org_id": org_id,
+                        "harness_id": harness_id.to_string(),
+                        "agent_id": agent_id.map(|a| a.to_string()),
+                    }),
+                );
+                if let Err(e) = store.send_signal(workflow_id, signal).await {
+                    tracing::warn!(
+                        error = %e,
+                        session_id = %session_id,
+                        "Failed to send steering signal — message is still stored"
+                    );
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("not found") || err_str.contains("NOT_FOUND") {
+                    // Workflow doesn't exist yet — create a new one.
+                    info!(
+                        session_id = %session_id,
+                        workflow_id = %workflow_id,
+                        "Creating new workflow for session"
+                    );
 
-            // Reset existing workflow to pending for new turn
-            store
-                .update_workflow_status(workflow_id, WorkflowStatus::Pending, None, None)
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to reset workflow status: {}", e))?;
+                    store
+                        .create_workflow(workflow_id, "turn_workflow", input_json.clone())
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to create workflow: {}", e))?;
 
-            // Enqueue task for the new turn (skip appending events for reset workflows
-            // as the task input contains all necessary information)
-            store
-                .enqueue_task(
-                    workflow_id,
-                    activity_id,
-                    "process_input".to_string(),
-                    input_json,
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {}", e))?;
-        } else {
-            // Create new workflow
-            store
-                .create_workflow(workflow_id, "turn_workflow", input_json.clone())
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to create workflow: {}", e))?;
+                    let activity_id = format!("input_{}", Uuid::now_v7());
 
-            // Append WorkflowStarted event
-            let started_event = WorkflowEvent::WorkflowStarted {
-                input: input_json.clone(),
-            };
-            let sequence = store
-                .append_events(workflow_id, 0, vec![started_event])
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to append WorkflowStarted event: {}", e))?;
+                    // Append WorkflowStarted event
+                    let started_event = WorkflowEvent::WorkflowStarted {
+                        input: input_json.clone(),
+                    };
+                    let sequence = store
+                        .append_events(workflow_id, 0, vec![started_event])
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to append WorkflowStarted event: {}", e)
+                        })?;
 
-            // Enqueue task
-            store
-                .enqueue_task(
-                    workflow_id,
-                    activity_id.clone(),
-                    "process_input".to_string(),
-                    input_json.clone(),
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {}", e))?;
+                    // Enqueue task
+                    store
+                        .enqueue_task(
+                            workflow_id,
+                            activity_id.clone(),
+                            "process_input".to_string(),
+                            input_json.clone(),
+                        )
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {}", e))?;
 
-            // Append ActivityScheduled event
-            let scheduled_event = WorkflowEvent::ActivityScheduled {
-                activity_id,
-                activity_type: "process_input".to_string(),
-                input: input_json,
-                options: ActivityOptions::default(),
-            };
-            let _ = store
-                .append_events(workflow_id, sequence, vec![scheduled_event])
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to append ActivityScheduled event: {}", e))?;
+                    // Set to Running only after task is enqueued, so a failure above
+                    // leaves the workflow in Pending (not stuck in Running with no task).
+                    store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to set new workflow to Running: {}", e)
+                        })?;
+
+                    // Append ActivityScheduled event
+                    let scheduled_event = WorkflowEvent::ActivityScheduled {
+                        activity_id,
+                        activity_type: "process_input".to_string(),
+                        input: input_json,
+                        options: ActivityOptions::default(),
+                    };
+                    let _ = store
+                        .append_events(workflow_id, sequence, vec![scheduled_event])
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to append ActivityScheduled event: {}", e)
+                        })?;
+                } else {
+                    return Err(anyhow::anyhow!("Failed to check workflow status: {}", e));
+                }
+            }
         }
 
         info!(
             session_id = %session_id,
             workflow_id = %workflow_id,
-            "Durable workflow created and input task enqueued"
+            "Durable workflow created and input task enqueued (status: Running)"
         );
 
         Ok(())
@@ -892,7 +978,7 @@ mod tests {
 
     /// Test that start_run waits for the prior workflow to finish before reusing it.
     #[tokio::test]
-    async fn test_start_run_waits_for_running_workflow_to_finish() {
+    async fn test_start_run_sends_steering_signal_when_running() {
         use everruns_core::DEFAULT_ORG_ID;
 
         let runner = DurableRunner::new_in_memory();
@@ -903,7 +989,7 @@ mod tests {
         let message_id1 = MessageId::new();
         let message_id2 = MessageId::new();
 
-        // First message
+        // First message — creates workflow, sets Running
         runner
             .start_run(
                 DEFAULT_ORG_ID,
@@ -917,26 +1003,8 @@ mod tests {
 
         assert!(runner.is_running(session_id).await);
 
-        // Transition to Running so the polling loop actually waits
-        {
-            let mut store = runner.store.lock().await;
-            store
-                .update_workflow_status(session_id.uuid(), WorkflowStatus::Running, None, None)
-                .await
-                .expect("Should transition to Running");
-        }
-
-        let store = runner.store.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-            let mut store = store.lock().await;
-            store
-                .update_workflow_status(session_id.uuid(), WorkflowStatus::Completed, None, None)
-                .await
-                .expect("Should complete existing workflow");
-        });
-
-        // Second message while Running — should wait, then reuse the workflow.
+        // Second message while Running — should send steering signal and return
+        // immediately (no blocking, no concurrent turn).
         let start = std::time::Instant::now();
         runner
             .start_run(
@@ -947,16 +1015,37 @@ mod tests {
                 message_id2,
             )
             .await
-            .expect("Second start_run should wait and then succeed");
+            .expect("Second start_run should send steering signal");
 
         assert!(
-            start.elapsed() >= std::time::Duration::from_millis(200),
-            "Second start_run should wait for the running workflow to finish"
+            start.elapsed() < std::time::Duration::from_millis(100),
+            "Steering signal path should be instant, took {:?}",
+            start.elapsed()
         );
+
+        // Workflow should still be running (no concurrent turn started)
         assert!(
             runner.is_running(session_id).await,
-            "Workflow should be running again after reuse"
+            "Workflow should still be running — no concurrent turn"
         );
+
+        // Verify a steering signal was stored
+        let mut store = runner.store.lock().await;
+        let signals = store
+            .get_and_consume_signals(session_id.uuid())
+            .await
+            .expect("Should get signals");
+        assert_eq!(signals.len(), 1, "Should have exactly 1 steering signal");
+        assert_eq!(
+            signals[0].signal_type,
+            everruns_durable::signal_types::USER_MESSAGE
+        );
+        let signal_msg_id = signals[0]
+            .payload
+            .get("input_message_id")
+            .and_then(|v| v.as_str())
+            .unwrap();
+        assert_eq!(signal_msg_id, message_id2.to_string());
     }
 
     /// Test that start_run resets a completed workflow for a second message
@@ -1276,90 +1365,71 @@ mod tests {
     /// path takes measurable time (>200ms) while the Pending path (<50ms) doesn't.
     /// The contrast is the regression signal for EVE-168.
     #[tokio::test]
-    async fn test_running_blocks_but_pending_returns_instantly() {
+    async fn test_running_sends_signal_completed_gets_claimed() {
         use everruns_core::DEFAULT_ORG_ID;
 
-        // --- Pending path (should be instant) ---
-        let runner_p = DurableRunner::new_in_memory();
-        let sid_p = SessionId::new();
-        runner_p
+        // --- Running path: steering signal is instant ---
+        let runner = DurableRunner::new_in_memory();
+        let sid = SessionId::new();
+        runner
             .start_run(
                 DEFAULT_ORG_ID,
-                sid_p,
+                sid,
                 HarnessId::new(),
                 Some(AgentId::new()),
                 MessageId::new(),
             )
             .await
             .unwrap();
-        // Leave workflow Pending
-        let t0 = std::time::Instant::now();
-        runner_p
-            .start_run(
-                DEFAULT_ORG_ID,
-                sid_p,
-                HarnessId::new(),
-                Some(AgentId::new()),
-                MessageId::new(),
-            )
-            .await
-            .unwrap();
-        let pending_dur = t0.elapsed();
+        // Workflow is now Running
 
-        // --- Running path (completes after 300ms background task) ---
-        let runner_r = DurableRunner::new_in_memory();
-        let sid_r = SessionId::new();
-        runner_r
+        let t0 = std::time::Instant::now();
+        runner
             .start_run(
                 DEFAULT_ORG_ID,
-                sid_r,
+                sid,
                 HarnessId::new(),
                 Some(AgentId::new()),
                 MessageId::new(),
             )
             .await
             .unwrap();
+        let running_dur = t0.elapsed();
+
+        assert!(
+            running_dur < std::time::Duration::from_millis(50),
+            "Steering signal path should be instant, took {:?}",
+            running_dur
+        );
+
+        // --- Completed path: new turn gets claimed ---
         {
-            let mut store = runner_r.store.lock().await;
+            let mut store = runner.store.lock().await;
             store
-                .update_workflow_status(sid_r.uuid(), WorkflowStatus::Running, None, None)
+                .update_workflow_status(sid.uuid(), WorkflowStatus::Completed, None, None)
                 .await
                 .unwrap();
         }
-        let store_clone = runner_r.store.clone();
-        let sid_r_clone = sid_r;
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            let mut store = store_clone.lock().await;
-            store
-                .update_workflow_status(sid_r_clone.uuid(), WorkflowStatus::Completed, None, None)
-                .await
-                .unwrap();
-        });
+
         let t1 = std::time::Instant::now();
-        runner_r
+        runner
             .start_run(
                 DEFAULT_ORG_ID,
-                sid_r,
+                sid,
                 HarnessId::new(),
                 Some(AgentId::new()),
                 MessageId::new(),
             )
             .await
             .unwrap();
-        let running_dur = t1.elapsed();
+        let completed_dur = t1.elapsed();
 
-        // Pending should be nearly instant; Running should have waited ~300ms
         assert!(
-            pending_dur < std::time::Duration::from_millis(50),
-            "Pending takeover should be instant, took {:?}",
-            pending_dur
+            completed_dur < std::time::Duration::from_millis(50),
+            "Completed takeover should be instant, took {:?}",
+            completed_dur
         );
-        assert!(
-            running_dur >= std::time::Duration::from_millis(200),
-            "Running path should block until completion, took {:?}",
-            running_dur
-        );
+        assert!(runner.is_running(sid).await);
     }
 
     /// Test that three rapid messages while workflow stays Pending all succeed
@@ -1386,7 +1456,7 @@ mod tests {
             .await
             .expect("First start_run should succeed");
 
-        // Send two more messages rapidly while still Pending
+        // Send two more messages rapidly while Running — should send steering signals
         let start = std::time::Instant::now();
         for i in 0..2 {
             runner
@@ -1403,16 +1473,16 @@ mod tests {
 
         assert!(
             start.elapsed() < std::time::Duration::from_secs(1),
-            "All Pending takeovers should be instant — took {:?}",
+            "Steering signal sends should be instant — took {:?}",
             start.elapsed(),
         );
         assert!(runner.is_running(session_id).await);
     }
 
-    /// Test that Pending takeover resets workflow status correctly —
-    /// after takeover the workflow is Pending (new task enqueued), not stuck.
+    /// Test that start_run sets workflow to Running and subsequent calls
+    /// send steering signals rather than creating concurrent turns.
     #[tokio::test]
-    async fn test_pending_takeover_resets_workflow_to_pending() {
+    async fn test_start_run_sets_running_prevents_concurrent_turns() {
         use everruns_core::DEFAULT_ORG_ID;
 
         let runner = DurableRunner::new_in_memory();
@@ -1420,54 +1490,56 @@ mod tests {
         let session_id = SessionId::new();
         let harness_id = HarnessId::new();
         let agent_id = AgentId::new();
+        let msg1 = MessageId::new();
+        let msg2 = MessageId::new();
+        let msg3 = MessageId::new();
 
-        // First message — Pending
+        // First message — workflow created, set to Running
         runner
-            .start_run(
-                DEFAULT_ORG_ID,
-                session_id,
-                harness_id,
-                Some(agent_id),
-                MessageId::new(),
-            )
+            .start_run(DEFAULT_ORG_ID, session_id, harness_id, Some(agent_id), msg1)
             .await
             .expect("First start_run");
 
-        // Second message — takes over Pending
-        runner
-            .start_run(
-                DEFAULT_ORG_ID,
-                session_id,
-                harness_id,
-                Some(agent_id),
-                MessageId::new(),
-            )
-            .await
-            .expect("Second start_run should take over");
-
-        // Verify workflow is in non-terminal state (Pending with new task)
         let mut store = runner.store.lock().await;
         let (status, _, _) = store
             .get_workflow_status(session_id.uuid())
             .await
-            .expect("Should get workflow status");
+            .expect("Should get status");
         assert_eq!(
             status,
-            WorkflowStatus::Pending,
-            "After Pending takeover, workflow should be reset to Pending (new task enqueued)"
+            WorkflowStatus::Running,
+            "First start_run should set workflow to Running"
         );
+        drop(store);
 
-        // Only 1 pending task should remain (the new one); old task was cancelled.
-        // cancel_pending_tasks returns how many it cancels — calling it again
-        // should cancel the single remaining task from the second start_run.
-        let remaining = store
-            .cancel_pending_tasks(session_id.uuid())
+        // Second and third messages — both should send steering signals
+        runner
+            .start_run(DEFAULT_ORG_ID, session_id, harness_id, Some(agent_id), msg2)
             .await
-            .expect("cancel_pending_tasks");
+            .expect("Second start_run (steering)");
+        runner
+            .start_run(DEFAULT_ORG_ID, session_id, harness_id, Some(agent_id), msg3)
+            .await
+            .expect("Third start_run (steering)");
+
+        // Workflow should still be Running
+        let mut store = runner.store.lock().await;
+        let (status, _, _) = store
+            .get_workflow_status(session_id.uuid())
+            .await
+            .expect("Should get status");
+        assert_eq!(status, WorkflowStatus::Running);
+
+        // Should have 2 pending signals (msg2 and msg3)
+        let signals = store
+            .get_and_consume_signals(session_id.uuid())
+            .await
+            .expect("Should get signals");
         assert_eq!(
-            remaining, 1,
-            "Exactly 1 pending task should remain (the new turn); got {}",
-            remaining
+            signals.len(),
+            2,
+            "Should have 2 steering signals, got {}",
+            signals.len()
         );
     }
 }

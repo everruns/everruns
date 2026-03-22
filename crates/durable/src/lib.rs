@@ -118,6 +118,7 @@ pub use update_field::UpdateField;
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{
     ActivityOptions, Workflow, WorkflowAction, WorkflowError, WorkflowEvent, WorkflowSignal,
+    signal_types,
 };
 
 // Re-export task event recording functions

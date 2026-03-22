@@ -1442,6 +1442,64 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(CountActiveDurableWorkflowsResponse { count }))
     }
 
+    async fn send_durable_workflow_signal(
+        &self,
+        request: Request<SendDurableWorkflowSignalRequest>,
+    ) -> Result<Response<SendDurableWorkflowSignalResponse>, Status> {
+        let req = request.into_inner();
+        let workflow_id = uuid::Uuid::parse_str(&req.workflow_id)
+            .map_err(|e| Status::invalid_argument(format!("Invalid workflow_id: {}", e)))?;
+        let proto_signal = req
+            .signal
+            .ok_or_else(|| Status::invalid_argument("signal is required"))?;
+
+        let payload = proto_signal
+            .payload
+            .as_ref()
+            .map(everruns_internal_protocol::proto_value_to_json)
+            .unwrap_or(serde_json::json!({}));
+        let signal = everruns_durable::WorkflowSignal::new(proto_signal.signal_type, payload);
+
+        let store = self.durable_store()?;
+        store.send_signal(workflow_id, signal).await.map_err(|e| {
+            tracing::error!("Failed to send workflow signal: {}", e);
+            Status::internal("Failed to send workflow signal")
+        })?;
+
+        Ok(Response::new(SendDurableWorkflowSignalResponse {}))
+    }
+
+    async fn get_and_consume_durable_workflow_signals(
+        &self,
+        request: Request<GetAndConsumeDurableWorkflowSignalsRequest>,
+    ) -> Result<Response<GetAndConsumeDurableWorkflowSignalsResponse>, Status> {
+        let req = request.into_inner();
+        let workflow_id = uuid::Uuid::parse_str(&req.workflow_id)
+            .map_err(|e| Status::invalid_argument(format!("Invalid workflow_id: {}", e)))?;
+
+        let store = self.durable_store()?;
+        let signals = store
+            .consume_pending_signals(workflow_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to consume pending signals: {}", e);
+                Status::internal("Failed to consume pending signals")
+            })?;
+
+        let proto_signals = signals
+            .into_iter()
+            .map(|s| ProtoDurableWorkflowSignal {
+                signal_type: s.signal_type,
+                payload: Some(json_value_to_proto(s.payload)),
+                sent_at: s.sent_at.to_rfc3339(),
+            })
+            .collect();
+
+        Ok(Response::new(GetAndConsumeDurableWorkflowSignalsResponse {
+            signals: proto_signals,
+        }))
+    }
+
     async fn register_durable_worker(
         &self,
         request: Request<RegisterDurableWorkerRequest>,

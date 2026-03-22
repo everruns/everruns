@@ -900,6 +900,88 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
+    async fn try_claim_workflow_for_new_turn(&self, workflow_id: Uuid) -> Result<bool, StoreError> {
+        // Atomic CAS: transition from terminal/pending → running.
+        // Also cancels stale pending tasks in the same transaction.
+        // Uses SELECT FOR UPDATE to prevent concurrent claims across replicas.
+        let mut tx = self.pool.begin().await.map_err(|e| {
+            error!("Failed to begin transaction: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        // Lock the workflow row and check status
+        let row = sqlx::query(
+            r#"
+            SELECT status FROM durable_workflow_instances
+            WHERE id = $1
+            FOR UPDATE
+            "#,
+        )
+        .bind(workflow_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to lock workflow for claim: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        let Some(row) = row else {
+            tx.rollback().await.ok();
+            return Err(StoreError::WorkflowNotFound(workflow_id));
+        };
+
+        let status: String = row.get("status");
+        if status == "running" {
+            // Active turn — cannot claim, caller should send steering signal
+            tx.rollback().await.ok();
+            return Ok(false);
+        }
+
+        // Claim: set to running, clear transient fields
+        sqlx::query(
+            r#"
+            UPDATE durable_workflow_instances
+            SET status = 'running',
+                result = NULL,
+                error = NULL,
+                started_at = NOW(),
+                completed_at = NULL
+            WHERE id = $1
+            "#,
+        )
+        .bind(workflow_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to update workflow to running: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        // Cancel any stale pending tasks from previous turn
+        sqlx::query(
+            r#"
+            UPDATE durable_task_queue
+            SET status = 'cancelled'
+            WHERE workflow_id = $1 AND status = 'pending'
+            "#,
+        )
+        .bind(workflow_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to cancel stale tasks during claim: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        tx.commit().await.map_err(|e| {
+            error!("Failed to commit workflow claim: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        Ok(true)
+    }
+
+    #[instrument(skip(self))]
     async fn cancel_pending_tasks_for_workflow(
         &self,
         workflow_id: Uuid,
@@ -1158,6 +1240,47 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
 
         debug!(%workflow_id, count, "marked signals as processed");
         Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn consume_pending_signals(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<WorkflowSignal>, StoreError> {
+        // Atomic: UPDATE ... RETURNING in a single statement.
+        // Marks all pending signals as processed and returns them.
+        let rows = sqlx::query(
+            r#"
+            UPDATE durable_signals
+            SET processed_at = NOW()
+            WHERE id IN (
+                SELECT id FROM durable_signals
+                WHERE workflow_id = $1 AND processed_at IS NULL
+                ORDER BY sequence_num
+                FOR UPDATE
+            )
+            RETURNING signal_type, payload, sent_at
+            "#,
+        )
+        .bind(workflow_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to consume pending signals: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        let signals = rows
+            .into_iter()
+            .map(|row| WorkflowSignal {
+                signal_type: row.get("signal_type"),
+                payload: row.get("payload"),
+                sent_at: row.get("sent_at"),
+            })
+            .collect::<Vec<_>>();
+
+        debug!(%workflow_id, count = signals.len(), "consumed pending signals atomically");
+        Ok(signals)
     }
 
     #[instrument(skip(self, worker))]

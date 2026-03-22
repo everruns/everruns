@@ -8,7 +8,7 @@ use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData,
 };
 use everruns_core::traits::EventEmitter;
-use everruns_core::typed_id::{ExecId, MessageId, SessionId, TurnId};
+use everruns_core::typed_id::{AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{Message, PlatformDefinition};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1405,13 +1405,90 @@ impl DurableWorker {
                         "Scheduled act activity for tool execution"
                     );
                 } else {
-                    // No tool calls or failure - workflow complete
-                    store
-                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
+                    // No tool calls or failure — turn is done.
+                    // Check for pending steering signals (user messages that arrived
+                    // during this turn). If found, start a new turn for the latest
+                    // message instead of marking the workflow complete.
+                    let pending_signals = store
+                        .get_and_consume_signals(workflow_id)
                         .await
-                        .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+                        .map_err(|e| anyhow::anyhow!("Failed to consume pending signals: {}", e))?;
 
-                    info!(workflow_id = %workflow_id, "Workflow completed");
+                    let steering_message = pending_signals.iter().rev().find_map(|sig| {
+                        if sig.signal_type == everruns_durable::signal_types::USER_MESSAGE {
+                            Some(sig.payload.clone())
+                        } else {
+                            None
+                        }
+                    });
+
+                    if let Some(payload) = steering_message {
+                        // A user message arrived during this turn. Start a new turn.
+                        let new_message_id: MessageId = payload
+                            .get("input_message_id")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(input.input_message_id);
+                        let new_org_id = payload
+                            .get("org_id")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(input.org_id);
+                        let new_harness_id: HarnessId = payload
+                            .get("harness_id")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(input.harness_id);
+                        let new_agent_id: Option<AgentId> = payload
+                            .get("agent_id")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| s.parse().ok())
+                            .or(input.agent_id);
+
+                        let new_input = DurableTurnInput {
+                            org_id: new_org_id,
+                            session_id: input.session_id,
+                            harness_id: new_harness_id,
+                            agent_id: new_agent_id,
+                            input_message_id: new_message_id,
+                            turn_id: None,
+                            previous_response_id: None,
+                            iteration: 1,
+                        };
+                        let new_input_json = serde_json::to_value(&new_input)?;
+
+                        store
+                            .enqueue_task(
+                                workflow_id,
+                                format!("input_{}", Uuid::now_v7()),
+                                "process_input".to_string(),
+                                new_input_json,
+                            )
+                            .await
+                            .map_err(|e| {
+                                anyhow::anyhow!("Failed to enqueue steering turn: {}", e)
+                            })?;
+
+                        info!(
+                            workflow_id = %workflow_id,
+                            new_message_id = %new_message_id,
+                            "Steering: starting new turn for message received during active turn"
+                        );
+                    } else {
+                        // No pending messages — workflow is truly complete
+                        store
+                            .update_workflow_status(
+                                workflow_id,
+                                WorkflowStatus::Completed,
+                                None,
+                                None,
+                            )
+                            .await
+                            .map_err(|e| {
+                                anyhow::anyhow!("Failed to update workflow status: {}", e)
+                            })?;
+
+                        info!(workflow_id = %workflow_id, "Workflow completed");
+                    }
                 }
             }
             "act" => {
