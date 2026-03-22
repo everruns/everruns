@@ -894,7 +894,7 @@ impl ToolCompletedData {
     }
 }
 
-/// Data for tool.progress event
+/// Data for tool.progress event.
 ///
 /// Emitted by tools during execution to report interim status updates.
 /// This allows long-running tools (e.g., browser operations, sandbox setup)
