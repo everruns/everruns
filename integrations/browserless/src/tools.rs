@@ -20,7 +20,9 @@ use tracing::debug;
 
 use crate::client::BrowserlessClient;
 use crate::session_tools::{keep_session_alive, try_get_cdp_session};
-use crate::state::{get_api_token, required_str};
+use crate::state::{
+    extract_secret_refs, get_api_token, required_str, resolve_step_secrets, substitute_step_secrets,
+};
 use crate::validation::{validate_browserless_url, validate_interaction_steps};
 
 const MAX_HTML_BYTES: usize = 100_000;
@@ -584,7 +586,12 @@ impl Tool for BrowserlessInteractTool {
     fn description(&self) -> &str {
         "Interact with a web page: navigate to a URL, then perform a sequence of actions \
          (click, type, keyboard, mouse, touch, scroll, wait). Returns the page title, \
-         final URL, and optionally a screenshot or DOM content after all steps complete."
+         final URL, and optionally a screenshot or DOM content after all steps complete.\n\n\
+         Secret references: Use ${{secrets.<name>}} in step 'value' fields to inject \
+         session secrets without exposing them. Store secrets first with secret_store, \
+         then reference them: {\"action\": \"type\", \"selector\": \"#password\", \
+         \"value\": \"${{secrets.my_password}}\"}. Secrets are resolved server-side \
+         and never returned to the agent."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -612,7 +619,8 @@ impl Tool for BrowserlessInteractTool {
                             },
                             "value": {
                                 "type": "string",
-                                "description": "Text to type (for type action), URL (for navigate), or scroll amount (for scroll)"
+                                "description": "Text to type (for type action), URL (for navigate), or scroll amount (for scroll). \
+                                    Supports ${{secrets.<name>}} references to inject session secrets without exposing them to the agent."
                             },
                             "key": {
                                 "type": "string",
@@ -657,6 +665,14 @@ impl Tool for BrowserlessInteractTool {
             Ok(v) => v,
             Err(e) => return e,
         };
+
+        // THREAT: Block secret references in URL param to prevent exfiltration
+        if !extract_secret_refs(url).is_empty() {
+            return ToolExecutionResult::tool_error(
+                "Secret references (${{secrets.*}}) are not allowed in the 'url' parameter.",
+            );
+        }
+
         if let Err(e) = validate_url(url) {
             return e;
         }
@@ -669,6 +685,28 @@ impl Tool for BrowserlessInteractTool {
                 );
             }
         };
+
+        // THREAT: Block secret references in navigate step URLs to prevent
+        // secret exfiltration via URL (e.g. navigating to attacker.com/${{secrets.pw}})
+        for step in &steps {
+            if step.get("action").and_then(|v| v.as_str()) == Some("navigate")
+                && let Some(val) = step.get("value").and_then(|v| v.as_str())
+                && !extract_secret_refs(val).is_empty()
+            {
+                return ToolExecutionResult::tool_error(
+                    "Secret references (${{secrets.*}}) are not allowed in 'navigate' step values.",
+                );
+            }
+        }
+
+        // Resolve ${{secrets.*}} references in step value fields
+        let resolved_secrets = match resolve_step_secrets(context, &steps).await {
+            Ok(r) => r,
+            Err(e) => return e,
+        };
+        let steps = substitute_step_secrets(&steps, &resolved_secrets);
+
+        // Validate interaction steps (including navigate URL validation) after substitution
         if let Err(e) = validate_interaction_steps(&steps) {
             return e;
         }

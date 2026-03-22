@@ -161,6 +161,21 @@ Multi-step browser interactions.
 | `wait_for_selector` | `selector`, `wait_ms` | Wait for element to appear |
 | `navigate` | `value` (URL) | Navigate to different URL |
 
+### Secret References
+
+The `browserless_interact` tool supports `${{secrets.<name>}}` placeholders in step `value` fields. This allows agents to fill login forms and other sensitive inputs without ever seeing the plaintext credentials.
+
+**Flow:**
+1. User stores credentials via `secret_store set login_password hunter2`
+2. Agent references them: `{ "action": "type", "selector": "#password", "value": "${{secrets.login_password}}" }`
+3. Tool resolves `login_password` from `session_secrets` at execution time, substitutes into the step, executes
+4. Plaintext never appears in tool arguments, agent messages, or tool results
+
+**Security constraints:**
+- Secret refs only allowed in step `value` fields — blocked in `url` parameter and `navigate` action values to prevent exfiltration via URL
+- All referenced secrets must exist; tool fails fast with a clear error if any are missing
+- Supports mixed values: `"Bearer ${{secrets.api_token}}"` resolves correctly
+
 ## Resource Management
 
 ### REST Mode
@@ -184,6 +199,7 @@ No long-lived WebSocket connections from our side — we connect/disconnect for 
 - **Timeout caps**: All wait/timeout values capped at 120s to prevent unbounded resource consumption
 - **Ephemeral by default**: REST mode has no cross-request data leakage
 - **Content truncation**: Large DOM responses truncated to 100KB (UTF-8 safe boundary) to prevent context flooding
+- **Secret references**: `${{secrets.*}}` resolved server-side from `session_secrets`; blocked in `url` param and `navigate` step values to prevent exfiltration via URL
 
 ## Testing
 
@@ -230,7 +246,7 @@ doppler run -- cargo test -p everruns-integrations-browserless --features browse
 - **Icon**: `browserless`
 - **Category**: `Browser`
 - **Risk Level**: Medium
-- **Dependencies**: none (session_storage used opportunistically for CDP state)
+- **Dependencies**: `session_storage` (for CDP session state and secret references)
 
 ## Seeded Agent: Browser Tester
 
