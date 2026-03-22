@@ -18,7 +18,7 @@ use axum::{
 };
 use axum_extra::extract::Multipart;
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::ImageId;
+use everruns_core::typed_id::{ImageId, SessionId};
 use image::ImageFormat;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
@@ -81,7 +81,7 @@ fn default_limit() -> i64 {
 #[derive(Debug, Deserialize)]
 pub struct UploadImageQuery {
     /// Optional session ID stored as metadata for tracking (not required for upload)
-    pub session_id: Option<Uuid>,
+    pub session_id: Option<SessionId>,
 }
 
 // ============================================
@@ -164,7 +164,7 @@ fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, Strin
     post,
     path = "/v1/images",
     params(
-        ("session_id" = Option<Uuid>, Query, description = "Optional: session ID stored as metadata for tracking (not required for upload)")
+        ("session_id" = Option<String>, Query, description = "Optional: session ID stored as metadata for tracking (not required for upload)")
     ),
     request_body(content = String, description = "Multipart form data with 'file' field", content_type = "multipart/form-data"),
     responses(
