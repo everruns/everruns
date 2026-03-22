@@ -68,9 +68,13 @@ async fn smoke_live_sandbox_exec_and_files() {
         sandbox_domain: detail
             .domain
             .clone()
+            .or_else(|| created.domain.clone())
             .unwrap_or_else(|| "e2b.app".to_string()),
         envd_version: detail.envd_version.clone(),
-        envd_access_token: detail.envd_access_token.clone(),
+        envd_access_token: detail
+            .envd_access_token
+            .clone()
+            .or_else(|| created.envd_access_token.clone()),
         workspace_path: E2B_DEFAULT_WORKSPACE_PATH.to_string(),
         started_at: detail.started_at.clone(),
         timeout_seconds: E2B_DEFAULT_TIMEOUT_SECS,
