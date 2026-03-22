@@ -1678,7 +1678,7 @@ dependencies = [
  "http",
  "http-body",
  "inventory",
- "reqwest 0.13.1",
+ "reqwest 0.13.2",
  "rustls",
  "rustls-native-certs",
  "serde",
