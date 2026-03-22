@@ -511,10 +511,12 @@ mod tests {
         assert!(query.session_id.is_none());
 
         // Raw UUID without prefix is rejected
-        let result: Result<UploadImageQuery, _> = serde_html_form::from_str(
-            "session_id=01933b5a-0000-7000-8000-00000000001a",
+        let result: Result<UploadImageQuery, _> =
+            serde_html_form::from_str("session_id=01933b5a-0000-7000-8000-00000000001a");
+        assert!(
+            result.is_err(),
+            "raw UUID without prefix should be rejected"
         );
-        assert!(result.is_err(), "raw UUID without prefix should be rejected");
     }
 
     #[test]
