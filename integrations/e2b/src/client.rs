@@ -80,6 +80,7 @@ impl E2BClient {
             return Ok(json!({}));
         }
 
+        eprintln!("[debug] E2B API response for {path}: {body_text}");
         serde_json::from_str(&body_text).map_err(|e| format!("Invalid E2B JSON: {e}"))
     }
 

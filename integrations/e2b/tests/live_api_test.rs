@@ -59,10 +59,21 @@ async fn smoke_live_sandbox_exec_and_files() {
         sandbox_id: created.sandbox_id.clone(),
     };
 
+    eprintln!(
+        "[debug] create response: domain={:?}, envd_access_token={:?}, traffic_access_token={:?}",
+        created.domain, created.envd_access_token, created.traffic_access_token,
+    );
+
     let detail = client
         .get_sandbox(&created.sandbox_id)
         .await
         .expect("get sandbox detail");
+
+    eprintln!(
+        "[debug] detail response: domain={:?}, envd_access_token={:?}",
+        detail.domain, detail.envd_access_token,
+    );
+
     let state = SandboxState {
         sandbox_id: detail.sandbox_id.clone(),
         sandbox_domain: detail
