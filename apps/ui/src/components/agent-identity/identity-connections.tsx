@@ -10,14 +10,7 @@ import {
   useVerifyIdentityConnection,
 } from "@/hooks/use-identity-connections";
 import { useConnectionProviders } from "@/hooks/use-user-connections";
-import {
-  LinkIcon,
-  Trash2,
-  CheckCircle,
-  ShieldCheck,
-  XCircle,
-  Loader2,
-} from "lucide-react";
+import { LinkIcon, Trash2, CheckCircle, ShieldCheck, XCircle, Loader2 } from "lucide-react";
 import type { UserConnection, ConnectionProvider } from "@/lib/api/types";
 import { ProviderIcon } from "@/components/connections/provider-icon";
 import { IdentityApiKeyDialog } from "./identity-api-key-dialog";

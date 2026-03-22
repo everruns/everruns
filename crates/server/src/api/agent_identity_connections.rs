@@ -1,6 +1,9 @@
 // Agent identity connection HTTP routes.
 // Sub-resource of agent identities: /v1/agent-identities/{identity_id}/connections/...
 // Mirrors user_connections but scoped to an agent identity instead of a user.
+//
+// THREAT[TM-AUTHZ-020]: All handlers enforce AGENT_IDENTITY_MANAGE policy before
+// any data access. Identity org-scoping prevents cross-tenant access.
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::agent_identity::AGENT_IDENTITY_MANAGE;
@@ -15,7 +18,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use everruns_core::connection_provider::{ConnectionProviderRegistry, ConnectionType};
-use everruns_core::{AgentIdentityId, Caller, evaluate_policies_with};
+use everruns_core::{AgentIdentityId, Caller};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -72,6 +75,13 @@ pub struct CreateApiKeyConnectionRequest {
     pub api_key: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct VerifyConnectionResponse {
+    pub valid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 // ============================================================================
 // Routes
 // ============================================================================
@@ -94,28 +104,35 @@ pub fn routes(state: AppState) -> Router {
 }
 
 // ============================================================================
-// Handlers
+// Helpers
 // ============================================================================
 
-/// GET /v1/agent-identities/:identity_id/connections
-pub async fn list_connections(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(identity_id): Path<String>,
-) -> Result<Json<Vec<ConnectionResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    let identity_id: AgentIdentityId = identity_id.parse().map_err(|e| {
+/// Enforce AGENT_IDENTITY_MANAGE policy. Returns 403 on failure.
+fn enforce_manage_policy(
+    state: &AppState,
+    caller: &Caller,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    AGENT_IDENTITY_MANAGE
+        .evaluate_with(state.auth.permission_resolver.as_ref(), caller)
+        .map_err(|_| {
+            ErrorResponse::new("Permission denied".to_string()).into_response(StatusCode::FORBIDDEN)
+        })
+}
+
+/// Parse identity ID, enforce policy, and verify the identity exists in the caller's org.
+async fn resolve_identity(
+    state: &AppState,
+    org: &ResolvedOrg,
+    raw_id: &str,
+) -> Result<(Caller, AgentIdentityId), (StatusCode, Json<ErrorResponse>)> {
+    let identity_id: AgentIdentityId = raw_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid identity ID: {}", e))
             .into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    let caller = Caller::from(&org);
-    evaluate_policies_with(
-        state.auth.permission_resolver.as_ref(),
-        &caller,
-        &[&AGENT_IDENTITY_MANAGE],
-    );
+    let caller = Caller::from(org);
+    enforce_manage_policy(state, &caller)?;
 
-    // Verify identity exists in this org
     state
         .db
         .get_agent_identity(caller.org_id, identity_id)
@@ -129,6 +146,21 @@ pub async fn list_connections(
             ErrorResponse::new("Agent identity not found".to_string())
                 .into_response(StatusCode::NOT_FOUND)
         })?;
+
+    Ok((caller, identity_id))
+}
+
+// ============================================================================
+// Handlers
+// ============================================================================
+
+/// GET /v1/agent-identities/:identity_id/connections
+pub async fn list_connections(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(identity_id): Path<String>,
+) -> Result<Json<Vec<ConnectionResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    let (_, identity_id) = resolve_identity(&state, &org, &identity_id).await?;
 
     let rows = state
         .db
@@ -161,32 +193,7 @@ pub async fn create_api_key_connection(
     Path((identity_id, provider_id)): Path<(String, String)>,
     Json(body): Json<CreateApiKeyConnectionRequest>,
 ) -> Result<(StatusCode, Json<ConnectionResponse>), (StatusCode, Json<ErrorResponse>)> {
-    let identity_id: AgentIdentityId = identity_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid identity ID: {}", e))
-            .into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    evaluate_policies_with(
-        state.auth.permission_resolver.as_ref(),
-        &caller,
-        &[&AGENT_IDENTITY_MANAGE],
-    );
-
-    // Verify identity exists
-    state
-        .db
-        .get_agent_identity(caller.org_id, identity_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get agent identity: {}", e);
-            ErrorResponse::new("Internal error".to_string())
-                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-        })?
-        .ok_or_else(|| {
-            ErrorResponse::new("Agent identity not found".to_string())
-                .into_response(StatusCode::NOT_FOUND)
-        })?;
+    let (_, identity_id) = resolve_identity(&state, &org, &identity_id).await?;
 
     let provider = state
         .connection_providers
@@ -260,32 +267,7 @@ pub async fn delete_connection(
     State(state): State<AppState>,
     Path((identity_id, provider)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let identity_id: AgentIdentityId = identity_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid identity ID: {}", e))
-            .into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    evaluate_policies_with(
-        state.auth.permission_resolver.as_ref(),
-        &caller,
-        &[&AGENT_IDENTITY_MANAGE],
-    );
-
-    // Verify identity exists
-    state
-        .db
-        .get_agent_identity(caller.org_id, identity_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get agent identity: {}", e);
-            ErrorResponse::new("Internal error".to_string())
-                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-        })?
-        .ok_or_else(|| {
-            ErrorResponse::new("Agent identity not found".to_string())
-                .into_response(StatusCode::NOT_FOUND)
-        })?;
+    let (_, identity_id) = resolve_identity(&state, &org, &identity_id).await?;
 
     let deleted = state
         .db
@@ -311,32 +293,7 @@ pub async fn verify_connection(
     State(state): State<AppState>,
     Path((identity_id, provider_id)): Path<(String, String)>,
 ) -> Result<Json<VerifyConnectionResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let identity_id: AgentIdentityId = identity_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid identity ID: {}", e))
-            .into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    evaluate_policies_with(
-        state.auth.permission_resolver.as_ref(),
-        &caller,
-        &[&AGENT_IDENTITY_MANAGE],
-    );
-
-    // Verify identity exists
-    state
-        .db
-        .get_agent_identity(caller.org_id, identity_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get agent identity: {}", e);
-            ErrorResponse::new("Internal error".to_string())
-                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-        })?
-        .ok_or_else(|| {
-            ErrorResponse::new("Agent identity not found".to_string())
-                .into_response(StatusCode::NOT_FOUND)
-        })?;
+    let (_, identity_id) = resolve_identity(&state, &org, &identity_id).await?;
 
     let row = state
         .db
@@ -393,11 +350,4 @@ pub async fn verify_connection(
             error: Some(e.to_string()),
         })),
     }
-}
-
-#[derive(Debug, Serialize)]
-pub struct VerifyConnectionResponse {
-    pub valid: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
 }
