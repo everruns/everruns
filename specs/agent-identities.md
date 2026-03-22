@@ -46,5 +46,6 @@ This implementation introduces:
 - Frontend management pages.
 - Session/App assignment UI.
 - Event provenance metadata for interactive, scheduled, and app-driven input messages.
+- Identity-owned connections: when a session has `agent_identity_id`, connection resolution prefers `agent_identity_connections` over `user_connections`, falling back to user connections only if no identity connection exists for the requested provider.
 
-It does **not** yet introduce identity-owned inboxes or identity-owned connection management UI. That remains follow-up work on top of the principal model.
+It does **not** yet introduce identity-owned inboxes. That remains follow-up work on top of the principal model.

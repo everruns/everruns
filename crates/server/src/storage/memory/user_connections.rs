@@ -66,22 +66,39 @@ impl InMemoryDatabase {
         Ok(connections)
     }
 
-    /// Get encrypted connection token for a session's org member (in-memory equivalent).
+    /// Get encrypted connection token for a session.
+    ///
+    /// If the session has an `agent_identity_id`, checks `agent_identity_connections`
+    /// first; falls back to `user_connections` via org membership.
     pub async fn get_connection_token_for_session(
         &self,
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<Vec<u8>>> {
-        // Find the session to get org_id
         let sessions = self.sessions.read();
         let session = match sessions.get(&session_id) {
             Some(s) => s,
             None => return Ok(None),
         };
         let org_id = session.org_id;
+        let agent_identity_id = session.agent_identity_id;
         drop(sessions);
 
-        // Find org members
+        // Try agent identity connection first
+        if let Some(identity_id) = agent_identity_id {
+            let id_connections = self.agent_identity_connections.read();
+            for conn in id_connections.values() {
+                if conn.agent_identity_id == identity_id
+                    && conn.provider == provider
+                    && conn.access_token_encrypted.is_some()
+                {
+                    return Ok(conn.access_token_encrypted.clone());
+                }
+            }
+            drop(id_connections);
+        }
+
+        // Fall back to user connections via org membership
         let members = self.organization_members.read();
         let user_ids: Vec<Uuid> = members
             .iter()
@@ -90,9 +107,8 @@ impl InMemoryDatabase {
             .collect();
         drop(members);
 
-        // Find first matching connection with an encrypted token
         let connections = self.user_connections.read();
-        for uid in user_ids.clone() {
+        for uid in user_ids {
             for conn in connections.values() {
                 if conn.user_id == uid
                     && conn.provider == provider
@@ -106,6 +122,8 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
+    /// Resolve the user whose connection would be used for a session/provider pair.
+    /// Returns None when the session uses an agent identity connection.
     pub async fn get_connection_user_for_session(
         &self,
         session_id: SessionId,
@@ -117,7 +135,19 @@ impl InMemoryDatabase {
             None => return Ok(None),
         };
         let org_id = session.org_id;
+        let agent_identity_id = session.agent_identity_id;
         drop(sessions);
+
+        // If session has an identity connection, return None (no owning user)
+        if let Some(identity_id) = agent_identity_id {
+            let id_connections = self.agent_identity_connections.read();
+            if id_connections
+                .values()
+                .any(|c| c.agent_identity_id == identity_id && c.provider == provider)
+            {
+                return Ok(None);
+            }
+        }
 
         let members = self.organization_members.read();
         let user_ids: Vec<Uuid> = members
@@ -155,20 +185,37 @@ impl InMemoryDatabase {
             .and_then(|c| c.access_token_encrypted.clone()))
     }
 
+    /// Get the GitHub App installation ID for a session.
+    /// Checks agent identity connections first, falls back to user connections.
     pub async fn get_installation_id_for_session(
         &self,
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<i64>> {
-        // Look up session → org → members → connections (same join as token lookup)
         let sessions = self.sessions.read();
         let session = match sessions.get(&session_id) {
             Some(s) => s,
             None => return Ok(None),
         };
         let org_id = session.org_id;
+        let agent_identity_id = session.agent_identity_id;
         drop(sessions);
 
+        // Try agent identity connection first
+        if let Some(identity_id) = agent_identity_id {
+            let id_connections = self.agent_identity_connections.read();
+            for conn in id_connections.values() {
+                if conn.agent_identity_id == identity_id
+                    && conn.provider == provider
+                    && conn.installation_id.is_some()
+                {
+                    return Ok(conn.installation_id);
+                }
+            }
+            drop(id_connections);
+        }
+
+        // Fall back to user connections via org membership
         let members = self.organization_members.read();
         let user_ids: Vec<Uuid> = members
             .iter()

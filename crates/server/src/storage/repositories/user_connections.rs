@@ -87,8 +87,12 @@ impl Database {
         Ok(rows)
     }
 
-    /// Get the encrypted connection token for a session's org member.
-    /// Joins session → org_members → user_connections to resolve lazily.
+    /// Get the encrypted connection token for a session.
+    ///
+    /// Resolution order:
+    /// 1. If the session has an `agent_identity_id`, use `agent_identity_connections`.
+    /// 2. Otherwise fall back to `user_connections` via org membership.
+    ///
     /// Returns None for GitHub App connections (use get_installation_id_for_session instead).
     pub async fn get_connection_token_for_session(
         &self,
@@ -97,12 +101,29 @@ impl Database {
     ) -> Result<Option<Vec<u8>>> {
         let row: Option<(Option<Vec<u8>>,)> = sqlx::query_as(
             r#"
-            SELECT uc.access_token_encrypted
-            FROM sessions s
-            JOIN organization_members om ON om.org_id = s.org_id
-            JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
-            WHERE s.id = $1
-              AND uc.access_token_encrypted IS NOT NULL
+            WITH identity_conn AS (
+                SELECT aic.access_token_encrypted
+                FROM sessions s
+                JOIN agent_identity_connections aic
+                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
+                WHERE s.id = $1
+                  AND s.agent_identity_id IS NOT NULL
+                  AND aic.access_token_encrypted IS NOT NULL
+                LIMIT 1
+            ),
+            user_conn AS (
+                SELECT uc.access_token_encrypted
+                FROM sessions s
+                JOIN organization_members om ON om.org_id = s.org_id
+                JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
+                WHERE s.id = $1
+                  AND uc.access_token_encrypted IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM identity_conn)
+                LIMIT 1
+            )
+            SELECT access_token_encrypted FROM identity_conn
+            UNION ALL
+            SELECT access_token_encrypted FROM user_conn
             LIMIT 1
             "#,
         )
@@ -115,11 +136,36 @@ impl Database {
     }
 
     /// Resolve the user whose connection would be used for a session/provider pair.
+    ///
+    /// Returns None when the session uses an agent identity connection (identity
+    /// connections are not owned by a user).
     pub async fn get_connection_user_for_session(
         &self,
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<Uuid>> {
+        // If session uses an agent identity with a matching connection, there is
+        // no owning user — return None so callers know the credential is identity-owned.
+        let has_identity_conn: Option<(i32,)> = sqlx::query_as(
+            r#"
+            SELECT 1 as v
+            FROM sessions s
+            JOIN agent_identity_connections aic
+                ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
+            WHERE s.id = $1
+              AND s.agent_identity_id IS NOT NULL
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .bind(provider)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if has_identity_conn.is_some() {
+            return Ok(None);
+        }
+
         let row: Option<(Uuid,)> = sqlx::query_as(
             r#"
             SELECT uc.user_id
@@ -163,8 +209,11 @@ impl Database {
         Ok(row.and_then(|(blob,)| blob))
     }
 
-    /// Get the GitHub App installation ID for a session's org member.
-    /// Used by the connection resolver to mint fresh installation tokens.
+    /// Get the GitHub App installation ID for a session.
+    ///
+    /// Resolution order:
+    /// 1. If the session has an `agent_identity_id`, use `agent_identity_connections`.
+    /// 2. Otherwise fall back to `user_connections` via org membership.
     pub async fn get_installation_id_for_session(
         &self,
         session_id: SessionId,
@@ -172,12 +221,29 @@ impl Database {
     ) -> Result<Option<i64>> {
         let row: Option<(i64,)> = sqlx::query_as(
             r#"
-            SELECT uc.installation_id
-            FROM sessions s
-            JOIN organization_members om ON om.org_id = s.org_id
-            JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
-            WHERE s.id = $1
-              AND uc.installation_id IS NOT NULL
+            WITH identity_conn AS (
+                SELECT aic.installation_id
+                FROM sessions s
+                JOIN agent_identity_connections aic
+                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
+                WHERE s.id = $1
+                  AND s.agent_identity_id IS NOT NULL
+                  AND aic.installation_id IS NOT NULL
+                LIMIT 1
+            ),
+            user_conn AS (
+                SELECT uc.installation_id
+                FROM sessions s
+                JOIN organization_members om ON om.org_id = s.org_id
+                JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
+                WHERE s.id = $1
+                  AND uc.installation_id IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM identity_conn)
+                LIMIT 1
+            )
+            SELECT installation_id FROM identity_conn
+            UNION ALL
+            SELECT installation_id FROM user_conn
             LIMIT 1
             "#,
         )
