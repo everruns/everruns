@@ -261,6 +261,8 @@ mod tests {
             subagent_name: None,
             subagent_task: None,
             subagent_status: None,
+            blueprint_id: None,
+            blueprint_config: None,
         }
     }
 

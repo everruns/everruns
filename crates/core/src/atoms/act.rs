@@ -71,6 +71,10 @@ pub struct ActInput {
     /// Resolved locale for backend-authored tool narration and labels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
+    /// Blueprint ID for blueprint-backed sessions. When set, act_activity
+    /// loads tools from the blueprint instead of from agent/harness capabilities.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blueprint_id: Option<String>,
 }
 
 /// Result of a single tool call execution
@@ -165,6 +169,8 @@ where
     platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
     /// Optional leased resource store for provider lease tracking
     leased_resource_store: Option<Arc<dyn crate::traits::LeasedResourceStore>>,
+    /// Optional capability registry for blueprint lookups in subagent tools
+    capability_registry: Option<crate::capabilities::CapabilityRegistry>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -190,6 +196,7 @@ where
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            capability_registry: None,
             hooks: Self::default_hooks(),
         }
     }
@@ -213,6 +220,7 @@ where
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            capability_registry: None,
             hooks: Self::default_hooks(),
         }
     }
@@ -298,6 +306,14 @@ where
         store: Arc<dyn crate::traits::LeasedResourceStore>,
     ) -> Self {
         self.leased_resource_store = Some(store);
+        self
+    }
+
+    pub fn with_capability_registry(
+        mut self,
+        registry: crate::capabilities::CapabilityRegistry,
+    ) -> Self {
+        self.capability_registry = Some(registry);
         self
     }
 }
@@ -678,9 +694,62 @@ where
             };
         };
 
+<<<<<<< HEAD
         // Execute the tool (always with context so tools can emit progress events)
         let mut tool_context = if let Some(ref store) = self.file_store {
             ToolContext::with_file_store(context.session_id, store.clone())
+=======
+        // Execute the tool
+        let result = if self.file_store.is_some()
+            || self.sqldb_store.is_some()
+            || self.storage_store.is_some()
+            || self.connection_resolver.is_some()
+            || self.session_store.is_some()
+            || self.session_mutator.is_some()
+            || self.agent_store.is_some()
+            || self.schedule_store.is_some()
+            || self.platform_store.is_some()
+            || self.leased_resource_store.is_some()
+        {
+            let mut tool_context = if let Some(ref store) = self.file_store {
+                ToolContext::with_file_store(context.session_id, store.clone())
+            } else {
+                ToolContext::new(context.session_id)
+            };
+            if let Some(ref store) = self.sqldb_store {
+                tool_context.sqldb_store = Some(store.clone());
+            }
+            if let Some(ref store) = self.storage_store {
+                tool_context.storage_store = Some(store.clone());
+            }
+            if let Some(ref resolver) = self.connection_resolver {
+                tool_context.connection_resolver = Some(resolver.clone());
+            }
+            if let Some(ref store) = self.session_store {
+                tool_context.session_store = Some(store.clone());
+            }
+            if let Some(ref mutator) = self.session_mutator {
+                tool_context.session_mutator = Some(mutator.clone());
+            }
+            if let Some(ref store) = self.agent_store {
+                tool_context.agent_store = Some(store.clone());
+            }
+            if let Some(ref store) = self.schedule_store {
+                tool_context.schedule_store = Some(store.clone());
+            }
+            if let Some(ref store) = self.platform_store {
+                tool_context.platform_store = Some(store.clone());
+            }
+            if let Some(ref store) = self.leased_resource_store {
+                tool_context.leased_resource_store = Some(store.clone());
+            }
+            if let Some(ref registry) = self.capability_registry {
+                tool_context.capability_registry = Some(registry.clone());
+            }
+            self.tool_executor
+                .execute_with_context(&tool_call, tool_def, &tool_context)
+                .await
+>>>>>>> ebe0ca9 (feat(blueprints): implement agent blueprints infrastructure)
         } else {
             ToolContext::new(context.session_id)
         };
@@ -900,6 +969,7 @@ mod tests {
             tool_calls: vec![],
             tool_definitions: vec![],
             locale: None,
+            blueprint_id: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -929,6 +999,7 @@ mod tests {
             }],
             tool_definitions: vec![],
             locale: None,
+            blueprint_id: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -994,6 +1065,7 @@ mod tests {
             }],
             tool_definitions: vec![manage_harnesses_tool_def()],
             locale: None,
+            blueprint_id: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1038,6 +1110,7 @@ mod tests {
             }],
             tool_definitions: vec![manage_harnesses_tool_def()],
             locale: None,
+            blueprint_id: None,
         };
 
         let result = atom.execute(input).await.unwrap();

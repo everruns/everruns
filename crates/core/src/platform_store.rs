@@ -109,12 +109,18 @@ pub trait PlatformStore: Send + Sync {
     ) -> Result<Vec<Session>>;
 
     /// Create a new session.
+    ///
+    /// When `blueprint_id` is set, the session runs a blueprint agent instead
+    /// of inheriting from `harness_id`/`agent_id`. `blueprint_config` is
+    /// validated config for the blueprint (JSON, optional).
     async fn create_session(
         &self,
         harness_id: HarnessId,
         agent_id: Option<AgentId>,
         title: Option<&str>,
         locale: Option<&str>,
+        blueprint_id: Option<&str>,
+        blueprint_config: Option<&serde_json::Value>,
     ) -> Result<Session>;
 
     /// Get a session by ID.
@@ -261,6 +267,8 @@ pub mod tests {
                     subagent_name: None,
                     subagent_task: None,
                     subagent_status: None,
+                    blueprint_id: None,
+                    blueprint_config: None,
                 },
             }
         }
@@ -359,10 +367,14 @@ pub mod tests {
             _aid: Option<crate::typed_id::AgentId>,
             title: Option<&str>,
             locale: Option<&str>,
+            blueprint_id: Option<&str>,
+            blueprint_config: Option<&serde_json::Value>,
         ) -> Result<Session> {
             let mut s = self.session.clone();
             s.title = title.map(|t| t.to_string());
             s.locale = locale.map(|value| value.to_string());
+            s.blueprint_id = blueprint_id.map(|b| b.to_string());
+            s.blueprint_config = blueprint_config.cloned();
             Ok(s)
         }
         async fn get_session_by_id(&self, _id: SessionId) -> Result<Option<Session>> {

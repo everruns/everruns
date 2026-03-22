@@ -398,6 +398,8 @@ impl InMemoryAgenticLoopBuilder {
             subagent_name: None,
             subagent_task: None,
             subagent_status: None,
+            blueprint_id: None,
+            blueprint_config: None,
         };
         session_store.add_session(session).await;
 
@@ -671,6 +673,7 @@ impl InMemoryAgenticLoop {
                             tool_calls: reason_result.tool_calls,
                             tool_definitions: reason_result.tool_definitions,
                             locale: reason_result.locale,
+                            blueprint_id: None,
                         })
                         .await?;
                     state_machine.on_act_completed();

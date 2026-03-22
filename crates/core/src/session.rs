@@ -197,4 +197,13 @@ pub struct Session {
     /// Subagent lifecycle status: spawning, running, completed, failed, cancelled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subagent_status: Option<SubagentStatus>,
+
+    // -- Blueprint fields (only set when this session runs a blueprint agent) --
+    /// Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent
+    /// from the blueprint definition instead of from harness_id/agent_id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blueprint_id: Option<String>,
+    /// Validated config passed by host at blueprint spawn time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blueprint_config: Option<serde_json::Value>,
 }

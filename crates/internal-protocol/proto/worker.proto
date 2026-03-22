@@ -1549,6 +1549,8 @@ message PlatformCreateSessionRequest {
     optional Uuid agent_id = 3;
     optional string title = 4;
     optional string locale = 5;
+    optional string blueprint_id = 6;
+    optional string blueprint_config_json = 7;
 }
 
 message PlatformCreateSessionResponse {

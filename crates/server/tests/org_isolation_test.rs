@@ -939,6 +939,8 @@ async fn create_session_in_org(backend: &StorageBackend, org_id: i64) -> everrun
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();

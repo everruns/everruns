@@ -814,6 +814,8 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         subagent_name: None,
         subagent_task: None,
         subagent_status: None,
+        blueprint_id: None,
+        blueprint_config: None,
     })
 }
 
@@ -2143,6 +2145,8 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         agent_id: Option<AgentId>,
         title: Option<&str>,
         locale: Option<&str>,
+        blueprint_id: Option<&str>,
+        blueprint_config: Option<&serde_json::Value>,
     ) -> Result<Session> {
         let mut client = self.client.inner.lock().await;
         let response = client
@@ -2152,6 +2156,9 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 agent_id: agent_id.map(|id| uuid_to_proto(id.uuid())),
                 title: title.map(|s| s.to_string()),
                 locale: locale.map(|value| value.to_string()),
+                blueprint_id: blueprint_id.map(|s| s.to_string()),
+                blueprint_config_json: blueprint_config
+                    .map(|v| serde_json::to_string(v).unwrap_or_default()),
             })
             .await
             .map_err(grpc_status_to_error)?;

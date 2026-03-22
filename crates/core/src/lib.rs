@@ -171,11 +171,11 @@ pub use platform_definition::{
 
 pub use capabilities::SystemPromptContext;
 pub use capabilities::{
-    AddTool, AgentCapabilityConfig, AppliedCapabilities, Capability, CapabilityId,
-    CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus, CollectedCapabilities,
-    CurrentTimeCapability, DeleteFileTool, DependencyError, DivideTool, FileSystemCapability,
-    GetCurrentTimeTool, GetForecastTool, GetSessionInfoTool, GetWeatherTool, GrepFilesTool,
-    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, IntegrationPlugin,
+    AddTool, AgentBlueprint, AgentCapabilityConfig, AppliedCapabilities, BlueprintModel,
+    Capability, CapabilityId, CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus,
+    CollectedCapabilities, CurrentTimeCapability, DeleteFileTool, DependencyError, DivideTool,
+    FileSystemCapability, GetCurrentTimeTool, GetForecastTool, GetSessionInfoTool, GetWeatherTool,
+    GrepFilesTool, INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, IntegrationPlugin,
     ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX, McpCapability,
     MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool,
     NoopCapability, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,

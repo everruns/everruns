@@ -410,50 +410,82 @@ pub async fn act_activity(
     // Create tool registry with default built-in tools
     let mut builtin_executor = ToolRegistry::with_defaults();
 
-    // Load capabilities and register their tools.
-    // When agent_id is present, use agent capabilities.
-    // When agent_id is absent, fall back to harness capabilities so that
-    // harness-provided tools (e.g. bash) are still registered.
-    let cap_ids: Vec<String> = if let Some(agent_id) = input.agent_id {
-        let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
-        if let Ok(Some(agent)) = agent_store.get_agent(agent_id).await {
-            agent
-                .capabilities
-                .iter()
-                .map(|c| c.capability_id().to_string())
-                .filter(|id| !is_mcp_capability(id))
-                .collect()
-        } else {
-            vec![]
-        }
+    // Resolve blueprint_id: prefer ActInput field, fall back to session lookup
+    let blueprint_id = if input.blueprint_id.is_some() {
+        input.blueprint_id.clone()
     } else {
-        let harness_store = GrpcHarnessStore::new(grpc_client.clone(), org_id);
-        if let Ok(Some(harness)) =
-            everruns_core::traits::HarnessStore::get_harness(&harness_store, input.harness_id).await
-        {
-            harness
-                .capabilities
-                .iter()
-                .map(|c| c.capability_id().to_string())
-                .filter(|id| !is_mcp_capability(id))
-                .collect()
-        } else {
-            vec![]
+        let session_store = GrpcSessionStore::new(grpc_client.clone(), org_id);
+        match session_store.get_session(input.context.session_id).await {
+            Ok(Some(session)) => session.blueprint_id.clone(),
+            _ => None,
         }
     };
 
-    if !cap_ids.is_empty() {
+    // Load tools: blueprint tools for blueprint sessions, capability tools otherwise.
+    if let Some(ref blueprint_id) = blueprint_id {
+        // Blueprint path: load tools from the blueprint definition
         let capability_registry = platform_definition.capability_registry().clone();
-        let ctx = SystemPromptContext::without_file_store(input.context.session_id);
-        let collected = collect_capabilities(&cap_ids, &capability_registry, &ctx).await;
-        for tool in collected.tools {
-            builtin_executor.register_boxed(tool);
+        if let Some(blueprint) = capability_registry.blueprint(blueprint_id) {
+            for tool in blueprint.tools {
+                builtin_executor.register_boxed(tool);
+            }
+            tracing::debug!(
+                blueprint_id = blueprint_id,
+                "Registered blueprint tools for act_activity"
+            );
+        } else {
+            tracing::warn!(
+                blueprint_id = blueprint_id,
+                "Blueprint not found in registry for act_activity"
+            );
         }
-        tracing::debug!(
-            capability_count = cap_ids.len(),
-            tool_count = collected.tool_definitions.len(),
-            "Registered capability tools for act_activity"
-        );
+    } else {
+        // Standard path: load capabilities from agent or harness.
+        // When agent_id is present, use agent capabilities.
+        // When agent_id is absent, fall back to harness capabilities so that
+        // harness-provided tools (e.g. bash) are still registered.
+        let cap_ids: Vec<String> = if let Some(agent_id) = input.agent_id {
+            let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
+            if let Ok(Some(agent)) = agent_store.get_agent(agent_id).await {
+                agent
+                    .capabilities
+                    .iter()
+                    .map(|c| c.capability_id().to_string())
+                    .filter(|id| !is_mcp_capability(id))
+                    .collect()
+            } else {
+                vec![]
+            }
+        } else {
+            let harness_store = GrpcHarnessStore::new(grpc_client.clone(), org_id);
+            if let Ok(Some(harness)) =
+                everruns_core::traits::HarnessStore::get_harness(&harness_store, input.harness_id)
+                    .await
+            {
+                harness
+                    .capabilities
+                    .iter()
+                    .map(|c| c.capability_id().to_string())
+                    .filter(|id| !is_mcp_capability(id))
+                    .collect()
+            } else {
+                vec![]
+            }
+        };
+
+        if !cap_ids.is_empty() {
+            let capability_registry = platform_definition.capability_registry().clone();
+            let ctx = SystemPromptContext::without_file_store(input.context.session_id);
+            let collected = collect_capabilities(&cap_ids, &capability_registry, &ctx).await;
+            for tool in collected.tools {
+                builtin_executor.register_boxed(tool);
+            }
+            tracing::debug!(
+                capability_count = cap_ids.len(),
+                tool_count = collected.tool_definitions.len(),
+                "Registered capability tools for act_activity"
+            );
+        }
     }
 
     // Create composite tool executor that handles both built-in and MCP tools
@@ -494,7 +526,8 @@ pub async fn act_activity(
         .with_sqldb_store(sqldb_store)
         .with_leased_resource_store(leased_resource_store)
         .with_schedule_store(schedule_store)
-        .with_platform_store(platform_store);
+        .with_platform_store(platform_store)
+        .with_capability_registry(platform_definition.capability_registry().clone());
 
     atom.execute(input)
         .await
@@ -593,6 +626,7 @@ mod tests {
                 deferrable: DeferrablePolicy::default(),
             })],
             locale: None,
+            blueprint_id: None,
         };
 
         let json = serde_json::to_string(&input).unwrap();

@@ -47,11 +47,10 @@ fn test_subagent_capability_registration() {
     assert!(cap.system_prompt_addition().is_some());
     assert_eq!(cap.features(), vec!["subagents"]);
 
-    // Verify system prompt mentions the three tools
+    // Verify system prompt mentions delegation and blueprints
     let prompt = cap.system_prompt_addition().unwrap();
     assert!(prompt.contains("spawn_subagent"));
-    assert!(prompt.contains("get_subagents"));
-    assert!(prompt.contains("message_subagent"));
+    assert!(prompt.contains("blueprint"));
 }
 
 // =============================================================================

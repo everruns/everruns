@@ -167,6 +167,8 @@ mod tests {
             capabilities: json!([]),
             tools: json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .expect("test session should be created")

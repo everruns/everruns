@@ -196,6 +196,8 @@ async fn test_session_crud() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .expect("Failed to create session");
@@ -291,6 +293,8 @@ async fn test_event_crud() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .expect("Failed to create session");
@@ -367,6 +371,8 @@ async fn test_event_exclude_types() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .expect("Failed to create session");
@@ -451,6 +457,8 @@ async fn test_event_filter_types() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .expect("Failed to create session");
@@ -737,6 +745,8 @@ async fn test_session_file_crud() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .expect("Failed to create session");
@@ -1180,6 +1190,8 @@ async fn test_session_usage_tracking() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .expect("Failed to create session");
@@ -1262,6 +1274,8 @@ async fn test_session_previews() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .expect("Failed to create session");

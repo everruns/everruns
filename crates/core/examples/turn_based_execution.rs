@@ -182,6 +182,8 @@ async fn main() -> anyhow::Result<()> {
         subagent_name: None,
         subagent_task: None,
         subagent_status: None,
+        blueprint_id: None,
+        blueprint_config: None,
     };
     session_store.add_session(session).await;
 
@@ -321,6 +323,7 @@ async fn main() -> anyhow::Result<()> {
                 tool_calls: reason_result.tool_calls.clone(),
                 tool_definitions: reason_result.tool_definitions.clone(),
                 locale: reason_result.locale.clone(),
+                blueprint_id: None,
             })
             .await?;
 

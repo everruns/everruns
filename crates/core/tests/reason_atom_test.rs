@@ -122,6 +122,8 @@ async fn setup_test_environment() -> (
         subagent_name: None,
         subagent_task: None,
         subagent_status: None,
+        blueprint_id: None,
+        blueprint_config: None,
     };
     session_store.add_session(session).await;
 
@@ -488,6 +490,8 @@ async fn test_reason_atom_with_different_configs() {
         subagent_name: None,
         subagent_task: None,
         subagent_status: None,
+        blueprint_id: None,
+        blueprint_config: None,
     };
     session_store.add_session(session2).await;
     message_retriever
