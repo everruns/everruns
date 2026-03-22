@@ -11,6 +11,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.7] - 2026-03-22
+
+### Highlights
+
+- **Agent Identities** — Virtual principals for unattended execution across backend, API, DB, and UI ([#1029](https://github.com/everruns/everruns/pull/1029))
+- **MCP OAuth** — Auth modes and OAuth connection flow for MCP servers ([#1018](https://github.com/everruns/everruns/pull/1018))
+- **CLI Improvements** — Install script, agent update/import commands, pre-built release binaries ([#1013](https://github.com/everruns/everruns/pull/1013), [#1020](https://github.com/everruns/everruns/pull/1020), [#1000](https://github.com/everruns/everruns/pull/1000))
+- **Daytona Sandbox Resources** — CPU, memory, and disk options with auto-archive/delete lifecycle settings ([#1024](https://github.com/everruns/everruns/pull/1024), [#1026](https://github.com/everruns/everruns/pull/1026))
+- **Worker Scalability** — Default max concurrent tasks increased from 10 to 1000 ([#1027](https://github.com/everruns/everruns/pull/1027))
+
+### What's Changed
+
+- feat(agent-identities): add agent identities across backend, API, DB, and UI ([#1029](https://github.com/everruns/everruns/pull/1029)) by [@chaliy](https://github.com/chaliy)
+- feat(worker): increase default max concurrent tasks from 10 to 1000 ([#1027](https://github.com/everruns/everruns/pull/1027)) by [@chaliy](https://github.com/chaliy)
+- feat(daytona): expose cpu, memory, and disk resource options on sandbox creation ([#1024](https://github.com/everruns/everruns/pull/1024)) by [@chaliy](https://github.com/chaliy)
+- feat(daytona): add auto-archive and auto-delete lifecycle settings ([#1026](https://github.com/everruns/everruns/pull/1026)) by [@chaliy](https://github.com/chaliy)
+- feat(core): protect skill content from context compaction ([#1022](https://github.com/everruns/everruns/pull/1022)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): add auth modes and OAuth connection flow ([#1018](https://github.com/everruns/everruns/pull/1018)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): add agents update command and --initial-files-dir flag ([#1020](https://github.com/everruns/everruns/pull/1020)) by [@chaliy](https://github.com/chaliy)
+- feat(core): implement SearchCapable for bashkit indexed search ([#1014](https://github.com/everruns/everruns/pull/1014)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): add install script and just recipe ([#1013](https://github.com/everruns/everruns/pull/1013)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): upsert on import when agent ID exists ([#1010](https://github.com/everruns/everruns/pull/1010)) by [@chaliy](https://github.com/chaliy)
+- feat(ci): publish pre-built CLI binaries to GitHub releases ([#1000](https://github.com/everruns/everruns/pull/1000)) by [@chaliy](https://github.com/chaliy)
+- feat(server): add git version control for session filesystems ([#979](https://github.com/everruns/everruns/pull/979)) by [@chaliy](https://github.com/chaliy)
+- feat(server): seed example agents during org init ([#985](https://github.com/everruns/everruns/pull/985)) by [@chaliy](https://github.com/chaliy)
+- fix(durable): strip null bytes from JSON before PostgreSQL jsonb insert ([#1031](https://github.com/everruns/everruns/pull/1031)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): treat Pending workflow as takeover-safe and cancel stale tasks ([#1025](https://github.com/everruns/everruns/pull/1025)) by [@chaliy](https://github.com/chaliy)
+- fix(core): add fallback parsing for malformed SKILL.md YAML frontmatter ([#1021](https://github.com/everruns/everruns/pull/1021)) by [@chaliy](https://github.com/chaliy)
+- fix(localization): finish Ukrainian chat UI coverage ([#1005](https://github.com/everruns/everruns/pull/1005)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): support API keys via standard Bearer scheme ([#1016](https://github.com/everruns/everruns/pull/1016)) by [@chaliy](https://github.com/chaliy)
+- fix(cli): simplify install-cli recipe, fix version parsing ([#1017](https://github.com/everruns/everruns/pull/1017)) by [@chaliy](https://github.com/chaliy)
+- fix(cli): fix four CLI bugs — streaming, upsert, capabilities list, optional harness ([#1009](https://github.com/everruns/everruns/pull/1009)) by [@chaliy](https://github.com/chaliy)
+- fix(cli): show credentials path in status and fix macOS path docs ([#1008](https://github.com/everruns/everruns/pull/1008)) by [@chaliy](https://github.com/chaliy)
+- fix: remove automatic agent seeding to prevent duplicates with examples ([#1004](https://github.com/everruns/everruns/pull/1004)) by [@chaliy](https://github.com/chaliy)
+- fix(grpc): replace 150MB gRPC message limit with presigned URLs for images ([#1001](https://github.com/everruns/everruns/pull/1001)) by [@chaliy](https://github.com/chaliy)
+- fix(core): make session_interact schema OpenAI-compatible ([#996](https://github.com/everruns/everruns/pull/996)) by [@chaliy](https://github.com/chaliy)
+- fix(core): add missing properties to object tool schemas ([#984](https://github.com/everruns/everruns/pull/984)) by [@chaliy](https://github.com/chaliy)
+- fix(platform): default harness_id to Generic in manage_sessions ([#982](https://github.com/everruns/everruns/pull/982)) by [@chaliy](https://github.com/chaliy)
+- refactor(cli): upgrade deps, drop serde_yaml, use server import API ([#1028](https://github.com/everruns/everruns/pull/1028)) by [@chaliy](https://github.com/chaliy)
+- refactor(ui): combine agents page into single view with links to full lists ([#1006](https://github.com/everruns/everruns/pull/1006)) by [@chaliy](https://github.com/chaliy)
+- refactor(ui): split monolith files (types.ts, settings, queues) ([#1002](https://github.com/everruns/everruns/pull/1002)) by [@chaliy](https://github.com/chaliy)
+- refactor(ui): extract magic values to named constants ([#999](https://github.com/everruns/everruns/pull/999)) by [@chaliy](https://github.com/chaliy)
+- refactor(ui): extract generic CRUD APIs and hooks ([#994](https://github.com/everruns/everruns/pull/994)) by [@chaliy](https://github.com/chaliy)
+- refactor(ui): decompose chat panel and sidebar ([#991](https://github.com/everruns/everruns/pull/991)) by [@chaliy](https://github.com/chaliy)
+- refactor(api): add ApiResult type alias and impl_auth_state! macro ([#998](https://github.com/everruns/everruns/pull/998)) by [@chaliy](https://github.com/chaliy)
+- refactor(store): add StoreResultExt trait and JSON helpers ([#997](https://github.com/everruns/everruns/pull/997)) by [@chaliy](https://github.com/chaliy)
+- refactor(infra): replace Docker Compose with native pg_ctl + valkey-server ([#995](https://github.com/everruns/everruns/pull/995)) by [@chaliy](https://github.com/chaliy)
+- refactor(llm): extract shared LLM driver helpers ([#993](https://github.com/everruns/everruns/pull/993)) by [@chaliy](https://github.com/chaliy)
+- refactor: rename agent templates to examples, install to use ([#992](https://github.com/everruns/everruns/pull/992)) by [@chaliy](https://github.com/chaliy)
+- refactor(worker): consolidate adapter wrappers ([#989](https://github.com/everruns/everruns/pull/989), [#990](https://github.com/everruns/everruns/pull/990)) by [@chaliy](https://github.com/chaliy)
+- refactor(grpc): decompose grpc_service.rs into submodules ([#988](https://github.com/everruns/everruns/pull/988)) by [@chaliy](https://github.com/chaliy)
+- refactor(storage): split repositories.rs and memory.rs god objects into per-entity modules ([#986](https://github.com/everruns/everruns/pull/986), [#987](https://github.com/everruns/everruns/pull/987)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): simplify ReasonAtom by removing 6 generic type parameters ([#983](https://github.com/everruns/everruns/pull/983)) by [@chaliy](https://github.com/chaliy)
+- chore(migrations): squash 008-013 into 008_v0.8.7 ([#1030](https://github.com/everruns/everruns/pull/1030)) by [@chaliy](https://github.com/chaliy)
+- chore(cli): bump everruns-sdk to v0.1.5 ([#1019](https://github.com/everruns/everruns/pull/1019)) by [@chaliy](https://github.com/chaliy)
+- chore(config): add shared config crate, unify env-loading pattern ([#1007](https://github.com/everruns/everruns/pull/1007)) by [@chaliy](https://github.com/chaliy)
+- chore(ship): add structured security review and enforce review comment resolution ([#1015](https://github.com/everruns/everruns/pull/1015)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump h3 from 1.15.6 to 1.15.9 ([#975](https://github.com/everruns/everruns/pull/975))
+- chore(deps): bump rustls-webpki from 0.103.9 to 0.103.10 ([#976](https://github.com/everruns/everruns/pull/976))
+
+### Migration Notes
+
+**0.8.6 → 0.8.7:** Migrations have been squashed. Requires a fresh database if upgrading from pre-0.8.6.
+
 ## [0.8.6] - 2026-03-15
 
 ### Highlights
