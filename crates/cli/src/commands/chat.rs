@@ -46,14 +46,15 @@ pub async fn run(
         // Fetch events via SDK (ListResponse pagination fields are optional since SDK v0.1.5)
         let response = client.events().list(&session_id).await?;
 
-        // Filter events since last seen
+        // Filter events since last seen.
+        // Use position-based lookup instead of skip_while: if last_event_id
+        // is no longer in the response (server-side truncation/retention),
+        // treat all returned events as new rather than silently dropping them.
         let events: Vec<_> = if let Some(ref last_id) = last_event_id {
-            response
-                .data
-                .into_iter()
-                .skip_while(|e| &e.id != last_id)
-                .skip(1) // skip the last seen event itself
-                .collect()
+            match response.data.iter().position(|e| &e.id == last_id) {
+                Some(idx) => response.data.into_iter().skip(idx + 1).collect(),
+                None => response.data, // last seen event was evicted; all events are new
+            }
         } else {
             response.data
         };
