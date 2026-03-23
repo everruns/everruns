@@ -77,7 +77,13 @@ macro_rules! require_api_token {
 /// Create a sprite with a unique test label and return client + guard.
 async fn create_test_sprite(api_token: String, label: &str) -> (SpritesClient, SpriteGuard) {
     let client = SpritesClient::new(api_token);
-    let name = format!("everruns-test-{label}");
+    // Include timestamp suffix to avoid collisions across parallel runs
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+        % 1_000_000;
+    let name = format!("everruns-test-{label}-{suffix}");
 
     let info = client
         .create_sprite(

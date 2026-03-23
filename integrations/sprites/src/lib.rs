@@ -4,10 +4,10 @@
 //! Sprites are Firecracker VMs with full ext4 filesystems that persist across sessions.
 //!
 //! Decision: External integration crate, auto-registered via inventory plugin system
-//! Decision: Use secrets store for all state (API token + per-sprite connection info)
+//! Decision: API token resolved via user connections (Settings > Connections), not secrets store
+//! Decision: Per-sprite state stored in session secrets (encrypted at rest)
 //! Decision: Single API tier — all operations go through api.sprites.dev/v1
 //! Decision: Embrace persistence — sprites survive idle, expose HTTP endpoints, support checkpoints
-//! Decision: session_storage dependency for API token and state persistence
 
 pub mod client;
 pub mod connection;

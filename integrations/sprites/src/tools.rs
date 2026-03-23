@@ -870,6 +870,15 @@ impl Tool for SpritesServiceUrlTool {
             }
         };
 
+        // Persist URL back to state so list_sprites shows it
+        let mut state = state;
+        if sprite_info.url.is_some() && state.service_url != sprite_info.url {
+            state.service_url.clone_from(&sprite_info.url);
+            if let Err(e) = save_sprite_state(context, &state).await {
+                return e;
+            }
+        }
+
         if let Err(e) = touch_sprite_lease(context, &state, None).await {
             return e;
         }
