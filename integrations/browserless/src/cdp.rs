@@ -52,13 +52,13 @@ impl CdpSession {
             ws_url.to_string()
         };
         debug!("CDP connecting to {redacted}");
-        let (ws_stream, _response) = tokio::time::timeout(
-            CDP_CONNECT_TIMEOUT,
-            connect_async(ws_url),
-        )
-        .await
-        .map_err(|_| format!("CDP WebSocket connection timed out ({CDP_CONNECT_TIMEOUT:?})"))?
-        .map_err(|e| format!("CDP WebSocket connection failed: {e}"))?;
+        let (ws_stream, _response) =
+            tokio::time::timeout(CDP_CONNECT_TIMEOUT, connect_async(ws_url))
+                .await
+                .map_err(|_| {
+                    format!("CDP WebSocket connection timed out ({CDP_CONNECT_TIMEOUT:?})")
+                })?
+                .map_err(|e| format!("CDP WebSocket connection failed: {e}"))?;
 
         let (sink, source) = ws_stream.split();
         Ok(Self {
@@ -137,7 +137,11 @@ impl CdpSession {
             }
         })
         .await
-        .map_err(|_| format!("CDP command {method} timed out after {CDP_COMMAND_TIMEOUT:?} waiting for response"))?
+        .map_err(|_| {
+            format!(
+                "CDP command {method} timed out after {CDP_COMMAND_TIMEOUT:?} waiting for response"
+            )
+        })?
     }
 
     /// Disconnect the WebSocket gracefully.
