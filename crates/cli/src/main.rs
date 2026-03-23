@@ -123,7 +123,8 @@ pub enum CapabilitiesCommand {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Install rustls crypto provider before any TLS usage
+    // Install rustls crypto provider before any TLS usage.
+    // See everruns_core::telemetry::install_crypto_provider for the canonical helper.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     let cli = Cli::parse();
