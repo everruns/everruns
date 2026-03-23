@@ -35,6 +35,7 @@ Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
 | E2B | [`integrations/e2b/SPEC.md`](../integrations/e2b/SPEC.md) | Cloud sandbox environments via E2B management API + envd runtime endpoints. Platform-owned token, multiple sandboxes per session. |
 | Daytona | [`integrations/daytona/SPEC.md`](../integrations/daytona/SPEC.md) | Cloud sandbox environments via Daytona REST API. Multiple sandboxes per session. |
 | Deno | [`integrations/deno/SPEC.md`](../integrations/deno/SPEC.md) | Cloud sandbox environments via Deno websocket sandbox API. Multiple sandboxes per session. |
+| Sprites | [`integrations/sprites/SPEC.md`](../integrations/sprites/SPEC.md) | Persistent Firecracker microVMs via Sprites (Fly.io). Persistent filesystem, checkpoints, HTTP services. |
 | Docker | `integrations/docker/` | Container-based agent execution. Experimental (Dev only). No spec yet. |
 
 ## Server Integrations (`crates/server/specs/`)
