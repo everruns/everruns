@@ -1,6 +1,7 @@
 //! TestMath Capability - calculator tools for testing tool calling
 
 use super::{Capability, CapabilityStatus};
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -82,6 +83,12 @@ impl Tool for AddTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
         let a = arguments.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let b = arguments.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -133,6 +140,12 @@ impl Tool for SubtractTool {
             "required": ["a", "b"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
@@ -188,6 +201,12 @@ impl Tool for MultiplyTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
         let a = arguments.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let b = arguments.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -239,6 +258,12 @@ impl Tool for DivideTool {
             "required": ["a", "b"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {

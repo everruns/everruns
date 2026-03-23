@@ -6,6 +6,7 @@
 //! Decision: Each tool call reconnects → does work → calls reconnect → disconnects.
 //!   No long-lived WebSocket connections. The browser stays alive on Browserless servers.
 
+use everruns_core::ToolHints;
 use everruns_core::UpsertLeasedResource;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -128,6 +129,13 @@ impl Tool for BrowserlessOpenBrowserTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -320,6 +328,13 @@ impl Tool for BrowserlessCloseBrowserTool {
             "properties": {},
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_destructive(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

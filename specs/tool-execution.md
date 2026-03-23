@@ -54,6 +54,28 @@ Tools can also be provided by Capabilities (see [capabilities.md](capabilities.m
 
 **ToolRegistry:** Manages multiple tools and implements `ToolExecutor` trait. See `crates/core/src/tools.rs` for `ToolRegistry` and its builder pattern.
 
+### Tool Hints
+
+`ToolHints` provides semantic metadata about a tool's behavioral properties. See `crates/core/src/tool_types.rs` for the struct definition. All fields are `Option<bool>` — `None` means unspecified.
+
+Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convention plus everruns-specific hints:
+
+| Hint | Meaning | Conservative default (when `None`) |
+|------|---------|-------------------------------------|
+| `readonly` | Tool does not modify any state | Assume not readonly |
+| `destructive` | Tool may irreversibly destroy data | Assume not destructive |
+| `idempotent` | Same args → same effect; safe to retry | Assume not idempotent |
+| `open_world` | Interacts with external entities (network, APIs) | Assume closed-world |
+| `requires_secrets` | Needs API keys or credentials | Assume no secrets needed |
+| `long_running` | May take significant time (> ~5s typical) | Assume fast |
+
+**Design rules:**
+- Hints are informational — they do not enforce policy. Use `ToolPolicy` for execution gating.
+- Tools should set hints via the `Tool::hints()` trait method or directly on `BuiltinTool.hints`.
+- MCP server tools inherit hints from MCP `annotations` when available.
+- External toolkit libraries expose hints via the `Tool::hints()` method in the toolkit library contract.
+- `destructive` is a subset of non-readonly — a tool can write without being destructive.
+
 ### Tool Policies
 
 - `auto`: Execute immediately without approval

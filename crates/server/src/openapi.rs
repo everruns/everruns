@@ -192,13 +192,14 @@ use utoipa::OpenApi;
             // Tool types
             ToolCall,
             everruns_core::ToolDefinition, everruns_core::BuiltinTool, everruns_core::ClientSideTool,
-            everruns_core::ToolPolicy,
+            everruns_core::ToolPolicy, everruns_core::ToolHints,
             everruns_core::ToolCallRequestedData,
             api::tool_results::SubmitToolResultsRequest,
             api::tool_results::ClientToolResult,
             api::tool_results::SubmitToolResultsResponse,
             // MCP Server types
             McpServer, McpServerStatus, McpServerTransportType,
+            everruns_core::mcp_server::McpToolAnnotations,
             api::mcp_servers::CreateMcpServerRequest,
             api::mcp_servers::UpdateMcpServerRequest,
             ListResponse<McpServer>,

@@ -12,7 +12,7 @@
 
 use crate::capability_types::{CapabilityId, CapabilityStatus};
 use crate::mcp_server::{McpToolDefinition, mcp_tool_name};
-use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolPolicy};
+use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy};
 use crate::tools::Tool;
 
 use super::Capability;
@@ -77,9 +77,27 @@ impl McpCapability {
         mcp_capability_id(self.server_id)
     }
 
-    /// Convert MCP tool definition to our ToolDefinition with prefixed name
+    /// Convert MCP tool definition to our ToolDefinition with prefixed name.
+    /// Maps MCP annotations to ToolHints when available.
     fn mcp_tool_to_definition(&self, mcp_tool: &McpToolDefinition) -> ToolDefinition {
         let prefixed_name = mcp_tool_name(&self.server_name, &mcp_tool.name);
+
+        // Map MCP annotations to ToolHints
+        let hints = match &mcp_tool.annotations {
+            Some(ann) => ToolHints {
+                readonly: ann.read_only_hint,
+                destructive: ann.destructive_hint,
+                idempotent: ann.idempotent_hint,
+                // Default open_world to true for MCP tools unless explicitly set to false
+                open_world: Some(ann.open_world_hint.unwrap_or(true)),
+                // MCP doesn't define requires_secrets or long_running — leave as None
+                ..ToolHints::default()
+            },
+            None => {
+                // MCP tools are external by nature
+                ToolHints::default().with_open_world(true)
+            }
+        };
 
         ToolDefinition::Builtin(BuiltinTool {
             name: prefixed_name,
@@ -92,6 +110,7 @@ impl McpCapability {
             policy: ToolPolicy::Auto,
             category: self.category().map(|s| s.to_string()),
             deferrable: DeferrablePolicy::default(),
+            hints,
         })
     }
 }
@@ -207,6 +226,7 @@ mod tests {
                     "query": { "type": "string" }
                 }
             }),
+            annotations: None,
         }];
 
         let capability = McpCapability::new(

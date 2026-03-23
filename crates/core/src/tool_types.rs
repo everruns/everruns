@@ -87,6 +87,9 @@ pub struct BuiltinTool {
     /// Whether this tool's schema can be deferred via tool_search
     #[serde(default, skip_serializing_if = "DeferrablePolicy::is_default")]
     pub deferrable: DeferrablePolicy,
+    /// Semantic hints describing the tool's behavioral properties
+    #[serde(default, skip_serializing_if = "ToolHints::is_empty")]
+    pub hints: ToolHints,
 }
 
 /// Client-side tool - executed by the client, not the server
@@ -109,6 +112,9 @@ pub struct ClientSideTool {
     /// Whether this tool's schema can be deferred via tool_search
     #[serde(default, skip_serializing_if = "DeferrablePolicy::is_default")]
     pub deferrable: DeferrablePolicy,
+    /// Semantic hints describing the tool's behavioral properties
+    #[serde(default, skip_serializing_if = "ToolHints::is_empty")]
+    pub hints: ToolHints,
 }
 
 impl ToolDefinition {
@@ -168,12 +174,118 @@ impl ToolDefinition {
         }
     }
 
+    /// Get the tool hints
+    pub fn hints(&self) -> &ToolHints {
+        match self {
+            ToolDefinition::Builtin(b) => &b.hints,
+            ToolDefinition::ClientSide(c) => &c.hints,
+        }
+    }
+
     /// Set the category on this tool definition (builder pattern)
     pub fn with_category(mut self, category: impl Into<String>) -> Self {
         match &mut self {
             ToolDefinition::Builtin(b) => b.category = Some(category.into()),
             ToolDefinition::ClientSide(c) => c.category = Some(category.into()),
         }
+        self
+    }
+
+    /// Set the hints on this tool definition (builder pattern)
+    pub fn with_hints(mut self, hints: ToolHints) -> Self {
+        match &mut self {
+            ToolDefinition::Builtin(b) => b.hints = hints,
+            ToolDefinition::ClientSide(c) => c.hints = hints,
+        }
+        self
+    }
+}
+
+/// Semantic hints describing a tool's behavioral properties.
+///
+/// Follows the MCP tool annotations convention (readOnlyHint, destructiveHint,
+/// idempotentHint, openWorldHint) plus everruns-specific hints. All fields are
+/// optional booleans — `None` means "unknown/unspecified". Consumers should
+/// treat `None` as the conservative default (e.g., assume not readonly, assume
+/// not idempotent).
+///
+/// These hints are informational — they do not enforce policy. Use `ToolPolicy`
+/// for execution gating (auto vs requires_approval).
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ToolHints {
+    /// Tool does not modify any state (read-only queries, lookups).
+    /// When true: safe to call speculatively, result can be cached.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readonly: Option<bool>,
+
+    /// Tool may irreversibly destroy or delete data.
+    /// Subset of non-readonly — a tool can be non-readonly (writes) without
+    /// being destructive (e.g., create/update operations).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destructive: Option<bool>,
+
+    /// Calling the tool repeatedly with the same arguments produces the same
+    /// effect. Safe to retry on transient failures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotent: Option<bool>,
+
+    /// Tool interacts with external entities beyond the local system
+    /// (network calls, third-party APIs, cloud services).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_world: Option<bool>,
+
+    /// Tool requires API keys, credentials, or other secrets to function.
+    /// Useful for UI to show connection prompts and for LLMs to anticipate
+    /// authentication failures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires_secrets: Option<bool>,
+
+    /// Tool may take significant time to complete (> ~5s typical).
+    /// Useful for clients to show progress indicators and set timeouts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub long_running: Option<bool>,
+}
+
+impl ToolHints {
+    /// Returns true when all fields are None (default/empty state).
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Builder: set readonly hint.
+    pub fn with_readonly(mut self, value: bool) -> Self {
+        self.readonly = Some(value);
+        self
+    }
+
+    /// Builder: set destructive hint.
+    pub fn with_destructive(mut self, value: bool) -> Self {
+        self.destructive = Some(value);
+        self
+    }
+
+    /// Builder: set idempotent hint.
+    pub fn with_idempotent(mut self, value: bool) -> Self {
+        self.idempotent = Some(value);
+        self
+    }
+
+    /// Builder: set open_world hint.
+    pub fn with_open_world(mut self, value: bool) -> Self {
+        self.open_world = Some(value);
+        self
+    }
+
+    /// Builder: set requires_secrets hint.
+    pub fn with_requires_secrets(mut self, value: bool) -> Self {
+        self.requires_secrets = Some(value);
+        self
+    }
+
+    /// Builder: set long_running hint.
+    pub fn with_long_running(mut self, value: bool) -> Self {
+        self.long_running = Some(value);
         self
     }
 }
@@ -311,6 +423,7 @@ mod tests {
             policy: ToolPolicy::RequiresApproval,
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
         });
 
         assert_eq!(tool.name(), "test_tool");
@@ -330,6 +443,7 @@ mod tests {
             policy: ToolPolicy::Auto,
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
         });
         assert_eq!(builtin.display_name(), Some("Get Weather"));
 
@@ -340,6 +454,7 @@ mod tests {
             parameters: serde_json::json!({}),
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
         });
         assert_eq!(client.display_name(), Some("Deploy"));
     }
@@ -354,6 +469,7 @@ mod tests {
             policy: ToolPolicy::Auto,
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
         };
         let json = serde_json::to_string(&tool).unwrap();
         assert!(!json.contains("display_name"));
@@ -366,6 +482,7 @@ mod tests {
             policy: ToolPolicy::Auto,
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
         };
         let json = serde_json::to_string(&tool_with).unwrap();
         assert!(json.contains("\"display_name\":\"Test\""));
@@ -437,6 +554,7 @@ mod tests {
             parameters: serde_json::json!({"type": "object"}),
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
         });
 
         let json = serde_json::to_string(&tool).unwrap();
@@ -462,6 +580,7 @@ mod tests {
             }),
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
         });
 
         assert_eq!(tool.name(), "deploy_app");
@@ -480,6 +599,7 @@ mod tests {
             parameters: serde_json::json!({}),
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
         });
         assert_eq!(tool.policy(), &ToolPolicy::ClientSide);
     }
@@ -511,6 +631,7 @@ mod tests {
                 policy: ToolPolicy::Auto,
                 category: None,
                 deferrable: DeferrablePolicy::default(),
+                hints: ToolHints::default(),
             }),
             ToolDefinition::ClientSide(ClientSideTool {
                 name: "client_tool".to_string(),
@@ -519,6 +640,7 @@ mod tests {
                 parameters: serde_json::json!({"type": "object"}),
                 category: None,
                 deferrable: DeferrablePolicy::default(),
+                hints: ToolHints::default(),
             }),
         ];
 
@@ -530,5 +652,123 @@ mod tests {
         assert!(matches!(&parsed[1], ToolDefinition::ClientSide(_)));
         assert_eq!(parsed[0].policy(), &ToolPolicy::Auto);
         assert_eq!(parsed[1].policy(), &ToolPolicy::ClientSide);
+    }
+
+    #[test]
+    fn test_tool_hints_default_is_empty() {
+        let hints = ToolHints::default();
+        assert!(hints.is_empty());
+        assert_eq!(hints.readonly, None);
+        assert_eq!(hints.destructive, None);
+        assert_eq!(hints.idempotent, None);
+        assert_eq!(hints.open_world, None);
+        assert_eq!(hints.requires_secrets, None);
+        assert_eq!(hints.long_running, None);
+    }
+
+    #[test]
+    fn test_tool_hints_builder() {
+        let hints = ToolHints::default()
+            .with_readonly(true)
+            .with_destructive(false)
+            .with_idempotent(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(false);
+
+        assert!(!hints.is_empty());
+        assert_eq!(hints.readonly, Some(true));
+        assert_eq!(hints.destructive, Some(false));
+        assert_eq!(hints.idempotent, Some(true));
+        assert_eq!(hints.open_world, Some(true));
+        assert_eq!(hints.requires_secrets, Some(true));
+        assert_eq!(hints.long_running, Some(false));
+    }
+
+    #[test]
+    fn test_tool_hints_serialization_skip_empty() {
+        let tool = BuiltinTool {
+            name: "test".to_string(),
+            display_name: None,
+            description: "test".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        assert!(!json.contains("hints"), "empty hints should be skipped");
+    }
+
+    #[test]
+    fn test_tool_hints_serialization_present() {
+        let tool = BuiltinTool {
+            name: "test".to_string(),
+            display_name: None,
+            description: "test".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default()
+                .with_readonly(true)
+                .with_idempotent(true),
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        assert!(json.contains("\"hints\""));
+        assert!(json.contains("\"readonly\":true"));
+        assert!(json.contains("\"idempotent\":true"));
+        // Unset hints should not appear
+        assert!(!json.contains("destructive"));
+        assert!(!json.contains("open_world"));
+    }
+
+    #[test]
+    fn test_tool_hints_deserialization_missing() {
+        let json = r#"{
+            "type": "builtin",
+            "name": "test",
+            "description": "test",
+            "parameters": {}
+        }"#;
+        let tool: ToolDefinition = serde_json::from_str(json).unwrap();
+        assert!(tool.hints().is_empty());
+    }
+
+    #[test]
+    fn test_tool_hints_deserialization_present() {
+        let json = r#"{
+            "type": "builtin",
+            "name": "test",
+            "description": "test",
+            "parameters": {},
+            "hints": {"readonly": true, "open_world": true, "requires_secrets": true}
+        }"#;
+        let tool: ToolDefinition = serde_json::from_str(json).unwrap();
+        let hints = tool.hints();
+        assert_eq!(hints.readonly, Some(true));
+        assert_eq!(hints.open_world, Some(true));
+        assert_eq!(hints.requires_secrets, Some(true));
+        assert_eq!(hints.destructive, None);
+        assert_eq!(hints.idempotent, None);
+        assert_eq!(hints.long_running, None);
+    }
+
+    #[test]
+    fn test_tool_definition_with_hints_builder() {
+        let tool = ToolDefinition::Builtin(BuiltinTool {
+            name: "test".to_string(),
+            display_name: None,
+            description: "test".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
+        })
+        .with_hints(ToolHints::default().with_readonly(true));
+
+        assert_eq!(tool.hints().readonly, Some(true));
     }
 }

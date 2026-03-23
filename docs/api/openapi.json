@@ -4905,6 +4905,10 @@
             ],
             "description": "Human-readable display name for UI rendering (e.g., \"Get Current Time\" for `get_current_time`)"
           },
+          "hints": {
+            "$ref": "#/components/schemas/ToolHints",
+            "description": "Semantic hints describing the tool's behavioral properties"
+          },
           "name": {
             "type": "string",
             "description": "Tool name (used by LLM and for registry lookup)"
@@ -5057,6 +5061,10 @@
               "null"
             ],
             "description": "Human-readable display name for UI rendering"
+          },
+          "hints": {
+            "$ref": "#/components/schemas/ToolHints",
+            "description": "Semantic hints describing the tool's behavioral properties"
           },
           "name": {
             "type": "string",
@@ -9097,6 +9105,36 @@
           "http"
         ]
       },
+      "McpToolAnnotations": {
+        "type": "object",
+        "description": "MCP tool annotations as defined by the MCP specification.\nAll fields are optional booleans following the MCP convention.",
+        "properties": {
+          "destructiveHint": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "idempotentHint": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "openWorldHint": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "readOnlyHint": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
       "Message": {
         "type": "object",
         "description": "A message in the conversation",
@@ -11427,6 +11465,54 @@
           "name": {
             "type": "string",
             "description": "Tool name"
+          }
+        }
+      },
+      "ToolHints": {
+        "type": "object",
+        "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
+        "properties": {
+          "destructive": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Tool may irreversibly destroy or delete data.\nSubset of non-readonly — a tool can be non-readonly (writes) without\nbeing destructive (e.g., create/update operations)."
+          },
+          "idempotent": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Calling the tool repeatedly with the same arguments produces the same\neffect. Safe to retry on transient failures."
+          },
+          "long_running": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Tool may take significant time to complete (> ~5s typical).\nUseful for clients to show progress indicators and set timeouts."
+          },
+          "open_world": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Tool interacts with external entities beyond the local system\n(network calls, third-party APIs, cloud services)."
+          },
+          "readonly": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Tool does not modify any state (read-only queries, lookups).\nWhen true: safe to call speculatively, result can be cached."
+          },
+          "requires_secrets": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Tool requires API keys, credentials, or other secrets to function.\nUseful for UI to show connection prompts and for LLMs to anticipate\nauthentication failures."
           }
         }
       },

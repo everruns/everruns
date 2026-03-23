@@ -6,6 +6,7 @@
 use super::{Capability, CapabilityStatus};
 use crate::message::{ContentPart, Message, MessageRole};
 use crate::message_filter::{ExcludedNoticeTransform, MessageFilterProvider, MessageQuery};
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -184,6 +185,12 @@ impl Tool for QueryHistoryTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

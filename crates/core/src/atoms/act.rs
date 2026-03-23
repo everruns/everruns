@@ -983,6 +983,7 @@ mod tests {
             policy: Default::default(),
             category: None,
             deferrable: Default::default(),
+            hints: crate::tool_types::ToolHints::default(),
         })
     }
 

@@ -7,6 +7,7 @@
 
 use super::{Capability, CapabilityStatus};
 use crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION;
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -222,6 +223,10 @@ impl Tool for CancelScheduleTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_destructive(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "cancel_schedule requires context. This tool must be executed with session context.",
@@ -289,6 +294,12 @@ impl Tool for ListSchedulesTool {
             "properties": {},
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

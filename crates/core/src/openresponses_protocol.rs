@@ -2699,6 +2699,7 @@ mod tests {
             policy: crate::tool_types::ToolPolicy::Auto,
             category: category.map(|s| s.to_string()),
             deferrable,
+            hints: crate::tool_types::ToolHints::default(),
         })
     }
 

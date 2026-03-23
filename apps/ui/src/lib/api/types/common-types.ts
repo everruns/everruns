@@ -28,6 +28,26 @@ export interface InitialFile {
 
 export type ToolPolicy = "auto" | "requires_approval";
 
+/**
+ * Semantic hints describing a tool's behavioral properties.
+ * All fields are optional — undefined means "unspecified".
+ * Follows MCP tool annotations convention plus everruns-specific hints.
+ */
+export interface ToolHints {
+  /** Tool does not modify any state (read-only queries, lookups) */
+  readonly?: boolean;
+  /** Tool may irreversibly destroy or delete data */
+  destructive?: boolean;
+  /** Same args produce same effect; safe to retry */
+  idempotent?: boolean;
+  /** Interacts with external entities (network, APIs, cloud services) */
+  open_world?: boolean;
+  /** Needs API keys or credentials to function */
+  requires_secrets?: boolean;
+  /** May take significant time to complete (> ~5s typical) */
+  long_running?: boolean;
+}
+
 /** Tool definition - builtin tool configuration */
 export interface BuiltinTool {
   type: "builtin";
@@ -41,6 +61,8 @@ export interface BuiltinTool {
   parameters: Record<string, unknown>;
   /** Tool policy (auto or requires_approval) */
   policy?: ToolPolicy;
+  /** Semantic hints describing the tool's behavioral properties */
+  hints?: ToolHints;
 }
 
 /** Tool definition - client-side tool executed by the caller */
@@ -54,6 +76,8 @@ export interface ClientSideTool {
   description: string;
   /** JSON schema for tool parameters */
   parameters: Record<string, unknown>;
+  /** Semantic hints describing the tool's behavioral properties */
+  hints?: ToolHints;
 }
 
 /** Tool definition - builtin or client-side */

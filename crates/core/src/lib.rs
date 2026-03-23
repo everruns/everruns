@@ -202,7 +202,8 @@ pub use atoms::{
 
 // Tool types (runtime types defined in this crate)
 pub use tool_types::{
-    BuiltinTool, ClientSideTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy, ToolResult,
+    BuiltinTool, ClientSideTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy,
+    ToolResult,
 };
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module
@@ -242,10 +243,10 @@ pub use llm_models::{
 };
 pub use mcp_server::{
     McpContent, McpError, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
-    McpToolCallParams, McpToolCallRequest, McpToolCallResponse, McpToolCallResult,
-    McpToolDefinition, McpToolsListRequest, McpToolsListResponse, McpToolsListResult, is_mcp_tool,
-    mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
-    parse_mcp_tool_name,
+    McpToolAnnotations, McpToolCallParams, McpToolCallRequest, McpToolCallResponse,
+    McpToolCallResult, McpToolDefinition, McpToolsListRequest, McpToolsListResponse,
+    McpToolsListResult, is_mcp_tool, mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name,
+    mcp_tool_name, parse_mcp_tool_name,
 };
 pub use organization::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,

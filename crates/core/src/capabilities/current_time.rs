@@ -1,6 +1,7 @@
 //! CurrentTime Capability - provides tools to get current date and time
 
 use super::{Capability, CapabilityStatus};
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -75,6 +76,12 @@ impl Tool for GetCurrentTimeTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {

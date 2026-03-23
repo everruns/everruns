@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy, ToolResultImage,
+    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResultImage,
 };
 use everruns_core::{
     GetCurrentTimeTool, Message, MessageRetriever, MessageRole, SessionId,
@@ -45,6 +45,7 @@ async fn test_tool_registry_as_executor() {
         policy: ToolPolicy::Auto,
         category: None,
         deferrable: DeferrablePolicy::default(),
+        hints: ToolHints::default(),
     });
 
     // Execute via ToolExecutor trait
@@ -72,6 +73,7 @@ async fn test_get_current_time_tool() {
         policy: ToolPolicy::Auto,
         category: None,
         deferrable: DeferrablePolicy::default(),
+        hints: ToolHints::default(),
     });
 
     let result = registry.execute(&tool_call, &tool_def).await.unwrap();
@@ -103,6 +105,7 @@ async fn test_tool_error_handling() {
         policy: ToolPolicy::Auto,
         category: None,
         deferrable: DeferrablePolicy::default(),
+        hints: ToolHints::default(),
     });
 
     // Execute and verify error is packaged as {"error": "..."} in result field
@@ -136,6 +139,7 @@ async fn test_internal_error_is_hidden() {
         policy: ToolPolicy::Auto,
         category: None,
         deferrable: DeferrablePolicy::default(),
+        hints: ToolHints::default(),
     });
 
     // Execute and verify internal error is hidden (packaged as {"error": "..."} with generic message)
@@ -167,6 +171,7 @@ async fn test_tool_not_found_error() {
         policy: ToolPolicy::Auto,
         category: None,
         deferrable: DeferrablePolicy::default(),
+        hints: ToolHints::default(),
     });
 
     // Should return error for tool not found
@@ -234,6 +239,7 @@ async fn test_custom_tool_execution() {
         policy: ToolPolicy::Auto,
         category: None,
         deferrable: DeferrablePolicy::default(),
+        hints: ToolHints::default(),
     });
 
     // Execute multiple times
@@ -275,6 +281,7 @@ async fn test_multiple_tools_in_registry() {
         policy: ToolPolicy::Auto,
         category: None,
         deferrable: DeferrablePolicy::default(),
+        hints: ToolHints::default(),
     });
 
     let time_result = registry.execute(&time_call, &time_def).await.unwrap();
@@ -296,6 +303,7 @@ async fn test_multiple_tools_in_registry() {
         policy: ToolPolicy::Auto,
         category: None,
         deferrable: DeferrablePolicy::default(),
+        hints: ToolHints::default(),
     });
 
     let echo_result = registry.execute(&echo_call, &echo_def).await.unwrap();

@@ -1,6 +1,7 @@
 //! TestWeather Capability - mock weather tools for testing tool calling
 
 use super::{Capability, CapabilityStatus};
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -76,6 +77,13 @@ impl Tool for GetWeatherTool {
             "required": ["location"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+            .with_open_world(true)
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
@@ -165,6 +173,13 @@ impl Tool for GetForecastTool {
             "required": ["location"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+            .with_open_world(true)
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {

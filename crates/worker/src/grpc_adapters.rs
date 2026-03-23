@@ -1281,6 +1281,9 @@ fn proto_mcp_tool_def_to_tool_definition(
         policy: ToolPolicy::Auto, // MCP tools are auto-executed
         category: None,
         deferrable: DeferrablePolicy::default(),
+        // MCP tools are remote/networked; default open_world to true.
+        // Full annotation propagation requires extending the internal proto.
+        hints: everruns_core::tool_types::ToolHints::default().with_open_world(true),
     })
 }
 

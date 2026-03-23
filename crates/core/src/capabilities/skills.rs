@@ -14,7 +14,7 @@
 // mounts skill files into the VFS so this capability discovers them.
 
 use super::{Capability, CapabilityStatus, SystemPromptContext};
-use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolPolicy};
+use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -206,6 +206,9 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                 policy: ToolPolicy::Auto,
                 category: None,
                 deferrable: DeferrablePolicy::default(),
+                hints: ToolHints::default()
+                    .with_readonly(true)
+                    .with_idempotent(true),
             }),
             ToolDefinition::Builtin(BuiltinTool {
                 name: "activate_skill".to_string(),
@@ -231,6 +234,9 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                 policy: ToolPolicy::Auto,
                 category: None,
                 deferrable: DeferrablePolicy::default(),
+                hints: ToolHints::default()
+                    .with_readonly(true)
+                    .with_idempotent(true),
             }),
         ]
     }
@@ -268,6 +274,12 @@ impl Tool for ListSkillsTool {
             "properties": {},
             "required": []
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     fn requires_context(&self) -> bool {
@@ -390,6 +402,12 @@ impl Tool for ActivateSkillFromVfsTool {
             },
             "required": ["name"]
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     fn requires_context(&self) -> bool {

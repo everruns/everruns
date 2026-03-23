@@ -15,6 +15,7 @@
 
 use super::{Capability, CapabilityStatus};
 use crate::session_file::SessionFile;
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileStore, ToolContext};
 use crate::typed_id::SessionId;
@@ -162,6 +163,12 @@ impl Tool for BashTool {
             "required": ["command"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_long_running(true)
+            .with_open_world(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

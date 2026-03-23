@@ -1,6 +1,7 @@
 //! Tool implementations for E2B sandboxes.
 
 use async_trait::async_trait;
+use everruns_core::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use serde_json::{Value, json};
@@ -86,6 +87,13 @@ impl Tool for E2BCreateSandboxTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -239,6 +247,13 @@ impl Tool for E2BExecTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "e2b_exec requires context. This tool must be executed with session context.",
@@ -324,6 +339,13 @@ impl Tool for E2BReadFileTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "e2b_read_file requires context. This tool must be executed with session context.",
@@ -390,6 +412,12 @@ impl Tool for E2BWriteFileTool {
             "required": ["sandbox_id", "path", "content"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -459,6 +487,14 @@ impl Tool for E2BListSandboxesTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "e2b_list_sandboxes requires context. This tool must be executed with session context.",
@@ -513,6 +549,13 @@ impl Tool for E2BManageSandboxTool {
             "required": ["sandbox_id", "action"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_destructive(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

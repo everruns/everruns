@@ -2952,6 +2952,7 @@ mod contract_tests {
             policy: ToolPolicy::Auto,
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: crate::tool_types::ToolHints::default(),
         })];
 
         let data = ActStartedData::with_definitions(&tool_calls, &tool_defs);
@@ -3010,6 +3011,7 @@ mod contract_tests {
             policy: ToolPolicy::Auto,
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: crate::tool_types::ToolHints::default(),
         });
 
         let summary = ToolDefinitionSummary::from(&def);

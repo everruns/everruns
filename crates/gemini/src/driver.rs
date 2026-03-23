@@ -1051,6 +1051,7 @@ mod tests {
             policy: ToolPolicy::Auto,
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: everruns_core::tool_types::ToolHints::default(),
         })];
 
         let gemini_tools = GeminiLlmDriver::convert_tools(&tools);
@@ -1079,6 +1080,7 @@ mod tests {
             policy: ToolPolicy::Auto,
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: everruns_core::tool_types::ToolHints::default(),
         })];
 
         let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();
