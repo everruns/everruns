@@ -145,6 +145,9 @@ notify = { version = "8.2", default-features = false, features = ["macos_kqueue"
 notify-debouncer-mini = { version = "0.7", default-features = false }
 ignore = "0.4"
 
+# TLS
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+
 # Plugin system for external integrations
 inventory = "0.3"
 

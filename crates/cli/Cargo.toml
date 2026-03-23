@@ -20,6 +20,9 @@ everruns-sdk.workspace = true
 # HTTP client (for endpoints not yet in SDK)
 reqwest.workspace = true
 
+# TLS crypto provider
+rustls.workspace = true
+
 # Async runtime
 tokio.workspace = true
 futures.workspace = true

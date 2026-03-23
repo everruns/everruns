@@ -275,6 +275,12 @@ impl Drop for TelemetryGuard {
 /// }
 /// ```
 pub fn init_telemetry(config: TelemetryConfig) -> TelemetryGuard {
+    // Install the rustls crypto provider before any TLS usage.
+    // Without this, concurrent TLS connections (e.g. parallel tool execution)
+    // panic because rustls 0.23 cannot auto-detect the provider from features
+    // when multiple threads race to initialize it.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     // Build resource with service info
     let mut resource_attrs = vec![KeyValue::new("service.name", config.service_name.clone())];
 
