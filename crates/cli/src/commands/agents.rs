@@ -299,7 +299,9 @@ fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
 
     let walker = ignore::WalkBuilder::new(&base)
         .hidden(true) // respect hidden files filter
-        .git_ignore(true) // respect .gitignore
+        .git_ignore(true) // respect .gitignore (repo-local)
+        .git_global(false) // ignore global gitignore for predictable behavior
+        .git_exclude(false) // ignore repo exclude files for predictable behavior
         .build();
 
     let mut files = Vec::new();
@@ -310,7 +312,18 @@ fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
             continue;
         }
 
-        let rel = path
+        // Canonicalize each file to prevent symlink escapes outside the base dir
+        let canonical = std::fs::canonicalize(path)
+            .with_context(|| format!("Cannot resolve file: {}", path.display()))?;
+        if !canonical.starts_with(&base) {
+            eprintln!(
+                "Warning: skipping symlink outside base directory: {}",
+                path.display()
+            );
+            continue;
+        }
+
+        let rel = canonical
             .strip_prefix(&base)
             .context("File outside base directory")?;
 
@@ -322,7 +335,9 @@ fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
         {
             continue;
         }
-        let workspace_path = format!("/workspace/{}", rel.display());
+        // Normalize path separators to POSIX-style for workspace paths
+        let rel_normalized = rel.to_string_lossy().replace('\\', "/");
+        let workspace_path = format!("/workspace/{}", rel_normalized);
 
         // Read as text; skip binary files
         match std::fs::read_to_string(path) {
@@ -357,25 +372,48 @@ fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
 fn parse_agent_file_as_json(content: &str) -> Result<serde_json::Value> {
     let content = content.trim();
 
-    // Markdown with front matter
-    if let Some(after_prefix) = content.strip_prefix("---")
-        && let Some(end) = after_prefix.find("---")
+    // Markdown with front matter: require `---` delimiters on their own lines
     {
-        let frontmatter = after_prefix[..end].trim();
-        let body = after_prefix[end + 3..].trim();
-
-        let mut obj: serde_json::Value =
-            serde_yaml::from_str(frontmatter).context("Failed to parse YAML frontmatter")?;
-
-        // If there's a markdown body and no system_prompt in frontmatter, use it
-        if !body.is_empty()
-            && (obj.get("system_prompt").is_none()
-                || obj["system_prompt"].as_str().is_none_or(|s| s.is_empty()))
+        let mut lines = content.lines();
+        if let Some(first) = lines.next()
+            && first.trim() == "---"
         {
-            obj["system_prompt"] = serde_json::Value::String(body.to_string());
-        }
+            let mut frontmatter_lines = Vec::new();
+            let mut found_end = false;
 
-        return Ok(obj);
+            for line in &mut lines {
+                if line.trim() == "---" {
+                    found_end = true;
+                    break;
+                }
+                frontmatter_lines.push(line);
+            }
+
+            if found_end {
+                let frontmatter = frontmatter_lines.join("\n");
+                let body: String = lines.collect::<Vec<_>>().join("\n");
+                let body = body.trim();
+
+                let mut obj: serde_json::Value = serde_yaml::from_str(&frontmatter)
+                    .context("Failed to parse YAML frontmatter")?;
+
+                if !obj.is_object() {
+                    anyhow::bail!(
+                        "Agent file frontmatter must be a YAML mapping, not a scalar or array"
+                    );
+                }
+
+                // If there's a markdown body and no system_prompt in frontmatter, use it
+                if !body.is_empty()
+                    && (obj.get("system_prompt").is_none()
+                        || obj["system_prompt"].as_str().is_none_or(|s| s.is_empty()))
+                {
+                    obj["system_prompt"] = serde_json::Value::String(body.to_string());
+                }
+
+                return Ok(obj);
+            }
+        }
     }
 
     // JSON
@@ -384,7 +422,11 @@ fn parse_agent_file_as_json(content: &str) -> Result<serde_json::Value> {
     }
 
     // YAML
-    serde_yaml::from_str(content).context("Failed to parse YAML")
+    let val: serde_json::Value = serde_yaml::from_str(content).context("Failed to parse YAML")?;
+    if !val.is_object() {
+        anyhow::bail!("Agent file must be a YAML/JSON object");
+    }
+    Ok(val)
 }
 
 /// Create agent from CLI flags using SDK
@@ -637,5 +679,28 @@ mod tests {
         let result = glob_initial_files(file_path.to_str().unwrap());
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Not a directory"));
+    }
+
+    #[test]
+    fn test_glob_initial_files_skips_symlinks_outside_base() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "secret").unwrap();
+        // Create a symlink pointing outside the base directory
+        std::os::unix::fs::symlink(
+            outside.path().join("secret.txt"),
+            dir.path().join("link.txt"),
+        )
+        .unwrap();
+        // Should error because only file is the symlink (skipped)
+        let result = glob_initial_files(dir.path().to_str().unwrap());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_agent_file_non_object_errors() {
+        let content = "just a string";
+        let result = parse_agent_file_as_json(content);
+        assert!(result.is_err());
     }
 }
