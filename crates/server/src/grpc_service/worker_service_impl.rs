@@ -3003,6 +3003,12 @@ impl WorkerService for WorkerServiceImpl {
             None
         };
 
+        // Parse blueprint config from JSON string if present
+        let blueprint_config: Option<serde_json::Value> = req
+            .blueprint_config_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok());
+
         let create_req = crate::api::sessions::CreateSessionRequest {
             harness_id: Some(everruns_core::HarnessId::from_uuid(harness_id)),
             agent_id: agent_public_id,
@@ -3016,17 +3022,29 @@ impl WorkerService for WorkerServiceImpl {
             hints: None,
         };
 
-        let session = self
-            .session_service
-            .create(
-                &internal_caller,
-                harness_id,
-                agent_uuid,
-                create_req.agent_id,
-                create_req,
-            )
-            .await
-            .map_err(|e| Status::internal(format!("Failed to create session: {}", e)))?;
+        let session = if let Some(blueprint_id) = req.blueprint_id {
+            self.session_service
+                .create_blueprint_session(
+                    &internal_caller,
+                    harness_id,
+                    blueprint_id,
+                    blueprint_config,
+                    create_req,
+                )
+                .await
+                .map_err(|e| Status::internal(format!("Failed to create session: {}", e)))?
+        } else {
+            self.session_service
+                .create(
+                    &internal_caller,
+                    harness_id,
+                    agent_uuid,
+                    create_req.agent_id,
+                    create_req,
+                )
+                .await
+                .map_err(|e| Status::internal(format!("Failed to create session: {}", e)))?
+        };
 
         Ok(Response::new(PlatformCreateSessionResponse {
             session: Some(schema_session_to_proto(&session)),

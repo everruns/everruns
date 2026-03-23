@@ -71,6 +71,10 @@ pub struct ActInput {
     /// Resolved locale for backend-authored tool narration and labels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
+    /// Blueprint ID for blueprint-backed sessions. When set, act_activity
+    /// loads tools from the blueprint instead of from agent/harness capabilities.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blueprint_id: Option<String>,
 }
 
 /// Result of a single tool call execution
@@ -165,6 +169,8 @@ where
     platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
     /// Optional leased resource store for provider lease tracking
     leased_resource_store: Option<Arc<dyn crate::traits::LeasedResourceStore>>,
+    /// Optional capability registry for blueprint lookups in subagent tools
+    capability_registry: Option<crate::capabilities::CapabilityRegistry>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -190,6 +196,7 @@ where
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            capability_registry: None,
             hooks: Self::default_hooks(),
         }
     }
@@ -213,6 +220,7 @@ where
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            capability_registry: None,
             hooks: Self::default_hooks(),
         }
     }
@@ -298,6 +306,14 @@ where
         store: Arc<dyn crate::traits::LeasedResourceStore>,
     ) -> Self {
         self.leased_resource_store = Some(store);
+        self
+    }
+
+    pub fn with_capability_registry(
+        mut self,
+        registry: crate::capabilities::CapabilityRegistry,
+    ) -> Self {
+        self.capability_registry = Some(registry);
         self
     }
 }
@@ -711,6 +727,9 @@ where
         if let Some(ref store) = self.leased_resource_store {
             tool_context.leased_resource_store = Some(store.clone());
         }
+        if let Some(ref registry) = self.capability_registry {
+            tool_context.capability_registry = Some(registry.clone());
+        }
         // Provide event emitter + context so tools can emit tool.progress events
         tool_context.event_emitter = Some(self.event_emitter.clone() as Arc<dyn EventEmitter>);
         tool_context.event_context = Some(event_context.clone());
@@ -900,6 +919,7 @@ mod tests {
             tool_calls: vec![],
             tool_definitions: vec![],
             locale: None,
+            blueprint_id: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -929,6 +949,7 @@ mod tests {
             }],
             tool_definitions: vec![],
             locale: None,
+            blueprint_id: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -994,6 +1015,7 @@ mod tests {
             }],
             tool_definitions: vec![manage_harnesses_tool_def()],
             locale: None,
+            blueprint_id: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1038,6 +1060,7 @@ mod tests {
             }],
             tool_definitions: vec![manage_harnesses_tool_def()],
             locale: None,
+            blueprint_id: None,
         };
 
         let result = atom.execute(input).await.unwrap();

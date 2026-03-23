@@ -72,6 +72,8 @@ async fn test_create_and_list_sessions() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();
@@ -121,6 +123,8 @@ async fn test_session_updated_at() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();
@@ -185,6 +189,8 @@ async fn test_events_sequence() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();
@@ -246,6 +252,8 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();
@@ -722,6 +730,8 @@ async fn test_list_events_empty_session_with_limit() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();
@@ -769,6 +779,8 @@ async fn test_sessions_pagination() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();
@@ -855,6 +867,8 @@ async fn test_sessions_pagination_ordering() {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();
@@ -1390,6 +1404,8 @@ async fn test_search_sessions_by_title() {
         capabilities: serde_json::json!([]),
         tools: serde_json::json!([]),
         hints: None,
+        blueprint_id: None,
+        blueprint_config: None,
     })
     .await
     .unwrap();
@@ -1406,6 +1422,8 @@ async fn test_search_sessions_by_title() {
         capabilities: serde_json::json!([]),
         tools: serde_json::json!([]),
         hints: None,
+        blueprint_id: None,
+        blueprint_config: None,
     })
     .await
     .unwrap();
@@ -1438,6 +1456,8 @@ async fn test_search_sessions_with_agent_filter() {
         capabilities: serde_json::json!([]),
         tools: serde_json::json!([]),
         hints: None,
+        blueprint_id: None,
+        blueprint_config: None,
     })
     .await
     .unwrap();
@@ -1454,6 +1474,8 @@ async fn test_search_sessions_with_agent_filter() {
         capabilities: serde_json::json!([]),
         tools: serde_json::json!([]),
         hints: None,
+        blueprint_id: None,
+        blueprint_config: None,
     })
     .await
     .unwrap();
@@ -1659,6 +1681,8 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();
@@ -1812,6 +1836,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             capabilities: serde_json::json!({}),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();
@@ -1828,6 +1854,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             capabilities: serde_json::json!({}),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();
@@ -1844,6 +1872,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             capabilities: serde_json::json!({}),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         })
         .await
         .unwrap();

@@ -253,6 +253,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 subagent_name: None,
                 subagent_task: None,
                 subagent_status: None,
+                blueprint_id: r.blueprint_id,
+                blueprint_config: r.blueprint_config,
             }
         }))
     }
@@ -1362,6 +1364,8 @@ impl DirectPlatformStore {
             subagent_name: None,
             subagent_task: None,
             subagent_status: None,
+            blueprint_id: row.blueprint_id,
+            blueprint_config: row.blueprint_config,
         }
     }
 }
@@ -1704,6 +1708,8 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         agent_id: Option<AgentId>,
         title: Option<&str>,
         locale: Option<&str>,
+        blueprint_id: Option<&str>,
+        blueprint_config: Option<&serde_json::Value>,
     ) -> everruns_core::error::Result<Session> {
         use crate::storage::models::CreateSessionRow;
 
@@ -1718,7 +1724,10 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
                 "Archived or deleted harnesses cannot be assigned",
             ));
         }
-        if let Some(agent_id) = agent_id {
+        // Skip agent validation for blueprint sessions (agent_id may be None)
+        if blueprint_id.is_none()
+            && let Some(agent_id) = agent_id
+        {
             let agent = self
                 .db
                 .get_agent(self.org_id, agent_id)
@@ -1742,6 +1751,8 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             capabilities: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
             hints: None,
+            blueprint_id: blueprint_id.map(|s| s.to_string()),
+            blueprint_config: blueprint_config.cloned(),
         };
         let row = self
             .db
@@ -2749,6 +2760,8 @@ mod tests {
                 capabilities: serde_json::Value::Array(vec![]),
                 tools: serde_json::Value::Array(vec![]),
                 hints: None,
+                blueprint_id: None,
+                blueprint_config: None,
             })
             .await
             .expect("create session");

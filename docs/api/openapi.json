@@ -9586,6 +9586,16 @@
                   "description": "Optional resident agent identity for unattended/background execution.",
                   "example": "identity_01933b5a00007000800000000000001"
                 },
+                "blueprint_config": {
+                  "description": "Validated config passed by host at blueprint spawn time."
+                },
+                "blueprint_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id."
+                },
                 "capabilities": {
                   "type": "array",
                   "items": {
@@ -10406,6 +10416,16 @@
             ],
             "description": "Optional resident agent identity for unattended/background execution.",
             "example": "identity_01933b5a00007000800000000000001"
+          },
+          "blueprint_config": {
+            "description": "Validated config passed by host at blueprint spawn time."
+          },
+          "blueprint_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id."
           },
           "capabilities": {
             "type": "array",

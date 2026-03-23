@@ -530,6 +530,8 @@ pub struct ToolContext {
     /// The tool call ID for the current execution (set by ActAtom).
     /// Used by tools to emit correlated progress events.
     pub tool_call_id: Option<String>,
+    /// Optional capability registry for blueprint lookups.
+    pub capability_registry: Option<crate::capabilities::CapabilityRegistry>,
 }
 
 impl ToolContext {
@@ -551,6 +553,7 @@ impl ToolContext {
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
+            capability_registry: None,
         }
     }
 
@@ -572,6 +575,7 @@ impl ToolContext {
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
+            capability_registry: None,
         }
     }
 
@@ -596,6 +600,7 @@ impl ToolContext {
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
+            capability_registry: None,
         }
     }
 
@@ -621,6 +626,7 @@ impl ToolContext {
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
+            capability_registry: None,
         }
     }
 

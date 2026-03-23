@@ -588,9 +588,7 @@ impl ReasonAtom {
             )
             .await?;
 
-        // 6. Build runtime agent: harness (base) → agent (optional) → session caps
-        //    Uses async builder methods so capabilities can resolve dynamic system
-        //    prompt content (e.g., reading AGENTS.md, discovering skills).
+        // 6. Build runtime agent
         let resolved_locale = extract_locale_override(&messages).or_else(|| session.locale.clone());
         let prompt_ctx = crate::capabilities::SystemPromptContext {
             session_id,
@@ -598,31 +596,71 @@ impl ReasonAtom {
             file_store: self.file_store.clone(),
         };
 
-        let mut builder = RuntimeAgentBuilder::new()
-            .with_harness(&harness, &self.capability_registry, &prompt_ctx)
-            .await;
-        if let Some(ref agent) = agent {
-            builder = builder
-                .with_agent(agent, &self.capability_registry, &prompt_ctx)
+        let mut runtime_agent = if let Some(ref blueprint_id) = session.blueprint_id {
+            // Blueprint path: build RuntimeAgent from blueprint definition
+            let blueprint = self
+                .capability_registry
+                .blueprint(blueprint_id)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Unknown blueprint: \"{blueprint_id}\". Session has blueprint_id set but blueprint not found in registry.")
+                })?;
+
+            let blueprint_model = match &blueprint.model {
+                crate::capabilities::BlueprintModel::Fixed(m) => m.clone(),
+                crate::capabilities::BlueprintModel::Default(m) => {
+                    // Allow config to override model
+                    session
+                        .blueprint_config
+                        .as_ref()
+                        .and_then(|c| c.get("model"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| m.clone())
+                }
+                crate::capabilities::BlueprintModel::Inherit => model_with_provider.model.clone(),
+            };
+
+            let mut prompt = blueprint.system_prompt.to_string();
+            if let Some(ref config) = session.blueprint_config {
+                prompt.push_str(&format!("\n\n<config>\n{}\n</config>", config));
+            }
+
+            RuntimeAgentBuilder::new()
+                .system_prompt(&prompt)
+                .tools(blueprint.tool_definitions())
+                .model(&blueprint_model)
+                .max_iterations(blueprint.max_turns.unwrap_or(20))
+                .with_locale(prompt_ctx.locale.as_deref())
+                .build()
+        } else {
+            // Standard path: harness (base) → agent (optional) → session caps
+            let mut builder = RuntimeAgentBuilder::new()
+                .with_harness(&harness, &self.capability_registry, &prompt_ctx)
                 .await;
-        }
-        builder = builder
-            .with_capability_configs(
-                &session.capabilities,
-                &self.capability_registry,
-                &prompt_ctx,
-            )
-            .await
-            .with_locale(prompt_ctx.locale.as_deref())
-            .tools(mcp_tool_definitions.iter().cloned())
-            .model(&model_with_provider.model);
+            if let Some(ref agent) = agent {
+                builder = builder
+                    .with_agent(agent, &self.capability_registry, &prompt_ctx)
+                    .await;
+            }
+            builder = builder
+                .with_capability_configs(
+                    &session.capabilities,
+                    &self.capability_registry,
+                    &prompt_ctx,
+                )
+                .await
+                .with_locale(prompt_ctx.locale.as_deref())
+                .tools(mcp_tool_definitions.iter().cloned())
+                .model(&model_with_provider.model);
 
-        // Add session-level client-side tools (additive to agent tools)
-        if !session.tools.is_empty() {
-            builder = builder.tools(session.tools.clone());
-        }
+            // Add session-level client-side tools (additive to agent tools)
+            if !session.tools.is_empty() {
+                builder = builder.tools(session.tools.clone());
+            }
 
-        let mut runtime_agent = builder.build();
+            builder.build()
+        };
+
         if crate::progress_reporting::session_uses_report_progress(&session.tags) {
             runtime_agent = crate::progress_reporting::apply_report_progress_mode(runtime_agent);
         }

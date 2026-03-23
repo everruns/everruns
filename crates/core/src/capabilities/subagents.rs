@@ -5,6 +5,10 @@
 // - get_subagents lists/details child sessions by querying parent_session_id
 // - message_subagent sends steering messages (by name or id)
 //
+// Blueprint support: spawn_subagent accepts optional `blueprint` and `config`
+// params. When blueprint is set, the child session uses the blueprint's
+// RuntimeAgent (own prompt, tools, model) instead of inheriting parent's.
+//
 // Foreground mode: blocks until subagent completes (send_message + wait_for_idle)
 // Background mode: returns immediately (deferred to Phase 1b)
 //
@@ -67,7 +71,8 @@ const SUBAGENT_SYSTEM_PROMPT: &str = r#"Delegate tasks to subagents running in t
 
 - Move noisy/verbose work off the main conversation (test runs, large searches).
 - Run independent tasks in parallel (multiple spawn_subagent calls in one response).
-- Subagents cannot spawn other subagents (no nesting)."#;
+- Subagents cannot spawn other subagents (no nesting).
+- Use `blueprint` parameter to spawn specialist agents with their own tools and model."#;
 
 // =============================================================================
 // Helper: get platform store from context
@@ -148,7 +153,7 @@ impl Tool for SpawnSubagentTool {
     }
 
     fn description(&self) -> &str {
-        "Spawn a named subagent to handle a specific task in its own context window."
+        "Spawn a named subagent to handle a specific task in its own context window. Use `blueprint` to spawn a specialist agent with its own tools and model."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -162,6 +167,14 @@ impl Tool for SpawnSubagentTool {
                 "task": {
                     "type": "string",
                     "description": "Task description — what the subagent should do."
+                },
+                "blueprint": {
+                    "type": "string",
+                    "description": "Blueprint ID to spawn a specialist agent with its own tools and model. Omit to inherit parent's configuration."
+                },
+                "config": {
+                    "type": "object",
+                    "description": "Blueprint-specific configuration. Only valid when `blueprint` is set. Validated against the blueprint's config schema."
                 }
             },
             "required": ["name", "task"],
@@ -198,6 +211,48 @@ impl Tool for SpawnSubagentTool {
             Err(e) => return e,
         };
 
+        let blueprint_param = arguments
+            .get("blueprint")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.to_string());
+        let config_param = arguments.get("config").filter(|v| !v.is_null()).cloned();
+
+        // Reject config without blueprint
+        if config_param.is_some() && blueprint_param.is_none() {
+            return ToolExecutionResult::tool_error(
+                "The `config` parameter is only valid when `blueprint` is set.",
+            );
+        }
+
+        // Validate blueprint exists if specified
+        if let Some(ref bp_id) = blueprint_param {
+            if let Some(ref registry) = context.capability_registry {
+                if registry.blueprint(bp_id).is_none() {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Unknown blueprint: \"{bp_id}\". Check available blueprints."
+                    ));
+                }
+                // Validate config against schema if blueprint has one
+                if let Some(blueprint) = registry.blueprint(bp_id)
+                    && let Some(ref schema) = blueprint.config_schema
+                    && config_param.is_none()
+                    && schema
+                        .get("required")
+                        .is_some_and(|r| r.as_array().is_some_and(|arr| !arr.is_empty()))
+                {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Blueprint \"{bp_id}\" requires config. Schema: {}",
+                        serde_json::to_string_pretty(schema).unwrap_or_default()
+                    ));
+                }
+            } else {
+                return ToolExecutionResult::tool_error(
+                    "Blueprint support requires capability_registry context.",
+                );
+            }
+        }
+
         // Nesting check: reject if current session is already a subagent
         let parent_session = match session_store.get_session(context.session_id).await {
             Ok(Some(s)) => s,
@@ -211,13 +266,19 @@ impl Tool for SpawnSubagentTool {
             );
         }
 
-        // Create child session using the same harness as parent
+        // Create child session
         let child_session = match store
             .create_session(
                 parent_session.harness_id,
-                parent_session.agent_id,
+                if blueprint_param.is_some() {
+                    None // Blueprint sessions don't inherit agent
+                } else {
+                    parent_session.agent_id
+                },
                 Some(&name),
                 parent_session.locale.as_deref(),
+                blueprint_param.as_deref(),
+                config_param.as_ref(),
             )
             .await
         {
@@ -239,6 +300,7 @@ impl Tool for SpawnSubagentTool {
                     "name": name,
                     "status": "failed",
                     "error": e.to_string(),
+                    "blueprint": blueprint_param,
                 }));
             }
         };
@@ -257,6 +319,7 @@ impl Tool for SpawnSubagentTool {
             "name": name,
             "status": status,
             "result": result_text,
+            "blueprint": blueprint_param,
         }))
     }
 
@@ -348,6 +411,7 @@ impl Tool for GetSubagentsTool {
                         "session_status": child.status.to_string(),
                         "created_at": child.created_at.to_rfc3339(),
                         "result": last_response,
+                        "blueprint_id": child.blueprint_id,
                     }))
                 }
                 None => ToolExecutionResult::tool_error(format!(
@@ -381,6 +445,7 @@ impl Tool for GetSubagentsTool {
                         "status": s.subagent_status.as_ref().map(|st| st.to_string())
                             .unwrap_or_else(|| s.status.to_string()),
                         "created_at": s.created_at.to_rfc3339(),
+                        "blueprint_id": s.blueprint_id,
                     })
                 })
                 .collect();
@@ -566,6 +631,19 @@ mod tests {
         let required = schema["required"].as_array().unwrap();
         assert!(required.contains(&json!("name")));
         assert!(required.contains(&json!("task")));
+    }
+
+    #[test]
+    fn spawn_subagent_schema_has_blueprint_fields() {
+        let tool = SpawnSubagentTool;
+        let schema = tool.parameters_schema();
+        let props = schema["properties"].as_object().unwrap();
+        assert!(props.contains_key("blueprint"));
+        assert!(props.contains_key("config"));
+        // blueprint and config should NOT be required
+        let required = schema["required"].as_array().unwrap();
+        assert!(!required.contains(&json!("blueprint")));
+        assert!(!required.contains(&json!("config")));
     }
 
     #[tokio::test]

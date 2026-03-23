@@ -167,6 +167,8 @@ impl SessionService {
             capabilities: capabilities_json,
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             hints: hints_json,
+            blueprint_id: None,
+            blueprint_config: None,
         };
         let row = self.db.create_session(input).await?;
         let mut session = Self::row_to_session(row, org_public_id);
@@ -195,6 +197,41 @@ impl SessionService {
         )
         .await?;
 
+        Ok(session)
+    }
+
+    /// Create a blueprint-backed session (used by gRPC platform create).
+    /// Skips agent validation since blueprint sessions don't inherit agent config.
+    pub async fn create_blueprint_session(
+        &self,
+        caller: &Caller,
+        harness_id: Uuid,
+        blueprint_id: String,
+        blueprint_config: Option<serde_json::Value>,
+        req: CreateSessionRequest,
+    ) -> Result<Session> {
+        let org_id = caller.org_id;
+        let org_public_id = &caller.org_public_id;
+        let harness_id = HarnessId::from_uuid(harness_id);
+
+        let input = CreateSessionRow {
+            org_id,
+            harness_id: Some(harness_id),
+            agent_id: None,
+            agent_identity_id: None,
+            title: req.title,
+            locale: req.locale,
+            tags: req.tags,
+            model_id: None,
+            capabilities: serde_json::Value::Array(vec![]),
+            tools: serde_json::Value::Array(vec![]),
+            hints: None,
+            blueprint_id: Some(blueprint_id),
+            blueprint_config,
+        };
+        let row = self.db.create_session(input).await?;
+        let mut session = Self::row_to_session(row, org_public_id);
+        self.populate_features(org_id, &mut session).await?;
         Ok(session)
     }
 
@@ -555,6 +592,8 @@ impl SessionService {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         };
         let row = self.db.create_session(input).await?;
         let session_id = row.id.uuid();
@@ -737,6 +776,8 @@ impl SessionService {
             subagent_status: row
                 .subagent_status
                 .map(|s| SubagentStatus::from(s.as_str())),
+            blueprint_id: row.blueprint_id,
+            blueprint_config: row.blueprint_config,
         }
     }
 
@@ -1275,6 +1316,8 @@ mod tests {
                 .unwrap(),
                 tools: serde_json::json!([]),
                 hints: None,
+                blueprint_id: None,
+                blueprint_config: None,
             })
             .await
             .unwrap();
@@ -1361,6 +1404,8 @@ mod tests {
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
                 hints: None,
+                blueprint_id: None,
+                blueprint_config: None,
             })
             .await
             .unwrap();

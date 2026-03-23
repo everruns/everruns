@@ -42,6 +42,8 @@ impl InMemoryDatabase {
             subagent_name: None,
             subagent_task: None,
             subagent_status: None,
+            blueprint_id: input.blueprint_id,
+            blueprint_config: input.blueprint_config,
         };
         self.sessions.write().insert(id, row.clone());
         Ok(row)

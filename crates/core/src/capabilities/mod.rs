@@ -27,6 +27,7 @@ use crate::tools::{Tool, ToolRegistry};
 use crate::traits::SessionFileStore;
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -176,6 +177,7 @@ pub use session_storage::{KvStoreTool, SecretStoreTool, SessionStorageCapability
 pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use subagents::SubagentCapability;
+// Blueprint types are exported directly from the trait definitions above
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
@@ -450,6 +452,17 @@ pub trait Capability: Send + Sync {
     fn commands(&self) -> Vec<CommandDescriptor> {
         vec![]
     }
+
+    /// Returns agent blueprints contributed by this capability.
+    ///
+    /// Blueprints are pre-built agent definitions with private tools, baked-in prompts,
+    /// and fixed/default models. They are spawned via `spawn_subagent(blueprint: "<id>")`.
+    /// Blueprint tools never appear in the host agent's tool list.
+    ///
+    /// By default, returns an empty vector (no blueprints).
+    fn agent_blueprints(&self) -> Vec<AgentBlueprint> {
+        vec![]
+    }
 }
 
 /// Risk classification for capabilities (TM-AGENT-005).
@@ -467,6 +480,65 @@ pub enum RiskLevel {
     Medium,
     /// Requires org admin role to assign
     High,
+}
+
+// ============================================================================
+// Agent Blueprints
+// ============================================================================
+
+/// Model selection strategy for agent blueprints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlueprintModel {
+    /// Always use this model. Host cannot override.
+    Fixed(String),
+    /// Use this model unless host provides override via config.
+    Default(String),
+    /// Use whatever model the host agent uses.
+    Inherit,
+}
+
+/// Pre-built agent definition with private tools, baked-in prompt, and model selection.
+///
+/// Contributed by capabilities via `agent_blueprints()`. Spawned via
+/// `spawn_subagent(blueprint: "<id>")`. Blueprint tools never appear in the
+/// host agent's tool list — they exist only inside the spawned child session.
+pub struct AgentBlueprint {
+    /// Unique identifier (e.g. `"github_scout"`)
+    pub id: &'static str,
+    /// Human-readable display name
+    pub name: &'static str,
+    /// When to use this blueprint (LLM reads this for delegation decisions)
+    pub description: &'static str,
+    /// Model selection strategy
+    pub model: BlueprintModel,
+    /// Baked-in system prompt for the child agent
+    pub system_prompt: &'static str,
+    /// Private tools — only available inside the blueprint's session
+    pub tools: Vec<Box<dyn Tool>>,
+    /// Iteration limit (default: 20)
+    pub max_turns: Option<usize>,
+    /// JSON Schema for allowed host-provided config. `None` = no config accepted.
+    pub config_schema: Option<serde_json::Value>,
+}
+
+impl AgentBlueprint {
+    /// Convert blueprint tools to tool definitions (for RuntimeAgent building).
+    pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
+        self.tools.iter().map(|t| t.to_definition()).collect()
+    }
+}
+
+impl std::fmt::Debug for AgentBlueprint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AgentBlueprint")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("model", &self.model)
+            .field("tool_count", &self.tools.len())
+            .field("max_turns", &self.max_turns)
+            .finish()
+    }
 }
 
 // ============================================================================
@@ -627,6 +699,28 @@ impl CapabilityRegistry {
     /// Create a builder for fluent capability registration
     pub fn builder() -> CapabilityRegistryBuilder {
         CapabilityRegistryBuilder::new()
+    }
+
+    /// Find a blueprint by ID across all registered capabilities.
+    ///
+    /// Returns a fresh `AgentBlueprint` (with new tool instances) each time.
+    pub fn blueprint(&self, id: &str) -> Option<AgentBlueprint> {
+        for cap in self.capabilities.values() {
+            for bp in cap.agent_blueprints() {
+                if bp.id == id {
+                    return Some(bp);
+                }
+            }
+        }
+        None
+    }
+
+    /// Collect all blueprints from all registered capabilities.
+    pub fn all_blueprints(&self) -> Vec<AgentBlueprint> {
+        self.capabilities
+            .values()
+            .flat_map(|cap| cap.agent_blueprints())
+            .collect()
     }
 }
 

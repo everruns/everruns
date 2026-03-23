@@ -2037,6 +2037,8 @@ mod tests {
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
             hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
         };
         let session = db.create_session(row).await.unwrap();
         session.id

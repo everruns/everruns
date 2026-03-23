@@ -919,6 +919,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                     tool_calls: reason_result.tool_calls,
                     tool_definitions: reason_result.tool_definitions,
                     locale: reason_result.locale,
+                    blueprint_id: None, // Resolved by act_activity from session
                 };
                 let mut act_input_json = serde_json::to_value(&act_input)?;
                 if let Some(rid) = &response_id {

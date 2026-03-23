@@ -418,6 +418,11 @@ pub struct SessionRow {
     pub subagent_task: Option<String>,
     #[sqlx(default)]
     pub subagent_status: Option<String>,
+    // -- Blueprint fields --
+    #[sqlx(default)]
+    pub blueprint_id: Option<String>,
+    #[sqlx(default)]
+    pub blueprint_config: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -436,6 +441,10 @@ pub struct CreateSessionRow {
     pub tools: serde_json::Value,
     /// Session-level client hints (JSONB in DB)
     pub hints: Option<serde_json::Value>,
+    /// Blueprint ID for blueprint-backed sessions.
+    pub blueprint_id: Option<String>,
+    /// Validated blueprint config (JSONB in DB).
+    pub blueprint_config: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default)]

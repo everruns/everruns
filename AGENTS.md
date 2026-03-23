@@ -138,6 +138,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/localization.md` - Locale/timezone resolution and backend localization rules
 - `specs/client-hints.md` - Generic client hints mechanism (session defaults + per-message overrides)
 - `specs/agent-identities.md` - Agent identities (virtual principals for unattended execution)
+- `specs/agent-blueprints.md` - Pre-built agent definitions (private tools, fixed models, typed config)
 
 ### Test Cases
 

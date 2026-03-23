@@ -17,10 +17,11 @@ impl Database {
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO sessions (org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'started')
+            INSERT INTO sessions (org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, blueprint_id, blueprint_config, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'started')
             RETURNING id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                      blueprint_id, blueprint_config
             "#,
         )
         .bind(input.org_id)
@@ -34,6 +35,8 @@ impl Database {
         .bind(&input.capabilities)
         .bind(&input.tools)
         .bind(&input.hints)
+        .bind(&input.blueprint_id)
+        .bind(&input.blueprint_config)
         .fetch_one(&self.pool)
         .await?;
 
@@ -45,7 +48,8 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND id = $2
             "#,
@@ -63,7 +67,8 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   blueprint_id, blueprint_config
             FROM sessions
             WHERE id = $1
             "#,
@@ -122,7 +127,8 @@ impl Database {
         let offset_idx = param_idx + 1;
         let select_sql = format!(
             r#"SELECT id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   blueprint_id, blueprint_config
             FROM sessions {where_clause}
             ORDER BY created_at DESC
             LIMIT ${limit_idx} OFFSET ${offset_idx}"#,
@@ -164,7 +170,8 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND tags @> $2
             ORDER BY created_at ASC
@@ -185,7 +192,8 @@ impl Database {
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   blueprint_id, blueprint_config
             FROM sessions
             WHERE status = 'active'
               AND EXISTS (
@@ -243,7 +251,8 @@ impl Database {
                 finished_at = COALESCE($11, finished_at)
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, hints, status, created_at, updated_at, started_at, finished_at,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                      blueprint_id, blueprint_config
             "#,
         )
         .bind(org_id)
