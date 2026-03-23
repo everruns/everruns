@@ -33,12 +33,12 @@ Read [harnesses](/getting-started/concepts/) by ID or list all. Returns full det
 
 ### `manage_harnesses`
 
-Harness mutations: create, update, delete, destroy, copy.
+Harness mutations: create, update, delete, copy.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `operation` | enum | yes | `create`, `update`, `delete`, `destroy`, `copy` |
-| `harness_id` | string | conditional | Required for `update`, `delete`, `destroy`, `copy` |
+| `operation` | enum | yes | `create`, `update`, `delete`, `copy` |
+| `harness_id` | string | conditional | Required for `update`, `delete`, `copy` |
 | `name` | string | conditional | Required for `create` |
 | `system_prompt` | string | conditional | Required for `create` |
 | `description` | string | no | Optional description |
@@ -54,12 +54,12 @@ Read [agents](/getting-started/concepts/) by ID or list all. Returns full detail
 
 ### `manage_agents`
 
-Agent mutations: create, update, delete, destroy.
+Agent mutations: create, update, delete.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `operation` | enum | yes | `create`, `update`, `delete`, `destroy` |
-| `agent_id` | string | conditional | Required for `update`, `delete`, `destroy` |
+| `operation` | enum | yes | `create`, `update`, `delete` |
+| `agent_id` | string | conditional | Required for `update`, `delete` |
 | `name` | string | conditional | Required for `create` |
 | `system_prompt` | string | conditional | Required for `create` |
 | `description` | string | no | Optional description |
@@ -128,7 +128,7 @@ Agent creates a specialized sub-agent and interacts with it:
 ```
 Agent:
   → read_capabilities({ search: "file" })
-  ← [{ id: "session_file_system", name: "File System", ... }]
+  ← { capabilities: [{ id: "session_file_system", name: "File System", ... }], count: 1 }
 
   → manage_agents({
       operation: "create",
@@ -143,7 +143,7 @@ Agent:
       harness_id: "hrs_01abc...",
       agent_id: "agt_01xyz..."
     })
-  ← { "session_id": "ses_01def...", "ui_link": "/chat?session=ses_01def..." }
+  ← { "session_id": "ses_01def...", "ui_link": "/sessions/ses_01def.../chat" }
 
   → session_send_message({
       session_id: "ses_01def...",

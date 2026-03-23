@@ -687,10 +687,10 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
       - `id`: string - Optional harness ID to get a single harness (returns full detail incl. system_prompt)
     - Returns: Single harness (when `id` given) or array of harness summaries with `ui_link`
     - Policy: Auto
-  - `manage_harnesses` - Harness mutations: create, update, delete, destroy, copy
+  - `manage_harnesses` - Harness mutations: create, update, delete, copy
     - Parameters:
-      - `operation`: enum (create, update, delete, destroy, copy) - The operation to perform
-      - `harness_id`: string - Required for update, delete, destroy, copy
+      - `operation`: enum (create, update, delete, copy) - The operation to perform
+      - `harness_id`: string - Required for update, delete, copy
       - `name`: string - Required for create, optional for update/copy
       - `system_prompt`: string - Required for create, optional for update
       - `description`: string - Optional for create/update
@@ -702,10 +702,10 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
       - `id`: string - Optional agent ID to get a single agent (returns full detail incl. system_prompt)
     - Returns: Single agent (when `id` given) or array of agent summaries with `ui_link`
     - Policy: Auto
-  - `manage_agents` - Agent mutations: create, update, delete, destroy
+  - `manage_agents` - Agent mutations: create, update, delete
     - Parameters:
-      - `operation`: enum (create, update, delete, destroy) - The operation to perform
-      - `agent_id`: string - Required for update, delete, destroy
+      - `operation`: enum (create, update, delete) - The operation to perform
+      - `agent_id`: string - Required for update, delete
       - `name`: string - Required for create, optional for update
       - `system_prompt`: string - Required for create, optional for update
       - `description`: string - Optional for create/update
@@ -723,7 +723,7 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
     - Parameters:
       - `operation`: enum (create, delete) - The operation to perform
       - `session_id`: string - Required for delete
-      - `harness_id`: string - Required for create
+      - `harness_id`: string - Optional for create (defaults to built-in Generic harness when omitted)
       - `agent_id`: string - Optional for create
       - `title`: string - Optional for create
     - Returns: Session data with `ui_link`
@@ -744,16 +744,16 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
     - Parameters:
       - `session_id`: string - Target session ID
       - `timeout_secs`: integer - Optional timeout (default: 120). Set to 0 to check status without waiting.
-    - Returns: Session status and latest assistant messages
+    - Returns: Session status (session_id, status, ui_link)
     - Policy: Auto
 - **Icon**: "settings"
 - **Category**: "Management"
 
 Lifecycle rules for platform management:
 - `delete` archives.
-- `destroy` is the dangerous delete path and must require the matching dangerous permission.
 - Archived entities can be read but not updated or assigned.
 - Deleted entities should behave as missing except where historical references are intentionally rendered as tombstones.
+- Future: `destroy` (hard delete) will require a dedicated `PlatformStore` method and dangerous permission gate.
 
 ##### Design Decision: Context-Aware Tools
 
@@ -761,7 +761,7 @@ All platform management tools require session context to access the `PlatformSto
 
 ##### Design Decision: UI Links
 
-All tool results include `ui_link` fields pointing to the relevant UI page (e.g., `/harnesses/{id}`, `/agents/{id}`, `/chat?session={id}`). This lets agents direct users to the web interface for visual management.
+All tool results include `ui_link` fields pointing to the relevant UI page (e.g., `/harnesses/{id}`, `/agents/{id}`, `/sessions/{id}/chat`). This lets agents direct users to the web interface for visual management.
 
 ##### Design Decision: Read/Write Tool Split
 

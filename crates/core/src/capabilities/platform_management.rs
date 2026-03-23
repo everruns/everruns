@@ -219,12 +219,12 @@ impl Tool for ManageHarnessesTool {
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["create", "update", "delete", "destroy", "copy"],
+                    "enum": ["create", "update", "delete", "copy"],
                     "description": "The mutation to perform"
                 },
                 "harness_id": {
                     "type": "string",
-                    "description": "Harness ID (required for update, delete, destroy, copy)"
+                    "description": "Harness ID (required for update, delete, copy)"
                 },
                 "name": {
                     "type": "string",
@@ -419,30 +419,6 @@ impl Tool for ManageHarnessesTool {
                 }
             }
 
-            "destroy" => {
-                let id_str = match require_str(&arguments, "harness_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let id = match id_str.parse::<crate::typed_id::HarnessId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid harness_id: {id_str}"
-                        ));
-                    }
-                };
-                match store.delete_harness(id).await {
-                    Ok(()) => ToolExecutionResult::success(json!({
-                        "harness_id": id_str,
-                        "message": "Harness destroyed successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to destroy harness: {e}"))
-                    }
-                }
-            }
-
             "copy" => {
                 let id_str = match require_str(&arguments, "harness_id") {
                     Ok(s) => s,
@@ -474,7 +450,7 @@ impl Tool for ManageHarnessesTool {
             }
 
             _ => ToolExecutionResult::tool_error(format!(
-                "Unknown operation: {operation}. Valid: create, update, delete, destroy, copy"
+                "Unknown operation: {operation}. Valid: create, update, delete, copy"
             )),
         }
     }
@@ -611,12 +587,12 @@ impl Tool for ManageAgentsTool {
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["create", "update", "delete", "destroy"],
+                    "enum": ["create", "update", "delete"],
                     "description": "The mutation to perform"
                 },
                 "agent_id": {
                     "type": "string",
-                    "description": "Agent ID (required for update, delete, destroy)"
+                    "description": "Agent ID (required for update, delete)"
                 },
                 "name": {
                     "type": "string",
@@ -734,7 +710,7 @@ impl Tool for ManageAgentsTool {
                 }
             }
 
-            "delete" | "destroy" => {
+            "delete" => {
                 let id_str = match require_str(&arguments, "agent_id") {
                     Ok(s) => s,
                     Err(e) => return e,
@@ -750,16 +726,16 @@ impl Tool for ManageAgentsTool {
                 match store.delete_agent(id).await {
                     Ok(()) => ToolExecutionResult::success(json!({
                         "agent_id": id_str,
-                        "message": format!("Agent {operation}d successfully")
+                        "message": "Agent archived successfully"
                     })),
                     Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to {operation} agent: {e}"))
+                        ToolExecutionResult::tool_error(format!("Failed to delete agent: {e}"))
                     }
                 }
             }
 
             _ => ToolExecutionResult::tool_error(format!(
-                "Unknown operation: {operation}. Valid: create, update, delete, destroy"
+                "Unknown operation: {operation}. Valid: create, update, delete"
             )),
         }
     }
@@ -1760,7 +1736,7 @@ mod tests {
             .await;
         match result {
             ToolExecutionResult::Success(v) => {
-                assert!(v["message"].as_str().unwrap().contains("deleted"));
+                assert!(v["message"].as_str().unwrap().contains("archived"));
             }
             other => panic!("expected success, got: {other:?}"),
         }

@@ -49,6 +49,10 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   read_sessions: { category: "read", segmentMode: "grouped" },
   session_read_messages: { category: "read", segmentMode: "grouped" },
   session_read_response: { category: "read", segmentMode: "grouped" },
+  session_send_message: { category: "tool", segmentMode: "grouped" },
+  manage_harnesses: { category: "tool", segmentMode: "grouped" },
+  manage_agents: { category: "tool", segmentMode: "grouped" },
+  manage_sessions: { category: "tool", segmentMode: "grouped" },
 
   // Search tools
   search: { category: "search", segmentMode: "grouped" },
