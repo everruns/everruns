@@ -214,6 +214,24 @@ pub enum TaskFailureOutcome {
     ExhaustedRetries,
 }
 
+/// Information about a task that was marked as dead during stale reclamation.
+#[derive(Debug, Clone)]
+pub struct DeadTaskInfo {
+    pub task_id: Uuid,
+    pub workflow_id: Option<Uuid>,
+    pub activity_id: String,
+    pub last_error: Option<String>,
+}
+
+/// Result of stale task reclamation.
+#[derive(Debug, Clone, Default)]
+pub struct ReclaimResult {
+    /// Tasks that were reclaimed (returned to pending for retry).
+    pub reclaimed_ids: Vec<Uuid>,
+    /// Tasks that were marked as dead (exhausted all retries).
+    pub dead_tasks: Vec<DeadTaskInfo>,
+}
+
 /// Filter for listing workers
 #[derive(Debug, Clone, Default)]
 pub struct WorkerFilter {
@@ -633,8 +651,10 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
     async fn get_task(&self, task_id: Uuid) -> Result<TaskInfo, StoreError>;
 
     /// Find and reclaim stale tasks (no heartbeat)
-    async fn reclaim_stale_tasks(&self, stale_threshold: Duration)
-    -> Result<Vec<Uuid>, StoreError>;
+    async fn reclaim_stale_tasks(
+        &self,
+        stale_threshold: Duration,
+    ) -> Result<ReclaimResult, StoreError>;
 
     // =========================================================================
     // Signal Operations

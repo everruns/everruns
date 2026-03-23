@@ -22,7 +22,7 @@ const MAX_RETRY_ATTEMPTS: u32 = 5;
 /// 3. Retry on concurrency conflict
 ///
 /// Returns Ok(()) on success, or the last error after all retries exhausted.
-pub async fn append_event<S: WorkflowEventStore>(
+pub async fn append_event<S: WorkflowEventStore + ?Sized>(
     store: &S,
     workflow_id: Uuid,
     event: WorkflowEvent,
@@ -151,7 +151,7 @@ pub async fn record_activity_completed<S: WorkflowEventStore>(
 ///
 /// This should be called when a worker fails a task.
 /// For standalone tasks (workflow_id is None), this is a no-op.
-pub async fn record_activity_failed<S: WorkflowEventStore>(
+pub async fn record_activity_failed<S: WorkflowEventStore + ?Sized>(
     store: &S,
     workflow_id: Option<Uuid>,
     activity_id: String,
