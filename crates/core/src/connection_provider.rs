@@ -78,6 +78,16 @@ pub trait ConnectionProvider: Send + Sync {
     /// Validate a credential before saving. Called for API key providers.
     /// Returns Ok with optional metadata on success, Err with user-facing message on failure.
     async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String>;
+
+    /// Validate with all form fields. Default delegates to `validate()` using the `api_key` field.
+    /// Override this when the provider needs extra fields (e.g. org slug for personal tokens).
+    async fn validate_fields(
+        &self,
+        fields: &HashMap<String, String>,
+    ) -> Result<ConnectionValidation, String> {
+        let api_key = fields.get("api_key").map(|s| s.as_str()).unwrap_or("");
+        self.validate(api_key).await
+    }
 }
 
 // ============================================================================
@@ -247,4 +257,7 @@ pub enum FieldType {
 pub struct ConnectionValidation {
     /// Display name from the provider (e.g. organization name, username).
     pub provider_username: Option<String>,
+    /// Provider-specific metadata to store alongside the connection (e.g. org slug).
+    /// Stored as JSONB in the database and returned via the connection resolver.
+    pub provider_metadata: Option<serde_json::Value>,
 }

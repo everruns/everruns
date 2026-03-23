@@ -138,6 +138,19 @@ impl UserConnectionResolver for DbConnectionResolver {
             .map_err(|e| AgentLoopError::store(format!("Failed to resolve connection owner: {e}")))
     }
 
+    async fn get_connection_metadata(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        self.db
+            .get_connection_metadata_for_session(session_id, provider)
+            .await
+            .map_err(|e| {
+                AgentLoopError::store(format!("Failed to resolve connection metadata: {e}"))
+            })
+    }
+
     async fn get_connection_token_for_user(
         &self,
         user_id: Uuid,

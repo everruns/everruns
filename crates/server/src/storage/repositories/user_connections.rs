@@ -26,9 +26,9 @@ impl Database {
 
         let row = sqlx::query_as::<_, UserConnectionRow>(
             r#"
-            INSERT INTO user_connections (user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
+            INSERT INTO user_connections (user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
             "#,
         )
         .bind(input.user_id)
@@ -41,6 +41,7 @@ impl Database {
         .bind(&input.scopes)
         .bind(input.expires_at)
         .bind(input.installation_id)
+        .bind(&input.provider_metadata)
         .fetch_one(&self.pool)
         .await?;
 
@@ -55,7 +56,7 @@ impl Database {
     ) -> Result<Option<UserConnectionRow>> {
         let row = sqlx::query_as::<_, UserConnectionRow>(
             r#"
-            SELECT id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
+            SELECT id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
             FROM user_connections
             WHERE user_id = $1 AND provider = $2
             ORDER BY created_at DESC
@@ -74,7 +75,7 @@ impl Database {
     pub async fn list_user_connections(&self, user_id: Uuid) -> Result<Vec<UserConnectionRow>> {
         let rows = sqlx::query_as::<_, UserConnectionRow>(
             r#"
-            SELECT id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
+            SELECT id, user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
             FROM user_connections
             WHERE user_id = $1
             ORDER BY provider ASC
@@ -143,6 +144,58 @@ impl Database {
         .await?;
 
         Ok(row.and_then(|(blob,)| blob))
+    }
+
+    /// Get provider metadata for a session/provider pair.
+    ///
+    /// Same resolution order as get_connection_token_for_session.
+    pub async fn get_connection_metadata_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let row: Option<(Option<serde_json::Value>,)> = sqlx::query_as(
+            r#"
+            WITH has_identity_conn AS (
+                SELECT 1 AS v
+                FROM sessions s
+                JOIN agent_identity_connections aic
+                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
+                WHERE s.id = $1
+                  AND s.agent_identity_id IS NOT NULL
+                LIMIT 1
+            ),
+            identity_conn AS (
+                SELECT aic.provider_metadata
+                FROM sessions s
+                JOIN agent_identity_connections aic
+                    ON aic.agent_identity_id = s.agent_identity_id AND aic.provider = $2
+                WHERE s.id = $1
+                  AND s.agent_identity_id IS NOT NULL
+                LIMIT 1
+            ),
+            user_conn AS (
+                SELECT uc.provider_metadata
+                FROM sessions s
+                JOIN organization_members om ON om.org_id = s.org_id
+                JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
+                WHERE s.id = $1
+                  AND NOT EXISTS (SELECT 1 FROM has_identity_conn)
+                ORDER BY uc.created_at ASC
+                LIMIT 1
+            )
+            SELECT provider_metadata FROM identity_conn
+            UNION ALL
+            SELECT provider_metadata FROM user_conn
+            LIMIT 1
+            "#,
+        )
+        .bind(session_id)
+        .bind(provider)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.and_then(|(meta,)| meta))
     }
 
     /// Resolve the user whose connection would be used for a session/provider pair.

@@ -69,6 +69,7 @@ impl ConnectionProvider for BraveSearchConnectionProvider {
         match response.status().as_u16() {
             200 => Ok(ConnectionValidation {
                 provider_username: None,
+                provider_metadata: None,
             }),
             401 | 403 => Err("Invalid API key. Check that the key is correct and active.".into()),
             429 => Err("API key is valid but rate-limited. Try again in a moment.".into()),

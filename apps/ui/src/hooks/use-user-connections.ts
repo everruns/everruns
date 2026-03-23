@@ -30,8 +30,15 @@ export function useCreateApiKeyConnection() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ provider, apiKey }: { provider: string; apiKey: string }) =>
-      createApiKeyConnection(provider, apiKey),
+    mutationFn: ({
+      provider,
+      apiKey,
+      extraFields,
+    }: {
+      provider: string;
+      apiKey: string;
+      extraFields?: Record<string, string>;
+    }) => createApiKeyConnection(provider, apiKey, extraFields),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.userConnections.all,

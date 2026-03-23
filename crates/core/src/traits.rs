@@ -462,6 +462,16 @@ pub trait UserConnectionResolver: Send + Sync {
     ) -> Result<Option<String>> {
         Ok(None)
     }
+
+    /// Get provider-specific metadata stored alongside the connection.
+    /// Returns None if no metadata is stored or no connection exists.
+    async fn get_connection_metadata(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        Ok(None)
+    }
 }
 
 /// Runtime context provided to tools during execution.

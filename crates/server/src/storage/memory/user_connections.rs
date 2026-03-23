@@ -34,6 +34,7 @@ impl InMemoryDatabase {
             scopes: input.scopes,
             expires_at: input.expires_at,
             installation_id: input.installation_id,
+            provider_metadata: input.provider_metadata,
             created_at: now,
             updated_at: now,
         };
@@ -122,6 +123,53 @@ impl InMemoryDatabase {
                 {
                     return Ok(conn.access_token_encrypted.clone());
                 }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Get provider metadata for a session/provider pair.
+    /// Same resolution order as get_connection_token_for_session.
+    pub async fn get_connection_metadata_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let sessions = self.sessions.read();
+        let session = match sessions.get(&session_id) {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        let org_id = session.org_id;
+        let agent_identity_id = session.agent_identity_id;
+        drop(sessions);
+
+        if let Some(identity_id) = agent_identity_id {
+            let id_connections = self.agent_identity_connections.read();
+            if let Some(conn) = id_connections
+                .values()
+                .find(|c| c.agent_identity_id == identity_id && c.provider == provider)
+            {
+                return Ok(conn.provider_metadata.as_ref().cloned());
+            }
+        }
+
+        let members = self.organization_members.read();
+        let user_ids: Vec<Uuid> = members
+            .iter()
+            .filter(|((oid, _), _)| *oid == org_id)
+            .map(|((_, uid), _)| *uid)
+            .collect();
+        drop(members);
+
+        let connections = self.user_connections.read();
+        for uid in user_ids {
+            if let Some(conn) = connections
+                .values()
+                .find(|c| c.user_id == uid && c.provider == provider)
+            {
+                return Ok(conn.provider_metadata.as_ref().cloned());
             }
         }
 

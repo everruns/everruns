@@ -65,6 +65,7 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
             // Browserless v2 /active returns 204 No Content; v1 returned 200.
             200 | 204 => Ok(ConnectionValidation {
                 provider_username: None,
+                provider_metadata: None,
             }),
             401 | 403 => {
                 Err("Invalid API token. Check that the token is correct and active.".into())

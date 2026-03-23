@@ -119,10 +119,14 @@ pub struct FormFieldResponse {
     pub help_text: Option<String>,
 }
 
-/// Request body for API-key connection creation (plugin-based providers)
+/// Request body for API-key connection creation (plugin-based providers).
+/// Accepts api_key plus any additional form fields as extra_fields.
 #[derive(Debug, Deserialize)]
 pub struct CreateApiKeyConnectionRequest {
     pub api_key: String,
+    /// Additional provider-specific form fields (e.g. org_slug for Deno personal tokens).
+    #[serde(flatten)]
+    pub extra_fields: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// Request body for API-key-based connections (e.g., Brave Search)
@@ -373,9 +377,18 @@ pub async fn create_api_key_connection(
         )
     })?;
 
-    // Validate the API key
+    // Build form fields map for validation (includes api_key + any extra fields)
+    let mut fields = std::collections::HashMap::new();
+    fields.insert("api_key".to_string(), body.api_key.clone());
+    for (key, value) in &body.extra_fields {
+        if let Some(s) = value.as_str() {
+            fields.insert(key.clone(), s.to_string());
+        }
+    }
+
+    // Validate all fields via the provider
     let validation: everruns_core::connection_provider::ConnectionValidation =
-        provider.validate(&body.api_key).await.map_err(|e| {
+        provider.validate_fields(&fields).await.map_err(|e| {
             (
                 StatusCode::BAD_REQUEST,
                 format!("API key validation failed: {e}"),
@@ -404,6 +417,7 @@ pub async fn create_api_key_connection(
             refresh_token_encrypted: None,
             scopes: None,
             expires_at: None,
+            provider_metadata: validation.provider_metadata.clone(),
         })
         .await
         .map_err(|e| {
@@ -525,8 +539,20 @@ pub async fn verify_connection(
             )
         })?;
 
-    // Call provider's validate()
-    match provider.validate(&credential).await {
+    // Build fields map from stored credential + metadata for full validation
+    let mut fields = std::collections::HashMap::new();
+    fields.insert("api_key".to_string(), credential);
+    if let Some(meta) = row.provider_metadata.as_ref()
+        && let Some(obj) = meta.as_object()
+    {
+        for (k, v) in obj {
+            if let Some(s) = v.as_str() {
+                fields.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+
+    match provider.validate_fields(&fields).await {
         Ok(_) => Ok(Json(VerifyConnectionResponse {
             valid: true,
             error: None,
@@ -809,6 +835,7 @@ pub async fn connection_oauth_callback(
                 scopes: token.scope.clone(),
                 expires_at,
                 installation_id: None,
+                provider_metadata: None,
             })
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -923,6 +950,7 @@ pub async fn github_callback(
             scopes: Some(result.permissions),
             expires_at: None,
             installation_id: Some(result.installation_id),
+            provider_metadata: None,
         })
         .await
         .map_err(|e| {
@@ -1004,6 +1032,7 @@ pub async fn put_api_key_connection(
             scopes: None,
             expires_at: None,
             installation_id: None,
+            provider_metadata: None,
         })
         .await
         .map_err(|e| {

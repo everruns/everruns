@@ -17,9 +17,11 @@ export async function getConnectionProviders(): Promise<ConnectionProvider[]> {
 export async function createApiKeyConnection(
   provider: string,
   apiKey: string,
+  extraFields?: Record<string, string>,
 ): Promise<UserConnection> {
   const response = await api.post<UserConnection>(`/v1/user/connections/${provider}`, {
     api_key: apiKey,
+    ...extraFields,
   });
   return response.data;
 }
