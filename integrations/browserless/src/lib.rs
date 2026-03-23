@@ -176,7 +176,7 @@ or leave it false to get the DOM content instead."#,
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
-        vec![]
+        vec!["session_storage"]
     }
 
     fn features(&self) -> Vec<&'static str> {
@@ -248,9 +248,9 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_no_dependencies() {
+    fn test_capability_depends_on_session_storage() {
         let cap = BrowserlessCapability;
-        assert!(cap.dependencies().is_empty());
+        assert_eq!(cap.dependencies(), vec!["session_storage"]);
     }
 
     #[test]
