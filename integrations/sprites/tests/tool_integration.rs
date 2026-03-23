@@ -597,6 +597,50 @@ async fn test_create_sprite_tool_rejects_string_memory() {
 }
 
 // ============================================================================
+// Sprite name validation tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_sprite_rejects_path_traversal_name() {
+    let tool = get_tool("sprites_create_sprite");
+    let session_id = SessionId::new();
+    let store = Arc::new(MockStorageStore::new());
+    let context = ToolContext::with_storage_store(session_id, store)
+        .with_connection_resolver(sprites_resolver());
+
+    let result = tool
+        .execute_with_context(json!({"sprite_name": "../../admin"}), &context)
+        .await;
+
+    match result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(msg.contains("lowercase"), "Got: {msg}");
+        }
+        other => panic!("Expected ToolError, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_create_sprite_rejects_uppercase_name() {
+    let tool = get_tool("sprites_create_sprite");
+    let session_id = SessionId::new();
+    let store = Arc::new(MockStorageStore::new());
+    let context = ToolContext::with_storage_store(session_id, store)
+        .with_connection_resolver(sprites_resolver());
+
+    let result = tool
+        .execute_with_context(json!({"sprite_name": "BAD-NAME"}), &context)
+        .await;
+
+    match result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(msg.contains("lowercase"), "Got: {msg}");
+        }
+        other => panic!("Expected ToolError, got: {other:?}"),
+    }
+}
+
+// ============================================================================
 // Service URL and checkpoint tool tests
 // ============================================================================
 

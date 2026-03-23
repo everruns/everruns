@@ -12,6 +12,7 @@ use crate::client::SpritesClient;
 use crate::state::{
     SpriteState, delete_sprite_state, get_api_token, get_sprite_state, list_sprite_states,
     release_sprite_lease, required_str, save_sprite_state, touch_sprite_lease,
+    validate_sprite_name,
 };
 
 /// Parse an optional integer resource parameter, validating type and range.
@@ -100,6 +101,9 @@ impl Tool for SpritesCreateSpriteTool {
             Ok(s) => s,
             Err(e) => return e,
         };
+        if let Err(e) = validate_sprite_name(sprite_name) {
+            return e;
+        }
 
         let client = SpritesClient::new(api_token);
 
@@ -240,7 +244,8 @@ impl Tool for SpritesExecTool {
         let timeout = arguments
             .get("timeout")
             .and_then(|v| v.as_u64())
-            .unwrap_or(EXEC_TIMEOUT_MS);
+            .unwrap_or(EXEC_TIMEOUT_MS)
+            .min(600_000); // Cap at 10 minutes
 
         let api_token = match get_api_token(context).await {
             Ok(t) => t,

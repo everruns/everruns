@@ -218,6 +218,9 @@ pub async fn touch_sprite_lease(
             display_name,
             owner_user_id,
             lease_duration_seconds: SPRITES_LEASE_DURATION_SECONDS,
+            // THREAT[TM-API-015]: leased-resource metadata is API-visible.
+            // Keep only non-secret fields here. service_url is the sprite's
+            // public URL (not a credential) so it's safe to include for UI display.
             metadata: json!({
                 "workspace_path": state.workspace_path,
                 "started_at": state.started_at,
@@ -258,6 +261,32 @@ pub fn required_str<'a>(args: &'a Value, name: &str) -> Result<&'a str, ToolExec
     args.get(name).and_then(|v| v.as_str()).ok_or_else(|| {
         ToolExecutionResult::tool_error(format!("Missing required parameter: {name}"))
     })
+}
+
+/// Validate that a sprite name is safe for URL interpolation.
+///
+/// Sprite names are user-supplied (unlike Daytona sandbox IDs which come from the API).
+/// Must be lowercase alphanumeric with hyphens, 1-63 chars, no leading/trailing hyphens.
+pub fn validate_sprite_name(name: &str) -> Result<(), ToolExecutionResult> {
+    if name.is_empty() || name.len() > 63 {
+        return Err(ToolExecutionResult::tool_error(
+            "Sprite name must be 1-63 characters",
+        ));
+    }
+    if !name
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err(ToolExecutionResult::tool_error(
+            "Sprite name must contain only lowercase letters, digits, and hyphens",
+        ));
+    }
+    if name.starts_with('-') || name.ends_with('-') {
+        return Err(ToolExecutionResult::tool_error(
+            "Sprite name must not start or end with a hyphen",
+        ));
+    }
+    Ok(())
 }
 
 // ============================================================================
@@ -391,5 +420,39 @@ mod tests {
         assert!(val.get("sprite_name").is_some());
         assert!(val.get("workspace_path").is_some());
         assert!(val.get("started_at").is_some());
+    }
+
+    #[test]
+    fn test_validate_sprite_name_valid() {
+        assert!(validate_sprite_name("my-sprite").is_ok());
+        assert!(validate_sprite_name("test123").is_ok());
+        assert!(validate_sprite_name("a").is_ok());
+        assert!(validate_sprite_name("a-b-c").is_ok());
+    }
+
+    #[test]
+    fn test_validate_sprite_name_empty() {
+        assert!(validate_sprite_name("").is_err());
+    }
+
+    #[test]
+    fn test_validate_sprite_name_too_long() {
+        let long_name = "a".repeat(64);
+        assert!(validate_sprite_name(&long_name).is_err());
+    }
+
+    #[test]
+    fn test_validate_sprite_name_invalid_chars() {
+        assert!(validate_sprite_name("my sprite").is_err());
+        assert!(validate_sprite_name("my/sprite").is_err());
+        assert!(validate_sprite_name("MY-SPRITE").is_err());
+        assert!(validate_sprite_name("../../admin").is_err());
+        assert!(validate_sprite_name("name?extra=1").is_err());
+    }
+
+    #[test]
+    fn test_validate_sprite_name_leading_trailing_hyphen() {
+        assert!(validate_sprite_name("-bad").is_err());
+        assert!(validate_sprite_name("bad-").is_err());
     }
 }
