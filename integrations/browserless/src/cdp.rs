@@ -9,10 +9,22 @@ use futures_util::stream::SplitSink;
 use futures_util::stream::SplitStream;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
+use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use tracing::debug;
+
+/// Timeout for the initial CDP WebSocket connection handshake.
+#[cfg(not(test))]
+const CDP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Shorter connect timeout when running tests to keep `cargo test` fast.
+#[cfg(test)]
+const CDP_CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// Timeout for a CDP command response (send_command response loop).
+const CDP_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Default reconnect timeout in milliseconds (60 seconds).
 pub const DEFAULT_RECONNECT_TIMEOUT_MS: u64 = 60_000;
@@ -45,9 +57,13 @@ impl CdpSession {
             ws_url.to_string()
         };
         debug!("CDP connecting to {redacted}");
-        let (ws_stream, _response) = connect_async(ws_url)
-            .await
-            .map_err(|e| format!("CDP WebSocket connection failed: {e}"))?;
+        let (ws_stream, _response) =
+            tokio::time::timeout(CDP_CONNECT_TIMEOUT, connect_async(ws_url))
+                .await
+                .map_err(|_| {
+                    format!("CDP WebSocket connection timed out ({CDP_CONNECT_TIMEOUT:?})")
+                })?
+                .map_err(|e| format!("CDP WebSocket connection failed: {e}"))?;
 
         let (sink, source) = ws_stream.split();
         Ok(Self {
@@ -75,52 +91,62 @@ impl CdpSession {
             .await
             .map_err(|e| format!("CDP send failed: {e}"))?;
 
-        // Read messages until we find the response with matching id
-        loop {
-            match self.source.next().await {
-                Some(Ok(Message::Text(text))) => {
-                    let parsed: Value = serde_json::from_str(&text)
-                        .map_err(|e| format!("CDP invalid JSON response: {e}"))?;
+        // Read messages until we find the response with matching id.
+        // Timeout prevents hanging when server accepts but never responds.
+        let method_owned = method.to_string();
+        tokio::time::timeout(CDP_COMMAND_TIMEOUT, async {
+            loop {
+                match self.source.next().await {
+                    Some(Ok(Message::Text(text))) => {
+                        let parsed: Value = serde_json::from_str(&text)
+                            .map_err(|e| format!("CDP invalid JSON response: {e}"))?;
 
-                    // Check if this is our response (has matching id)
-                    if parsed.get("id").and_then(|v| v.as_u64()) == Some(id as u64) {
-                        // Check for CDP error
-                        if let Some(error) = parsed.get("error") {
-                            let msg = error
-                                .get("message")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("Unknown CDP error");
-                            return Err(format!("CDP error in {method}: {msg}"));
+                        // Check if this is our response (has matching id)
+                        if parsed.get("id").and_then(|v| v.as_u64()) == Some(id as u64) {
+                            // Check for CDP error
+                            if let Some(error) = parsed.get("error") {
+                                let msg = error
+                                    .get("message")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("Unknown CDP error");
+                                return Err(format!("CDP error in {method_owned}: {msg}"));
+                            }
+                            return Ok(parsed.get("result").cloned().unwrap_or(json!({})));
                         }
-                        return Ok(parsed.get("result").cloned().unwrap_or(json!({})));
-                    }
 
-                    // Otherwise it's an event — skip it
-                    if let Some(event_method) = parsed.get("method").and_then(|v| v.as_str()) {
-                        debug!("CDP event (skipped): {event_method}");
+                        // Otherwise it's an event — skip it
+                        if let Some(event_method) = parsed.get("method").and_then(|v| v.as_str()) {
+                            debug!("CDP event (skipped): {event_method}");
+                        }
                     }
-                }
-                Some(Ok(Message::Binary(_))) => {
-                    // Binary frames — skip
-                    continue;
-                }
-                Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {
-                    continue;
-                }
-                Some(Ok(Message::Close(_))) => {
-                    return Err("CDP WebSocket closed unexpectedly".to_string());
-                }
-                Some(Ok(Message::Frame(_))) => {
-                    continue;
-                }
-                Some(Err(e)) => {
-                    return Err(format!("CDP WebSocket error: {e}"));
-                }
-                None => {
-                    return Err("CDP WebSocket stream ended".to_string());
+                    Some(Ok(Message::Binary(_))) => {
+                        // Binary frames — skip
+                        continue;
+                    }
+                    Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {
+                        continue;
+                    }
+                    Some(Ok(Message::Close(_))) => {
+                        return Err("CDP WebSocket closed unexpectedly".to_string());
+                    }
+                    Some(Ok(Message::Frame(_))) => {
+                        continue;
+                    }
+                    Some(Err(e)) => {
+                        return Err(format!("CDP WebSocket error: {e}"));
+                    }
+                    None => {
+                        return Err("CDP WebSocket stream ended".to_string());
+                    }
                 }
             }
-        }
+        })
+        .await
+        .map_err(|_| {
+            format!(
+                "CDP command {method} timed out after {CDP_COMMAND_TIMEOUT:?} waiting for response"
+            )
+        })?
     }
 
     /// Disconnect the WebSocket gracefully.
@@ -518,6 +544,42 @@ fn key_to_code(key: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_connect_timeout_on_unresponsive_server() {
+        // Spin up a local TCP listener that accepts the connection but never
+        // completes the WebSocket handshake, forcing the client-side timeout
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("failed to bind test listener");
+        let addr = listener.local_addr().expect("failed to get local addr");
+
+        // Accept a single connection and keep it open without responding
+        let _server = tokio::spawn(async move {
+            if let Ok((stream, _peer)) = listener.accept().await {
+                let _ = stream;
+                futures_util::future::pending::<()>().await;
+            }
+        });
+
+        let url = format!("ws://{addr}/unresponsive");
+        let start = std::time::Instant::now();
+        let result = CdpSession::connect(&url).await;
+        let elapsed = start.elapsed();
+
+        assert!(result.is_err(), "connect should fail due to timeout");
+        let err = result.err().unwrap();
+        // Should timeout within ~1s (test timeout), not hang indefinitely
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "connect should timeout, took {elapsed:?}"
+        );
+        // Ensure we exercised the timeout path specifically
+        assert!(
+            err.contains("timed out"),
+            "unexpected error (expected timeout): {err}"
+        );
+    }
 
     #[test]
     fn test_key_to_code() {
