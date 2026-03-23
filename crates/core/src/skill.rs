@@ -15,7 +15,7 @@ use tracing::warn;
 static INDEXED_ARGS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$ARGUMENTS\[([0-9]+)\]").unwrap());
 
-/// Cached regex for `!`command`` dynamic command injection syntax.
+/// Cached regex for ``!`command` `` dynamic command injection syntax.
 static COMMAND_INJECTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!`([^`]+)`").unwrap());
 
 use crate::typed_id::SkillId;

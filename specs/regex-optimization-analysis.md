@@ -28,7 +28,7 @@ and applicability to everruns.
 | `grep_session_files` (service) | Two-phase: DB filters files, Rust `regex` does line-level matching | YES |
 | Virtual bash `SearchProvider` | Bridges to `grep_session_files` via sync→async shim | YES |
 | Full-text message search | `tsvector` + GIN index via `plainto_tsquery` | YES (already optimized) |
-| Skill argument substitution | `Regex::new()` compiled inline on every call | Low frequency |
+| Skill argument substitution | Regexes cached with `LazyLock` and reused | Low frequency |
 | Directory listing | `path ~ '^/prefix/[^/]+$'` in PostgreSQL | Low frequency |
 
 ## Applicable Ideas
@@ -70,7 +70,7 @@ planner actually uses the index with `EXPLAIN ANALYZE`.
 
 ### 2. Cache Compiled Regexes with `LazyLock` (LOW-HANGING FRUIT)
 
-`expand_skill_arguments()` in `crates/core/src/skill.rs:583` compiles
+`expand_skill_arguments()` in `crates/core/src/skill.rs` compiles
 `\$ARGUMENTS\[([0-9]+)\]` on every invocation. Use `std::sync::LazyLock`:
 
 ```rust
@@ -81,7 +81,7 @@ static INDEXED_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
 });
 ```
 
-Same for `preprocess_skill_content()` at line 742 (`!`([^`]+)``).
+Same for `preprocess_command_injections()` (``!`command` `` syntax).
 
 **Impact:** Marginal (microseconds per call), but it's a clean improvement and consistent
 with patterns already used elsewhere in the codebase (`LazyLock` in `virtual_bash.rs`).
