@@ -16,7 +16,12 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use tracing::debug;
 
 /// Timeout for the initial CDP WebSocket connection handshake.
+#[cfg(not(test))]
 const CDP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Shorter connect timeout when running tests to keep `cargo test` fast.
+#[cfg(test)]
+const CDP_CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Timeout for a CDP command response (send_command response loop).
 const CDP_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
@@ -541,22 +546,38 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_connect_timeout_on_unreachable() {
-        // Connect to a non-routable address to trigger timeout
+    async fn test_connect_timeout_on_unresponsive_server() {
+        // Spin up a local TCP listener that accepts the connection but never
+        // completes the WebSocket handshake, forcing the client-side timeout
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("failed to bind test listener");
+        let addr = listener.local_addr().expect("failed to get local addr");
+
+        // Accept a single connection and keep it open without responding
+        let _server = tokio::spawn(async move {
+            if let Ok((stream, _peer)) = listener.accept().await {
+                let _ = stream;
+                futures_util::future::pending::<()>().await;
+            }
+        });
+
+        let url = format!("ws://{addr}/unresponsive");
         let start = std::time::Instant::now();
-        let result = CdpSession::connect("ws://192.0.2.1:1/unreachable").await;
+        let result = CdpSession::connect(&url).await;
         let elapsed = start.elapsed();
 
-        assert!(result.is_err());
+        assert!(result.is_err(), "connect should fail due to timeout");
         let err = result.err().unwrap();
-        // Should timeout within ~10s, not hang indefinitely
+        // Should timeout within ~1s (test timeout), not hang indefinitely
         assert!(
-            elapsed < Duration::from_secs(15),
+            elapsed < Duration::from_secs(5),
             "connect should timeout, took {elapsed:?}"
         );
+        // Ensure we exercised the timeout path specifically
         assert!(
-            err.contains("timed out") || err.contains("failed"),
-            "unexpected error: {err}"
+            err.contains("timed out"),
+            "unexpected error (expected timeout): {err}"
         );
     }
 
