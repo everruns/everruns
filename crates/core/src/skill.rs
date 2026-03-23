@@ -8,7 +8,16 @@ use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tracing::warn;
+
+/// Cached regex for `$ARGUMENTS[N]` indexed placeholder substitution.
+static INDEXED_ARGS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\$ARGUMENTS\[([0-9]+)\]").unwrap());
+
+/// Cached regex for `!`command`` dynamic command injection syntax.
+static COMMAND_INJECTION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"!`([^`]+)`").unwrap());
 
 use crate::typed_id::SkillId;
 
@@ -580,10 +589,9 @@ pub fn expand_skill_arguments(content: &str, raw_args: &str) -> String {
     let mut had_placeholder = false;
 
     // 1. Replace $ARGUMENTS[N] (must be before $ARGUMENTS to avoid partial match)
-    let indexed_re = regex::Regex::new(r"\$ARGUMENTS\[([0-9]+)\]").unwrap();
-    if indexed_re.is_match(&result) {
+    if INDEXED_ARGS_RE.is_match(&result) {
         had_placeholder = true;
-        result = indexed_re
+        result = INDEXED_ARGS_RE
             .replace_all(&result, |caps: &regex::Captures| {
                 let idx: usize = caps[1].parse().unwrap_or(usize::MAX);
                 args.get(idx).cloned().unwrap_or_default()
@@ -739,10 +747,8 @@ pub async fn preprocess_command_injections(
     content: &str,
     executor: &dyn CommandExecutor,
 ) -> String {
-    let re = Regex::new(r"!`([^`]+)`").unwrap();
-
     // Collect all matches (command text + byte range)
-    let matches: Vec<(String, std::ops::Range<usize>)> = re
+    let matches: Vec<(String, std::ops::Range<usize>)> = COMMAND_INJECTION_RE
         .captures_iter(content)
         .map(|cap| {
             let full = cap.get(0).unwrap();
