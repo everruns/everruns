@@ -273,18 +273,19 @@ impl Database {
             WITH existing AS (
                 SELECT id FROM agents WHERE org_id = $1 AND public_id = $2
             )
-            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, tools, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
             ON CONFLICT (org_id, public_id) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
                 system_prompt = EXCLUDED.system_prompt,
                 default_model_id = EXCLUDED.default_model_id,
                 tags = EXCLUDED.tags,
+                initial_files = EXCLUDED.initial_files,
                 tools = EXCLUDED.tools,
                 status = 'active',
                 updated_at = NOW()
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, tools,
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -295,6 +296,7 @@ impl Database {
         .bind(&input.system_prompt)
         .bind(input.default_model_id)
         .bind(&input.tags)
+        .bind(&input.initial_files)
         .bind(&input.tools)
         .fetch_one(&self.pool)
         .await?;
