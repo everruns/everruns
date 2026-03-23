@@ -51,9 +51,9 @@ Organization management.
 
 Agent CRUD. Create from YAML/JSON/Markdown files or CLI flags.
 
-- `create --file <path>` — send file to server import API (server handles parsing); upserts when `id:` present in frontmatter
+- `create --file <path> [--initial-files-dir <dir>]` — send file to server import API (server handles parsing); upserts when `id:` present in frontmatter. `--initial-files-dir` recursively collects non-hidden text files from the directory and injects them as read-only `initial_files`.
 - `create --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--tag <t>]` — create from CLI flags
-- `update --file <path>` — send file to server import API; requires `id:` in file frontmatter for upsert
+- `update --file <path> [--initial-files-dir <dir>]` — send file to server import API; requires `id:` in file frontmatter for upsert. `--initial-files-dir` works the same as in create.
 - `update <id> --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--tag <t>]` — update from CLI flags
 - `list`
 - `get <id>`
