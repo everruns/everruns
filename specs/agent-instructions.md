@@ -21,6 +21,7 @@ Everruns implements AGENTS.md as a built-in capability that reads from the sessi
 | Size limit | 32 KiB max (truncated with warning if exceeded, matching Codex convention) |
 | Missing file | Silently ignored (no error) |
 | Format | Plain markdown, no special syntax, no `@` imports |
+| Link-following hint | Appended after content; nudges LLM to read referenced files progressively |
 | Architecture | Self-contained capability with `system_prompt_contribution()` override |
 | Dependencies | None required; `session_file_system` recommended for authoring |
 

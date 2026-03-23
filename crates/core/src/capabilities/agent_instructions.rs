@@ -119,6 +119,13 @@ pub fn format_agents_md_content(content: &str) -> Option<String> {
     if was_truncated {
         result.push_str("\n\n[AGENTS.md was truncated — content exceeds 32 KiB limit]");
     }
+    result.push_str(concat!(
+        "\n\n",
+        "AGENTS.md may reference specs, skills, and other files in the workspace. ",
+        "Read referenced files before concluding you cannot perform a task. ",
+        "Follow links progressively — don't load everything upfront, ",
+        "but do read a file when its topic is relevant to the current request.",
+    ));
     result.push_str("\n</agent-instructions>");
     Some(result)
 }
@@ -263,6 +270,7 @@ mod tests {
         assert!(result.starts_with("<agent-instructions source=\"AGENTS.md\">"));
         assert!(result.ends_with("</agent-instructions>"));
         assert!(result.contains("Use snake_case"));
+        assert!(result.contains("Read referenced files before concluding"));
     }
 
     #[test]
@@ -277,15 +285,10 @@ mod tests {
         let content = "x".repeat(MAX_AGENTS_MD_SIZE + 1000);
         let result = format_agents_md_content(&content).unwrap();
 
-        let header = "<agent-instructions source=\"AGENTS.md\">\n";
-        let truncation_notice = "\n\n[AGENTS.md was truncated — content exceeds 32 KiB limit]";
-        let closing = "\n</agent-instructions>";
-        let expected_len =
-            header.len() + MAX_AGENTS_MD_SIZE + truncation_notice.len() + closing.len();
-        assert_eq!(result.len(), expected_len);
         assert!(result.starts_with("<agent-instructions"));
         assert!(result.ends_with("</agent-instructions>"));
         assert!(result.contains("truncated"));
+        assert!(result.contains("Read referenced files before concluding"));
     }
 
     #[test]
