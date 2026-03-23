@@ -289,6 +289,14 @@ mod tests {
         assert!(result.ends_with("</agent-instructions>"));
         assert!(result.contains("truncated"));
         assert!(result.contains("Read referenced files before concluding"));
+
+        // Verify the AGENTS.md content portion is truncated to MAX_AGENTS_MD_SIZE.
+        // Extract the body between the header newline and the truncation notice.
+        let header = "<agent-instructions source=\"AGENTS.md\">\n";
+        let body_start = result.find(header).unwrap() + header.len();
+        let truncation_marker = "\n\n[AGENTS.md was truncated";
+        let body_end = result.find(truncation_marker).unwrap();
+        assert_eq!(body_end - body_start, MAX_AGENTS_MD_SIZE);
     }
 
     #[test]

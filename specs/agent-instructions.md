@@ -18,7 +18,7 @@ Everruns implements AGENTS.md as a built-in capability that reads from the sessi
 | Discovery | Single file at workspace root (`/AGENTS.md`) — no upward walk (session filesystem is flat) |
 | Injection point | Prepended to system prompt, before capability additions |
 | Dynamic reading | Re-read on every LLM turn (picks up changes immediately) |
-| Size limit | 32 KiB max (truncated with warning if exceeded, matching Codex convention) |
+| Size limit | 32 KiB max of AGENTS.md content; truncated with warning if exceeded, excluding wrapper/hint text (matching Codex convention) |
 | Missing file | Silently ignored (no error) |
 | Format | Plain markdown, no special syntax, no `@` imports |
 | Link-following hint | Appended after content; nudges LLM to read referenced files progressively |
