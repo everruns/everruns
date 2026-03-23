@@ -68,6 +68,8 @@ pub struct ConnectionResponse {
 #[derive(Debug, Deserialize)]
 pub struct CreateApiKeyConnectionRequest {
     pub api_key: String,
+    #[serde(flatten)]
+    pub extra_fields: std::collections::HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -210,8 +212,17 @@ pub async fn create_api_key_connection(
             .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
-    // Validate the API key
-    let validation = provider.validate(&body.api_key).await.map_err(|e| {
+    // Build form fields map for validation
+    let mut fields = std::collections::HashMap::new();
+    fields.insert("api_key".to_string(), body.api_key.clone());
+    for (key, value) in &body.extra_fields {
+        if let Some(s) = value.as_str() {
+            fields.insert(key.clone(), s.to_string());
+        }
+    }
+
+    // Validate all fields via the provider
+    let validation = provider.validate_fields(&fields).await.map_err(|e| {
         ErrorResponse::new(format!("API key validation failed: {e}"))
             .into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -236,6 +247,7 @@ pub async fn create_api_key_connection(
             scopes: None,
             expires_at: None,
             installation_id: None,
+            provider_metadata: validation.provider_metadata.clone(),
         })
         .await
         .map_err(|e| {

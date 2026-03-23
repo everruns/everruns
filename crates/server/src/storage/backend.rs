@@ -1580,6 +1580,19 @@ impl StorageBackend {
         dispatch!(self, get_connection_token_for_session, session_id, provider)
     }
 
+    pub async fn get_connection_metadata_for_session(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        dispatch!(
+            self,
+            get_connection_metadata_for_session,
+            session_id,
+            provider
+        )
+    }
+
     pub async fn get_connection_user_for_session(
         &self,
         session_id: SessionId,

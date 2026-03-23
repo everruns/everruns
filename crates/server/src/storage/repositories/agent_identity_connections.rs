@@ -21,8 +21,8 @@ impl Database {
             r#"
             INSERT INTO agent_identity_connections
                 (agent_identity_id, provider, connection_type, provider_user_id, provider_username,
-                 access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             ON CONFLICT (agent_identity_id, provider) DO UPDATE SET
                 connection_type = EXCLUDED.connection_type,
                 provider_user_id = EXCLUDED.provider_user_id,
@@ -32,10 +32,11 @@ impl Database {
                 scopes = EXCLUDED.scopes,
                 expires_at = EXCLUDED.expires_at,
                 installation_id = EXCLUDED.installation_id,
+                provider_metadata = EXCLUDED.provider_metadata,
                 updated_at = NOW()
             RETURNING id, agent_identity_id, provider, connection_type, provider_user_id,
                       provider_username, access_token_encrypted, refresh_token_encrypted,
-                      scopes, expires_at, installation_id, created_at, updated_at
+                      scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
             "#,
         )
         .bind(input.agent_identity_id)
@@ -48,6 +49,7 @@ impl Database {
         .bind(&input.scopes)
         .bind(input.expires_at)
         .bind(input.installation_id)
+        .bind(&input.provider_metadata)
         .fetch_one(&self.pool)
         .await?;
 
@@ -62,7 +64,7 @@ impl Database {
     ) -> Result<Option<AgentIdentityConnectionRow>> {
         let row = sqlx::query_as::<_, AgentIdentityConnectionRow>(
             r#"
-            SELECT id, agent_identity_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
+            SELECT id, agent_identity_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
             FROM agent_identity_connections
             WHERE agent_identity_id = $1 AND provider = $2
             LIMIT 1
@@ -83,7 +85,7 @@ impl Database {
     ) -> Result<Vec<AgentIdentityConnectionRow>> {
         let rows = sqlx::query_as::<_, AgentIdentityConnectionRow>(
             r#"
-            SELECT id, agent_identity_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, created_at, updated_at
+            SELECT id, agent_identity_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
             FROM agent_identity_connections
             WHERE agent_identity_id = $1
             ORDER BY provider ASC

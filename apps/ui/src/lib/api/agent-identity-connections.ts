@@ -15,10 +15,11 @@ export async function createIdentityApiKeyConnection(
   identityId: string,
   provider: string,
   apiKey: string,
+  extraFields?: Record<string, string>,
 ): Promise<UserConnection> {
   const response = await api.post<UserConnection>(
     `/v1/agent-identities/${identityId}/connections/${provider}`,
-    { api_key: apiKey },
+    { api_key: apiKey, ...extraFields },
   );
   return response.data;
 }

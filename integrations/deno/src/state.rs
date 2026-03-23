@@ -38,7 +38,22 @@ pub async fn get_credentials(
             .await
         {
             Ok(Some(token)) => {
-                return Ok(DenoCredentials { token, org: None });
+                // Resolve org from provider_metadata if stored (personal tokens)
+                let org = match resolver
+                    .get_connection_metadata(context.session_id, "deno")
+                    .await
+                {
+                    Ok(Some(meta)) => meta
+                        .get("org")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    Ok(None) => None,
+                    Err(e) => {
+                        warn!("Failed to resolve Deno connection metadata: {e}");
+                        None
+                    }
+                };
+                return Ok(DenoCredentials { token, org });
             }
             Ok(None) => {}
             Err(e) => error!("Failed to resolve Deno user connection: {e}"),

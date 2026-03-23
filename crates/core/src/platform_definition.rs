@@ -401,6 +401,7 @@ mod tests {
         async fn validate(&self, _credential: &str) -> Result<ConnectionValidation, String> {
             Ok(ConnectionValidation {
                 provider_username: Some("test-user".to_string()),
+                provider_metadata: None,
             })
         }
     }

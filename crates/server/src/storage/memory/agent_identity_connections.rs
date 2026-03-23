@@ -35,6 +35,7 @@ impl InMemoryDatabase {
             scopes: input.scopes,
             expires_at: input.expires_at,
             installation_id: input.installation_id,
+            provider_metadata: input.provider_metadata,
             created_at: now,
             updated_at: now,
         };

@@ -54,10 +54,19 @@ export function IdentityApiKeyDialog({
       return;
     }
 
+    // Collect extra fields (everything except api_key)
+    const extraFields: Record<string, string> = {};
+    for (const [key, value] of Object.entries(formValues)) {
+      if (key !== "api_key" && value.trim()) {
+        extraFields[key] = value;
+      }
+    }
+
     try {
       await createConnection.mutateAsync({
         provider: provider.provider_id,
         apiKey,
+        extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
       });
       onOpenChange(false);
     } catch (err) {
