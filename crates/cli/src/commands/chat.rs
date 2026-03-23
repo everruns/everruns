@@ -50,10 +50,11 @@ pub async fn run(
         // Use position-based lookup instead of skip_while: if last_event_id
         // is no longer in the response (server-side truncation/retention),
         // treat all returned events as new rather than silently dropping them.
-        let events: Vec<_> = if let Some(ref last_id) = last_event_id {
-            match response.data.iter().position(|e| &e.id == last_id) {
-                Some(idx) => response.data.into_iter().skip(idx + 1).collect(),
-                None => response.data, // last seen event was evicted; all events are new
+        let events = if let Some(ref last_id) = last_event_id {
+            let mut data = response.data;
+            match data.iter().position(|e| &e.id == last_id) {
+                Some(idx) => data.split_off(idx + 1),
+                None => data, // last seen event was evicted; all events are new
             }
         } else {
             response.data
