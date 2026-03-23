@@ -735,4 +735,40 @@ mod tests {
 
         assert_eq!(err.to_string(), "Capability not found");
     }
+
+    #[tokio::test]
+    async fn upsert_updates_initial_files() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = AgentService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        // Create agent with initial_files via upsert
+        let public_id = "agent_00000000000000000000000000000050";
+        let mut req = build_create_request(None);
+        req.initial_files = vec![InitialFile {
+            path: "/AGENTS.md".to_string(),
+            content: "old content".to_string(),
+            encoding: "utf-8".to_string(),
+            is_readonly: false,
+        }];
+
+        let (agent, was_created) = service.upsert(&caller, public_id, req).await.unwrap();
+        assert!(was_created);
+        assert_eq!(agent.initial_files.len(), 1);
+        assert_eq!(agent.initial_files[0].content, "old content");
+
+        // Upsert again with updated initial_files
+        let mut req2 = build_create_request(None);
+        req2.initial_files = vec![InitialFile {
+            path: "/AGENTS.md".to_string(),
+            content: "new content".to_string(),
+            encoding: "utf-8".to_string(),
+            is_readonly: false,
+        }];
+
+        let (agent2, was_created2) = service.upsert(&caller, public_id, req2).await.unwrap();
+        assert!(!was_created2);
+        assert_eq!(agent2.initial_files.len(), 1);
+        assert_eq!(agent2.initial_files[0].content, "new content");
+    }
 }
