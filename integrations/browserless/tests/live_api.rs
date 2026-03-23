@@ -1,6 +1,6 @@
 //! Live API tests against the real Browserless service.
 //!
-//! These tests require a valid `BROWSERLESS_KEY` environment variable (set via Doppler).
+//! These tests require a valid `BROWSERLESS_TOKEN` environment variable (set via Doppler).
 //! Run via: doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests
 //!
 //! All tests are gated behind the `browserless-live-tests` feature flag.
@@ -12,8 +12,8 @@ use everruns_integrations_browserless::cdp::CdpSession;
 use everruns_integrations_browserless::client::BrowserlessClient;
 
 fn api_token() -> String {
-    std::env::var("BROWSERLESS_KEY")
-        .expect("BROWSERLESS_KEY must be set for live API tests (available via Doppler)")
+    std::env::var("BROWSERLESS_TOKEN")
+        .expect("BROWSERLESS_TOKEN must be set for live API tests (available via Doppler)")
 }
 
 // ============================================================================

@@ -216,7 +216,7 @@ No long-lived WebSocket connections from our side — we connect/disconnect for 
 - `tool_integration.rs`: full tool execution flow via wiremock, parameter validation, auth, error handling, resource cleanup
 
 ### Live API Tests
-Tests against the real Browserless API require `BROWSERLESS_KEY` in Doppler. Gated behind `browserless-live-tests` feature flag:
+Tests against the real Browserless API require `BROWSERLESS_TOKEN` in Doppler. Gated behind `browserless-live-tests` feature flag:
 
 ```bash
 doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests
