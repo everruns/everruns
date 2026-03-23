@@ -2,8 +2,8 @@
 //
 // Design Decision: When --file is provided, send raw content to the server's
 // import API (POST /v1/agents/import) which handles YAML/JSON/Markdown parsing.
-// This avoids duplicating parsing logic and removes the serde_yaml dependency.
-// CLI flag overrides (--name, --description, etc.) are not supported with --file.
+// --initial-files-dir injects files from a local directory into the payload
+// before sending, so the server receives them as initial_files.
 
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
@@ -18,6 +18,10 @@ pub enum AgentsCommand {
         /// YAML/JSON/Markdown file with agent definition (sent to server for parsing)
         #[arg(short, long)]
         file: Option<String>,
+
+        /// Directory of files to upload as read-only initial_files
+        #[arg(long)]
+        initial_files_dir: Option<String>,
 
         /// Agent name (required if no --file)
         #[arg(long)]
@@ -48,6 +52,10 @@ pub enum AgentsCommand {
         /// YAML/JSON/Markdown file with agent definition (sent to server for parsing)
         #[arg(short, long)]
         file: Option<String>,
+
+        /// Directory of files to upload as read-only initial_files
+        #[arg(long)]
+        initial_files_dir: Option<String>,
 
         /// Agent name
         #[arg(long)]
@@ -104,6 +112,7 @@ pub async fn run(
     match command {
         AgentsCommand::Create {
             file,
+            initial_files_dir,
             name,
             system_prompt,
             description,
@@ -119,8 +128,19 @@ pub async fn run(
                 {
                     eprintln!("Warning: CLI flag overrides are ignored when --file is used");
                 }
-                import_from_file(api_url, api_key, &path, output, quiet).await
+                import_from_file(
+                    api_url,
+                    api_key,
+                    &path,
+                    initial_files_dir.as_deref(),
+                    output,
+                    quiet,
+                )
+                .await
             } else {
+                if initial_files_dir.is_some() {
+                    anyhow::bail!("--initial-files-dir requires --file");
+                }
                 create_from_flags(
                     client,
                     output,
@@ -137,6 +157,7 @@ pub async fn run(
         AgentsCommand::Update {
             agent_id,
             file,
+            initial_files_dir,
             name,
             system_prompt,
             description,
@@ -153,8 +174,19 @@ pub async fn run(
                 {
                     eprintln!("Warning: CLI flag overrides are ignored when --file is used");
                 }
-                import_from_file(api_url, api_key, &path, output, quiet).await
+                import_from_file(
+                    api_url,
+                    api_key,
+                    &path,
+                    initial_files_dir.as_deref(),
+                    output,
+                    quiet,
+                )
+                .await
             } else {
+                if initial_files_dir.is_some() {
+                    anyhow::bail!("--initial-files-dir requires --file");
+                }
                 // Update without file requires agent_id
                 let id = agent_id.context("Agent ID is required for update without --file")?;
                 update_from_flags(
@@ -179,22 +211,37 @@ pub async fn run(
 
 /// Import agent from file via server import API.
 /// Server handles YAML/JSON/Markdown parsing.
+/// When initial_files_dir is provided, files are globbed and injected into the
+/// payload as initial_files before sending.
 async fn import_from_file(
     api_url: &str,
     api_key: &str,
     path: &str,
+    initial_files_dir: Option<&str>,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
     let content =
         std::fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path))?;
 
+    // If --initial-files-dir is provided, parse the agent file, inject the files,
+    // and send as JSON so the server receives initial_files in the payload.
+    let (body, content_type) = if let Some(dir) = initial_files_dir {
+        let files = glob_initial_files(dir)?;
+        let mut agent: serde_json::Value =
+            parse_agent_file_as_json(&content).context("Failed to parse agent file")?;
+        agent["initial_files"] = serde_json::to_value(&files)?;
+        (serde_json::to_string(&agent)?, "application/json")
+    } else {
+        (content, "text/plain")
+    };
+
     let http = reqwest::Client::new();
     let resp = http
         .post(format!("{}/v1/agents/import", api_url))
         .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "text/plain")
-        .body(content)
+        .header("Content-Type", content_type)
+        .body(body)
         .send()
         .await
         .context("Failed to send import request")?;
@@ -230,6 +277,114 @@ async fn import_from_file(
     }
 
     Ok(())
+}
+
+/// Represents a file to be uploaded as an initial file for an agent.
+#[derive(Debug, serde::Serialize)]
+struct CollectedFile {
+    path: String,
+    content: String,
+    encoding: String,
+    is_readonly: bool,
+}
+
+/// Recursively collect all non-hidden text files from a directory.
+/// Returns them as initial_files entries with paths relative to /workspace.
+fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
+    let base =
+        std::fs::canonicalize(dir).with_context(|| format!("Cannot resolve directory: {}", dir))?;
+    if !base.is_dir() {
+        anyhow::bail!("Not a directory: {}", base.display());
+    }
+
+    let walker = ignore::WalkBuilder::new(&base)
+        .hidden(true) // respect hidden files filter
+        .git_ignore(true) // respect .gitignore
+        .build();
+
+    let mut files = Vec::new();
+    for entry in walker {
+        let entry = entry.context("Failed to read directory entry")?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let rel = path
+            .strip_prefix(&base)
+            .context("File outside base directory")?;
+
+        // Skip hidden files/directories (dot-prefixed relative components).
+        // The ignore crate handles this too, but belt-and-suspenders.
+        if rel
+            .components()
+            .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+        {
+            continue;
+        }
+        let workspace_path = format!("/workspace/{}", rel.display());
+
+        // Read as text; skip binary files
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                files.push(CollectedFile {
+                    path: workspace_path,
+                    content,
+                    encoding: "text".to_string(),
+                    is_readonly: true,
+                });
+            }
+            Err(_) => {
+                eprintln!(
+                    "Warning: skipping binary or unreadable file: {}",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    if files.is_empty() {
+        anyhow::bail!("No files found in directory: {}", dir);
+    }
+
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(files)
+}
+
+/// Parse agent file content (Markdown/YAML/JSON) into a JSON Value.
+/// This is minimal parsing to allow injecting initial_files before sending
+/// to the server import API.
+fn parse_agent_file_as_json(content: &str) -> Result<serde_json::Value> {
+    let content = content.trim();
+
+    // Markdown with front matter
+    if let Some(after_prefix) = content.strip_prefix("---")
+        && let Some(end) = after_prefix.find("---")
+    {
+        let frontmatter = after_prefix[..end].trim();
+        let body = after_prefix[end + 3..].trim();
+
+        let mut obj: serde_json::Value =
+            serde_yaml::from_str(frontmatter).context("Failed to parse YAML frontmatter")?;
+
+        // If there's a markdown body and no system_prompt in frontmatter, use it
+        if !body.is_empty()
+            && (obj.get("system_prompt").is_none()
+                || obj["system_prompt"].as_str().is_none_or(|s| s.is_empty()))
+        {
+            obj["system_prompt"] = serde_json::Value::String(body.to_string());
+        }
+
+        return Ok(obj);
+    }
+
+    // JSON
+    if content.starts_with('{') {
+        return serde_json::from_str(content).context("Failed to parse JSON");
+    }
+
+    // YAML
+    serde_yaml::from_str(content).context("Failed to parse YAML")
 }
 
 /// Create agent from CLI flags using SDK
@@ -413,5 +568,74 @@ mod tests {
         let agent: ImportedAgent = serde_json::from_str(json).unwrap();
         assert_eq!(agent.id, "agent_abc");
         assert_eq!(agent.name, "test");
+    }
+
+    #[test]
+    fn test_parse_agent_file_json() {
+        let content = r#"{"name":"test","system_prompt":"hello"}"#;
+        let val = parse_agent_file_as_json(content).unwrap();
+        assert_eq!(val["name"], "test");
+        assert_eq!(val["system_prompt"], "hello");
+    }
+
+    #[test]
+    fn test_parse_agent_file_yaml() {
+        let content = "name: test\nsystem_prompt: hello\n";
+        let val = parse_agent_file_as_json(content).unwrap();
+        assert_eq!(val["name"], "test");
+        assert_eq!(val["system_prompt"], "hello");
+    }
+
+    #[test]
+    fn test_parse_agent_file_markdown() {
+        let content = "---\nname: test\n---\nHello world";
+        let val = parse_agent_file_as_json(content).unwrap();
+        assert_eq!(val["name"], "test");
+        assert_eq!(val["system_prompt"], "Hello world");
+    }
+
+    #[test]
+    fn test_parse_agent_file_markdown_with_system_prompt() {
+        let content = "---\nname: test\nsystem_prompt: from frontmatter\n---\nBody text";
+        let val = parse_agent_file_as_json(content).unwrap();
+        assert_eq!(val["name"], "test");
+        // Frontmatter system_prompt takes precedence
+        assert_eq!(val["system_prompt"], "from frontmatter");
+    }
+
+    #[test]
+    fn test_glob_initial_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hello.txt"), "world").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub/nested.txt"), "content").unwrap();
+
+        // Hidden files should be skipped
+        std::fs::write(dir.path().join(".hidden"), "secret").unwrap();
+
+        let files = glob_initial_files(dir.path().to_str().unwrap()).unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().any(|f| f.path == "/workspace/hello.txt"));
+        assert!(files.iter().any(|f| f.path == "/workspace/sub/nested.txt"));
+        assert!(files.iter().all(|f| f.is_readonly));
+        assert!(files.iter().all(|f| f.encoding == "text"));
+    }
+
+    #[test]
+    fn test_glob_initial_files_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = glob_initial_files(dir.path().to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No files found"));
+    }
+
+    #[test]
+    fn test_glob_initial_files_not_a_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("file.txt");
+        std::fs::write(&file_path, "content").unwrap();
+        let result = glob_initial_files(file_path.to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Not a directory"));
     }
 }
