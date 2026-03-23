@@ -14,13 +14,13 @@ use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
 
 use super::store::{
-    CapacitySnapshot, CircuitBreakerState, ClaimedTask, CreateScheduleRow, DlqEntry, DlqFilter,
-    HeartbeatResponse, Pagination, ScheduleExecutionFilter, ScheduleExecutionRow,
-    ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats, ScheduleTargetType,
-    SchedulerInstanceInfo, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome,
-    TaskFilter, TaskInfo, TaskStatus, TraceContext, UpdateSchedule, WORKER_HEARTBEAT_TIMEOUT_SECS,
-    WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo,
-    WorkflowInfoExtended, WorkflowStatus,
+    CapacitySnapshot, CircuitBreakerState, ClaimedTask, CreateScheduleRow, DeadTaskInfo, DlqEntry,
+    DlqFilter, HeartbeatResponse, Pagination, ReclaimResult, ScheduleExecutionFilter,
+    ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats,
+    ScheduleTargetType, SchedulerInstanceInfo, StoreError, SystemHealth, TaskDefinition,
+    TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus, TraceContext, UpdateSchedule,
+    WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore,
+    WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
 };
 use crate::reliability::{CircuitBreakerConfig, CircuitState};
 use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};
@@ -1059,7 +1059,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     async fn reclaim_stale_tasks(
         &self,
         stale_threshold: Duration,
-    ) -> Result<Vec<Uuid>, StoreError> {
+    ) -> Result<ReclaimResult, StoreError> {
         let threshold =
             Utc::now() - chrono::Duration::from_std(stale_threshold).unwrap_or_default();
 
@@ -1073,7 +1073,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             WHERE status = 'claimed'
               AND heartbeat_at < $1
               AND attempt >= max_attempts
-            RETURNING id
+            RETURNING id, workflow_id, activity_id, last_error
             "#,
         )
         .bind(threshold)
@@ -1084,9 +1084,21 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
-        let dead_count = dead_rows.len();
-        if dead_count > 0 {
-            info!(count = dead_count, "marked exhausted stale tasks as dead");
+        let dead_tasks: Vec<DeadTaskInfo> = dead_rows
+            .iter()
+            .map(|r| DeadTaskInfo {
+                task_id: r.get("id"),
+                workflow_id: r.get("workflow_id"),
+                activity_id: r.get("activity_id"),
+                last_error: r.get("last_error"),
+            })
+            .collect();
+
+        if !dead_tasks.is_empty() {
+            info!(
+                count = dead_tasks.len(),
+                "marked exhausted stale tasks as dead"
+            );
         }
 
         // Then, reclaim stale tasks that still have attempts remaining
@@ -1110,14 +1122,12 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
-        // Return all affected tasks (both dead and reclaimed)
-        let mut reclaimed: Vec<Uuid> = dead_rows.iter().map(|r| r.get("id")).collect();
-        reclaimed.extend(rows.iter().map(|r| r.get::<Uuid, _>("id")));
+        let reclaimed_ids: Vec<Uuid> = rows.iter().map(|r| r.get("id")).collect();
 
-        if !reclaimed.is_empty() {
+        if !reclaimed_ids.is_empty() || !dead_tasks.is_empty() {
             debug!(
-                count = reclaimed.len(),
-                dead = dead_count,
+                reclaimed = reclaimed_ids.len(),
+                dead = dead_tasks.len(),
                 "processed stale tasks"
             );
         }
@@ -1148,7 +1158,10 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             info!(count = stale_workers.len(), worker_ids = ?ids, "marked stale workers as stopped");
         }
 
-        Ok(reclaimed)
+        Ok(ReclaimResult {
+            reclaimed_ids,
+            dead_tasks,
+        })
     }
 
     #[instrument(skip(self, signal))]

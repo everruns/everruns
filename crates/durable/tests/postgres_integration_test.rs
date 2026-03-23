@@ -715,11 +715,11 @@ async fn test_reclaim_stale_tasks() {
     .unwrap();
 
     // Reclaim stale tasks (threshold: 30 seconds)
-    let reclaimed = store
+    let result = store
         .reclaim_stale_tasks(Duration::from_secs(30))
         .await
         .unwrap();
-    assert_eq!(reclaimed.len(), 1);
+    assert_eq!(result.reclaimed_ids.len(), 1);
 
     // Task should be claimable again
     let claimed = store
@@ -1294,11 +1294,11 @@ async fn test_task_completion_rejected_when_reclaimed() {
     .unwrap();
 
     // Reclaim stale tasks
-    let reclaimed = store
+    let result = store
         .reclaim_stale_tasks(Duration::from_secs(30))
         .await
         .unwrap();
-    assert_eq!(reclaimed.len(), 1);
+    assert_eq!(result.reclaimed_ids.len(), 1);
 
     // Worker 2 claims the reclaimed task
     let claimed = store
@@ -1598,11 +1598,11 @@ async fn test_stale_reclaim_respects_max_attempts() {
     .unwrap();
 
     // Reclaim stale task
-    let reclaimed = store
+    let result = store
         .reclaim_stale_tasks(Duration::from_secs(30))
         .await
         .unwrap();
-    assert_eq!(reclaimed.len(), 1);
+    assert_eq!(result.reclaimed_ids.len(), 1);
 
     // Attempt 2: Another worker claims the reclaimed task
     let claimed = store
@@ -1625,12 +1625,23 @@ async fn test_stale_reclaim_respects_max_attempts() {
     .await
     .unwrap();
 
-    // Reclaim stale task again
-    let reclaimed = store
+    // Reclaim stale task again — this time task is dead (attempt >= max_attempts)
+    let result = store
         .reclaim_stale_tasks(Duration::from_secs(30))
         .await
         .unwrap();
-    assert_eq!(reclaimed.len(), 1);
+    assert_eq!(result.dead_tasks.len(), 1);
+    assert_eq!(result.reclaimed_ids.len(), 0);
+
+    // Verify DeadTaskInfo fields are populated correctly
+    let dead = &result.dead_tasks[0];
+    assert_eq!(dead.task_id, task_id);
+    assert_eq!(dead.workflow_id, Some(workflow_id));
+    assert_eq!(dead.activity_id, "panic_task");
+    assert!(
+        dead.last_error.is_some(),
+        "Dead task should have last_error populated"
+    );
 
     // BUG: Without fix, this would claim the task for attempt 3 (exceeding max_attempts=2)
     // FIXED: Task should NOT be claimable because attempt (2) >= max_attempts (2)

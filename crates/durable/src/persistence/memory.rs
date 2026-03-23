@@ -715,9 +715,9 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     async fn reclaim_stale_tasks(
         &self,
         _stale_threshold: Duration,
-    ) -> Result<Vec<Uuid>, StoreError> {
+    ) -> Result<ReclaimResult, StoreError> {
         // In-memory implementation doesn't track timestamps
-        Ok(vec![])
+        Ok(ReclaimResult::default())
     }
 
     async fn send_signal(

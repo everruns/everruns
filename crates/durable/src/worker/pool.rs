@@ -615,9 +615,31 @@ impl WorkerPool {
                 tokio::select! {
                     _ = ticker.tick() => {
                         match store.reclaim_stale_tasks(threshold).await {
-                            Ok(reclaimed) => {
-                                if !reclaimed.is_empty() {
-                                    info!(count = reclaimed.len(), "Reclaimed stale tasks");
+                            Ok(result) => {
+                                if !result.reclaimed_ids.is_empty() {
+                                    info!(count = result.reclaimed_ids.len(), "Reclaimed stale tasks");
+                                }
+
+                                // Notify workflows about dead tasks so they can transition
+                                // to failed instead of staying stuck in running forever.
+                                for dead in &result.dead_tasks {
+                                    let error_msg = dead.last_error.clone().unwrap_or_else(|| {
+                                        "Worker became unresponsive after exhausting all retry attempts".to_string()
+                                    });
+                                    info!(
+                                        task_id = %dead.task_id,
+                                        workflow_id = ?dead.workflow_id,
+                                        activity_id = %dead.activity_id,
+                                        "Notifying workflow of dead task"
+                                    );
+                                    crate::task_events::record_activity_failed(
+                                        store.as_ref(),
+                                        dead.workflow_id,
+                                        dead.activity_id.clone(),
+                                        error_msg,
+                                        false, // will_retry = false, all attempts exhausted
+                                    )
+                                    .await;
                                 }
                             }
                             Err(e) => {
