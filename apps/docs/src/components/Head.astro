@@ -29,6 +29,20 @@ import DefaultHead from "@astrojs/starlight/components/Head.astro";
   const isPreElement = (value: Element | null): value is HTMLPreElement =>
     value instanceof HTMLPreElement;
 
+  // Expressive Code wraps each line in a <div class="ec-line"> element.
+  // textContent concatenates text nodes without newlines between block
+  // elements, producing a single-line string that mermaid cannot parse.
+  // Join each line's text with newlines to reconstruct valid source.
+  const extractSource = (el: Element): string => {
+    const lines = el.querySelectorAll(".ec-line");
+    if (lines.length > 0) {
+      return Array.from(lines)
+        .map((line) => line.textContent ?? "")
+        .join("\n");
+    }
+    return el.textContent ?? "";
+  };
+
   const prepareBlock = (
     block: HTMLPreElement,
     source: string | null | undefined
@@ -49,7 +63,7 @@ import DefaultHead from "@astrojs/starlight/components/Head.astro";
       document.querySelectorAll('pre[data-language="mermaid"]')
     )
       .map((block) =>
-        block instanceof HTMLPreElement ? prepareBlock(block, block.textContent) : null
+        block instanceof HTMLPreElement ? prepareBlock(block, extractSource(block)) : null
       )
       .filter((block): block is HTMLPreElement => block !== null);
 
@@ -59,7 +73,7 @@ import DefaultHead from "@astrojs/starlight/components/Head.astro";
       .map((code): HTMLPreElement | null => {
         const container = code.parentElement;
         if (!isPreElement(container)) return null;
-        return prepareBlock(container, code.textContent);
+        return prepareBlock(container, extractSource(code));
       })
       .filter((block): block is HTMLPreElement => block !== null);
 
