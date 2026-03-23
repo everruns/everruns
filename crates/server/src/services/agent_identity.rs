@@ -12,11 +12,27 @@ use crate::storage::{
 use anyhow::Result;
 use everruns_core::{
     AgentIdentity, AgentIdentityId, AgentIdentityStatus, Caller, Permission, Policy, Rule,
+    localization::{is_allowed_locale, is_allowed_timezone},
 };
+use everruns_durable::UpdateField;
 use everruns_macros::policy;
 use std::sync::Arc;
 
 use crate::api::agent_identities::{CreateAgentIdentityRequest, UpdateAgentIdentityRequest};
+
+fn validate_locale(locale: &str) -> Result<()> {
+    if !is_allowed_locale(locale) {
+        anyhow::bail!("Unsupported locale: {locale}");
+    }
+    Ok(())
+}
+
+fn validate_timezone(tz: &str) -> Result<()> {
+    if !is_allowed_timezone(tz) {
+        anyhow::bail!("Unsupported timezone: {tz}");
+    }
+    Ok(())
+}
 
 pub const AGENT_IDENTITY_VIEW: Policy = Policy {
     id: "agent_identity.view",
@@ -51,6 +67,12 @@ impl AgentIdentityService {
         caller: &Caller,
         req: CreateAgentIdentityRequest,
     ) -> Result<AgentIdentity> {
+        if let Some(ref locale) = req.locale {
+            validate_locale(locale)?;
+        }
+        if let Some(ref tz) = req.timezone {
+            validate_timezone(tz)?;
+        }
         let row = self
             .db
             .create_agent_identity(CreateAgentIdentityRow {
@@ -99,6 +121,12 @@ impl AgentIdentityService {
         id: AgentIdentityId,
         req: UpdateAgentIdentityRequest,
     ) -> Result<Option<AgentIdentity>> {
+        if let UpdateField::Set(ref locale) = req.locale {
+            validate_locale(locale)?;
+        }
+        if let UpdateField::Set(ref tz) = req.timezone {
+            validate_timezone(tz)?;
+        }
         let row = self
             .db
             .update_agent_identity(

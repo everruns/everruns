@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Combobox } from "@/components/ui/combobox";
+import { LOCALE_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/locale-data";
 
 export default function NewAgentIdentityPage() {
   const router = useRouter();
@@ -50,23 +53,33 @@ export default function NewAgentIdentityPage() {
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
-              <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe this identity..."
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">Supports Markdown</p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Locale</Label>
-                <Input
+                <Combobox
+                  options={LOCALE_OPTIONS}
                   value={locale}
-                  onChange={(e) => setLocale(e.target.value)}
-                  placeholder="en-US"
+                  onValueChange={setLocale}
+                  placeholder="Select locale..."
+                  searchPlaceholder="Search locales..."
                 />
               </div>
               <div className="space-y-2">
                 <Label>Timezone</Label>
-                <Input
+                <Combobox
+                  options={TIMEZONE_OPTIONS}
                   value={timezone}
-                  onChange={(e) => setTimezone(e.target.value)}
-                  placeholder="America/Los_Angeles"
+                  onValueChange={setTimezone}
+                  placeholder="Select timezone..."
+                  searchPlaceholder="Search timezones..."
                 />
               </div>
             </div>

@@ -100,6 +100,8 @@ fn classify_anyhow_error(message: &str) -> Option<(StatusCode, Json<ErrorRespons
         "cannot archive built-in",
         "invalid mcp capability reference",
         "invalid skill capability reference",
+        "unsupported locale",
+        "unsupported timezone",
     ]
     .iter()
     .any(|pattern| lowered.contains(pattern));

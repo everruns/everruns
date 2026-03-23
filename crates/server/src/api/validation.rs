@@ -7,6 +7,7 @@
 use super::common::ErrorResponse;
 use axum::Json;
 use axum::http::StatusCode;
+use everruns_core::localization::is_allowed_locale;
 use everruns_core::{InitialFile, SessionFile};
 use std::collections::HashSet;
 
@@ -147,8 +148,8 @@ pub fn validate_import_file_size(size: usize) -> Result<(), ValidationError> {
 
 /// Validate and normalize a locale tag.
 ///
-/// Accepts simple BCP 47-style tags with ASCII alphanumeric subtags separated by `-`.
-/// Also normalizes `_` separators to `-`.
+/// Normalizes `_` separators to `-`, then checks against the centralized
+/// allowlist in `everruns_core::localization`.
 pub fn normalize_locale(locale: Option<String>) -> Result<Option<String>, ValidationError> {
     let Some(locale) = locale else {
         return Ok(None);
@@ -160,13 +161,8 @@ pub fn normalize_locale(locale: Option<String>) -> Result<Option<String>, Valida
         return Err(ValidationError);
     }
 
-    if normalized.starts_with('-')
-        || normalized.ends_with('-')
-        || normalized.split('-').any(|segment| {
-            segment.is_empty() || !segment.chars().all(|ch| ch.is_ascii_alphanumeric())
-        })
-    {
-        tracing::warn!("Locale failed validation: {:?}", locale);
+    if !is_allowed_locale(&normalized) {
+        tracing::warn!("Locale not in allowed set: {:?}", normalized);
         return Err(ValidationError);
     }
 
