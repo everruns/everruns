@@ -14,8 +14,33 @@ import { code as baseCodePlugin } from "@streamdown/code";
 import remarkGfm from "remark-gfm";
 import remarkGithubAlerts from "remark-github-blockquote-alert";
 import { cn } from "@/lib/utils";
-import type { ComponentType, AnchorHTMLAttributes } from "react";
+import { useState, useEffect, type ComponentType, type AnchorHTMLAttributes } from "react";
+import type { DiagramPlugin } from "@streamdown/mermaid";
 import "./streamdown-message.css";
+
+// Lazy-load the mermaid plugin to avoid pulling the full mermaid dependency
+// (~2 MB) into the initial client bundle. The plugin loads once and is cached.
+let mermaidCache: DiagramPlugin | null = null;
+let mermaidLoading: Promise<DiagramPlugin> | null = null;
+function loadMermaidPlugin(): Promise<DiagramPlugin> {
+  if (!mermaidLoading) {
+    mermaidLoading = import("@streamdown/mermaid").then((m) => {
+      mermaidCache = m.mermaid;
+      return m.mermaid;
+    });
+  }
+  return mermaidLoading;
+}
+
+function useMermaidPlugin(): DiagramPlugin | undefined {
+  const [plugin, setPlugin] = useState<DiagramPlugin | null>(mermaidCache);
+  useEffect(() => {
+    if (!mermaidCache) {
+      loadMermaidPlugin().then(setPlugin);
+    }
+  }, []);
+  return plugin ?? undefined;
+}
 
 // Wrap the default code plugin to skip "openui" language — OpenUI blocks are
 // rendered by OpenUIBlock, but during streaming incomplete fences may reach Streamdown.
@@ -69,8 +94,10 @@ export function StreamdownMessage({
   className,
   variant = "default",
 }: StreamdownMessageProps) {
+  const mermaid = useMermaidPlugin();
+
   // Build plugins
-  const plugins: StreamdownProps["plugins"] = {};
+  const plugins: StreamdownProps["plugins"] = { mermaid };
   if (enableCodeHighlighting) {
     plugins.code = code;
   }

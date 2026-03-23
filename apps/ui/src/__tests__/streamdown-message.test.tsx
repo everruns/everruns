@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 
 // Capture props passed to Streamdown to verify components/plugins
 let capturedStreamdownProps: Record<string, unknown> = {};
@@ -13,6 +13,10 @@ jest.mock("streamdown", () => ({
 
 jest.mock("@streamdown/code", () => ({
   code: { name: "mock-code-plugin" },
+}));
+
+jest.mock("@streamdown/mermaid", () => ({
+  mermaid: { name: "mermaid", type: "diagram", language: "mermaid", getMermaid: jest.fn() },
 }));
 
 jest.mock("remark-gfm", () => jest.fn());
@@ -95,6 +99,17 @@ describe("StreamdownMessage", () => {
     render(<StreamdownMessage>Hello markdown</StreamdownMessage>);
 
     expect(screen.getByTestId("streamdown-mock")).toHaveTextContent("Hello markdown");
+  });
+
+  it("enables mermaid plugin after lazy load", async () => {
+    await act(async () => {
+      render(<StreamdownMessage>code block</StreamdownMessage>);
+      // Wait for the lazy-loaded mermaid plugin to resolve
+      await import("@streamdown/mermaid");
+    });
+
+    const plugins = capturedStreamdownProps.plugins as Record<string, unknown>;
+    expect(plugins.mermaid).toMatchObject({ name: "mermaid", type: "diagram" });
   });
 
   it("enables code highlighting by default", () => {
