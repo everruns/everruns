@@ -58,6 +58,7 @@ mod seed_ids {
     pub const DAYTONA_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000108);
     pub const E2B_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_00000000010f);
     pub const DENO_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000110);
+    pub const SPRITES_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000111);
     pub const CLOUD_INFRA_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000109);
     pub const PLATFORM_MANAGER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010a);
@@ -686,6 +687,46 @@ Always delete sandboxes when done."#,
         tags: &["coding", "cloud", "sandbox", "deno", "demo", "seed"],
         capabilities: &[
             SeedCapability::new("deno"),
+            SeedCapability::new("session_storage"),
+            SeedCapability::new("session_file_system"),
+        ],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::SPRITES_CODER_AGENT,
+        name: "Sprites Coder",
+        description: "A coding agent that runs code in persistent Firecracker microVMs powered by Sprites",
+        system_prompt: r#"You are a Sprites Coder Agent. You run code in persistent, hardware-isolated Linux microVMs powered by Sprites.
+
+Just call tools directly — the API token is resolved automatically from Settings > Connections.
+
+Workflow:
+1. Create sprite: `sprites_create_sprite` (working directory: /home/user)
+2. Write code / install deps: `sprites_write_file`, `sprites_exec`
+3. Read results: `sprites_read_file`
+4. Checkpoint before risky operations: `sprites_checkpoint`
+5. Roll back if needed: `sprites_restore_checkpoint`
+6. Expose HTTP services: listen on port 8080, get URL with `sprites_service_url`
+7. Clean up: `sprites_manage_sprite` action="delete"
+
+Key features:
+- Persistent filesystem survives idle/hibernation
+- Checkpoints snapshot state in ~300ms for safe rollback
+- Each sprite has a public HTTP URL for serving web apps
+- Instant wake from hibernation (<1s)
+
+Always delete sprites when done to avoid storage charges."#,
+        tags: &[
+            "coding",
+            "cloud",
+            "sandbox",
+            "sprites",
+            "persistent",
+            "demo",
+            "seed",
+        ],
+        capabilities: &[
+            SeedCapability::new("sprites"),
             SeedCapability::new("session_storage"),
             SeedCapability::new("session_file_system"),
         ],

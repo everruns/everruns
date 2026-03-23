@@ -18,6 +18,7 @@ use tracing::{info, warn};
 use crate::worker_adapters::WorkerAdapters;
 
 const DAYTONA_SNAPSHOT_SECRET_PREFIX: &str = "daytona_sandbox:";
+const SPRITES_SECRET_PREFIX: &str = "sprites_sprite:";
 const E2B_SANDBOX_SECRET_PREFIX: &str = "e2b_sandbox:";
 const DENO_SNAPSHOT_SECRET_PREFIX: &str = "deno_sandbox:";
 const BROWSERLESS_SESSION_KEY: &str = "browserless_browser_session";
@@ -199,6 +200,7 @@ async fn cleanup_resource(
         ("daytona", "sandbox") => cleanup_daytona(resource, storage_store, &token).await,
         ("e2b", "sandbox") => cleanup_e2b(resource, storage_store, &token).await,
         ("deno", "sandbox") => cleanup_deno(resource, storage_store, &token).await,
+        ("sprites", "sprite") => cleanup_sprites(resource, storage_store, &token).await,
         ("browserless", "browser_session") => {
             cleanup_browserless(resource, storage_store, &token).await
         }
@@ -369,6 +371,37 @@ async fn cleanup_deno(
     }
 
     Ok(format!("Deleted Deno sandbox {}", resource.external_id))
+}
+
+async fn cleanup_sprites(
+    resource: &LeasedResource,
+    storage_store: &dyn SessionStorageStore,
+    token: &str,
+) -> Result<String> {
+    let client = everruns_integrations_sprites::client::SpritesClient::new(token.to_string());
+
+    match client.delete_sprite(&resource.external_id).await {
+        Ok(()) => {}
+        Err(error) if error.contains("404") || error.contains("not found") => {
+            warn!(
+                sprite_name = %resource.external_id,
+                error = %error,
+                "Sprites sprite already gone during cleanup"
+            );
+        }
+        Err(error) => return Err(anyhow!("Sprites cleanup failed: {error}")),
+    }
+
+    if let Some(session_id) = resource.session_id {
+        let _ = storage_store
+            .delete_secret(
+                session_id,
+                &format!("{SPRITES_SECRET_PREFIX}{}", resource.external_id),
+            )
+            .await;
+    }
+
+    Ok(format!("Deleted Sprites sprite {}", resource.external_id))
 }
 
 async fn cleanup_browserless(

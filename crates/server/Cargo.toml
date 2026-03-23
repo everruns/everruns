@@ -72,6 +72,7 @@ everruns-integrations-daytona = { path = "../../integrations/daytona" }
 everruns-integrations-deno = { path = "../../integrations/deno" }
 everruns-integrations-browserless = { path = "../../integrations/browserless" }
 everruns-integrations-e2b = { path = "../../integrations/e2b" }
+everruns-integrations-sprites = { path = "../../integrations/sprites" }
 everruns-session-sqldb = { path = "../session-sqldb" }
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-internal-protocol = { path = "../internal-protocol" }
