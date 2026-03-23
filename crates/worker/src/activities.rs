@@ -625,6 +625,7 @@ mod tests {
                 policy: ToolPolicy::Auto,
                 category: None,
                 deferrable: DeferrablePolicy::default(),
+                hints: everruns_core::tool_types::ToolHints::default(),
             })],
             locale: None,
             blueprint_id: None,

@@ -17,6 +17,7 @@
 //! }
 //! ```
 
+use everruns_core::ToolHints;
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -331,6 +332,12 @@ impl Tool for DockerExecTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_long_running(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "docker_exec requires context. This tool must be executed with session context.",
@@ -447,6 +454,12 @@ impl Tool for DockerReadFileTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_open_world(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "docker_read_file requires context. This tool must be executed with session context.",
@@ -554,6 +567,10 @@ impl Tool for DockerWriteFileTool {
             "required": ["path", "content"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_open_world(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -677,6 +694,12 @@ impl Tool for DockerStopTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_destructive(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -814,6 +837,13 @@ impl Tool for DockerLogsTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_open_world(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

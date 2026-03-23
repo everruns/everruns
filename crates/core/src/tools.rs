@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tracing::error;
 
 use crate::tool_types::{
-    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy, ToolResult,
+    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
 use crate::traits::ToolContext;
 
@@ -391,6 +391,14 @@ pub trait Tool: Send + Sync {
         ToolPolicy::Auto
     }
 
+    /// Returns semantic hints describing the tool's behavioral properties.
+    ///
+    /// Override to provide hints like readonly, destructive, idempotent, etc.
+    /// Default is empty (all hints unspecified).
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+    }
+
     /// Convert this tool to a ToolDefinition for the agent config.
     ///
     /// This is used by ToolRegistry to generate tool definitions
@@ -404,6 +412,7 @@ pub trait Tool: Send + Sync {
             policy: self.policy(),
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: self.hints(),
         })
     }
 }
@@ -692,6 +701,12 @@ impl Tool for EchoTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
         let message = arguments
             .get("message")
@@ -755,6 +770,12 @@ impl Tool for FailingTool {
             "properties": {},
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

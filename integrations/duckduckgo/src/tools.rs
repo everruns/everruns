@@ -1,5 +1,6 @@
 //! Tool implementations for DuckDuckGo operations.
 
+use everruns_core::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 
@@ -43,6 +44,13 @@ impl Tool for DuckDuckGoSearchTool {
             "required": ["query"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+            .with_open_world(true)
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {

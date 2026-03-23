@@ -902,6 +902,7 @@ mod tests {
             policy: crate::tool_types::ToolPolicy::Auto,
             category: None,
             deferrable: crate::tool_types::DeferrablePolicy::default(),
+            hints: crate::tool_types::ToolHints::default(),
         });
 
         let result = executor.execute(&tool_call, &tool_def).await.unwrap();

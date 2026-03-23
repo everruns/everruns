@@ -628,6 +628,7 @@ mod tests {
             }),
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: crate::tool_types::ToolHints::default(),
         });
 
         let agent = Agent {
@@ -679,6 +680,7 @@ mod tests {
             parameters: serde_json::json!({"type": "object"}),
             category: None,
             deferrable: DeferrablePolicy::default(),
+            hints: crate::tool_types::ToolHints::default(),
         });
 
         let agent = Agent {
@@ -880,6 +882,7 @@ mod tests {
                 policy: ToolPolicy::Auto,
                 category: None,
                 deferrable: Default::default(),
+                hints: crate::tool_types::ToolHints::default(),
             })
         };
 

@@ -20,6 +20,7 @@
 
 use super::{Capability, CapabilityStatus};
 use crate::SessionId;
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileStore, ToolContext};
 use async_trait::async_trait;
@@ -753,6 +754,12 @@ impl Tool for AwsListEc2InstancesTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error("aws_list_ec2_instances requires context")
     }
@@ -936,6 +943,10 @@ impl Tool for AwsStopEc2InstanceTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_destructive(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error("aws_stop_ec2_instance requires context")
     }
@@ -1007,6 +1018,12 @@ impl Tool for AwsListRdsDatabasesTool {
 
     fn parameters_schema(&self) -> Value {
         json!({"type": "object", "properties": {}, "additionalProperties": false})
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -1170,6 +1187,12 @@ impl Tool for AwsListS3BucketsTool {
         json!({"type": "object", "properties": {}, "additionalProperties": false})
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error("Requires context")
     }
@@ -1305,6 +1328,12 @@ impl Tool for AwsListIamUsersTool {
 
     fn parameters_schema(&self) -> Value {
         json!({"type": "object", "properties": {}, "additionalProperties": false})
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -1447,6 +1476,12 @@ impl Tool for AwsListSecurityGroupsTool {
         json!({"type": "object", "properties": {}, "additionalProperties": false})
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error("Requires context")
     }
@@ -1509,6 +1544,12 @@ impl Tool for AwsGetCloudWatchMetricsTool {
             "required": ["resource_id", "metric_name"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

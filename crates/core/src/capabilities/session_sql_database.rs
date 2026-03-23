@@ -7,6 +7,7 @@
 
 use super::{Capability, CapabilityStatus};
 use crate::session_sqldb::SessionSqlDbError;
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -109,6 +110,10 @@ impl Tool for SqlExecuteTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "sql_execute requires context. This tool must be executed with session context.",
@@ -194,6 +199,10 @@ impl Tool for SqlQueryTool {
             "required": ["database", "sql"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_readonly(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -288,6 +297,12 @@ impl Tool for SqlSchemaTool {
             "required": ["database"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

@@ -162,6 +162,13 @@ impl Tool {
     /// See §2a for schema authoring rules.
     fn input_schema(&self) -> serde_json::Value;
 
+    /// Semantic hints describing the tool's behavioral properties.
+    /// Follows the MCP annotations convention (readonly, destructive,
+    /// idempotent, open_world) plus everruns-specific hints (requires_secrets,
+    /// long_running). See `everruns_core::ToolHints` for field definitions.
+    /// Returns `ToolHints::default()` (all unspecified) if not overridden.
+    fn hints(&self) -> ToolHints;
+
     /// Terse system prompt addition for the LLM.
     /// Must start with tool name (e.g. "web_fetch: ..."). No title/header.
     /// Minimal tokens — only behavior the LLM can't infer from the schema.

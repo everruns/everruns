@@ -4,6 +4,7 @@
 //! write, list, delete.
 
 use async_trait::async_trait;
+use everruns_core::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use serde_json::{Value, json};
@@ -82,6 +83,13 @@ impl Tool for DenoCreateSandboxTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -223,6 +231,13 @@ impl Tool for DenoExecTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "deno_exec requires context. This tool must be executed with session context.",
@@ -318,6 +333,13 @@ impl Tool for DenoReadFileTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "deno_read_file requires context. This tool must be executed with session context.",
@@ -392,6 +414,12 @@ impl Tool for DenoWriteFileTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "deno_write_file requires context. This tool must be executed with session context.",
@@ -464,6 +492,14 @@ impl Tool for DenoListSandboxesTool {
         json!({ "type": "object", "properties": {}, "additionalProperties": false })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "deno_list_sandboxes requires context. This tool must be executed with session context.",
@@ -520,6 +556,13 @@ impl Tool for DenoManageSandboxTool {
             "required": ["sandbox_id", "action"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_destructive(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

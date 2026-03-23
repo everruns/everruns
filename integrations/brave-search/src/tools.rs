@@ -1,5 +1,6 @@
 //! Tool implementations for Brave Search operations.
 
+use everruns_core::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 
@@ -98,6 +99,14 @@ impl Tool for BraveWebSearchTool {
             "required": ["query"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

@@ -5,6 +5,7 @@
 //! - `get_session_info`: return session id, title, and agent name (if any)
 
 use super::{Capability, CapabilityStatus};
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -77,6 +78,10 @@ impl Tool for WriteSessionTitleTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "write_session_title requires context. This tool must be executed with session context.",
@@ -136,6 +141,12 @@ impl Tool for GetSessionInfoTool {
             "properties": {},
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

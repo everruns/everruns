@@ -7,6 +7,7 @@
 //! - See specs/fetchkit.md for design details
 
 use super::{Capability, CapabilityStatus, RiskLevel};
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileStore, ToolContext};
 use crate::typed_id::SessionId;
@@ -276,6 +277,13 @@ impl Tool for WebFetchTool {
     fn requires_context(&self) -> bool {
         // Needed for save_to_file (SessionFileStore access)
         true
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_open_world(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {

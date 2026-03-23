@@ -1,5 +1,6 @@
 //! Tool implementations for Daytona sandbox operations.
 
+use everruns_core::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 
@@ -103,6 +104,13 @@ impl Tool for DaytonaCreateSandboxTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -334,6 +342,13 @@ impl Tool for DaytonaExecTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "daytona_exec requires context. This tool must be executed with session context.",
@@ -424,6 +439,13 @@ impl Tool for DaytonaReadFileTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "daytona_read_file requires context. This tool must be executed with session context.",
@@ -511,6 +533,12 @@ impl Tool for DaytonaWriteFileTool {
             "required": ["sandbox_id", "path", "content"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -606,6 +634,14 @@ impl Tool for DaytonaDownloadWorkspaceTool {
             "required": ["sandbox_id"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -768,6 +804,14 @@ impl Tool for DaytonaListSandboxesTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "daytona_list_sandboxes requires context. This tool must be executed with session context.",
@@ -839,6 +883,13 @@ impl Tool for DaytonaManageSandboxTool {
             "required": ["sandbox_id", "action"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_destructive(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -953,6 +1004,13 @@ impl Tool for DaytonaGitCloneTool {
             "required": ["sandbox_id", "repo_url"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -1113,6 +1171,12 @@ impl Tool for DaytonaGitCredentialsTool {
             "required": ["sandbox_id"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

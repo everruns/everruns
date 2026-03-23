@@ -11,6 +11,7 @@
 //! the persistent browser, preserving login state and cookies across tool calls.
 //! When no session exists, each tool call uses a fresh browser via REST API.
 
+use everruns_core::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 
@@ -101,6 +102,14 @@ impl Tool for BrowserlessScreenshotTool {
             "required": ["url"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -246,6 +255,14 @@ impl Tool for BrowserlessContentTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error("browserless_content requires context.")
     }
@@ -386,6 +403,14 @@ impl Tool for BrowserlessScrapeTool {
             "required": ["url", "elements"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -650,6 +675,13 @@ impl Tool for BrowserlessInteractTool {
             "required": ["url", "steps"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -929,6 +961,13 @@ impl Tool for BrowserlessNavigateTool {
             "required": ["url"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

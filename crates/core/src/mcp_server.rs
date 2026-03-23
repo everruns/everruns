@@ -187,6 +187,41 @@ pub struct McpToolDefinition {
     /// JSON Schema describing the tool's input parameters.
     #[serde(rename = "inputSchema")]
     pub input_schema: Value,
+    /// MCP tool annotations (behavioral hints).
+    /// See: https://spec.modelcontextprotocol.io
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<McpToolAnnotations>,
+}
+
+/// MCP tool annotations as defined by the MCP specification.
+/// All fields are optional booleans following the MCP convention.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct McpToolAnnotations {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "readOnlyHint"
+    )]
+    pub read_only_hint: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "destructiveHint"
+    )]
+    pub destructive_hint: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "idempotentHint"
+    )]
+    pub idempotent_hint: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "openWorldHint"
+    )]
+    pub open_world_hint: Option<bool>,
 }
 
 /// Request for MCP tools/list endpoint.

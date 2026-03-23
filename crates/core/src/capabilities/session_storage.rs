@@ -8,6 +8,7 @@
 //! - `secret_store`: Encrypted secret storage operations (set, get, delete, list)
 
 use super::{Capability, CapabilityStatus};
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -104,6 +105,10 @@ impl Tool for KvStoreTool {
             "required": ["operation"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -281,6 +286,12 @@ impl Tool for SecretStoreTool {
             "required": ["operation"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_idempotent(true)
+            .with_requires_secrets(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

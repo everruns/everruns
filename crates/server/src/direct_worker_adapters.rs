@@ -1186,6 +1186,7 @@ impl DirectWorkerAdapters {
                     policy: ToolPolicy::Auto,
                     category: None,
                     deferrable: DeferrablePolicy::default(),
+                    hints: everruns_core::tool_types::ToolHints::default().with_open_world(true),
                 }));
             }
         }

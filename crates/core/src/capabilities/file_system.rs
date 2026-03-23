@@ -14,6 +14,7 @@
 
 use super::{Capability, CapabilityStatus};
 use crate::session_file::SessionFile;
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult, ToolResultImage};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -417,6 +418,12 @@ impl Tool for ReadFileTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "read_file requires context. This tool must be executed with session context.",
@@ -551,6 +558,10 @@ impl Tool for WriteFileTool {
             "required": ["path", "content"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -690,6 +701,10 @@ impl Tool for EditFileTool {
             "required": ["path", "expected_hash"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -905,6 +920,12 @@ impl Tool for ListDirectoryTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "list_directory requires context. This tool must be executed with session context.",
@@ -1013,6 +1034,12 @@ impl Tool for GrepFilesTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "grep_files requires context. This tool must be executed with session context.",
@@ -1118,6 +1145,12 @@ impl Tool for DeleteFileTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_destructive(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "delete_file requires context. This tool must be executed with session context.",
@@ -1215,6 +1248,12 @@ impl Tool for StatFileTool {
             "required": ["path"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

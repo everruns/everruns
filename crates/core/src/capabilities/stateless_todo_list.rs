@@ -39,6 +39,7 @@
 //! growth becomes an issue in long-running sessions.
 
 use super::{Capability, CapabilityStatus};
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -187,6 +188,10 @@ impl Tool for WriteTodosTool {
             "required": ["todos"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_idempotent(true)
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {

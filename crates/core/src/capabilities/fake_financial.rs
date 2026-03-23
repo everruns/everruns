@@ -14,6 +14,7 @@
 //! - `finance_forecast_cash_flow`: Forecast cash flow
 
 use super::{Capability, CapabilityStatus};
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -131,6 +132,12 @@ impl Tool for FinanceListTransactionsTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -396,6 +403,12 @@ impl Tool for FinanceGetBalanceTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error("finance_get_balance requires context")
     }
@@ -467,6 +480,12 @@ impl Tool for FinanceListBudgetsTool {
 
     fn parameters_schema(&self) -> Value {
         json!({"type": "object", "properties": {}, "additionalProperties": false})
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -589,6 +608,12 @@ impl Tool for FinanceGetExpenseReportTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error("Requires context")
     }
@@ -651,6 +676,12 @@ impl Tool for FinanceGetRevenueReportTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -716,6 +747,12 @@ impl Tool for FinanceForecastCashFlowTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

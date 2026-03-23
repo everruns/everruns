@@ -17,6 +17,7 @@
 
 use super::{Capability, CapabilityStatus};
 use crate::platform_store::PlatformStore;
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -180,6 +181,10 @@ impl Tool for SpawnSubagentTool {
             "required": ["name", "task"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -366,6 +371,12 @@ impl Tool for GetSubagentsTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error("get_subagents requires context.")
     }
@@ -503,6 +514,10 @@ impl Tool for MessageSubagentTool {
             "required": ["name_or_id", "message"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_long_running(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

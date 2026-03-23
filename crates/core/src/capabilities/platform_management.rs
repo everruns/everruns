@@ -7,6 +7,7 @@
 // Decision: get_messages defaults to last 10; session_read_response defaults to 120s timeout
 
 use super::{Capability, CapabilityStatus};
+use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -121,6 +122,12 @@ impl Tool for ReadHarnessesTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -493,6 +500,12 @@ impl Tool for ReadAgentsTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "read_agents requires context. This tool must be executed with session context.",
@@ -786,6 +799,12 @@ impl Tool for ReadSessionsTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "read_sessions requires context. This tool must be executed with session context.",
@@ -1076,6 +1095,10 @@ impl Tool for SessionSendMessageTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_long_running(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "session_send_message requires context. This tool must be executed with session context.",
@@ -1162,6 +1185,12 @@ impl Tool for SessionReadMessagesTool {
             "required": ["session_id"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -1266,6 +1295,13 @@ impl Tool for SessionReadResponseTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+            .with_long_running(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "session_read_response requires context. This tool must be executed with session context.",
@@ -1348,6 +1384,12 @@ impl Tool for ReadCapabilitiesTool {
             },
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
