@@ -47,6 +47,10 @@ impl Drop for SandboxGuard {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn smoke_live_sandbox_exec_and_files() {
+    // Test binary doesn't go through init_telemetry() or CLI main(),
+    // so install the rustls CryptoProvider explicitly (rustls 0.23 requirement).
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let api_key = require_api_key!();
     let client = E2BClient::new(api_key.clone());
     let created = client
