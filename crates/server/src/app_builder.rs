@@ -869,7 +869,7 @@ impl ServerAppBuilder {
                                             "Notifying workflow of dead task"
                                         );
                                         everruns_durable::record_activity_failed(
-                                            store.as_ref(),
+                                            &store,
                                             dead.workflow_id,
                                             dead.activity_id.clone(),
                                             error_msg,
