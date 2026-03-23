@@ -675,59 +675,85 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
 - **Purpose**: Programmatic management of Everruns entities (harnesses, agents, sessions) via tool calls
 - **System Prompt**: Describes available management tools and common workflows
 - **Lifecycle Parity**: Must enforce the same archive/delete, assignment, and read-only rules as the public API and UI. Agents using these tools may not bypass lifecycle restrictions.
-- **Tools**:
-  - `list_capabilities` - Discover available capabilities (built-in, MCP servers, skills)
+- **Tools** (read/write split — read tools return single item by ID or filtered list):
+  - `read_capabilities` - Discover available capabilities (built-in, MCP servers, skills)
     - Parameters:
+      - `id`: string - Optional capability ID to get a single capability
       - `search`: string - Optional case-insensitive filter by name, description, category, or ID
-    - Returns: Array of capabilities with id, name, description, type (builtin/mcp_server/skill), tools, dependencies
+    - Returns: Single capability (when `id` given) or array of capabilities with id, name, description, type (builtin/mcp_server/skill), tools, dependencies
     - Policy: Auto
-  - `manage_harnesses` - Harness CRUD operations
+  - `read_harnesses` - Read harnesses by ID or list/filter
     - Parameters:
-      - `operation`: enum (list, get, create, update, delete, destroy, copy) - The operation to perform
-      - `harness_id`: string - Required for get, update, delete, destroy, copy
+      - `id`: string - Optional harness ID to get a single harness (returns full detail incl. system_prompt)
+    - Returns: Single harness (when `id` given) or array of harness summaries with `ui_link`
+    - Policy: Auto
+  - `manage_harnesses` - Harness mutations: create, update, delete, copy
+    - Parameters:
+      - `operation`: enum (create, update, delete, copy) - The operation to perform
+      - `harness_id`: string - Required for update, delete, copy
       - `name`: string - Required for create, optional for update/copy
       - `system_prompt`: string - Required for create, optional for update
       - `description`: string - Optional for create/update
       - `capabilities`: string[] - Optional for create
-    - Returns: Harness data with `ui_link` for each harness
+    - Returns: Harness data with `ui_link`
     - Policy: Auto
-  - `manage_agents` - Agent CRUD operations
+  - `read_agents` - Read agents by ID or list/filter
     - Parameters:
-      - `operation`: enum (list, get, create, update, delete, destroy) - The operation to perform
-      - `agent_id`: string - Required for get, update, delete, destroy
+      - `id`: string - Optional agent ID to get a single agent (returns full detail incl. system_prompt)
+    - Returns: Single agent (when `id` given) or array of agent summaries with `ui_link`
+    - Policy: Auto
+  - `manage_agents` - Agent mutations: create, update, delete
+    - Parameters:
+      - `operation`: enum (create, update, delete) - The operation to perform
+      - `agent_id`: string - Required for update, delete
       - `name`: string - Required for create, optional for update
       - `system_prompt`: string - Required for create, optional for update
       - `description`: string - Optional for create/update
       - `capabilities`: string[] - Optional for create
-    - Returns: Agent data with `ui_link` for each agent
+    - Returns: Agent data with `ui_link`
     - Policy: Auto
-  - `manage_sessions` - Session CRUD operations
+  - `read_sessions` - Read sessions by ID or list/filter
     - Parameters:
-      - `operation`: enum (list, get, create, delete) - The operation to perform
-      - `session_id`: string - Required for get, delete
-      - `harness_id`: string - Required for create
-      - `agent_id`: string - Optional for create/list
+      - `id`: string - Optional session ID to get a single session
+      - `agent_id`: string - Optional filter by agent
+      - `limit`: integer - Optional max results for list (default: 20)
+    - Returns: Single session (when `id` given) or array of session summaries with `ui_link`
+    - Policy: Auto
+  - `manage_sessions` - Session mutations: create, delete
+    - Parameters:
+      - `operation`: enum (create, delete) - The operation to perform
+      - `session_id`: string - Required for delete
+      - `harness_id`: string - Optional for create (defaults to built-in Generic harness when omitted)
+      - `agent_id`: string - Optional for create
       - `title`: string - Optional for create
-      - `limit`: integer - Optional for list
-    - Returns: Session data with `ui_link` for each session
+    - Returns: Session data with `ui_link`
     - Policy: Auto
-  - `session_interact` - Session messaging and turn management
+  - `session_send_message` - Send a user message to a session, triggering a turn
     - Parameters:
-      - `operation`: enum (send_message, get_messages, wait_for_idle) - The operation to perform
-      - `session_id`: string - Required for all operations
-      - `content`: string - Required for send_message
-      - `limit`: integer - Optional for get_messages (default: 10)
-      - `timeout_secs`: integer - Optional for wait_for_idle (default: 300)
-    - Returns: Message data or status
+      - `session_id`: string - Target session ID
+      - `content`: string - Message content
+    - Returns: Confirmation with `ui_link`
+    - Policy: Auto
+  - `session_read_messages` - Read messages from a session
+    - Parameters:
+      - `session_id`: string - Target session ID
+      - `limit`: integer - Optional max messages (default: 10)
+    - Returns: Array of messages with role, content, created_at
+    - Policy: Auto
+  - `session_read_response` - Wait for session to finish processing and return the response
+    - Parameters:
+      - `session_id`: string - Target session ID
+      - `timeout_secs`: integer - Optional timeout (default: 120). Set to 0 to check status without waiting.
+    - Returns: Session status (session_id, status, ui_link)
     - Policy: Auto
 - **Icon**: "settings"
 - **Category**: "Management"
 
 Lifecycle rules for platform management:
 - `delete` archives.
-- `destroy` is the dangerous delete path and must require the matching dangerous permission.
 - Archived entities can be read but not updated or assigned.
 - Deleted entities should behave as missing except where historical references are intentionally rendered as tombstones.
+- Future: `destroy` (hard delete) will require a dedicated `PlatformStore` method and dangerous permission gate.
 
 ##### Design Decision: Context-Aware Tools
 
@@ -735,11 +761,15 @@ All platform management tools require session context to access the `PlatformSto
 
 ##### Design Decision: UI Links
 
-All tool results include `ui_link` fields pointing to the relevant UI page (e.g., `/harnesses/{id}`, `/agents/{id}`, `/chat?session={id}`). This lets agents direct users to the web interface for visual management.
+All tool results include `ui_link` fields pointing to the relevant UI page (e.g., `/harnesses/{id}`, `/agents/{id}`, `/sessions/{id}/chat`). This lets agents direct users to the web interface for visual management.
 
-##### Design Decision: Capability Discovery via list_capabilities
+##### Design Decision: Read/Write Tool Split
 
-The `list_capabilities` tool enables agents (particularly the Platform Chat) to discover available capabilities before creating or updating agents/harnesses. It queries the `PlatformStore.list_capabilities()` method which returns built-in capabilities, MCP server capabilities, and skill capabilities. The search parameter supports case-insensitive filtering across name, description, category, and ID. The Platform Chat harness system prompt instructs the agent to use `list_capabilities` before creating agents.
+Platform management tools are split into read tools (`read_*`) and write tools (`manage_*`). Read tools accept an optional `id` parameter: when provided they return a single detailed item, otherwise they return a filtered list. This separation lets LLMs use read tools freely (no side effects) while write tools are clearly mutation-oriented. Session interaction is split into three single-purpose tools (`session_send_message`, `session_read_messages`, `session_read_response`) eliminating the operation-dispatch pattern for session I/O.
+
+##### Design Decision: Capability Discovery via read_capabilities
+
+The `read_capabilities` tool enables agents (particularly the Platform Chat) to discover available capabilities before creating or updating agents/harnesses. It queries the `PlatformStore.list_capabilities()` method which returns built-in capabilities, MCP server capabilities, and skill capabilities. The search parameter supports case-insensitive filtering across name, description, category, and ID. The Platform Chat harness system prompt instructs the agent to use `read_capabilities` before creating agents.
 
 ##### Design Decision: PlatformStore Trait
 

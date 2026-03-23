@@ -160,8 +160,9 @@ pub use openai_tool_search::{
 };
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
 pub use platform_management::{
-    ListCapabilitiesTool, ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool,
-    PlatformManagementCapability, SessionInteractTool,
+    ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PlatformManagementCapability,
+    ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool, ReadSessionsTool,
+    SessionReadMessagesTool, SessionReadResponseTool, SessionSendMessageTool,
 };
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
