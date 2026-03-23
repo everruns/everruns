@@ -11,6 +11,7 @@
 
 import { Streamdown, type StreamdownProps } from "streamdown";
 import { code as baseCodePlugin } from "@streamdown/code";
+import { mermaid as mermaidPlugin } from "@streamdown/mermaid";
 import remarkGfm from "remark-gfm";
 import remarkGithubAlerts from "remark-github-blockquote-alert";
 import { cn } from "@/lib/utils";
@@ -70,7 +71,7 @@ export function StreamdownMessage({
   variant = "default",
 }: StreamdownMessageProps) {
   // Build plugins
-  const plugins: StreamdownProps["plugins"] = {};
+  const plugins: StreamdownProps["plugins"] = { mermaid: mermaidPlugin };
   if (enableCodeHighlighting) {
     plugins.code = code;
   }

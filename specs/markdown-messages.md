@@ -41,10 +41,10 @@ npm install streamdown @streamdown/code
 |---------|---------|
 | `streamdown` | Core streaming markdown renderer |
 | `@streamdown/code` | Syntax highlighting via Shiki |
+| `@streamdown/mermaid` | Mermaid diagram rendering |
 
 Optional plugins (add when needed):
 - `@streamdown/math` — KaTeX math rendering
-- `@streamdown/mermaid` — Diagram rendering
 
 ## Architecture
 
@@ -147,4 +147,3 @@ Single component for all markdown needs, with streaming support when needed.
 
 - **Incremark migration**: If performance becomes an issue with very long messages, consider migrating to Incremark for its O(n) incremental parsing
 - **Math support**: Add `@streamdown/math` for LaTeX equations when needed
-- **Mermaid diagrams**: Add `@streamdown/mermaid` for diagram rendering
