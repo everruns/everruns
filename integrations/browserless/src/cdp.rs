@@ -9,10 +9,14 @@ use futures_util::stream::SplitSink;
 use futures_util::stream::SplitStream;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
+use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use tracing::debug;
+
+/// Timeout for the initial CDP WebSocket connection handshake.
+const CDP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Default reconnect timeout in milliseconds (60 seconds).
 pub const DEFAULT_RECONNECT_TIMEOUT_MS: u64 = 60_000;
@@ -45,9 +49,13 @@ impl CdpSession {
             ws_url.to_string()
         };
         debug!("CDP connecting to {redacted}");
-        let (ws_stream, _response) = connect_async(ws_url)
-            .await
-            .map_err(|e| format!("CDP WebSocket connection failed: {e}"))?;
+        let (ws_stream, _response) = tokio::time::timeout(
+            CDP_CONNECT_TIMEOUT,
+            connect_async(ws_url),
+        )
+        .await
+        .map_err(|_| format!("CDP WebSocket connection timed out ({CDP_CONNECT_TIMEOUT:?})"))?
+        .map_err(|e| format!("CDP WebSocket connection failed: {e}"))?;
 
         let (sink, source) = ws_stream.split();
         Ok(Self {
@@ -518,6 +526,26 @@ fn key_to_code(key: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_connect_timeout_on_unreachable() {
+        // Connect to a non-routable address to trigger timeout
+        let start = std::time::Instant::now();
+        let result = CdpSession::connect("ws://192.0.2.1:1/unreachable").await;
+        let elapsed = start.elapsed();
+
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        // Should timeout within ~15s, not hang indefinitely
+        assert!(
+            elapsed < Duration::from_secs(20),
+            "connect should timeout, took {elapsed:?}"
+        );
+        assert!(
+            err.contains("timed out") || err.contains("failed"),
+            "unexpected error: {err}"
+        );
+    }
 
     #[test]
     fn test_key_to_code() {
