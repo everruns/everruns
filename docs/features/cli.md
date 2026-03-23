@@ -7,7 +7,16 @@ The `everruns` CLI provides a command-line interface for managing agents, sessio
 
 ## Installation
 
-Install from the Git repository using Cargo:
+### Homebrew (macOS / Linux)
+
+```bash
+brew tap everruns/tap
+brew install everruns
+```
+
+### Cargo
+
+Install from the Git repository:
 
 ```bash
 cargo install --git https://github.com/everruns/everruns everruns-cli
@@ -21,7 +30,7 @@ cd everruns
 cargo install --path crates/cli
 ```
 
-Verify the installation:
+### Verify
 
 ```bash
 everruns --version
