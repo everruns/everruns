@@ -1,10 +1,10 @@
 // Platform Management capability
 // THREAT[TM-AGENT-017]: Agents with this capability can manage org-wide entities
 //
-// Decision: Four tools grouped by entity (harnesses, agents, sessions, session_interact)
-// Decision: Each tool uses an `operation` parameter for CRUD dispatch
+// Decision: Read/write split — read tools (read_*) return single item by ID or filtered list;
+//           write tools (manage_*) perform mutations. Session I/O split into three single-purpose tools.
 // Decision: All results include UI links via PlatformStore::base_url()
-// Decision: get_messages defaults to last 10; wait_for_idle defaults to 120s timeout
+// Decision: get_messages defaults to last 10; session_read_response defaults to 120s timeout
 
 use super::{Capability, CapabilityStatus};
 use crate::tools::{Tool, ToolExecutionResult};
@@ -45,17 +45,22 @@ impl Capability for PlatformManagementCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"Capabilities extend agent/harness functionality. Three types: built-in, MCP servers, and skills. Use `list_capabilities` to discover IDs before creating agents/harnesses. All results include UI links."#,
+            r#"Capabilities extend agent/harness functionality. Three types: built-in, MCP servers, and skills. Use `read_capabilities` to discover IDs before creating agents/harnesses. All results include UI links."#,
         )
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![
-            Box::new(ListCapabilitiesTool),
+            Box::new(ReadCapabilitiesTool),
+            Box::new(ReadHarnessesTool),
             Box::new(ManageHarnessesTool),
+            Box::new(ReadAgentsTool),
             Box::new(ManageAgentsTool),
+            Box::new(ReadSessionsTool),
             Box::new(ManageSessionsTool),
-            Box::new(SessionInteractTool),
+            Box::new(SessionSendMessageTool),
+            Box::new(SessionReadMessagesTool),
+            Box::new(SessionReadResponseTool),
         ]
     }
 }
@@ -86,7 +91,110 @@ fn require_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, ToolExecutionR
 }
 
 // =============================================================================
-// Tool: manage_harnesses
+// Tool: read_harnesses (read-only: get by ID or list all)
+// =============================================================================
+
+pub struct ReadHarnessesTool;
+
+#[async_trait]
+impl Tool for ReadHarnessesTool {
+    fn name(&self) -> &str {
+        "read_harnesses"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Read Harnesses")
+    }
+
+    fn description(&self) -> &str {
+        "Read harnesses by ID or list all. When id is provided returns full detail including system_prompt; otherwise returns summaries."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Optional harness ID to get a single harness with full detail (incl. system_prompt)"
+                }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "read_harnesses requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        let base_url = store.base_url();
+
+        if let Some(id_str) = get_str(&arguments, "id") {
+            let id = match id_str.parse::<crate::typed_id::HarnessId>() {
+                Ok(id) => id,
+                Err(_) => {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Invalid harness id: {id_str}"
+                    ));
+                }
+            };
+            match store.get_harness(id).await {
+                Ok(Some(h)) => ToolExecutionResult::success(json!({
+                    "id": h.id.to_string(),
+                    "name": h.name,
+                    "description": h.description,
+                    "system_prompt": h.system_prompt,
+                    "status": format!("{:?}", h.status),
+                    "capabilities": h.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
+                    "tags": h.tags,
+                    "ui_link": format!("{}/harnesses/{}", base_url, h.id),
+                })),
+                Ok(None) => ToolExecutionResult::tool_error(format!("Harness not found: {id_str}")),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to get harness: {e}")),
+            }
+        } else {
+            match store.list_harnesses().await {
+                Ok(harnesses) => {
+                    let items: Vec<Value> = harnesses
+                        .iter()
+                        .map(|h| {
+                            json!({
+                                "id": h.id.to_string(),
+                                "name": h.name,
+                                "description": h.description,
+                                "status": format!("{:?}", h.status),
+                                "capabilities": h.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
+                                "tags": h.tags,
+                                "ui_link": format!("{}/harnesses/{}", base_url, h.id),
+                            })
+                        })
+                        .collect();
+                    ToolExecutionResult::success(json!({"harnesses": items, "count": items.len()}))
+                }
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to list harnesses: {e}")),
+            }
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// =============================================================================
+// Tool: manage_harnesses (mutations: create, update, delete, destroy, copy)
 // =============================================================================
 
 pub struct ManageHarnessesTool;
@@ -102,7 +210,7 @@ impl Tool for ManageHarnessesTool {
     }
 
     fn description(&self) -> &str {
-        "CRUD operations for harnesses: list, get, create, update, delete, copy."
+        "Harness mutations: create, update, delete, destroy, copy."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -111,16 +219,16 @@ impl Tool for ManageHarnessesTool {
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["list", "get", "create", "update", "delete", "copy"],
-                    "description": "The operation to perform"
+                    "enum": ["create", "update", "delete", "destroy", "copy"],
+                    "description": "The mutation to perform"
                 },
                 "harness_id": {
                     "type": "string",
-                    "description": "Harness ID (required for get, update, delete, copy)"
+                    "description": "Harness ID (required for update, delete, destroy, copy)"
                 },
                 "name": {
                     "type": "string",
-                    "description": "Harness name (required for create)"
+                    "description": "Harness name (required for create, optional for update/copy)"
                 },
                 "new_name": {
                     "type": "string",
@@ -173,60 +281,6 @@ impl Tool for ManageHarnessesTool {
         let base_url = store.base_url();
 
         match operation {
-            "list" => match store.list_harnesses().await {
-                Ok(harnesses) => {
-                    let items: Vec<Value> = harnesses
-                        .iter()
-                        .map(|h| {
-                            json!({
-                                "id": h.id.to_string(),
-                                "name": h.name,
-                                "description": h.description,
-                                "status": format!("{:?}", h.status),
-                                "capabilities": h.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
-                                "tags": h.tags,
-                                "ui_link": format!("{}/harnesses/{}", base_url, h.id),
-                            })
-                        })
-                        .collect();
-                    ToolExecutionResult::success(json!({"harnesses": items, "count": items.len()}))
-                }
-                Err(e) => ToolExecutionResult::tool_error(format!("Failed to list harnesses: {e}")),
-            },
-
-            "get" => {
-                let id_str = match require_str(&arguments, "harness_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let id = match id_str.parse::<crate::typed_id::HarnessId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid harness_id: {id_str}"
-                        ));
-                    }
-                };
-                match store.get_harness(id).await {
-                    Ok(Some(h)) => ToolExecutionResult::success(json!({
-                        "id": h.id.to_string(),
-                        "name": h.name,
-                        "description": h.description,
-                        "system_prompt": h.system_prompt,
-                        "status": format!("{:?}", h.status),
-                        "capabilities": h.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
-                        "tags": h.tags,
-                        "ui_link": format!("{}/harnesses/{}", base_url, h.id),
-                    })),
-                    Ok(None) => {
-                        ToolExecutionResult::tool_error(format!("Harness not found: {id_str}"))
-                    }
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to get harness: {e}"))
-                    }
-                }
-            }
-
             "create" => {
                 let name = match require_str(&arguments, "name") {
                     Ok(s) => s,
@@ -365,6 +419,30 @@ impl Tool for ManageHarnessesTool {
                 }
             }
 
+            "destroy" => {
+                let id_str = match require_str(&arguments, "harness_id") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let id = match id_str.parse::<crate::typed_id::HarnessId>() {
+                    Ok(id) => id,
+                    Err(_) => {
+                        return ToolExecutionResult::tool_error(format!(
+                            "Invalid harness_id: {id_str}"
+                        ));
+                    }
+                };
+                match store.delete_harness(id).await {
+                    Ok(()) => ToolExecutionResult::success(json!({
+                        "harness_id": id_str,
+                        "message": "Harness destroyed successfully"
+                    })),
+                    Err(e) => {
+                        ToolExecutionResult::tool_error(format!("Failed to destroy harness: {e}"))
+                    }
+                }
+            }
+
             "copy" => {
                 let id_str = match require_str(&arguments, "harness_id") {
                     Ok(s) => s,
@@ -396,7 +474,7 @@ impl Tool for ManageHarnessesTool {
             }
 
             _ => ToolExecutionResult::tool_error(format!(
-                "Unknown operation: {operation}. Valid: list, get, create, update, delete, copy"
+                "Unknown operation: {operation}. Valid: create, update, delete, destroy, copy"
             )),
         }
     }
@@ -407,7 +485,108 @@ impl Tool for ManageHarnessesTool {
 }
 
 // =============================================================================
-// Tool: manage_agents
+// Tool: read_agents (read-only: get by ID or list all)
+// =============================================================================
+
+pub struct ReadAgentsTool;
+
+#[async_trait]
+impl Tool for ReadAgentsTool {
+    fn name(&self) -> &str {
+        "read_agents"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Read Agents")
+    }
+
+    fn description(&self) -> &str {
+        "Read agents by ID or list all. When id is provided returns full detail including system_prompt; otherwise returns summaries."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Optional agent ID to get a single agent with full detail (incl. system_prompt)"
+                }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "read_agents requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        let base_url = store.base_url();
+
+        if let Some(id_str) = get_str(&arguments, "id") {
+            let id = match id_str.parse::<crate::typed_id::AgentId>() {
+                Ok(id) => id,
+                Err(_) => {
+                    return ToolExecutionResult::tool_error(format!("Invalid agent id: {id_str}"));
+                }
+            };
+            match store.get_agent_by_id(id).await {
+                Ok(Some(a)) => ToolExecutionResult::success(json!({
+                    "id": a.public_id.to_string(),
+                    "name": a.name,
+                    "description": a.description,
+                    "system_prompt": a.system_prompt,
+                    "status": format!("{:?}", a.status),
+                    "capabilities": a.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
+                    "tags": a.tags,
+                    "ui_link": format!("{}/agents/{}", base_url, a.public_id),
+                })),
+                Ok(None) => ToolExecutionResult::tool_error(format!("Agent not found: {id_str}")),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to get agent: {e}")),
+            }
+        } else {
+            match store.list_agents().await {
+                Ok(agents) => {
+                    let items: Vec<Value> = agents
+                        .iter()
+                        .map(|a| {
+                            json!({
+                                "id": a.public_id.to_string(),
+                                "name": a.name,
+                                "description": a.description,
+                                "status": format!("{:?}", a.status),
+                                "capabilities": a.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
+                                "tags": a.tags,
+                                "ui_link": format!("{}/agents/{}", base_url, a.public_id),
+                            })
+                        })
+                        .collect();
+                    ToolExecutionResult::success(json!({"agents": items, "count": items.len()}))
+                }
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to list agents: {e}")),
+            }
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// =============================================================================
+// Tool: manage_agents (mutations: create, update, delete, destroy)
 // =============================================================================
 
 pub struct ManageAgentsTool;
@@ -423,7 +602,7 @@ impl Tool for ManageAgentsTool {
     }
 
     fn description(&self) -> &str {
-        "CRUD operations for agents: list, get, create, update, delete."
+        "Agent mutations: create, update, delete, destroy."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -432,12 +611,12 @@ impl Tool for ManageAgentsTool {
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["list", "get", "create", "update", "delete"],
-                    "description": "The operation to perform"
+                    "enum": ["create", "update", "delete", "destroy"],
+                    "description": "The mutation to perform"
                 },
                 "agent_id": {
                     "type": "string",
-                    "description": "Agent ID (required for get, update, delete)"
+                    "description": "Agent ID (required for update, delete, destroy)"
                 },
                 "name": {
                     "type": "string",
@@ -486,58 +665,6 @@ impl Tool for ManageAgentsTool {
         let base_url = store.base_url();
 
         match operation {
-            "list" => match store.list_agents().await {
-                Ok(agents) => {
-                    let items: Vec<Value> = agents
-                        .iter()
-                        .map(|a| {
-                            json!({
-                                "id": a.public_id.to_string(),
-                                "name": a.name,
-                                "description": a.description,
-                                "status": format!("{:?}", a.status),
-                                "capabilities": a.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
-                                "tags": a.tags,
-                                "ui_link": format!("{}/agents/{}", base_url, a.public_id),
-                            })
-                        })
-                        .collect();
-                    ToolExecutionResult::success(json!({"agents": items, "count": items.len()}))
-                }
-                Err(e) => ToolExecutionResult::tool_error(format!("Failed to list agents: {e}")),
-            },
-
-            "get" => {
-                let id_str = match require_str(&arguments, "agent_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let id = match id_str.parse::<crate::typed_id::AgentId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid agent_id: {id_str}"
-                        ));
-                    }
-                };
-                match store.get_agent_by_id(id).await {
-                    Ok(Some(a)) => ToolExecutionResult::success(json!({
-                        "id": a.public_id.to_string(),
-                        "name": a.name,
-                        "description": a.description,
-                        "system_prompt": a.system_prompt,
-                        "status": format!("{:?}", a.status),
-                        "capabilities": a.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
-                        "tags": a.tags,
-                        "ui_link": format!("{}/agents/{}", base_url, a.public_id),
-                    })),
-                    Ok(None) => {
-                        ToolExecutionResult::tool_error(format!("Agent not found: {id_str}"))
-                    }
-                    Err(e) => ToolExecutionResult::tool_error(format!("Failed to get agent: {e}")),
-                }
-            }
-
             "create" => {
                 let name = match require_str(&arguments, "name") {
                     Ok(s) => s,
@@ -607,7 +734,7 @@ impl Tool for ManageAgentsTool {
                 }
             }
 
-            "delete" => {
+            "delete" | "destroy" => {
                 let id_str = match require_str(&arguments, "agent_id") {
                     Ok(s) => s,
                     Err(e) => return e,
@@ -623,16 +750,16 @@ impl Tool for ManageAgentsTool {
                 match store.delete_agent(id).await {
                     Ok(()) => ToolExecutionResult::success(json!({
                         "agent_id": id_str,
-                        "message": "Agent archived successfully"
+                        "message": format!("Agent {operation}d successfully")
                     })),
                     Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to delete agent: {e}"))
+                        ToolExecutionResult::tool_error(format!("Failed to {operation} agent: {e}"))
                     }
                 }
             }
 
             _ => ToolExecutionResult::tool_error(format!(
-                "Unknown operation: {operation}. Valid: list, get, create, update, delete"
+                "Unknown operation: {operation}. Valid: create, update, delete, destroy"
             )),
         }
     }
@@ -643,7 +770,128 @@ impl Tool for ManageAgentsTool {
 }
 
 // =============================================================================
-// Tool: manage_sessions
+// Tool: read_sessions (read-only: get by ID or list/filter)
+// =============================================================================
+
+pub struct ReadSessionsTool;
+
+#[async_trait]
+impl Tool for ReadSessionsTool {
+    fn name(&self) -> &str {
+        "read_sessions"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Read Sessions")
+    }
+
+    fn description(&self) -> &str {
+        "Read sessions by ID or list/filter. When id is provided returns a single session; otherwise returns a filtered list."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Optional session ID to get a single session"
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Optional filter by agent"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Optional max results for list (default: 20)"
+                }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "read_sessions requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        let base_url = store.base_url();
+
+        if let Some(id_str) = get_str(&arguments, "id") {
+            let id = match id_str.parse::<crate::typed_id::SessionId>() {
+                Ok(id) => id,
+                Err(_) => {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Invalid session id: {id_str}"
+                    ));
+                }
+            };
+            match store.get_session_by_id(id).await {
+                Ok(Some(s)) => ToolExecutionResult::success(json!({
+                    "id": s.id.to_string(),
+                    "organization_id": s.organization_id,
+                    "title": s.title,
+                    "status": format!("{:?}", s.status),
+                    "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
+                    "harness_id": s.harness_id.to_string(),
+                    "created_at": s.created_at.to_rfc3339(),
+                    "preview": s.preview,
+                    "output_preview": s.output_preview,
+                    "ui_link": format!("{}/sessions/{}/chat", base_url, s.id),
+                })),
+                Ok(None) => ToolExecutionResult::tool_error(format!("Session not found: {id_str}")),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to get session: {e}")),
+            }
+        } else {
+            let limit = arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize);
+            let agent_id = get_str(&arguments, "agent_id")
+                .and_then(|s| s.parse::<crate::typed_id::AgentId>().ok());
+            match store.list_sessions(limit, agent_id).await {
+                Ok(sessions) => {
+                    let items: Vec<Value> = sessions
+                        .iter()
+                        .map(|s| {
+                            json!({
+                                "id": s.id.to_string(),
+                                "organization_id": s.organization_id,
+                                "title": s.title,
+                                "status": format!("{:?}", s.status),
+                                "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
+                                "harness_id": s.harness_id.to_string(),
+                                "created_at": s.created_at.to_rfc3339(),
+                                "preview": s.preview,
+                                "ui_link": format!("{}/sessions/{}/chat", base_url, s.id),
+                            })
+                        })
+                        .collect();
+                    ToolExecutionResult::success(json!({"sessions": items, "count": items.len()}))
+                }
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to list sessions: {e}")),
+            }
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// =============================================================================
+// Tool: manage_sessions (mutations: create, delete)
 // =============================================================================
 
 pub struct ManageSessionsTool;
@@ -659,7 +907,7 @@ impl Tool for ManageSessionsTool {
     }
 
     fn description(&self) -> &str {
-        "Session operations: list, create, get, delete."
+        "Session mutations: create, delete."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -668,12 +916,12 @@ impl Tool for ManageSessionsTool {
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["list", "create", "get", "delete"],
-                    "description": "The operation to perform"
+                    "enum": ["create", "delete"],
+                    "description": "The mutation to perform"
                 },
                 "session_id": {
                     "type": "string",
-                    "description": "Session ID (required for get, delete)"
+                    "description": "Session ID (required for delete)"
                 },
                 "harness_id": {
                     "type": "string",
@@ -681,7 +929,7 @@ impl Tool for ManageSessionsTool {
                 },
                 "agent_id": {
                     "type": "string",
-                    "description": "Agent ID (optional for create and list)"
+                    "description": "Agent ID (optional for create)"
                 },
                 "title": {
                     "type": "string",
@@ -690,10 +938,6 @@ impl Tool for ManageSessionsTool {
                 "locale": {
                     "type": "string",
                     "description": "Session locale (optional for create, e.g. uk-UA)"
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max number of sessions to return (default 20)"
                 }
             },
             "required": ["operation"],
@@ -725,41 +969,6 @@ impl Tool for ManageSessionsTool {
         let base_url = store.base_url();
 
         match operation {
-            "list" => {
-                let limit = arguments
-                    .get("limit")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as usize);
-                let agent_id = get_str(&arguments, "agent_id")
-                    .and_then(|s| s.parse::<crate::typed_id::AgentId>().ok());
-                match store.list_sessions(limit, agent_id).await {
-                    Ok(sessions) => {
-                        let items: Vec<Value> = sessions
-                            .iter()
-                            .map(|s| {
-                                json!({
-                                    "id": s.id.to_string(),
-                                    "organization_id": s.organization_id,
-                                    "title": s.title,
-                                    "status": format!("{:?}", s.status),
-                                    "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
-                                    "harness_id": s.harness_id.to_string(),
-                                    "created_at": s.created_at.to_rfc3339(),
-                                    "preview": s.preview,
-                                    "ui_link": format!("{}/sessions/{}/chat", base_url, s.id),
-                                })
-                            })
-                            .collect();
-                        ToolExecutionResult::success(
-                            json!({"sessions": items, "count": items.len()}),
-                        )
-                    }
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to list sessions: {e}"))
-                    }
-                }
-            }
-
             "create" => {
                 let harness_id = if let Some(harness_id_str) = get_str(&arguments, "harness_id") {
                     match harness_id_str.parse::<crate::typed_id::HarnessId>() {
@@ -818,41 +1027,6 @@ impl Tool for ManageSessionsTool {
                 }
             }
 
-            "get" => {
-                let id_str = match require_str(&arguments, "session_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let id = match id_str.parse::<crate::typed_id::SessionId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid session_id: {id_str}"
-                        ));
-                    }
-                };
-                match store.get_session_by_id(id).await {
-                    Ok(Some(s)) => ToolExecutionResult::success(json!({
-                        "id": s.id.to_string(),
-                        "organization_id": s.organization_id,
-                        "title": s.title,
-                        "status": format!("{:?}", s.status),
-                        "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
-                        "harness_id": s.harness_id.to_string(),
-                        "created_at": s.created_at.to_rfc3339(),
-                        "preview": s.preview,
-                        "output_preview": s.output_preview,
-                        "ui_link": format!("{}/sessions/{}/chat", base_url, s.id),
-                    })),
-                    Ok(None) => {
-                        ToolExecutionResult::tool_error(format!("Session not found: {id_str}"))
-                    }
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to get session: {e}"))
-                    }
-                }
-            }
-
             "delete" => {
                 let id_str = match require_str(&arguments, "session_id") {
                     Ok(s) => s,
@@ -878,7 +1052,7 @@ impl Tool for ManageSessionsTool {
             }
 
             _ => ToolExecutionResult::tool_error(format!(
-                "Unknown operation: {operation}. Valid: list, create, get, delete"
+                "Unknown operation: {operation}. Valid: create, delete"
             )),
         }
     }
@@ -889,59 +1063,46 @@ impl Tool for ManageSessionsTool {
 }
 
 // =============================================================================
-// Tool: session_interact
+// Tool: session_send_message
 // =============================================================================
 
-pub struct SessionInteractTool;
+pub struct SessionSendMessageTool;
 
 #[async_trait]
-impl Tool for SessionInteractTool {
+impl Tool for SessionSendMessageTool {
     fn name(&self) -> &str {
-        "session_interact"
+        "session_send_message"
     }
 
     fn display_name(&self) -> Option<&str> {
-        Some("Session Interact")
+        Some("Send Message")
     }
 
     fn description(&self) -> &str {
-        "Interact with sessions: send messages, get messages, wait for turn completion."
+        "Send a user message to a session, triggering a turn."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "operation": {
-                    "type": "string",
-                    "enum": ["send_message", "get_messages", "wait_for_idle"],
-                    "description": "The operation to perform"
-                },
                 "session_id": {
                     "type": "string",
-                    "description": "Session ID (required for all operations)"
+                    "description": "Target session ID"
                 },
                 "content": {
-                    "type": ["string", "null"],
-                    "description": "Message content (required for send_message, null for other operations)"
-                },
-                "limit": {
-                    "type": ["integer", "null"],
-                    "description": "Max messages to return (null to use default 10, for get_messages)"
-                },
-                "timeout_secs": {
-                    "type": ["integer", "null"],
-                    "description": "Timeout in seconds (null to use default 120, for wait_for_idle)"
+                    "type": "string",
+                    "description": "Message content"
                 }
             },
-            "required": ["operation", "session_id", "content", "limit", "timeout_secs"],
+            "required": ["session_id", "content"],
             "additionalProperties": false
         })
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
-            "session_interact requires context. This tool must be executed with session context.",
+            "session_send_message requires context. This tool must be executed with session context.",
         )
     }
 
@@ -955,8 +1116,91 @@ impl Tool for SessionInteractTool {
             Err(e) => return e,
         };
 
-        let operation = match require_str(&arguments, "operation") {
-            Ok(op) => op,
+        let session_id_str = match require_str(&arguments, "session_id") {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let session_id = match session_id_str.parse::<crate::typed_id::SessionId>() {
+            Ok(id) => id,
+            Err(_) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Invalid session_id: {session_id_str}"
+                ));
+            }
+        };
+        let content = match require_str(&arguments, "content") {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        let base_url = store.base_url();
+
+        match store.send_message(session_id, content).await {
+            Ok(()) => ToolExecutionResult::success(json!({
+                "session_id": session_id_str,
+                "message": "Message sent successfully. Use session_read_response to wait for the agent response.",
+                "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
+            })),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to send message: {e}")),
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// =============================================================================
+// Tool: session_read_messages
+// =============================================================================
+
+pub struct SessionReadMessagesTool;
+
+#[async_trait]
+impl Tool for SessionReadMessagesTool {
+    fn name(&self) -> &str {
+        "session_read_messages"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Read Messages")
+    }
+
+    fn description(&self) -> &str {
+        "Read messages from a session."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "Target session ID"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Optional max messages (default: 10)"
+                }
+            },
+            "required": ["session_id"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "session_read_messages requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(s) => s,
             Err(e) => return e,
         };
 
@@ -973,73 +1217,33 @@ impl Tool for SessionInteractTool {
             }
         };
 
+        let limit = arguments
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+
         let base_url = store.base_url();
 
-        match operation {
-            "send_message" => {
-                let content = match require_str(&arguments, "content") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                match store.send_message(session_id, content).await {
-                    Ok(()) => ToolExecutionResult::success(json!({
-                        "session_id": session_id_str,
-                        "message": "Message sent successfully. Use wait_for_idle to wait for the agent response.",
-                        "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to send message: {e}"))
-                    }
-                }
+        match store.get_messages(session_id, limit).await {
+            Ok(messages) => {
+                let items: Vec<Value> = messages
+                    .iter()
+                    .map(|m| {
+                        json!({
+                            "role": m.role,
+                            "content": m.content,
+                            "created_at": m.created_at.to_rfc3339(),
+                        })
+                    })
+                    .collect();
+                ToolExecutionResult::success(json!({
+                    "messages": items,
+                    "count": items.len(),
+                    "session_id": session_id_str,
+                    "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
+                }))
             }
-
-            "get_messages" => {
-                let limit = arguments
-                    .get("limit")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as usize);
-                match store.get_messages(session_id, limit).await {
-                    Ok(messages) => {
-                        let items: Vec<Value> = messages
-                            .iter()
-                            .map(|m| {
-                                json!({
-                                    "role": m.role,
-                                    "content": m.content,
-                                    "created_at": m.created_at.to_rfc3339(),
-                                })
-                            })
-                            .collect();
-                        ToolExecutionResult::success(json!({
-                            "messages": items,
-                            "count": items.len(),
-                            "session_id": session_id_str,
-                            "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
-                        }))
-                    }
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to get messages: {e}"))
-                    }
-                }
-            }
-
-            "wait_for_idle" => {
-                let timeout_secs = arguments.get("timeout_secs").and_then(|v| v.as_u64());
-                match store.wait_for_idle(session_id, timeout_secs).await {
-                    Ok(status) => ToolExecutionResult::success(json!({
-                        "session_id": session_id_str,
-                        "status": status,
-                        "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed waiting for idle: {e}"))
-                    }
-                }
-            }
-
-            _ => ToolExecutionResult::tool_error(format!(
-                "Unknown operation: {operation}. Valid: send_message, get_messages, wait_for_idle"
-            )),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to get messages: {e}")),
         }
     }
 
@@ -1049,41 +1253,46 @@ impl Tool for SessionInteractTool {
 }
 
 // =============================================================================
-// Tool: list_capabilities
+// Tool: session_read_response
 // =============================================================================
 
-pub struct ListCapabilitiesTool;
+pub struct SessionReadResponseTool;
 
 #[async_trait]
-impl Tool for ListCapabilitiesTool {
+impl Tool for SessionReadResponseTool {
     fn name(&self) -> &str {
-        "list_capabilities"
+        "session_read_response"
     }
 
     fn display_name(&self) -> Option<&str> {
-        Some("List Capabilities")
+        Some("Read Response")
     }
 
     fn description(&self) -> &str {
-        "List and search available capabilities (built-in, MCP servers, and skills). Use this to discover what capabilities exist before creating or updating agents and harnesses."
+        "Wait for session to finish processing and return the response. Set timeout_secs to 0 to check status without waiting."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "search": {
+                "session_id": {
                     "type": "string",
-                    "description": "Optional search query to filter capabilities by name, description, category, or ID (case-insensitive)"
+                    "description": "Target session ID"
+                },
+                "timeout_secs": {
+                    "type": "integer",
+                    "description": "Optional timeout (default: 120). Set to 0 to check status without waiting."
                 }
             },
+            "required": ["session_id"],
             "additionalProperties": false
         })
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
-            "list_capabilities requires context. This tool must be executed with session context.",
+            "session_read_response requires context. This tool must be executed with session context.",
         )
     }
 
@@ -1097,9 +1306,97 @@ impl Tool for ListCapabilitiesTool {
             Err(e) => return e,
         };
 
+        let session_id_str = match require_str(&arguments, "session_id") {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let session_id = match session_id_str.parse::<crate::typed_id::SessionId>() {
+            Ok(id) => id,
+            Err(_) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Invalid session_id: {session_id_str}"
+                ));
+            }
+        };
+
+        let timeout_secs = arguments.get("timeout_secs").and_then(|v| v.as_u64());
+        let base_url = store.base_url();
+
+        match store.wait_for_idle(session_id, timeout_secs).await {
+            Ok(status) => ToolExecutionResult::success(json!({
+                "session_id": session_id_str,
+                "status": status,
+                "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
+            })),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed waiting for response: {e}")),
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// =============================================================================
+// Tool: read_capabilities
+// =============================================================================
+
+pub struct ReadCapabilitiesTool;
+
+#[async_trait]
+impl Tool for ReadCapabilitiesTool {
+    fn name(&self) -> &str {
+        "read_capabilities"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Read Capabilities")
+    }
+
+    fn description(&self) -> &str {
+        "Discover available capabilities (built-in, MCP servers, and skills). Use this to find capability IDs before creating or updating agents and harnesses."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Optional capability ID to get a single capability"
+                },
+                "search": {
+                    "type": "string",
+                    "description": "Optional search query to filter capabilities by name, description, category, or ID (case-insensitive)"
+                }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "read_capabilities requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        let id_filter = get_str(&arguments, "id");
         let search = get_str(&arguments, "search");
 
-        match store.list_capabilities(search).await {
+        // If id is given, use it as the search filter to find the specific capability
+        let effective_search = id_filter.or(search);
+
+        match store.list_capabilities(effective_search).await {
             Ok(capabilities) => {
                 let items: Vec<Value> = capabilities
                     .iter()
@@ -1135,6 +1432,18 @@ impl Tool for ListCapabilitiesTool {
                         item
                     })
                     .collect();
+
+                // When id is provided, return exact match as single item
+                if let Some(target_id) = id_filter {
+                    if let Some(exact) = items.iter().find(|i| i["id"].as_str() == Some(target_id))
+                    {
+                        return ToolExecutionResult::success(exact.clone());
+                    }
+                    return ToolExecutionResult::tool_error(format!(
+                        "Capability not found: {target_id}"
+                    ));
+                }
+
                 let count = items.len();
                 ToolExecutionResult::success(json!({
                     "capabilities": items,
@@ -1174,25 +1483,32 @@ mod tests {
     }
 
     #[test]
-    fn capability_provides_five_tools() {
+    fn capability_provides_ten_tools() {
         let cap = PlatformManagementCapability;
         let tools = cap.tools();
-        assert_eq!(tools.len(), 5);
+        assert_eq!(tools.len(), 10);
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"list_capabilities"));
+        assert!(names.contains(&"read_capabilities"));
+        assert!(names.contains(&"read_harnesses"));
         assert!(names.contains(&"manage_harnesses"));
+        assert!(names.contains(&"read_agents"));
         assert!(names.contains(&"manage_agents"));
+        assert!(names.contains(&"read_sessions"));
         assert!(names.contains(&"manage_sessions"));
-        assert!(names.contains(&"session_interact"));
+        assert!(names.contains(&"session_send_message"));
+        assert!(names.contains(&"session_read_messages"));
+        assert!(names.contains(&"session_read_response"));
     }
 
+    // =========================================================================
+    // ReadHarnessesTool tests
+    // =========================================================================
+
     #[tokio::test]
-    async fn harness_list_returns_harnesses_with_ui_link() {
+    async fn read_harnesses_list_returns_harnesses_with_ui_link() {
         let ctx = mock_context();
-        let tool = ManageHarnessesTool;
-        let result = tool
-            .execute_with_context(json!({"operation": "list"}), &ctx)
-            .await;
+        let tool = ReadHarnessesTool;
+        let result = tool.execute_with_context(json!({}), &ctx).await;
         match result {
             ToolExecutionResult::Success(v) => {
                 assert_eq!(v["count"], 1);
@@ -1202,6 +1518,38 @@ mod tests {
             other => panic!("expected success, got: {other:?}"),
         }
     }
+
+    #[tokio::test]
+    async fn read_harnesses_get_by_id_returns_full_detail() {
+        let ctx = mock_context();
+        let tool = ReadHarnessesTool;
+        let result = tool
+            .execute_with_context(json!({"id": HarnessId::new().to_string()}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["name"], "Test Harness");
+                assert!(v["system_prompt"].as_str().is_some());
+                assert!(v["ui_link"].as_str().unwrap().contains("/harnesses/"));
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_harnesses_invalid_id_returns_error() {
+        let ctx = mock_context();
+        let tool = ReadHarnessesTool;
+        let result = tool.execute_with_context(json!({"id": "bad"}), &ctx).await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid harness id")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // ManageHarnessesTool tests
+    // =========================================================================
 
     #[tokio::test]
     async fn harness_create_returns_new_harness() {
@@ -1278,221 +1626,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_list_returns_agents() {
-        let ctx = mock_context();
-        let tool = ManageAgentsTool;
-        let result = tool
-            .execute_with_context(json!({"operation": "list"}), &ctx)
-            .await;
-        match result {
-            ToolExecutionResult::Success(v) => {
-                assert_eq!(v["count"], 1);
-                assert!(
-                    v["agents"].as_array().unwrap()[0]["ui_link"]
-                        .as_str()
-                        .unwrap()
-                        .contains("/agents/")
-                );
-            }
-            other => panic!("expected success, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn agent_create_returns_new_agent() {
-        let ctx = mock_context();
-        let tool = ManageAgentsTool;
-        let result = tool
-            .execute_with_context(
-                json!({"operation": "create", "name": "New Agent", "system_prompt": "Be helpful"}),
-                &ctx,
-            )
-            .await;
-        match result {
-            ToolExecutionResult::Success(v) => assert_eq!(v["name"], "New Agent"),
-            other => panic!("expected success, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn session_list_returns_sessions() {
-        let ctx = mock_context();
-        let tool = ManageSessionsTool;
-        let result = tool
-            .execute_with_context(json!({"operation": "list"}), &ctx)
-            .await;
-        match result {
-            ToolExecutionResult::Success(v) => {
-                assert_eq!(v["count"], 1);
-                assert!(
-                    v["sessions"].as_array().unwrap()[0]["ui_link"]
-                        .as_str()
-                        .unwrap()
-                        .contains("/chat")
-                );
-            }
-            other => panic!("expected success, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn session_create_returns_new_session() {
-        let ctx = mock_context();
-        let tool = ManageSessionsTool;
-        let result = tool
-            .execute_with_context(
-                json!({"operation": "create", "harness_id": HarnessId::new().to_string(), "title": "My Session"}),
-                &ctx,
-            )
-            .await;
-        match result {
-            ToolExecutionResult::Success(v) => {
-                assert!(v["ui_link"].as_str().unwrap().contains("/chat"))
-            }
-            other => panic!("expected success, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn interact_send_message_succeeds() {
-        let ctx = mock_context();
-        let tool = SessionInteractTool;
-        let result = tool
-            .execute_with_context(
-                json!({"operation": "send_message", "session_id": SessionId::new().to_string(), "content": "Hi!"}),
-                &ctx,
-            )
-            .await;
-        match result {
-            ToolExecutionResult::Success(v) => {
-                assert!(v["message"].as_str().unwrap().contains("sent"))
-            }
-            other => panic!("expected success, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn interact_get_messages_returns_messages() {
-        let ctx = mock_context();
-        let tool = SessionInteractTool;
-        let result = tool
-            .execute_with_context(
-                json!({"operation": "get_messages", "session_id": SessionId::new().to_string(), "limit": 5}),
-                &ctx,
-            )
-            .await;
-        match result {
-            ToolExecutionResult::Success(v) => {
-                assert_eq!(v["count"], 2);
-                let msgs = v["messages"].as_array().unwrap();
-                assert_eq!(msgs[0]["role"], "user");
-                assert_eq!(msgs[1]["role"], "agent");
-            }
-            other => panic!("expected success, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn interact_wait_for_idle_succeeds() {
-        let ctx = mock_context();
-        let tool = SessionInteractTool;
-        let result = tool
-            .execute_with_context(
-                json!({"operation": "wait_for_idle", "session_id": SessionId::new().to_string()}),
-                &ctx,
-            )
-            .await;
-        match result {
-            ToolExecutionResult::Success(v) => assert_eq!(v["status"], "idle"),
-            other => panic!("expected success, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn tool_without_context_returns_error() {
-        let tool = ManageHarnessesTool;
-        let result = tool.execute(json!({"operation": "list"})).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("requires context")),
-            other => panic!("expected tool error, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn tool_without_platform_store_returns_error() {
-        let ctx = ToolContext::new(SessionId::new());
-        let tool = ManageHarnessesTool;
-        let result = tool
-            .execute_with_context(json!({"operation": "list"}), &ctx)
-            .await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("not available")),
-            other => panic!("expected tool error, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn missing_operation_returns_error() {
-        let ctx = mock_context();
-        let tool = ManageHarnessesTool;
-        let result = tool.execute_with_context(json!({}), &ctx).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("operation")),
-            other => panic!("expected tool error, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn invalid_harness_id_returns_error() {
-        let ctx = mock_context();
-        let tool = ManageHarnessesTool;
-        let result = tool
-            .execute_with_context(json!({"operation": "get", "harness_id": "bad"}), &ctx)
-            .await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid harness_id")),
-            other => panic!("expected tool error, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn missing_required_param_returns_error() {
-        let ctx = mock_context();
-        let tool = ManageHarnessesTool;
-        let result = tool
-            .execute_with_context(json!({"operation": "create"}), &ctx)
-            .await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Missing required")),
-            other => panic!("expected tool error, got: {other:?}"),
-        }
-    }
-
-    // =========================================================================
-    // Additional negative tests
-    // =========================================================================
-
-    #[tokio::test]
-    async fn harness_get_succeeds() {
-        let ctx = mock_context();
-        let tool = ManageHarnessesTool;
-        let result = tool
-            .execute_with_context(
-                json!({"operation": "get", "harness_id": HarnessId::new().to_string()}),
-                &ctx,
-            )
-            .await;
-        match result {
-            ToolExecutionResult::Success(v) => {
-                assert_eq!(v["name"], "Test Harness");
-                assert!(v["system_prompt"].as_str().is_some());
-                assert!(v["ui_link"].as_str().unwrap().contains("/harnesses/"));
-            }
-            other => panic!("expected success, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
     async fn harness_update_succeeds() {
         let ctx = mock_context();
         let tool = ManageHarnessesTool;
@@ -1512,20 +1645,86 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_get_succeeds() {
+    async fn harness_missing_required_param_returns_error() {
         let ctx = mock_context();
-        let tool = ManageAgentsTool;
+        let tool = ManageHarnessesTool;
         let result = tool
-            .execute_with_context(
-                json!({"operation": "get", "agent_id": AgentId::new().to_string()}),
-                &ctx,
-            )
+            .execute_with_context(json!({"operation": "create"}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Missing required")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // ReadAgentsTool tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn read_agents_list_returns_agents() {
+        let ctx = mock_context();
+        let tool = ReadAgentsTool;
+        let result = tool.execute_with_context(json!({}), &ctx).await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["count"], 1);
+                assert!(
+                    v["agents"].as_array().unwrap()[0]["ui_link"]
+                        .as_str()
+                        .unwrap()
+                        .contains("/agents/")
+                );
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_agents_get_by_id_succeeds() {
+        let ctx = mock_context();
+        let tool = ReadAgentsTool;
+        let result = tool
+            .execute_with_context(json!({"id": AgentId::new().to_string()}), &ctx)
             .await;
         match result {
             ToolExecutionResult::Success(v) => {
                 assert_eq!(v["name"], "Test Agent");
                 assert!(v["ui_link"].as_str().unwrap().contains("/agents/"));
             }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_agents_invalid_id_returns_error() {
+        let ctx = mock_context();
+        let tool = ReadAgentsTool;
+        let result = tool
+            .execute_with_context(json!({"id": "not-valid"}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid agent id")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // ManageAgentsTool tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn agent_create_returns_new_agent() {
+        let ctx = mock_context();
+        let tool = ManageAgentsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "create", "name": "New Agent", "system_prompt": "Be helpful"}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => assert_eq!(v["name"], "New Agent"),
             other => panic!("expected success, got: {other:?}"),
         }
     }
@@ -1561,7 +1760,7 @@ mod tests {
             .await;
         match result {
             ToolExecutionResult::Success(v) => {
-                assert!(v["message"].as_str().unwrap().contains("archived"));
+                assert!(v["message"].as_str().unwrap().contains("deleted"));
             }
             other => panic!("expected success, got: {other:?}"),
         }
@@ -1576,19 +1775,6 @@ mod tests {
             .await;
         match result {
             ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Unknown operation")),
-            other => panic!("expected tool error, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn agent_invalid_id_returns_error() {
-        let ctx = mock_context();
-        let tool = ManageAgentsTool;
-        let result = tool
-            .execute_with_context(json!({"operation": "get", "agent_id": "not-valid"}), &ctx)
-            .await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid agent_id")),
             other => panic!("expected tool error, got: {other:?}"),
         }
     }
@@ -1609,20 +1795,73 @@ mod tests {
         }
     }
 
+    // =========================================================================
+    // ReadSessionsTool tests
+    // =========================================================================
+
     #[tokio::test]
-    async fn session_get_succeeds() {
+    async fn read_sessions_list_returns_sessions() {
         let ctx = mock_context();
-        let tool = ManageSessionsTool;
+        let tool = ReadSessionsTool;
+        let result = tool.execute_with_context(json!({}), &ctx).await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["count"], 1);
+                assert!(
+                    v["sessions"].as_array().unwrap()[0]["ui_link"]
+                        .as_str()
+                        .unwrap()
+                        .contains("/chat")
+                );
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_sessions_get_by_id_succeeds() {
+        let ctx = mock_context();
+        let tool = ReadSessionsTool;
         let result = tool
-            .execute_with_context(
-                json!({"operation": "get", "session_id": SessionId::new().to_string()}),
-                &ctx,
-            )
+            .execute_with_context(json!({"id": SessionId::new().to_string()}), &ctx)
             .await;
         match result {
             ToolExecutionResult::Success(v) => {
                 assert_eq!(v["title"], "Test Session");
                 assert!(v["ui_link"].as_str().unwrap().contains("/chat"));
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_sessions_invalid_id_returns_error() {
+        let ctx = mock_context();
+        let tool = ReadSessionsTool;
+        let result = tool.execute_with_context(json!({"id": "nope"}), &ctx).await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid session id")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // ManageSessionsTool tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn session_create_returns_new_session() {
+        let ctx = mock_context();
+        let tool = ManageSessionsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "create", "harness_id": HarnessId::new().to_string(), "title": "My Session"}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert!(v["ui_link"].as_str().unwrap().contains("/chat"))
             }
             other => panic!("expected success, got: {other:?}"),
         }
@@ -1660,19 +1899,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn session_invalid_id_returns_error() {
-        let ctx = mock_context();
-        let tool = ManageSessionsTool;
-        let result = tool
-            .execute_with_context(json!({"operation": "get", "session_id": "nope"}), &ctx)
-            .await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid session_id")),
-            other => panic!("expected tool error, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
     async fn session_create_missing_harness_id_falls_back_to_generic() {
         let ctx = mock_context();
         let tool = ManageSessionsTool;
@@ -1688,31 +1914,34 @@ mod tests {
         }
     }
 
+    // =========================================================================
+    // SessionSendMessageTool tests
+    // =========================================================================
+
     #[tokio::test]
-    async fn interact_invalid_operation_returns_error() {
+    async fn send_message_succeeds() {
         let ctx = mock_context();
-        let tool = SessionInteractTool;
+        let tool = SessionSendMessageTool;
         let result = tool
             .execute_with_context(
-                json!({"operation": "delete", "session_id": SessionId::new().to_string()}),
+                json!({"session_id": SessionId::new().to_string(), "content": "Hi!"}),
                 &ctx,
             )
             .await;
         match result {
-            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Unknown operation")),
-            other => panic!("expected tool error, got: {other:?}"),
+            ToolExecutionResult::Success(v) => {
+                assert!(v["message"].as_str().unwrap().contains("sent"))
+            }
+            other => panic!("expected success, got: {other:?}"),
         }
     }
 
     #[tokio::test]
-    async fn interact_send_message_missing_content_returns_error() {
+    async fn send_message_missing_content_returns_error() {
         let ctx = mock_context();
-        let tool = SessionInteractTool;
+        let tool = SessionSendMessageTool;
         let result = tool
-            .execute_with_context(
-                json!({"operation": "send_message", "session_id": SessionId::new().to_string()}),
-                &ctx,
-            )
+            .execute_with_context(json!({"session_id": SessionId::new().to_string()}), &ctx)
             .await;
         match result {
             ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Missing required")),
@@ -1721,14 +1950,49 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn interact_invalid_session_id_returns_error() {
+    async fn send_message_invalid_session_id_returns_error() {
         let ctx = mock_context();
-        let tool = SessionInteractTool;
+        let tool = SessionSendMessageTool;
+        let result = tool
+            .execute_with_context(json!({"session_id": "bad-id", "content": "Hi!"}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid session_id")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // SessionReadMessagesTool tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn read_messages_returns_messages() {
+        let ctx = mock_context();
+        let tool = SessionReadMessagesTool;
         let result = tool
             .execute_with_context(
-                json!({"operation": "get_messages", "session_id": "bad-id"}),
+                json!({"session_id": SessionId::new().to_string(), "limit": 5}),
                 &ctx,
             )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["count"], 2);
+                let msgs = v["messages"].as_array().unwrap();
+                assert_eq!(msgs[0]["role"], "user");
+                assert_eq!(msgs[1]["role"], "agent");
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_messages_invalid_session_id_returns_error() {
+        let ctx = mock_context();
+        let tool = SessionReadMessagesTool;
+        let result = tool
+            .execute_with_context(json!({"session_id": "bad-id"}), &ctx)
             .await;
         match result {
             ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid session_id")),
@@ -1737,54 +2001,131 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn interact_missing_session_id_returns_error() {
+    async fn read_messages_missing_session_id_returns_error() {
         let ctx = mock_context();
-        let tool = SessionInteractTool;
-        let result = tool
-            .execute_with_context(json!({"operation": "get_messages"}), &ctx)
-            .await;
+        let tool = SessionReadMessagesTool;
+        let result = tool.execute_with_context(json!({}), &ctx).await;
         match result {
             ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Missing required")),
             other => panic!("expected tool error, got: {other:?}"),
         }
     }
 
+    // =========================================================================
+    // SessionReadResponseTool tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn read_response_succeeds() {
+        let ctx = mock_context();
+        let tool = SessionReadResponseTool;
+        let result = tool
+            .execute_with_context(json!({"session_id": SessionId::new().to_string()}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => assert_eq!(v["status"], "idle"),
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // Context and error tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn tool_without_context_returns_error() {
+        let tool = ManageHarnessesTool;
+        let result = tool.execute(json!({"operation": "create"})).await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("requires context")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_without_platform_store_returns_error() {
+        let ctx = ToolContext::new(SessionId::new());
+        let tool = ReadHarnessesTool;
+        let result = tool.execute_with_context(json!({}), &ctx).await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("not available")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_operation_returns_error() {
+        let ctx = mock_context();
+        let tool = ManageHarnessesTool;
+        let result = tool.execute_with_context(json!({}), &ctx).await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("operation")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
     #[tokio::test]
     async fn all_tools_require_context() {
-        // All five tools should have requires_context = true
-        assert!(ListCapabilitiesTool.requires_context());
+        assert!(ReadCapabilitiesTool.requires_context());
+        assert!(ReadHarnessesTool.requires_context());
         assert!(ManageHarnessesTool.requires_context());
+        assert!(ReadAgentsTool.requires_context());
         assert!(ManageAgentsTool.requires_context());
+        assert!(ReadSessionsTool.requires_context());
         assert!(ManageSessionsTool.requires_context());
-        assert!(SessionInteractTool.requires_context());
+        assert!(SessionSendMessageTool.requires_context());
+        assert!(SessionReadMessagesTool.requires_context());
+        assert!(SessionReadResponseTool.requires_context());
     }
 
     #[tokio::test]
     async fn all_tools_without_context_return_error() {
         // execute() (no context) should fail for all tools
         for tool_name in [
-            "list_capabilities",
+            "read_capabilities",
+            "read_harnesses",
             "manage_harnesses",
+            "read_agents",
             "manage_agents",
+            "read_sessions",
             "manage_sessions",
-            "session_interact",
+            "session_send_message",
+            "session_read_messages",
+            "session_read_response",
         ] {
             let result = match tool_name {
-                "list_capabilities" => ListCapabilitiesTool.execute(json!({})).await,
+                "read_capabilities" => ReadCapabilitiesTool.execute(json!({})).await,
+                "read_harnesses" => ReadHarnessesTool.execute(json!({})).await,
                 "manage_harnesses" => {
                     ManageHarnessesTool
-                        .execute(json!({"operation": "list"}))
+                        .execute(json!({"operation": "create"}))
                         .await
                 }
-                "manage_agents" => ManageAgentsTool.execute(json!({"operation": "list"})).await,
+                "read_agents" => ReadAgentsTool.execute(json!({})).await,
+                "manage_agents" => {
+                    ManageAgentsTool
+                        .execute(json!({"operation": "create"}))
+                        .await
+                }
+                "read_sessions" => ReadSessionsTool.execute(json!({})).await,
                 "manage_sessions" => {
                     ManageSessionsTool
-                        .execute(json!({"operation": "list"}))
+                        .execute(json!({"operation": "create"}))
                         .await
                 }
-                "session_interact" => {
-                    SessionInteractTool
-                        .execute(json!({"operation": "get_messages", "session_id": "x"}))
+                "session_send_message" => {
+                    SessionSendMessageTool
+                        .execute(json!({"session_id": "x", "content": "hi"}))
+                        .await
+                }
+                "session_read_messages" => {
+                    SessionReadMessagesTool
+                        .execute(json!({"session_id": "x"}))
+                        .await
+                }
+                "session_read_response" => {
+                    SessionReadResponseTool
+                        .execute(json!({"session_id": "x"}))
                         .await
                 }
                 _ => unreachable!(),
@@ -1798,17 +2139,20 @@ mod tests {
         }
     }
 
+    // =========================================================================
+    // ReadCapabilitiesTool tests
+    // =========================================================================
+
     #[tokio::test]
-    async fn list_capabilities_returns_all() {
+    async fn read_capabilities_returns_all() {
         let ctx = mock_context();
-        let tool = ListCapabilitiesTool;
+        let tool = ReadCapabilitiesTool;
         let result = tool.execute_with_context(json!({}), &ctx).await;
         match result {
             ToolExecutionResult::Success(v) => {
                 let count = v["count"].as_u64().unwrap();
                 assert!(count > 0, "should return at least one capability");
                 let caps = v["capabilities"].as_array().unwrap();
-                // Verify each capability has required fields
                 for cap in caps {
                     assert!(cap["id"].is_string());
                     assert!(cap["name"].is_string());
@@ -1821,9 +2165,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_capabilities_search_filters_results() {
+    async fn read_capabilities_search_filters_results() {
         let ctx = mock_context();
-        let tool = ListCapabilitiesTool;
+        let tool = ReadCapabilitiesTool;
         let result = tool
             .execute_with_context(json!({"search": "current_time"}), &ctx)
             .await;
@@ -1843,9 +2187,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_capabilities_search_no_match() {
+    async fn read_capabilities_search_no_match() {
         let ctx = mock_context();
-        let tool = ListCapabilitiesTool;
+        let tool = ReadCapabilitiesTool;
         let result = tool
             .execute_with_context(json!({"search": "zzz_nonexistent_zzz"}), &ctx)
             .await;
@@ -1861,60 +2205,7 @@ mod tests {
     fn capability_has_system_prompt_addition() {
         let cap = PlatformManagementCapability;
         let prompt = cap.system_prompt_addition().expect("should have prompt");
-        assert!(prompt.contains("list_capabilities"));
+        assert!(prompt.contains("read_capabilities"));
         assert!(prompt.contains("Capabilities"));
-    }
-
-    #[test]
-    fn session_interact_schema_all_properties_required_and_nullable() {
-        // OpenAI models with additionalProperties:false need all properties in
-        // the required array. Operation-specific params use nullable types so
-        // models can pass null when the param doesn't apply.
-        let tool = SessionInteractTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let props = schema["properties"].as_object().unwrap();
-
-        // Every property must be listed in required (no extras/duplicates)
-        for key in props.keys() {
-            assert!(
-                required.iter().any(|v| v.as_str() == Some(key)),
-                "property {key} must be in required array for OpenAI compatibility"
-            );
-        }
-        assert_eq!(
-            required.len(),
-            props.len(),
-            "required array must contain all and only the schema properties"
-        );
-
-        // Operation-specific params must accept null AND their concrete type
-        for (nullable_key, concrete_type) in [
-            ("content", "string"),
-            ("limit", "integer"),
-            ("timeout_secs", "integer"),
-        ] {
-            let ty = &props[nullable_key]["type"];
-            let types: Vec<&str> = ty
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|v| v.as_str().unwrap())
-                .collect();
-            assert!(types.contains(&"null"), "{nullable_key} must be nullable");
-            assert!(
-                types.contains(&concrete_type),
-                "{nullable_key} must accept {concrete_type}"
-            );
-        }
-
-        // Core params must NOT be nullable
-        for non_null_key in ["operation", "session_id"] {
-            let ty = &props[non_null_key]["type"];
-            assert!(
-                ty.is_string(),
-                "{non_null_key} must have a simple string type"
-            );
-        }
     }
 }

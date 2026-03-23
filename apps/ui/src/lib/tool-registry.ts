@@ -43,7 +43,12 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   session_read_file: { category: "read", segmentMode: "standalone" },
   read_many_files: { category: "read", segmentMode: "grouped" },
   list_files: { category: "read", segmentMode: "grouped" },
-  list_capabilities: { category: "read", segmentMode: "grouped" },
+  read_capabilities: { category: "read", segmentMode: "grouped" },
+  read_harnesses: { category: "read", segmentMode: "grouped" },
+  read_agents: { category: "read", segmentMode: "grouped" },
+  read_sessions: { category: "read", segmentMode: "grouped" },
+  session_read_messages: { category: "read", segmentMode: "grouped" },
+  session_read_response: { category: "read", segmentMode: "grouped" },
 
   // Search tools
   search: { category: "search", segmentMode: "grouped" },
