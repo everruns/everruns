@@ -598,6 +598,25 @@ impl ServerAppBuilder {
         let session_resources_state =
             api::session_resources::AppState::new(leased_resource_service, auth_state.clone());
 
+        // MCP endpoint: derive API base URL from addr config or MCP_API_BASE_URL env var
+        let mcp_api_base_url = std::env::var("MCP_API_BASE_URL").unwrap_or_else(|_| {
+            let addr = &self.config.addr;
+            let host = if addr.starts_with("0.0.0.0") {
+                addr.replacen("0.0.0.0", "127.0.0.1", 1)
+            } else {
+                addr.to_string()
+            };
+            format!("http://{host}")
+        });
+        let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
+            platform_definition.as_ref(),
+            notifications_enabled,
+            mcp_api_base_url,
+        );
+
         let health_state = HealthState {
             auth_mode: format!("{:?}", auth_config.mode),
         };
@@ -673,7 +692,8 @@ impl ServerAppBuilder {
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))
             .merge(api::slack_events::routes(slack_state))
-            .merge(api::feature_flags::routes(feature_flags_state));
+            .merge(api::feature_flags::routes(feature_flags_state))
+            .merge(api::mcp_endpoint::routes(mcp_endpoint_state));
 
         if let Some(notifications_state) = notifications_state {
             api_routes = api_routes.merge(api::notifications::routes(notifications_state));
