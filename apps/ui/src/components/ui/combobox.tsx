@@ -21,6 +21,8 @@ interface ComboboxProps {
   clearable?: boolean;
 }
 
+const listboxId = "combobox-listbox";
+
 export function Combobox({
   options,
   value,
@@ -86,6 +88,13 @@ export function Combobox({
 
   const handleKeyDown = React.useCallback(
     (e: React.KeyboardEvent) => {
+      if (filtered.length === 0) {
+        if (e.key === "Escape") {
+          setOpen(false);
+          setSearch("");
+        }
+        return;
+      }
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setHighlightIndex((prev) => Math.min(prev + 1, filtered.length - 1));
@@ -107,9 +116,12 @@ export function Combobox({
 
   return (
     <div ref={containerRef} className={cn("relative", className)}>
-      <button
-        type="button"
-        disabled={disabled}
+      <div
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        aria-haspopup="listbox"
+        tabIndex={disabled ? -1 : 0}
         onClick={() => {
           if (!disabled) {
             setOpen(!open);
@@ -118,8 +130,18 @@ export function Combobox({
             }
           }
         }}
+        onKeyDown={(e) => {
+          if (!disabled && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            setOpen(!open);
+            if (!open) {
+              setTimeout(() => inputRef.current?.focus(), 0);
+            }
+          }
+        }}
         className={cn(
-          "border-input focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full items-center justify-between gap-2 border bg-transparent px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
+          "border-input focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 dark:hover:bg-input/50 flex h-9 w-full cursor-default items-center justify-between gap-2 border bg-transparent px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px]",
+          disabled && "cursor-not-allowed opacity-50",
         )}
       >
         <span className={cn(!value && "text-muted-foreground")}>
@@ -141,7 +163,7 @@ export function Combobox({
           )}
           <ChevronDownIcon className="size-4 opacity-50" />
         </div>
-      </button>
+      </div>
 
       {open && (
         <div className="bg-popover text-popover-foreground absolute z-50 mt-1 w-full overflow-hidden border shadow-md animate-in fade-in-0 zoom-in-95">
@@ -153,10 +175,11 @@ export function Combobox({
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={searchPlaceholder}
+              aria-controls={listboxId}
               className="bg-transparent w-full text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <div ref={listRef} className="max-h-60 overflow-y-auto p-1">
+          <div ref={listRef} id={listboxId} role="listbox" className="max-h-60 overflow-y-auto p-1">
             {filtered.length === 0 ? (
               <div className="px-2 py-4 text-center text-sm text-muted-foreground">
                 No results found
@@ -169,9 +192,6 @@ export function Combobox({
                   aria-selected={option.value === value}
                   data-combobox-item
                   onClick={() => handleSelect(option.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSelect(option.value);
-                  }}
                   className={cn(
                     "flex cursor-default items-center px-2 py-1.5 text-sm select-none",
                     idx === highlightIndex && "bg-muted text-foreground",
