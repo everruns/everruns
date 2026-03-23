@@ -122,6 +122,66 @@ async fn test_agent_crud() {
 }
 
 #[tokio::test]
+async fn test_agent_upsert_initial_files() {
+    let backend = create_test_backend().await;
+    let public_id = everruns_core::AgentId::new().to_string();
+
+    // First upsert — creates agent with initial_files
+    let (agent, was_created) = backend
+        .upsert_agent(
+            TEST_ORG_ID,
+            CreateAgentRow {
+                public_id: public_id.clone(),
+                name: "Upsert Files Agent".to_string(),
+                description: None,
+                system_prompt: "prompt".to_string(),
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([
+                    {"path": "/AGENTS.md", "content": "old", "encoding": "utf-8", "is_readonly": false}
+                ]),
+                tools: serde_json::json!([]),
+            },
+        )
+        .await
+        .expect("First upsert failed");
+    assert!(was_created);
+    assert_eq!(agent.initial_files.as_array().unwrap().len(), 1);
+    assert_eq!(agent.initial_files[0]["content"], "old");
+
+    // Second upsert — updates initial_files
+    let (agent2, was_created2) = backend
+        .upsert_agent(
+            TEST_ORG_ID,
+            CreateAgentRow {
+                public_id: public_id.clone(),
+                name: "Upsert Files Agent".to_string(),
+                description: None,
+                system_prompt: "prompt".to_string(),
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([
+                    {"path": "/AGENTS.md", "content": "new", "encoding": "utf-8", "is_readonly": false}
+                ]),
+                tools: serde_json::json!([]),
+            },
+        )
+        .await
+        .expect("Second upsert failed");
+    assert!(!was_created2);
+    assert_eq!(agent2.initial_files.as_array().unwrap().len(), 1);
+    assert_eq!(agent2.initial_files[0]["content"], "new");
+
+    // Verify via get
+    let fetched = backend
+        .get_agent(TEST_ORG_ID, agent2.id)
+        .await
+        .expect("Failed to get agent")
+        .expect("Agent not found");
+    assert_eq!(fetched.initial_files[0]["content"], "new");
+}
+
+#[tokio::test]
 async fn test_agent_get_by_name() {
     let backend = create_test_backend().await;
 
