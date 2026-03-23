@@ -847,13 +847,35 @@ impl ServerAppBuilder {
                         loop {
                             interval.tick().await;
                             match store.reclaim_stale_tasks(stale_threshold).await {
-                                Ok(reclaimed) => {
-                                    if !reclaimed.is_empty() {
+                                Ok(result) => {
+                                    if !result.reclaimed_ids.is_empty() {
                                         tracing::info!(
-                                            count = reclaimed.len(),
-                                            task_ids = ?reclaimed,
+                                            count = result.reclaimed_ids.len(),
+                                            task_ids = ?result.reclaimed_ids,
                                             "Reclaimed stale tasks"
                                         );
+                                    }
+
+                                    // Notify workflows about dead tasks so they can
+                                    // transition to failed instead of staying stuck.
+                                    for dead in &result.dead_tasks {
+                                        let error_msg = dead.last_error.clone().unwrap_or_else(|| {
+                                            "Worker became unresponsive after exhausting all retry attempts".to_string()
+                                        });
+                                        tracing::info!(
+                                            task_id = %dead.task_id,
+                                            workflow_id = ?dead.workflow_id,
+                                            activity_id = %dead.activity_id,
+                                            "Notifying workflow of dead task"
+                                        );
+                                        everruns_durable::record_activity_failed(
+                                            store.as_ref(),
+                                            dead.workflow_id,
+                                            dead.activity_id.clone(),
+                                            error_msg,
+                                            false,
+                                        )
+                                        .await;
                                     }
                                 }
                                 Err(e) => {
