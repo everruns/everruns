@@ -1,5 +1,6 @@
 # Agent Blueprints Specification
 
+
 <!-- Design Decisions:
   - AgentBlueprint: code-defined agent template with private tools, baked-in prompt, fixed/default model
   - Contributed by capabilities via new `agent_blueprints()` trait method
