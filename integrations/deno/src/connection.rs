@@ -114,7 +114,12 @@ impl ConnectionProvider for DenoConnectionProvider {
             .list_sandboxes(&std::collections::BTreeMap::new())
             .await?;
 
-        let provider_metadata = org_slug.map(|slug| serde_json::json!({ "org": slug }));
+        // Only store metadata for personal tokens; org tokens don't need it.
+        let provider_metadata = if api_key.starts_with("ddp_") {
+            org_slug.map(|slug| serde_json::json!({ "org": slug }))
+        } else {
+            None
+        };
 
         Ok(ConnectionValidation {
             provider_username: None,

@@ -347,7 +347,20 @@ pub async fn verify_connection(
                 .into_response(StatusCode::NOT_FOUND)
         })?;
 
-    match provider.validate(&api_key).await {
+    // Build fields map from stored credential + metadata for full validation
+    let mut fields = std::collections::HashMap::new();
+    fields.insert("api_key".to_string(), api_key);
+    if let Some(meta) = row.provider_metadata.as_ref()
+        && let Some(obj) = meta.as_object()
+    {
+        for (k, v) in obj {
+            if let Some(s) = v.as_str() {
+                fields.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+
+    match provider.validate_fields(&fields).await {
         Ok(_) => Ok(Json(VerifyConnectionResponse {
             valid: true,
             error: None,

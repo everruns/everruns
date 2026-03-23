@@ -53,6 +53,10 @@ pub async fn get_credentials(
                         None
                     }
                 };
+                // Personal tokens require an org slug; fail early if missing.
+                if token.starts_with("ddp_") && org.is_none() {
+                    return Err(ToolExecutionResult::connection_required("deno"));
+                }
                 return Ok(DenoCredentials { token, org });
             }
             Ok(None) => {}
