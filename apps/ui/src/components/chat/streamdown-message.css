@@ -112,7 +112,9 @@
    Streamdown always renders a <span> child so :empty never matches.
    When language is undefined the data-language attr is omitted entirely;
    when empty string it is data-language="". Target both via the parent. */
-.streamdown [data-streamdown="code-block"]:not([data-language]) [data-streamdown="code-block-header"],
+.streamdown
+  [data-streamdown="code-block"]:not([data-language])
+  [data-streamdown="code-block-header"],
 .streamdown [data-streamdown="code-block"][data-language=""] [data-streamdown="code-block-header"] {
   display: none;
 }
