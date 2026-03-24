@@ -236,10 +236,10 @@ pub use events::{
     ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
     ReasonThinkingStartedData, SESSION_ACTIVATED, SESSION_IDLED, SESSION_STARTED,
     SessionActivatedData, SessionIdledData, SessionStartedData, TOOL_CALL_REQUESTED,
-    TOOL_COMPLETED, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
-    TURN_STARTED, TokenUsage, ToolCallRequestedData, ToolCallSummary, ToolCompletedData,
-    ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
-    TurnStartedData, VALID_EVENT_TYPES,
+    TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
+    TURN_FAILED, TURN_STARTED, TokenUsage, ToolCallRequestedData, ToolCallSummary,
+    ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData,
+    TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
 };
 pub use harness::{Harness, HarnessStatus, merge_harness, merge_harness_chain};
 pub use leased_resource::{

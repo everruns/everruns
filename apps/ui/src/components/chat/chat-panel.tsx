@@ -32,6 +32,7 @@ export function ChatPanel() {
     chatEvents,
     toolResultsMap,
     toolProgressMap,
+    toolOutputMap,
     eventsLoading,
     isActive,
     reasoningEffort,
@@ -190,6 +191,7 @@ export function ChatPanel() {
           sessionId={sessionId}
           toolResultsMap={toolResultsMap}
           toolProgressMap={toolProgressMap}
+          toolOutputMap={toolOutputMap}
           eventsLoading={eventsLoading}
           hasMoreEvents={hasMoreEvents}
           loadingOlderEvents={loadingOlderEvents}

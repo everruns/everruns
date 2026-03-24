@@ -192,6 +192,16 @@ export interface ToolProgressData {
   display_name?: string;
 }
 
+/** Data for tool.output.delta event (streamed output chunks during execution) */
+export interface ToolOutputDeltaData {
+  tool_call_id: string;
+  tool_name: string;
+  /** Incremental output chunk */
+  delta: string;
+  /** Output stream identifier (e.g., "stdout", "stderr") */
+  stream: string;
+}
+
 /** Data for tool.completed event */
 export interface ToolCompletedData {
   tool_call_id: string;
@@ -339,6 +349,7 @@ export type EventData =
   | ToolStartedData
   | ToolCallRequestedData
   | ToolProgressData
+  | ToolOutputDeltaData
   | ToolCompletedData
   | LlmGenerationData
   | SessionStartedData
@@ -373,6 +384,7 @@ export interface EventTypeMap {
   "tool.started": ToolStartedData;
   "tool.call_requested": ToolCallRequestedData;
   "tool.progress": ToolProgressData;
+  "tool.output.delta": ToolOutputDeltaData;
   "tool.completed": ToolCompletedData;
   "llm.generation": LlmGenerationData;
   "session.started": SessionStartedData;

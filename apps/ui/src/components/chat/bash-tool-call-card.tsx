@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight, Terminal } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
+import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
@@ -13,6 +14,8 @@ export { isBashTool } from "@/lib/tool-registry";
 interface BashToolCallCardProps {
   toolCall: ToolCallContent;
   toolResult?: ToolCompletedData;
+  /** Streamed output received via tool.output.delta events during execution */
+  streamedOutput?: ToolOutputStreams;
 }
 
 export interface BashOutput {
@@ -122,7 +125,7 @@ export function BashToolResultDetails({
  * Shows: `$ command` with status icon, collapsed output toggle.
  * Output separates stdout/stderr with visual distinction.
  */
-export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps) {
+export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashToolCallCardProps) {
   const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -135,12 +138,21 @@ export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps
   const fullText = toolResult?.result ? getFullText(toolResult.result) : "";
   const bashOutput = fullText ? parseBashOutput(fullText) : null;
 
+  // Streamed output available while tool is still running
+  const hasStreamedOutput = !isComplete && streamedOutput &&
+    (streamedOutput.stdout.length > 0 || streamedOutput.stderr.length > 0);
+
+  // Auto-expand when streamed output arrives
+  useEffect(() => {
+    if (hasStreamedOutput) setIsExpanded(true);
+  }, [hasStreamedOutput]);
+
   // Determine if there's meaningful output to show
   const hasStdout = !!bashOutput?.stdout;
   const hasStderr = !!bashOutput?.stderr;
   const hasOutput = bashOutput
     ? hasStdout || hasStderr || bashOutput.exit_code !== 0
-    : fullText.length > 0;
+    : fullText.length > 0 || !!hasStreamedOutput;
   const exitedWithError = bashOutput ? !bashOutput.success : hasError;
   const exitCodeLabel =
     bashOutput && bashOutput.exit_code !== 0
@@ -216,11 +228,39 @@ export function BashToolCallCard({ toolCall, toolResult }: BashToolCallCardProps
         </div>
       )}
 
-      {/* Expanded output */}
-      {isExpanded && (
+      {/* Expanded output: streamed (while running) or final (when complete) */}
+      {isExpanded && hasStreamedOutput && (
+        <div className="mt-1 ml-[22px] space-y-2">
+          <StreamedOutputDetails streamedOutput={streamedOutput} />
+        </div>
+      )}
+      {isExpanded && isComplete && (
         <div className="mt-1 ml-[22px] space-y-2">
           <BashToolResultDetails fullText={fullText} showExitCode={false} />
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Render streamed output received via tool.output.delta events while a tool is running. */
+function StreamedOutputDetails({ streamedOutput }: { streamedOutput: ToolOutputStreams }) {
+  return (
+    <div className="space-y-0 rounded bg-muted/20 p-1.5 text-[10px] leading-tight">
+      {streamedOutput.stdout && (
+        <pre className="max-h-60 overflow-x-auto whitespace-pre-wrap break-all text-inherit">
+          {streamedOutput.stdout}
+        </pre>
+      )}
+      {streamedOutput.stderr && (
+        <pre
+          className={cn(
+            "max-h-40 overflow-x-auto whitespace-pre-wrap break-all text-red-600/80 dark:text-red-400/80",
+            streamedOutput.stdout && "mt-3 border-t border-red-400/20 pt-3",
+          )}
+        >
+          {streamedOutput.stderr}
+        </pre>
       )}
     </div>
   );

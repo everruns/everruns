@@ -234,12 +234,27 @@ impl Tool for BashTool {
         .await;
 
         match result {
-            Ok(Ok(output)) => ToolExecutionResult::success(json!({
-                "stdout": output.stdout,
-                "stderr": output.stderr,
-                "exit_code": output.exit_code,
-                "success": output.exit_code == 0
-            })),
+            Ok(Ok(output)) => {
+                // Emit output deltas for live rendering in UI/CLI.
+                // bashkit returns all output at once; when bashkit adds streaming
+                // support (output_stream()), these will become incremental chunks.
+                if !output.stdout.is_empty() {
+                    context
+                        .emit_tool_output("bash", &output.stdout, "stdout")
+                        .await;
+                }
+                if !output.stderr.is_empty() {
+                    context
+                        .emit_tool_output("bash", &output.stderr, "stderr")
+                        .await;
+                }
+                ToolExecutionResult::success(json!({
+                    "stdout": output.stdout,
+                    "stderr": output.stderr,
+                    "exit_code": output.exit_code,
+                    "success": output.exit_code == 0
+                }))
+            }
             Ok(Err(e)) => {
                 // Execution error (syntax error, resource limit, etc.)
                 ToolExecutionResult::tool_error(format!("Bash execution error: {}", e))

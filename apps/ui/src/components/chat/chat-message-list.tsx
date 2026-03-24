@@ -17,6 +17,7 @@ import type {
   ToolCompletedData,
   ToolProgressData,
 } from "@/lib/api/types";
+import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { getEventData, isImageFilePart } from "@/lib/api/types";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { MessageImage } from "@/components/chat/image-attachments";
@@ -42,6 +43,7 @@ interface ChatMessageListProps {
   sessionId: string;
   toolResultsMap: Map<string, ToolCompletedData>;
   toolProgressMap: Map<string, ToolProgressData>;
+  toolOutputMap: Map<string, ToolOutputStreams>;
   eventsLoading: boolean;
   hasMoreEvents: boolean;
   loadingOlderEvents: boolean;
@@ -166,6 +168,7 @@ export function ChatMessageList({
   sessionId,
   toolResultsMap,
   toolProgressMap,
+  toolOutputMap,
   eventsLoading,
   hasMoreEvents,
   loadingOlderEvents,
@@ -323,6 +326,7 @@ export function ChatMessageList({
                     toolCalls={otherCalls}
                     toolResultsMap={toolResultsMap}
                     toolProgressMap={toolProgressMap}
+                    toolOutputMap={toolOutputMap}
                     mode="client"
                   />
                 )}
@@ -366,6 +370,7 @@ export function ChatMessageList({
                   toolCalls={toolCalls}
                   toolResultsMap={toolResultsMap}
                   toolProgressMap={toolProgressMap}
+                  toolOutputMap={toolOutputMap}
                 />
               </div>
               {renderTurnDivider(
@@ -442,6 +447,7 @@ export function ChatMessageList({
                   toolCalls={toolCalls}
                   toolResultsMap={toolResultsMap}
                   toolProgressMap={toolProgressMap}
+                  toolOutputMap={toolOutputMap}
                 />
               </div>
             )}

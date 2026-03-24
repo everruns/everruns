@@ -94,7 +94,7 @@ turn (root span)
 | `reason.started/completed` | reason_span_id | turn_id | turn_id |
 | `llm.generation` | llm_span_id | reason_span_id | turn_id |
 | `act.started/completed` | act_span_id | turn_id | turn_id |
-| `tool.started/completed` | tool_span_id | act_span_id | turn_id |
+| `tool.started/completed/output.delta` | tool_span_id | act_span_id | turn_id |
 
 **Key Properties:**
 
@@ -575,6 +575,33 @@ For failed tool calls:
 }
 ```
 
+#### `tool.output.delta`
+
+Streamed incremental output from a tool during execution. Emitted between `tool.started` and `tool.completed`. Generic — usable by any tool that produces streamed output (bash stdout/stderr, remote command output, subagent speech, etc.).
+
+The consumer accumulates deltas by `tool_call_id` for live rendering. The final `tool.completed` result is authoritative — deltas are informational only.
+
+```json
+{
+  "type": "tool.output.delta",
+  "session_id": "...",
+  "context": { "turn_id": "...", "exec_id": "..." },
+  "data": {
+    "tool_call_id": "call_789",
+    "tool_name": "bash",
+    "delta": "Installing dependencies...\n",
+    "stream": "stdout"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `tool_call_id` | string | yes | References the tool call producing output |
+| `tool_name` | string | yes | Tool name |
+| `delta` | string | yes | Incremental output chunk |
+| `stream` | string | yes | Stream identifier (e.g., `"stdout"`, `"stderr"`) |
+
 ### LLM Events
 
 LLM events provide visibility into the actual LLM API calls.
@@ -901,6 +928,7 @@ This approach provides real-time feedback as tokens are consumed during LLM call
 | `act.completed` | Atom | ActAtom completed |
 | `tool.started` | Atom | Individual tool started |
 | `tool.completed` | Atom | Individual tool completed (includes result) |
+| `tool.output.delta` | Atom | Incremental streamed output from a tool |
 | `llm.generation` | LLM | Full LLM API call with messages and response |
 | `reason.thinking.started` | Thinking | Extended thinking started (thinking indicator) |
 | `reason.thinking.delta` | Thinking | Incremental reasoning content from extended thinking models |

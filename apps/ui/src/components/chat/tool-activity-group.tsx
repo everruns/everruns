@@ -11,6 +11,7 @@
 
 import { useMemo } from "react";
 import type { ToolCompletedData, ToolProgressData } from "@/lib/api/types";
+import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { isWriteTodosTool } from "@/lib/tool-registry";
 import { BashToolCallCard } from "./bash-tool-call-card";
 import { GroupedActivityCard } from "./grouped-activity-card";
@@ -24,6 +25,7 @@ interface ToolActivityGroupProps {
   toolCalls: ToolCallContent[];
   toolResultsMap: Map<string, ToolCompletedData>;
   toolProgressMap?: Map<string, ToolProgressData>;
+  toolOutputMap?: Map<string, ToolOutputStreams>;
   mode?: "server" | "client";
 }
 
@@ -31,6 +33,7 @@ export function ToolActivityGroup({
   toolCalls,
   toolResultsMap,
   toolProgressMap,
+  toolOutputMap,
   mode = "server",
 }: ToolActivityGroupProps) {
   const todoToolCalls = toolCalls.filter((toolCall) => isWriteTodosTool(toolCall.name));
@@ -51,6 +54,7 @@ export function ToolActivityGroup({
               key={segment.toolCall.id}
               toolCall={segment.toolCall}
               toolResult={toolResultsMap.get(segment.toolCall.id)}
+              streamedOutput={toolOutputMap?.get(segment.toolCall.id)}
             />
           );
         }

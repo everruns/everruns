@@ -95,6 +95,27 @@ pub async fn run(
                     eprintln!("  [{tool}] {message}");
                 }
 
+                // Handle tool.output.delta event (streamed tool output)
+                if event.event_type == "tool.output.delta"
+                    && let Some(delta) = event.data.get("delta").and_then(|d| d.as_str())
+                {
+                    let stream = event
+                        .data
+                        .get("stream")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("stdout");
+                    let tool = event
+                        .data
+                        .get("tool_name")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("tool");
+                    if stream == "stderr" {
+                        eprint!("  [{tool}:stderr] {delta}");
+                    } else {
+                        eprint!("  [{tool}] {delta}");
+                    }
+                }
+
                 // Handle turn.completed event
                 if event.event_type == "turn.completed" {
                     if !agent_content.is_empty() {

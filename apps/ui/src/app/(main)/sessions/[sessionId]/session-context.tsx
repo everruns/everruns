@@ -23,6 +23,7 @@ import type {
   ReasoningEffort,
   ToolCompletedData,
   ToolProgressData,
+  ToolOutputDeltaData,
   InputMessageData,
   OutputMessageCompletedData,
   Message,
@@ -30,6 +31,12 @@ import type {
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart, getEventData } from "@/lib/api/types";
 import type { UseMutationResult } from "@tanstack/react-query";
+
+/** Accumulated streamed output for a single tool call */
+export interface ToolOutputStreams {
+  stdout: string;
+  stderr: string;
+}
 
 interface SessionContextValue {
   // IDs
@@ -43,6 +50,7 @@ interface SessionContextValue {
   chatEvents: Event[];
   toolResultsMap: Map<string, ToolCompletedData>;
   toolProgressMap: Map<string, ToolProgressData>;
+  toolOutputMap: Map<string, ToolOutputStreams>;
   // Loading states
   sessionLoading: boolean;
   eventsLoading: boolean;
@@ -403,6 +411,25 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     return map;
   }, [events]);
 
+  // Accumulate streamed tool output by tool_call_id (concatenates deltas per stream)
+  const toolOutputMap = useMemo(() => {
+    const map = new Map<string, ToolOutputStreams>();
+    if (!events) return map;
+    for (const event of events) {
+      const data = getEventData(event, "tool.output.delta");
+      if (data) {
+        const existing = map.get(data.tool_call_id) ?? { stdout: "", stderr: "" };
+        if (data.stream === "stdout") {
+          existing.stdout += data.delta;
+        } else if (data.stream === "stderr") {
+          existing.stderr += data.delta;
+        }
+        map.set(data.tool_call_id, existing);
+      }
+    }
+    return map;
+  }, [events]);
+
   // Incremental token usage accumulation — O(1) per new event instead of O(n).
   // Tracks how many events have been processed so only new events are scanned.
   const usageRef = useRef({
@@ -508,6 +535,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     chatEvents,
     toolResultsMap,
     toolProgressMap,
+    toolOutputMap,
     sessionLoading,
     eventsLoading,
     effectiveStatus,
