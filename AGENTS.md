@@ -139,7 +139,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/client-hints.md` - Generic client hints mechanism (session defaults + per-message overrides)
 - `specs/agent-identities.md` - Agent identities (virtual principals for unattended execution)
 - `specs/agent-blueprints.md` - Pre-built agent definitions (private tools, fixed models, typed config)
-- `specs/channel-abstractions.md` - Multi-platform channel abstractions (threads, delivery, routing)
+- `specs/messaging-integrations.md` - Messaging integrations (channel abstractions, parity requirements, platform adapters)
 
 ### Test Cases
 

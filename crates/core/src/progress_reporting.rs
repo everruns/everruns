@@ -105,11 +105,7 @@ pub fn sync_slack_reply_mode_tags(tags: &mut Vec<String>, reply_mode: SlackReply
         tags.push(SLACK_REPORT_PROGRESS_ONLY_TAG.to_string());
     }
     // Also set the generic tag so new code paths work
-    let channel_mode = match reply_mode {
-        SlackReplyMode::AllMessages => ChannelReplyMode::AllMessages,
-        SlackReplyMode::ReportProgressOnly => ChannelReplyMode::ReportProgressOnly,
-    };
-    sync_channel_reply_mode_tags(tags, channel_mode);
+    sync_channel_reply_mode_tags(tags, reply_mode.into());
 }
 
 pub fn report_progress_tool_definition() -> ToolDefinition {

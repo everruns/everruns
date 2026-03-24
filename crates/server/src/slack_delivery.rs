@@ -12,7 +12,12 @@
 // Design Decision: Delivery context is keyed by (session_id, input_message_id)
 // to support concurrent turns in the same session.
 
+use async_trait::async_trait;
 use everruns_core::SlackReplyMode;
+use everruns_core::channel::{
+    ChannelDeliveryAdapter, ChannelReplyMode, DeliveryContext as ChannelDeliveryContext,
+    DeliveryResult as ChannelDeliveryResult, OutboundChannelMessage,
+};
 use everruns_core::progress_reporting::{
     ProgressReportPayload, REPORT_PROGRESS_TOOL_NAME, format_progress_report_for_slack,
 };
@@ -468,6 +473,72 @@ impl SlackDeliveryDispatcher {
 
         let count = self.deliveries.read().await.len();
         info!(recovered = count, "Slack delivery recovery complete");
+    }
+}
+
+// ============================================
+// ChannelDeliveryAdapter implementation for Slack
+// ============================================
+
+/// Slack implementation of the generic `ChannelDeliveryAdapter` trait.
+///
+/// Translates `OutboundChannelMessage` into Slack `chat.postMessage` API calls.
+/// Used by the `SlackDeliveryDispatcher` and available for future generic
+/// delivery dispatchers.
+pub struct SlackDeliveryAdapter;
+
+#[async_trait]
+impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
+    fn platform(&self) -> &str {
+        "slack"
+    }
+
+    async fn deliver(
+        &self,
+        message: &OutboundChannelMessage,
+        context: &ChannelDeliveryContext,
+    ) -> ChannelDeliveryResult {
+        match post_to_slack_with_retry(
+            &context.auth_token,
+            &context.channel_id,
+            &context.thread_ref,
+            &message.text,
+        )
+        .await
+        {
+            Ok(()) => ChannelDeliveryResult::Ok,
+            Err(e) => {
+                let err = e.to_string();
+                if err.contains("channel_not_found")
+                    || err.contains("not_authed")
+                    || err.contains("invalid_auth")
+                    || err.contains("token_revoked")
+                {
+                    ChannelDeliveryResult::PermanentError(err)
+                } else {
+                    ChannelDeliveryResult::TransientError(err)
+                }
+            }
+        }
+    }
+
+    async fn send_ack(
+        &self,
+        thread_ref: &str,
+        text: &str,
+        context: &ChannelDeliveryContext,
+    ) -> ChannelDeliveryResult {
+        match post_to_slack(&context.auth_token, &context.channel_id, thread_ref, text).await {
+            Ok(()) => ChannelDeliveryResult::Ok,
+            Err(e) => ChannelDeliveryResult::TransientError(e.to_string()),
+        }
+    }
+
+    fn format_progress_report(
+        &self,
+        report: &everruns_core::progress_reporting::ProgressReportPayload,
+    ) -> String {
+        format_progress_report_for_slack(report)
     }
 }
 
