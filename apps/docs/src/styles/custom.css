@@ -115,6 +115,36 @@
   border: 1px solid var(--sl-color-hairline);
 }
 
+/* Light-mode code block overrides:
+   - White background for readable contrast against page bg
+   - Hide the empty terminal title bar (dots row stays via header ::before) */
+:root,
+:root[data-theme="light"] {
+  --ec-codeBg: #ffffff;
+  --ec-frm-trmBg: #ffffff;
+  --ec-frm-trmTtbBg: #f5f5f5;
+  --ec-frm-edBg: #ffffff;
+}
+
+:root[data-theme="dark"] {
+  --ec-codeBg: #111111;
+  --ec-frm-trmBg: #111111;
+  --ec-frm-trmTtbBg: #1a1a1a;
+  --ec-frm-edBg: #111111;
+}
+
+/* Hide the empty terminal title bar when there is no title text.
+   Expressive Code injects a non-breaking space via :empty::before,
+   so target .title that has no real text content. */
+.expressive-code .frame.is-terminal:not(.has-title) .header {
+  display: none;
+}
+.expressive-code .frame.is-terminal:not(.has-title) pre {
+  border-top: 1px solid var(--sl-color-hairline);
+  border-top-left-radius: calc(var(--ec-brdRad) + var(--ec-brdWd));
+  border-top-right-radius: calc(var(--ec-brdRad) + var(--ec-brdWd));
+}
+
 /* Table styling - clean minimal look with proper specificity */
 .sl-markdown-content table:not(:where(.not-content *)) {
   display: table;
