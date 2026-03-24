@@ -6237,6 +6237,9 @@
             "$ref": "#/components/schemas/ToolProgressData"
           },
           {
+            "$ref": "#/components/schemas/ToolOutputDeltaData"
+          },
+          {
             "$ref": "#/components/schemas/ToolCallRequestedData"
           },
           {
@@ -11513,6 +11516,34 @@
               "null"
             ],
             "description": "Tool requires API keys, credentials, or other secrets to function.\nUseful for UI to show connection prompts and for LLMs to anticipate\nauthentication failures."
+          }
+        }
+      },
+      "ToolOutputDeltaData": {
+        "type": "object",
+        "description": "Data for tool.output.delta event.\n\nEmitted by tools during execution to stream incremental output chunks.\nThis enables live output rendering (e.g., bash stdout/stderr, command output)\nbetween tool.started and tool.completed. Generic — usable by any tool that\nproduces streamed output (bashkit, Daytona exec, subagent speech, etc.).\n\nThe consumer accumulates deltas by tool_call_id for display. The final\ntool.completed result is authoritative — deltas are informational only.",
+        "required": [
+          "tool_call_id",
+          "tool_name",
+          "delta",
+          "stream"
+        ],
+        "properties": {
+          "delta": {
+            "type": "string",
+            "description": "Incremental output chunk"
+          },
+          "stream": {
+            "type": "string",
+            "description": "Output stream identifier (e.g., \"stdout\", \"stderr\")"
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "Tool call ID this output belongs to"
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "Tool name"
           }
         }
       },

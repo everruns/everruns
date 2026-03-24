@@ -74,7 +74,7 @@ impl EventsQuery {
 }
 
 /// Max event types per filter parameter. There are ~27 known types; 30 is generous.
-const MAX_EVENT_TYPE_FILTER_SIZE: usize = 30;
+const MAX_EVENT_TYPE_FILTER_SIZE: usize = 40;
 
 /// Validate a list of event type strings: checks size limit and known types.
 fn validate_event_type_list(
