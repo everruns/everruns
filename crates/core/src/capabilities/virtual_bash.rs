@@ -22,8 +22,9 @@ use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use bashkit::{
     Bash, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem, FileSystemExt, FileType,
-    Metadata, SearchCapabilities, SearchCapable, SearchMatch as BashkitSearchMatch, SearchProvider,
-    SearchQuery, SearchResults, Tool as BashkitToolTrait,
+    Metadata, OutputCallback, SearchCapabilities, SearchCapable,
+    SearchMatch as BashkitSearchMatch, SearchProvider, SearchQuery, SearchResults,
+    Tool as BashkitToolTrait,
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -226,35 +227,50 @@ impl Tool for BashTool {
             .limits(execution_limits())
             .build();
 
-        // Execute with timeout
+        // Stream output via tool.output.delta events for live UI/CLI rendering.
+        // bashkit's exec_streaming calls OutputCallback with (stdout_chunk, stderr_chunk)
+        // after each command completes. We bridge to async emit via a channel.
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
+
+        let output_callback: OutputCallback = Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
+            // Best-effort: if receiver dropped, we just ignore
+            let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+        });
+
+        // Spawn a task that reads chunks from the channel and emits events
+        let emit_context = context.clone();
+        let emit_task = tokio::spawn(async move {
+            while let Some((stdout_chunk, stderr_chunk)) = rx.recv().await {
+                if !stdout_chunk.is_empty() {
+                    emit_context
+                        .emit_tool_output("bash", &stdout_chunk, "stdout")
+                        .await;
+                }
+                if !stderr_chunk.is_empty() {
+                    emit_context
+                        .emit_tool_output("bash", &stderr_chunk, "stderr")
+                        .await;
+                }
+            }
+        });
+
+        // Execute with timeout using streaming callback
         let result = tokio::time::timeout(
             std::time::Duration::from_millis(timeout_ms),
-            bash.exec(command),
+            bash.exec_streaming(command, output_callback),
         )
         .await;
 
+        // Wait for all buffered chunks to be emitted (sender dropped when exec completes)
+        let _ = emit_task.await;
+
         match result {
-            Ok(Ok(output)) => {
-                // Emit output deltas for live rendering in UI/CLI.
-                // bashkit returns all output at once; when bashkit adds streaming
-                // support (output_stream()), these will become incremental chunks.
-                if !output.stdout.is_empty() {
-                    context
-                        .emit_tool_output("bash", &output.stdout, "stdout")
-                        .await;
-                }
-                if !output.stderr.is_empty() {
-                    context
-                        .emit_tool_output("bash", &output.stderr, "stderr")
-                        .await;
-                }
-                ToolExecutionResult::success(json!({
-                    "stdout": output.stdout,
-                    "stderr": output.stderr,
-                    "exit_code": output.exit_code,
-                    "success": output.exit_code == 0
-                }))
-            }
+            Ok(Ok(output)) => ToolExecutionResult::success(json!({
+                "stdout": output.stdout,
+                "stderr": output.stderr,
+                "exit_code": output.exit_code,
+                "success": output.exit_code == 0
+            })),
             Ok(Err(e)) => {
                 // Execution error (syntax error, resource limit, etc.)
                 ToolExecutionResult::tool_error(format!("Bash execution error: {}", e))
