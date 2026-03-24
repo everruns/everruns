@@ -401,6 +401,12 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "channel_config_encrypted",
         id_column: "id",
     },
+    // App channel config (multi-channel) — same secrets, per-channel
+    EncryptedColumn {
+        table: "app_channels",
+        column: "channel_config_encrypted",
+        id_column: "id",
+    },
     // Agent identity connection access tokens are encrypted at rest
     EncryptedColumn {
         table: "agent_identity_connections",
