@@ -29,6 +29,8 @@ everruns-core = { path = "../../crates/core" }
 
 [build-dependencies]
 connectrpc-build = "0.2.0"
+protox = "0.9"
+prost = "0.14"
 
 [dev-dependencies]
 wiremock = "0.6"
