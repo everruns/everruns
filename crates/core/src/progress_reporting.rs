@@ -1,12 +1,18 @@
 // Deterministic progress-reporting helpers for external handoff channels.
 //
 // Design Decision: The agent-facing tool is generic (`report_progress`) while
-// delivery remains channel-specific. Slack handoff sessions opt in via a
-// session tag, which lets ReasonAtom expose the tool and prompt without
-// leaking Slack-specific behavior into the wider runtime.
+// delivery remains channel-specific. Handoff sessions opt in via a session tag
+// (`{platform}:reply_mode:report_progress_only`), which lets ReasonAtom expose
+// the tool and prompt without leaking platform-specific behavior into the wider
+// runtime.
+//
+// Design Decision: Tags use a generic `channel:reply_mode:*` prefix that all
+// platforms share, plus legacy `slack:reply_mode:*` aliases for backward compat.
+// `session_uses_report_progress()` checks both prefixes.
 
 use crate::RuntimeAgent;
 use crate::app::SlackReplyMode;
+use crate::channel::ChannelReplyMode;
 use crate::tool_types::ToolDefinition;
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
@@ -14,6 +20,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const REPORT_PROGRESS_TOOL_NAME: &str = "report_progress";
+
+// Generic channel-agnostic tag constants
+pub const CHANNEL_REPLY_MODE_TAG_PREFIX: &str = "channel:reply_mode:";
+pub const CHANNEL_REPORT_PROGRESS_ONLY_TAG: &str = "channel:reply_mode:report_progress_only";
+
+// Legacy Slack-specific tag constants (kept for backward compat)
 pub const SLACK_REPLY_MODE_TAG_PREFIX: &str = "slack:reply_mode:";
 pub const SLACK_REPORT_PROGRESS_ONLY_TAG: &str = "slack:reply_mode:report_progress_only";
 const REPORT_PROGRESS_PROMPT_MARKER: &str = "# External Progress Reporting";
@@ -69,15 +81,35 @@ impl ProgressReportPayload {
     }
 }
 
+/// Check if a session uses report_progress mode.
+/// Checks both the generic `channel:reply_mode:*` and legacy `slack:reply_mode:*` tags.
 pub fn session_uses_report_progress(tags: &[String]) -> bool {
-    tags.iter().any(|tag| tag == SLACK_REPORT_PROGRESS_ONLY_TAG)
+    tags.iter()
+        .any(|tag| tag == CHANNEL_REPORT_PROGRESS_ONLY_TAG || tag == SLACK_REPORT_PROGRESS_ONLY_TAG)
 }
 
+/// Sync channel-agnostic reply mode tags on a session.
+/// Sets the generic `channel:reply_mode:*` tag used by all platforms.
+pub fn sync_channel_reply_mode_tags(tags: &mut Vec<String>, reply_mode: ChannelReplyMode) {
+    tags.retain(|tag| !tag.starts_with(CHANNEL_REPLY_MODE_TAG_PREFIX));
+    if reply_mode == ChannelReplyMode::ReportProgressOnly {
+        tags.push(CHANNEL_REPORT_PROGRESS_ONLY_TAG.to_string());
+    }
+}
+
+/// Sync Slack-specific reply mode tags (legacy — delegates to channel-agnostic version
+/// and also sets the `slack:reply_mode:*` tag for backward compat with existing sessions).
 pub fn sync_slack_reply_mode_tags(tags: &mut Vec<String>, reply_mode: SlackReplyMode) {
     tags.retain(|tag| !tag.starts_with(SLACK_REPLY_MODE_TAG_PREFIX));
     if reply_mode == SlackReplyMode::ReportProgressOnly {
         tags.push(SLACK_REPORT_PROGRESS_ONLY_TAG.to_string());
     }
+    // Also set the generic tag so new code paths work
+    let channel_mode = match reply_mode {
+        SlackReplyMode::AllMessages => ChannelReplyMode::AllMessages,
+        SlackReplyMode::ReportProgressOnly => ChannelReplyMode::ReportProgressOnly,
+    };
+    sync_channel_reply_mode_tags(tags, channel_mode);
 }
 
 pub fn report_progress_tool_definition() -> ToolDefinition {
@@ -110,6 +142,23 @@ pub fn apply_report_progress_mode(mut runtime_agent: RuntimeAgent) -> RuntimeAge
     runtime_agent
 }
 
+/// Format a progress report as plain text (platform-agnostic default).
+/// Platform adapters can override via ChannelDeliveryAdapter::format_progress_report().
+pub fn format_progress_report(report: &ProgressReportPayload) -> String {
+    let heading = match report.status {
+        ProgressReportStatus::Progress => "Update",
+        ProgressReportStatus::Blocked => "Blocked",
+        ProgressReportStatus::Completed => "Done",
+    };
+
+    let mut lines = vec![format!("{}: {}", heading, report.summary)];
+    for detail in &report.details {
+        lines.push(format!("- {}", detail));
+    }
+    lines.join("\n")
+}
+
+/// Format a progress report for Slack (uses same format today, kept for compat).
 pub fn format_progress_report_for_slack(report: &ProgressReportPayload) -> String {
     let heading = match report.status {
         ProgressReportStatus::Progress => "Update",
@@ -240,13 +289,48 @@ mod tests {
 
         sync_slack_reply_mode_tags(&mut tags, SlackReplyMode::ReportProgressOnly);
 
+        // Should have both legacy slack: and generic channel: tags
         assert!(tags.iter().any(|tag| tag == SLACK_REPORT_PROGRESS_ONLY_TAG));
+        assert!(
+            tags.iter()
+                .any(|tag| tag == CHANNEL_REPORT_PROGRESS_ONLY_TAG)
+        );
         assert_eq!(
             tags.iter()
                 .filter(|tag| tag.starts_with(SLACK_REPLY_MODE_TAG_PREFIX))
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn test_sync_channel_reply_mode_tags() {
+        let mut tags = vec!["other:tag".to_string()];
+
+        sync_channel_reply_mode_tags(&mut tags, ChannelReplyMode::ReportProgressOnly);
+        assert!(
+            tags.iter()
+                .any(|tag| tag == CHANNEL_REPORT_PROGRESS_ONLY_TAG)
+        );
+
+        sync_channel_reply_mode_tags(&mut tags, ChannelReplyMode::AllMessages);
+        assert!(
+            !tags
+                .iter()
+                .any(|tag| tag.starts_with(CHANNEL_REPLY_MODE_TAG_PREFIX))
+        );
+    }
+
+    #[test]
+    fn test_session_uses_report_progress_generic_tag() {
+        let tags = vec![CHANNEL_REPORT_PROGRESS_ONLY_TAG.to_string()];
+        assert!(session_uses_report_progress(&tags));
+    }
+
+    #[test]
+    fn test_session_uses_report_progress_legacy_tag() {
+        let tags = vec![SLACK_REPORT_PROGRESS_ONLY_TAG.to_string()];
+        assert!(session_uses_report_progress(&tags));
     }
 
     #[test]
