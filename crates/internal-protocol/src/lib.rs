@@ -226,6 +226,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::ToolStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ToolCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ToolProgress(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::ToolOutputDelta(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ToolCallRequested(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::LlmGeneration(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonThinkingStarted(d) => serde_json::to_value(d).unwrap_or_default(),

@@ -54,6 +54,7 @@ pub const ACT_COMPLETED: &str = "act.completed";
 pub const TOOL_STARTED: &str = "tool.started";
 pub const TOOL_COMPLETED: &str = "tool.completed";
 pub const TOOL_PROGRESS: &str = "tool.progress";
+pub const TOOL_OUTPUT_DELTA: &str = "tool.output.delta";
 pub const TOOL_CALL_REQUESTED: &str = "tool.call_requested";
 
 // LLM events
@@ -101,6 +102,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TOOL_STARTED,
     TOOL_COMPLETED,
     TOOL_PROGRESS,
+    TOOL_OUTPUT_DELTA,
     TOOL_CALL_REQUESTED,
     LLM_GENERATION,
     REASON_THINKING_STARTED,
@@ -916,6 +918,31 @@ pub struct ToolProgressData {
     pub display_name: Option<String>,
 }
 
+/// Data for tool.output.delta event.
+///
+/// Emitted by tools during execution to stream incremental output chunks.
+/// This enables live output rendering (e.g., bash stdout/stderr, command output)
+/// between tool.started and tool.completed. Generic — usable by any tool that
+/// produces streamed output (bashkit, Daytona exec, subagent speech, etc.).
+///
+/// The consumer accumulates deltas by tool_call_id for display. The final
+/// tool.completed result is authoritative — deltas are informational only.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ToolOutputDeltaData {
+    /// Tool call ID this output belongs to
+    pub tool_call_id: String,
+
+    /// Tool name
+    pub tool_name: String,
+
+    /// Incremental output chunk
+    pub delta: String,
+
+    /// Output stream identifier (e.g., "stdout", "stderr")
+    pub stream: String,
+}
+
 /// Data for tool.call_requested event
 ///
 /// Emitted when the agent needs client-side tool calls executed.
@@ -1599,6 +1626,7 @@ pub struct ContextCompactedData {
 /// - `act.completed` → ActCompletedData
 /// - `tool.started` → ToolStartedData
 /// - `tool.completed` → ToolCompletedData
+/// - `tool.output.delta` → ToolOutputDeltaData
 /// - `tool.call_requested` → ToolCallRequestedData
 /// - `llm.generation` → LlmGenerationData
 /// - `reason.thinking.started` → ReasonThinkingStartedData
@@ -1645,6 +1673,7 @@ pub enum EventData {
     ToolStarted(ToolStartedData),
     ToolCompleted(ToolCompletedData),
     ToolProgress(ToolProgressData),
+    ToolOutputDelta(ToolOutputDeltaData),
     ToolCallRequested(ToolCallRequestedData),
 
     // LLM events
@@ -1711,6 +1740,7 @@ impl EventData {
             EventData::ToolStarted(_) => TOOL_STARTED,
             EventData::ToolCompleted(_) => TOOL_COMPLETED,
             EventData::ToolProgress(_) => TOOL_PROGRESS,
+            EventData::ToolOutputDelta(_) => TOOL_OUTPUT_DELTA,
             EventData::ToolCallRequested(_) => TOOL_CALL_REQUESTED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
             EventData::ReasonThinkingDelta(_) => REASON_THINKING_DELTA,
@@ -1800,6 +1830,8 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::ToolCompleted),
             TOOL_PROGRESS => serde_json::from_value::<ToolProgressData>(data.clone())
                 .map(EventData::ToolProgress),
+            TOOL_OUTPUT_DELTA => serde_json::from_value::<ToolOutputDeltaData>(data.clone())
+                .map(EventData::ToolOutputDelta),
             TOOL_CALL_REQUESTED => serde_json::from_value::<ToolCallRequestedData>(data.clone())
                 .map(EventData::ToolCallRequested),
             LLM_GENERATION => serde_json::from_value::<LlmGenerationData>(data.clone())
@@ -1878,6 +1910,7 @@ impl_from_event_data! {
     ToolStartedData => ToolStarted,
     ToolCompletedData => ToolCompleted,
     ToolProgressData => ToolProgress,
+    ToolOutputDeltaData => ToolOutputDelta,
     ToolCallRequestedData => ToolCallRequested,
     LlmGenerationData => LlmGeneration,
     ReasonThinkingStartedData => ReasonThinkingStarted,

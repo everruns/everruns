@@ -31,6 +31,12 @@ import type {
 import { getTextFromContent, isToolCallPart, getEventData } from "@/lib/api/types";
 import type { UseMutationResult } from "@tanstack/react-query";
 
+/** Accumulated streamed output for a single tool call */
+export interface ToolOutputStreams {
+  stdout: string;
+  stderr: string;
+}
+
 interface SessionContextValue {
   // IDs
   agentId: string | undefined;
@@ -43,6 +49,7 @@ interface SessionContextValue {
   chatEvents: Event[];
   toolResultsMap: Map<string, ToolCompletedData>;
   toolProgressMap: Map<string, ToolProgressData>;
+  toolOutputMap: Map<string, ToolOutputStreams>;
   // Loading states
   sessionLoading: boolean;
   eventsLoading: boolean;
@@ -403,6 +410,33 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     return map;
   }, [events]);
 
+  // Accumulate streamed tool output by tool_call_id.
+  // Uses chunk arrays and joins once per tool to avoid O(n²) string concatenation.
+  const toolOutputMap = useMemo(() => {
+    const chunkMap = new Map<string, { stdoutChunks: string[]; stderrChunks: string[] }>();
+    if (!events) return new Map<string, ToolOutputStreams>();
+    for (const event of events) {
+      const data = getEventData(event, "tool.output.delta");
+      if (!data) continue;
+      const existing = chunkMap.get(data.tool_call_id) ?? { stdoutChunks: [], stderrChunks: [] };
+      if (data.stream === "stderr") {
+        existing.stderrChunks.push(data.delta);
+      } else {
+        // stdout and any unknown streams default to stdout
+        existing.stdoutChunks.push(data.delta);
+      }
+      chunkMap.set(data.tool_call_id, existing);
+    }
+    const result = new Map<string, ToolOutputStreams>();
+    for (const [toolCallId, streams] of chunkMap.entries()) {
+      result.set(toolCallId, {
+        stdout: streams.stdoutChunks.join(""),
+        stderr: streams.stderrChunks.join(""),
+      });
+    }
+    return result;
+  }, [events]);
+
   // Incremental token usage accumulation — O(1) per new event instead of O(n).
   // Tracks how many events have been processed so only new events are scanned.
   const usageRef = useRef({
@@ -508,6 +542,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     chatEvents,
     toolResultsMap,
     toolProgressMap,
+    toolOutputMap,
     sessionLoading,
     eventsLoading,
     effectiveStatus,

@@ -721,6 +721,38 @@ impl ToolContext {
             );
         }
     }
+
+    /// Emit a `tool.output.delta` event if an event emitter and context are available.
+    ///
+    /// Streams incremental output chunks (e.g., stdout/stderr lines) for live
+    /// rendering in UI and CLI. Best-effort: failures are logged, not propagated.
+    pub async fn emit_tool_output(&self, tool_name: &str, delta: &str, stream: &str) {
+        let (Some(emitter), Some(ctx), Some(call_id)) =
+            (&self.event_emitter, &self.event_context, &self.tool_call_id)
+        else {
+            return;
+        };
+        if let Err(e) = emitter
+            .emit(EventRequest::new(
+                self.session_id,
+                ctx.clone(),
+                crate::events::ToolOutputDeltaData {
+                    tool_call_id: call_id.clone(),
+                    tool_name: tool_name.to_string(),
+                    delta: delta.to_string(),
+                    stream: stream.to_string(),
+                },
+            ))
+            .await
+        {
+            tracing::debug!(
+                tool_call_id = call_id,
+                tool_name,
+                error = %e,
+                "Failed to emit tool.output.delta event"
+            );
+        }
+    }
 }
 
 impl std::fmt::Debug for ToolContext {
