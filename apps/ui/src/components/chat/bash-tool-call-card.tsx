@@ -139,7 +139,9 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
   const bashOutput = fullText ? parseBashOutput(fullText) : null;
 
   // Streamed output available while tool is still running
-  const hasStreamedOutput = !isComplete && streamedOutput &&
+  const hasStreamedOutput =
+    !isComplete &&
+    streamedOutput &&
     (streamedOutput.stdout.length > 0 || streamedOutput.stderr.length > 0);
 
   // Auto-expand when streamed output arrives

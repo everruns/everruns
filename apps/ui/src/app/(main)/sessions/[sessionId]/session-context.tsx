@@ -23,7 +23,6 @@ import type {
   ReasoningEffort,
   ToolCompletedData,
   ToolProgressData,
-  ToolOutputDeltaData,
   InputMessageData,
   OutputMessageCompletedData,
   Message,
