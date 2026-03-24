@@ -1696,6 +1696,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-pi"
+version = "0.8.7"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "inventory",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "everruns-integrations-sprites"
 version = "0.8.7"
 dependencies = [
@@ -1807,6 +1822,7 @@ dependencies = [
  "everruns-integrations-docker",
  "everruns-integrations-duckduckgo",
  "everruns-integrations-e2b",
+ "everruns-integrations-pi",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
  "everruns-macros",
@@ -1894,6 +1910,7 @@ dependencies = [
  "everruns-integrations-docker",
  "everruns-integrations-duckduckgo",
  "everruns-integrations-e2b",
+ "everruns-integrations-pi",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
  "everruns-openai",

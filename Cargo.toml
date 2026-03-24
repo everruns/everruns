@@ -23,6 +23,7 @@ members = [
     "integrations/browserless",
     "integrations/e2b",
     "integrations/sprites",
+    "integrations/pi",
 ]
 
 exclude = [
