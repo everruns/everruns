@@ -844,3 +844,24 @@ async fn test_create_sandbox_tool_rejects_string_disk() {
         other => panic!("Expected ToolError, got: {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn test_create_sandbox_tool_rejects_invalid_auto_stop() {
+    let tool = get_tool("daytona_create_sandbox");
+    let session_id = SessionId::new();
+    let store = Arc::new(MockStorageStore::new());
+    let context = ToolContext::with_storage_store(session_id, store)
+        .with_connection_resolver(daytona_resolver());
+
+    let result = tool
+        .execute_with_context(json!({"auto_stop_minutes": 100}), &context)
+        .await;
+
+    match result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(msg.contains("auto_stop_minutes"), "Got: {msg}");
+            assert!(msg.contains("between 1 and 60"), "Got: {msg}");
+        }
+        other => panic!("Expected ToolError, got: {other:?}"),
+    }
+}

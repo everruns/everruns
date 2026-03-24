@@ -15,7 +15,7 @@ use crate::state::{
 };
 use crate::{
     AUTO_ARCHIVE_INTERVAL_MINUTES, AUTO_DELETE_INTERVAL_MINUTES, AUTO_STOP_INTERVAL_MINUTES,
-    EXEC_TIMEOUT_MS,
+    EXEC_TIMEOUT_MS, LEASE_HEARTBEAT_INTERVAL,
 };
 
 /// Parse an optional integer resource parameter, validating type and range.
@@ -89,6 +89,13 @@ impl Tool for DaytonaCreateSandboxTool {
                     "maximum": 10,
                     "default": 3
                 },
+                "auto_stop_minutes": {
+                    "type": "integer",
+                    "description": "Minutes of inactivity before auto-stop (1-60, default: 5). Increase for long builds.",
+                    "minimum": 1,
+                    "maximum": 60,
+                    "default": 5
+                },
                 "upload_files": {
                     "type": "array",
                     "description": "Files to upload from session storage (optional)",
@@ -160,9 +167,14 @@ impl Tool for DaytonaCreateSandboxTool {
             }
         }
 
+        let auto_stop = match parse_resource_param(&arguments, "auto_stop_minutes", 1, 60) {
+            Ok(v) => v.unwrap_or(AUTO_STOP_INTERVAL_MINUTES),
+            Err(e) => return ToolExecutionResult::tool_error(&e),
+        };
+
         let mut create_body = json!({
             "name": title,
-            "autoStopInterval": AUTO_STOP_INTERVAL_MINUTES,
+            "autoStopInterval": auto_stop,
             "autoArchiveInterval": AUTO_ARCHIVE_INTERVAL_MINUTES,
             "autoDeleteInterval": AUTO_DELETE_INTERVAL_MINUTES,
             "labels": labels,
@@ -386,7 +398,31 @@ impl Tool for DaytonaExecTool {
         let client = DaytonaClient::new(api_key);
 
         debug!("Executing in sandbox {sandbox_id}: {command}");
-        match client.exec(sandbox_id, command, cwd, Some(timeout)).await {
+
+        // Spawn a heartbeat task that periodically renews the Everruns
+        // leased-resource record while the exec call is in-flight. This
+        // prevents leased-resource cleanup from reclaiming the sandbox
+        // during long-running commands (e.g. Rust compilation).
+        // Note: this does NOT ping Daytona — use `auto_stop_minutes` on
+        // sandbox creation to extend Daytona's inactivity timer.
+        let heartbeat_ctx = context.clone();
+        let heartbeat_state = state.clone();
+        let heartbeat = tokio::spawn(async move {
+            // Renew immediately so the lease is fresh at exec start, then
+            // continue renewing at a fixed interval.
+            loop {
+                debug!("Heartbeat: renewing Everruns sandbox lease during exec");
+                if let Err(e) = touch_sandbox_lease(&heartbeat_ctx, &heartbeat_state, None).await {
+                    warn!("Heartbeat lease renewal failed: {e:?}");
+                }
+                tokio::time::sleep(LEASE_HEARTBEAT_INTERVAL).await;
+            }
+        });
+
+        let exec_result = client.exec(sandbox_id, command, cwd, Some(timeout)).await;
+        heartbeat.abort();
+
+        match exec_result {
             Ok(result) => {
                 if let Err(e) = touch_sandbox_lease(context, &state, None).await {
                     return e;

@@ -239,9 +239,15 @@ This enables:
 
 Any new sandbox integration (Daytona or otherwise) must attach equivalent ownership metadata.
 
-### Synchronous exec only
+### Synchronous exec with lease heartbeat
 
 Daytona's `POST /process/execute` is inherently synchronous. No async polling needed. The `timeout` parameter handles long-running commands.
+
+During exec, a background heartbeat task calls `touch_sandbox_lease` every 3 minutes (`LEASE_HEARTBEAT_INTERVAL`) to renew Everruns' leased-resource record for the sandbox. This prevents Everruns' leased-resource cleanup from reclaiming the sandbox during long-running commands (e.g. Rust compilation taking 20+ minutes). The heartbeat is cancelled when the exec completes.
+
+### Configurable auto-stop
+
+`daytona_create_sandbox` accepts an optional `auto_stop_minutes` parameter (1–60, default: 5). Agents running long builds can request a longer inactivity window at sandbox creation time.
 
 ### Simpler state model
 
