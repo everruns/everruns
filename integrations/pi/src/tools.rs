@@ -60,11 +60,6 @@ impl Tool for StartPiTool {
                     "type": "integer",
                     "minimum": 60,
                     "description": "Maximum time for the PI agent to run, in seconds. Default: 3600 (1 hour)."
-                },
-                "env_vars": {
-                    "type": "object",
-                    "description": "Environment variables to inject into the sandbox.",
-                    "additionalProperties": {"type": "string"}
                 }
             },
             "required": ["task"],
@@ -210,6 +205,7 @@ impl Tool for CheckPiTool {
         ToolHints::default()
             .with_readonly(true)
             .with_idempotent(true)
+            .with_requires_secrets(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -317,6 +313,7 @@ impl Tool for MessagePiTool {
         ToolHints::default()
             .with_open_world(true)
             .with_long_running(true)
+            .with_requires_secrets(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -391,10 +388,14 @@ impl Tool for MessagePiTool {
 // =============================================================================
 
 fn truncate_task(task: &str, max_len: usize) -> String {
-    if task.len() <= max_len {
+    let char_count = task.chars().count();
+    if char_count <= max_len {
         task.to_string()
+    } else if max_len <= 3 {
+        "...".to_string()
     } else {
-        format!("{}...", &task[..max_len.saturating_sub(3)])
+        let prefix: String = task.chars().take(max_len - 3).collect();
+        format!("{prefix}...")
     }
 }
 

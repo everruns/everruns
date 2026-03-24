@@ -224,10 +224,10 @@ pub fn parse_timeout_seconds(arguments: &serde_json::Value) -> Result<u64, ToolE
         None => Ok(PI_DEFAULT_TIMEOUT_SECS),
         Some(value) => value
             .as_u64()
-            .filter(|timeout| *timeout > 0)
+            .filter(|timeout| *timeout >= 60)
             .ok_or_else(|| {
                 ToolExecutionResult::tool_error(
-                    "Invalid 'timeout_seconds': must be a positive integer",
+                    "Invalid 'timeout_seconds': must be an integer >= 60",
                 )
             }),
     }
