@@ -46,16 +46,26 @@ function makeApp(overrides: Partial<App> = {}): App {
     description: "Slack bot",
     harness_id: "hrs-123",
     agent_id: "agt-123",
-    channel_type: "slack",
-    channel_config: {
-      signing_secret: "secret",
-      bot_token: "xoxb-test",
-      session_strategy: "per_thread",
-    },
+    channels: [
+      {
+        id: "appchan-123",
+        channel_type: "slack",
+        channel_config: {
+          signing_secret: "secret",
+          bot_token: "xoxb-test",
+          session_strategy: "per_thread",
+        },
+        enabled: true,
+        created_at: "2026-03-08T22:23:38Z",
+        updated_at: "2026-03-08T22:23:38Z",
+      },
+    ],
     status: "draft",
     published_at: null,
     created_at: "2026-03-08T22:23:38Z",
     updated_at: "2026-03-08T22:24:23Z",
+    archived_at: null,
+    deleted_at: null,
     ...overrides,
   };
 }

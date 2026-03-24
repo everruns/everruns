@@ -8,18 +8,27 @@ An App is a deployable unit that binds a Harness and Agent to a distribution cha
 
 ### App
 
-Top-level deployment entity. Composes existing building blocks (Harness, Agent) with channel-specific configuration.
+Top-level deployment entity. Composes existing building blocks (Harness, Agent) with one or more distribution channels.
 
 - Each App references exactly one Harness (required)
 - Each App references exactly one Agent (required)
-- Each App has a channel type and channel-specific config (JSON)
+- Each App has zero or more **Channels** (stored in `app_channels` table)
 - Apps have a publish lifecycle: `draft` → `published` → `draft`
 - Apps also participate in the default building-block lifecycle: `active/draft/published -> archived -> deleted`
 - Only published apps accept incoming requests
 
+### App Channel
+
+A distribution channel attached to an App. Each channel has its own type, config, and enabled flag.
+
+- Stored in `app_channels` table (one-to-many with `apps`)
+- Uses dual-ID pattern: `appchan_` prefix
+- Creating an App with `channel_type` creates the first channel automatically
+- Channels can be added, updated, or removed via `/v1/apps/{app_id}/channels`
+
 ### Channel Types
 
-Initially: `slack`. Future: `whatsapp`, `web_widget`, `api_endpoint`, etc.
+Initially: `slack`. Future: `whatsapp`, `web_widget`, `api_endpoint`, `discord`, etc.
 
 Channel config is stored as JSONB and validated at the application layer per channel type.
 
@@ -71,12 +80,17 @@ Key fields:
 - `description`: Optional
 - `harness_id`: Required FK to harness
 - `agent_id`: Required FK to agent
-- `channel_type`: Enum string (`slack`, etc.)
-- `channel_config`: JSONB with channel-specific settings
-- Slack `channel_config.reply_mode`: `all_messages` or `report_progress_only`
+- `channels`: Vec of `AppChannel` (loaded from `app_channels` table)
 - `status`: `draft` | `published` | `archived` | `deleted`
 - `archived_at`, `deleted_at`: Lifecycle timestamps
 - `published_at`: Timestamp when last published
+- `created_at`, `updated_at`: Standard timestamps
+
+AppChannel fields:
+- `id` / `public_id`: Dual-ID pattern, prefix `appchan_`
+- `channel_type`: Enum string (`slack`, etc.)
+- `channel_config`: JSONB with channel-specific settings
+- `enabled`: Whether the channel is active
 - `created_at`, `updated_at`: Standard timestamps
 
 ## API
@@ -93,9 +107,13 @@ All endpoints under `/v1/apps`. See `crates/server/src/api/apps.rs`.
 | POST | `/v1/apps/{app_id}/delete` | Dangerous delete of archived app |
 | POST | `/v1/apps/{app_id}/publish` | Publish app |
 | POST | `/v1/apps/{app_id}/unpublish` | Unpublish app |
+| POST | `/v1/apps/{app_id}/channels` | Add a channel |
+| PATCH | `/v1/apps/{app_id}/channels/{channel_id}` | Update a channel |
+| DELETE | `/v1/apps/{app_id}/channels/{channel_id}` | Remove a channel |
 
 ## ID Schema
 
 | Entity | Prefix | Example |
 |--------|--------|---------|
 | App | `app_` | `app_01933b5a00007000800000000000001` |
+| App Channel | `appchan_` | `appchan_01933b5a00007000800000000000002` |

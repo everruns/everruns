@@ -4,6 +4,7 @@
 mod agent_identities;
 mod agent_identity_connections;
 mod agents;
+mod app_channels;
 mod apps;
 mod audit_logs;
 mod auth;

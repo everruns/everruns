@@ -1348,3 +1348,40 @@ pub struct UpdateApp {
     pub status: Option<String>,
     pub published_at: UpdateField<DateTime<Utc>>,
 }
+
+// ============================================
+// App Channel models
+// ============================================
+
+/// App channel row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct AppChannelRow {
+    pub id: Uuid,
+    pub app_id: Uuid,
+    pub public_id: String,
+    pub channel_type: String,
+    pub channel_config: serde_json::Value,
+    pub channel_config_encrypted: Option<Vec<u8>>,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating an app channel
+#[derive(Debug, Clone)]
+pub struct CreateAppChannelRow {
+    pub public_id: String,
+    pub channel_type: String,
+    pub channel_config: serde_json::Value,
+    pub channel_config_encrypted: Option<Vec<u8>>,
+    pub enabled: bool,
+}
+
+/// Input for updating an app channel
+#[derive(Debug, Clone, Default)]
+pub struct UpdateAppChannel {
+    pub channel_type: Option<String>,
+    pub channel_config: Option<serde_json::Value>,
+    pub channel_config_encrypted: Option<Vec<u8>>,
+    pub enabled: Option<bool>,
+}

@@ -229,7 +229,9 @@ pub use tool_types::{
 // Note: LlmProvider entity is in llm_models module. Import as: everruns_core::llm_models::LlmProvider
 pub use agent::{Agent, AgentStatus, generate_agent_public_id, validate_agent_public_id};
 pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
-pub use app::{App, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode};
+pub use app::{
+    App, AppChannel, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode,
+};
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use events::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, CONTEXT_COMPACTED,
@@ -281,8 +283,9 @@ pub use skill::{
     SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
 };
 pub use typed_id::{
-    AgentId, AgentIdentityId, AppId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId,
-    LeasedResourceId, McpServerId, MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId,
+    AgentId, AgentIdentityId, AppChannelId, AppId, EventId, ExecId, HarnessId, IdMarker,
+    IdParseError, ImageId, LeasedResourceId, McpServerId, MemoryId, MemoryStoreId, MessageId,
+    ModelId, NotificationId,
     OrgId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
 };
 

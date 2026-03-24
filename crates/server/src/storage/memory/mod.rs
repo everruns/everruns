@@ -10,6 +10,7 @@
 mod agent_identities;
 mod agent_identity_connections;
 mod agents;
+mod app_channels;
 mod apps;
 mod audit_logs;
 mod auth;
@@ -116,6 +117,8 @@ pub struct InMemoryDatabase {
     audit_logs: RwLock<Vec<AuditLogRow>>,
     // Apps (deployable agent+harness bundles)
     apps: RwLock<HashMap<Uuid, AppRow>>,
+    // App channels (distribution channels per app)
+    app_channels: RwLock<HashMap<Uuid, AppChannelRow>>,
     // Agent identities (virtual principals)
     agent_identities: RwLock<HashMap<AgentIdentityId, AgentIdentityRow>>,
     // Agent identity connections (identity-scoped external accounts)
@@ -176,6 +179,7 @@ impl Default for InMemoryDatabase {
             leased_resources: RwLock::new(HashMap::new()),
             audit_logs: RwLock::new(Vec::new()),
             apps: RwLock::new(HashMap::new()),
+            app_channels: RwLock::new(HashMap::new()),
             agent_identities: RwLock::new(HashMap::new()),
             agent_identity_connections: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),

@@ -30,9 +30,7 @@ use everruns_core::channel::{
     build_session_routing_tag,
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
-use everruns_core::{
-    App, AppStatus, Caller, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode,
-};
+use everruns_core::{App, AppStatus, Caller, SessionStrategy, SlackChannelConfig, SlackReplyMode};
 use everruns_worker::AgentRunner;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
@@ -49,7 +47,7 @@ use crate::services::{
 };
 use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
-use crate::storage::models::{UpdateApp, UpdateSession};
+use crate::storage::models::{UpdateAppChannel, UpdateSession};
 
 use super::common::ErrorResponse;
 
@@ -348,23 +346,23 @@ async fn handle_slack_event(
         })?
         .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
 
-    // 2. Verify app is published and is a Slack channel
+    // 2. Verify app is published and has a Slack channel
     if app.status != AppStatus::Published {
         return Err(ErrorResponse::new("App is not published").into_response(StatusCode::FORBIDDEN));
     }
-    if app.channel_type != ChannelType::Slack {
-        return Err(
-            ErrorResponse::new("App is not a Slack channel").into_response(StatusCode::BAD_REQUEST)
-        );
-    }
+    let slack_channel = app.slack_channel().ok_or_else(|| {
+        ErrorResponse::new("App has no enabled Slack channel")
+            .into_response(StatusCode::BAD_REQUEST)
+    })?;
 
     // 3. Parse Slack channel config
-    let slack_config: SlackChannelConfig = serde_json::from_value(app.channel_config.clone())
-        .map_err(|e| {
+    let slack_config: SlackChannelConfig =
+        serde_json::from_value(slack_channel.channel_config.clone()).map_err(|e| {
             tracing::error!(app_id = %app_id, error = %e, "Invalid Slack channel config");
             ErrorResponse::new("Invalid Slack channel configuration")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
+    let slack_channel_internal_id = slack_channel.internal_id;
 
     // 4. Verify Slack signing secret // THREAT[TM-SLACK-001]
     verify_slack_signature(&headers, &body, &slack_config.signing_secret).map_err(|e| {
@@ -389,13 +387,13 @@ async fn handle_slack_event(
                 let mut updated_config = slack_config.clone();
                 updated_config.webhook_verified_at = Some(Utc::now());
                 if let Ok(config_json) = serde_json::to_value(&updated_config) {
-                    let input = UpdateApp {
+                    let input = UpdateAppChannel {
                         channel_config: Some(config_json),
                         ..Default::default()
                     };
                     if let Err(e) = state
                         .db
-                        .update_app(app.org_id, app.internal_id, input)
+                        .update_app_channel(slack_channel_internal_id, input)
                         .await
                     {
                         tracing::warn!(app_id = %app_id, error = %e, "Failed to record webhook verification");
@@ -441,13 +439,13 @@ async fn handle_slack_event(
                     let mut updated_config = slack_config.clone();
                     updated_config.first_message_received_at = Some(Utc::now());
                     if let Ok(config_json) = serde_json::to_value(&updated_config) {
-                        let input = UpdateApp {
+                        let input = UpdateAppChannel {
                             channel_config: Some(config_json),
                             ..Default::default()
                         };
                         if let Err(e) = state
                             .db
-                            .update_app(app.org_id, app.internal_id, input)
+                            .update_app_channel(slack_channel_internal_id, input)
                             .await
                         {
                             tracing::warn!(app_id = %app_id, error = %e, "Failed to record first message timestamp");
@@ -1879,8 +1877,10 @@ mod tests {
 
     // Test helpers
     fn test_app() -> App {
-        use everruns_core::typed_id::{AgentId, AppId, HarnessId};
+        use everruns_core::typed_id::{AgentId, AppChannelId, AppId, HarnessId};
+        use everruns_core::{AppChannel, ChannelType};
 
+        let now = chrono::Utc::now();
         App {
             public_id: AppId::from_uuid(uuid::Uuid::nil()),
             internal_id: uuid::Uuid::nil(),
@@ -1890,12 +1890,19 @@ mod tests {
             harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
             agent_id: AgentId::from_uuid(uuid::Uuid::nil()),
             agent_identity_id: None,
-            channel_type: ChannelType::Slack,
-            channel_config: serde_json::json!({}),
+            channels: vec![AppChannel {
+                public_id: AppChannelId::from_uuid(uuid::Uuid::nil()),
+                internal_id: uuid::Uuid::nil(),
+                channel_type: ChannelType::Slack,
+                channel_config: serde_json::json!({}),
+                enabled: true,
+                created_at: now,
+                updated_at: now,
+            }],
             status: AppStatus::Published,
             published_at: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
+            created_at: now,
+            updated_at: now,
             archived_at: None,
             deleted_at: None,
         }

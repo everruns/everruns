@@ -357,7 +357,11 @@ impl SlackDeliveryDispatcher {
                 }
             };
 
-            let slack_config = match app.slack_config() {
+            let slack_channel = match app.slack_channel() {
+                Some(ch) => ch,
+                None => continue,
+            };
+            let slack_config = match slack_channel.slack_config() {
                 Some(cfg) => cfg,
                 None => continue,
             };

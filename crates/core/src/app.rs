@@ -15,7 +15,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::typed_id::{AgentId, AgentIdentityId, AppId, HarnessId};
+use crate::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -112,11 +112,9 @@ pub struct App {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001"))]
     pub agent_identity_id: Option<AgentIdentityId>,
-    /// Distribution channel type.
-    pub channel_type: ChannelType,
-    /// Channel-specific configuration (validated per channel type).
+    /// Distribution channels attached to this app.
     #[serde(default)]
-    pub channel_config: serde_json::Value,
+    pub channels: Vec<AppChannel>,
     /// Current lifecycle status.
     pub status: AppStatus,
     /// Timestamp when the app was last published.
@@ -132,6 +130,61 @@ pub struct App {
     /// Timestamp when the app was deleted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<DateTime<Utc>>,
+}
+
+/// A single distribution channel attached to an App.
+/// Each channel has its own type, config, and lifecycle status.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct AppChannel {
+    /// External identifier (appchan_<32-hex>). Shown as "id" in API.
+    #[serde(rename = "id")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "appchan_01933b5a000070008000000000000001"))]
+    pub public_id: AppChannelId,
+    /// Internal UUID primary key. Never exposed in API.
+    #[serde(skip, default = "Uuid::nil")]
+    pub internal_id: Uuid,
+    /// Channel type (e.g. slack).
+    pub channel_type: ChannelType,
+    /// Channel-specific configuration (validated per channel type).
+    #[serde(default)]
+    pub channel_config: serde_json::Value,
+    /// Whether this channel is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Timestamp when this channel was created.
+    pub created_at: DateTime<Utc>,
+    /// Timestamp when this channel was last updated.
+    pub updated_at: DateTime<Utc>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl AppChannel {
+    /// Parse channel_config as SlackChannelConfig. Returns None if not a Slack channel
+    /// or if the config is invalid.
+    pub fn slack_config(&self) -> Option<SlackChannelConfig> {
+        if self.channel_type != ChannelType::Slack {
+            return None;
+        }
+        serde_json::from_value(self.channel_config.clone()).ok()
+    }
+}
+
+impl App {
+    /// Find the first Slack channel on this app.
+    pub fn slack_channel(&self) -> Option<&AppChannel> {
+        self.channels
+            .iter()
+            .find(|ch| ch.channel_type == ChannelType::Slack && ch.enabled)
+    }
+
+    /// Find a channel by its public ID.
+    pub fn channel_by_id(&self, id: &AppChannelId) -> Option<&AppChannel> {
+        self.channels.iter().find(|ch| ch.public_id == *id)
+    }
 }
 
 /// Session strategy for incoming messages (how messages map to sessions).
@@ -231,17 +284,6 @@ pub struct SlackChannelConfig {
     /// Set when the first real message is received from Slack.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_message_received_at: Option<DateTime<Utc>>,
-}
-
-impl App {
-    /// Parse channel_config as SlackChannelConfig. Returns None if not a Slack app
-    /// or if the config is invalid.
-    pub fn slack_config(&self) -> Option<SlackChannelConfig> {
-        if self.channel_type != ChannelType::Slack {
-            return None;
-        }
-        serde_json::from_value(self.channel_config.clone()).ok()
-    }
 }
 
 #[cfg(test)]
@@ -390,13 +432,8 @@ mod tests {
         assert!(serde_json::from_str::<SlackChannelConfig>(json).is_err());
     }
 
-    #[test]
-    fn test_app_slack_config_valid() {
-        let config_json = serde_json::json!({
-            "signing_secret": "sec",
-            "bot_token": "tok"
-        });
-        let app = App {
+    fn test_app(channels: Vec<AppChannel>) -> App {
+        App {
             public_id: AppId::from_uuid(Uuid::nil()),
             internal_id: Uuid::nil(),
             org_id: 1,
@@ -405,62 +442,63 @@ mod tests {
             harness_id: HarnessId::from_uuid(Uuid::nil()),
             agent_id: AgentId::from_uuid(Uuid::nil()),
             agent_identity_id: None,
-            channel_type: ChannelType::Slack,
-            channel_config: config_json,
+            channels,
             status: AppStatus::Draft,
             published_at: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,
             deleted_at: None,
-        };
-        let config = app.slack_config().unwrap();
+        }
+    }
+
+    fn test_channel(channel_type: ChannelType, config: serde_json::Value) -> AppChannel {
+        AppChannel {
+            public_id: AppChannelId::from_uuid(Uuid::nil()),
+            internal_id: Uuid::nil(),
+            channel_type,
+            channel_config: config,
+            enabled: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn test_app_channel_slack_config_valid() {
+        let ch = test_channel(
+            ChannelType::Slack,
+            serde_json::json!({"signing_secret": "sec", "bot_token": "tok"}),
+        );
+        let config = ch.slack_config().unwrap();
         assert_eq!(config.signing_secret, "sec");
     }
 
     #[test]
-    fn test_app_slack_config_invalid_json() {
-        let app = App {
-            public_id: AppId::from_uuid(Uuid::nil()),
-            internal_id: Uuid::nil(),
-            org_id: 1,
-            name: "test".into(),
-            description: None,
-            harness_id: HarnessId::from_uuid(Uuid::nil()),
-            agent_id: AgentId::from_uuid(Uuid::nil()),
-            agent_identity_id: None,
-            channel_type: ChannelType::Slack,
-            channel_config: serde_json::json!({"bad": "data"}),
-            status: AppStatus::Draft,
-            published_at: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-        };
-        assert!(app.slack_config().is_none());
+    fn test_app_channel_slack_config_invalid_json() {
+        let ch = test_channel(ChannelType::Slack, serde_json::json!({"bad": "data"}));
+        assert!(ch.slack_config().is_none());
+    }
+
+    #[test]
+    fn test_app_slack_channel_lookup() {
+        let ch = test_channel(
+            ChannelType::Slack,
+            serde_json::json!({"signing_secret": "s", "bot_token": "t"}),
+        );
+        let app = test_app(vec![ch]);
+        assert!(app.slack_channel().is_some());
+    }
+
+    #[test]
+    fn test_app_slack_channel_none_when_empty() {
+        let app = test_app(vec![]);
+        assert!(app.slack_channel().is_none());
     }
 
     #[test]
     fn test_app_serde_skips_internal_fields() {
-        let app = App {
-            public_id: AppId::from_uuid(Uuid::nil()),
-            internal_id: Uuid::nil(),
-            org_id: 42,
-            name: "test".into(),
-            description: None,
-            harness_id: HarnessId::from_uuid(Uuid::nil()),
-            agent_id: AgentId::from_uuid(Uuid::nil()),
-            agent_identity_id: None,
-            channel_type: ChannelType::Slack,
-            channel_config: serde_json::json!({}),
-            status: AppStatus::Draft,
-            published_at: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-        };
+        let app = test_app(vec![]);
         let json = serde_json::to_value(&app).unwrap();
         assert!(json.get("id").is_some()); // public_id serialized as "id"
         assert!(json.get("internal_id").is_none()); // skipped
