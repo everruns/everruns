@@ -278,6 +278,8 @@ Only require `GIT_USER_NAME` and `GIT_USER_EMAIL` when the current git identity 
 
 **REQUIRED:** Use `.github/pull_request_template.md`. Squash and Merge.
 
+PR titles **MUST** follow [Conventional Commits](https://www.conventionalcommits.org) format: `type(scope): description` (same as commit messages). Keep under 70 characters.
+
 **NEVER** add links to Claude sessions in PR body or commits.
 
 See `CONTRIBUTING.md` for details.
