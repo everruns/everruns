@@ -64,6 +64,9 @@ const AUTO_ARCHIVE_INTERVAL_MINUTES: u64 = 30;
 const AUTO_DELETE_INTERVAL_MINUTES: u64 = 60;
 /// Default workspace path inside Daytona sandboxes
 const DAYTONA_WORKSPACE_PATH: &str = "/home/daytona";
+/// Heartbeat interval for renewing leases during long-running exec calls.
+/// Set well below the auto-stop (5 min) so the sandbox stays alive.
+const LEASE_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(3 * 60);
 
 // ============================================================================
 // DaytonaCapability
