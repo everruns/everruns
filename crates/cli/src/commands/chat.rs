@@ -95,7 +95,10 @@ pub async fn run(
                     eprintln!("  [{tool}] {message}");
                 }
 
-                // Handle tool.output.delta event (streamed tool output)
+                // Handle tool.output.delta event (streamed tool output).
+                // Deltas from bashkit include trailing newlines when appropriate.
+                // Use eprintln! to ensure each chunk ends on its own line even if
+                // the delta itself lacks a trailing newline.
                 if event.event_type == "tool.output.delta"
                     && let Some(delta) = event.data.get("delta").and_then(|d| d.as_str())
                 {
@@ -109,10 +112,11 @@ pub async fn run(
                         .get("tool_name")
                         .and_then(|t| t.as_str())
                         .unwrap_or("tool");
+                    let trimmed = delta.trim_end_matches('\n');
                     if stream == "stderr" {
-                        eprint!("  [{tool}:stderr] {delta}");
+                        eprintln!("  [{tool}:stderr] {trimmed}");
                     } else {
-                        eprint!("  [{tool}] {delta}");
+                        eprintln!("  [{tool}] {trimmed}");
                     }
                 }
 

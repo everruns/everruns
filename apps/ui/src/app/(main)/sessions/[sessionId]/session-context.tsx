@@ -410,23 +410,31 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     return map;
   }, [events]);
 
-  // Accumulate streamed tool output by tool_call_id (concatenates deltas per stream)
+  // Accumulate streamed tool output by tool_call_id.
+  // Uses chunk arrays and joins once per tool to avoid O(n²) string concatenation.
   const toolOutputMap = useMemo(() => {
-    const map = new Map<string, ToolOutputStreams>();
-    if (!events) return map;
+    const chunkMap = new Map<string, { stdoutChunks: string[]; stderrChunks: string[] }>();
+    if (!events) return new Map<string, ToolOutputStreams>();
     for (const event of events) {
       const data = getEventData(event, "tool.output.delta");
-      if (data) {
-        const existing = map.get(data.tool_call_id) ?? { stdout: "", stderr: "" };
-        if (data.stream === "stdout") {
-          existing.stdout += data.delta;
-        } else if (data.stream === "stderr") {
-          existing.stderr += data.delta;
-        }
-        map.set(data.tool_call_id, existing);
+      if (!data) continue;
+      const existing = chunkMap.get(data.tool_call_id) ?? { stdoutChunks: [], stderrChunks: [] };
+      if (data.stream === "stderr") {
+        existing.stderrChunks.push(data.delta);
+      } else {
+        // stdout and any unknown streams default to stdout
+        existing.stdoutChunks.push(data.delta);
       }
+      chunkMap.set(data.tool_call_id, existing);
     }
-    return map;
+    const result = new Map<string, ToolOutputStreams>();
+    for (const [toolCallId, streams] of chunkMap.entries()) {
+      result.set(toolCallId, {
+        stdout: streams.stdoutChunks.join(""),
+        stderr: streams.stderrChunks.join(""),
+      });
+    }
+    return result;
   }, [events]);
 
   // Incremental token usage accumulation — O(1) per new event instead of O(n).
