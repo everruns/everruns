@@ -1681,6 +1681,8 @@ dependencies = [
  "http",
  "http-body",
  "inventory",
+ "prost",
+ "protox",
  "reqwest 0.13.2",
  "rustls",
  "rustls-native-certs",

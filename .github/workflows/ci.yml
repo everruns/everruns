@@ -122,9 +122,6 @@ jobs:
         with:
           components: clippy
 
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
 
@@ -153,9 +150,6 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
@@ -207,10 +201,6 @@ jobs:
         if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install protobuf compiler
-        if: steps.check-key.outputs.skip != 'true'
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
       - name: Setup sccache
         if: steps.check-key.outputs.skip != 'true'
         uses: mozilla-actions/sccache-action@v0.0.7
@@ -257,10 +247,6 @@ jobs:
       - name: Install Rust toolchain
         if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protobuf compiler
-        if: steps.check-key.outputs.skip != 'true'
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Setup sccache
         if: steps.check-key.outputs.skip != 'true'
@@ -309,10 +295,6 @@ jobs:
         if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install protobuf compiler
-        if: steps.check-key.outputs.skip != 'true'
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
       - name: Setup sccache
         if: steps.check-key.outputs.skip != 'true'
         uses: mozilla-actions/sccache-action@v0.0.7
@@ -359,10 +341,6 @@ jobs:
       - name: Install Rust toolchain
         if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install protobuf compiler
-        if: steps.check-key.outputs.skip != 'true'
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Setup sccache
         if: steps.check-key.outputs.skip != 'true'
@@ -417,8 +395,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
@@ -481,8 +457,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
@@ -561,8 +535,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.7
