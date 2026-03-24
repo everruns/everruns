@@ -15,7 +15,7 @@
 use async_trait::async_trait;
 use everruns_core::SlackReplyMode;
 use everruns_core::channel::{
-    ChannelDeliveryAdapter, ChannelReplyMode, DeliveryContext as ChannelDeliveryContext,
+    ChannelDeliveryAdapter, DeliveryContext as ChannelDeliveryContext,
     DeliveryResult as ChannelDeliveryResult, OutboundChannelMessage,
 };
 use everruns_core::progress_reporting::{

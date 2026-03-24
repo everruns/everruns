@@ -263,14 +263,14 @@ fn parse_slack_inbound_event(
     for file in &event.files {
         let mime = file.mimetype.as_deref().unwrap_or("");
         let name = file.name.as_deref().unwrap_or("unnamed file");
-        if SUPPORTED_IMAGE_TYPES.contains(&mime) {
-            if let Some(url) = &file.url_private {
-                attachments.push(InboundAttachment::Image {
-                    url: url.clone(),
-                    alt_text: Some(name.to_string()),
-                });
-                continue;
-            }
+        if SUPPORTED_IMAGE_TYPES.contains(&mime)
+            && let Some(url) = &file.url_private
+        {
+            attachments.push(InboundAttachment::Image {
+                url: url.clone(),
+                alt_text: Some(name.to_string()),
+            });
+            continue;
         }
         attachments.push(InboundAttachment::FileDescription {
             name: name.to_string(),
@@ -1747,6 +1747,7 @@ mod tests {
                 "slack:app:app_123".to_string(),
                 "slack:thread:1234.0000".to_string(),
                 "slack:reply_mode:report_progress_only".to_string(),
+                "channel:reply_mode:report_progress_only".to_string(),
             ]
         );
     }
