@@ -1018,7 +1018,7 @@ mod tests {
 
     #[test]
     fn test_validate_too_many_types_rejected() {
-        let types: Vec<String> = (0..31).map(|i| format!("type.{i}")).collect();
+        let types: Vec<String> = (0..41).map(|i| format!("type.{i}")).collect();
         let query = EventsQuery {
             since_id: None,
             types,
@@ -1033,7 +1033,7 @@ mod tests {
 
     #[test]
     fn test_validate_too_many_exclude_rejected() {
-        let exclude: Vec<String> = (0..31).map(|i| format!("type.{i}")).collect();
+        let exclude: Vec<String> = (0..41).map(|i| format!("type.{i}")).collect();
         let query = EventsQuery {
             since_id: None,
             types: vec![],
