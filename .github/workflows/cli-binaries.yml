@@ -24,6 +24,9 @@ jobs:
           - target: aarch64-apple-darwin
             runner: macos-latest
             archive: everruns-aarch64-apple-darwin.tar.gz
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            archive: everruns-x86_64-apple-darwin.tar.gz
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
             archive: everruns-x86_64-unknown-linux-gnu.tar.gz
@@ -61,3 +64,92 @@ jobs:
             "${{ matrix.archive }}" \
             "${{ matrix.archive }}.sha256" \
             --clobber
+
+  update-homebrew:
+    name: Update Homebrew formula
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download SHA256 checksums from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu; do
+            gh release download "$TAG" \
+              --repo everruns/everruns \
+              --pattern "everruns-${target}.tar.gz.sha256"
+          done
+
+      - name: Generate Homebrew formula
+        run: |
+          TAG="${{ inputs.tag }}"
+          VERSION="${TAG#v}"
+
+          SHA_ARM64=$(awk '{print $1}' everruns-aarch64-apple-darwin.tar.gz.sha256)
+          SHA_X86_64_MACOS=$(awk '{print $1}' everruns-x86_64-apple-darwin.tar.gz.sha256)
+          SHA_LINUX=$(awk '{print $1}' everruns-x86_64-unknown-linux-gnu.tar.gz.sha256)
+
+          BASE_URL="https://github.com/everruns/everruns/releases/download/${TAG}"
+
+          cat > everruns.rb <<FORMULA
+          # typed: false
+          # frozen_string_literal: true
+
+          class Everruns < Formula
+            desc "Open-source AI agent platform"
+            homepage "https://github.com/everruns/everruns"
+            version "${VERSION}"
+            license "Apache-2.0"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "${BASE_URL}/everruns-aarch64-apple-darwin.tar.gz"
+                sha256 "${SHA_ARM64}"
+              else
+                url "${BASE_URL}/everruns-x86_64-apple-darwin.tar.gz"
+                sha256 "${SHA_X86_64_MACOS}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.intel?
+                url "${BASE_URL}/everruns-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "${SHA_LINUX}"
+              end
+            end
+
+            def install
+              bin.install "everruns"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/everruns --version")
+            end
+          end
+          FORMULA
+
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' everruns.rb
+
+          echo "Generated formula:"
+          cat everruns.rb
+
+      - name: Push formula to homebrew-tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          VERSION="${TAG#v}"
+
+          # Clone the tap repo
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/everruns/homebrew-tap.git" tap
+          cp everruns.rb tap/Formula/everruns.rb
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/everruns.rb
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "everruns ${VERSION}"
+          git push origin main
