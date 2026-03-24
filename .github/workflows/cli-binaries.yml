@@ -135,15 +135,21 @@ jobs:
           echo "Generated formula:"
           cat everruns.rb
 
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
       - name: Push formula to homebrew-tap
         env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
           TAG="${{ inputs.tag }}"
           VERSION="${TAG#v}"
 
+          # Fetch the GitHub PAT from Doppler (has push access to homebrew-tap)
+          GH_PAT=$(doppler secrets get GITHUB_TOKEN --plain)
+
           # Clone the tap repo
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/everruns/homebrew-tap.git" tap
+          git clone "https://x-access-token:${GH_PAT}@github.com/everruns/homebrew-tap.git" tap
           cp everruns.rb tap/Formula/everruns.rb
 
           cd tap
