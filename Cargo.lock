@@ -1696,6 +1696,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-pi"
+version = "0.8.7"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "inventory",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "everruns-integrations-sprites"
 version = "0.8.7"
 dependencies = [
