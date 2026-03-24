@@ -40,8 +40,8 @@
     --border: 0 0% 88%;
     --input: 0 0% 85%;
     --ring: 43 60% 53%;
-    /* Sidebar: used by Streamdown code blocks — slightly darker than muted for contrast */
-    --sidebar: 0 0% 93%;
+    /* Sidebar: used by Streamdown code blocks — white for clean contrast against muted bg */
+    --sidebar: 0 0% 100%;
     --sidebar-foreground: 0 0% 10%;
     /* Sharp corners */
     --radius: 0px;
