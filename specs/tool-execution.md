@@ -37,20 +37,9 @@ Supported image formats: PNG, JPEG, GIF, WebP (matching LLM vision API support).
 
 Note: OpenAI Responses API (`function_call_output`) does not support images in tool results - images are dropped with a warning in that path.
 
-**Provided Tools:**
-- `GetCurrentTime` - Returns current timestamp in various formats (iso8601, unix, human)
-- `EchoTool` - Echoes input (useful for testing)
-- `FailingTool` - Always fails (for error handling tests)
+**Provided Tools:** See `crates/core/src/tools.rs` for the built-in tool implementations.
 
-**Capability-Provided Tools:**
-
-Tools can also be provided by Capabilities (see [capabilities.md](capabilities.md)). When an agent has capabilities enabled, their tools are merged into the agent's tool set:
-
-- `CurrentTime` capability provides `get_current_time` tool
-- `WebFetch` capability provides `web_fetch` tool for fetching URL content and converting HTML to markdown/text
-- `Research` capability will provide scratchpad and search tools
-- `Sandbox` capability will provide `execute_code` tool
-- `FileSystem` capability will provide read/write/search files tools
+**Capability-Provided Tools:** Capabilities contribute tools to agents. See [capabilities.md](capabilities.md) and `crates/core/src/capabilities/` for per-capability tool definitions.
 
 **ToolRegistry:** Manages multiple tools and implements `ToolExecutor` trait. See `crates/core/src/tools.rs` for `ToolRegistry` and its builder pattern.
 

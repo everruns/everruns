@@ -50,18 +50,7 @@ Capabilities are defined in **everruns-core** and resolved at the **API layer**:
 
 #### Capability (Public DTO)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | CapabilityId | Unique string identifier |
-| `name` | string | Display name |
-| `description` | string | Description of functionality (supports markdown) |
-| `status` | CapabilityStatus | Availability status |
-| `icon` | string? | Icon name for UI rendering |
-| `category` | string? | Category for grouping in UI |
-| `is_mcp` | boolean | True if this is an MCP virtual capability |
-| `dependencies` | string[] | IDs of capabilities this capability depends on |
-| `features` | string[] | UI feature strings this capability contributes to |
-| `risk_level` | RiskLevel | Risk classification: `low` (default, omitted in JSON), `medium`, `high` |
+See `crates/core/src/capability_dto.rs` for the full `CapabilityDto` struct definition.
 
 ##### Description Markdown Support
 

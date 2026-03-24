@@ -10,20 +10,7 @@ Fine-grained permission system built on top of existing OrgRole hierarchy. Roles
 
 Identifier for an action. Format: `org:<resource>:<action>`.
 
-```
-org:harnesses:manage              # CRUD on harnesses
-org:harnesses:dangerous           # Delete, reset, etc.
-org:agents:manage                 # CRUD on agents
-org:sessions:manage               # CRUD on sessions
-org:llm-providers:manage          # CRUD on LLM providers
-org:settings:manage               # Org settings
-org:members:manage                # Invite/remove members
-org:api-keys:manage               # CRUD on API keys
-org:harnesses:view                # View harnesses (read-only)
-org:llm-providers:view            # View LLM providers (read-only)
-org:settings:view                 # View org settings (read-only)
-org:members:view                  # View org members (read-only)
-```
+See `crates/core/src/permissions.rs` for the full `Permission` enum with all variants.
 
 ### Rule
 
@@ -66,24 +53,9 @@ Policy {
 
 ## Role → Permission Mapping
 
-Default OSS mapping is hardcoded. No DB storage (phase 1).
+Default OSS mapping is hardcoded in `DefaultPermissionResolver`. No DB storage (phase 1). Owner inherits all Admin permissions. Admin inherits all Member permissions.
 
-| Permission | Owner | Admin | Member |
-|------------|-------|-------|--------|
-| `org:harnesses:manage` | yes | yes | no |
-| `org:harnesses:dangerous` | yes | no | no |
-| `org:agents:manage` | yes | yes | yes |
-| `org:sessions:manage` | yes | yes | yes |
-| `org:llm-providers:manage` | yes | yes | no |
-| `org:settings:manage` | yes | yes | no |
-| `org:members:manage` | yes | yes | no |
-| `org:api-keys:manage` | yes | yes | no |
-| `org:harnesses:view` | yes | yes | yes |
-| `org:llm-providers:view` | yes | yes | yes |
-| `org:settings:view` | yes | yes | yes |
-| `org:members:view` | yes | yes | yes |
-
-Owner inherits all Admin permissions. Admin inherits all Member permissions.
+See `crates/core/src/permissions.rs` for the full role-to-permission mapping.
 
 **Default role:** `Owner` (phase 1). All users get full permissions by default. Future phases will assign roles via invitation/admin UI.
 
@@ -139,176 +111,19 @@ impl From<&ResolvedOrg> for Caller {
 
 ### Policy Evaluation
 
-```rust
-pub enum Rule {
-    UserHasPermission(Permission),
-    UserHasRole(OrgRole),
-}
-
-pub struct Policy {
-    pub id: &'static str,
-    pub rules: &'static [Rule],
-}
-
-impl Policy {
-    /// Returns Ok(()) or Err(PolicyDenied).
-    pub fn evaluate(&self, caller: &Caller) -> Result<(), PolicyError> {
-        self.evaluate_with(&DefaultPermissionResolver, caller)
-    }
-
-    /// Evaluate with a custom resolver.
-    pub fn evaluate_with(
-        &self,
-        resolver: &dyn PermissionResolver,
-        caller: &Caller,
-    ) -> Result<(), PolicyError> {
-        for rule in self.rules {
-            match rule {
-                Rule::UserHasPermission(perm) => {
-                    if !resolver.has_permission(caller, perm) {
-                        return Err(PolicyError::denied(self.id, rule));
-                    }
-                }
-                Rule::UserHasRole(required) => {
-                    if !caller.role.has_org_role(*required) {
-                        return Err(PolicyError::denied(self.id, rule));
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-}
-```
+See `crates/core/src/permissions.rs` for `Policy`, `Rule`, `Caller`, and evaluation logic. Policies support both default and custom resolvers via `evaluate()` / `evaluate_with()`.
 
 Config endpoints can use `evaluate_policies_with(resolver, caller, policies)` when they need policy results derived from a custom resolver instead of the default role map.
 
 ### Declarative Enforcement via `#[policy]` Macro
 
-New proc macro crate: `crates/macros` (`everruns-macros`).
+The `#[policy(...)]` attribute macro (in `crates/macros/src/lib.rs`) injects `POLICY.evaluate(caller)?;` at the top of the function body. It finds the `caller: &Caller` parameter by type automatically.
 
-The `#[policy(...)]` attribute macro injects `POLICY.evaluate(caller)?;` at the top of the function body. It finds the `caller: &Caller` parameter by type automatically.
-
-#### Usage
-
-```rust
-// Policies defined as constants
-const HARNESS_MANAGE: Policy = Policy {
-    id: "harness.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgHarnessesManage)],
-};
-
-const HARNESS_DANGEROUS: Policy = Policy {
-    id: "harness.dangerous",
-    rules: &[
-        Rule::UserHasPermission(Permission::OrgHarnessesManage),
-        Rule::UserHasPermission(Permission::OrgHarnessesDangerous),
-    ],
-};
-
-impl HarnessService {
-    #[policy(HARNESS_MANAGE)]
-    pub async fn create(&self, caller: &Caller, req: CreateHarnessRequest) -> Result<Harness> {
-        // just business logic — policy check injected by macro
-    }
-
-    #[policy(HARNESS_DANGEROUS)]
-    pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
-        // ...
-    }
-}
-```
-
-#### Macro Expansion
-
-```rust
-// #[policy(HARNESS_MANAGE)]
-// pub async fn create(&self, caller: &Caller, req: CreateHarnessRequest) -> Result<Harness> {
-//     let row = self.db.create_harness(caller.org_id, input).await?;
-//     Ok(harness)
-// }
-//
-// expands to:
-//
-// pub async fn create(&self, caller: &Caller, req: CreateHarnessRequest) -> Result<Harness> {
-//     HARNESS_MANAGE.evaluate(caller)?;
-//     let row = self.db.create_harness(caller.org_id, input).await?;
-//     Ok(harness)
-// }
-```
-
-#### Macro Implementation
-
-The proc macro:
-
-1. Parses the attribute argument as a path to a `Policy` constant (e.g. `HARNESS_MANAGE`)
-2. Scans the function signature for a parameter with type `&Caller` — extracts its name (usually `caller`)
-3. Prepends `#policy_path.evaluate(#caller_ident)?;` to the function body
-4. Compile error if no `&Caller` parameter found
-
-The macro continues to call `Policy::evaluate()`, which uses `DefaultPermissionResolver`. Custom resolvers are opt-in at explicit call sites; the macro behavior does not change.
-
-```rust
-// crates/macros/src/lib.rs
-use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, ItemFn, FnArg, PatType, Type, TypeReference, Path};
-
-#[proc_macro_attribute]
-pub fn policy(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let policy_path = parse_macro_input!(attr as Path);
-    let mut func = parse_macro_input!(item as ItemFn);
-
-    // Find the &Caller parameter
-    let caller_ident = func.sig.inputs.iter().find_map(|arg| {
-        if let FnArg::Typed(PatType { pat, ty, .. }) = arg {
-            if let Type::Reference(TypeReference { elem, .. }) = ty.as_ref() {
-                if let Type::Path(tp) = elem.as_ref() {
-                    if tp.path.segments.last().map(|s| s.ident == "Caller").unwrap_or(false) {
-                        if let syn::Pat::Ident(pi) = pat.as_ref() {
-                            return Some(pi.ident.clone());
-                        }
-                    }
-                }
-            }
-        }
-        None
-    });
-
-    let caller = caller_ident.expect("Expected a `caller: &Caller` parameter");
-
-    let original_body = &func.block;
-    func.block = syn::parse_quote!({
-        #policy_path.evaluate(#caller)?;
-        #original_body
-    });
-
-    quote!(#func).into()
-}
-```
-
-#### Multiple Policies
-
-Stack multiple attributes for methods needing several independent policy checks:
-
-```rust
-#[policy(HARNESS_MANAGE)]
-#[policy(SOME_OTHER_POLICY)]
-pub async fn special_operation(&self, caller: &Caller) -> Result<()> {
-    // both policies checked in order
-}
-```
-
-#### Crate Structure
-
-```
-crates/macros/
-├── Cargo.toml    # proc-macro = true, deps: syn, quote, proc-macro2
-└── src/
-    └── lib.rs    # #[policy] macro
-```
-
-Added to workspace `Cargo.toml` members. `crates/server` depends on `everruns-macros`.
+**Key behaviors:**
+- Accepts a path to a `Policy` constant (e.g., `HARNESS_MANAGE`)
+- Compile error if no `&Caller` parameter found
+- Multiple `#[policy]` attributes can be stacked for multiple independent checks
+- Uses `DefaultPermissionResolver`; custom resolvers are opt-in at explicit call sites
 
 ### Error Mapping
 

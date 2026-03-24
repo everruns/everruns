@@ -31,30 +31,13 @@ ReasonAtom (derives phase from state)
 
 ## ExecutionPhase Enum
 
-See `crates/core/src/message.rs` for the full definition.
+See `crates/core/src/message.rs` for the full definition, wire values, and legacy deserialization mappings.
 
-| Variant | Wire value | Description |
-|---|---|---|
-| `Commentary` | `"commentary"` | Intermediate update — preamble or working commentary before/between tool calls |
-| `FinalAnswer` | `"final_answer"` | Completed response — no more tool calls expected |
-
-### Backward Compatibility
-
-Legacy values are accepted during deserialization:
-- `"in_progress"` → `Commentary`
-- `"completed"` → `FinalAnswer`
+Two variants: `Commentary` (intermediate, before/between tool calls) and `FinalAnswer` (completed response, no more tool calls).
 
 ## Model Profile Flag
 
-`supports_phases: bool` on `LlmModelProfile` — indicates whether the model accepts phase values in the provider API.
-
-| Model | `supports_phases` | Notes |
-|---|---|---|
-| GPT-5.4 | `true` | Native support via `phase` field on input messages |
-| GPT-5.4 Pro | `true` | Native support via `phase` field on input messages |
-| All other models | `false` | Phase tracked internally only |
-
-This replaced the previous `LlmDriver::supports_phases()` trait method. Phase support is a model-level capability, not a driver-level one — the same OpenAI Responses API driver serves both phase-capable (GPT-5.4) and non-phase models.
+`supports_phases: bool` on `LlmModelProfile` — indicates whether the model accepts phase values in the provider API. Phase support is a model-level capability, not a driver-level one — the same OpenAI Responses API driver serves both phase-capable and non-phase models. See `crates/core/src/llm_models.rs` for the model profile definitions.
 
 ## Provider Mapping
 

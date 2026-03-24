@@ -912,30 +912,7 @@ This approach provides real-time feedback as tokens are consumed during LLM call
 
 ## Event Type Registry
 
-| Event Type | Category | Description |
-|------------|----------|-------------|
-| `input.message` | Input | User input message |
-| `output.message.started` | Output | LLM generation started (thinking indicator) |
-| `output.message.delta` | Output | Incremental text update during streaming |
-| `output.message.completed` | Output | Agent response |
-| `turn.started` | Turn | Turn execution started |
-| `turn.completed` | Turn | Turn completed |
-| `turn.failed` | Turn | Turn failed |
-| `turn.cancelled` | Turn | Turn cancelled by user |
-| `reason.started` | Atom | ReasonAtom started |
-| `reason.completed` | Atom | ReasonAtom completed |
-| `act.started` | Atom | ActAtom started |
-| `act.completed` | Atom | ActAtom completed |
-| `tool.started` | Atom | Individual tool started |
-| `tool.completed` | Atom | Individual tool completed (includes result) |
-| `tool.output.delta` | Atom | Incremental streamed output from a tool |
-| `llm.generation` | LLM | Full LLM API call with messages and response |
-| `reason.thinking.started` | Thinking | Extended thinking started (thinking indicator) |
-| `reason.thinking.delta` | Thinking | Incremental reasoning content from extended thinking models |
-| `reason.thinking.completed` | Thinking | Extended thinking completed |
-| `session.started` | Session | Session execution started |
-| `session.activated` | Session | Session became active (turn started) |
-| `session.idled` | Session | Session became idle (turn completed, includes usage) |
+For the full list of event types and their `EventData` variants, see `crates/core/src/events.rs`. The event type constants are defined alongside their data structures.
 
 ## Database Storage
 

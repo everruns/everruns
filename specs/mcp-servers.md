@@ -10,22 +10,7 @@ This document defines the data model and API for MCP (Model Context Protocol) se
 
 Configuration for a remote MCP server connection. Currently supports only HTTP (Streamable HTTP) transport.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `name` | string | Unique name (used as tool prefix) |
-| `description` | string? | Optional description of the MCP server |
-| `url` | string | Server endpoint URL |
-| `transport_type` | enum | Transport type: `http` |
-| `status` | enum | `active` or `disabled` |
-| `api_key_set` | boolean | Whether API key is configured |
-| `api_key_encrypted` | bytes? | Encrypted API key (not exposed via API) |
-| `headers` | map[string]string | Additional HTTP headers for authentication |
-| `settings` | object | Server-specific settings (reserved for future use) |
-| `cached_tools` | json | Cached tool definitions from server |
-| `tools_cached_at` | timestamp? | When tools were last cached |
-| `created_at` | timestamp | Creation time |
-| `updated_at` | timestamp | Last modification time |
+See `crates/core/src/mcp_server.rs` for the full `McpServer` struct definition.
 
 **Input Validation Limits:**
 
