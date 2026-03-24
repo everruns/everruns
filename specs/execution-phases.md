@@ -37,7 +37,7 @@ Two variants: `Commentary` (intermediate, before/between tool calls) and `FinalA
 
 ## Model Profile Flag
 
-`supports_phases: bool` on `LlmModelProfile` — indicates whether the model accepts phase values in the provider API. Phase support is a model-level capability, not a driver-level one — the same OpenAI Responses API driver serves both phase-capable and non-phase models. See `crates/core/src/llm_models.rs` for the model profile definitions.
+`supports_phases: bool` on `LlmModelProfile` — indicates whether the model accepts phase values in the provider API. Phase support is a model-level capability, not a driver-level one — the same OpenAI Responses API driver serves both phase-capable and non-phase models. See `crates/core/src/llm_model_profiles.rs` for the per-model profile data and lookup logic.
 
 ## Provider Mapping
 
