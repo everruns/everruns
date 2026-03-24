@@ -22,9 +22,8 @@ use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use bashkit::{
     Bash, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem, FileSystemExt, FileType,
-    Metadata, OutputCallback, SearchCapabilities, SearchCapable,
-    SearchMatch as BashkitSearchMatch, SearchProvider, SearchQuery, SearchResults,
-    Tool as BashkitToolTrait,
+    Metadata, OutputCallback, SearchCapabilities, SearchCapable, SearchMatch as BashkitSearchMatch,
+    SearchProvider, SearchQuery, SearchResults, Tool as BashkitToolTrait,
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -232,10 +231,11 @@ impl Tool for BashTool {
         // after each command completes. We bridge to async emit via a channel.
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
 
-        let output_callback: OutputCallback = Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
-            // Best-effort: if receiver dropped, we just ignore
-            let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-        });
+        let output_callback: OutputCallback =
+            Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
+                // Best-effort: if receiver dropped, we just ignore
+                let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+            });
 
         // Spawn a task that reads chunks from the channel and emits events
         let emit_context = context.clone();
