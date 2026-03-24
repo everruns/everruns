@@ -86,6 +86,7 @@ pub mod mcp;
 mod noop;
 mod openai_tool_search;
 mod openui;
+pub mod persistent_memory;
 mod platform_management;
 mod research;
 mod sample_data;
@@ -159,6 +160,9 @@ pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
 };
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
+pub use persistent_memory::{
+    ForgetTool, MEMORY_CAPABILITY_ID, MemoryCapability, MemoryConfig, RecallTool, RememberTool,
+};
 pub use platform_management::{
     ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PlatformManagementCapability,
     ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool, ReadSessionsTool,
@@ -614,6 +618,7 @@ impl CapabilityRegistry {
         registry.register(SessionScheduleCapability);
         registry.register(InfinityContextCapability);
         registry.register(CompactionCapability);
+        registry.register(MemoryCapability);
 
         // OpenAI tool_search (deferred tool loading, all environments)
         registry.register(OpenAiToolSearchCapability::new());
@@ -1339,6 +1344,7 @@ mod tests {
             "session_schedule",
             "infinity_context",
             "compaction",
+            "memory",
             "openai_tool_search",
             "skills",
             "subagents",

@@ -118,6 +118,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/bashkit-requirements.md` - Bash sandbox capabilities and requirements
 - `specs/events-contract.md` - SSE event format contract
 - `specs/maintenance.md` - Goal-oriented maintenance and release-readiness guidance
+- `specs/memory.md` - Persistent cross-session memory (multi-store, capacity limits, multicontent recall)
 - `specs/shipping.md` - Goal-oriented shipping and merge-readiness guidance
 - `specs/xml-prompt-formatting.md` - XML tags for system prompt structure
 - `specs/skills-registry.md` - Agent Skills registry (agentskills.io format)

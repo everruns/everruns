@@ -532,6 +532,12 @@ pub struct ToolContext {
     pub tool_call_id: Option<String>,
     /// Optional capability registry for blueprint lookups.
     pub capability_registry: Option<crate::capabilities::CapabilityRegistry>,
+
+    /// Optional memory store backend for persistent cross-session memory.
+    pub memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
+
+    /// Optional org ID for org-scoped operations (memory stores, etc.).
+    pub org_id: Option<crate::typed_id::OrgId>,
 }
 
 impl ToolContext {
@@ -554,6 +560,8 @@ impl ToolContext {
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
+            memory_store: None,
+            org_id: None,
         }
     }
 
@@ -576,6 +584,8 @@ impl ToolContext {
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
+            memory_store: None,
+            org_id: None,
         }
     }
 
@@ -601,6 +611,8 @@ impl ToolContext {
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
+            memory_store: None,
+            org_id: None,
         }
     }
 
@@ -627,6 +639,8 @@ impl ToolContext {
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
+            memory_store: None,
+            org_id: None,
         }
     }
 
@@ -687,6 +701,21 @@ impl ToolContext {
     /// Add a leased resource store to this context.
     pub fn with_leased_resource_store(mut self, store: Arc<dyn LeasedResourceStore>) -> Self {
         self.leased_resource_store = Some(store);
+        self
+    }
+
+    /// Add a memory store backend for persistent cross-session memory.
+    pub fn with_memory_store(
+        mut self,
+        store: Arc<dyn crate::memory_store::MemoryStoreBackend>,
+    ) -> Self {
+        self.memory_store = Some(store);
+        self
+    }
+
+    /// Set org ID for org-scoped operations.
+    pub fn with_org_id(mut self, org_id: crate::typed_id::OrgId) -> Self {
+        self.org_id = Some(org_id);
         self
     }
 

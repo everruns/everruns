@@ -413,6 +413,20 @@ impl IdMarker for NotificationIdMarker {
     const PREFIX: &'static str = "notification";
 }
 
+/// Marker for Memory Store IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct MemoryStoreIdMarker;
+impl IdMarker for MemoryStoreIdMarker {
+    const PREFIX: &'static str = "mst";
+}
+
+/// Marker for Memory IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct MemoryIdMarker;
+impl IdMarker for MemoryIdMarker {
+    const PREFIX: &'static str = "mem";
+}
+
 // ============================================================================
 // Type aliases for convenience
 // ============================================================================
@@ -453,6 +467,8 @@ pub type LeasedResourceId = TypedId<LeasedResourceIdMarker>;
 pub type AppId = TypedId<AppIdMarker>;
 /// Notification ID
 pub type NotificationId = TypedId<NotificationIdMarker>;
+pub type MemoryStoreId = TypedId<MemoryStoreIdMarker>;
+pub type MemoryId = TypedId<MemoryIdMarker>;
 
 // ============================================================================
 // Well-known IDs (for seeding and defaults)
