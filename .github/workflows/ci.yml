@@ -176,6 +176,7 @@ jobs:
           cargo test -p everruns-integrations-deno
           cargo test -p everruns-integrations-browserless
           cargo test -p everruns-integrations-e2b
+          cargo test -p everruns-integrations-sprites
 
   # Live Daytona API tests — only when integrations/daytona/** changes and secret exists
   daytona-live-test:

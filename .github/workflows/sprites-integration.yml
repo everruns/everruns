@@ -1,0 +1,86 @@
+name: Sprites Integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/sprites/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'integrations/sprites/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUSTC_WRAPPER: sccache
+  DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+
+jobs:
+  unit-test:
+    name: Sprites Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        if: env.DOPPLER_TOKEN != ''
+        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "sprites-integration"
+
+      - name: Run unit tests
+        run: cargo test -p everruns-integrations-sprites
+
+  live-test:
+    name: Sprites Live API Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && env.DOPPLER_TOKEN != ''
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Configure sccache S3 backend
+        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "sprites-integration"
+
+      - name: Run Sprites live integration tests
+        run: doppler run -- cargo test -p everruns-integrations-sprites --features sprites-live-tests --test live_api_test -- --test-threads=1
