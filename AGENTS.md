@@ -78,7 +78,7 @@ Always make sure you are working on top of latest main from remote.
 
 `specs/` contains feature specifications. New code should comply with these or propose changes. Integration specs live alongside their crates (`integrations/*/SPEC.md`, `crates/*/specs/`); see `specs/integrations.md` for the full index.
 
-**Spec content principle:** Specs capture *design intent, rationale, and constraints* — the "why" and "what", not exhaustive "how". Don't duplicate what's readable from code (struct fields, enum variants, exact API shapes, SQL DDL). Instead, link to the source file. Example: "See `crates/core/src/models/agent.rs` for full field list." This keeps specs maintainable and prevents drift.
+**Spec content principle:** Specs are *durable memory* — they preserve design intent, rationale, and constraints across sessions and contributors. They capture the "why" and "what", not exhaustive "how". Don't use specs for temporary analysis, one-off investigations, or scratch notes; those belong outside the repo. Don't duplicate what's readable from code (struct fields, enum variants, exact API shapes, SQL DDL). Instead, link to the source file. Example: "See `crates/core/src/models/agent.rs` for full field list." This keeps specs maintainable and prevents drift.
 
 - `specs/concepts.md` - Core entities, relationships, and concept diagram
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
