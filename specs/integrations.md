@@ -38,13 +38,20 @@ Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
 | Sprites | [`integrations/sprites/SPEC.md`](../integrations/sprites/SPEC.md) | Persistent Firecracker microVMs via Sprites (Fly.io). Persistent filesystem, checkpoints, HTTP services. |
 | Docker | `integrations/docker/` | Container-based agent execution. Experimental (Dev only). No spec yet. |
 
+## Messaging Integrations (`crates/server/`)
+
+Platform adapters connecting agents to messaging channels. Uses the channel abstraction layer defined in [`specs/messaging-integrations.md`](messaging-integrations.md) (`InboundChannelEvent`, `ChannelDeliveryAdapter`, `SessionRoutingStrategy`, `ThreadContext`).
+
+| Integration | Spec | Summary |
+|---|---|---|
+| Slack Bot | [`crates/server/specs/slack-integration.md`](../crates/server/specs/slack-integration.md) | Deploy agents as Slack bots. Uses `InboundChannelEvent` for parsing, `build_session_routing_tag()` for routing, `SlackDeliveryAdapter` implementing `ChannelDeliveryAdapter`. |
+
 ## Server Integrations (`crates/server/specs/`)
 
 Embedded in the server crate.
 
 | Integration | Spec | Summary |
 |---|---|---|
-| Slack Bot | [`crates/server/specs/slack-integration.md`](../crates/server/specs/slack-integration.md) | Deploy agents as Slack bots with per-app manifests and signing secret verification. |
 | User Connections | [`crates/server/specs/user-connections.md`](../crates/server/specs/user-connections.md) | OAuth/API-key connections to GitHub, GitLab, Bitbucket, Daytona for repo and sandbox access. |
 | Valkey Cache | [`crates/server/specs/cache.md`](../crates/server/specs/cache.md) | Distributed rate limiting via Valkey; in-process caching via `moka`. |
 

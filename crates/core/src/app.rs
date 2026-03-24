@@ -135,6 +135,9 @@ pub struct App {
 }
 
 /// Session strategy for incoming messages (how messages map to sessions).
+///
+/// This is the Slack-specific config type that serializes in `SlackChannelConfig`.
+/// Converts to/from the generic `SessionRoutingStrategy` in `crate::channel`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -148,7 +151,30 @@ pub enum SessionStrategy {
     PerUser,
 }
 
+impl From<SessionStrategy> for crate::channel::SessionRoutingStrategy {
+    fn from(s: SessionStrategy) -> Self {
+        match s {
+            SessionStrategy::PerThread => Self::PerThread,
+            SessionStrategy::PerChannel => Self::PerChannel,
+            SessionStrategy::PerUser => Self::PerUser,
+        }
+    }
+}
+
+impl From<crate::channel::SessionRoutingStrategy> for SessionStrategy {
+    fn from(s: crate::channel::SessionRoutingStrategy) -> Self {
+        match s {
+            crate::channel::SessionRoutingStrategy::PerThread => Self::PerThread,
+            crate::channel::SessionRoutingStrategy::PerChannel => Self::PerChannel,
+            crate::channel::SessionRoutingStrategy::PerUser => Self::PerUser,
+        }
+    }
+}
+
 /// How replies are delivered back to Slack.
+///
+/// This is the Slack-specific config type that serializes in `SlackChannelConfig`.
+/// Converts to/from the generic `ChannelReplyMode` in `crate::channel`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -158,6 +184,24 @@ pub enum SlackReplyMode {
     AllMessages,
     /// Only send deterministic updates emitted via `report_progress`.
     ReportProgressOnly,
+}
+
+impl From<SlackReplyMode> for crate::channel::ChannelReplyMode {
+    fn from(m: SlackReplyMode) -> Self {
+        match m {
+            SlackReplyMode::AllMessages => Self::AllMessages,
+            SlackReplyMode::ReportProgressOnly => Self::ReportProgressOnly,
+        }
+    }
+}
+
+impl From<crate::channel::ChannelReplyMode> for SlackReplyMode {
+    fn from(m: crate::channel::ChannelReplyMode) -> Self {
+        match m {
+            crate::channel::ChannelReplyMode::AllMessages => Self::AllMessages,
+            crate::channel::ChannelReplyMode::ReportProgressOnly => Self::ReportProgressOnly,
+        }
+    }
 }
 
 /// Typed Slack channel configuration.

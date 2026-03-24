@@ -61,6 +61,9 @@ pub mod session_schedule;
 pub mod session_sqldb;
 pub mod skill;
 
+// Multi-platform channel abstractions (thread context, delivery, routing)
+pub mod channel;
+
 // Permissions model (policies, rules, caller context)
 pub mod permissions;
 pub mod progress_reporting;
@@ -122,6 +125,13 @@ pub use traits::{
     ModelWithProvider, NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore,
     SessionMutator, SessionSqlDbStoreRef, SessionStorageStore, SessionStore, ToolContext,
     ToolExecutor, UserConnectionResolver,
+};
+
+// Channel abstraction re-exports
+pub use channel::{
+    ChannelDeliveryAdapter, ChannelReplyMode, DeliveryContext as ChannelDeliveryContext,
+    DeliveryResult as ChannelDeliveryResult, InboundAttachment, InboundChannelEvent,
+    OutboundChannelMessage, Participant, SessionRoutingStrategy, ThreadContext,
 };
 
 // Platform store re-exports

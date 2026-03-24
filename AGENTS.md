@@ -139,6 +139,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/client-hints.md` - Generic client hints mechanism (session defaults + per-message overrides)
 - `specs/agent-identities.md` - Agent identities (virtual principals for unattended execution)
 - `specs/agent-blueprints.md` - Pre-built agent definitions (private tools, fixed models, typed config)
+- `specs/messaging-integrations.md` - Messaging integrations (channel abstractions, parity requirements, platform adapters)
 
 ### Test Cases
 
@@ -276,6 +277,8 @@ Only require `GIT_USER_NAME` and `GIT_USER_EMAIL` when the current git identity 
 ### PRs
 
 **REQUIRED:** Use `.github/pull_request_template.md`. Squash and Merge.
+
+PR titles **MUST** follow [Conventional Commits](https://www.conventionalcommits.org) format: `type(scope): description` (same as commit messages). Keep under 70 characters.
 
 **NEVER** add links to Claude sessions in PR body or commits.
 

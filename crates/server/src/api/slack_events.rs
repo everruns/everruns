@@ -25,6 +25,10 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
+use everruns_core::channel::{
+    InboundAttachment, InboundChannelEvent, SessionRoutingStrategy, ThreadContext,
+    build_session_routing_tag,
+};
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
 use everruns_core::{
     App, AppStatus, Caller, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode,
@@ -222,6 +226,92 @@ impl SlackState {
     }
 }
 
+/// Parse a Slack webhook event into a platform-agnostic `InboundChannelEvent`.
+///
+/// Translates Slack-specific structures (event, files, attachments) into the
+/// generic channel abstraction types. The resulting event can be routed via
+/// `build_session_routing_tag()` and processed by the generic adapter lifecycle.
+fn parse_slack_inbound_event(
+    event: &SlackEvent,
+    slack_config: &SlackChannelConfig,
+    display_name: Option<String>,
+) -> InboundChannelEvent {
+    let slack_user_id = event.user.clone().unwrap_or_default();
+
+    // Build ExternalActor
+    let mut actor_metadata = std::collections::HashMap::new();
+    if let Some(ref channel) = event.channel {
+        actor_metadata.insert("channel".to_string(), channel.clone());
+    }
+    if let Some(ref team_id) = slack_config.team_id {
+        actor_metadata.insert("team_id".to_string(), team_id.clone());
+    }
+
+    let actor = everruns_core::ExternalActor {
+        actor_id: slack_user_id,
+        actor_name: display_name,
+        source: "slack".to_string(),
+        metadata: if actor_metadata.is_empty() {
+            None
+        } else {
+            Some(actor_metadata)
+        },
+    };
+
+    // Build attachments from files + legacy attachments
+    let mut attachments = Vec::new();
+    for file in &event.files {
+        let mime = file.mimetype.as_deref().unwrap_or("");
+        let name = file.name.as_deref().unwrap_or("unnamed file");
+        if SUPPORTED_IMAGE_TYPES.contains(&mime)
+            && let Some(url) = &file.url_private
+        {
+            attachments.push(InboundAttachment::Image {
+                url: url.clone(),
+                alt_text: Some(name.to_string()),
+            });
+            continue;
+        }
+        attachments.push(InboundAttachment::FileDescription {
+            name: name.to_string(),
+            mime_type: Some(mime.to_string()),
+        });
+    }
+    for att in &event.attachments {
+        if let Some(url) = &att.image_url {
+            attachments.push(InboundAttachment::Image {
+                url: url.clone(),
+                alt_text: att.title.clone(),
+            });
+        }
+    }
+
+    // Build routing metadata for build_session_routing_tag()
+    let mut routing_metadata = HashMap::new();
+    // thread_ref: use thread_ts if threaded, else message ts (for new thread)
+    let thread_ref = event
+        .thread_ts
+        .as_deref()
+        .or(event.ts.as_deref())
+        .unwrap_or("unknown");
+    routing_metadata.insert("thread_ref".to_string(), thread_ref.to_string());
+    if let Some(ref channel) = event.channel {
+        routing_metadata.insert("channel_id".to_string(), channel.clone());
+    }
+    if let Some(ref user) = event.user {
+        routing_metadata.insert("user_id".to_string(), user.clone());
+    }
+
+    InboundChannelEvent {
+        actor,
+        text: event.text.clone().unwrap_or_default(),
+        attachments,
+        dedup_key: event.ts.clone().unwrap_or_default(),
+        thread_ref: Some(thread_ref.to_string()),
+        routing_metadata,
+    }
+}
+
 /// Create Slack webhook routes (no auth middleware).
 pub fn routes(state: SlackState) -> Router {
     Router::new()
@@ -395,6 +485,11 @@ fn ack_json() -> serde_json::Value {
 }
 
 /// Process an incoming Slack message: find/create session, create message, wait for response.
+///
+/// Uses the channel abstraction types:
+/// - `InboundChannelEvent` for platform-agnostic message parsing
+/// - `build_session_routing_tag()` for session lookup (via `build_session_tags()`)
+/// - `ThreadContext` for participant tracking
 async fn process_slack_message(
     state: &SlackState,
     app: &App,
@@ -402,7 +497,6 @@ async fn process_slack_message(
     event: &SlackEvent,
 ) -> anyhow::Result<()> {
     let org_id = app.org_id;
-    let text = event.text.clone().unwrap_or_default();
     let slack_user_id = event.user.clone().unwrap_or_default();
 
     // Resolve Slack user display name (gracefully falls back to user ID)
@@ -417,25 +511,13 @@ async fn process_slack_message(
         None
     };
 
-    // Build ExternalActor for channel-agnostic user identity
+    // Parse Slack event into platform-agnostic InboundChannelEvent
+    let inbound = parse_slack_inbound_event(event, slack_config, display_name);
+    let text = inbound.text.clone();
+
+    // ExternalActor for the message (None if no user ID)
     let external_actor = if !slack_user_id.is_empty() {
-        let mut actor_metadata = std::collections::HashMap::new();
-        if let Some(ref channel) = event.channel {
-            actor_metadata.insert("channel".to_string(), channel.clone());
-        }
-        if let Some(ref team_id) = slack_config.team_id {
-            actor_metadata.insert("team_id".to_string(), team_id.clone());
-        }
-        Some(everruns_core::ExternalActor {
-            actor_id: slack_user_id.clone(),
-            actor_name: display_name.clone(),
-            source: "slack".to_string(),
-            metadata: if actor_metadata.is_empty() {
-                None
-            } else {
-                Some(actor_metadata)
-            },
-        })
+        Some(inbound.actor.clone())
     } else {
         None
     };
@@ -518,6 +600,26 @@ async fn process_slack_message(
             }
         };
 
+    // Track participant via ThreadContext (channel abstraction).
+    // ThreadContext accumulates participants across the session lifetime.
+    // TODO: persist ThreadContext in session metadata for cross-restart continuity.
+    if let Some(ref thread_ref) = inbound.thread_ref {
+        let mut thread_ctx = ThreadContext::new(thread_ref.clone(), "slack");
+        if let Some(ref channel) = event.channel {
+            thread_ctx
+                .platform_metadata
+                .insert("channel_id".to_string(), channel.clone());
+        }
+        let is_new_participant = thread_ctx.track_participant(&inbound.actor);
+        if is_new_participant {
+            tracing::debug!(
+                session_id = %session.id,
+                actor_id = %inbound.actor.actor_id,
+                "Tracked new participant in thread context"
+            );
+        }
+    }
+
     // Inject thread context: when joining an existing thread mid-conversation,
     // fetch prior messages from Slack and inject them as context so the agent
     // sees the full conversation history.
@@ -548,18 +650,17 @@ async fn process_slack_message(
     }
 
     // Dedup: Slack sends both app_mention and message events for @mentions.
-    // Check if we already have an input.message with this slack_ts in the session.
+    // Check if we already have an input.message with this dedup_key (slack_ts) in the session.
     // This works across server instances because the check is DB-level.
-    let slack_ts = event.ts.clone().unwrap_or_default();
-    if !slack_ts.is_empty() {
+    if !inbound.dedup_key.is_empty() {
         let already_exists = state
             .db
-            .has_event_with_slack_ts(session.id, &slack_ts)
+            .has_event_with_slack_ts(session.id, &inbound.dedup_key)
             .await?;
         if already_exists {
             tracing::debug!(
                 session_id = %session.id,
-                slack_ts = %slack_ts,
+                dedup_key = %inbound.dedup_key,
                 "Skipping duplicate Slack event (already processed this ts)"
             );
             return Ok(());
@@ -763,6 +864,9 @@ fn build_attachment_content_parts(attachments: &[SlackAttachment]) -> Vec<InputC
 }
 
 /// Build session tags for finding/creating sessions based on strategy.
+///
+/// Uses the generic `build_session_routing_tag()` from channel abstractions,
+/// converting the Slack-specific `SessionStrategy` to `SessionRoutingStrategy`.
 fn build_session_tags(
     app: &App,
     slack_config: &SlackChannelConfig,
@@ -770,24 +874,26 @@ fn build_session_tags(
 ) -> Vec<String> {
     let mut tags = vec![format!("slack:app:{}", app.public_id)];
 
-    match slack_config.session_strategy {
-        SessionStrategy::PerThread => {
-            // Use thread_ts if threaded, otherwise the message ts (new thread)
-            let thread_id = event
-                .thread_ts
-                .as_deref()
-                .or(event.ts.as_deref())
-                .unwrap_or("unknown");
-            tags.push(format!("slack:thread:{}", thread_id));
-        }
-        SessionStrategy::PerChannel => {
-            let channel = event.channel.as_deref().unwrap_or("unknown");
-            tags.push(format!("slack:channel:{}", channel));
-        }
-        SessionStrategy::PerUser => {
-            let user = event.user.as_deref().unwrap_or("unknown");
-            tags.push(format!("slack:user:{}", user));
-        }
+    // Build routing metadata from the Slack event
+    let mut routing_metadata = HashMap::new();
+    let thread_ref = event
+        .thread_ts
+        .as_deref()
+        .or(event.ts.as_deref())
+        .unwrap_or("unknown");
+    routing_metadata.insert("thread_ref".to_string(), thread_ref.to_string());
+    if let Some(ref channel) = event.channel {
+        routing_metadata.insert("channel_id".to_string(), channel.clone());
+    }
+    if let Some(ref user) = event.user {
+        routing_metadata.insert("user_id".to_string(), user.clone());
+    }
+
+    let generic_strategy: SessionRoutingStrategy = slack_config.session_strategy.into();
+    if let Some(routing_tag) =
+        build_session_routing_tag("slack", &generic_strategy, &routing_metadata)
+    {
+        tags.push(routing_tag);
     }
 
     tags
@@ -1641,6 +1747,7 @@ mod tests {
                 "slack:app:app_123".to_string(),
                 "slack:thread:1234.0000".to_string(),
                 "slack:reply_mode:report_progress_only".to_string(),
+                "channel:reply_mode:report_progress_only".to_string(),
             ]
         );
     }
@@ -1829,6 +1936,110 @@ mod tests {
             url_private: url.map(String::from),
             size: Some(1024),
         }
+    }
+
+    // ==========================================
+    // InboundChannelEvent parsing (channel abstractions)
+    // ==========================================
+
+    #[test]
+    fn test_parse_slack_inbound_event_basic() {
+        let config = test_config(SessionStrategy::PerThread);
+        let mut event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
+        event.user = Some("U001".to_string());
+
+        let inbound = parse_slack_inbound_event(&event, &config, Some("Alice".to_string()));
+
+        assert_eq!(inbound.actor.actor_id, "U001");
+        assert_eq!(inbound.actor.actor_name.as_deref(), Some("Alice"));
+        assert_eq!(inbound.actor.source, "slack");
+        assert_eq!(inbound.text, "Hello");
+        assert_eq!(inbound.dedup_key, "1234.5678");
+        assert_eq!(inbound.thread_ref.as_deref(), Some("1234.0000"));
+        assert_eq!(
+            inbound.routing_metadata.get("thread_ref").unwrap(),
+            "1234.0000"
+        );
+        assert_eq!(inbound.routing_metadata.get("channel_id").unwrap(), "C123");
+        assert_eq!(inbound.routing_metadata.get("user_id").unwrap(), "U001");
+    }
+
+    #[test]
+    fn test_parse_slack_inbound_event_with_image_files() {
+        let config = test_config(SessionStrategy::PerThread);
+        let mut event = test_event("C123", Some("1234.5678"), None);
+        event.files = vec![test_slack_file(
+            "photo.png",
+            "image/png",
+            "png",
+            Some("https://files.slack.com/photo.png"),
+        )];
+
+        let inbound = parse_slack_inbound_event(&event, &config, None);
+
+        assert_eq!(inbound.attachments.len(), 1);
+        match &inbound.attachments[0] {
+            InboundAttachment::Image { url, alt_text } => {
+                assert_eq!(url, "https://files.slack.com/photo.png");
+                assert_eq!(alt_text.as_deref(), Some("photo.png"));
+            }
+            other => panic!("Expected Image attachment, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_slack_inbound_event_with_non_image_file() {
+        let config = test_config(SessionStrategy::PerThread);
+        let mut event = test_event("C123", Some("1234.5678"), None);
+        event.files = vec![test_slack_file("doc.pdf", "application/pdf", "pdf", None)];
+
+        let inbound = parse_slack_inbound_event(&event, &config, None);
+
+        assert_eq!(inbound.attachments.len(), 1);
+        match &inbound.attachments[0] {
+            InboundAttachment::FileDescription { name, mime_type } => {
+                assert_eq!(name, "doc.pdf");
+                assert_eq!(mime_type.as_deref(), Some("application/pdf"));
+            }
+            other => panic!("Expected FileDescription, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_slack_inbound_event_routing_metadata_no_thread_ts() {
+        let config = test_config(SessionStrategy::PerThread);
+        let event = test_event("C123", Some("1234.5678"), None);
+
+        let inbound = parse_slack_inbound_event(&event, &config, None);
+
+        // Without thread_ts, thread_ref falls back to ts
+        assert_eq!(inbound.thread_ref.as_deref(), Some("1234.5678"));
+        assert_eq!(
+            inbound.routing_metadata.get("thread_ref").unwrap(),
+            "1234.5678"
+        );
+    }
+
+    #[test]
+    fn test_build_session_tags_uses_generic_routing() {
+        // Verify that build_session_tags produces the same tags via
+        // build_session_routing_tag() as the old hand-rolled implementation
+        let app = test_app();
+        let config = test_config(SessionStrategy::PerThread);
+        let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
+
+        let tags = build_session_tags(&app, &config, &event);
+        assert_eq!(tags[1], "slack:thread:1234.0000");
+
+        let config_channel = test_config(SessionStrategy::PerChannel);
+        let tags_channel = build_session_tags(&app, &config_channel, &event);
+        assert_eq!(tags_channel[1], "slack:channel:C123");
+
+        let mut event_user = test_event("C123", Some("1234.5678"), None);
+        event_user.user = Some("U999".to_string());
+        let config_user = test_config(SessionStrategy::PerUser);
+        let tags_user = build_session_tags(&app, &config_user, &event_user);
+        assert_eq!(tags_user[1], "slack:user:U999");
     }
 
     // ==========================================

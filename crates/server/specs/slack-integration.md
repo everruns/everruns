@@ -4,6 +4,8 @@
 
 Slack integration allows deploying agents as Slack bots. Each Everruns App gets its own Slack App (own identity, name, avatar). An App binds an agent and harness to a Slack workspace with signing secret verification and configurable session strategies. Setup is streamlined via per-app manifest generation.
 
+Slack is the reference implementation for the [messaging integrations](../../specs/messaging-integrations.md) channel abstraction layer. It uses `InboundChannelEvent` for platform-agnostic message parsing, `build_session_routing_tag()` for session routing, `ThreadContext` for participant tracking, and `SlackDeliveryAdapter` implementing the `ChannelDeliveryAdapter` trait.
+
 ## Architecture
 
 ```
@@ -134,11 +136,13 @@ Doppler vars: `TEST_SLACK_BOT_TOKEN`, `TEST_SLACK_SIGNING_SECRET`, `TEST_SLACK_T
 
 ## Files
 
-- `crates/core/src/app.rs` - `SlackChannelConfig`, `SessionStrategy` types
+- `crates/core/src/channel.rs` - Channel abstractions: `InboundChannelEvent`, `ChannelDeliveryAdapter`, `SessionRoutingStrategy`, `ThreadContext`, `build_session_routing_tag()`
+- `crates/core/src/app.rs` - `SlackChannelConfig`, `SessionStrategy` (converts to/from `SessionRoutingStrategy`), `SlackReplyMode` (converts to/from `ChannelReplyMode`)
 - `crates/core/src/message.rs` - `ExternalActor` struct
+- `crates/core/src/progress_reporting.rs` - Generalized tag handling, backward compat
 - `crates/server/src/api/messages.rs` - API `Message` response includes `external_actor`
-- `crates/server/src/api/slack_events.rs` - Webhook endpoint, manifest generation, signing verification, session routing, user name resolution
-- `crates/server/src/slack_delivery.rs` - Event-driven Slack delivery dispatcher with retry and startup recovery
+- `crates/server/src/api/slack_events.rs` - Webhook endpoint, `parse_slack_inbound_event()`, manifest generation, signing verification, session routing via `build_session_routing_tag()`, user name resolution
+- `crates/server/src/slack_delivery.rs` - `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`), event-driven `SlackDeliveryDispatcher` with retry and startup recovery
 - `crates/server/src/services/app.rs` - `get_by_public_id_unscoped()` method
 - `apps/ui/src/app/(main)/apps/page.tsx` - Apps list UI page
 - `apps/ui/src/app/(main)/apps/new/page.tsx` - App creation page
