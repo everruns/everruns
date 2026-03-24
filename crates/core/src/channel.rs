@@ -114,11 +114,12 @@ impl ThreadContext {
         if self.participants.is_empty() {
             return String::new();
         }
-        let names: Vec<&str> = self
+        let mut names: Vec<String> = self
             .participants
             .values()
-            .map(|p| p.actor.display_label())
+            .map(|p| p.actor.display_label().to_string())
             .collect();
+        names.sort();
         format!("Thread participants: {}", names.join(", "))
     }
 }
@@ -211,10 +212,10 @@ pub enum ChannelReplyMode {
 /// Lifecycle:
 /// 1. Webhook arrives → adapter parses InboundChannelEvent
 /// 2. Server routes to session, creates input.message, triggers agent
-/// 3. Server calls `register_delivery()` on the adapter
+/// 3. Core delivery dispatcher records a pending delivery for this session/turn
 /// 4. Agent runs asynchronously (seconds to hours)
-/// 5. Event notification arrives → dispatcher calls `deliver()`
-/// 6. Turn ends → dispatcher calls `unregister_delivery()`
+/// 5. When agent output is ready, the delivery dispatcher calls `deliver()`
+/// 6. When the turn completes or is cancelled, the dispatcher clears the pending delivery
 #[async_trait]
 pub trait ChannelDeliveryAdapter: Send + Sync {
     /// Platform identifier (e.g. "slack", "discord").
@@ -255,7 +256,7 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
 ///
 /// Stored when a delivery is registered, consumed when events arrive.
 /// Platform adapters extend this with platform-specific fields via `extra`.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DeliveryContext {
     /// Bot/app authentication token for the platform API.
     pub auth_token: String,
@@ -267,6 +268,18 @@ pub struct DeliveryContext {
     pub reply_mode: ChannelReplyMode,
     /// Platform-specific extra context (e.g. team_id, workspace URL).
     pub extra: HashMap<String, String>,
+}
+
+impl std::fmt::Debug for DeliveryContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeliveryContext")
+            .field("auth_token", &"[REDACTED]")
+            .field("channel_id", &self.channel_id)
+            .field("thread_ref", &self.thread_ref)
+            .field("reply_mode", &self.reply_mode)
+            .field("extra", &self.extra)
+            .finish()
+    }
 }
 
 /// Result of a delivery attempt.

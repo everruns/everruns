@@ -1,8 +1,9 @@
 // Deterministic progress-reporting helpers for external handoff channels.
 //
 // Design Decision: The agent-facing tool is generic (`report_progress`) while
-// delivery remains channel-specific. Handoff sessions opt in via a session tag
-// (`{platform}:reply_mode:report_progress_only`), which lets ReasonAtom expose
+// delivery remains channel-specific. Handoff sessions opt in via session tags
+// (`channel:reply_mode:report_progress_only` generically, or
+// `slack:reply_mode:report_progress_only` for legacy Slack), which lets ReasonAtom expose
 // the tool and prompt without leaking platform-specific behavior into the wider
 // runtime.
 //
@@ -351,6 +352,26 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn test_format_progress_report_generic() {
+        let text = format_progress_report(&ProgressReportPayload {
+            status: ProgressReportStatus::Progress,
+            summary: "Deploying to staging".to_string(),
+            details: vec!["built image".to_string(), "pushing to registry".to_string()],
+        });
+        assert_eq!(
+            text,
+            "Update: Deploying to staging\n- built image\n- pushing to registry"
+        );
+
+        let text_no_details = format_progress_report(&ProgressReportPayload {
+            status: ProgressReportStatus::Completed,
+            summary: "All done".to_string(),
+            details: vec![],
+        });
+        assert_eq!(text_no_details, "Done: All done");
     }
 
     #[test]
