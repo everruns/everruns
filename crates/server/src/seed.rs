@@ -1842,6 +1842,11 @@ pub fn spawn_seed_task_with_platform_definition(
                         "Seeding complete (all items up to date)"
                     );
                 }
+
+                // After seed succeeds, reconcile harnesses for non-default orgs.
+                // This runs here (not as a separate task) so ordering is deterministic:
+                // the default org and its harnesses are guaranteed to exist.
+                reconcile_non_default_org_harnesses(&db, &platform_definition).await;
             }
             Err(e) => {
                 tracing::warn!(
@@ -1851,6 +1856,73 @@ pub fn spawn_seed_task_with_platform_definition(
             }
         }
     });
+}
+
+/// Reconcile built-in harnesses for every non-default org.
+///
+/// Called after seeding completes (inside the seed task) so the default org and
+/// its harnesses are guaranteed to exist. Each org is reconciled independently;
+/// a single failure is logged but does not prevent other orgs from updating.
+async fn reconcile_non_default_org_harnesses(
+    db: &StorageBackend,
+    platform_definition: &PlatformDefinition,
+) {
+    let harnesses = platform_definition.built_in_harnesses();
+    let mut orgs = match db.list_organizations().await {
+        Ok(orgs) => orgs,
+        Err(e) => {
+            tracing::warn!(error = %e, "Harness reconciliation: failed to list orgs (non-fatal)");
+            return;
+        }
+    };
+
+    // Skip the default org — already handled synchronously during seed.
+    orgs.retain(|o| o.org_id != everruns_core::DEFAULT_ORG_ID);
+
+    if orgs.is_empty() {
+        tracing::debug!("No non-default orgs to reconcile harnesses for");
+        return;
+    }
+
+    let mut created = 0usize;
+    let mut updated = 0usize;
+    let mut unchanged = 0usize;
+    let mut errors = 0usize;
+
+    for org in &orgs {
+        match org_init::initialize_org_harnesses_with_definitions(db, org.org_id, harnesses).await {
+            Ok(r) => {
+                created += r.created;
+                updated += r.updated;
+                unchanged += r.unchanged;
+            }
+            Err(e) => {
+                errors += 1;
+                tracing::warn!(
+                    org_id = org.org_id,
+                    error = %e,
+                    "Harness reconciliation failed for org (non-fatal)"
+                );
+            }
+        }
+    }
+
+    if created > 0 || updated > 0 || errors > 0 {
+        tracing::info!(
+            org_count = orgs.len(),
+            created,
+            updated,
+            unchanged,
+            errors,
+            "Background harness reconciliation complete"
+        );
+    } else {
+        tracing::debug!(
+            org_count = orgs.len(),
+            unchanged,
+            "Background harness reconciliation complete (all up to date)"
+        );
+    }
 }
 
 /// Run seeding with retry logic for transient errors
@@ -2001,9 +2073,12 @@ pub async fn seed_all_with_platform_definition(
     );
     result.merge(mcp_result);
 
-    // Reconcile built-in harnesses across all orgs (before agents, sessions may reference them)
-    let harness_result = org_init::reconcile_built_in_harnesses_with_definitions(
+    // Initialize built-in harnesses for the default org (fast, O(1)).
+    // Multi-org reconciliation runs as a separate background task
+    // (spawn_harness_reconciliation_task) so it does not block startup.
+    let harness_result = org_init::initialize_org_harnesses_with_definitions(
         db,
+        DEFAULT_ORG_ID,
         platform_definition.built_in_harnesses(),
     )
     .await?;
@@ -2011,7 +2086,7 @@ pub async fn seed_all_with_platform_definition(
         created = harness_result.created,
         updated = harness_result.updated,
         unchanged = harness_result.unchanged,
-        "Built-in harnesses reconciled"
+        "Default org built-in harnesses seeded"
     );
     result.created += harness_result.created;
     result.updated += harness_result.updated;
@@ -2522,5 +2597,59 @@ mod tests {
             }
             .has_changes()
         );
+    }
+
+    // --- Multi-org harness reconciliation ---
+
+    #[tokio::test]
+    async fn test_reconcile_non_default_org_harnesses() {
+        use crate::storage::models::CreateOrganizationRow;
+
+        let db = make_db();
+        // Seed default org first (creates harnesses for DEFAULT_ORG_ID).
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+
+        // Create a second org.
+        let second_org = db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org-second".into(),
+                name: "Second Org".into(),
+                created_by: None,
+            })
+            .await
+            .unwrap();
+
+        // Before reconciliation, second org should have no harnesses.
+        let before = db
+            .list_harnesses(second_org.org_id, None, false)
+            .await
+            .unwrap();
+        assert!(
+            before.is_empty(),
+            "second org should start with no harnesses"
+        );
+
+        // Run reconciliation.
+        let pd = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
+        reconcile_non_default_org_harnesses(&db, &pd).await;
+
+        // After reconciliation, second org should have the built-in harnesses.
+        let after = db
+            .list_harnesses(second_org.org_id, None, false)
+            .await
+            .unwrap();
+        assert!(
+            !after.is_empty(),
+            "second org should have harnesses after reconciliation"
+        );
+
+        // Default org harness count should match.
+        let default_harnesses = db
+            .list_harnesses(DEFAULT_ORG_ID, None, false)
+            .await
+            .unwrap();
+        assert_eq!(after.len(), default_harnesses.len());
     }
 }
