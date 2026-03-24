@@ -74,7 +74,7 @@ Custom PostgreSQL-backed durable execution engine for workflow orchestration wit
 
 ### Persistence
 
-All tables prefixed with `durable_` to avoid conflicts. See `crates/durable/migrations/` for the full schema DDL.
+All tables prefixed with `durable_` to avoid conflicts. See `crates/server/migrations/002_durable_execution.sql` for the full schema DDL.
 
 Workflow statuses: `pending`, `running`, `completed`, `failed`, `cancelled`, `continued_as_new`.
 
