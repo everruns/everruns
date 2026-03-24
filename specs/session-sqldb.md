@@ -59,27 +59,7 @@ Session-scoped SQLite databases backed by PostgreSQL page-level storage. Each se
 
 ## Data Model
 
-### SessionDatabase
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID v7 | Unique identifier |
-| `session_id` | UUID v7 | Parent session (FK, CASCADE) |
-| `name` | string | Database name (validated) |
-| `size_bytes` | i64 | Total size of all pages |
-| `page_count` | i32 | Number of stored pages |
-| `created_at` | timestamp | Creation time |
-| `updated_at` | timestamp | Last modification time |
-
-### SessionDatabasePage
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `database_id` | UUID v7 | Parent database (FK, CASCADE) |
-| `page_number` | i32 | Page index (0-based) |
-| `data` | bytes | Page content (4096 bytes) |
-
-Primary key: `(database_id, page_number)`
+See `crates/session-sqldb/src/types.rs` for `SessionDatabase` and `SessionDatabasePage` struct definitions. See `crates/server/migrations/` for the database schema DDL.
 
 ## Functional Requirements
 

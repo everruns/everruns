@@ -74,18 +74,7 @@ Custom PostgreSQL-backed durable execution engine for workflow orchestration wit
 
 ### Persistence
 
-All tables prefixed with `durable_` to avoid conflicts:
-
-| Table | Purpose |
-|-------|---------|
-| `durable_workflow_instances` | Workflow state (status, input, result, error) |
-| `durable_workflow_events` | Append-only event log for replay |
-| `durable_task_queue` | Activity scheduling with claiming |
-| `durable_dead_letter_queue` | Failed tasks after retry exhaustion |
-| `durable_circuit_breaker_state` | Shared circuit breaker state |
-| `durable_workers` | Worker registry for monitoring |
-| `durable_signals` | Signal queue for workflows |
-| `durable_workflow_snapshots` | Checkpoint snapshots for replay optimization |
+All tables prefixed with `durable_` to avoid conflicts. See `crates/server/migrations/002_durable_execution.sql` for the full schema DDL.
 
 Workflow statuses: `pending`, `running`, `completed`, `failed`, `cancelled`, `continued_as_new`.
 

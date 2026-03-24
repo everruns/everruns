@@ -40,6 +40,18 @@ Relevant references:
 - Specs should not duplicate operational workflow text that belongs in skills or commands.
 - Maintenance should prefer concrete fixes over ceremonial audits when a safe local fix exists.
 
+## Spec Hygiene
+
+Specs must follow the **spec content principle** from `AGENTS.md`: they preserve design intent, rationale, and constraints — not implementation details readable from code. During maintenance, review specs in the changed surface for:
+
+- **Struct field tables** that duplicate Rust struct definitions — replace with a link to the source file
+- **Enum variant lists** that duplicate code — replace with a link
+- **Exhaustive tables** (permissions, event types, feature flags, entity prefixes) that will drift as code evolves — replace with a link to the source of truth
+- **Code snippets** that restate already-implemented logic (SQL DDL, macro expansions, error detection patterns) — replace with a link
+- **Stale "current" lists** (e.g., "Current Flags" tables) — remove or replace with a link
+
+The pattern: keep the "why" and constraints, link to code for the "what".
+
 ## Release Readiness Standard
 
 Before a release, maintenance should cover:

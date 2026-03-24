@@ -59,34 +59,10 @@ Drivers MUST use the following error types from `AgentLoopError`:
 
 ### Error Detection Requirements
 
-Each driver MUST implement provider-specific error detection:
-
-#### OpenAI Driver
-
-Detect `RequestTooLarge` for:
-- HTTP 429 with "Request too large" in message
-- HTTP 429 with "tokens" and "limit" in message (TPM exceeded)
-- HTTP 400 with "context_length_exceeded" code
-- HTTP 400 with "maximum context length" in message
-- Any response with "tokens must be reduced" or "reduce the length"
-
-#### Anthropic Driver
-
-Detect `RequestTooLarge` for:
-- HTTP 413 (Payload Too Large)
-- HTTP 400 with "prompt is too long" in message
-- HTTP 400 with "request size exceeded" in message
-- HTTP 400 with "too many tokens" in message
-- Any response with "maximum context" or "exceeds the maximum"
-
-#### Gemini Driver
-
-Detect `RequestTooLarge` for:
-- HTTP 413 (Payload Too Large)
-- HTTP 400 with "request payload size exceeds" in message
-- HTTP 400 with "exceeds the maximum" and "token" in message
-- HTTP 400 with "content too large" in message
-- Any response with "input is too long", "maximum context", or "token limit exceeded"
+Each driver MUST implement provider-specific error detection to classify context-length and token-limit errors as `RequestTooLarge`. See the individual driver crates for the detection logic:
+- `crates/openai/src/` — OpenAI error detection
+- `crates/anthropic/src/` — Anthropic error detection
+- `crates/gemini/src/` — Gemini error detection
 
 ### Driver Registry
 
