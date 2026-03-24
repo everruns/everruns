@@ -15,7 +15,7 @@ Every sandbox/execution integration crate must ship with the following artifacts
 | **Live API tests** | `tests/live_api_test.rs` — feature-gated (`<name>-live-tests`), optional Doppler credentials. |
 | **CI: unit tests** | Crate listed in the `unit-test` job: `cargo test -p everruns-integrations-<name>`. |
 | **CI: change detection** | Path filter in `changes` job: `<name>: integrations/<name>/**`. |
-| **CI: live-test job** | Dedicated `<name>-live-test` job, conditional on change detection + `push` event. |
+| **CI: live-test workflow** | Dedicated `.github/workflows/<name>-integration.yml` workflow, path-filtered to `integrations/<name>/**`, with live-test job conditional on `push` event + Doppler token. |
 | **User docs** | `docs/integrations/<name>.md` — quick start, tool table, lifecycle, security. |
 | **UI test case** | `test_cases/ui/<name>_connection/TC001_*.md` — manual test for connection + sandbox lifecycle. |
 | **Seed agent** | Entry in `crates/server/src/seed.rs` with capabilities wired. |
