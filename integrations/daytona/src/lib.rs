@@ -116,7 +116,8 @@ Authentication: Daytona API key is resolved automatically from Settings > Connec
 If not configured, guide the user to set up their key in Settings > Connections.
 
 All tools except `daytona_create_sandbox` and `daytona_list_sandboxes` require a `sandbox_id`.
-Sandboxes auto-stop after 5 min, auto-archive after 30 min, and auto-delete after 60 min.
+Sandboxes auto-stop after 5 min of inactivity, auto-archive after 30 min, and auto-delete after 60 min.
+Stopped sandboxes are also cleaned up by the control plane after 20 min.
 Always DELETE sandboxes when done (stop leaves them on the dashboard).
 Active sandboxes also appear in the session Resources tab so users can see what
 may be cleaned automatically later.
