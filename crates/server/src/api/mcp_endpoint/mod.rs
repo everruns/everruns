@@ -1,12 +1,13 @@
 // MCP Endpoint — exposes Everruns as an MCP server (Streamable HTTP transport)
 //
 // Design decisions:
-// - JSON-RPC 2.0 over POST /v1/mcp (Streamable HTTP, per MCP spec)
+// - JSON-RPC 2.0 over POST /mcp (Streamable HTTP, per MCP spec)
 // - Tier 1 tools: agent_run, session_send_message, session_get_status
 //   → Direct service calls, first-class support for the agent conversation loop
 // - Tier 2 tools: discover, execute
-//   → discover: search the full API catalog, returns operation details + curl examples
-//   → execute: run a bash script via bashkit with $EVERRUNS_API_BASE and auth pre-set
+//   → Backed by bashkit ScriptedTool with all API operations as builtins
+//   → discover: uses ScriptedTool's built-in `discover` command
+//   → execute: runs bash scripts through ScriptedTool (all API ops available as commands)
 // - Auth: same as rest of API (API key or session cookie via ResolvedOrg)
 // - No MCP session state — stateless request/response per JSON-RPC call
 
@@ -14,6 +15,7 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::{EventService, MessageService, SessionService};
 use crate::storage::StorageBackend;
 use axum::{Json, Router, extract::State, routing::post};
+use bashkit::{ScriptedTool, Tool as ScriptedToolTrait};
 use everruns_core::typed_id::{AgentId, EventId, HarnessId, SessionId};
 use everruns_core::{Caller, PlatformDefinition};
 use everruns_worker::AgentRunner;
@@ -172,11 +174,9 @@ fn tool_definitions() -> Value {
             "name": "discover",
             "description": concat!(
                 "Search the Everruns API catalog to find available operations. ",
-                "Returns matching API operations with their HTTP method, path, description, parameters, and example curl commands. ",
-                "Use this to find the right API call before using the 'execute' tool.\n\n",
-                "Example queries: 'list agents', 'create session', 'delete', 'events', 'mcp servers', 'models', 'capabilities'\n\n",
-                "The results include ready-to-use curl snippets that work with the 'execute' tool. ",
-                "In execute, $EVERRUNS_API_BASE and $EVERRUNS_API_KEY are pre-configured environment variables."
+                "Returns matching API operations with their description, parameters, and usage.\n\n",
+                "Example queries: 'list agents', 'create session', 'events', 'mcp servers', 'models'\n\n",
+                "The discovered operations are available as bash builtins in the 'execute' tool."
             ),
             "inputSchema": {
                 "type": "object",
@@ -184,10 +184,6 @@ fn tool_definitions() -> Value {
                     "query": {
                         "type": "string",
                         "description": "Search query to find API operations (e.g., 'list agents', 'session events', 'mcp')."
-                    },
-                    "category": {
-                        "type": "string",
-                        "description": "Optional category filter: agents, sessions, messages, events, harnesses, models, providers, mcp_servers, capabilities, skills, images, schedules, organizations, users, files, databases, storage"
                     }
                 },
                 "required": ["query"]
@@ -196,14 +192,15 @@ fn tool_definitions() -> Value {
         {
             "name": "execute",
             "description": concat!(
-                "Execute a bash script to interact with the Everruns API. ",
-                "Runs in a sandboxed bashkit environment with curl available and these pre-set environment variables:\n\n",
-                "  $EVERRUNS_API_BASE — API base URL (e.g. http://localhost:9301)\n",
-                "  $EVERRUNS_API_KEY  — Bearer token for authentication\n\n",
-                "Use 'discover' first to find the right API endpoint, then construct a curl command.\n\n",
+                "Execute a bash script with all Everruns API operations available as built-in commands.\n\n",
+                "Available commands include: list_agents, create_agent, get_agent, list_sessions, ",
+                "create_session, list_events, list_models, and many more.\n\n",
+                "Use 'discover' to find available commands, or run `discover --categories` inside the script.\n\n",
                 "Example:\n",
-                "  curl -s -H \"Authorization: Bearer $EVERRUNS_API_KEY\" $EVERRUNS_API_BASE/v1/agents | jq .\n\n",
-                "The script can use pipes, jq for JSON processing, and other standard bash features. ",
+                "  list_agents | jq '.data[] | .name'\n",
+                "  get_agent --id agent_abc123\n",
+                "  create_session --agent_id agent_abc123 --title 'Test' | jq .id\n\n",
+                "Scripts can use pipes, jq, loops, conditionals, and other bash features. ",
                 "Results are returned as {stdout, stderr, exit_code, success}."
             ),
             "inputSchema": {
@@ -211,7 +208,7 @@ fn tool_definitions() -> Value {
                 "properties": {
                     "command": {
                         "type": "string",
-                        "description": "Bash script to execute. Use curl with $EVERRUNS_API_BASE and $EVERRUNS_API_KEY for API calls."
+                        "description": "Bash script to execute. API operations are available as built-in commands."
                     },
                     "timeout_ms": {
                         "type": "integer",
@@ -279,7 +276,7 @@ impl_auth_state!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/mcp", post(handle_mcp))
+        .route("/mcp", post(handle_mcp))
         .with_state(state)
 }
 
@@ -355,7 +352,7 @@ async fn handle_tools_call(
         "agent_run" => tool_agent_run(&arguments, org, state).await,
         "session_send_message" => tool_session_send_message(&arguments, org, state).await,
         "session_get_status" => tool_session_get_status(&arguments, org, state).await,
-        "discover" => tool_discover(&arguments),
+        "discover" => tool_discover(&arguments, org, state).await,
         "execute" => tool_execute(&arguments, org, state).await,
         _ => Err(format!("Unknown tool: {tool_name}")),
     };
@@ -658,47 +655,26 @@ async fn tool_session_get_status(
 }
 
 // ============================================================================
-// Tier 2: discover
+// Tier 2: discover — delegates to ScriptedTool's built-in `discover` command
 // ============================================================================
 
-fn tool_discover(args: &Value) -> Result<String, String> {
+async fn tool_discover(
+    args: &Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> Result<String, String> {
     let query = args
         .get("query")
         .and_then(|v| v.as_str())
-        .ok_or("Missing required parameter: query")?
-        .to_lowercase();
+        .ok_or("Missing required parameter: query")?;
 
-    let category = args
-        .get("category")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_lowercase());
-
-    let operations = catalog::search(&query, category.as_deref());
-
-    if operations.is_empty() {
-        return Ok(format!(
-            "No API operations found matching '{query}'. Try broader terms like 'agents', 'sessions', 'events', 'models', 'mcp'."
-        ));
-    }
-
-    let mut output = format!("Found {} API operations:\n\n", operations.len());
-    for op in &operations {
-        output.push_str(&format!("### {} {}\n", op.method, op.path));
-        output.push_str(&format!("{}\n", op.description));
-        if !op.params.is_empty() {
-            output.push_str("Parameters:\n");
-            for p in op.params {
-                output.push_str(&format!("  - {}: {} {}\n", p.name, p.typ, p.description));
-            }
-        }
-        output.push_str(&format!("Example:\n  {}\n\n", op.curl_example));
-    }
-
-    Ok(output)
+    let tool = build_scripted_tool(org, state);
+    let script = format!("discover --search {}", shell_escape(query));
+    execute_script(&tool, &script, 10_000).await
 }
 
 // ============================================================================
-// Tier 2: execute
+// Tier 2: execute — delegates to ScriptedTool
 // ============================================================================
 
 async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
@@ -713,50 +689,62 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
         .unwrap_or(30000)
         .min(60000);
 
-    // Build auth header value from the org context.
-    // For API key auth, reconstruct the bearer token.
-    // For session auth, we pass a generated internal token.
-    let api_key = format!("org-{}", org.public_id);
+    let tool = build_scripted_tool(org, state);
+    execute_script(&tool, command, timeout_ms).await
+}
 
-    // Create a bashkit instance with API env vars pre-configured
-    let fs = Arc::new(bashkit::InMemoryFs::new());
-    let mut bash = bashkit::Bash::builder()
-        .fs(fs)
-        .cwd("/tmp")
-        .username("everruns")
-        .hostname("mcp")
-        .env("HOME", "/tmp")
-        .env("SHELL", "/bin/bash")
-        .env("PATH", "/usr/local/bin:/usr/bin:/bin")
-        .env("EVERRUNS_API_BASE", &state.api_base_url)
-        .env("EVERRUNS_API_KEY", &api_key)
-        .limits(
-            bashkit::ExecutionLimits::new()
-                .max_commands(500)
-                .max_loop_iterations(5000)
-                .max_function_depth(50)
-                .max_input_bytes(500_000)
-                .max_ast_depth(50)
-                .parser_timeout(std::time::Duration::from_secs(3)),
-        )
-        .build();
+// ============================================================================
+// ScriptedTool helpers
+// ============================================================================
+
+/// Build a ScriptedTool for the given org context.
+fn build_scripted_tool(org: &ResolvedOrg, state: &AppState) -> ScriptedTool {
+    let api_key = format!("org-{}", org.public_id);
+    catalog::build_scripted_tool(&state.api_base_url, &api_key)
+}
+
+/// Execute a script through a ScriptedTool and return formatted output.
+async fn execute_script(
+    tool: &ScriptedTool,
+    command: &str,
+    timeout_ms: u64,
+) -> Result<String, String> {
+    let request = bashkit::ToolRequest::new(command);
 
     let result = tokio::time::timeout(
         std::time::Duration::from_millis(timeout_ms),
-        bash.exec(command),
+        tool.execute(request),
     )
     .await;
 
     match result {
-        Ok(Ok(output)) => Ok(serde_json::to_string_pretty(&json!({
-            "stdout": output.stdout,
-            "stderr": output.stderr,
-            "exit_code": output.exit_code,
-            "success": output.exit_code == 0
-        }))
-        .unwrap()),
-        Ok(Err(e)) => Err(format!("Bash execution error: {e}")),
+        Ok(response) => {
+            let output = serde_json::to_string_pretty(&json!({
+                "stdout": response.stdout,
+                "stderr": response.stderr,
+                "exit_code": response.exit_code,
+                "success": response.exit_code == 0
+            }))
+            .unwrap();
+
+            if response.exit_code == 0 {
+                Ok(output)
+            } else {
+                Err(output)
+            }
+        }
         Err(_) => Err(format!("Command timed out after {timeout_ms}ms")),
+    }
+}
+
+/// Simple shell escaping for a single argument.
+fn shell_escape(s: &str) -> String {
+    if s.chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
+    {
+        s.to_string()
+    } else {
+        format!("'{}'", s.replace('\'', "'\\''"))
     }
 }
 
