@@ -47,7 +47,7 @@ use crate::services::{
 };
 use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
-use crate::storage::models::{UpdateAppChannel, UpdateSession};
+use crate::storage::models::UpdateSession;
 
 use super::common::ErrorResponse;
 
@@ -386,18 +386,13 @@ async fn handle_slack_event(
             if slack_config.webhook_verified_at.is_none() {
                 let mut updated_config = slack_config.clone();
                 updated_config.webhook_verified_at = Some(Utc::now());
-                if let Ok(config_json) = serde_json::to_value(&updated_config) {
-                    let input = UpdateAppChannel {
-                        channel_config: Some(config_json),
-                        ..Default::default()
-                    };
-                    if let Err(e) = state
-                        .db
-                        .update_app_channel(slack_channel_internal_id, input)
+                if let Ok(config_json) = serde_json::to_value(&updated_config)
+                    && let Err(e) = state
+                        .app_service
+                        .update_channel_config_unscoped(slack_channel_internal_id, &config_json)
                         .await
-                    {
-                        tracing::warn!(app_id = %app_id, error = %e, "Failed to record webhook verification");
-                    }
+                {
+                    tracing::warn!(app_id = %app_id, error = %e, "Failed to record webhook verification");
                 }
             }
 
@@ -438,18 +433,13 @@ async fn handle_slack_event(
                 if slack_config.first_message_received_at.is_none() {
                     let mut updated_config = slack_config.clone();
                     updated_config.first_message_received_at = Some(Utc::now());
-                    if let Ok(config_json) = serde_json::to_value(&updated_config) {
-                        let input = UpdateAppChannel {
-                            channel_config: Some(config_json),
-                            ..Default::default()
-                        };
-                        if let Err(e) = state
-                            .db
-                            .update_app_channel(slack_channel_internal_id, input)
+                    if let Ok(config_json) = serde_json::to_value(&updated_config)
+                        && let Err(e) = state
+                            .app_service
+                            .update_channel_config_unscoped(slack_channel_internal_id, &config_json)
                             .await
-                        {
-                            tracing::warn!(app_id = %app_id, error = %e, "Failed to record first message timestamp");
-                        }
+                    {
+                        tracing::warn!(app_id = %app_id, error = %e, "Failed to record first message timestamp");
                     }
                 }
 

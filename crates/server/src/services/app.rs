@@ -426,6 +426,25 @@ impl AppService {
         self.db.delete_app_channel(channel_row.id).await
     }
 
+    /// Update channel config with proper encryption handling.
+    /// Used by webhook handlers (unauthenticated, no caller context).
+    pub async fn update_channel_config_unscoped(
+        &self,
+        channel_internal_id: Uuid,
+        config: &serde_json::Value,
+    ) -> Result<()> {
+        let (stored_plaintext, encrypted) = self.prepare_channel_config(config)?;
+        let input = UpdateAppChannel {
+            channel_config: Some(stored_plaintext),
+            channel_config_encrypted: encrypted,
+            ..Default::default()
+        };
+        self.db
+            .update_app_channel(channel_internal_id, input)
+            .await?;
+        Ok(())
+    }
+
     // ============================================
     // Lifecycle
     // ============================================
@@ -529,12 +548,44 @@ impl AppService {
             .parse()
             .unwrap_or_else(|_| AppId::from_uuid(row.id));
 
-        // Load channels from app_channels table
-        let channel_rows = self.db.list_app_channels(row.id).await.unwrap_or_default();
-        let channels: Vec<AppChannel> = channel_rows
-            .into_iter()
-            .map(|ch| self.channel_row_to_channel(ch))
-            .collect();
+        // Load channels from app_channels table; fall back to legacy columns
+        let channel_rows = match self.db.list_app_channels(row.id).await {
+            Ok(rows) => rows,
+            Err(err) => {
+                tracing::error!(
+                    app_id = %row.public_id,
+                    error = %err,
+                    "Failed to load app_channels; falling back to legacy columns"
+                );
+                Vec::new()
+            }
+        };
+        let channels: Vec<AppChannel> = if channel_rows.is_empty() {
+            // Fallback: synthesize a channel from legacy apps columns when no
+            // app_channels rows exist (e.g. incomplete migration, DB restore).
+            if let Some(ct) = ChannelType::from_str_opt(&row.channel_type) {
+                let config = self.decrypt_channel_config(
+                    row.channel_config_encrypted.as_deref(),
+                    &row.channel_config,
+                );
+                vec![AppChannel {
+                    public_id: AppChannelId::from_uuid(row.id),
+                    internal_id: row.id,
+                    channel_type: ct,
+                    channel_config: config,
+                    enabled: true,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                }]
+            } else {
+                Vec::new()
+            }
+        } else {
+            channel_rows
+                .into_iter()
+                .map(|ch| self.channel_row_to_channel(ch))
+                .collect()
+        };
 
         App {
             public_id,

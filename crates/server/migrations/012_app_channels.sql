@@ -22,11 +22,12 @@ CREATE TABLE app_channels (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     -- Unique public_id globally (for webhook lookup without app context)
-    UNIQUE (public_id)
+    UNIQUE (public_id),
+    -- Enforce typed-ID format
+    CONSTRAINT app_channels_public_id_format CHECK (public_id ~ '^appchan_[0-9a-f]{32}$')
 );
 
 CREATE INDEX idx_app_channels_app_id ON app_channels(app_id);
-CREATE INDEX idx_app_channels_public_id ON app_channels(public_id);
 
 CREATE TRIGGER update_app_channels_updated_at
     BEFORE UPDATE ON app_channels
@@ -35,8 +36,9 @@ CREATE TRIGGER update_app_channels_updated_at
 -- ============================================
 -- Data migration: copy existing app channels
 -- ============================================
--- Generate a new UUIDv7 public_id for each existing app's channel.
--- Use the app's public_id to derive a deterministic channel public_id.
+-- Each existing app gets one channel row. Uses gen_random_uuid() (v4) for
+-- the public_id suffix since UUIDv7 generation is not available in pure SQL
+-- on all Postgres versions. The typed-ID prefix 'appchan_' is prepended.
 
 INSERT INTO app_channels (app_id, public_id, channel_type, channel_config, channel_config_encrypted, enabled)
 SELECT

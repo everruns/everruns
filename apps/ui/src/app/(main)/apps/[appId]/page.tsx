@@ -278,12 +278,12 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     );
   }
 
-  const renderChannelForm = (isSaving: boolean) => (
+  const renderChannelForm = (isSaving: boolean, formId: string = "default") => (
     <div className="space-y-4">
       <div>
-        <Label htmlFor="signing_secret">Signing Secret</Label>
+        <Label htmlFor={`signing_secret_${formId}`}>Signing Secret</Label>
         <Input
-          id="signing_secret"
+          id={`signing_secret_${formId}`}
           type="password"
           value={editSigningSecret}
           onChange={(e) => setEditSigningSecret(e.target.value)}
@@ -296,9 +296,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       </div>
 
       <div>
-        <Label htmlFor="bot_token">Bot User OAuth Token</Label>
+        <Label htmlFor={`bot_token_${formId}`}>Bot User OAuth Token</Label>
         <Input
-          id="bot_token"
+          id={`bot_token_${formId}`}
           type="password"
           value={editBotToken}
           onChange={(e) => setEditBotToken(e.target.value)}
@@ -314,9 +314,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="team_id">Workspace ID (optional)</Label>
+          <Label htmlFor={`team_id_${formId}`}>Workspace ID (optional)</Label>
           <Input
-            id="team_id"
+            id={`team_id_${formId}`}
             value={editTeamId}
             onChange={(e) => setEditTeamId(e.target.value)}
             placeholder="T0123456789"
@@ -324,9 +324,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         </div>
 
         <div>
-          <Label htmlFor="channel_id">Channel ID (optional)</Label>
+          <Label htmlFor={`channel_id_${formId}`}>Channel ID (optional)</Label>
           <Input
-            id="channel_id"
+            id={`channel_id_${formId}`}
             value={editChannelIdField}
             onChange={(e) => setEditChannelIdField(e.target.value)}
             placeholder="C0123456789"
@@ -335,7 +335,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       </div>
 
       <div>
-        <Label htmlFor="session_strategy">Session Strategy</Label>
+        <Label htmlFor={`session_strategy_${formId}`}>Session Strategy</Label>
         <Select
           value={editSessionStrategy}
           onValueChange={(v) => setEditSessionStrategy(v as SessionStrategy)}
@@ -360,7 +360,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       </div>
 
       <div>
-        <Label htmlFor="reply_mode">Reply Mode</Label>
+        <Label htmlFor={`reply_mode_${formId}`}>Reply Mode</Label>
         <Select value={editReplyMode} onValueChange={(v) => setEditReplyMode(v as SlackReplyMode)}>
           <SelectTrigger>
             <SelectValue>
@@ -594,7 +594,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
               </CardHeader>
               <CardContent>
                 {editingChannelId === channel.id
-                  ? renderChannelForm(updateChannelMutation.isPending)
+                  ? renderChannelForm(updateChannelMutation.isPending, channel.id)
                   : renderChannelDisplay(channel)}
               </CardContent>
             </Card>
@@ -614,7 +614,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
               <CardHeader>
                 <CardTitle>Add Slack Channel</CardTitle>
               </CardHeader>
-              <CardContent>{renderChannelForm(addChannelMutation.isPending)}</CardContent>
+              <CardContent>{renderChannelForm(addChannelMutation.isPending, "new")}</CardContent>
             </Card>
           )}
 
