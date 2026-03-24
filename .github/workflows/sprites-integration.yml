@@ -2,15 +2,13 @@ name: Sprites Integration
 
 on:
   push:
-    branches: [main, claude/evaluate-sprites-integration-E5Tt0]
+    branches: [main]
     paths:
       - 'integrations/sprites/**'
-      - '.github/workflows/sprites-integration.yml'
   pull_request:
     branches: [main]
     paths:
       - 'integrations/sprites/**'
-      - '.github/workflows/sprites-integration.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
