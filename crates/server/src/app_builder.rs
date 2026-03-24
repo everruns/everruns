@@ -692,11 +692,16 @@ impl ServerAppBuilder {
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))
             .merge(api::slack_events::routes(slack_state))
-            .merge(api::feature_flags::routes(feature_flags_state))
-            .merge(api::mcp_endpoint::routes(mcp_endpoint_state));
+            .merge(api::feature_flags::routes(feature_flags_state));
 
         if let Some(notifications_state) = notifications_state {
             api_routes = api_routes.merge(api::notifications::routes(notifications_state));
+        }
+
+        if feature_flags.mcp_endpoint {
+            api_routes = api_routes.merge(api::mcp_endpoint::routes(mcp_endpoint_state));
+        } else {
+            tracing::info!("MCP endpoint disabled via feature flag");
         }
 
         // Auth-specific routes

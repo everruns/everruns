@@ -23,6 +23,8 @@ pub struct FeatureFlags {
     pub apps: bool,
     /// In-app notifications (bell, toasts, notification SSE). Standard.
     pub notifications: bool,
+    /// MCP endpoint (POST /mcp — Everruns as an MCP server). Experimental.
+    pub mcp_endpoint: bool,
 }
 
 impl FeatureFlags {
@@ -32,6 +34,7 @@ impl FeatureFlags {
             global_chat: experimental_flag("FEATURE_GLOBAL_CHAT", grade),
             apps: experimental_flag("FEATURE_APPS", grade),
             notifications: standard_flag("FEATURE_NOTIFICATIONS", false),
+            mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
         }
     }
 
@@ -41,6 +44,7 @@ impl FeatureFlags {
             "global_chat" => self.global_chat,
             "apps" => self.apps,
             "notifications" => self.notifications,
+            "mcp_endpoint" => self.mcp_endpoint,
             _ => false,
         }
     }
@@ -52,6 +56,7 @@ impl FeatureFlags {
             global_chat: true,
             apps: true,
             notifications: true,
+            mcp_endpoint: true,
         }
     }
 }
@@ -141,10 +146,12 @@ mod tests {
             global_chat: true,
             apps: true,
             notifications: true,
+            mcp_endpoint: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("apps"));
         assert!(flags.is_enabled("notifications"));
+        assert!(flags.is_enabled("mcp_endpoint"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -154,6 +161,7 @@ mod tests {
             global_chat: true,
             apps: true,
             notifications: true,
+            mcp_endpoint: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));

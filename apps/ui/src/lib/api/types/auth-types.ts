@@ -10,6 +10,7 @@ export interface FeatureFlags {
   global_chat: boolean;
   apps: boolean;
   notifications: boolean;
+  mcp_endpoint: boolean;
 }
 
 export interface AuthConfigResponse {

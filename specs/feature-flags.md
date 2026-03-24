@@ -31,6 +31,7 @@ System-level feature flags that control feature availability across the platform
 | `global_chat` | `FEATURE_GLOBAL_CHAT` | Experimental | Per-user singleton chat session |
 | `apps` | `FEATURE_APPS` | Experimental | Apps (agent deployment to distribution channels) |
 | `notifications` | `FEATURE_NOTIFICATIONS` | Standard | In-app notifications (bell, toast, notification SSE) |
+| `mcp_endpoint` | `FEATURE_MCP_ENDPOINT` | Experimental | MCP endpoint (POST /mcp — Everruns as an MCP server) |
 
 ## Architecture
 
