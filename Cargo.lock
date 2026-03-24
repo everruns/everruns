@@ -1792,6 +1792,7 @@ dependencies = [
  "axum",
  "axum-extra",
  "base64",
+ "bashkit",
  "chrono",
  "clap",
  "cron",

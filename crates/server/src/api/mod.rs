@@ -20,6 +20,7 @@ pub mod images;
 pub mod internal_images;
 pub mod llm_models;
 pub mod llm_providers;
+pub mod mcp_endpoint;
 pub mod mcp_servers;
 pub mod messages;
 pub mod notifications;
