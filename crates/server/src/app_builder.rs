@@ -305,6 +305,7 @@ impl ServerAppBuilder {
             },
             platform_definition.as_ref().clone(),
         );
+        seed::spawn_harness_reconciliation_task(db.clone(), platform_definition.as_ref().clone());
 
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(
