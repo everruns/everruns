@@ -23,8 +23,6 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 pub struct PrometheusConfig {
     /// Whether metrics collection is enabled.
     pub enabled: bool,
-    /// Metric name prefix (default: "everruns").
-    pub prefix: String,
     /// Optional separate bind address for the metrics server (e.g. "127.0.0.1:9090").
     /// When set, /metrics is served on a dedicated internal-only HTTP server
     /// instead of the main API server — keeping it off the public interface.
@@ -35,14 +33,12 @@ impl PrometheusConfig {
     /// Load from environment.
     ///
     /// - `METRICS_ENABLED`: enable/disable metrics (default: true)
-    /// - `METRICS_PREFIX`: metric name prefix (default: "everruns")
     /// - `METRICS_ADDR`: separate bind address for internal-only metrics server
     ///   (e.g. "127.0.0.1:9090"). When set, /metrics is NOT mounted on the main
     ///   API server. Recommended for production to avoid external exposure.
     pub fn from_env() -> Self {
         Self {
             enabled: env_bool("METRICS_ENABLED", true),
-            prefix: std::env::var("METRICS_PREFIX").unwrap_or_else(|_| "everruns".to_string()),
             metrics_addr: env_opt_string("METRICS_ADDR"),
         }
     }
@@ -117,7 +113,7 @@ pub mod names {
     pub const LOAD_RATIO: &str = "everruns_load_ratio";
     pub const DLQ_SIZE: &str = "everruns_dlq_size";
 
-    // Counters (absolute values set from DB cumulative totals)
+    // Counters (monotonic, emitted as deltas from DB cumulative totals)
     pub const TASKS_TOTAL: &str = "everruns_tasks_total";
     pub const WORKFLOWS_TOTAL: &str = "everruns_workflows_total";
 
@@ -128,7 +124,7 @@ pub mod names {
 }
 
 // ============================================================================
-// Gauge bridge: MetricsCollector → Prometheus gauges
+// Gauge bridge: MetricsCollector → Prometheus gauges + counters
 // ============================================================================
 
 use super::durable::MetricsCollector;
@@ -140,11 +136,18 @@ pub fn spawn_gauge_bridge(collector: MetricsCollector) {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
         tracing::info!("Prometheus gauge bridge started (10s interval)");
 
+        // Track last-seen counter values to emit deltas (counters are monotonic)
+        let mut last_tasks_completed: u64 = 0;
+        let mut last_tasks_failed: u64 = 0;
+        let mut last_tasks_started: u64 = 0;
+        let mut last_workflows_completed: u64 = 0;
+        let mut last_workflows_failed: u64 = 0;
+        let mut last_workflows_started: u64 = 0;
+
         loop {
             interval.tick().await;
 
-            let points = collector.get_points().await;
-            let Some(latest) = points.last() else {
+            let Some(latest) = collector.get_latest().await else {
                 continue;
             };
 
@@ -157,22 +160,55 @@ pub fn spawn_gauge_bridge(collector: MetricsCollector) {
             metrics::gauge!(names::LOAD_RATIO).set(latest.load_percentage / 100.0);
             metrics::gauge!(names::DLQ_SIZE).set(latest.dlq_size as f64);
 
-            // Counters — set to absolute DB totals.
-            // The `metrics` crate counters only support increment, so we track
-            // the delta from the last emitted value.  Use absolute() on gauge
-            // instead to emit the raw DB counter (Prometheus can compute rate).
-            metrics::gauge!(names::TASKS_TOTAL, "status" => "completed")
-                .set(latest.tasks_completed_total as f64);
-            metrics::gauge!(names::TASKS_TOTAL, "status" => "failed")
-                .set(latest.tasks_failed_total as f64);
-            metrics::gauge!(names::TASKS_TOTAL, "status" => "started")
-                .set(latest.tasks_started_total as f64);
-            metrics::gauge!(names::WORKFLOWS_TOTAL, "status" => "completed")
-                .set(latest.workflows_completed_total as f64);
-            metrics::gauge!(names::WORKFLOWS_TOTAL, "status" => "failed")
-                .set(latest.workflows_failed_total as f64);
-            metrics::gauge!(names::WORKFLOWS_TOTAL, "status" => "started")
-                .set(latest.workflows_started_total as f64);
+            // Counters — emit deltas from DB cumulative totals so Prometheus
+            // sees a proper monotonic counter (compatible with rate() queries).
+            let emit_delta =
+                |name: &'static str, label: &'static str, current: u64, last: &mut u64| {
+                    if current >= *last {
+                        let delta = current - *last;
+                        if delta > 0 {
+                            metrics::counter!(name, "status" => label).increment(delta);
+                        }
+                        *last = current;
+                    }
+                };
+
+            emit_delta(
+                names::TASKS_TOTAL,
+                "completed",
+                latest.tasks_completed_total,
+                &mut last_tasks_completed,
+            );
+            emit_delta(
+                names::TASKS_TOTAL,
+                "failed",
+                latest.tasks_failed_total,
+                &mut last_tasks_failed,
+            );
+            emit_delta(
+                names::TASKS_TOTAL,
+                "started",
+                latest.tasks_started_total,
+                &mut last_tasks_started,
+            );
+            emit_delta(
+                names::WORKFLOWS_TOTAL,
+                "completed",
+                latest.workflows_completed_total,
+                &mut last_workflows_completed,
+            );
+            emit_delta(
+                names::WORKFLOWS_TOTAL,
+                "failed",
+                latest.workflows_failed_total,
+                &mut last_workflows_failed,
+            );
+            emit_delta(
+                names::WORKFLOWS_TOTAL,
+                "started",
+                latest.workflows_started_total,
+                &mut last_workflows_started,
+            );
         }
     });
 }
@@ -186,15 +222,19 @@ use axum::middleware::Next;
 
 /// Axum middleware layer that records `everruns_http_request_duration_seconds`
 /// histogram with labels `method`, `path`, `status`.
+///
+/// Must be applied as `route_layer` (not `layer`) so `MatchedPath` is available.
 pub async fn http_metrics_layer(
     matched_path: Option<MatchedPath>,
     req: axum::extract::Request,
     next: Next,
 ) -> impl IntoResponse {
     let method = req.method().clone();
+    // Use matched route template for low-cardinality labels.
+    // Fall back to "unmatched" to avoid cardinality explosion from 404 scans.
     let path = matched_path
         .map(|mp| mp.as_str().to_owned())
-        .unwrap_or_else(|| req.uri().path().to_owned());
+        .unwrap_or_else(|| "unmatched".to_owned());
 
     let start = std::time::Instant::now();
     let response = next.run(req).await;
@@ -273,8 +313,9 @@ mod tests {
 
     #[test]
     fn config_defaults_enabled() {
+        // Note: this test reads real env vars; METRICS_ENABLED unset → defaults true.
+        // If CI sets METRICS_ENABLED=false this will fail — intentional canary.
         let config = PrometheusConfig::from_env();
         assert!(config.enabled);
-        assert_eq!(config.prefix, "everruns");
     }
 }

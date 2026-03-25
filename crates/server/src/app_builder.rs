@@ -820,17 +820,17 @@ impl ServerAppBuilder {
                 ),
             ));
 
-        // HTTP request duration histogram (must be before TraceLayer so it
-        // wraps the full request lifecycle including tracing overhead)
+        let app = app.layer(TraceLayer::new_for_http());
+
+        // HTTP request duration histogram: applied as route_layer so axum's
+        // MatchedPath extractor is available for low-cardinality path labels.
         let app = if prometheus_handle.is_some() {
-            app.layer(axum::middleware::from_fn(
+            app.route_layer(axum::middleware::from_fn(
                 api::prometheus::http_metrics_layer,
             ))
         } else {
             app
         };
-
-        let app = app.layer(TraceLayer::new_for_http());
 
         // =====================================================================
         // Phase 7: Background tasks

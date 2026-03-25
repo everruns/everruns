@@ -638,6 +638,11 @@ impl MetricsCollector {
     pub async fn get_points(&self) -> Vec<MetricsPoint> {
         self.points.read().await.iter().cloned().collect()
     }
+
+    /// Get the most recent point without cloning the entire buffer.
+    pub async fn get_latest(&self) -> Option<MetricsPoint> {
+        self.points.read().await.back().cloned()
+    }
 }
 
 // ============================================================================
