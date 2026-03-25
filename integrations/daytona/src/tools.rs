@@ -183,28 +183,25 @@ impl Tool for DaytonaCreateSandboxTool {
             "autoDeleteInterval": AUTO_DELETE_INTERVAL_MINUTES,
             "labels": labels,
         });
-        // Resolve snapshot: explicit snapshot > size tier > default
+        // Resolve snapshot: explicit snapshot > size tier > default (small)
         let explicit_snapshot = arguments
             .get("snapshot")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
             .map(|s| s.to_string());
         let size = arguments.get("size").and_then(|v| v.as_str());
 
         let snapshot_name = if let Some(snap) = &explicit_snapshot {
             snap.clone()
-        } else if let Some(sz) = size {
+        } else {
+            let sz = size.unwrap_or("small");
             match snapshot_for_size(sz) {
                 Ok(name) => name.to_string(),
                 Err(e) => return ToolExecutionResult::tool_error(&e),
             }
-        } else {
-            // Default: no explicit snapshot, Daytona uses its org default
-            String::new()
         };
 
-        if !snapshot_name.is_empty() {
-            create_body["snapshot"] = json!(snapshot_name);
-        }
+        create_body["snapshot"] = json!(snapshot_name);
 
         // Create sandbox
         debug!("Creating Daytona sandbox: {title}");

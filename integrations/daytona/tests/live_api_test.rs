@@ -84,8 +84,7 @@ async fn create_test_sandbox(api_key: String, label: &str) -> (DaytonaClient, Sa
 
     let info = client
         .create_sandbox(json!({
-            "image": "ubuntu:22.04",
-            "cpu": 1, "memory": 1,
+            "snapshot": "daytona-small",
             "labels": {"everruns-test": label}
         }))
         .await
