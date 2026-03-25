@@ -15,6 +15,16 @@ pub async fn run(
     timeout_secs: Option<u64>,
     no_stream: bool,
 ) -> Result<()> {
+    // Snapshot the last event ID *before* sending the message so the polling
+    // loop only sees events from the new turn, not replayed events from
+    // earlier turns.
+    let mut last_event_id: Option<String> = if no_stream {
+        None
+    } else {
+        let existing = client.events().list(&session_id).await?;
+        existing.data.last().map(|e| e.id.clone())
+    };
+
     // Create the message
     client.messages().create(&session_id, &message).await?;
 
@@ -30,7 +40,6 @@ pub async fn run(
     let start = Instant::now();
     let timeout = timeout_secs.map(Duration::from_secs);
     let poll_interval = Duration::from_millis(500);
-    let mut last_event_id: Option<String> = None;
     let mut agent_content = String::new();
 
     loop {
