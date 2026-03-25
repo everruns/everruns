@@ -918,6 +918,207 @@ async fn test_list_events() {
     assert!(data["data"].is_array());
 }
 
+/// Tests the events endpoint with limit=1 returns only the last event
+/// (used by CLI chat to efficiently snapshot before sending a message).
+#[tokio::test]
+async fn test_list_events_limit_one_returns_last_event() {
+    let server = TestServer::in_memory().await;
+
+    // Create agent and session
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Events Limit Test Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Create a message to generate events
+    let _: Value = server
+        .post(
+            &format!("/v1/sessions/{}/messages", session.id),
+            json!({
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "First message"}]
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Get all events
+    let all_events: Value = server
+        .get(&format!("/v1/sessions/{}/events", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let all_data = all_events["data"].as_array().unwrap();
+    assert!(
+        !all_data.is_empty(),
+        "Should have at least one event after message creation"
+    );
+    let last_event_id = all_data.last().unwrap()["id"].as_str().unwrap();
+
+    // Get events with limit=1 — should return only the last event
+    let limited: Value = server
+        .get(&format!("/v1/sessions/{}/events?limit=1", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let limited_data = limited["data"].as_array().unwrap();
+    assert_eq!(
+        limited_data.len(),
+        1,
+        "limit=1 should return exactly one event"
+    );
+    assert_eq!(
+        limited_data[0]["id"].as_str().unwrap(),
+        last_event_id,
+        "limit=1 should return the last event"
+    );
+}
+
+/// Tests the events endpoint with since_id returns only events after the given ID
+/// (used by CLI chat SSE streaming to avoid replaying old events).
+#[tokio::test]
+async fn test_list_events_since_id_filters_old_events() {
+    let server = TestServer::in_memory().await;
+
+    // Create agent and session
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "Events SinceId Test Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": SEED_BASE_HARNESS_ID,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Create first message
+    let _: Value = server
+        .post(
+            &format!("/v1/sessions/{}/messages", session.id),
+            json!({
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "First message"}]
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Snapshot the last event ID
+    let events_after_first: Value = server
+        .get(&format!("/v1/sessions/{}/events?limit=1", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let snapshot_id = events_after_first["data"][0]["id"].as_str().unwrap();
+
+    // Get count of events before second message
+    let all_before: Value = server
+        .get(&format!("/v1/sessions/{}/events", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let count_before = all_before["data"].as_array().unwrap().len();
+
+    // Create second message
+    let _: Value = server
+        .post(
+            &format!("/v1/sessions/{}/messages", session.id),
+            json!({
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Second message"}]
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Get events since snapshot — should NOT include events from the first message
+    let events_since: Value = server
+        .get(&format!(
+            "/v1/sessions/{}/events?since_id={}",
+            session.id, snapshot_id
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let since_data = events_since["data"].as_array().unwrap();
+
+    // Should have new events from the second message, but none from before the snapshot
+    assert!(
+        !since_data.is_empty(),
+        "Should have events after second message"
+    );
+
+    // Verify no event ID matches the snapshot or any earlier event
+    let all_before_ids: Vec<&str> = all_before["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["id"].as_str().unwrap())
+        .collect();
+    for event in since_data {
+        let event_id = event["id"].as_str().unwrap();
+        assert!(
+            !all_before_ids.contains(&event_id),
+            "since_id should exclude event {event_id} which existed before snapshot"
+        );
+    }
+
+    // Total events should be: before + new since events
+    let all_after: Value = server
+        .get(&format!("/v1/sessions/{}/events", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let count_after = all_after["data"].as_array().unwrap().len();
+    assert_eq!(
+        count_after,
+        count_before + since_data.len(),
+        "All events = events before snapshot + events since snapshot"
+    );
+}
+
 // ============================================
 // LLM Provider Tests
 // ============================================
