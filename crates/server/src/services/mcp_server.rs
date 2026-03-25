@@ -1,5 +1,7 @@
 // MCP Server service for business logic
 // Handles MCP server CRUD and tool discovery/caching
+//
+// Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (detail)
 
 use crate::storage::{
     EncryptionService, McpServerRow, StorageBackend,

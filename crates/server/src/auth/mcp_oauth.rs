@@ -1,5 +1,7 @@
 // MCP OAuth 2.1 endpoints (backend-agnostic)
 //
+// Spec: specs/mcp.md (umbrella), specs/mcp-oauth.md (detail)
+//
 // Decision: Same pattern as CLI auth — authorize endpoint uses AuthUser extractor,
 // works with any auth backend (builtin, PropelAuth, Auth0, etc.).
 // Decision: PKCE mandatory (S256 only). No implicit grant.

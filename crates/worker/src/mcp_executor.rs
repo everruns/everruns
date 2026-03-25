@@ -1,7 +1,9 @@
 // MCP Tool Executor
 //
+// Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (execution detail)
+//
 // Handles execution of MCP tools by calling remote MCP servers.
-// MCP tools are identified by their prefixed name: "mcp_{server_name}_{tool_name}"
+// MCP tools are identified by their prefixed name: "mcp_{server_name}__{tool_name}"
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;

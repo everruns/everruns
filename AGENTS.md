@@ -92,7 +92,8 @@ Always make sure you are working on top of latest main from remote.
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system
 - `specs/agent-instructions.md` - AGENTS.md support (dynamic project instructions)
-- `specs/mcp-servers.md` - MCP server registration
+- `specs/mcp.md` - **MCP umbrella spec** (protocol, architecture, crate map, security)
+- `specs/mcp-servers.md` - MCP server registration, CRUD API, tool naming, execution
 - `specs/llm-drivers.md` - LLM driver trait, provider implementations
 - `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
 - `specs/scheduled-tasks.md` - Cron-based scheduled tasks for durable engine

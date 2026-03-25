@@ -1,5 +1,7 @@
 # MCP OAuth Specification
 
+> Part of the [MCP spec family](mcp.md). This document covers OAuth 2.1 endpoints, dynamic client registration, PKCE, and token lifecycle for inbound MCP clients.
+
 ## Abstract
 
 MCP OAuth enables third-party MCP clients to authenticate with Everruns using OAuth 2.1 with PKCE. This allows tools like Claude Desktop, Cursor, and other MCP-compatible clients to connect to Everruns as an MCP server with proper user authorization.
