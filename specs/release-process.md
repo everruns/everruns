@@ -79,6 +79,12 @@ The `Publish CLI Binaries` workflow builds and attaches pre-built CLI binaries t
 
 Each archive contains the `everruns` binary. SHA-256 checksums (`.sha256` files) are included for verification. These assets are used by the Homebrew formula for installation.
 
+### Homebrew Formula Update
+
+After all CLI binaries are built and uploaded, the `Publish CLI Binaries` workflow automatically updates the Homebrew formula at `everruns/homebrew-tap`. It downloads the SHA-256 checksums from the release, generates an updated `Formula/everruns.rb`, and pushes it to the tap repository.
+
+**Auth:** Uses the `GITHUB_TOKEN` PAT from Doppler (via `DOPPLER_TOKEN` secret), which has push access to `everruns/homebrew-tap`.
+
 ### Docker Image Tagging
 
 | Event | Tags Generated |
