@@ -18,6 +18,25 @@ use crate::{
     EXEC_TIMEOUT_MS, LEASE_HEARTBEAT_INTERVAL,
 };
 
+// Daytona REST API does not support per-sandbox resource overrides for snapshot-based creation.
+// Instead, select a pre-built snapshot that matches the desired resource tier.
+// See: https://github.com/daytonaio/daytona/issues/2296
+
+/// Map a size tier to the corresponding Daytona snapshot name.
+fn snapshot_for_size(size: &str) -> Result<&'static str, String> {
+    match size {
+        "small" => Ok("daytona-small"),
+        "medium" => Ok("daytona-medium"),
+        "large" => Ok("daytona-large"),
+        _ => Err(
+            "Invalid 'size': must be one of: small (1 vCPU, 1 GiB RAM, 3 GiB disk), \
+             medium (2 vCPU, 4 GiB RAM, 8 GiB disk), \
+             large (4 vCPU, 8 GiB RAM, 10 GiB disk)"
+                .to_string(),
+        ),
+    }
+}
+
 /// Parse an optional integer resource parameter, validating type and range.
 fn parse_resource_param(
     arguments: &Value,
@@ -64,30 +83,15 @@ impl Tool for DaytonaCreateSandboxTool {
                     "type": "string",
                     "description": "Sandbox name (optional)"
                 },
-                "image": {
+                "size": {
                     "type": "string",
-                    "description": "Container image (optional, uses Daytona default if omitted)"
+                    "description": "Sandbox size: small (1 vCPU, 1 GiB RAM, 3 GiB disk), medium (2 vCPU, 4 GiB RAM, 8 GiB disk), or large (4 vCPU, 8 GiB RAM, 10 GiB disk). Default: small.",
+                    "enum": ["small", "medium", "large"],
+                    "default": "small"
                 },
-                "cpu": {
-                    "type": "integer",
-                    "description": "Number of vCPUs (1-4, default: 1)",
-                    "minimum": 1,
-                    "maximum": 4,
-                    "default": 1
-                },
-                "memory": {
-                    "type": "integer",
-                    "description": "Memory in GiB (1-8, default: 1)",
-                    "minimum": 1,
-                    "maximum": 8,
-                    "default": 1
-                },
-                "disk": {
-                    "type": "integer",
-                    "description": "Disk size in GiB (1-10, default: 3)",
-                    "minimum": 1,
-                    "maximum": 10,
-                    "default": 3
+                "snapshot": {
+                    "type": "string",
+                    "description": "Daytona snapshot name (advanced, overrides size). Use size parameter for standard tiers."
                 },
                 "auto_stop_minutes": {
                     "type": "integer",
@@ -179,35 +183,27 @@ impl Tool for DaytonaCreateSandboxTool {
             "autoDeleteInterval": AUTO_DELETE_INTERVAL_MINUTES,
             "labels": labels,
         });
-        if let Some(image) = arguments.get("image").and_then(|v| v.as_str()) {
-            create_body["image"] = json!(image);
-        }
+        // Resolve snapshot: explicit snapshot > size tier > default
+        let explicit_snapshot = arguments
+            .get("snapshot")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let size = arguments.get("size").and_then(|v| v.as_str());
 
-        // Parse and validate resource constraints
-        let cpu = match parse_resource_param(&arguments, "cpu", 1, 4) {
-            Ok(v) => v,
-            Err(e) => return ToolExecutionResult::tool_error(&e),
-        };
-        let memory = match parse_resource_param(&arguments, "memory", 1, 8) {
-            Ok(v) => v,
-            Err(e) => return ToolExecutionResult::tool_error(&e),
-        };
-        let disk = match parse_resource_param(&arguments, "disk", 1, 10) {
-            Ok(v) => v,
-            Err(e) => return ToolExecutionResult::tool_error(&e),
-        };
-        if cpu.is_some() || memory.is_some() || disk.is_some() {
-            let mut resources = serde_json::Map::new();
-            if let Some(cpu) = cpu {
-                resources.insert("cpu".to_string(), json!(cpu));
+        let snapshot_name = if let Some(snap) = &explicit_snapshot {
+            snap.clone()
+        } else if let Some(sz) = size {
+            match snapshot_for_size(sz) {
+                Ok(name) => name.to_string(),
+                Err(e) => return ToolExecutionResult::tool_error(&e),
             }
-            if let Some(memory) = memory {
-                resources.insert("memory".to_string(), json!(memory));
-            }
-            if let Some(disk) = disk {
-                resources.insert("disk".to_string(), json!(disk));
-            }
-            create_body["resources"] = json!(resources);
+        } else {
+            // Default: no explicit snapshot, Daytona uses its org default
+            String::new()
+        };
+
+        if !snapshot_name.is_empty() {
+            create_body["snapshot"] = json!(snapshot_name);
         }
 
         // Create sandbox

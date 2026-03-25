@@ -723,11 +723,12 @@ async fn test_client_sends_bearer_auth() {
 async fn test_create_sandbox_with_resources_via_client() {
     let mock_server = MockServer::start().await;
 
+    // Daytona REST API expects cpu/memory/disk as top-level fields
     Mock::given(method("POST"))
         .and(path("/sandbox"))
         .and(wiremock::matchers::body_json(json!({
             "name": "Resource Test",
-            "resources": {"cpu": 2, "memory": 4, "disk": 8}
+            "cpu": 2, "memory": 4, "disk": 8
         })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "sb_resource",
@@ -744,7 +745,7 @@ async fn test_create_sandbox_with_resources_via_client() {
     let info = client
         .create_sandbox(json!({
             "name": "Resource Test",
-            "resources": {"cpu": 2, "memory": 4, "disk": 8}
+            "cpu": 2, "memory": 4, "disk": 8
         }))
         .await
         .unwrap();
@@ -755,11 +756,12 @@ async fn test_create_sandbox_with_resources_via_client() {
 async fn test_create_sandbox_partial_resources_via_client() {
     let mock_server = MockServer::start().await;
 
+    // Daytona REST API expects disk as a top-level field
     Mock::given(method("POST"))
         .and(path("/sandbox"))
         .and(wiremock::matchers::body_json(json!({
             "name": "Partial",
-            "resources": {"disk": 5}
+            "disk": 5
         })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "sb_partial",
@@ -775,7 +777,7 @@ async fn test_create_sandbox_partial_resources_via_client() {
     let info = client
         .create_sandbox(json!({
             "name": "Partial",
-            "resources": {"disk": 5}
+            "disk": 5
         }))
         .await
         .unwrap();
@@ -783,7 +785,7 @@ async fn test_create_sandbox_partial_resources_via_client() {
 }
 
 #[tokio::test]
-async fn test_create_sandbox_tool_rejects_invalid_cpu() {
+async fn test_create_sandbox_tool_rejects_invalid_size() {
     let tool = get_tool("daytona_create_sandbox");
     let session_id = SessionId::new();
     let store = Arc::new(MockStorageStore::new());
@@ -791,55 +793,15 @@ async fn test_create_sandbox_tool_rejects_invalid_cpu() {
         .with_connection_resolver(daytona_resolver());
 
     let result = tool
-        .execute_with_context(json!({"cpu": 10}), &context)
+        .execute_with_context(json!({"size": "huge"}), &context)
         .await;
 
     match result {
         ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("cpu"), "Got: {msg}");
-            assert!(msg.contains("between 1 and 4"), "Got: {msg}");
-        }
-        other => panic!("Expected ToolError, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn test_create_sandbox_tool_rejects_zero_memory() {
-    let tool = get_tool("daytona_create_sandbox");
-    let session_id = SessionId::new();
-    let store = Arc::new(MockStorageStore::new());
-    let context = ToolContext::with_storage_store(session_id, store)
-        .with_connection_resolver(daytona_resolver());
-
-    let result = tool
-        .execute_with_context(json!({"memory": 0}), &context)
-        .await;
-
-    match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("memory"), "Got: {msg}");
-            assert!(msg.contains("between 1 and 8"), "Got: {msg}");
-        }
-        other => panic!("Expected ToolError, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn test_create_sandbox_tool_rejects_string_disk() {
-    let tool = get_tool("daytona_create_sandbox");
-    let session_id = SessionId::new();
-    let store = Arc::new(MockStorageStore::new());
-    let context = ToolContext::with_storage_store(session_id, store)
-        .with_connection_resolver(daytona_resolver());
-
-    let result = tool
-        .execute_with_context(json!({"disk": "big"}), &context)
-        .await;
-
-    match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("disk"), "Got: {msg}");
-            assert!(msg.contains("positive integer"), "Got: {msg}");
+            assert!(msg.contains("size"), "Got: {msg}");
+            assert!(msg.contains("small"), "Got: {msg}");
+            assert!(msg.contains("medium"), "Got: {msg}");
+            assert!(msg.contains("large"), "Got: {msg}");
         }
         other => panic!("Expected ToolError, got: {other:?}"),
     }
