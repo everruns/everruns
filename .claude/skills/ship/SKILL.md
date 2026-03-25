@@ -28,6 +28,7 @@ Use this skill when the user asks to:
    - Do not ship from `main` or `master`.
    - The working tree must be clean before the final push.
    - Rebase onto the latest `origin/main` before merge.
+   - **After rebasing**, check `crates/server/migrations/` for duplicate version numbers. Migrations are the most common conflict source. Renumber your migration if a conflict exists.
 2. The requested goal is achieved with evidence.
    - Review the delta with `git diff origin/main...HEAD` and `git log origin/main..HEAD`.
    - Confirm the requested behavior is actually implemented.
