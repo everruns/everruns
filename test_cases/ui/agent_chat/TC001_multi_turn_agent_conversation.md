@@ -29,6 +29,9 @@ Verify that a user can open a direct chat session with an agent, send a message,
 7. Send turn 2 message in the same session
 8. Wait for the full streamed response to complete
 9. Verify the response contains multiple jokes
+10. Verify that the conversation thread shows both user messages and both agent responses in chronological order (turn 1 user + agent, then turn 2 user + agent)
+11. Refresh the page (browser reload) or navigate away and return to the same session
+12. Verify that the full conversation history (both turns and responses) is still visible and unchanged
 
 ## Expected Result
 
