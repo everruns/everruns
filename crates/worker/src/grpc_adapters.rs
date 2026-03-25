@@ -791,8 +791,8 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         model_id: model_id.map(|u| u.into()),
         capabilities,
         tools: vec![],
-        system_prompt: None,
-        initial_files: vec![],
+        system_prompt: proto_session.system_prompt.clone(),
+        initial_files: serde_json::from_str(&proto_session.initial_files_json).unwrap_or_default(),
         hints: proto_session.hints.as_ref().and_then(|s| {
             let json = everruns_internal_protocol::proto_struct_to_json(s);
             match serde_json::from_value(json) {

@@ -78,6 +78,8 @@ impl WorkerService for WorkerServiceImpl {
                 let json = serde_json::to_value(h).unwrap_or_default();
                 everruns_internal_protocol::json_to_proto_struct(&json)
             }),
+            system_prompt: session.system_prompt.clone(),
+            initial_files_json: serde_json::to_string(&session.initial_files).unwrap_or_default(),
         };
 
         // Load messages from events using EventService with limit
@@ -301,6 +303,8 @@ impl WorkerService for WorkerServiceImpl {
                 let json = serde_json::to_value(h).unwrap_or_default();
                 everruns_internal_protocol::json_to_proto_struct(&json)
             }),
+            system_prompt: s.system_prompt.clone(),
+            initial_files_json: serde_json::to_string(&s.initial_files).unwrap_or_default(),
         });
 
         Ok(Response::new(GetSessionResponse {
@@ -358,6 +362,8 @@ impl WorkerService for WorkerServiceImpl {
                 let json = serde_json::to_value(h).unwrap_or_default();
                 everruns_internal_protocol::json_to_proto_struct(&json)
             }),
+            system_prompt: session.system_prompt.clone(),
+            initial_files_json: serde_json::to_string(&session.initial_files).unwrap_or_default(),
         };
 
         Ok(Response::new(SetSessionStatusResponse {
@@ -415,6 +421,8 @@ impl WorkerService for WorkerServiceImpl {
                 let json = serde_json::to_value(h).unwrap_or_default();
                 everruns_internal_protocol::json_to_proto_struct(&json)
             }),
+            system_prompt: session.system_prompt.clone(),
+            initial_files_json: serde_json::to_string(&session.initial_files).unwrap_or_default(),
         };
 
         Ok(Response::new(SetSessionTitleResponse {

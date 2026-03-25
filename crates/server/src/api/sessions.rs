@@ -28,7 +28,7 @@ use super::common::{
     ApiOptionExt, ApiPolicyResultExt, ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse,
     Pagination, deserialize_nullable_update_field, impl_auth_state,
 };
-use super::validation::normalize_locale;
+use super::validation::{self, normalize_locale};
 use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -342,6 +342,16 @@ pub async fn create_session(
     } else {
         (None, None)
     };
+
+    // Validate session-level system_prompt and initial_files
+    if let Some(ref prompt) = req.system_prompt {
+        validation::validate_agent_system_prompt(prompt)
+            .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
+    }
+    if !req.initial_files.is_empty() {
+        validation::validate_initial_files(&req.initial_files)
+            .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
+    }
 
     let caller = Caller::from(&org);
     let session = state

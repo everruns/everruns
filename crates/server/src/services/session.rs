@@ -228,8 +228,8 @@ impl SessionService {
             model_id: None,
             capabilities: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
+            system_prompt: req.system_prompt.clone(),
+            initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             hints: None,
             blueprint_id: Some(blueprint_id),
             blueprint_config,
@@ -237,6 +237,19 @@ impl SessionService {
         let row = self.db.create_session(input).await?;
         let mut session = Self::row_to_session(row, org_public_id);
         self.populate_features(org_id, &mut session).await?;
+
+        // Apply session-level initial files to the session filesystem
+        if !req.initial_files.is_empty() {
+            self.apply_initial_files(
+                org_id,
+                harness_id.uuid(),
+                None, // Blueprint sessions have no agent
+                &req.initial_files,
+                session.id.uuid(),
+            )
+            .await?;
+        }
+
         Ok(session)
     }
 

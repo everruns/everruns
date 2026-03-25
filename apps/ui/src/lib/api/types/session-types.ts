@@ -71,7 +71,7 @@ export interface CreateSessionRequest {
   tags?: string[];
   model_id?: string;
   /** Session-level system prompt override (prepended to agent prompt) */
-  system_prompt?: string;
+  system_prompt?: string | null;
   /** Session-level initial files (additive to agent initial_files) */
   initial_files?: InitialFile[];
   /**
