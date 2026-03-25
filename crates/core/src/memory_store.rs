@@ -256,7 +256,14 @@ pub trait MemoryStoreBackend: Send + Sync {
     async fn recall(&self, query: MemoryQuery) -> crate::error::Result<(Vec<Memory>, usize)>;
 
     /// Soft-delete (deactivate) a memory.
-    async fn forget(&self, memory_id: MemoryId) -> crate::error::Result<bool>;
+    ///
+    /// `store_id` is required so implementations can enforce org-scoped
+    /// ownership: the memory must belong to the given store.
+    async fn forget(
+        &self,
+        store_id: MemoryStoreId,
+        memory_id: MemoryId,
+    ) -> crate::error::Result<bool>;
 
     /// Count active memories in a store.
     async fn count_active(&self, store_id: MemoryStoreId) -> crate::error::Result<usize>;

@@ -12,7 +12,7 @@ within an organization.
   automatically.
 - **Memory** — A single unit of knowledge: short text content plus optional
   rich content parts (images, references). Tagged, importance-scored,
-  deduplicated on write.
+  validated on write.
 - **MemoryContentPart** — Reuses the same discriminated-union shape as message
   `ContentPart` (text + image variants). Recall returns multicontent so the LLM
   sees both text and images inline.
@@ -23,7 +23,7 @@ within an organization.
 {
   "ref": "memory",
   "config": {
-    "store": "memstore_abc123",
+    "store": "mst_abc123",
     "passive_recall_count": 5
   }
 }
@@ -40,7 +40,7 @@ When `store` is omitted, the agent uses the org's default memory store.
 
 ### `remember`
 
-Create or update a memory.
+Create a memory in the active store.
 
 ```json
 {
@@ -49,15 +49,15 @@ Create or update a memory.
     "content": { "type": "string", "maxLength": 2000, "description": "1-3 sentence knowledge to persist" },
     "kind": { "type": "string", "enum": ["fact", "preference", "correction", "procedure", "context"], "default": "fact" },
     "importance": { "type": "integer", "minimum": 1, "maximum": 10, "default": 5 },
-    "tags": { "type": "array", "items": { "type": "string" }, "maxItems": 10 }
+    "tags": { "type": "array", "items": { "type": "string" }, "maxItems": 10 },
+    "images": { "type": "array", "items": { "type": "object", "properties": { "base64": { "type": "string" }, "media_type": { "type": "string" } }, "required": ["base64", "media_type"] }, "maxItems": 4, "description": "Optional image attachments" }
   },
   "required": ["content"],
   "additionalProperties": false
 }
 ```
 
-Returns `{ "memory_id": "mem_xxx", "created": true }` or
-`{ "memory_id": "mem_xxx", "created": false, "note": "merged with existing similar memory" }`.
+Returns `{ "memory_id": "mem_xxx", "created": true }`.
 
 ### `recall`
 
@@ -88,7 +88,7 @@ Response uses `MemoryContentPart` array per memory (same shape as message `Conte
       "created_at": "2026-03-24T12:00:00Z",
       "content_parts": [
         { "type": "text", "text": "Don't use unwrap() in production code..." },
-        { "type": "image", "url": "data:image/png;base64,...", "media_type": "image/png" }
+        { "type": "image", "base64": "iVBORw0KGgo=...", "media_type": "image/png" }
       ],
       "tags": ["rust", "error-handling"]
     }
@@ -127,7 +127,7 @@ Core types:
 
 | Limit | Default | Scope | Notes |
 |-------|---------|-------|-------|
-| Active memories per store | 10,000 | Per-store | Oldest low-importance auto-archived beyond this |
+| Active memories per store | 10,000 | Per-store | Hard cap; `remember` returns error when full |
 | Stores per org | 50 | Per-org | |
 | Memory content length | 2,000 chars | Per-memory | Hard cap |
 | Tags per memory | 10 | Per-memory | |

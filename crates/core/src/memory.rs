@@ -1176,9 +1176,12 @@ impl MemoryStoreBackend for InMemoryMemoryStore {
         Ok((results, total))
     }
 
-    async fn forget(&self, memory_id: MemoryId) -> Result<bool> {
+    async fn forget(&self, store_id: MemoryStoreId, memory_id: MemoryId) -> Result<bool> {
         let mut memories = self.memories.write().await;
-        if let Some(m) = memories.iter_mut().find(|m| m.id == memory_id && m.active) {
+        if let Some(m) = memories
+            .iter_mut()
+            .find(|m| m.id == memory_id && m.store_id == store_id && m.active)
+        {
             m.active = false;
             m.updated_at = chrono::Utc::now();
             Ok(true)

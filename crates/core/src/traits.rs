@@ -803,6 +803,8 @@ impl std::fmt::Debug for ToolContext {
                 &self.leased_resource_store.is_some(),
             )
             .field("event_emitter", &self.event_emitter.is_some())
+            .field("memory_store", &self.memory_store.is_some())
+            .field("org_id", &self.org_id)
             .finish()
     }
 }

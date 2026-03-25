@@ -117,9 +117,26 @@ async fn resolve_store_id(
         .ok_or_else(|| ToolExecutionResult::tool_error("Memory store not available"))?;
 
     if let Some(ref store_str) = config.store {
-        store_str
-            .parse::<MemoryStoreId>()
-            .map_err(|_| ToolExecutionResult::tool_error(format!("Invalid store ID: {store_str}")))
+        let store_id = store_str.parse::<MemoryStoreId>().map_err(|_| {
+            ToolExecutionResult::tool_error(format!("Invalid store ID: {store_str}"))
+        })?;
+        // Verify the store exists and belongs to this org
+        let org_id = context
+            .org_id
+            .ok_or_else(|| ToolExecutionResult::tool_error("Org ID not available for memory"))?;
+        let store = backend
+            .get_store(store_id)
+            .await
+            .map_err(|e| ToolExecutionResult::tool_error(format!("Failed to get store: {e}")))?
+            .ok_or_else(|| {
+                ToolExecutionResult::tool_error(format!("Memory store not found: {store_str}"))
+            })?;
+        if store.org_id != org_id {
+            return Err(ToolExecutionResult::tool_error(format!(
+                "Memory store not found: {store_str}"
+            )));
+        }
+        Ok(store_id)
     } else {
         let org_id = context
             .org_id
@@ -174,7 +191,7 @@ impl Tool for RememberTool {
     }
 
     fn description(&self) -> &str {
-        "Save a fact, preference, correction, or procedure to persistent memory. Memories survive across sessions."
+        "Save a fact, preference, correction, or procedure to persistent memory. Creates a new memory in the active store."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -258,13 +275,21 @@ impl Tool for RememberTool {
             return ToolExecutionResult::tool_error(e);
         }
 
-        let kind = params
-            .kind
-            .as_deref()
-            .and_then(|k| serde_json::from_value(json!(k)).ok())
-            .unwrap_or(MemoryKind::Fact);
+        let kind = match params.kind.as_deref() {
+            Some(k) => match serde_json::from_value::<MemoryKind>(json!(k)) {
+                Ok(kind) => kind,
+                Err(_) => {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Invalid memory kind: \"{k}\". Expected one of: fact, preference, correction, procedure, context"
+                    ));
+                }
+            },
+            None => MemoryKind::Fact,
+        };
 
-        // Parse config from empty (tools don't have direct config access, use defaults)
+        // TODO(V1): Resolve MemoryConfig from agent/harness capability config
+        // instead of using defaults. Tools don't currently have access to the
+        // per-agent AgentCapabilityConfig; requires ToolContext extension.
         let config = MemoryConfig::default();
         let store_id = match resolve_store_id(&config, context).await {
             Ok(id) => id,
@@ -398,16 +423,24 @@ impl Tool for RecallTool {
             Err(e) => return ToolExecutionResult::tool_error(format!("Invalid parameters: {e}")),
         };
 
+        // TODO(V1): Resolve MemoryConfig from agent/harness capability config
         let config = MemoryConfig::default();
         let store_id = match resolve_store_id(&config, context).await {
             Ok(id) => id,
             Err(e) => return e,
         };
 
-        let kind: Option<MemoryKind> = params
-            .kind
-            .as_deref()
-            .and_then(|k| serde_json::from_value(json!(k)).ok());
+        let kind: Option<MemoryKind> = match params.kind.as_deref() {
+            Some(k) => match serde_json::from_value::<MemoryKind>(json!(k)) {
+                Ok(kind) => Some(kind),
+                Err(_) => {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Invalid memory kind filter: \"{k}\". Expected one of: fact, preference, correction, procedure, context"
+                    ));
+                }
+            },
+            None => None,
+        };
 
         let query = MemoryQuery {
             store_id: Some(store_id),
@@ -531,12 +564,19 @@ impl Tool for ForgetTool {
             }
         };
 
+        // TODO(V1): Resolve MemoryConfig from agent/harness capability config
+        let config = MemoryConfig::default();
+        let store_id = match resolve_store_id(&config, context).await {
+            Ok(id) => id,
+            Err(e) => return e,
+        };
+
         let backend = match context.memory_store.as_ref() {
             Some(b) => b,
             None => return ToolExecutionResult::tool_error("Memory store not available"),
         };
 
-        match backend.forget(memory_id).await {
+        match backend.forget(store_id, memory_id).await {
             Ok(true) => ToolExecutionResult::success(json!({
                 "forgotten": true,
                 "memory_id": params.memory_id
