@@ -1,4 +1,4 @@
-# TC012: Horizontal Scaling with Multiple Scheduler Instances
+# TC008: Horizontal Scaling with Multiple Scheduler Instances
 
 ## Description
 

@@ -1,4 +1,4 @@
-# TC008: Max Schedules Per Organization Limit
+# TC004: Max Schedules Per Organization Limit
 
 ## Description
 

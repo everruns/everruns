@@ -1,4 +1,4 @@
-# TC011: Fair Scheduling Across Organizations
+# TC007: Fair Scheduling Across Organizations
 
 ## Description
 
