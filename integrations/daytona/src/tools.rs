@@ -325,7 +325,7 @@ impl Tool for DaytonaExecTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command in a Daytona sandbox. Returns output synchronously."
+        "Execute a shell command in a Daytona sandbox. Streams output in real time."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -408,8 +408,6 @@ impl Tool for DaytonaExecTool {
         let heartbeat_ctx = context.clone();
         let heartbeat_state = state.clone();
         let heartbeat = tokio::spawn(async move {
-            // Renew immediately so the lease is fresh at exec start, then
-            // continue renewing at a fixed interval.
             loop {
                 debug!("Heartbeat: renewing Everruns sandbox lease during exec");
                 if let Err(e) = touch_sandbox_lease(&heartbeat_ctx, &heartbeat_state, None).await {
@@ -419,10 +417,29 @@ impl Tool for DaytonaExecTool {
             }
         });
 
-        let exec_result = client.exec(sandbox_id, command, cwd, Some(timeout)).await;
+        // Use streaming exec to emit real-time output via tool.output.delta events.
+        // Send chunks over an mpsc channel to a single emitter task to preserve
+        // ordering and avoid unbounded task spawning.
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let streaming_ctx = context.clone();
+        let emitter = tokio::spawn(async move {
+            while let Some(delta) = rx.recv().await {
+                streaming_ctx
+                    .emit_tool_output("daytona_exec", &delta, "stdout")
+                    .await;
+            }
+        });
+
+        let result = client
+            .exec_streaming(sandbox_id, command, cwd, timeout, |chunk| {
+                let _ = tx.send(chunk.to_string());
+            })
+            .await;
+        drop(tx); // Close the channel so the emitter task finishes.
+        let _ = emitter.await;
         heartbeat.abort();
 
-        match exec_result {
+        match result {
             Ok(result) => {
                 if let Err(e) = touch_sandbox_lease(context, &state, None).await {
                     return e;

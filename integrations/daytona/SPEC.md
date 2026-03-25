@@ -113,7 +113,7 @@ Creates a new sandbox. Optionally uploads files from session storage.
 
 ### daytona_exec
 
-Executes a shell command in a sandbox (synchronous).
+Executes a shell command in a sandbox with real-time output streaming.
 
 - **Parameters**:
   - `sandbox_id`: string (required)
@@ -121,6 +121,7 @@ Executes a shell command in a sandbox (synchronous).
   - `cwd`: string (optional) — working directory
   - `timeout`: integer (optional) — timeout in ms (default: 120000)
 - **Returns**: `{ exit_code, output }`
+- **Streaming**: Emits `tool.output.delta` events with partial combined stdout/stderr output (emitted on stream `"stdout"`) as the command runs (polled every ~1s). The final tool result contains the complete combined output.
 
 ### daytona_read_file
 
@@ -239,9 +240,9 @@ This enables:
 
 Any new sandbox integration (Daytona or otherwise) must attach equivalent ownership metadata.
 
-### Synchronous exec with lease heartbeat
+### Streaming exec via background process + file polling
 
-Daytona's `POST /process/execute` is inherently synchronous. No async polling needed. The `timeout` parameter handles long-running commands.
+Daytona's `POST /process/execute` is synchronous (blocks until done). To provide real-time output, `daytona_exec` writes the user command to a temp script file (avoiding shell quoting issues), then runs it in a background shell process that writes stdout+stderr to a temp file. The client polls the output file at ~1s intervals via `tail -c +N`, emitting each new chunk as a `tool.output.delta` event. On completion (detected via a separate exit-code marker file), the full output is read and returned as the authoritative tool result. Temp files (script, output, exit marker) are cleaned up after each execution.
 
 During exec, a background heartbeat task calls `touch_sandbox_lease` every 3 minutes (`LEASE_HEARTBEAT_INTERVAL`) to renew Everruns' leased-resource record for the sandbox. This prevents Everruns' leased-resource cleanup from reclaiming the sandbox during long-running commands (e.g. Rust compilation taking 20+ minutes). The heartbeat is cancelled when the exec completes.
 

@@ -6,7 +6,7 @@
 //! Decision: External integration crate, auto-registered via inventory plugin system
 //! Decision: Use secrets store for all state (API key + per-sandbox connection info)
 //! Decision: Two-tier API: Management API for lifecycle, Toolbox API for in-sandbox ops
-//! Decision: Sync exec via toolbox process/execute endpoint
+//! Decision: Streaming exec via background process + file polling for real-time output
 //! Decision: session_storage dependency for API key and state persistence
 
 pub mod client;
@@ -54,6 +54,8 @@ const DAYTONA_API_BASE: &str = "https://app.daytona.io/api";
 const DAYTONA_TOOLBOX_BASE: &str = "https://proxy.app.daytona.io/toolbox";
 const DAYTONA_SANDBOX_SECRET_PREFIX: &str = "daytona_sandbox:";
 const EXEC_TIMEOUT_MS: u64 = 120_000;
+/// Interval for polling streaming exec output from the sandbox.
+const EXEC_POLL_INTERVAL: Duration = Duration::from_millis(1_000);
 const SANDBOX_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const SANDBOX_READY_MAX_WAIT: Duration = Duration::from_secs(60);
 /// Auto-stop after 5 minutes of inactivity (safety net)
