@@ -77,7 +77,7 @@ This avoids entering the key in chat (see TM-AGENT-016).
 
 | Method | Path | Purpose | Request Body |
 |--------|------|---------|-------------|
-| POST | `/sandbox` | Create sandbox | `{ name?, image?, resources?: { cpu?, memory?, disk? }, autoStopInterval, autoArchiveInterval, autoDeleteInterval, labels? }` |
+| POST | `/sandbox` | Create sandbox | `{ name?, snapshot?, autoStopInterval, autoArchiveInterval, autoDeleteInterval, labels? }` |
 | GET | `/sandbox/{id}` | Get sandbox info | — |
 | POST | `/sandbox/{id}/start` | Start sandbox | — |
 | POST | `/sandbox/{id}/stop` | Stop sandbox | — |
@@ -103,13 +103,11 @@ Creates a new sandbox. Optionally uploads files from session storage.
 
 - **Parameters**:
   - `title`: string (optional) — sandbox name
-  - `image`: string (optional) — container image
-  - `cpu`: integer (optional) — vCPUs, 1-4 (default: 1)
-  - `memory`: integer (optional) — GiB RAM, 1-8 (default: 1)
-  - `disk`: integer (optional) — GiB disk, 1-10 (default: 3)
+  - `size`: string (optional) — sandbox size tier: `small` (1 vCPU, 1 GiB RAM, 3 GiB disk), `medium` (2 vCPU, 4 GiB RAM, 8 GiB disk), `large` (4 vCPU, 8 GiB RAM, 10 GiB disk). Default: `small`.
+  - `snapshot`: string (optional) — explicit Daytona snapshot name (advanced, overrides `size`)
   - `upload_files`: array (optional) — `[{session_path, sandbox_path}]`
 - **Returns**: `{ sandbox_id, status, workspace_path }`
-- **Resource mapping**: When any of `cpu`/`memory`/`disk` are specified, they are sent as a `resources` object in the Daytona API request body. Only specified fields are included; omitted fields use Daytona defaults. Values are validated client-side (type + range) before the API call.
+- **Resource mapping**: The `size` parameter maps to a pre-built Daytona snapshot with the appropriate resources. The Daytona REST API does not support per-sandbox resource overrides for snapshot-based creation (see [daytonaio/daytona#2296](https://github.com/daytonaio/daytona/issues/2296)), so we use tiered snapshots instead.
 
 ### daytona_exec
 
