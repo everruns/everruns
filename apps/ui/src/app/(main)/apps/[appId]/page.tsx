@@ -146,8 +146,6 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   );
   const slackConfig = slackChannel?.channel_config as SlackChannelConfig | undefined;
   const hasSlackConfig = slackConfig?.signing_secret && slackConfig?.bot_token;
-  const webhookVerified = !!slackConfig?.webhook_verified_at;
-  const firstMessageReceived = !!slackConfig?.first_message_received_at;
 
   const webhookUrl =
     typeof window !== "undefined"
