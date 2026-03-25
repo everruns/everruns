@@ -8,7 +8,7 @@ Manual test case documentation format and organization.
 
 ### Location
 
-`test_cases/` split by target into `api/`, `cli/`, and `ui/` subfolders, then organized by feature.
+`test_cases/` is split by target into `api/`, `cli/`, and `ui/` subfolders. API and UI test cases are organized into feature subfolders; CLI test cases may be kept flat or grouped into feature subfolders as needed.
 
 ```
 test_cases/
@@ -41,7 +41,7 @@ Each test case file contains:
 
 `TC###_short_description.md`
 
-Numbering is **per folder** — each feature folder starts at TC001 independently. Do not share numbering across targets.
+Numbering is **per leaf folder** — each feature folder (or target root when flat, e.g. `cli/`) starts at TC001 independently. Do not share numbering across folders or targets.
 
 Examples:
 - `TC001_success_login.md`
