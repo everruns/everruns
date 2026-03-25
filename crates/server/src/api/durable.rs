@@ -60,6 +60,11 @@ impl AppState {
         }
     }
 
+    /// Get a reference to the metrics collector (for Prometheus bridge).
+    pub fn metrics_collector(&self) -> &MetricsCollector {
+        &self.metrics
+    }
+
     /// Get the store, returning an error response if not available
     fn get_store(
         &self,

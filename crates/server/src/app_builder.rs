@@ -358,10 +358,25 @@ impl ServerAppBuilder {
         };
         let auth_state =
             auth::AuthState::new(auth_config.clone(), auth_backend.clone()).with_db(db.clone());
-        let feature_flags =
-            everruns_core::FeatureFlags::from_env(&everruns_core::DeploymentGrade::from_env());
+        let deployment_grade = everruns_core::DeploymentGrade::from_env();
+        let feature_flags = everruns_core::FeatureFlags::from_env(&deployment_grade);
         let notifications_enabled = feature_flags.notifications;
         tracing::info!(?feature_flags, "Feature flags computed");
+
+        // Prometheus metrics
+        let prometheus_config = api::prometheus::PrometheusConfig::from_env(&deployment_grade);
+        let prometheus_handle = if prometheus_config.enabled {
+            match api::prometheus::install_prometheus_recorder() {
+                Some(handle) => {
+                    tracing::info!("Prometheus /metrics endpoint enabled");
+                    Some(handle)
+                }
+                None => None,
+            }
+        } else {
+            tracing::info!("Prometheus /metrics endpoint disabled");
+            None
+        };
 
         // =====================================================================
         // Phase 4: Event listeners & services
@@ -380,6 +395,12 @@ impl ServerAppBuilder {
             tracing::info!("Notifications disabled via feature flag");
             None
         };
+
+        if prometheus_handle.is_some() {
+            event_listeners.push(
+                Arc::new(api::prometheus::PrometheusMetricsListener) as Arc<dyn EventListener>
+            );
+        }
 
         if let Some(braintrust_listener) = BraintrustListener::from_env() {
             tracing::info!("Braintrust integration enabled");
@@ -563,6 +584,11 @@ impl ServerAppBuilder {
         // TM-DURABLE-010: All durable endpoints require admin role
         let durable_state = api::durable::AppState::new(durable_store.clone(), auth_state.clone());
         durable_state.spawn_metrics_sampler();
+
+        // Bridge durable MetricsCollector gauges to Prometheus
+        if prometheus_handle.is_some() {
+            api::prometheus::spawn_gauge_bridge(durable_state.metrics_collector().clone());
+        }
         let scheduler_store = durable_store.clone();
         let schedules_state = api::schedules::routes(api::schedules::ScheduleAppState::new(
             durable_store,
@@ -715,7 +741,7 @@ impl ServerAppBuilder {
         }
 
         // Main router
-        let app = Router::new()
+        let mut app = Router::new()
             .route("/health", get(health).with_state(health_state))
             .route(
                 "/api-doc/openapi.json",
@@ -725,6 +751,11 @@ impl ServerAppBuilder {
                 api_routes,
                 &self.config.api_prefix,
             ));
+
+        // Mount /metrics endpoint (outside API prefix, no auth)
+        if let Some(ref handle) = prometheus_handle {
+            app = app.merge(api::prometheus::route(handle.clone()));
+        }
 
         // CORS
         let app = if !self.config.cors_origins.is_empty() {
@@ -778,6 +809,16 @@ impl ServerAppBuilder {
                     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
                 ),
             ));
+
+        // HTTP request duration histogram (must be before TraceLayer so it
+        // wraps the full request lifecycle including tracing overhead)
+        let app = if prometheus_handle.is_some() {
+            app.layer(axum::middleware::from_fn(
+                api::prometheus::http_metrics_layer,
+            ))
+        } else {
+            app
+        };
 
         let app = app.layer(TraceLayer::new_for_http());
 
