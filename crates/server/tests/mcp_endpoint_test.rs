@@ -322,6 +322,11 @@ async fn test_mcp_session_send_message() {
         json!({ "message": "Initial message" }),
     )
     .await;
+    assert!(
+        !tool_is_error(&run_resp),
+        "agent_run failed: {}",
+        tool_text(&run_resp)
+    );
     let session_id = tool_json(&run_resp)["session_id"]
         .as_str()
         .unwrap()
@@ -404,6 +409,11 @@ async fn test_mcp_session_get_status() {
 
     // Create a session
     let run_resp = mcp_tool_call(&server, "agent_run", json!({ "message": "Status test" })).await;
+    assert!(
+        !tool_is_error(&run_resp),
+        "agent_run failed: {}",
+        tool_text(&run_resp)
+    );
     let session_id = tool_json(&run_resp)["session_id"]
         .as_str()
         .unwrap()
@@ -434,6 +444,11 @@ async fn test_mcp_session_get_status_with_event_filter() {
 
     // Create a session
     let run_resp = mcp_tool_call(&server, "agent_run", json!({ "message": "Filter test" })).await;
+    assert!(
+        !tool_is_error(&run_resp),
+        "agent_run failed: {}",
+        tool_text(&run_resp)
+    );
     let session_id = tool_json(&run_resp)["session_id"]
         .as_str()
         .unwrap()
@@ -869,6 +884,11 @@ async fn test_mcp_execute_agent_crud_workflow() {
         }),
     )
     .await;
+    assert!(
+        !tool_is_error(&resp),
+        "create_agent failed: {}",
+        tool_text(&resp)
+    );
     let result = tool_json(&resp);
     assert!(result["success"].as_bool().unwrap(), "create failed");
     let created: Value = serde_json::from_str(result["stdout"].as_str().unwrap()).unwrap();
@@ -883,6 +903,11 @@ async fn test_mcp_execute_agent_crud_workflow() {
         }),
     )
     .await;
+    assert!(
+        !tool_is_error(&resp),
+        "update_agent failed: {}",
+        tool_text(&resp)
+    );
     let result = tool_json(&resp);
     assert!(result["success"].as_bool().unwrap(), "update failed");
     let updated: Value = serde_json::from_str(result["stdout"].as_str().unwrap()).unwrap();
@@ -968,6 +993,10 @@ async fn test_mcp_full_flow_agent_run_then_status() {
     .await;
     assert!(!tool_is_error(&status2_resp));
     let status2 = tool_json(&status2_resp);
-    let event_count = status2["event_count"].as_i64().unwrap();
-    assert!(event_count >= 0, "Should have events after messages");
+    let first_event_count = status["event_count"].as_i64().unwrap_or(0);
+    let second_event_count = status2["event_count"].as_i64().unwrap();
+    assert!(
+        second_event_count > first_event_count,
+        "Expected more events after send_message (before={first_event_count}, after={second_event_count})"
+    );
 }

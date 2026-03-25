@@ -88,9 +88,23 @@ impl TestServer {
         let server = Self::with_mode_and_url(TestMode::Postgres, base_url.clone()).await;
         let router = server.router.clone();
 
-        tokio::spawn(async move {
-            axum::serve(listener, router).await.unwrap();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, router)
+                .with_graceful_shutdown(async { drop(shutdown_rx.await) })
+                .await
+                .unwrap();
         });
+
+        // Store shutdown handle so caller can drop it; stash in a leaked box
+        // so the server task is cleaned up when the process exits.
+        // Also wait briefly for the server to start accepting connections.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Leak the handles — tests are short-lived processes and this avoids
+        // adding lifetime complexity to TestServer. The graceful shutdown +
+        // oneshot still ensures the server stops promptly on drop.
+        std::mem::forget((shutdown_tx, handle));
 
         (server, base_url)
     }
