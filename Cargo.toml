@@ -134,6 +134,10 @@ prost-types = "0.14"
 # Image processing (for thumbnail generation)
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 
+# Prometheus metrics
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.16", default-features = false }
+
 # In-process caching
 moka = { version = "0.12", features = ["future", "sync"] }
 

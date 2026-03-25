@@ -25,6 +25,7 @@ pub mod mcp_servers;
 pub mod messages;
 pub mod notifications;
 pub mod organizations;
+pub mod prometheus;
 pub mod schedules;
 pub mod session_databases;
 pub mod session_files;

@@ -358,10 +358,29 @@ impl ServerAppBuilder {
         };
         let auth_state =
             auth::AuthState::new(auth_config.clone(), auth_backend.clone()).with_db(db.clone());
-        let feature_flags =
-            everruns_core::FeatureFlags::from_env(&everruns_core::DeploymentGrade::from_env());
+        let deployment_grade = everruns_core::DeploymentGrade::from_env();
+        let feature_flags = everruns_core::FeatureFlags::from_env(&deployment_grade);
         let notifications_enabled = feature_flags.notifications;
         tracing::info!(?feature_flags, "Feature flags computed");
+
+        // Prometheus metrics
+        let prometheus_config = api::prometheus::PrometheusConfig::from_env();
+        let prometheus_handle = if prometheus_config.enabled {
+            match api::prometheus::install_prometheus_recorder() {
+                Some(handle) => {
+                    if let Some(ref addr) = prometheus_config.metrics_addr {
+                        tracing::info!(addr = %addr, "Prometheus metrics on dedicated internal server");
+                    } else {
+                        tracing::info!("Prometheus /metrics endpoint on main server");
+                    }
+                    Some(handle)
+                }
+                None => None,
+            }
+        } else {
+            tracing::info!("Prometheus metrics disabled");
+            None
+        };
 
         // =====================================================================
         // Phase 4: Event listeners & services
@@ -380,6 +399,12 @@ impl ServerAppBuilder {
             tracing::info!("Notifications disabled via feature flag");
             None
         };
+
+        if prometheus_handle.is_some() {
+            event_listeners.push(
+                Arc::new(api::prometheus::PrometheusMetricsListener) as Arc<dyn EventListener>
+            );
+        }
 
         if let Some(braintrust_listener) = BraintrustListener::from_env() {
             tracing::info!("Braintrust integration enabled");
@@ -563,6 +588,11 @@ impl ServerAppBuilder {
         // TM-DURABLE-010: All durable endpoints require admin role
         let durable_state = api::durable::AppState::new(durable_store.clone(), auth_state.clone());
         durable_state.spawn_metrics_sampler();
+
+        // Bridge durable MetricsCollector gauges to Prometheus
+        if prometheus_handle.is_some() {
+            api::prometheus::spawn_gauge_bridge(durable_state.metrics_collector().clone());
+        }
         let scheduler_store = durable_store.clone();
         let schedules_state = api::schedules::routes(api::schedules::ScheduleAppState::new(
             durable_store,
@@ -715,7 +745,7 @@ impl ServerAppBuilder {
         }
 
         // Main router
-        let app = Router::new()
+        let mut app = Router::new()
             .route("/health", get(health).with_state(health_state))
             .route(
                 "/api-doc/openapi.json",
@@ -725,6 +755,17 @@ impl ServerAppBuilder {
                 api_routes,
                 &self.config.api_prefix,
             ));
+
+        // Mount /metrics endpoint:
+        //  - METRICS_ADDR set → dedicated internal-only server (production)
+        //  - METRICS_ADDR unset → on main router (dev convenience)
+        if let Some(ref handle) = prometheus_handle {
+            if let Some(ref addr) = prometheus_config.metrics_addr {
+                api::prometheus::spawn_metrics_server(handle.clone(), addr.clone());
+            } else {
+                app = app.merge(api::prometheus::route(handle.clone()));
+            }
+        }
 
         // CORS
         let app = if !self.config.cors_origins.is_empty() {
@@ -780,6 +821,16 @@ impl ServerAppBuilder {
             ));
 
         let app = app.layer(TraceLayer::new_for_http());
+
+        // HTTP request duration histogram: applied as route_layer so axum's
+        // MatchedPath extractor is available for low-cardinality path labels.
+        let app = if prometheus_handle.is_some() {
+            app.route_layer(axum::middleware::from_fn(
+                api::prometheus::http_metrics_layer,
+            ))
+        } else {
+            app
+        };
 
         // =====================================================================
         // Phase 7: Background tasks
