@@ -53,7 +53,6 @@ case "$cmd" in
     echo ""
     echo "🐘 PostgreSQL:"
     if command -v pg_ctl &> /dev/null || [ -d "/usr/lib/postgresql" ]; then
-      local pg_ver
       pg_ver=$(pg_ctl --version 2>/dev/null | grep -oE '[0-9]+' | head -1 || ls /usr/lib/postgresql 2>/dev/null | sort -V | tail -1)
       echo "  ✅ PostgreSQL $pg_ver already installed"
     else
