@@ -13,7 +13,7 @@ use axum::{
 };
 use everruns_core::typed_id::{AgentId, AgentIdentityId, AppId, HarnessId};
 use everruns_core::{
-    App, AppStatus, Caller, ChannelType, ResourceConfigResponse, evaluate_policies_with,
+    App, AppChannel, AppStatus, Caller, ChannelType, ResourceConfigResponse, evaluate_policies_with,
 };
 
 use super::common::{
@@ -47,9 +47,9 @@ pub struct CreateAppRequest {
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
     pub agent_identity_id: Option<AgentIdentityId>,
-    /// Distribution channel type.
+    /// Initial channel type (creates the first channel on the app).
     pub channel_type: ChannelType,
-    /// Channel-specific configuration.
+    /// Initial channel configuration.
     #[serde(default)]
     pub channel_config: Option<serde_json::Value>,
 }
@@ -75,15 +75,36 @@ pub struct UpdateAppRequest {
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
     pub agent_identity_id: UpdateField<AgentIdentityId>,
-    /// Distribution channel type.
+    /// Lifecycle status (draft or archived). Use publish/unpublish endpoints for publishing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<AppStatus>,
+}
+
+/// Request to add a channel to an app.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct AddChannelRequest {
+    /// Channel type.
+    pub channel_type: ChannelType,
+    /// Channel-specific configuration.
+    #[serde(default)]
+    pub channel_config: Option<serde_json::Value>,
+    /// Whether the channel is enabled (default: true).
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+/// Request to update a channel.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateChannelRequest {
+    /// Channel type.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_type: Option<ChannelType>,
     /// Channel-specific configuration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_config: Option<serde_json::Value>,
-    /// Lifecycle status (draft or archived). Use publish/unpublish endpoints for publishing.
+    /// Whether the channel is enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<AppStatus>,
+    pub enabled: Option<bool>,
 }
 
 /// Query parameters for listing apps.
@@ -129,6 +150,12 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/apps/{app_id}/delete", post(destroy_app))
         .route("/v1/apps/{app_id}/publish", post(publish_app))
         .route("/v1/apps/{app_id}/unpublish", post(unpublish_app))
+        // Channel sub-routes
+        .route("/v1/apps/{app_id}/channels", post(add_channel))
+        .route(
+            "/v1/apps/{app_id}/channels/{channel_id}",
+            axum::routing::patch(update_channel).delete(delete_channel),
+        )
         .with_state(state)
 }
 
@@ -402,6 +429,77 @@ pub async fn unpublish_app(
         .ok_or_not_found_json("App")?;
 
     Ok(Json(app))
+}
+
+// ============================================
+// Channel sub-routes
+// ============================================
+
+/// POST /v1/apps/{app_id}/channels - Add a channel to an app
+pub async fn add_channel(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(app_id): Path<String>,
+    Json(req): Json<AddChannelRequest>,
+) -> Result<(StatusCode, Json<AppChannel>), (StatusCode, Json<ErrorResponse>)> {
+    let app_id: AppId = app_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
+    })?;
+
+    let caller = Caller::from(&org);
+    let channel: AppChannel = state
+        .service
+        .add_channel(&caller, &app_id.to_string(), req)
+        .await
+        .map_policy_or_internal("add channel")?;
+
+    Ok((StatusCode::CREATED, Json(channel)))
+}
+
+/// PATCH /v1/apps/{app_id}/channels/{channel_id} - Update a channel
+pub async fn update_channel(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((app_id, channel_id)): Path<(String, String)>,
+    Json(req): Json<UpdateChannelRequest>,
+) -> ApiResult<AppChannel> {
+    let app_id: AppId = app_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
+    })?;
+
+    let caller = Caller::from(&org);
+    let channel: AppChannel = state
+        .service
+        .update_channel(&caller, &app_id.to_string(), &channel_id, req)
+        .await
+        .map_policy_or_internal("update channel")?
+        .ok_or_not_found_json("Channel")?;
+
+    Ok(Json(channel))
+}
+
+/// DELETE /v1/apps/{app_id}/channels/{channel_id} - Remove a channel
+pub async fn delete_channel(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((app_id, channel_id)): Path<(String, String)>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let app_id: AppId = app_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
+    })?;
+
+    let caller = Caller::from(&org);
+    let deleted = state
+        .service
+        .delete_channel(&caller, &app_id.to_string(), &channel_id)
+        .await
+        .map_policy_or_internal("delete channel")?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ErrorResponse::new("Channel not found").into_response(StatusCode::NOT_FOUND))
+    }
 }
 
 #[cfg(test)]

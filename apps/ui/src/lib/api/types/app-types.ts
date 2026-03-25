@@ -1,4 +1,4 @@
-// App types (deployable agent+harness bundles)
+// App types (deployable agent+harness bundles with multi-channel support)
 
 export type AppStatus = "draft" | "published" | "archived" | "deleted";
 export type ChannelType = "slack";
@@ -16,6 +16,15 @@ export interface SlackChannelConfig {
   first_message_received_at?: string | null;
 }
 
+export interface AppChannel {
+  id: string;
+  channel_type: ChannelType;
+  channel_config: SlackChannelConfig | Record<string, unknown>;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface App {
   id: string;
   name: string;
@@ -23,8 +32,7 @@ export interface App {
   harness_id: string;
   agent_id: string;
   agent_identity_id?: string | null;
-  channel_type: ChannelType;
-  channel_config: SlackChannelConfig | Record<string, unknown>;
+  channels: AppChannel[];
   status: AppStatus;
   published_at: string | null;
   created_at: string;
@@ -49,7 +57,17 @@ export interface UpdateAppRequest {
   harness_id?: string;
   agent_id?: string;
   agent_identity_id?: string | null;
+  status?: AppStatus;
+}
+
+export interface AddChannelRequest {
+  channel_type: ChannelType;
+  channel_config?: SlackChannelConfig | Record<string, unknown>;
+  enabled?: boolean;
+}
+
+export interface UpdateChannelRequest {
   channel_type?: ChannelType;
   channel_config?: SlackChannelConfig | Record<string, unknown>;
-  status?: AppStatus;
+  enabled?: boolean;
 }

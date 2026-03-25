@@ -1,22 +1,27 @@
 // App service for business logic
 // Decision: channel_config secrets encrypted via EncryptionService (EVE-158)
 // Decision: encrypt on write, decrypt in row_to_app; fallback to plaintext for migration
+// Decision: multi-channel support — channels live in app_channels table (one-to-many)
 
 use crate::errors::ResourceNotFoundError;
 use crate::storage::{
-    AppRow, EncryptionService, StorageBackend,
-    models::{CreateAppRow, UpdateApp},
+    AppChannelRow, AppRow, EncryptionService, StorageBackend,
+    models::{CreateAppChannelRow, CreateAppRow, UpdateApp, UpdateAppChannel},
 };
 use anyhow::Result;
 use chrono::Utc;
-use everruns_core::typed_id::{AgentId, AgentIdentityId, HarnessId};
-use everruns_core::{App, AppId, AppStatus, Caller, ChannelType, Permission, Policy, Rule};
+use everruns_core::typed_id::{AgentId, AgentIdentityId, AppChannelId, HarnessId};
+use everruns_core::{
+    App, AppChannel, AppId, AppStatus, Caller, ChannelType, Permission, Policy, Rule,
+};
 use everruns_durable::UpdateField;
 use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::api::apps::{CreateAppRequest, UpdateAppRequest};
+use crate::api::apps::{
+    AddChannelRequest, CreateAppRequest, UpdateAppRequest, UpdateChannelRequest,
+};
 
 /// Policy: View apps (read-only).
 pub const APP_VIEW: Policy = Policy {
@@ -65,18 +70,14 @@ impl AppService {
 
     /// Decrypt channel_config from encrypted bytes. Falls back to the plaintext
     /// column only for rows that haven't been migrated yet or when encryption
-    /// is not configured (dev/test mode). If encrypted data is present but
-    /// decryption/parsing fails, log and return null instead of silently
-    /// reading from the plaintext column.
+    /// is not configured (dev/test mode).
     fn decrypt_channel_config(
         &self,
         encrypted: Option<&[u8]>,
         plaintext_fallback: &serde_json::Value,
     ) -> serde_json::Value {
         match (encrypted, self.encryption.as_ref()) {
-            // Pre-migration rows or dev/test mode: use plaintext column.
             (None, _) | (_, None) => plaintext_fallback.clone(),
-            // Encrypted data with an available encryption service.
             (Some(data), Some(enc)) => {
                 let json = match enc.decrypt_to_string(data) {
                     Ok(json) => json,
@@ -100,6 +101,20 @@ impl AppService {
                 }
             }
         }
+    }
+
+    /// Prepare channel_config for storage: encrypt if possible, redact plaintext when encrypted.
+    fn prepare_channel_config(
+        &self,
+        config: &serde_json::Value,
+    ) -> Result<(serde_json::Value, Option<Vec<u8>>)> {
+        let encrypted = self.encrypt_channel_config(config)?;
+        let stored_plaintext = if encrypted.is_some() {
+            serde_json::Value::Object(Default::default())
+        } else {
+            config.clone()
+        };
+        Ok((stored_plaintext, encrypted))
     }
 
     #[policy(APP_MANAGE)]
@@ -138,16 +153,10 @@ impl AppService {
             None
         };
 
-        let channel_config = req.channel_config.unwrap_or_default();
-        let channel_config_encrypted = self.encrypt_channel_config(&channel_config)?;
-
-        // When encryption produced ciphertext, redact the plaintext column
-        // so secrets are not stored in both columns.
-        let stored_plaintext = if channel_config_encrypted.is_some() {
-            serde_json::Value::Object(Default::default())
-        } else {
-            channel_config
-        };
+        // Create the app (channel_type/config kept for backward compat in DB)
+        let channel_config = req.channel_config.clone().unwrap_or_default();
+        let (stored_plaintext, channel_config_encrypted) =
+            self.prepare_channel_config(&channel_config)?;
 
         let input = CreateAppRow {
             public_id: public_id.to_string(),
@@ -157,11 +166,24 @@ impl AppService {
             agent_id: agent_row.id.uuid(),
             agent_identity_id,
             channel_type: req.channel_type.to_string(),
-            channel_config: stored_plaintext,
-            channel_config_encrypted,
+            channel_config: stored_plaintext.clone(),
+            channel_config_encrypted: channel_config_encrypted.clone(),
         };
 
         let row = self.db.create_app(caller.org_id, input).await?;
+
+        // Create the initial channel in app_channels table
+        let channel_uuid = Uuid::now_v7();
+        let channel_public_id = AppChannelId::from_uuid(channel_uuid);
+        let channel_input = CreateAppChannelRow {
+            public_id: channel_public_id.to_string(),
+            channel_type: req.channel_type.to_string(),
+            channel_config: stored_plaintext,
+            channel_config_encrypted,
+            enabled: true,
+        };
+        self.db.create_app_channel(row.id, channel_input).await?;
+
         Ok(self.row_to_app(row, caller.org_id).await)
     }
 
@@ -181,7 +203,6 @@ impl AppService {
     }
 
     /// Lookup app by public_id without org scoping (for unauthenticated webhooks).
-    /// The org_id is derived from the row itself.
     pub async fn get_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<App>> {
         let row = self.db.get_app_by_public_id_unscoped(public_id).await?;
         match row {
@@ -230,7 +251,6 @@ impl AppService {
             anyhow::bail!("Archived or deleted apps cannot be edited");
         }
 
-        // Resolve harness/agent IDs if provided
         let harness_id = if let Some(hid) = req.harness_id {
             let h = self
                 .db
@@ -259,31 +279,6 @@ impl AppService {
             None
         };
 
-        // Encrypt channel_config. If the request provides a new config, encrypt it.
-        // Otherwise, opportunistically encrypt the existing plaintext config for
-        // pre-migration rows (when encryption is configured but encrypted column is NULL).
-        let (channel_config, channel_config_encrypted) = if let Some(config) = req.channel_config {
-            let encrypted = self.encrypt_channel_config(&config)?;
-            // Redact plaintext when encryption produced ciphertext
-            let stored_plaintext = if encrypted.is_some() {
-                Some(serde_json::Value::Object(Default::default()))
-            } else {
-                Some(config)
-            };
-            (stored_plaintext, encrypted)
-        } else if existing.channel_config_encrypted.is_none() && self.encryption.is_some() {
-            // Opportunistic migration: encrypt existing plaintext on any update
-            let encrypted = self.encrypt_channel_config(&existing.channel_config)?;
-            let stored_plaintext = if encrypted.is_some() {
-                Some(serde_json::Value::Object(Default::default()))
-            } else {
-                None
-            };
-            (stored_plaintext, encrypted)
-        } else {
-            (None, None)
-        };
-
         let agent_identity_id = match req.agent_identity_id {
             UpdateField::Set(identity_id) => {
                 let identity = self
@@ -306,9 +301,9 @@ impl AppService {
             harness_id,
             agent_id,
             agent_identity_id,
-            channel_type: req.channel_type.map(|ct| ct.to_string()),
-            channel_config,
-            channel_config_encrypted,
+            channel_type: None,
+            channel_config: None,
+            channel_config_encrypted: None,
             status: req.status.map(|s| s.to_string()),
             published_at: UpdateField::Unchanged,
         };
@@ -322,6 +317,137 @@ impl AppService {
             None => Ok(None),
         }
     }
+
+    // ============================================
+    // Channel CRUD
+    // ============================================
+
+    #[policy(APP_MANAGE)]
+    pub async fn add_channel(
+        &self,
+        caller: &Caller,
+        app_public_id: &str,
+        req: AddChannelRequest,
+    ) -> Result<AppChannel> {
+        let app = self
+            .db
+            .get_app_by_public_id(caller.org_id, app_public_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("App"))?;
+        if !matches!(app.status.as_str(), "draft" | "published") {
+            anyhow::bail!("Archived or deleted apps cannot be edited");
+        }
+
+        let channel_config = req.channel_config.unwrap_or_default();
+        let (stored_plaintext, encrypted) = self.prepare_channel_config(&channel_config)?;
+
+        let channel_uuid = Uuid::now_v7();
+        let channel_public_id = AppChannelId::from_uuid(channel_uuid);
+        let input = CreateAppChannelRow {
+            public_id: channel_public_id.to_string(),
+            channel_type: req.channel_type.to_string(),
+            channel_config: stored_plaintext,
+            channel_config_encrypted: encrypted,
+            enabled: req.enabled.unwrap_or(true),
+        };
+        let row = self.db.create_app_channel(app.id, input).await?;
+        Ok(self.channel_row_to_channel(row))
+    }
+
+    #[policy(APP_MANAGE)]
+    pub async fn update_channel(
+        &self,
+        caller: &Caller,
+        app_public_id: &str,
+        channel_public_id: &str,
+        req: UpdateChannelRequest,
+    ) -> Result<Option<AppChannel>> {
+        let app = self
+            .db
+            .get_app_by_public_id(caller.org_id, app_public_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("App"))?;
+        if !matches!(app.status.as_str(), "draft" | "published") {
+            anyhow::bail!("Archived or deleted apps cannot be edited");
+        }
+
+        let channel_row = self
+            .db
+            .get_app_channel_by_public_id(channel_public_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Channel"))?;
+        if channel_row.app_id != app.id {
+            anyhow::bail!("Channel does not belong to this app");
+        }
+
+        let (channel_config, channel_config_encrypted) = if let Some(config) = req.channel_config {
+            let (stored, encrypted) = self.prepare_channel_config(&config)?;
+            (Some(stored), encrypted)
+        } else {
+            (None, None)
+        };
+
+        let input = UpdateAppChannel {
+            channel_type: req.channel_type.map(|ct| ct.to_string()),
+            channel_config,
+            channel_config_encrypted,
+            enabled: req.enabled,
+        };
+
+        let row = self.db.update_app_channel(channel_row.id, input).await?;
+        Ok(row.map(|r| self.channel_row_to_channel(r)))
+    }
+
+    #[policy(APP_MANAGE)]
+    pub async fn delete_channel(
+        &self,
+        caller: &Caller,
+        app_public_id: &str,
+        channel_public_id: &str,
+    ) -> Result<bool> {
+        let app = self
+            .db
+            .get_app_by_public_id(caller.org_id, app_public_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("App"))?;
+        if !matches!(app.status.as_str(), "draft" | "published") {
+            anyhow::bail!("Archived or deleted apps cannot be edited");
+        }
+
+        let channel_row = self
+            .db
+            .get_app_channel_by_public_id(channel_public_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Channel"))?;
+        if channel_row.app_id != app.id {
+            anyhow::bail!("Channel does not belong to this app");
+        }
+
+        self.db.delete_app_channel(channel_row.id).await
+    }
+
+    /// Update channel config with proper encryption handling.
+    /// Used by webhook handlers (unauthenticated, no caller context).
+    pub async fn update_channel_config_unscoped(
+        &self,
+        channel_internal_id: Uuid,
+        config: &serde_json::Value,
+    ) -> Result<()> {
+        let (stored_plaintext, encrypted) = self.prepare_channel_config(config)?;
+        let input = UpdateAppChannel {
+            channel_config: Some(stored_plaintext),
+            channel_config_encrypted: encrypted,
+            ..Default::default()
+        };
+        self.db
+            .update_app_channel(channel_internal_id, input)
+            .await?;
+        Ok(())
+    }
+
+    // ============================================
+    // Lifecycle
+    // ============================================
 
     #[policy(APP_DANGEROUS)]
     pub async fn delete(&self, caller: &Caller, public_id: &str) -> Result<bool> {
@@ -401,11 +527,13 @@ impl AppService {
         }
     }
 
+    // ============================================
+    // Row conversions
+    // ============================================
+
     async fn row_to_app(&self, row: AppRow, org_id: i64) -> App {
-        // Harness uses HarnessId directly (no dual-ID pattern)
         let harness_id = HarnessId::from_uuid(row.harness_id);
 
-        // Agent uses dual-ID pattern — resolve internal UUID to public_id
         let agent_id = self
             .db
             .get_agent_public_id(org_id, AgentId::from_uuid(row.agent_id))
@@ -420,6 +548,45 @@ impl AppService {
             .parse()
             .unwrap_or_else(|_| AppId::from_uuid(row.id));
 
+        // Load channels from app_channels table; fall back to legacy columns
+        let channel_rows = match self.db.list_app_channels(row.id).await {
+            Ok(rows) => rows,
+            Err(err) => {
+                tracing::error!(
+                    app_id = %row.public_id,
+                    error = %err,
+                    "Failed to load app_channels; falling back to legacy columns"
+                );
+                Vec::new()
+            }
+        };
+        let channels: Vec<AppChannel> = if channel_rows.is_empty() {
+            // Fallback: synthesize a channel from legacy apps columns when no
+            // app_channels rows exist (e.g. incomplete migration, DB restore).
+            if let Some(ct) = ChannelType::from_str_opt(&row.channel_type) {
+                let config = self.decrypt_channel_config(
+                    row.channel_config_encrypted.as_deref(),
+                    &row.channel_config,
+                );
+                vec![AppChannel {
+                    public_id: AppChannelId::from_uuid(row.id),
+                    internal_id: row.id,
+                    channel_type: ct,
+                    channel_config: config,
+                    enabled: true,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                }]
+            } else {
+                Vec::new()
+            }
+        } else {
+            channel_rows
+                .into_iter()
+                .map(|ch| self.channel_row_to_channel(ch))
+                .collect()
+        };
+
         App {
             public_id,
             internal_id: row.id,
@@ -429,18 +596,34 @@ impl AppService {
             harness_id,
             agent_id,
             agent_identity_id: row.agent_identity_id.map(AgentIdentityId::from_uuid),
-            channel_type: ChannelType::from_str_opt(&row.channel_type)
-                .unwrap_or(ChannelType::Slack),
-            channel_config: self.decrypt_channel_config(
-                row.channel_config_encrypted.as_deref(),
-                &row.channel_config,
-            ),
+            channels,
             status: AppStatus::from(row.status.as_str()),
             published_at: row.published_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
             archived_at: row.archived_at,
             deleted_at: row.deleted_at,
+        }
+    }
+
+    fn channel_row_to_channel(&self, row: AppChannelRow) -> AppChannel {
+        let public_id: AppChannelId = row
+            .public_id
+            .parse()
+            .unwrap_or_else(|_| AppChannelId::from_uuid(row.id));
+
+        let channel_config = self
+            .decrypt_channel_config(row.channel_config_encrypted.as_deref(), &row.channel_config);
+
+        AppChannel {
+            public_id,
+            internal_id: row.id,
+            channel_type: ChannelType::from_str_opt(&row.channel_type)
+                .unwrap_or(ChannelType::Slack),
+            channel_config,
+            enabled: row.enabled,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
         }
     }
 }

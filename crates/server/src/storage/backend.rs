@@ -1860,4 +1860,39 @@ impl StorageBackend {
     pub async fn destroy_app(&self, org_id: i64, id: Uuid) -> Result<bool> {
         dispatch!(self, destroy_app, org_id, id)
     }
+
+    // ============================================
+    // App Channel CRUD
+    // ============================================
+
+    pub async fn create_app_channel(
+        &self,
+        app_id: Uuid,
+        input: CreateAppChannelRow,
+    ) -> Result<AppChannelRow> {
+        dispatch!(self, create_app_channel, app_id, input)
+    }
+
+    pub async fn list_app_channels(&self, app_id: Uuid) -> Result<Vec<AppChannelRow>> {
+        dispatch!(self, list_app_channels, app_id)
+    }
+
+    pub async fn get_app_channel_by_public_id(
+        &self,
+        public_id: &str,
+    ) -> Result<Option<AppChannelRow>> {
+        dispatch!(self, get_app_channel_by_public_id, public_id)
+    }
+
+    pub async fn update_app_channel(
+        &self,
+        id: Uuid,
+        input: UpdateAppChannel,
+    ) -> Result<Option<AppChannelRow>> {
+        dispatch!(self, update_app_channel, id, input)
+    }
+
+    pub async fn delete_app_channel(&self, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_app_channel, id)
+    }
 }

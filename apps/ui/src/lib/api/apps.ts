@@ -3,7 +3,14 @@
 
 import { api } from "./client";
 import { createCrudApi } from "./crud";
-import type { App, CreateAppRequest, UpdateAppRequest } from "./types";
+import type {
+  AddChannelRequest,
+  App,
+  AppChannel,
+  CreateAppRequest,
+  UpdateAppRequest,
+  UpdateChannelRequest,
+} from "./types";
 
 export const appsCrudApi = createCrudApi<App, CreateAppRequest, UpdateAppRequest>("/v1/apps");
 
@@ -22,6 +29,26 @@ export async function publishApp(appId: string): Promise<App> {
 export async function unpublishApp(appId: string): Promise<App> {
   const response = await api.post<App>(`/v1/apps/${appId}/unpublish`);
   return response.data;
+}
+
+// Channel CRUD
+
+export async function addChannel(appId: string, req: AddChannelRequest): Promise<AppChannel> {
+  const response = await api.post<AppChannel>(`/v1/apps/${appId}/channels`, req);
+  return response.data;
+}
+
+export async function updateChannel(
+  appId: string,
+  channelId: string,
+  req: UpdateChannelRequest,
+): Promise<AppChannel> {
+  const response = await api.patch<AppChannel>(`/v1/apps/${appId}/channels/${channelId}`, req);
+  return response.data;
+}
+
+export async function deleteChannel(appId: string, channelId: string): Promise<void> {
+  await api.delete(`/v1/apps/${appId}/channels/${channelId}`);
 }
 
 /** Get the Slack App manifest for an app. Returns manifest YAML and create URL. */

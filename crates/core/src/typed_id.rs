@@ -406,6 +406,13 @@ impl IdMarker for AppIdMarker {
     const PREFIX: &'static str = "app";
 }
 
+/// Marker for App Channel IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AppChannelIdMarker;
+impl IdMarker for AppChannelIdMarker {
+    const PREFIX: &'static str = "appchan";
+}
+
 /// Marker for Notification IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NotificationIdMarker;
@@ -465,6 +472,8 @@ pub type ScheduleId = TypedId<ScheduleIdMarker>;
 pub type LeasedResourceId = TypedId<LeasedResourceIdMarker>;
 /// App ID
 pub type AppId = TypedId<AppIdMarker>;
+/// App Channel ID
+pub type AppChannelId = TypedId<AppChannelIdMarker>;
 /// Notification ID
 pub type NotificationId = TypedId<NotificationIdMarker>;
 pub type MemoryStoreId = TypedId<MemoryStoreIdMarker>;
