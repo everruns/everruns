@@ -202,4 +202,145 @@ impl InMemoryDatabase {
         }
         Ok(count)
     }
+
+    // ============================================
+    // OAuth Clients (MCP OAuth 2.1)
+    // ============================================
+
+    pub async fn create_oauth_client(&self, input: CreateOAuthClientRow) -> Result<OAuthClientRow> {
+        let now = Self::now();
+        let id = Uuid::now_v7();
+        let row = OAuthClientRow {
+            id,
+            client_id: input.client_id,
+            client_secret_hash: input.client_secret_hash,
+            client_name: input.client_name,
+            redirect_uris: input.redirect_uris,
+            created_at: now,
+        };
+        self.oauth_clients.write().insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_oauth_client_by_client_id(
+        &self,
+        client_id: &str,
+    ) -> Result<Option<OAuthClientRow>> {
+        Ok(self
+            .oauth_clients
+            .read()
+            .values()
+            .find(|c| c.client_id == client_id)
+            .cloned())
+    }
+
+    // ============================================
+    // OAuth Authorization Codes
+    // ============================================
+
+    pub async fn create_oauth_authorization_code(
+        &self,
+        input: CreateOAuthAuthorizationCodeRow,
+    ) -> Result<OAuthAuthorizationCodeRow> {
+        let now = Self::now();
+        let id = Uuid::now_v7();
+        let row = OAuthAuthorizationCodeRow {
+            id,
+            code_hash: input.code_hash,
+            client_id: input.client_id,
+            user_id: input.user_id,
+            org_id: input.org_id,
+            redirect_uri: input.redirect_uri,
+            code_challenge: input.code_challenge,
+            code_challenge_method: input.code_challenge_method,
+            scope: input.scope,
+            consumed: false,
+            expires_at: input.expires_at,
+            created_at: now,
+        };
+        self.oauth_authorization_codes
+            .write()
+            .insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_oauth_authorization_code_by_hash(
+        &self,
+        code_hash: &str,
+    ) -> Result<Option<OAuthAuthorizationCodeRow>> {
+        let now = Self::now();
+        Ok(self
+            .oauth_authorization_codes
+            .read()
+            .values()
+            .find(|c| c.code_hash == code_hash && c.expires_at > now)
+            .cloned())
+    }
+
+    pub async fn consume_oauth_authorization_code(&self, id: Uuid) -> Result<bool> {
+        if let Some(code) = self.oauth_authorization_codes.write().get_mut(&id)
+            && !code.consumed
+        {
+            code.consumed = true;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    pub async fn delete_expired_oauth_authorization_codes(&self) -> Result<u64> {
+        let now = Self::now();
+        let mut codes = self.oauth_authorization_codes.write();
+        let before = codes.len();
+        codes.retain(|_, c| c.expires_at > now);
+        Ok((before - codes.len()) as u64)
+    }
+
+    // ============================================
+    // OAuth Refresh Tokens
+    // ============================================
+
+    pub async fn create_oauth_refresh_token(
+        &self,
+        input: CreateOAuthRefreshTokenRow,
+    ) -> Result<OAuthRefreshTokenRow> {
+        let now = Self::now();
+        let id = Uuid::now_v7();
+        let row = OAuthRefreshTokenRow {
+            id,
+            token_hash: input.token_hash,
+            client_id: input.client_id,
+            user_id: input.user_id,
+            org_id: input.org_id,
+            scope: input.scope,
+            expires_at: input.expires_at,
+            created_at: now,
+        };
+        self.oauth_refresh_tokens.write().insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_oauth_refresh_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<OAuthRefreshTokenRow>> {
+        let now = Self::now();
+        Ok(self
+            .oauth_refresh_tokens
+            .read()
+            .values()
+            .find(|t| t.token_hash == token_hash && t.expires_at > now)
+            .cloned())
+    }
+
+    pub async fn delete_oauth_refresh_token(&self, id: Uuid) -> Result<bool> {
+        Ok(self.oauth_refresh_tokens.write().remove(&id).is_some())
+    }
+
+    pub async fn delete_expired_oauth_refresh_tokens(&self) -> Result<u64> {
+        let now = Self::now();
+        let mut tokens = self.oauth_refresh_tokens.write();
+        let before = tokens.len();
+        tokens.retain(|_, t| t.expires_at > now);
+        Ok((before - tokens.len()) as u64)
+    }
 }

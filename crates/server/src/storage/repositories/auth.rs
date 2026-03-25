@@ -231,4 +231,173 @@ impl Database {
 
         Ok(result.rows_affected())
     }
+
+    // ============================================
+    // OAuth Clients (MCP OAuth 2.1)
+    // ============================================
+
+    pub async fn create_oauth_client(&self, input: CreateOAuthClientRow) -> Result<OAuthClientRow> {
+        let row = sqlx::query_as::<_, OAuthClientRow>(
+            r#"
+            INSERT INTO oauth_clients (client_id, client_secret_hash, client_name, redirect_uris)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, client_id, client_secret_hash, client_name, redirect_uris, created_at
+            "#,
+        )
+        .bind(&input.client_id)
+        .bind(&input.client_secret_hash)
+        .bind(&input.client_name)
+        .bind(&input.redirect_uris)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_oauth_client_by_client_id(
+        &self,
+        client_id: &str,
+    ) -> Result<Option<OAuthClientRow>> {
+        let row = sqlx::query_as::<_, OAuthClientRow>(
+            r#"
+            SELECT id, client_id, client_secret_hash, client_name, redirect_uris, created_at
+            FROM oauth_clients
+            WHERE client_id = $1
+            "#,
+        )
+        .bind(client_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    // ============================================
+    // OAuth Authorization Codes
+    // ============================================
+
+    pub async fn create_oauth_authorization_code(
+        &self,
+        input: CreateOAuthAuthorizationCodeRow,
+    ) -> Result<OAuthAuthorizationCodeRow> {
+        let row = sqlx::query_as::<_, OAuthAuthorizationCodeRow>(
+            r#"
+            INSERT INTO oauth_authorization_codes (code_hash, client_id, user_id, org_id, redirect_uri, code_challenge, code_challenge_method, scope, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, code_hash, client_id, user_id, org_id, redirect_uri, code_challenge, code_challenge_method, scope, consumed, expires_at, created_at
+            "#,
+        )
+        .bind(&input.code_hash)
+        .bind(&input.client_id)
+        .bind(input.user_id)
+        .bind(input.org_id)
+        .bind(&input.redirect_uri)
+        .bind(&input.code_challenge)
+        .bind(&input.code_challenge_method)
+        .bind(&input.scope)
+        .bind(input.expires_at)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_oauth_authorization_code_by_hash(
+        &self,
+        code_hash: &str,
+    ) -> Result<Option<OAuthAuthorizationCodeRow>> {
+        let row = sqlx::query_as::<_, OAuthAuthorizationCodeRow>(
+            r#"
+            SELECT id, code_hash, client_id, user_id, org_id, redirect_uri, code_challenge, code_challenge_method, scope, consumed, expires_at, created_at
+            FROM oauth_authorization_codes
+            WHERE code_hash = $1 AND expires_at > NOW()
+            "#,
+        )
+        .bind(code_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn consume_oauth_authorization_code(&self, id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE oauth_authorization_codes SET consumed = TRUE WHERE id = $1 AND consumed = FALSE",
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_expired_oauth_authorization_codes(&self) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM oauth_authorization_codes WHERE expires_at < NOW()")
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    // ============================================
+    // OAuth Refresh Tokens
+    // ============================================
+
+    pub async fn create_oauth_refresh_token(
+        &self,
+        input: CreateOAuthRefreshTokenRow,
+    ) -> Result<OAuthRefreshTokenRow> {
+        let row = sqlx::query_as::<_, OAuthRefreshTokenRow>(
+            r#"
+            INSERT INTO oauth_refresh_tokens (token_hash, client_id, user_id, org_id, scope, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, token_hash, client_id, user_id, org_id, scope, expires_at, created_at
+            "#,
+        )
+        .bind(&input.token_hash)
+        .bind(&input.client_id)
+        .bind(input.user_id)
+        .bind(input.org_id)
+        .bind(&input.scope)
+        .bind(input.expires_at)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_oauth_refresh_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<OAuthRefreshTokenRow>> {
+        let row = sqlx::query_as::<_, OAuthRefreshTokenRow>(
+            r#"
+            SELECT id, token_hash, client_id, user_id, org_id, scope, expires_at, created_at
+            FROM oauth_refresh_tokens
+            WHERE token_hash = $1 AND expires_at > NOW()
+            "#,
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn delete_oauth_refresh_token(&self, id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM oauth_refresh_tokens WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_expired_oauth_refresh_tokens(&self) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM oauth_refresh_tokens WHERE expires_at < NOW()")
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected())
+    }
 }

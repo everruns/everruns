@@ -1,5 +1,7 @@
 # MCP Server Specification
 
+> Part of the [MCP spec family](mcp.md). This document covers MCP server registration, CRUD API, tool naming, discovery, and execution.
+
 ## Abstract
 
 This document defines the data model and API for MCP (Model Context Protocol) servers in Everruns. MCP servers extend agent capabilities by providing external tools through a standardized protocol. MCP servers appear as "virtual capabilities" in the capability system, allowing agents to use MCP tools alongside built-in capabilities.

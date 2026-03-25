@@ -1,5 +1,7 @@
 // MCP Server domain types
 //
+// Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (detail)
+//
 // These types represent the MCP (Model Context Protocol) server configuration.
 // Used by both API and worker crates.
 //

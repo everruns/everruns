@@ -32,7 +32,7 @@ Relevant references:
 
 **Every shipped change MUST satisfy ALL of these outcomes. These are mandatory requirements, not optional suggestions. Do not skip or weaken any requirement.**
 
-1. Safe branch state: no shipping from `main` or `master`; working tree clean before final push; rebased onto the latest `origin/main` before merge.
+1. Safe branch state: no shipping from `main` or `master`; working tree clean before final push; rebased onto the latest `origin/main` before merge. After rebasing, check `crates/server/migrations/` for duplicate version numbers — migrations are the most common conflict source. Renumber your migration if a conflict exists.
 2. Goal achieved with evidence: the requested behavior is implemented and validated with proof that matches the risk.
 3. Merge-ready code: touched code is reviewed for avoidable complexity and performance risk. A structured security review is performed against the relevant threat model categories from `specs/threat-model.md` (see the Security Review section in the ship skill). Issues found during review are addressed or explicitly blocked.
 4. Synced artifacts: only the affected artifacts are updated, including specs, threat model, docs, OpenAPI, test cases, and agent instructions when relevant. Specs touched by the change must not contain implementation details that duplicate code (struct fields, enum variants, exhaustive tables, code snippets) — replace with links to source files per the spec content principle in `AGENTS.md`.

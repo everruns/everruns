@@ -212,6 +212,73 @@ impl StorageBackend {
     }
 
     // ============================================
+    // OAuth Clients (MCP OAuth 2.1)
+    // ============================================
+
+    pub async fn create_oauth_client(&self, input: CreateOAuthClientRow) -> Result<OAuthClientRow> {
+        dispatch!(self, create_oauth_client, input)
+    }
+
+    pub async fn get_oauth_client_by_client_id(
+        &self,
+        client_id: &str,
+    ) -> Result<Option<OAuthClientRow>> {
+        dispatch!(self, get_oauth_client_by_client_id, client_id)
+    }
+
+    // ============================================
+    // OAuth Authorization Codes
+    // ============================================
+
+    pub async fn create_oauth_authorization_code(
+        &self,
+        input: CreateOAuthAuthorizationCodeRow,
+    ) -> Result<OAuthAuthorizationCodeRow> {
+        dispatch!(self, create_oauth_authorization_code, input)
+    }
+
+    pub async fn get_oauth_authorization_code_by_hash(
+        &self,
+        code_hash: &str,
+    ) -> Result<Option<OAuthAuthorizationCodeRow>> {
+        dispatch!(self, get_oauth_authorization_code_by_hash, code_hash)
+    }
+
+    pub async fn consume_oauth_authorization_code(&self, id: Uuid) -> Result<bool> {
+        dispatch!(self, consume_oauth_authorization_code, id)
+    }
+
+    pub async fn delete_expired_oauth_authorization_codes(&self) -> Result<u64> {
+        dispatch!(self, delete_expired_oauth_authorization_codes)
+    }
+
+    // ============================================
+    // OAuth Refresh Tokens
+    // ============================================
+
+    pub async fn create_oauth_refresh_token(
+        &self,
+        input: CreateOAuthRefreshTokenRow,
+    ) -> Result<OAuthRefreshTokenRow> {
+        dispatch!(self, create_oauth_refresh_token, input)
+    }
+
+    pub async fn get_oauth_refresh_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<OAuthRefreshTokenRow>> {
+        dispatch!(self, get_oauth_refresh_token_by_hash, token_hash)
+    }
+
+    pub async fn delete_oauth_refresh_token(&self, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_oauth_refresh_token, id)
+    }
+
+    pub async fn delete_expired_oauth_refresh_tokens(&self) -> Result<u64> {
+        dispatch!(self, delete_expired_oauth_refresh_tokens)
+    }
+
+    // ============================================
     // Agents
     // ============================================
 

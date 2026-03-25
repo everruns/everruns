@@ -10,6 +10,7 @@ pub mod builtin;
 pub mod cli_auth;
 pub mod config;
 pub mod jwt;
+pub mod mcp_oauth;
 pub mod middleware;
 pub mod oauth;
 pub mod rate_limit;
@@ -19,6 +20,7 @@ pub use backend::AuthBackend;
 pub use builtin::BuiltinAuthBackend;
 pub use cli_auth::CliAuthState;
 pub use config::AuthConfig;
+pub use mcp_oauth::McpOAuthState;
 pub use middleware::{
     AuthError, AuthMethod, AuthState, AuthUser, OrgAdmin, OrgContext, OrgOwner, ResolvedOrg,
 };

@@ -233,6 +233,85 @@ pub struct CreateRefreshTokenRow {
 }
 
 // ============================================
+// OAuth models (MCP OAuth 2.1)
+// ============================================
+
+/// OAuth client row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct OAuthClientRow {
+    pub id: Uuid,
+    pub client_id: String,
+    pub client_secret_hash: String,
+    pub client_name: String,
+    pub redirect_uris: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating an OAuth client
+#[derive(Debug, Clone)]
+pub struct CreateOAuthClientRow {
+    pub client_id: String,
+    pub client_secret_hash: String,
+    pub client_name: String,
+    pub redirect_uris: serde_json::Value,
+}
+
+/// OAuth authorization code row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct OAuthAuthorizationCodeRow {
+    pub id: Uuid,
+    pub code_hash: String,
+    pub client_id: String,
+    pub user_id: Uuid,
+    pub org_id: i64,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub code_challenge_method: String,
+    pub scope: String,
+    pub consumed: bool,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating an OAuth authorization code
+#[derive(Debug, Clone)]
+pub struct CreateOAuthAuthorizationCodeRow {
+    pub code_hash: String,
+    pub client_id: String,
+    pub user_id: Uuid,
+    pub org_id: i64,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub code_challenge_method: String,
+    pub scope: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// OAuth refresh token row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct OAuthRefreshTokenRow {
+    pub id: Uuid,
+    pub token_hash: String,
+    pub client_id: String,
+    pub user_id: Uuid,
+    pub org_id: i64,
+    pub scope: String,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating an OAuth refresh token
+#[derive(Debug, Clone)]
+pub struct CreateOAuthRefreshTokenRow {
+    pub token_hash: String,
+    pub client_id: String,
+    pub user_id: Uuid,
+    pub org_id: i64,
+    pub scope: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+// ============================================
 // Agent models (configuration for agentic loop)
 // ============================================
 

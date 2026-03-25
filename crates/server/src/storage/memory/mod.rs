@@ -125,6 +125,10 @@ pub struct InMemoryDatabase {
     agent_identity_connections: RwLock<HashMap<Uuid, AgentIdentityConnectionRow>>,
     // Organization settings (default model, etc.)
     org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
+    // OAuth clients (MCP OAuth 2.1)
+    oauth_clients: RwLock<HashMap<Uuid, OAuthClientRow>>,
+    oauth_authorization_codes: RwLock<HashMap<Uuid, OAuthAuthorizationCodeRow>>,
+    oauth_refresh_tokens: RwLock<HashMap<Uuid, OAuthRefreshTokenRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -183,6 +187,9 @@ impl Default for InMemoryDatabase {
             agent_identities: RwLock::new(HashMap::new()),
             agent_identity_connections: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
+            oauth_clients: RwLock::new(HashMap::new()),
+            oauth_authorization_codes: RwLock::new(HashMap::new()),
+            oauth_refresh_tokens: RwLock::new(HashMap::new()),
         }
     }
 }

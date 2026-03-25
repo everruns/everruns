@@ -65,6 +65,7 @@ Always make sure you are working on top of latest main from remote.
 - Start by syncing: `git fetch origin main`
 - Branch or rebase onto `origin/main` before edits, especially before shipping
 - In worktrees, do not assume `HEAD` tracks a branch; verify with `git status --branch` or `git worktree list`
+- **After every rebase**, check `crates/server/migrations/` for duplicate version numbers. Migrations are the most common conflict source — multiple branches often add the next sequential number. Renumber your migration to the next available number if a conflict exists.
 
 ### Principles
 
@@ -92,12 +93,14 @@ Always make sure you are working on top of latest main from remote.
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system
 - `specs/agent-instructions.md` - AGENTS.md support (dynamic project instructions)
-- `specs/mcp-servers.md` - MCP server registration
+- `specs/mcp.md` - **MCP umbrella spec** (protocol, architecture, crate map, security)
+- `specs/mcp-servers.md` - MCP server registration, CRUD API, tool naming, execution
 - `specs/llm-drivers.md` - LLM driver trait, provider implementations
 - `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
 - `specs/scheduled-tasks.md` - Cron-based scheduled tasks for durable engine
 - `specs/fail-rs-testing.md` - Failure injection testing with fail-rs
 - `specs/authentication.md` - Authentication modes and OAuth
+- `specs/mcp-oauth.md` - MCP OAuth 2.1 (PKCE, dynamic client registration)
 - `specs/integrations.md` - **Integration specs index** (links to specs co-located with their crates)
 - `specs/braintrust-integration.md` - Braintrust observability
 - `specs/otel-observability.md` - OpenTelemetry Gen-AI semantic convention tracing
