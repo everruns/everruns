@@ -9,26 +9,49 @@ Exposes application metrics in Prometheus exposition format at `GET /metrics`.
 ## Endpoint
 
 - **Path:** `/metrics` (root-level, outside API prefix, alongside `/health`)
-- **Auth:** None (standard practice; restrict via network policy in production)
+- **Auth:** None (standard practice; restrict via network policy or `METRICS_ADDR`)
 - **Content-Type:** `text/plain; version=0.0.4`
 - **Implementation:** `crates/server/src/api/prometheus.rs`
 
-## Deployment-Grade Gating
+## Serving Modes
 
-| Grade | Default `METRICS_ENABLED` | Rationale |
-|-------|--------------------------|-----------|
-| Dev / Poc / Preview | `true` | Always available for development |
-| Prod | `false` | SaaS: not exposed externally; opt-in behind network policy |
+### Dev (default): main server
 
-Operators set `METRICS_ENABLED=true` in production when the `/metrics` port is
-restricted to internal scrapers (VPC, service mesh, network policy).
+When `METRICS_ADDR` is **unset**, `/metrics` is mounted on the main API server.
+Convenient for local development — `curl localhost:9301/metrics` just works.
+
+### Production: dedicated internal server
+
+When `METRICS_ADDR` is **set** (e.g. `127.0.0.1:9090`), a separate lightweight
+HTTP server is spawned that **only** serves `/metrics`. This keeps the metrics
+endpoint off the public interface entirely.
+
+Scrapers inside the cluster reach it via pod-local networking, sidecar, or
+service mesh. External traffic never sees the port.
+
+```yaml
+# Kubernetes deployment example
+env:
+  - name: METRICS_ADDR
+    value: "127.0.0.1:9090"
+```
+
+```yaml
+# VictoriaMetrics / Prometheus scrape config
+scrape_configs:
+  - job_name: everruns
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["localhost:9090"]  # pod-local sidecar access
+```
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `METRICS_ENABLED` | grade-dependent | Enable `/metrics` endpoint |
+| `METRICS_ENABLED` | `true` | Enable/disable metrics collection and endpoint |
 | `METRICS_PREFIX` | `everruns` | Metric name prefix |
+| `METRICS_ADDR` | *(unset)* | Dedicated bind address for internal-only metrics server. When set, `/metrics` is NOT on the main API server. Recommended for production. |
 
 ## Metrics
 
@@ -73,16 +96,6 @@ All prefixed `everruns_`.
 4. **Event listener:** `PrometheusMetricsListener` implements `EventListener` for
    `llm.generation` and `tool.completed` events, recording duration histograms.
 5. **Render:** `GET /metrics` calls `PrometheusHandle::render()`.
-
-## Scrape Config (VictoriaMetrics / Prometheus)
-
-```yaml
-scrape_configs:
-  - job_name: everruns
-    scrape_interval: 15s
-    static_configs:
-      - targets: ["everruns-server:9301"]
-```
 
 ## Non-Goals
 

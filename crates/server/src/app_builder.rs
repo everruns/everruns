@@ -364,17 +364,21 @@ impl ServerAppBuilder {
         tracing::info!(?feature_flags, "Feature flags computed");
 
         // Prometheus metrics
-        let prometheus_config = api::prometheus::PrometheusConfig::from_env(&deployment_grade);
+        let prometheus_config = api::prometheus::PrometheusConfig::from_env();
         let prometheus_handle = if prometheus_config.enabled {
             match api::prometheus::install_prometheus_recorder() {
                 Some(handle) => {
-                    tracing::info!("Prometheus /metrics endpoint enabled");
+                    if let Some(ref addr) = prometheus_config.metrics_addr {
+                        tracing::info!(addr = %addr, "Prometheus metrics on dedicated internal server");
+                    } else {
+                        tracing::info!("Prometheus /metrics endpoint on main server");
+                    }
                     Some(handle)
                 }
                 None => None,
             }
         } else {
-            tracing::info!("Prometheus /metrics endpoint disabled");
+            tracing::info!("Prometheus metrics disabled");
             None
         };
 
@@ -752,9 +756,15 @@ impl ServerAppBuilder {
                 &self.config.api_prefix,
             ));
 
-        // Mount /metrics endpoint (outside API prefix, no auth)
+        // Mount /metrics endpoint:
+        //  - METRICS_ADDR set → dedicated internal-only server (production)
+        //  - METRICS_ADDR unset → on main router (dev convenience)
         if let Some(ref handle) = prometheus_handle {
-            app = app.merge(api::prometheus::route(handle.clone()));
+            if let Some(ref addr) = prometheus_config.metrics_addr {
+                api::prometheus::spawn_metrics_server(handle.clone(), addr.clone());
+            } else {
+                app = app.merge(api::prometheus::route(handle.clone()));
+            }
         }
 
         // CORS

@@ -1,40 +1,49 @@
 // Prometheus /metrics endpoint
 //
 // Decision: Uses `metrics` + `metrics-exporter-prometheus` (lighter than OTel bridge).
-// Decision: Endpoint is mounted outside the API prefix at `/metrics` (like `/health`).
-// Decision: No auth on /metrics — restrict via network policy in production.
-//           In SaaS (DeploymentGrade::Prod without METRICS_ENABLED=true), the endpoint
-//           is disabled by default to prevent external exposure.
+// Decision: Metrics are always enabled by default (METRICS_ENABLED=true).
+// Decision: Two serving modes to keep metrics internal in production:
+//   1. METRICS_ADDR set (e.g. 127.0.0.1:9090) → dedicated internal-only HTTP server
+//      serving only /metrics. Not reachable from outside the pod/host. This is the
+//      recommended production pattern; scrapers access via sidecar or pod-local.
+//   2. METRICS_ADDR unset → /metrics mounted on the main API server (convenient
+//      for dev/local). In production without METRICS_ADDR, restrict via network
+//      policy or ingress rules.
+// Decision: No auth on /metrics (Prometheus standard).
 // Decision: Gauges/counters bridged from existing MetricsCollector via background sampler.
 //           Histograms recorded inline via `metrics` macros.
 
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::{Router, extract::State, routing::get};
-use everruns_config::env_bool;
-use everruns_core::DeploymentGrade;
+use everruns_config::{env_bool, env_opt_string};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 
 /// Configuration for the Prometheus metrics endpoint.
 pub struct PrometheusConfig {
-    /// Whether the /metrics endpoint is enabled.
+    /// Whether metrics collection is enabled.
     pub enabled: bool,
     /// Metric name prefix (default: "everruns").
     pub prefix: String,
+    /// Optional separate bind address for the metrics server (e.g. "127.0.0.1:9090").
+    /// When set, /metrics is served on a dedicated internal-only HTTP server
+    /// instead of the main API server — keeping it off the public interface.
+    pub metrics_addr: Option<String>,
 }
 
 impl PrometheusConfig {
-    /// Load from environment, applying deployment-grade defaults.
+    /// Load from environment.
     ///
-    /// - `METRICS_ENABLED`: explicit override (default: true for Dev/Poc/Preview, false for Prod)
+    /// - `METRICS_ENABLED`: enable/disable metrics (default: true)
     /// - `METRICS_PREFIX`: metric name prefix (default: "everruns")
-    pub fn from_env(grade: &DeploymentGrade) -> Self {
-        // In prod/SaaS, default off to avoid external exposure.
-        // Operators opt in by setting METRICS_ENABLED=true behind a network policy.
-        let default_enabled = !matches!(grade, DeploymentGrade::Prod);
+    /// - `METRICS_ADDR`: separate bind address for internal-only metrics server
+    ///   (e.g. "127.0.0.1:9090"). When set, /metrics is NOT mounted on the main
+    ///   API server. Recommended for production to avoid external exposure.
+    pub fn from_env() -> Self {
         Self {
-            enabled: env_bool("METRICS_ENABLED", default_enabled),
+            enabled: env_bool("METRICS_ENABLED", true),
             prefix: std::env::var("METRICS_PREFIX").unwrap_or_else(|_| "everruns".to_string()),
+            metrics_addr: env_opt_string("METRICS_ADDR"),
         }
     }
 }
@@ -69,6 +78,28 @@ pub fn route(handle: PrometheusHandle) -> Router {
     Router::new()
         .route("/metrics", get(metrics_handler))
         .with_state(handle)
+}
+
+/// Spawn a dedicated HTTP server that only serves `/metrics` on the given address.
+///
+/// Used in production to keep metrics on an internal-only port (e.g. 127.0.0.1:9090)
+/// that is not reachable from outside the pod/host. Scrapers access via sidecar,
+/// pod-local networking, or service mesh.
+pub fn spawn_metrics_server(handle: PrometheusHandle, addr: String) {
+    tokio::spawn(async move {
+        let app = route(handle);
+        match tokio::net::TcpListener::bind(&addr).await {
+            Ok(listener) => {
+                tracing::info!(addr = %addr, "Metrics server listening (internal-only)");
+                if let Err(e) = axum::serve(listener, app).await {
+                    tracing::error!(error = %e, "Metrics server error");
+                }
+            }
+            Err(e) => {
+                tracing::error!(addr = %addr, error = %e, "Failed to bind metrics server");
+            }
+        }
+    });
 }
 
 // ============================================================================
@@ -241,17 +272,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn config_dev_defaults_enabled() {
-        // Dev grade should default to enabled
-        let config = PrometheusConfig::from_env(&DeploymentGrade::Dev);
+    fn config_defaults_enabled() {
+        let config = PrometheusConfig::from_env();
         assert!(config.enabled);
         assert_eq!(config.prefix, "everruns");
-    }
-
-    #[test]
-    fn config_prod_defaults_disabled() {
-        let config = PrometheusConfig::from_env(&DeploymentGrade::Prod);
-        // Without env var override, prod defaults to disabled
-        assert!(!config.enabled);
     }
 }
