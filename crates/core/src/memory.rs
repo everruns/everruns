@@ -1049,3 +1049,154 @@ mod tests {
         assert_eq!(emitter.event_count().await, 0);
     }
 }
+
+// ============================================================================
+// InMemoryMemoryStore — for dev mode and testing
+// ============================================================================
+
+use crate::memory_store::{
+    Memory, MemoryContentPart, MemoryKind, MemoryQuery, MemoryStoreBackend, MemoryStoreEntity,
+};
+use crate::typed_id::{MemoryId, MemoryStoreId, OrgId};
+
+/// In-memory implementation of `MemoryStoreBackend` for dev mode and testing.
+#[derive(Debug, Default, Clone)]
+pub struct InMemoryMemoryStore {
+    stores: Arc<RwLock<Vec<MemoryStoreEntity>>>,
+    memories: Arc<RwLock<Vec<Memory>>>,
+}
+
+impl InMemoryMemoryStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[async_trait]
+impl MemoryStoreBackend for InMemoryMemoryStore {
+    async fn get_or_create_default_store(&self, org_id: OrgId) -> Result<MemoryStoreEntity> {
+        let mut stores = self.stores.write().await;
+        if let Some(store) = stores.iter().find(|s| s.org_id == org_id && s.is_default) {
+            return Ok(store.clone());
+        }
+        let store = MemoryStoreEntity {
+            id: MemoryStoreId::new(),
+            org_id,
+            name: "default".to_string(),
+            is_default: true,
+            created_at: chrono::Utc::now(),
+        };
+        stores.push(store.clone());
+        Ok(store)
+    }
+
+    async fn get_store(&self, store_id: MemoryStoreId) -> Result<Option<MemoryStoreEntity>> {
+        Ok(self
+            .stores
+            .read()
+            .await
+            .iter()
+            .find(|s| s.id == store_id)
+            .cloned())
+    }
+
+    async fn create_memory(
+        &self,
+        store_id: MemoryStoreId,
+        content: String,
+        content_parts: Vec<MemoryContentPart>,
+        kind: MemoryKind,
+        importance: u8,
+        tags: Vec<String>,
+    ) -> Result<Memory> {
+        let now = chrono::Utc::now();
+        let memory = Memory {
+            id: MemoryId::new(),
+            store_id,
+            content,
+            content_parts,
+            kind,
+            importance: importance.clamp(1, 10),
+            tags,
+            active: true,
+            created_at: now,
+            updated_at: now,
+        };
+        self.memories.write().await.push(memory.clone());
+        Ok(memory)
+    }
+
+    async fn recall(&self, query: MemoryQuery) -> Result<(Vec<Memory>, usize)> {
+        let memories = self.memories.read().await;
+        let mut results: Vec<&Memory> = memories
+            .iter()
+            .filter(|m| m.active)
+            .filter(|m| {
+                if let Some(ref sid) = query.store_id {
+                    m.store_id == *sid
+                } else {
+                    true
+                }
+            })
+            .filter(|m| {
+                if let Some(ref kind) = query.kind {
+                    m.kind == *kind
+                } else {
+                    true
+                }
+            })
+            .filter(|m| {
+                if let Some(ref tags) = query.tags {
+                    tags.iter().all(|t| m.tags.contains(t))
+                } else {
+                    true
+                }
+            })
+            .filter(|m| {
+                if let Some(ref q) = query.query {
+                    let q_lower = q.to_lowercase();
+                    m.content.to_lowercase().contains(&q_lower)
+                        || m.tags.iter().any(|t| t.to_lowercase().contains(&q_lower))
+                } else {
+                    true
+                }
+            })
+            .collect();
+
+        // Sort by importance desc, then by created_at desc
+        results.sort_by(|a, b| {
+            b.importance
+                .cmp(&a.importance)
+                .then_with(|| b.created_at.cmp(&a.created_at))
+        });
+
+        let total = results.len();
+        let limit = if query.limit > 0 { query.limit } else { 10 };
+        let results: Vec<Memory> = results.into_iter().take(limit).cloned().collect();
+        Ok((results, total))
+    }
+
+    async fn forget(&self, store_id: MemoryStoreId, memory_id: MemoryId) -> Result<bool> {
+        let mut memories = self.memories.write().await;
+        if let Some(m) = memories
+            .iter_mut()
+            .find(|m| m.id == memory_id && m.store_id == store_id && m.active)
+        {
+            m.active = false;
+            m.updated_at = chrono::Utc::now();
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    async fn count_active(&self, store_id: MemoryStoreId) -> Result<usize> {
+        Ok(self
+            .memories
+            .read()
+            .await
+            .iter()
+            .filter(|m| m.store_id == store_id && m.active)
+            .count())
+    }
+}

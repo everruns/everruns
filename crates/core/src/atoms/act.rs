@@ -171,6 +171,10 @@ where
     leased_resource_store: Option<Arc<dyn crate::traits::LeasedResourceStore>>,
     /// Optional capability registry for blueprint lookups in subagent tools
     capability_registry: Option<crate::capabilities::CapabilityRegistry>,
+    /// Optional memory store backend for persistent cross-session memory.
+    memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
+    /// Optional org ID for org-scoped operations.
+    org_id: Option<crate::typed_id::OrgId>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -197,6 +201,8 @@ where
             platform_store: None,
             leased_resource_store: None,
             capability_registry: None,
+            memory_store: None,
+            org_id: None,
             hooks: Self::default_hooks(),
         }
     }
@@ -221,6 +227,8 @@ where
             platform_store: None,
             leased_resource_store: None,
             capability_registry: None,
+            memory_store: None,
+            org_id: None,
             hooks: Self::default_hooks(),
         }
     }
@@ -314,6 +322,21 @@ where
         registry: crate::capabilities::CapabilityRegistry,
     ) -> Self {
         self.capability_registry = Some(registry);
+        self
+    }
+
+    /// Set memory store backend for persistent cross-session memory tools.
+    pub fn with_memory_store(
+        mut self,
+        store: Arc<dyn crate::memory_store::MemoryStoreBackend>,
+    ) -> Self {
+        self.memory_store = Some(store);
+        self
+    }
+
+    /// Set org ID for org-scoped operations.
+    pub fn with_org_id(mut self, org_id: crate::typed_id::OrgId) -> Self {
+        self.org_id = Some(org_id);
         self
     }
 }
@@ -730,6 +753,10 @@ where
         if let Some(ref registry) = self.capability_registry {
             tool_context.capability_registry = Some(registry.clone());
         }
+        if let Some(ref store) = self.memory_store {
+            tool_context.memory_store = Some(store.clone());
+        }
+        tool_context.org_id = self.org_id;
         // Provide event emitter + context so tools can emit tool.progress events
         tool_context.event_emitter = Some(self.event_emitter.clone() as Arc<dyn EventEmitter>);
         tool_context.event_context = Some(event_context.clone());

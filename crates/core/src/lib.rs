@@ -54,6 +54,7 @@ pub mod leased_resource;
 pub mod llm_model_profiles;
 pub mod llm_models;
 pub mod mcp_server;
+pub mod memory_store;
 pub mod organization;
 pub mod session;
 pub mod session_file;
@@ -125,6 +126,12 @@ pub use traits::{
     ModelWithProvider, NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore,
     SessionMutator, SessionSqlDbStoreRef, SessionStorageStore, SessionStore, ToolContext,
     ToolExecutor, UserConnectionResolver,
+};
+
+// Memory store re-exports
+pub use memory_store::{
+    Memory, MemoryContentPart, MemoryImagePart, MemoryKind, MemoryLimits, MemoryQuery,
+    MemoryStoreBackend, MemoryStoreEntity, MemoryTextPart,
 };
 
 // Channel abstraction re-exports
@@ -275,8 +282,8 @@ pub use skill::{
 };
 pub use typed_id::{
     AgentId, AgentIdentityId, AppId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId,
-    LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId, OrgId, ProviderId,
-    ScheduleId, SessionId, SkillId, TurnId, TypedId,
+    LeasedResourceId, McpServerId, MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId,
+    OrgId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
 };
 
 // Permissions re-exports

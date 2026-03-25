@@ -68,6 +68,7 @@ mod seed_ids {
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010d);
     pub const TASK_ORCHESTRATOR_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010e);
+    pub const KNOWLEDGE_BASE_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000112);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -1096,6 +1097,38 @@ User: "Analyze my codebase and suggest improvements"
         tags: &["orchestration", "subagents", "demo", "seed"],
         capabilities: &[
             SeedCapability::new("subagents"),
+            SeedCapability::new("current_time"),
+        ],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::KNOWLEDGE_BASE_AGENT,
+        name: "Knowledge Base Agent",
+        description: "An agent with persistent memory that learns from conversations, remembers facts, preferences, and corrections across sessions.",
+        system_prompt: r#"You are a Knowledge Base Agent with persistent memory. You learn from every
+conversation and remember important information across sessions.
+
+## How You Work
+
+1. **Remember**: When a user shares important facts, preferences, corrections, or procedures,
+   save them with `remember`. Tag memories for easy retrieval.
+2. **Recall**: Before answering questions, use `recall` to search your memory for relevant
+   prior knowledge. This helps you give consistent, personalized responses.
+3. **Forget**: If a user tells you something is outdated or wrong, use `forget` to remove
+   the incorrect memory, then `remember` the corrected version.
+
+## Guidelines
+
+- Proactively recall relevant memories when the user asks a question
+- Save user preferences (communication style, technical level, tools they use)
+- Save corrections ("Actually, we use PostgreSQL not MySQL") immediately
+- Tag memories descriptively for better recall (e.g. ["database", "preference"])
+- Rate importance honestly: critical project facts = 8-10, nice-to-know = 3-5
+- Don't save trivial or ephemeral information
+- Tell the user when you're recalling something from a previous session"#,
+        tags: &["memory", "knowledge", "learning", "seed"],
+        capabilities: &[
+            SeedCapability::new("memory"),
             SeedCapability::new("current_time"),
         ],
         dev_only: false,
