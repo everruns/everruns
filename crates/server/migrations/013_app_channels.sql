@@ -1,4 +1,4 @@
--- Migration 012: Extract app channels into a separate table
+-- Migration 013: Extract app channels into a separate table
 -- Supports multiple channels per app (multi-channel messaging).
 -- Data migration: copy existing channel_type/channel_config from apps into app_channels.
 
