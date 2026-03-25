@@ -75,6 +75,14 @@ pub struct CreateSessionRequest {
     /// These tools are sent to the LLM but executed by the client.
     #[serde(default)]
     pub tools: Vec<everruns_core::ToolDefinition>,
+    /// Optional session-level system prompt override.
+    /// Prepended to the agent's system prompt when building RuntimeAgent.
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    /// Session-level initial files (additive to agent initial_files).
+    /// Files with matching paths override agent/harness files; new paths are appended.
+    #[serde(default)]
+    pub initial_files: Vec<everruns_core::InitialFile>,
     /// Session-level client hints — arbitrary key-value pairs that tell the
     /// server what the client can handle. These are defaults for every turn;
     /// per-message `controls.hints` override these key-by-key (shallow merge).

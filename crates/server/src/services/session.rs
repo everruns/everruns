@@ -166,6 +166,8 @@ impl SessionService {
             model_id,
             capabilities: capabilities_json,
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
+            system_prompt: req.system_prompt.clone(),
+            initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             hints: hints_json,
             blueprint_id: None,
             blueprint_config: None,
@@ -193,6 +195,7 @@ impl SessionService {
             org_id,
             harness_id.uuid(),
             agent_id.map(|a| a.uuid()),
+            &req.initial_files,
             session.id.uuid(),
         )
         .await?;
@@ -225,6 +228,8 @@ impl SessionService {
             model_id: None,
             capabilities: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: Some(blueprint_id),
             blueprint_config,
@@ -292,16 +297,17 @@ impl SessionService {
         Ok(())
     }
 
-    /// Copy harness/agent starter files into the session filesystem.
+    /// Copy harness/agent/session starter files into the session filesystem.
     async fn apply_initial_files(
         &self,
         org_id: i64,
         harness_id: Uuid,
         agent_id: Option<Uuid>,
+        session_initial_files: &[InitialFile],
         session_id: Uuid,
     ) -> Result<()> {
         for file in self
-            .collect_initial_files(org_id, harness_id, agent_id)
+            .collect_initial_files(org_id, harness_id, agent_id, session_initial_files)
             .await?
         {
             self.session_file_service
@@ -324,6 +330,7 @@ impl SessionService {
         org_id: i64,
         harness_id: Uuid,
         agent_id: Option<Uuid>,
+        session_initial_files: &[InitialFile],
     ) -> Result<Vec<InitialFile>> {
         let mut files = self
             .resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
@@ -349,6 +356,19 @@ impl SessionService {
                 } else {
                     files.push(file);
                 }
+            }
+        }
+
+        // Session-level initial files layer on top (same additive logic)
+        for file in session_initial_files {
+            let normalized = normalize_initial_file_path(&file.path);
+            if let Some(existing) = files
+                .iter_mut()
+                .find(|existing| normalize_initial_file_path(&existing.path) == normalized)
+            {
+                *existing = file.clone();
+            } else {
+                files.push(file.clone());
             }
         }
 
@@ -591,6 +611,8 @@ impl SessionService {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -760,6 +782,8 @@ impl SessionService {
             model_id: row.model_id,
             capabilities,
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
+            system_prompt: row.system_prompt,
+            initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
             hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
@@ -827,6 +851,8 @@ mod tests {
             model_id,
             capabilities: vec![],
             tools: vec![],
+            system_prompt: None,
+            initial_files: vec![],
             hints: None,
         }
     }
@@ -1315,6 +1341,8 @@ mod tests {
                 )])
                 .unwrap(),
                 tools: serde_json::json!([]),
+                system_prompt: None,
+                initial_files: serde_json::Value::Array(vec![]),
                 hints: None,
                 blueprint_id: None,
                 blueprint_config: None,
@@ -1403,6 +1431,8 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                system_prompt: None,
+                initial_files: serde_json::Value::Array(vec![]),
                 hints: None,
                 blueprint_id: None,
                 blueprint_config: None,

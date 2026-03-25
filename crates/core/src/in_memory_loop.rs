@@ -384,6 +384,8 @@ impl InMemoryAgenticLoopBuilder {
             model_id: None,
             capabilities: vec![],
             tools: vec![],
+            system_prompt: None,
+            initial_files: vec![],
             hints: None,
             status: SessionStatus::Started,
             created_at: now,

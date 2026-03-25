@@ -91,6 +91,8 @@ impl SessionStore for DbSessionStore {
                     model_id: row.model_id,
                     capabilities,
                     tools: serde_json::from_value(row.tools).unwrap_or_default(),
+                    system_prompt: row.system_prompt,
+                    initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
                     hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
                     status: SessionStatus::from(row.status.as_str()),
                     created_at: row.created_at,

@@ -146,6 +146,14 @@ pub struct Session {
     /// Client-side tools for this session (additive to agent tools).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolDefinition>,
+    /// Session-level system prompt override.
+    /// Prepended to the agent's system prompt when building RuntimeAgent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    /// Session-level initial files (additive to agent initial_files).
+    /// Files with matching paths override agent/harness files; new paths are appended.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub initial_files: Vec<crate::session_file::InitialFile>,
     /// Session-level client hints — arbitrary key-value pairs declared by the
     /// client at session creation time. These are defaults for every turn;
     /// per-message `controls.hints` override these key-by-key (shallow merge).

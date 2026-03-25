@@ -28,6 +28,8 @@ impl InMemoryDatabase {
             model_id: input.model_id,
             capabilities: input.capabilities,
             tools: input.tools,
+            system_prompt: input.system_prompt,
+            initial_files: input.initial_files,
             hints: input.hints,
             status: "pending".to_string(), // Default status for new sessions
             created_at: now,

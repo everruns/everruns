@@ -444,6 +444,8 @@ async fn tool_agent_run(
         model_id,
         capabilities: vec![],
         tools: vec![],
+        system_prompt: None,
+        initial_files: vec![],
         hints: None,
     };
 

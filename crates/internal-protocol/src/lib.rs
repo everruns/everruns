@@ -1349,6 +1349,8 @@ mod tests {
             model_id: None,
             capabilities: vec![AgentCapabilityConfig::new("session")],
             tools: vec![],
+            system_prompt: None,
+            initial_files: vec![],
             hints: None,
             status: everruns_core::SessionStatus::Idle,
             created_at: now,
