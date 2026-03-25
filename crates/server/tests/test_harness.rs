@@ -64,15 +64,52 @@ pub struct TestServer {
 impl TestServer {
     /// Create a new test server with PostgreSQL backend
     pub async fn new() -> Self {
-        Self::with_mode(TestMode::Postgres).await
+        Self::with_mode_and_url(TestMode::Postgres, "http://127.0.0.1:0".to_string()).await
     }
 
     /// Create a new test server in dev mode (in-memory storage)
     pub async fn in_memory() -> Self {
-        Self::with_mode(TestMode::InMemory).await
+        Self::with_mode_and_url(TestMode::InMemory, "http://127.0.0.1:0".to_string()).await
     }
 
-    async fn with_mode(mode: TestMode) -> Self {
+    /// Create a test server backed by a real TCP listener.
+    ///
+    /// Returns `(server, base_url)`. The server is served on a random port
+    /// and the MCP endpoint's `execute` tool can make HTTP callbacks to it.
+    pub async fn serving() -> (Self, String) {
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("Failed to bind TCP listener");
+        let addr = listener.local_addr().unwrap();
+        let base_url = format!("http://{addr}");
+
+        let server = Self::with_mode_and_url(TestMode::Postgres, base_url.clone()).await;
+        let router = server.router.clone();
+
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, router)
+                .with_graceful_shutdown(async { drop(shutdown_rx.await) })
+                .await
+                .unwrap();
+        });
+
+        // Store shutdown handle so caller can drop it; stash in a leaked box
+        // so the server task is cleaned up when the process exits.
+        // Also wait briefly for the server to start accepting connections.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Leak the handles — tests are short-lived processes and this avoids
+        // adding lifetime complexity to TestServer. The graceful shutdown +
+        // oneshot still ensures the server stops promptly on drop.
+        std::mem::forget((shutdown_tx, handle));
+
+        (server, base_url)
+    }
+
+    async fn with_mode_and_url(mode: TestMode, api_base_url: String) -> Self {
         // Create storage backend based on mode
         let (db, pool, durable_store) = match mode {
             TestMode::Postgres => {
@@ -261,6 +298,14 @@ impl TestServer {
             None, // No delivery dispatcher in tests
             feature_flags.notifications,
         );
+        let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
+            &platform_definition,
+            feature_flags.notifications,
+            api_base_url,
+        );
 
         // Build API routes
         let mut api_routes = Router::new()
@@ -292,6 +337,7 @@ impl TestServer {
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::slack_events::routes(slack_state))
+            .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
             .merge(auth::routes(auth_backend));
 
         if let Some(notifications_state) = notifications_state {
