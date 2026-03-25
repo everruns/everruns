@@ -1,4 +1,4 @@
-# TC006: Schedule API CRUD Operations
+# TC002: Schedule API CRUD Operations
 
 ## Description
 

@@ -1,4 +1,4 @@
-# TC010: Rate Limit Enforcement (Max Executions Per Hour)
+# TC006: Rate Limit Enforcement (Max Executions Per Hour)
 
 ## Description
 

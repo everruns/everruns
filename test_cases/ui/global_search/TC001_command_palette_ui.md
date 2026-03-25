@@ -1,4 +1,4 @@
-# TC004: Command Palette - UI Navigation
+# TC001: Command Palette - UI Navigation
 
 ## Description
 
@@ -20,7 +20,7 @@ Verify the Cmd+K / Ctrl+K command palette opens, shows navigation pages by defau
 7. Type a long poem — verify no hang, shows "No results" message
 8. Type an entity ID prefix (e.g. `agent_`) — verify "Go to" section appears
 
-## Expected Results
+## Expected Result
 
 - Steps 1-2: Palette opens with 6 default navigation pages
 - Step 3: Results grouped by category (Pages, Agents)
