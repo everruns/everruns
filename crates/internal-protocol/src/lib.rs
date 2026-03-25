@@ -458,6 +458,8 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
             let json = serde_json::to_value(h).unwrap_or_default();
             json_to_proto_struct(&json)
         }),
+        system_prompt: value.system_prompt.clone(),
+        initial_files_json: serde_json::to_string(&value.initial_files).unwrap_or_default(),
     }
 }
 
@@ -1349,6 +1351,8 @@ mod tests {
             model_id: None,
             capabilities: vec![AgentCapabilityConfig::new("session")],
             tools: vec![],
+            system_prompt: None,
+            initial_files: vec![],
             hints: None,
             status: everruns_core::SessionStatus::Idle,
             created_at: now,

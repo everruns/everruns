@@ -258,6 +258,8 @@ mod tests {
             model_id: Some(ModelId::new()),
             capabilities: vec![],
             tools: vec![],
+            system_prompt: None,
+            initial_files: vec![],
             hints: None,
             status: SessionStatus::Idle,
             created_at: Utc::now(),

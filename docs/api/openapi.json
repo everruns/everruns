@@ -5927,6 +5927,13 @@
             ],
             "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).\n\nExamples: `{\"setup_connection\": true, \"rich_media\": true}`"
           },
+          "initial_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitialFile"
+            },
+            "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+          },
           "locale": {
             "type": [
               "string",
@@ -5942,6 +5949,13 @@
             ],
             "description": "The ID of the LLM model to use for this session.\nOverrides the agent's default model if specified.",
             "example": "model_01933b5a00007000800000000000001"
+          },
+          "system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent."
           },
           "tags": {
             "type": "array",
@@ -9685,6 +9699,13 @@
                   "description": "Unique identifier for the session (format: session_{32-hex}).",
                   "example": "session_01933b5a00007000800000000000001"
                 },
+                "initial_files": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InitialFile"
+                  },
+                  "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+                },
                 "is_pinned": {
                   "type": [
                     "boolean",
@@ -9769,6 +9790,13 @@
                     "null"
                   ],
                   "description": "Original task description given to this subagent."
+                },
+                "system_prompt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent."
                 },
                 "tags": {
                   "type": "array",
@@ -10516,6 +10544,13 @@
             "description": "Unique identifier for the session (format: session_{32-hex}).",
             "example": "session_01933b5a00007000800000000000001"
           },
+          "initial_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitialFile"
+            },
+            "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+          },
           "is_pinned": {
             "type": [
               "boolean",
@@ -10600,6 +10635,13 @@
               "null"
             ],
             "description": "Original task description given to this subagent."
+          },
+          "system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent."
           },
           "tags": {
             "type": "array",

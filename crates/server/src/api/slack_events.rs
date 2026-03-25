@@ -583,6 +583,8 @@ async fn process_slack_message(
                     model_id: None,
                     capabilities: vec![],
                     tools: vec![],
+                    system_prompt: None,
+                    initial_files: vec![],
                     hints: None,
                 };
                 let internal_caller = Caller::internal(org_id);
@@ -2247,6 +2249,8 @@ mod tests {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,

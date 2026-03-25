@@ -71,6 +71,8 @@ async fn test_create_and_list_sessions() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -122,6 +124,8 @@ async fn test_session_updated_at() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -188,6 +192,8 @@ async fn test_events_sequence() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -251,6 +257,8 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -729,6 +737,8 @@ async fn test_list_events_empty_session_with_limit() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -778,6 +788,8 @@ async fn test_sessions_pagination() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -866,6 +878,8 @@ async fn test_sessions_pagination_ordering() {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -1403,6 +1417,8 @@ async fn test_search_sessions_by_title() {
         model_id: None,
         capabilities: serde_json::json!([]),
         tools: serde_json::json!([]),
+        system_prompt: None,
+        initial_files: serde_json::Value::Array(vec![]),
         hints: None,
         blueprint_id: None,
         blueprint_config: None,
@@ -1421,6 +1437,8 @@ async fn test_search_sessions_by_title() {
         model_id: None,
         capabilities: serde_json::json!([]),
         tools: serde_json::json!([]),
+        system_prompt: None,
+        initial_files: serde_json::Value::Array(vec![]),
         hints: None,
         blueprint_id: None,
         blueprint_config: None,
@@ -1455,6 +1473,8 @@ async fn test_search_sessions_with_agent_filter() {
         model_id: None,
         capabilities: serde_json::json!([]),
         tools: serde_json::json!([]),
+        system_prompt: None,
+        initial_files: serde_json::Value::Array(vec![]),
         hints: None,
         blueprint_id: None,
         blueprint_config: None,
@@ -1473,6 +1493,8 @@ async fn test_search_sessions_with_agent_filter() {
         model_id: None,
         capabilities: serde_json::json!([]),
         tools: serde_json::json!([]),
+        system_prompt: None,
+        initial_files: serde_json::Value::Array(vec![]),
         hints: None,
         blueprint_id: None,
         blueprint_config: None,
@@ -1680,6 +1702,8 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -1835,6 +1859,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             model_id: None,
             capabilities: serde_json::json!({}),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -1853,6 +1879,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             model_id: None,
             capabilities: serde_json::json!({}),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -1871,6 +1899,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             model_id: None,
             capabilities: serde_json::json!({}),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
@@ -1918,4 +1948,82 @@ async fn test_search_filter_empty_string_matches_all() {
     // All default message-type events have content, so all should match
     // Default types: input.message, output.message.completed, tool.completed
     assert_eq!(events.len(), 5);
+}
+
+#[tokio::test]
+async fn test_session_system_prompt_and_initial_files_round_trip() {
+    let db = InMemoryDatabase::new();
+
+    let initial_files = serde_json::json!([
+        {"path": "/workspace/hello.txt", "content": "hello", "encoding": "text"},
+        {"path": "/workspace/config.json", "content": "{}", "encoding": "text"}
+    ]);
+
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            title: Some("Override Test".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            system_prompt: Some("You are a session-level override".to_string()),
+            initial_files: initial_files.clone(),
+            hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        session.system_prompt,
+        Some("You are a session-level override".to_string())
+    );
+    assert_eq!(session.initial_files, initial_files);
+
+    // Verify round-trip via get
+    let fetched = db
+        .get_session(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        fetched.system_prompt,
+        Some("You are a session-level override".to_string())
+    );
+    assert_eq!(fetched.initial_files, initial_files);
+}
+
+#[tokio::test]
+async fn test_session_system_prompt_defaults_to_none() {
+    let db = InMemoryDatabase::new();
+
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            title: None,
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(session.system_prompt, None);
+    assert_eq!(session.initial_files, serde_json::json!([]));
 }

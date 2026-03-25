@@ -658,6 +658,13 @@ impl ReasonAtom {
                 builder = builder.tools(session.tools.clone());
             }
 
+            // Prepend session-level system prompt (layers on top of agent prompt)
+            if let Some(ref session_prompt) = session.system_prompt
+                && !session_prompt.is_empty()
+            {
+                builder = builder.prepend_system_prompt(session_prompt);
+            }
+
             builder.build()
         };
 

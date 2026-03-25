@@ -28,7 +28,7 @@ use super::common::{
     ApiOptionExt, ApiPolicyResultExt, ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse,
     Pagination, deserialize_nullable_update_field, impl_auth_state,
 };
-use super::validation::normalize_locale;
+use super::validation::{self, normalize_locale};
 use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -75,6 +75,14 @@ pub struct CreateSessionRequest {
     /// These tools are sent to the LLM but executed by the client.
     #[serde(default)]
     pub tools: Vec<everruns_core::ToolDefinition>,
+    /// Optional session-level system prompt override.
+    /// Prepended to the agent's system prompt when building RuntimeAgent.
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    /// Session-level initial files (additive to agent initial_files).
+    /// Files with matching paths override agent/harness files; new paths are appended.
+    #[serde(default)]
+    pub initial_files: Vec<everruns_core::InitialFile>,
     /// Session-level client hints — arbitrary key-value pairs that tell the
     /// server what the client can handle. These are defaults for every turn;
     /// per-message `controls.hints` override these key-by-key (shallow merge).
@@ -334,6 +342,16 @@ pub async fn create_session(
     } else {
         (None, None)
     };
+
+    // Validate session-level system_prompt and initial_files
+    if let Some(ref prompt) = req.system_prompt {
+        validation::validate_agent_system_prompt(prompt)
+            .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
+    }
+    if !req.initial_files.is_empty() {
+        validation::validate_initial_files(&req.initial_files)
+            .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
+    }
 
     let caller = Caller::from(&org);
     let session = state

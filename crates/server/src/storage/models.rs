@@ -389,6 +389,12 @@ pub struct SessionRow {
     /// Client-side tools (JSONB in DB)
     #[sqlx(default)]
     pub tools: serde_json::Value,
+    /// Session-level system prompt override
+    #[sqlx(default)]
+    pub system_prompt: Option<String>,
+    /// Session-level initial files (JSONB in DB)
+    #[sqlx(default)]
+    pub initial_files: serde_json::Value,
     /// Session-level client hints (JSONB in DB, nullable)
     #[sqlx(default)]
     pub hints: Option<serde_json::Value>,
@@ -439,6 +445,10 @@ pub struct CreateSessionRow {
     pub capabilities: serde_json::Value,
     /// Client-side tools (additive to agent tools, JSONB in DB)
     pub tools: serde_json::Value,
+    /// Session-level system prompt override (prepended to agent prompt)
+    pub system_prompt: Option<String>,
+    /// Session-level initial files (JSONB in DB, additive to agent files)
+    pub initial_files: serde_json::Value,
     /// Session-level client hints (JSONB in DB)
     pub hints: Option<serde_json::Value>,
     /// Blueprint ID for blueprint-backed sessions.

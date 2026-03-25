@@ -370,6 +370,10 @@ message Session {
     repeated string tags = 12;
     // Session-level client hints (JSON-encoded HashMap<String, Value>)
     optional google.protobuf.Struct hints = 13;
+    // Session-level system prompt override (prepended to agent prompt)
+    optional string system_prompt = 14;
+    // Session-level initial files (JSON-encoded Vec<InitialFile>)
+    string initial_files_json = 15;
 }
 
 message GetSessionRequest {

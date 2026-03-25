@@ -938,6 +938,8 @@ async fn create_session_in_org(backend: &StorageBackend, org_id: i64) -> everrun
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,

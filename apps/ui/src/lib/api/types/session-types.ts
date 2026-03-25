@@ -1,6 +1,6 @@
 // Session, Schedule, and Leased Resource types
 
-import type { ToolDefinition, TokenUsage } from "./common-types";
+import type { InitialFile, ToolDefinition, TokenUsage } from "./common-types";
 
 // ============================================
 // Session types (M2)
@@ -43,6 +43,10 @@ export interface Session {
   active_schedule_count?: number;
   /** Aggregated UI features from all active capabilities (harness + agent + session) */
   features?: string[];
+  /** Session-level system prompt override (prepended to agent prompt) */
+  system_prompt?: string | null;
+  /** Session-level initial files (additive to agent initial_files) */
+  initial_files?: InitialFile[];
   /** Session-level client hints (defaults for every turn) */
   hints?: Record<string, unknown>;
 }
@@ -66,6 +70,10 @@ export interface CreateSessionRequest {
   locale?: string;
   tags?: string[];
   model_id?: string;
+  /** Session-level system prompt override (prepended to agent prompt) */
+  system_prompt?: string | null;
+  /** Session-level initial files (additive to agent initial_files) */
+  initial_files?: InitialFile[];
   /**
    * Session-level client hints -- arbitrary key-value pairs that tell the
    * server what the client can handle. Per-message `controls.hints` override

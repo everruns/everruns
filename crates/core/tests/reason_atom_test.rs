@@ -29,6 +29,7 @@ use futures::stream;
 use serde_json::json;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 /// Create a basic test setup with in-memory stores
@@ -109,6 +110,8 @@ async fn setup_test_environment() -> (
         model_id: None,
         capabilities: vec![],
         tools: vec![],
+        system_prompt: None,
+        initial_files: vec![],
         hints: None,
         created_at: now,
         updated_at: now,
@@ -477,6 +480,8 @@ async fn test_reason_atom_with_different_configs() {
         model_id: None,
         capabilities: vec![],
         tools: vec![],
+        system_prompt: None,
+        initial_files: vec![],
         hints: None,
         created_at: now2,
         updated_at: now2,
@@ -1728,5 +1733,268 @@ async fn test_reason_atom_strips_error_placeholder_messages() {
         !result.text.contains("I encountered an error"),
         "Error placeholder messages should be stripped from LLM input, got: '{}'",
         result.text
+    );
+}
+
+/// A driver that captures the system message sent to the LLM for assertion.
+#[derive(Clone, Debug)]
+struct SystemPromptCapturingDriver {
+    captured_system: Arc<Mutex<Option<String>>>,
+}
+
+#[async_trait]
+impl everruns_core::LlmDriver for SystemPromptCapturingDriver {
+    async fn chat_completion_stream(
+        &self,
+        messages: Vec<everruns_core::LlmMessage>,
+        config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        // Capture the system message
+        if let Some(sys) = messages
+            .iter()
+            .find(|m| m.role == everruns_core::LlmMessageRole::System)
+        {
+            *self.captured_system.lock().await = Some(sys.content_as_text());
+        }
+
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_core::LlmStreamEvent::TextDelta("ok".to_string())),
+            Ok(everruns_core::LlmStreamEvent::Done(Box::new(
+                everruns_core::LlmCompletionMetadata {
+                    total_tokens: Some(4),
+                    prompt_tokens: Some(2),
+                    completion_tokens: Some(2),
+                    model: Some(config.model.clone()),
+                    finish_reason: Some("stop".to_string()),
+                    ..Default::default()
+                },
+            ))),
+        ])))
+    }
+}
+
+#[tokio::test]
+async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    // Re-add the session with a session-level system prompt override
+    {
+        let now = chrono::Utc::now();
+        session_store
+            .add_session(Session {
+                id: session_id.into(),
+                organization_id: "default".to_string(),
+                harness_id,
+                agent_id: Some(agent_id.into()),
+                agent_identity_id: None,
+                title: Some("Test Session".to_string()),
+                locale: None,
+                preview: None,
+                output_preview: None,
+                tags: vec![],
+                status: SessionStatus::Started,
+                model_id: None,
+                capabilities: vec![],
+                tools: vec![],
+                system_prompt: Some(
+                    "SESSION PREFIX: You must always respond in French.".to_string(),
+                ),
+                initial_files: vec![],
+                hints: None,
+                created_at: now,
+                updated_at: now,
+                started_at: None,
+                finished_at: None,
+                usage: None,
+                is_pinned: None,
+                active_schedule_count: None,
+                features: vec![],
+                parent_session_id: None,
+                subagent_name: None,
+                subagent_task: None,
+                subagent_status: None,
+                blueprint_id: None,
+                blueprint_config: None,
+            })
+            .await;
+    }
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Hello")])
+        .await;
+
+    // Use a capturing driver to inspect the system message
+    let captured = Arc::new(Mutex::new(None));
+    let driver = SystemPromptCapturingDriver {
+        captured_system: captured.clone(),
+    };
+
+    let mut driver_registry = DriverRegistry::new();
+    let driver_clone = driver.clone();
+    driver_registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
+        Box::new(driver_clone.clone())
+    });
+
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter,
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    let result = atom.execute(input).await.expect("should succeed");
+    assert!(result.success);
+
+    // Verify the system message contains the session-level prefix
+    let system_msg = captured.lock().await;
+    let system_msg = system_msg
+        .as_ref()
+        .expect("System message should have been captured");
+    assert!(
+        system_msg.contains("SESSION PREFIX: You must always respond in French."),
+        "Session system_prompt should be prepended to the system message, got: '{}'",
+        system_msg
+    );
+    // Also verify the agent's system prompt is still present
+    assert!(
+        system_msg.contains("You are a helpful assistant"),
+        "Agent system prompt should still be present, got: '{}'",
+        system_msg
+    );
+}
+
+#[tokio::test]
+async fn test_empty_session_system_prompt_is_ignored() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    // Re-add session with empty system_prompt (should be ignored)
+    {
+        let now = chrono::Utc::now();
+        session_store
+            .add_session(Session {
+                id: session_id.into(),
+                organization_id: "default".to_string(),
+                harness_id,
+                agent_id: Some(agent_id.into()),
+                agent_identity_id: None,
+                title: Some("Test Session".to_string()),
+                locale: None,
+                preview: None,
+                output_preview: None,
+                tags: vec![],
+                status: SessionStatus::Started,
+                model_id: None,
+                capabilities: vec![],
+                tools: vec![],
+                system_prompt: Some(String::new()),
+                initial_files: vec![],
+                hints: None,
+                created_at: now,
+                updated_at: now,
+                started_at: None,
+                finished_at: None,
+                usage: None,
+                is_pinned: None,
+                active_schedule_count: None,
+                features: vec![],
+                parent_session_id: None,
+                subagent_name: None,
+                subagent_task: None,
+                subagent_status: None,
+                blueprint_id: None,
+                blueprint_config: None,
+            })
+            .await;
+    }
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Hello")])
+        .await;
+
+    let captured = Arc::new(Mutex::new(None));
+    let driver = SystemPromptCapturingDriver {
+        captured_system: captured.clone(),
+    };
+
+    let mut driver_registry = DriverRegistry::new();
+    let driver_clone = driver.clone();
+    driver_registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
+        Box::new(driver_clone.clone())
+    });
+
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter,
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    let result = atom.execute(input).await.expect("should succeed");
+    assert!(result.success);
+
+    // With empty system_prompt, the system message should NOT contain any prefix
+    let system_msg = captured.lock().await;
+    let system_msg = system_msg.as_ref().expect("System message should exist");
+    // Should just be the agent prompt without any empty prefix artifacts
+    assert!(
+        !system_msg.starts_with('\n'),
+        "Empty system_prompt should not add leading whitespace, got: '{}'",
+        system_msg
     );
 }

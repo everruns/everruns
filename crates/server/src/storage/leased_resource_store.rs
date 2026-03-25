@@ -166,6 +166,8 @@ mod tests {
             model_id: None,
             capabilities: json!([]),
             tools: json!([]),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             blueprint_id: None,
             blueprint_config: None,
