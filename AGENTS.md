@@ -98,6 +98,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/scheduled-tasks.md` - Cron-based scheduled tasks for durable engine
 - `specs/fail-rs-testing.md` - Failure injection testing with fail-rs
 - `specs/authentication.md` - Authentication modes and OAuth
+- `specs/mcp-oauth.md` - MCP OAuth 2.1 (PKCE, dynamic client registration)
 - `specs/integrations.md` - **Integration specs index** (links to specs co-located with their crates)
 - `specs/braintrust-integration.md` - Braintrust observability
 - `specs/otel-observability.md` - OpenTelemetry Gen-AI semantic convention tracing
