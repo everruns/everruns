@@ -69,6 +69,8 @@ jobs:
     name: Update Homebrew formula
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Download SHA256 checksums from release
         env:
@@ -77,7 +79,7 @@ jobs:
           TAG="${{ inputs.tag }}"
           for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu; do
             gh release download "$TAG" \
-              --repo everruns/everruns \
+              --repo "${{ github.repository }}" \
               --pattern "everruns-${target}.tar.gz.sha256"
           done
 
@@ -86,11 +88,28 @@ jobs:
           TAG="${{ inputs.tag }}"
           VERSION="${TAG#v}"
 
+          # Validate checksum files exist and are non-empty
+          for f in everruns-aarch64-apple-darwin.tar.gz.sha256 \
+                   everruns-x86_64-apple-darwin.tar.gz.sha256 \
+                   everruns-x86_64-unknown-linux-gnu.tar.gz.sha256; do
+            if [[ ! -s "$f" ]]; then
+              echo "Error: checksum file '$f' is missing or empty." >&2
+              exit 1
+            fi
+          done
+
           SHA_ARM64=$(awk '{print $1}' everruns-aarch64-apple-darwin.tar.gz.sha256)
           SHA_X86_64_MACOS=$(awk '{print $1}' everruns-x86_64-apple-darwin.tar.gz.sha256)
           SHA_LINUX=$(awk '{print $1}' everruns-x86_64-unknown-linux-gnu.tar.gz.sha256)
 
-          BASE_URL="https://github.com/everruns/everruns/releases/download/${TAG}"
+          for var in SHA_ARM64 SHA_X86_64_MACOS SHA_LINUX; do
+            if [[ -z "${!var}" ]]; then
+              echo "Error: extracted $var is empty." >&2
+              exit 1
+            fi
+          done
+
+          BASE_URL="${{ github.server_url }}/${{ github.repository }}/releases/download/${TAG}"
 
           cat > everruns.rb <<FORMULA
           # typed: false
@@ -98,7 +117,7 @@ jobs:
 
           class Everruns < Formula
             desc "Open-source AI agent platform"
-            homepage "https://github.com/everruns/everruns"
+            homepage "${{ github.server_url }}/${{ github.repository }}"
             version "${VERSION}"
             license "Apache-2.0"
 
@@ -113,10 +132,9 @@ jobs:
             end
 
             on_linux do
-              if Hardware::CPU.intel?
-                url "${BASE_URL}/everruns-x86_64-unknown-linux-gnu.tar.gz"
-                sha256 "${SHA_LINUX}"
-              end
+              depends_on arch: :x86_64
+              url "${BASE_URL}/everruns-x86_64-unknown-linux-gnu.tar.gz"
+              sha256 "${SHA_LINUX}"
             end
 
             def install
