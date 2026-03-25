@@ -5,7 +5,7 @@ use std::time::Duration;
 use tracing::debug;
 
 use crate::state::{ExecResult, SandboxInfo};
-use crate::{SANDBOX_READY_MAX_WAIT, SANDBOX_READY_POLL_INTERVAL};
+use crate::{EXEC_POLL_INTERVAL, SANDBOX_READY_MAX_WAIT, SANDBOX_READY_POLL_INTERVAL};
 
 // ============================================================================
 // DaytonaClient - HTTP client for Daytona APIs
@@ -307,6 +307,170 @@ impl DaytonaClient {
             )
             .await?;
         serde_json::from_value(resp).map_err(|e| format!("Failed to parse exec result: {e}"))
+    }
+
+    /// Execute a command with real-time output streaming via background process + file polling.
+    ///
+    /// Returns `(exit_code, full_output)`. Calls `on_output` with each new chunk of output
+    /// as it becomes available.
+    pub async fn exec_streaming<F>(
+        &self,
+        sandbox_id: &str,
+        command: &str,
+        cwd: Option<&str>,
+        timeout_ms: u64,
+        mut on_output: F,
+    ) -> Result<ExecResult, String>
+    where
+        F: FnMut(&str),
+    {
+        let exec_id = format!(
+            "{:x}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        );
+        let out_file = format!("/tmp/everruns_exec_{exec_id}.out");
+        let exit_file = format!("/tmp/everruns_exec_{exec_id}.exit");
+        let pid_file = format!("/tmp/everruns_exec_{exec_id}.pid");
+
+        // Write command to a temp script to avoid shell quoting issues (commands
+        // frequently contain single/double quotes, backticks, $(), etc.).
+        let script_file = format!("/tmp/everruns_exec_{exec_id}.sh");
+        let cwd_part = cwd.map(|c| format!("cd {c} && ")).unwrap_or_default();
+        let script_body = format!("{cwd_part}({command}) > {out_file} 2>&1; echo $? > {exit_file}");
+
+        // Write the script, make executable, run in background, capture PID.
+        let write_result = self
+            .exec(
+                sandbox_id,
+                &format!(
+                    "cat > {script_file} << 'EVERRUNS_EXEC_EOF'\n{script_body}\nEVERRUNS_EXEC_EOF\nchmod +x {script_file}"
+                ),
+                None,
+                Some(10_000),
+            )
+            .await;
+        if let Err(e) = write_result {
+            return Err(format!("Failed to write exec script: {e}"));
+        }
+
+        let start_result = self
+            .exec(
+                sandbox_id,
+                &format!("nohup sh {script_file} > /dev/null 2>&1 & echo $! > {pid_file}"),
+                None,
+                Some(10_000),
+            )
+            .await;
+        if let Err(e) = start_result {
+            return Err(format!("Failed to start background command: {e}"));
+        }
+
+        // Poll for output
+        let deadline = std::time::Instant::now() + Duration::from_millis(timeout_ms);
+        let mut bytes_read: usize = 0;
+
+        loop {
+            if std::time::Instant::now() >= deadline {
+                // Timeout — kill the process by PID and clean up
+                let _ = self
+                    .exec(
+                        sandbox_id,
+                        &format!(
+                            "if [ -f {pid_file} ]; then kill $(cat {pid_file}) 2>/dev/null; fi"
+                        ),
+                        None,
+                        Some(5_000),
+                    )
+                    .await;
+                let _ = self
+                    .exec(
+                        sandbox_id,
+                        &format!("rm -f {out_file} {exit_file} {script_file} {pid_file}"),
+                        None,
+                        Some(5_000),
+                    )
+                    .await;
+                return Err(format!("Command timed out after {}ms", timeout_ms));
+            }
+
+            tokio::time::sleep(EXEC_POLL_INTERVAL).await;
+
+            // Check for new output
+            let new_output = self
+                .exec(
+                    sandbox_id,
+                    &format!("tail -c +{} {out_file} 2>/dev/null", bytes_read + 1),
+                    None,
+                    Some(10_000),
+                )
+                .await;
+
+            if let Ok(ref chunk) = new_output
+                && !chunk.result.is_empty()
+            {
+                bytes_read += chunk.result.len();
+                on_output(&chunk.result);
+            }
+
+            // Check if the process has completed (exit file exists)
+            let done_check = self
+                .exec(
+                    sandbox_id,
+                    &format!("cat {exit_file} 2>/dev/null"),
+                    None,
+                    Some(5_000),
+                )
+                .await;
+
+            if let Ok(ref done) = done_check {
+                let trimmed = done.result.trim();
+                if !trimmed.is_empty() {
+                    // Process finished — read any remaining output
+                    let final_output = self
+                        .exec(
+                            sandbox_id,
+                            &format!("tail -c +{} {out_file} 2>/dev/null", bytes_read + 1),
+                            None,
+                            Some(10_000),
+                        )
+                        .await;
+                    if let Ok(ref tail) = final_output
+                        && !tail.result.is_empty()
+                    {
+                        on_output(&tail.result);
+                    }
+
+                    // Read the full output for the final result
+                    let full_output = self
+                        .exec(
+                            sandbox_id,
+                            &format!("cat {out_file} 2>/dev/null"),
+                            None,
+                            Some(10_000),
+                        )
+                        .await
+                        .map(|r| r.result)
+                        .unwrap_or_default();
+
+                    let exit_code = trimmed.parse::<i32>().unwrap_or(-1);
+
+                    // Clean up temp files
+                    let _ = self
+                        .exec(
+                            sandbox_id,
+                            &format!("rm -f {out_file} {exit_file} {script_file} {pid_file}"),
+                            None,
+                            Some(5_000),
+                        )
+                        .await;
+
+                    return Ok(ExecResult {
+                        result: full_output,
+                        exit_code,
+                    });
+                }
+            }
+        }
     }
 
     // --- Toolbox API: Files ---
@@ -1000,5 +1164,97 @@ mod tests {
         assert!(result.is_ok());
         let info = result.unwrap();
         assert_eq!(info.id, "sb_labeled");
+    }
+
+    #[tokio::test]
+    async fn test_exec_streaming_collects_output_and_exit_code() {
+        use std::sync::{Arc, Mutex};
+        use wiremock::matchers::body_string_contains;
+
+        let mock_server = MockServer::start().await;
+        let exec_path = "/sb_test/process/execute";
+
+        // 1. Write script → success
+        Mock::given(method("POST"))
+            .and(path(exec_path))
+            .and(body_string_contains("cat >"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "result": "", "exitCode": 0
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // 2. Start script → success
+        Mock::given(method("POST"))
+            .and(path(exec_path))
+            .and(body_string_contains("nohup sh"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "result": "", "exitCode": 0
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // 3. Poll output via tail → return a chunk
+        Mock::given(method("POST"))
+            .and(path(exec_path))
+            .and(body_string_contains("tail -c"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "result": "hello streaming\n", "exitCode": 0
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // 4. Check exit file → return exit code (process done)
+        Mock::given(method("POST"))
+            .and(path(exec_path))
+            .and(body_string_contains(".exit"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "result": "0\n", "exitCode": 0
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // 5. Full output cat → return complete output
+        Mock::given(method("POST"))
+            .and(path(exec_path))
+            .and(body_string_contains("cat /tmp"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "result": "hello streaming\n", "exitCode": 0
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // 6. Cleanup rm → success
+        Mock::given(method("POST"))
+            .and(path(exec_path))
+            .and(body_string_contains("rm -f"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "result": "", "exitCode": 0
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+
+        let chunks: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let chunks_clone = chunks.clone();
+
+        let result = client
+            .exec_streaming("sb_test", "echo hello streaming", None, 30_000, |chunk| {
+                chunks_clone.lock().unwrap().push(chunk.to_string());
+            })
+            .await;
+
+        assert!(result.is_ok(), "exec_streaming failed: {:?}", result.err());
+        let exec_result = result.unwrap();
+        assert_eq!(exec_result.exit_code, 0);
+        assert_eq!(exec_result.result, "hello streaming\n");
+
+        let collected = chunks.lock().unwrap();
+        assert!(!collected.is_empty(), "should have received output chunks");
     }
 }
