@@ -11,10 +11,11 @@
 //      policy or ingress rules.
 // Decision: No auth on /metrics (Prometheus standard).
 // Decision: Horizontal scaling model:
-//   - Gauges from DB (safe to duplicate across replicas — Prometheus deduplicates
-//     identical values via `instance` label)
+//   - Gauges from DB (each replica reports the same logical value; Prometheus
+//     keeps one series per `instance`, so queries for cluster-level values
+//     should aggregate, e.g. `max without(instance)`)
 //   - Counters from local events only (each replica counts its own work — no
-//     double-counting across replicas)
+//     double-counting across replicas; use `sum without(instance)` for totals)
 //   - Histograms from local observations (naturally partitioned per instance)
 
 use axum::http::header;
@@ -109,8 +110,9 @@ pub fn spawn_metrics_server(handle: PrometheusHandle, addr: String) {
 /// Well-known metric names to avoid typos across the codebase.
 pub mod names {
     // === Gauges (from DB via MetricsCollector bridge) ===
-    // Safe to duplicate across replicas — all read the same DB.
-    // Prometheus deduplicates via `instance` label.
+    // Each replica reads the same DB and emits the same values. Prometheus
+    // keeps separate series per `instance`. Queries for cluster-level values
+    // should aggregate: `max without(instance) (everruns_workflows_running)`.
     pub const WORKFLOWS_RUNNING: &str = "everruns_workflows_running";
     pub const WORKFLOWS_PENDING: &str = "everruns_workflows_pending";
     pub const TASKS_PENDING: &str = "everruns_tasks_pending";
@@ -119,7 +121,8 @@ pub mod names {
     pub const LOAD_RATIO: &str = "everruns_load_ratio";
     pub const DLQ_SIZE: &str = "everruns_dlq_size";
     // DB cumulative totals as gauges (not _total — these are global state, not
-    // per-instance counters). Use increase() in PromQL if needed.
+    // per-instance counters). These are monotonically increasing in normal
+    // operation. Use delta() in PromQL for rate-like queries on gauges.
     pub const TASKS_COMPLETED: &str = "everruns_tasks_completed";
     pub const TASKS_FAILED: &str = "everruns_tasks_failed";
     pub const TASKS_STARTED: &str = "everruns_tasks_started";
@@ -147,9 +150,10 @@ use super::durable::MetricsCollector;
 /// Spawn a background task that copies the latest MetricsCollector snapshot
 /// into Prometheus gauges every 10 seconds (aligned with the sampler).
 ///
-/// All metrics here are gauges (absolute DB state). Safe to duplicate across
-/// replicas — every instance reads the same shared DB and emits the same values.
-/// Prometheus deduplicates via the `instance` label.
+/// All metrics here are gauges (absolute DB state). Every replica reads the same
+/// shared DB and emits the same values. Prometheus keeps separate series per
+/// `instance` — queries should aggregate for cluster-level values, e.g.
+/// `max without(instance) (everruns_workflows_running)`.
 pub fn spawn_gauge_bridge(collector: MetricsCollector) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
@@ -173,7 +177,7 @@ pub fn spawn_gauge_bridge(collector: MetricsCollector) {
 
             // DB cumulative totals as gauges. These represent global state, not
             // per-instance throughput, so gauges are correct even with multiple
-            // replicas. Use increase() in PromQL for rate-like queries.
+            // replicas. Use delta() in PromQL for rate-like queries on gauges.
             metrics::gauge!(names::TASKS_COMPLETED).set(latest.tasks_completed_total as f64);
             metrics::gauge!(names::TASKS_FAILED).set(latest.tasks_failed_total as f64);
             metrics::gauge!(names::TASKS_STARTED).set(latest.tasks_started_total as f64);

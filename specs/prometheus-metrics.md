@@ -58,14 +58,15 @@ Metrics are designed for correct behavior with multiple API server replicas:
 
 | Category | Source | Multi-replica behavior |
 |----------|--------|----------------------|
-| **Gauges** | DB via MetricsCollector | All replicas emit identical values (same DB). Prometheus deduplicates via `instance` label. |
+| **Gauges** | DB via MetricsCollector | All replicas emit identical values (same DB). Prometheus keeps separate series per `instance`. Use `max without(instance)` in queries for cluster-level values. |
 | **Counters** | Local events (EventListener, HTTP middleware) | Each replica counts only its own work. `sum()` across instances gives true total. |
 | **Histograms** | Local observations | Each replica records its own latencies. Prometheus merges across instances. |
 
 Task/workflow DB totals are emitted as **gauges** (not counters) because they
-represent global state from the shared database. For rate-like queries, use
-`increase(everruns_tasks_completed[5m])` — Prometheus `increase()` works on
-gauges too.
+represent global state from the shared database. For rate-like queries on these
+monotonic gauges, use `delta(everruns_tasks_completed[5m])` in PromQL. For
+cluster-level values, aggregate across instances:
+`max without(instance) (everruns_tasks_completed)`.
 
 ## Metrics
 
