@@ -10,8 +10,13 @@
 //      for dev/local). In production without METRICS_ADDR, restrict via network
 //      policy or ingress rules.
 // Decision: No auth on /metrics (Prometheus standard).
-// Decision: Gauges/counters bridged from existing MetricsCollector via background sampler.
-//           Histograms recorded inline via `metrics` macros.
+// Decision: Horizontal scaling model:
+//   - Gauges from DB (each replica reports the same logical value; Prometheus
+//     keeps one series per `instance`, so queries for cluster-level values
+//     should aggregate, e.g. `max without(instance)`)
+//   - Counters from local events only (each replica counts its own work — no
+//     double-counting across replicas; use `sum without(instance)` for totals)
+//   - Histograms from local observations (naturally partitioned per instance)
 
 use axum::http::header;
 use axum::response::IntoResponse;
@@ -104,7 +109,10 @@ pub fn spawn_metrics_server(handle: PrometheusHandle, addr: String) {
 
 /// Well-known metric names to avoid typos across the codebase.
 pub mod names {
-    // Gauges (bridged from MetricsCollector)
+    // === Gauges (from DB via MetricsCollector bridge) ===
+    // Each replica reads the same DB and emits the same values. Prometheus
+    // keeps separate series per `instance`. Queries for cluster-level values
+    // should aggregate: `max without(instance) (everruns_workflows_running)`.
     pub const WORKFLOWS_RUNNING: &str = "everruns_workflows_running";
     pub const WORKFLOWS_PENDING: &str = "everruns_workflows_pending";
     pub const TASKS_PENDING: &str = "everruns_tasks_pending";
@@ -112,37 +120,44 @@ pub mod names {
     pub const WORKERS_ACTIVE: &str = "everruns_workers_active";
     pub const LOAD_RATIO: &str = "everruns_load_ratio";
     pub const DLQ_SIZE: &str = "everruns_dlq_size";
+    // DB cumulative totals as gauges (not _total — these are global state, not
+    // per-instance counters). These are monotonically increasing in normal
+    // operation. Use delta() in PromQL for rate-like queries on gauges.
+    pub const TASKS_COMPLETED: &str = "everruns_tasks_completed";
+    pub const TASKS_FAILED: &str = "everruns_tasks_failed";
+    pub const TASKS_STARTED: &str = "everruns_tasks_started";
+    pub const WORKFLOWS_COMPLETED: &str = "everruns_workflows_completed";
+    pub const WORKFLOWS_FAILED: &str = "everruns_workflows_failed";
+    pub const WORKFLOWS_STARTED: &str = "everruns_workflows_started";
 
-    // Counters (monotonic, emitted as deltas from DB cumulative totals)
-    pub const TASKS_TOTAL: &str = "everruns_tasks_total";
-    pub const WORKFLOWS_TOTAL: &str = "everruns_workflows_total";
+    // === Counters (from local events — per-instance, no double-counting) ===
+    pub const HTTP_REQUESTS_TOTAL: &str = "everruns_http_requests_total";
+    pub const LLM_REQUESTS_TOTAL: &str = "everruns_llm_requests_total";
+    pub const TOOL_EXECUTIONS_TOTAL: &str = "everruns_tool_executions_total";
 
-    // Histograms
+    // === Histograms (from local observations — per-instance) ===
     pub const HTTP_REQUEST_DURATION: &str = "everruns_http_request_duration_seconds";
     pub const LLM_REQUEST_DURATION: &str = "everruns_llm_request_duration_seconds";
     pub const TOOL_EXECUTION_DURATION: &str = "everruns_tool_execution_duration_seconds";
 }
 
 // ============================================================================
-// Gauge bridge: MetricsCollector → Prometheus gauges + counters
+// Gauge bridge: MetricsCollector → Prometheus gauges
 // ============================================================================
 
 use super::durable::MetricsCollector;
 
 /// Spawn a background task that copies the latest MetricsCollector snapshot
-/// into Prometheus gauges/counters every 10 seconds (aligned with the sampler).
+/// into Prometheus gauges every 10 seconds (aligned with the sampler).
+///
+/// All metrics here are gauges (absolute DB state). Every replica reads the same
+/// shared DB and emits the same values. Prometheus keeps separate series per
+/// `instance` — queries should aggregate for cluster-level values, e.g.
+/// `max without(instance) (everruns_workflows_running)`.
 pub fn spawn_gauge_bridge(collector: MetricsCollector) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
         tracing::info!("Prometheus gauge bridge started (10s interval)");
-
-        // Track last-seen counter values to emit deltas (counters are monotonic)
-        let mut last_tasks_completed: u64 = 0;
-        let mut last_tasks_failed: u64 = 0;
-        let mut last_tasks_started: u64 = 0;
-        let mut last_workflows_completed: u64 = 0;
-        let mut last_workflows_failed: u64 = 0;
-        let mut last_workflows_started: u64 = 0;
 
         loop {
             interval.tick().await;
@@ -151,7 +166,7 @@ pub fn spawn_gauge_bridge(collector: MetricsCollector) {
                 continue;
             };
 
-            // Gauges — absolute values
+            // Current state gauges
             metrics::gauge!(names::WORKFLOWS_RUNNING).set(latest.running_workflows as f64);
             metrics::gauge!(names::WORKFLOWS_PENDING).set(latest.pending_workflows as f64);
             metrics::gauge!(names::TASKS_PENDING).set(latest.pending_tasks as f64);
@@ -160,55 +175,16 @@ pub fn spawn_gauge_bridge(collector: MetricsCollector) {
             metrics::gauge!(names::LOAD_RATIO).set(latest.load_percentage / 100.0);
             metrics::gauge!(names::DLQ_SIZE).set(latest.dlq_size as f64);
 
-            // Counters — emit deltas from DB cumulative totals so Prometheus
-            // sees a proper monotonic counter (compatible with rate() queries).
-            let emit_delta =
-                |name: &'static str, label: &'static str, current: u64, last: &mut u64| {
-                    if current >= *last {
-                        let delta = current - *last;
-                        if delta > 0 {
-                            metrics::counter!(name, "status" => label).increment(delta);
-                        }
-                        *last = current;
-                    }
-                };
-
-            emit_delta(
-                names::TASKS_TOTAL,
-                "completed",
-                latest.tasks_completed_total,
-                &mut last_tasks_completed,
-            );
-            emit_delta(
-                names::TASKS_TOTAL,
-                "failed",
-                latest.tasks_failed_total,
-                &mut last_tasks_failed,
-            );
-            emit_delta(
-                names::TASKS_TOTAL,
-                "started",
-                latest.tasks_started_total,
-                &mut last_tasks_started,
-            );
-            emit_delta(
-                names::WORKFLOWS_TOTAL,
-                "completed",
-                latest.workflows_completed_total,
-                &mut last_workflows_completed,
-            );
-            emit_delta(
-                names::WORKFLOWS_TOTAL,
-                "failed",
-                latest.workflows_failed_total,
-                &mut last_workflows_failed,
-            );
-            emit_delta(
-                names::WORKFLOWS_TOTAL,
-                "started",
-                latest.workflows_started_total,
-                &mut last_workflows_started,
-            );
+            // DB cumulative totals as gauges. These represent global state, not
+            // per-instance throughput, so gauges are correct even with multiple
+            // replicas. Use delta() in PromQL for rate-like queries on gauges.
+            metrics::gauge!(names::TASKS_COMPLETED).set(latest.tasks_completed_total as f64);
+            metrics::gauge!(names::TASKS_FAILED).set(latest.tasks_failed_total as f64);
+            metrics::gauge!(names::TASKS_STARTED).set(latest.tasks_started_total as f64);
+            metrics::gauge!(names::WORKFLOWS_COMPLETED)
+                .set(latest.workflows_completed_total as f64);
+            metrics::gauge!(names::WORKFLOWS_FAILED).set(latest.workflows_failed_total as f64);
+            metrics::gauge!(names::WORKFLOWS_STARTED).set(latest.workflows_started_total as f64);
         }
     });
 }
@@ -241,9 +217,17 @@ pub async fn http_metrics_layer(
     let duration = start.elapsed();
 
     let status = response.status().as_u16().to_string();
+    let method_str = method.to_string();
+    metrics::counter!(
+        names::HTTP_REQUESTS_TOTAL,
+        "method" => method_str.clone(),
+        "path" => path.clone(),
+        "status" => status.clone(),
+    )
+    .increment(1);
     metrics::histogram!(
         names::HTTP_REQUEST_DURATION,
-        "method" => method.to_string(),
+        "method" => method_str,
         "path" => path,
         "status" => status,
     )
@@ -260,7 +244,10 @@ use async_trait::async_trait;
 use everruns_core::EventListener;
 use everruns_core::events::{Event, EventData, LLM_GENERATION, TOOL_COMPLETED};
 
-/// Event listener that records LLM and tool execution duration histograms.
+/// Event listener that records per-instance LLM/tool counters and duration histograms.
+///
+/// Counters are naturally partitioned per replica — each instance only counts
+/// events it processes. No double-counting under horizontal scaling.
 pub struct PrometheusMetricsListener;
 
 #[async_trait]
@@ -268,14 +255,24 @@ impl EventListener for PrometheusMetricsListener {
     async fn on_event(&self, event: &Event) {
         match &event.data {
             EventData::LlmGeneration(data) => {
+                let provider = data
+                    .metadata
+                    .provider
+                    .as_deref()
+                    .unwrap_or("unknown")
+                    .to_string();
+                let model = data.metadata.model.clone();
+
+                // Counter: always increment (even if duration is unknown)
+                metrics::counter!(
+                    names::LLM_REQUESTS_TOTAL,
+                    "provider" => provider.clone(),
+                    "model" => model.clone(),
+                )
+                .increment(1);
+
+                // Histogram: only when duration is available
                 if let Some(duration_ms) = data.metadata.duration_ms {
-                    let provider = data
-                        .metadata
-                        .provider
-                        .as_deref()
-                        .unwrap_or("unknown")
-                        .to_string();
-                    let model = data.metadata.model.clone();
                     metrics::histogram!(
                         names::LLM_REQUEST_DURATION,
                         "provider" => provider,
@@ -285,8 +282,15 @@ impl EventListener for PrometheusMetricsListener {
                 }
             }
             EventData::ToolCompleted(data) => {
+                let tool = data.tool_name.clone();
+
+                metrics::counter!(
+                    names::TOOL_EXECUTIONS_TOTAL,
+                    "tool" => tool.clone(),
+                )
+                .increment(1);
+
                 if let Some(duration_ms) = data.duration_ms {
-                    let tool = data.tool_name.clone();
                     metrics::histogram!(
                         names::TOOL_EXECUTION_DURATION,
                         "tool" => tool,
