@@ -376,7 +376,7 @@ impl DaytonaClient {
                     .exec(
                         sandbox_id,
                         &format!(
-                            "if [ -f {pid_file} ]; then kill $(cat {pid_file}) 2>/dev/null; fi"
+                            "sh -c 'if [ -f {pid_file} ]; then kill $(cat {pid_file}) 2>/dev/null; fi'"
                         ),
                         None,
                         Some(5_000),
@@ -399,7 +399,11 @@ impl DaytonaClient {
             let new_output = self
                 .exec(
                     sandbox_id,
-                    &format!("tail -c +{} {out_file} 2>/dev/null", bytes_read + 1),
+                    &format!(
+                        "sh -c 'tail -c +{} {} 2>/dev/null'",
+                        bytes_read + 1,
+                        out_file
+                    ),
                     None,
                     Some(10_000),
                 )
@@ -416,7 +420,7 @@ impl DaytonaClient {
             let done_check = self
                 .exec(
                     sandbox_id,
-                    &format!("cat {exit_file} 2>/dev/null"),
+                    &format!("sh -c 'cat {exit_file} 2>/dev/null'"),
                     None,
                     Some(5_000),
                 )
@@ -429,7 +433,11 @@ impl DaytonaClient {
                     let final_output = self
                         .exec(
                             sandbox_id,
-                            &format!("tail -c +{} {out_file} 2>/dev/null", bytes_read + 1),
+                            &format!(
+                                "sh -c 'tail -c +{} {} 2>/dev/null'",
+                                bytes_read + 1,
+                                out_file
+                            ),
                             None,
                             Some(10_000),
                         )
@@ -444,7 +452,7 @@ impl DaytonaClient {
                     let full_output = self
                         .exec(
                             sandbox_id,
-                            &format!("cat {out_file} 2>/dev/null"),
+                            &format!("sh -c 'cat {out_file} 2>/dev/null'"),
                             None,
                             Some(10_000),
                         )
