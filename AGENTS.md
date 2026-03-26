@@ -93,14 +93,13 @@ Always make sure you are working on top of latest main from remote.
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system
 - `specs/agent-instructions.md` - AGENTS.md support (dynamic project instructions)
-- `specs/mcp.md` - **MCP umbrella spec** (protocol, architecture, crate map, security)
-- `specs/mcp-servers.md` - MCP server registration, CRUD API, tool naming, execution
+- `specs/mcp.md` - MCP server endpoint, OAuth 2.1 authentication, protocol, security
+- `specs/mcp-servers.md` - MCP client: remote server registration, CRUD API, tool naming, execution
 - `specs/llm-drivers.md` - LLM driver trait, provider implementations
 - `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
 - `specs/scheduled-tasks.md` - Cron-based scheduled tasks for durable engine
 - `specs/fail-rs-testing.md` - Failure injection testing with fail-rs
 - `specs/authentication.md` - Authentication modes and OAuth
-- `specs/mcp-oauth.md` - MCP OAuth 2.1 (PKCE, dynamic client registration)
 - `specs/integrations.md` - **Integration specs index** (links to specs co-located with their crates)
 - `specs/braintrust-integration.md` - Braintrust observability
 - `specs/otel-observability.md` - OpenTelemetry Gen-AI semantic convention tracing
