@@ -234,6 +234,33 @@ async fn test_live_folder_and_list() {
     );
 }
 
+/// exec_streaming: shell redirections (`2>/dev/null`) must not leak as literal filenames (EVE-185).
+#[tokio::test]
+async fn test_live_exec_streaming_returns_output() {
+    let api_key = require_api_key!();
+    let (client, guard) = create_test_sandbox(api_key, "exec-streaming").await;
+    let id = &guard.sandbox_id;
+
+    let mut chunks = Vec::new();
+    let result = client
+        .exec_streaming(id, "echo hello-streaming", None, 30_000, |chunk| {
+            chunks.push(chunk.to_string());
+        })
+        .await
+        .expect("exec_streaming failed");
+
+    assert_eq!(result.exit_code, 0, "Expected exit code 0");
+    assert!(
+        result.result.contains("hello-streaming"),
+        "Full output missing marker: {}",
+        result.result
+    );
+    assert!(
+        !chunks.is_empty(),
+        "Expected at least one output chunk from streaming callback"
+    );
+}
+
 /// Stop and start a sandbox.
 #[tokio::test]
 async fn test_live_stop_and_start() {
