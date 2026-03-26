@@ -88,7 +88,7 @@ pub fn scan_local(
         overrides.add(&format!("!{}", pattern))?;
     }
 
-    let syncignore_path = local_dir.join(".syncignore");
+    let syncignore_path = local_dir.join(".everrunsignore");
     if syncignore_path.exists()
         && let Ok(content) = std::fs::read_to_string(&syncignore_path)
     {
@@ -555,11 +555,11 @@ mod tests {
     }
 
     #[test]
-    fn test_scan_local_syncignore() {
+    fn test_scan_local_everrunsignore() {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("keep.txt"), "keep").unwrap();
         fs::write(dir.path().join("secret.key"), "secret").unwrap();
-        fs::write(dir.path().join(".syncignore"), "*.key\n# comment\n").unwrap();
+        fs::write(dir.path().join(".everrunsignore"), "*.key\n# comment\n").unwrap();
 
         let files = scan_local(dir.path(), false, &[]).unwrap();
         assert!(files.contains_key("keep.txt"));
