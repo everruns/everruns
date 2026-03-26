@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Everruns exposes an MCP server endpoint (`/mcp`) so external MCP clients — Claude Desktop, Cursor, VS Code, etc. — can interact with Everruns agents and tools over the [Model Context Protocol](https://spec.modelcontextprotocol.io). Authentication uses OAuth 2.1 with mandatory PKCE.
+Everruns exposes an MCP server endpoint (`/mcp`) so external MCP clients — Claude Desktop, Cursor, VS Code, etc. — can interact with Everruns agents and tools over the [Model Context Protocol](https://spec.modelcontextprotocol.io). Authentication uses the same mechanisms as other API routes (`ResolvedOrg` extractor — API keys, JWT/cookie sessions), including OAuth 2.1-issued JWTs with mandatory PKCE for MCP client registration flows.
 
 Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`specs/mcp-servers.md`](mcp-servers.md).
 
@@ -14,6 +14,8 @@ JSON-RPC 2.0 over Streamable HTTP (`POST /mcp` with JSON-RPC body).
 
 | Method | Description |
 |--------|-------------|
+| `initialize` | Initialize MCP session and negotiate capabilities |
+| `ping` | Health check / keep-alive |
 | `tools/list` | Discover available tools |
 | `tools/call` | Execute a tool |
 
@@ -50,21 +52,20 @@ External MCP clients authenticate via OAuth 2.1 with mandatory PKCE (S256). The 
 2. **Same pattern as CLI auth**: The authorize endpoint requires `AuthUser` — works with any backend.
 3. **OAuth 2.1 + PKCE**: Authorization code grant with mandatory PKCE (S256). No implicit grant.
 4. **Dynamic client registration**: Per RFC 7591 — MCP clients register themselves at runtime.
-5. **MCP OAuth tokens are JWTs**: Signed with the same `AUTH_JWT_SECRET`, distinguished by `token_type: "mcp_access"` claim.
+5. **MCP OAuth tokens are standard JWTs**: Signed with the same `AUTH_JWT_SECRET`, using the standard `token_type: "access"` claim (same as regular access tokens).
 6. **Scoped to org**: Authorization grants are scoped to a specific organization.
 
 ### Flow
 
 ```
-MCP Client → GET /.well-known/oauth-authorization-server
+MCP Client → GET {issuer}/.well-known/oauth-authorization-server
            ← Server metadata (endpoints, PKCE support)
 
 MCP Client → POST /v1/oauth/register
            ← client_id, client_secret (dynamic registration)
 
 MCP Client → GET /v1/oauth/authorize?client_id=...&code_challenge=...&state=...&redirect_uri=...
-           → User authenticates (via whatever auth backend is configured)
-           → User consents
+           → AuthUser extractor requires authenticated session (returns 401 if not)
            ← Redirect to redirect_uri with ?code=...&state=...
 
 MCP Client → POST /v1/oauth/token (grant_type=authorization_code, code=..., code_verifier=...)
@@ -80,10 +81,12 @@ MCP Client → POST /mcp (with Authorization: Bearer <access_token>)
 
 OAuth 2.0 Authorization Server Metadata (RFC 8414). No auth required.
 
+The `issuer` is the backend `base_url` (e.g. `https://app.example.com/api`). All endpoint URLs are constructed from this base.
+
 **Response:**
 ```json
 {
-  "issuer": "https://app.example.com",
+  "issuer": "https://app.example.com/api",
   "authorization_endpoint": "https://app.example.com/api/v1/oauth/authorize",
   "token_endpoint": "https://app.example.com/api/v1/oauth/token",
   "registration_endpoint": "https://app.example.com/api/v1/oauth/register",
@@ -132,9 +135,9 @@ Authorization endpoint. **Requires authenticated user** (via `AuthUser` extracto
 
 **Flow:**
 1. `AuthUser` extractor fires — delegates to configured auth backend
-2. Not authenticated → redirect to login with `return_to` back to authorize URL
+2. Not authenticated → returns `401 Unauthorized` (login redirect, if desired, must be handled by the frontend/client)
 3. Authenticated → validate client_id, redirect_uri, generate authorization code
-4. Redirect to `redirect_uri?code=...&state=...`
+4. Redirect to `redirect_uri?code=...&state=...` (no consent UI — code is issued immediately)
 
 Authorization codes: random 32-byte hex, 5-minute TTL, one-time use, stored with PKCE challenge.
 
@@ -172,7 +175,7 @@ client_secret=<client_secret>
 
 ### Access Tokens
 
-JWTs signed with `AUTH_JWT_SECRET`, with distinct claims:
+Standard JWTs signed with `AUTH_JWT_SECRET` via `JwtService::generate_access_token()`. MCP OAuth tokens use the same claims as regular access tokens:
 
 ```json
 {
@@ -180,15 +183,13 @@ JWTs signed with `AUTH_JWT_SECRET`, with distinct claims:
   "email": "<email>",
   "name": "<name>",
   "roles": ["user"],
-  "token_type": "mcp_access",
-  "client_id": "<oauth_client_id>",
-  "scope": "mcp",
+  "token_type": "access",
   "exp": 1711234567,
   "iat": 1711230967
 }
 ```
 
-The `token_type: "mcp_access"` claim distinguishes these from regular access tokens. They are validated by the existing `BuiltinAuthBackend.validate_token()` path — the JWT service validates the signature and expiry, and the `token_type` field is informational (not enforced at the middleware level, since MCP tokens grant the same access as regular sessions).
+MCP OAuth tokens are indistinguishable from regular access tokens at the JWT level. They are validated by the existing `BuiltinAuthBackend.validate_token()` path. The MCP-specific lifetime (1 hour) and refresh token are managed by the OAuth flow, not by JWT claims.
 
 ### Database Schema
 
