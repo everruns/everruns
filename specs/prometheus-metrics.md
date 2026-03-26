@@ -52,11 +52,26 @@ scrape_configs:
 | `METRICS_ENABLED` | `true` | Enable/disable metrics collection and endpoint |
 | `METRICS_ADDR` | *(unset)* | Dedicated bind address for internal-only metrics server. When set, `/metrics` is NOT on the main API server. Recommended for production. |
 
+## Horizontal Scaling Model
+
+Metrics are designed for correct behavior with multiple API server replicas:
+
+| Category | Source | Multi-replica behavior |
+|----------|--------|----------------------|
+| **Gauges** | DB via MetricsCollector | All replicas emit identical values (same DB). Prometheus deduplicates via `instance` label. |
+| **Counters** | Local events (EventListener, HTTP middleware) | Each replica counts only its own work. `sum()` across instances gives true total. |
+| **Histograms** | Local observations | Each replica records its own latencies. Prometheus merges across instances. |
+
+Task/workflow DB totals are emitted as **gauges** (not counters) because they
+represent global state from the shared database. For rate-like queries, use
+`increase(everruns_tasks_completed[5m])` — Prometheus `increase()` works on
+gauges too.
+
 ## Metrics
 
 All prefixed `everruns_`.
 
-### Gauges (from MetricsCollector bridge, 10s refresh)
+### Gauges (from DB via MetricsCollector bridge, 10s refresh)
 
 | Metric | Description |
 |--------|-------------|
@@ -67,21 +82,28 @@ All prefixed `everruns_`.
 | `everruns_workers_active` | Active worker count |
 | `everruns_load_ratio` | System load ratio (0.0-1.0) |
 | `everruns_dlq_size` | Dead letter queue size |
+| `everruns_tasks_completed` | DB cumulative completed tasks |
+| `everruns_tasks_failed` | DB cumulative failed tasks |
+| `everruns_tasks_started` | DB cumulative started tasks |
+| `everruns_workflows_completed` | DB cumulative completed workflows |
+| `everruns_workflows_failed` | DB cumulative failed workflows |
+| `everruns_workflows_started` | DB cumulative started workflows |
 
-### Counters (monotonic, from DB cumulative totals)
+### Counters (per-instance, from local events)
 
-| Metric | Description |
-|--------|-------------|
-| `everruns_tasks_total{status}` | Cumulative task count by status (completed/failed/started) |
-| `everruns_workflows_total{status}` | Cumulative workflow count by status |
+| Metric | Labels | Source |
+|--------|--------|--------|
+| `everruns_http_requests_total` | method, path, status | HTTP middleware |
+| `everruns_llm_requests_total` | provider, model | EventListener (llm.generation) |
+| `everruns_tool_executions_total` | tool | EventListener (tool.completed) |
 
-### Histograms
+### Histograms (per-instance, from local observations)
 
 | Metric | Labels | Source |
 |--------|--------|--------|
 | `everruns_http_request_duration_seconds` | method, path, status | Axum route_layer middleware |
-| `everruns_llm_request_duration_seconds` | provider, model | `PrometheusMetricsListener` (llm.generation events) |
-| `everruns_tool_execution_duration_seconds` | tool | `PrometheusMetricsListener` (tool.completed events) |
+| `everruns_llm_request_duration_seconds` | provider, model | EventListener (llm.generation) |
+| `everruns_tool_execution_duration_seconds` | tool | EventListener (tool.completed) |
 
 ### Scheduled Tasks (future, wire when scheduler lands)
 
@@ -94,12 +116,14 @@ All prefixed `everruns_`.
 1. **Recorder:** `PrometheusBuilder::new().install_recorder()` installs the global
    `metrics` recorder early in `ServerAppBuilder::run()`.
 2. **Gauge bridge:** Background task reads latest `MetricsCollector` snapshot every
-   10s and emits Prometheus gauges + counter deltas (aligned with existing sampler).
+   10s and emits Prometheus gauges (aligned with existing sampler). All values are
+   global DB state — safe to duplicate across replicas.
 3. **HTTP middleware:** `http_metrics_layer` (Axum `route_layer` middleware) records
-   request duration histogram with method/path/status labels. Uses `MatchedPath`
-   for low-cardinality path labels; unmatched routes labeled `"unmatched"`.
+   per-request counter + duration histogram. Uses `MatchedPath` for low-cardinality
+   path labels; unmatched routes labeled `"unmatched"`.
 4. **Event listener:** `PrometheusMetricsListener` implements `EventListener` for
-   `llm.generation` and `tool.completed` events, recording duration histograms.
+   `llm.generation` and `tool.completed` events, recording per-instance counters
+   and duration histograms.
 5. **Render:** `GET /metrics` calls `PrometheusHandle::render()`.
 
 ## Non-Goals
