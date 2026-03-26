@@ -89,8 +89,20 @@ pub fn scan_local(
     }
 
     let ignore_path = local_dir.join(".everrunsignore");
-    if ignore_path.exists()
-        && let Ok(content) = std::fs::read_to_string(&ignore_path)
+    let legacy_path = local_dir.join(".syncignore");
+    if !ignore_path.exists() && legacy_path.exists() {
+        eprintln!("warning: .syncignore is deprecated, rename to .everrunsignore");
+    }
+    // Prefer .everrunsignore, fall back to legacy .syncignore
+    let active_ignore = if ignore_path.exists() {
+        Some(&ignore_path)
+    } else if legacy_path.exists() {
+        Some(&legacy_path)
+    } else {
+        None
+    };
+    if let Some(path) = active_ignore
+        && let Ok(content) = std::fs::read_to_string(path)
     {
         for line in content.lines() {
             let line = line.trim();
@@ -564,6 +576,35 @@ mod tests {
         let files = scan_local(dir.path(), false, &[]).unwrap();
         assert!(files.contains_key("keep.txt"));
         assert!(!files.contains_key("secret.key"));
+    }
+
+    #[test]
+    fn test_scan_local_legacy_syncignore_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("keep.txt"), "keep").unwrap();
+        fs::write(dir.path().join("secret.key"), "secret").unwrap();
+        // Legacy .syncignore should still be respected as fallback
+        fs::write(dir.path().join(".syncignore"), "*.key\n").unwrap();
+
+        let files = scan_local(dir.path(), false, &[]).unwrap();
+        assert!(files.contains_key("keep.txt"));
+        assert!(!files.contains_key("secret.key"));
+    }
+
+    #[test]
+    fn test_scan_local_everrunsignore_takes_precedence() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("keep.txt"), "keep").unwrap();
+        fs::write(dir.path().join("a.key"), "secret").unwrap();
+        fs::write(dir.path().join("b.log"), "log").unwrap();
+        // Both files exist — .everrunsignore should win
+        fs::write(dir.path().join(".syncignore"), "*.log\n").unwrap();
+        fs::write(dir.path().join(".everrunsignore"), "*.key\n").unwrap();
+
+        let files = scan_local(dir.path(), false, &[]).unwrap();
+        assert!(files.contains_key("keep.txt"));
+        assert!(!files.contains_key("a.key")); // excluded by .everrunsignore
+        assert!(files.contains_key("b.log")); // NOT excluded (.syncignore ignored)
     }
 
     #[test]
