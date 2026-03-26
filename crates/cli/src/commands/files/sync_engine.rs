@@ -88,9 +88,9 @@ pub fn scan_local(
         overrides.add(&format!("!{}", pattern))?;
     }
 
-    let syncignore_path = local_dir.join(".everrunsignore");
-    if syncignore_path.exists()
-        && let Ok(content) = std::fs::read_to_string(&syncignore_path)
+    let ignore_path = local_dir.join(".everrunsignore");
+    if ignore_path.exists()
+        && let Ok(content) = std::fs::read_to_string(&ignore_path)
     {
         for line in content.lines() {
             let line = line.trim();
