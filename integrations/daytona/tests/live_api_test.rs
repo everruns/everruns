@@ -256,8 +256,8 @@ async fn test_live_exec_streaming_returns_output() {
         result.result
     );
     assert!(
-        !chunks.is_empty() || result.result.contains("hello-streaming"),
-        "Expected at least one output chunk or full output"
+        !chunks.is_empty(),
+        "Expected at least one output chunk from streaming callback"
     );
 }
 
