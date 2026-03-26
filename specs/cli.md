@@ -113,9 +113,9 @@ Session filesystem operations — sync, push, pull, list. See [Files](#files) se
 - Always-local-wins / always-remote-wins: Too aggressive.
 **Rationale:** Conflicts are rare in practice (user edits locally, agent edits remotely, typically different files). Warning + configurable strategy covers edge cases without over-engineering.
 
-#### Decision 4: `.syncignore` + Sensible Defaults
+#### Decision 4: `.everrunsignore` + Sensible Defaults
 
-**Chosen:** Respect `.gitignore` patterns by default (via `ignore` crate). Additional `.syncignore` file for sync-specific exclusions. Always exclude: `.git/`, `node_modules/`, `target/`, `__pycache__/`, `.env`.
+**Chosen:** Respect `.gitignore` patterns by default (via `ignore` crate). Additional `.everrunsignore` file for sync-specific exclusions. Always exclude: `.git/`, `node_modules/`, `target/`, `__pycache__/`, `.env`.
 **Rationale:** Prevents syncing build artifacts and secrets. Aligns with developer expectations.
 
 #### Decision 5: Incremental Sync via Content Hashing
