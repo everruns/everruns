@@ -1,5 +1,6 @@
 //! Tool implementations for Daytona sandbox operations.
 
+use everruns_core::SessionFile;
 use everruns_core::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -529,10 +530,11 @@ impl Tool for DaytonaReadFileTool {
                 if let Err(e) = touch_sandbox_lease(context, &state, None).await {
                     return e;
                 }
-                let content = String::from_utf8_lossy(&bytes).to_string();
+                let (content, encoding) = SessionFile::encode_content(&bytes);
                 ToolExecutionResult::success(json!({
                     "path": path,
-                    "content": content
+                    "content": content,
+                    "encoding": encoding
                 }))
             }
             Err(e) => ToolExecutionResult::tool_error(e),
@@ -774,7 +776,7 @@ impl Tool for DaytonaDownloadWorkspaceTool {
                     // Download file
                     match client.file_download(sandbox_id, &full_path).await {
                         Ok(bytes) => {
-                            let content = String::from_utf8_lossy(&bytes).to_string();
+                            let (content, encoding) = SessionFile::encode_content(&bytes);
                             let relative =
                                 full_path.strip_prefix(sandbox_root).unwrap_or(&full_path);
                             let session_dest = format!(
@@ -788,7 +790,7 @@ impl Tool for DaytonaDownloadWorkspaceTool {
                             );
 
                             match file_store
-                                .write_file(context.session_id, &session_dest, &content, "utf-8")
+                                .write_file(context.session_id, &session_dest, &content, &encoding)
                                 .await
                             {
                                 Ok(_) => downloaded += 1,
