@@ -228,6 +228,7 @@ impl Tool for DaytonaCreateSandboxTool {
                 &format!("mkdir -p {}", crate::DAYTONA_WORKSPACE_PATH),
                 None,
                 None,
+                |_| {},
             )
             .await
         {
@@ -424,7 +425,7 @@ impl Tool for DaytonaExecTool {
         });
 
         let result = client
-            .exec_streaming(sandbox_id, command, cwd, timeout, |chunk| {
+            .exec(sandbox_id, command, cwd, Some(timeout), |chunk| {
                 let _ = tx.send(chunk.to_string());
             })
             .await;
@@ -1130,7 +1131,7 @@ impl Tool for DaytonaGitCloneTool {
         }
 
         debug!("Cloning repository via exec: {repo_url} → {target_path}");
-        match client.exec(sandbox_id, &cmd, None, None).await {
+        match client.exec(sandbox_id, &cmd, None, None, |_| {}).await {
             Ok(r) if r.exit_code != 0 => {
                 let hint = if github_token.is_none()
                     && (r.result.contains("Authentication")
@@ -1160,6 +1161,7 @@ impl Tool for DaytonaGitCloneTool {
                 &format!("cd {target_path} && git rev-parse --short HEAD"),
                 None,
                 None,
+                |_| {},
             )
             .await
         {
@@ -1282,7 +1284,10 @@ impl Tool for DaytonaGitCredentialsTool {
         // Configure git to use the credential store
         let config_cmd =
             "git config --global credential.helper 'store --file=/tmp/.git-credentials'";
-        match client.exec(sandbox_id, config_cmd, None, None).await {
+        match client
+            .exec(sandbox_id, config_cmd, None, None, |_| {})
+            .await
+        {
             Ok(r) if r.exit_code == 0 => {}
             Ok(r) => {
                 return ToolExecutionResult::tool_error(format!(
