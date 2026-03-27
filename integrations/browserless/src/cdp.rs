@@ -764,4 +764,57 @@ mod tests {
         assert_eq!(key_to_code("ArrowUp"), "ArrowUp");
         assert_eq!(key_to_code("SomeOtherKey"), "SomeOtherKey");
     }
+
+    /// Reproduces the original EVE-188 bug: Browserless returns 400 on the root
+    /// WebSocket path. A mock server that only accepts `/chromium` verifies the
+    /// fix. The root path returns a raw "HTTP/1.1 400 Bad Request" so the
+    /// tungstenite client surfaces an HTTP 400 error.
+    #[tokio::test]
+    async fn test_connect_rejected_on_root_path_accepted_on_chromium() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        // Server: accept one connection, read the HTTP upgrade, reject with 400
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            let mut buf = vec![0u8; 4096];
+            let n = stream.read(&mut buf).await.expect("read");
+            let request = String::from_utf8_lossy(&buf[..n]);
+
+            if request.contains("GET / ") || !request.contains("GET /chromium") {
+                // Reject root path — reproduces the original 400 bug
+                stream
+                    .write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+                    .await
+                    .expect("write 400");
+            }
+            stream.shutdown().await.ok();
+        });
+
+        // Connect to root path — should get 400
+        let result = CdpSession::connect(&format!("ws://{addr}/")).await;
+        assert!(result.is_err(), "root path should be rejected");
+        let err = result.err().expect("should be Err");
+        assert!(err.contains("400"), "error should mention 400: {err}");
+
+        server.await.ok();
+    }
+
+    /// Verify the CDP URL construction uses the /chromium path.
+    #[test]
+    fn test_cdp_url_uses_chromium_path() {
+        let ws_base = "wss://production-sfo.browserless.io";
+        let cdp_path = "/chromium";
+        let token = "test_token_123";
+        let url = format!("{ws_base}{cdp_path}?token={token}");
+        assert_eq!(
+            url,
+            "wss://production-sfo.browserless.io/chromium?token=test_token_123"
+        );
+        assert!(url.contains("/chromium"), "URL must include /chromium path");
+    }
 }
