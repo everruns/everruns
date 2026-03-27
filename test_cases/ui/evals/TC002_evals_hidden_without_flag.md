@@ -23,4 +23,4 @@ None.
 | Check | Expected |
 |-------|----------|
 | Sidebar | "Evals" link is NOT visible |
-| Direct navigation | Navigating to `/evals` returns 404 or empty page (API returns no routes) |
+| Direct navigation | Navigating to `/evals` shows "Evals is not enabled" message with no evals content or actions |

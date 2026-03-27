@@ -682,7 +682,7 @@ impl ServerAppBuilder {
                 agent_identity_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
-            //.merge(api::evals::routes(evals_state)) — conditionally merged below
+            // Evals routes are conditionally merged below based on feature flag.
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
