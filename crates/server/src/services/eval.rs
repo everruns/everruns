@@ -281,10 +281,7 @@ impl EvalService {
             name: req.name,
             description: req.description,
             tags: req.tags,
-            conversation: req
-                .conversation
-                .map(serde_json::to_value)
-                .transpose()?,
+            conversation: req.conversation.map(serde_json::to_value).transpose()?,
             scorers: req.scorers.map(serde_json::to_value).transpose()?,
             max_turns: req.max_turns.map(|v| v as i32),
             timeout_seconds: req.timeout_seconds.map(|v| v as i32),
