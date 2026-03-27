@@ -21,6 +21,11 @@ chrono.workspace = true
 tracing.workspace = true
 futures-util.workspace = true
 tokio-tungstenite.workspace = true
+
+# TLS: custom rustls config to force http/1.1 ALPN for WebSocket
+rustls.workspace = true
+rustls-native-certs = "0.8"
+
 base64.workspace = true
 http = "1"
 urlencoding = "2.1"
