@@ -35,7 +35,7 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::impl_auth_state;
+use super::common::{impl_auth_state, sanitized_bad_gateway, sanitized_internal_error};
 use crate::storage::models::CreateUserConnectionRow;
 
 /// App state for user connections routes
@@ -582,7 +582,7 @@ pub async fn authorize_connection(
         .db
         .get_mcp_server(org.org_id, server_id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
         .ok_or((StatusCode::NOT_FOUND, "MCP server not found".to_string()))?;
     let settings = McpServerService::settings_from_row(&row);
     if settings.auth_mode != McpServerAuthMode::OAuth {
@@ -626,7 +626,7 @@ pub async fn authorize_connection(
             },
         )
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
 
     let pending = PendingOAuthState {
         state: oauth_state.clone(),
@@ -641,7 +641,7 @@ pub async fn authorize_connection(
         oauth_state_cookie_name(&provider),
         URL_SAFE_NO_PAD.encode(
             serde_json::to_vec(&pending)
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+                .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
         ),
     ))
     .path("/")
@@ -660,7 +660,7 @@ pub async fn authorize_connection(
         )
     })?;
     let authorize_url = reqwest::Url::parse(&metadata.authorization_endpoint)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
     let scopes = if !metadata.scopes_supported.is_empty() {
         metadata.scopes_supported.join(" ")
     } else {
@@ -706,7 +706,7 @@ pub async fn connection_oauth_callback(
         .db
         .get_mcp_server(org.org_id, server_id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
         .ok_or((StatusCode::NOT_FOUND, "MCP server not found".to_string()))?;
     let settings = McpServerService::settings_from_row(&row);
     let oauth = settings.oauth.clone().ok_or((
@@ -722,7 +722,7 @@ pub async fn connection_oauth_callback(
         .as_deref()
         .map(|v| state.mcp_service.decrypt_string_from_b64(v))
         .transpose()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
     let token_endpoint = oauth.token_endpoint.ok_or((
         StatusCode::BAD_REQUEST,
         "OAuth token endpoint missing".to_string(),
@@ -757,7 +757,7 @@ pub async fn connection_oauth_callback(
             .db
             .get_session(org.org_id, session_id)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
             .ok_or((StatusCode::NOT_FOUND, "Session not found".to_string()))?;
         // Verify caller identity: ensure the authenticated user initiated this session's OAuth
         // flow. The session is already org-scoped via get_session, but we also verify the
@@ -775,10 +775,10 @@ pub async fn connection_oauth_callback(
                 name: mcp_oauth_session_secret_name(server_id, "access_token"),
                 value_encrypted: encryption
                     .encrypt_string(&token.access_token)
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+                    .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
             })
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
         if let Some(refresh_token) = &token.refresh_token {
             state
                 .db
@@ -787,10 +787,10 @@ pub async fn connection_oauth_callback(
                     name: mcp_oauth_session_secret_name(server_id, "refresh_token"),
                     value_encrypted: encryption
                         .encrypt_string(refresh_token)
-                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+                        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
                 })
                 .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
         }
         if let Some(expires_at) = expires_at {
             state
@@ -800,10 +800,10 @@ pub async fn connection_oauth_callback(
                     name: mcp_oauth_session_secret_name(server_id, "expires_at"),
                     value_encrypted: encryption
                         .encrypt_string(&expires_at.to_rfc3339())
-                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+                        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
                 })
                 .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
         }
     } else {
         let encryption = state.encryption.as_ref().ok_or((
@@ -824,21 +824,21 @@ pub async fn connection_oauth_callback(
                 access_token_encrypted: Some(
                     encryption
                         .encrypt_string(&token.access_token)
-                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+                        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
                 ),
                 refresh_token_encrypted: token
                     .refresh_token
                     .as_deref()
                     .map(|value| encryption.encrypt_string(value))
                     .transpose()
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+                    .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
                 scopes: token.scope.clone(),
                 expires_at,
                 installation_id: None,
                 provider_metadata: None,
             })
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
     }
 
     let _ = state
@@ -1235,7 +1235,7 @@ async fn ensure_mcp_oauth_registration(
                 .as_deref()
                 .map(|value| state.mcp_service.decrypt_string_from_b64(value))
                 .transpose()
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+                .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
         }
     } else {
         let registration_endpoint = metadata.registration_endpoint.as_deref().ok_or((
@@ -1254,7 +1254,7 @@ async fn ensure_mcp_oauth_registration(
             .as_deref()
             .map(|value| state.mcp_service.encrypt_string_to_b64(value))
             .transpose()
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
         registration
     };
 
@@ -1270,7 +1270,7 @@ async fn discover_resource_metadata(
         .get(format!("{origin}/.well-known/oauth-protected-resource"))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+        .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
     json_response_or_error(response).await
 }
 
@@ -1285,7 +1285,7 @@ async fn discover_oauth_server_metadata(
         ))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+        .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
     let metadata: OAuthServerMetadata = json_response_or_error(response).await?;
     validate_safe_url(&metadata.authorization_endpoint).map_err(|e| {
         (
@@ -1331,7 +1331,7 @@ async fn register_oauth_client(
         }))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+        .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
     json_response_or_error(response).await
 }
 
@@ -1364,7 +1364,7 @@ async fn exchange_oauth_code(
         .form(&params)
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+        .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
     json_response_or_error(response).await
 }
 
@@ -1430,12 +1430,22 @@ async fn json_response_or_error<T: serde::de::DeserializeOwned>(
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        return Err((StatusCode::BAD_GATEWAY, format!("{status}: {body}")));
+        let truncated: &str = if body.len() > 512 {
+            &body[..512]
+        } else {
+            &body
+        };
+        tracing::error!(
+            status = %status,
+            body_len = body.len(),
+            "External service error: {truncated}"
+        );
+        return Err((StatusCode::BAD_GATEWAY, "Bad gateway".to_string()));
     }
     response
         .json()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))
+        .map_err(|e| sanitized_bad_gateway("External service response parse", &e))
 }
 
 #[cfg(test)]

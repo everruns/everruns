@@ -365,9 +365,12 @@ pub async fn verify_connection(
             valid: true,
             error: None,
         })),
-        Err(e) => Ok(Json(VerifyConnectionResponse {
-            valid: false,
-            error: Some(e.to_string()),
-        })),
+        Err(e) => {
+            tracing::error!("Connection verification failed: {e}");
+            Ok(Json(VerifyConnectionResponse {
+                valid: false,
+                error: Some("Connection verification failed".to_string()),
+            }))
+        }
     }
 }
