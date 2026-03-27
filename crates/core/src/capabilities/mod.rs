@@ -1094,9 +1094,9 @@ pub fn get_dependencies(cap_id: &str, registry: &CapabilityRegistry) -> Vec<Stri
 
 /// Collect contributions from capabilities without applying them.
 ///
-/// Calls `system_prompt_contribution()` (async) on each capability, enabling
-/// dynamic content generation based on session context (e.g., reading AGENTS.md,
-/// discovering skills).
+/// Resolves dependencies first, then calls `system_prompt_contribution()` (async)
+/// on each capability, enabling dynamic content generation based on session context
+/// (e.g., reading AGENTS.md, discovering skills).
 ///
 /// Note: This function does not collect message filter providers since it doesn't
 /// have access to per-agent capability configs. Use `collect_capabilities_with_configs`
@@ -1112,8 +1112,18 @@ pub async fn collect_capabilities(
     registry: &CapabilityRegistry,
     ctx: &SystemPromptContext,
 ) -> CollectedCapabilities {
+    // Resolve dependencies so that transitive capabilities (e.g. session_storage
+    // via browserless) are included automatically.
+    let resolved_ids = match resolve_dependencies(capability_ids, registry) {
+        Ok(resolved) => resolved.resolved_ids,
+        Err(e) => {
+            tracing::warn!("Failed to resolve capability dependencies: {}", e);
+            capability_ids.to_vec()
+        }
+    };
+
     // Convert to AgentCapabilityConfig with empty configs
-    let configs: Vec<AgentCapabilityConfig> = capability_ids
+    let configs: Vec<AgentCapabilityConfig> = resolved_ids
         .iter()
         .map(|id| AgentCapabilityConfig {
             capability_ref: CapabilityId::new(id),
@@ -1844,7 +1854,8 @@ mod tests {
     async fn test_collect_capabilities_combines_mounts() {
         let registry = CapabilityRegistry::with_builtins();
 
-        // Collect from multiple capabilities - only sample_data has mounts
+        // Collect from multiple capabilities - only sample_data has mounts.
+        // sample_data depends on session_file_system, which is auto-resolved.
         let collected = collect_capabilities(
             &["sample_data".to_string(), "current_time".to_string()],
             &registry,
@@ -1853,7 +1864,15 @@ mod tests {
         .await;
 
         assert_eq!(collected.mounts.len(), 1);
-        assert_eq!(collected.applied_ids.len(), 2);
+        // Verify expected capabilities were applied (including auto-resolved dependency)
+        assert!(
+            collected
+                .applied_ids
+                .iter()
+                .any(|id| id == "session_file_system")
+        );
+        assert!(collected.applied_ids.iter().any(|id| id == "sample_data"));
+        assert!(collected.applied_ids.iter().any(|id| id == "current_time"));
     }
 
     #[test]
@@ -2411,6 +2430,48 @@ mod tests {
             "tool implementations ({}) must match tool definitions ({})",
             collected.tools.len(),
             collected.tool_definitions.len(),
+        );
+    }
+
+    /// Regression test for EVE-189: collect_capabilities must resolve dependencies
+    /// so that transitive capabilities register their tools even when not explicitly
+    /// listed. Uses sample_data (depends on session_file_system) as the test case.
+    #[tokio::test]
+    async fn test_collect_capabilities_resolves_dependencies() {
+        // sample_data depends on session_file_system
+        // Passing only sample_data should still include session_file_system tools
+        let registry = CapabilityRegistry::with_builtins();
+        let collected =
+            collect_capabilities(&["sample_data".to_string()], &registry, &test_ctx()).await;
+
+        // Verify the transitive dependency capability itself was applied
+        assert!(
+            collected
+                .applied_ids
+                .iter()
+                .any(|id| id == "session_file_system"),
+            "collect_capabilities must apply session_file_system as a dependency; applied_ids: {:?}",
+            collected.applied_ids
+        );
+
+        let tool_names: Vec<&str> = collected
+            .tool_definitions
+            .iter()
+            .map(|t| t.name())
+            .collect();
+
+        // session_file_system provides these tools; both should be present
+        assert!(
+            tool_names.contains(&"read_file") && tool_names.contains(&"write_file"),
+            "collect_capabilities must resolve dependencies and include dependency tools, got: {:?}",
+            tool_names
+        );
+
+        // Also verify tool implementations match definitions (dependency tools are executable)
+        assert_eq!(
+            collected.tools.len(),
+            collected.tool_definitions.len(),
+            "dependency-added tools must have implementations, not just definitions"
         );
     }
 
