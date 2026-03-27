@@ -528,6 +528,7 @@ jobs:
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       API_BASE_URL: http://localhost:9000
       WORKER_GRPC_AUTH_TOKEN: test-grpc-token-for-ci
+      RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
 
     steps:
       - uses: actions/checkout@v4
@@ -642,6 +643,7 @@ jobs:
       DEFAULT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       DEFAULT_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       EVERRUNS_API_KEY: "cli-e2e-test-key"
+      RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
 
     steps:
       - uses: actions/checkout@v4

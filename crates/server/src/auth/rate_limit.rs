@@ -173,6 +173,55 @@ pub fn extract_client_ip(req: &Request<Body>) -> IpAddr {
     IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
 }
 
+// ============================================================================
+// Generic API rate limiting middleware
+// ============================================================================
+
+/// Global per-IP rate limiter for all API endpoints.
+///
+/// Applied as Axum middleware. Uses governor in-memory backend.
+/// Configurable via `RATE_LIMIT_API_REQUESTS_PER_MINUTE` env var (default: 120).
+#[derive(Clone)]
+pub struct ApiRateLimiter {
+    limiter: Arc<KeyedLimiter>,
+}
+
+impl ApiRateLimiter {
+    pub fn from_env() -> Self {
+        let rpm: u32 = everruns_config::env_or("RATE_LIMIT_API_REQUESTS_PER_MINUTE", 120);
+        let rpm = rpm.max(1); // ensure nonzero
+        Self {
+            limiter: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                NonZeroU32::new(rpm).unwrap(),
+            ))),
+        }
+    }
+
+    /// Check if rate limiting is disabled (set to 0 via env var).
+    pub fn is_disabled() -> bool {
+        std::env::var("RATE_LIMIT_API_REQUESTS_PER_MINUTE")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            == Some(0)
+    }
+}
+
+/// Axum middleware function for global API rate limiting.
+pub async fn api_rate_limit_middleware(
+    limiter: ApiRateLimiter,
+    req: Request<Body>,
+    next: axum::middleware::Next,
+) -> Response {
+    let ip = extract_client_ip(&req);
+    match limiter.limiter.check_key(&ip) {
+        Ok(_) => next.run(req).await,
+        Err(_) => {
+            tracing::debug!(ip = %ip, "API rate limit exceeded");
+            RateLimitError.into()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,5 +294,50 @@ mod tests {
         let req = Request::builder().body(Body::empty()).unwrap();
         let ip = extract_client_ip(&req);
         assert_eq!(ip, IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+
+    // ============================================
+    // API rate limiter tests
+    // ============================================
+
+    #[test]
+    fn test_api_rate_limiter_allows_initial_requests() {
+        let limiter = ApiRateLimiter::from_env();
+        let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
+        assert!(limiter.limiter.check_key(&ip).is_ok());
+    }
+
+    #[test]
+    fn test_api_rate_limiter_blocks_after_burst() {
+        // Set a low limit for testing
+        let limiter = ApiRateLimiter {
+            limiter: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                NonZeroU32::new(5).unwrap(),
+            ))),
+        };
+        let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 101));
+        for _ in 0..5 {
+            let _ = limiter.limiter.check_key(&ip);
+        }
+        assert!(
+            limiter.limiter.check_key(&ip).is_err(),
+            "Should block after exceeding limit"
+        );
+    }
+
+    #[test]
+    fn test_api_rate_limiter_separate_ips() {
+        let limiter = ApiRateLimiter {
+            limiter: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                NonZeroU32::new(2).unwrap(),
+            ))),
+        };
+        let ip1 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10));
+        let ip2 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 11));
+        for _ in 0..2 {
+            let _ = limiter.limiter.check_key(&ip1);
+        }
+        assert!(limiter.limiter.check_key(&ip1).is_err());
+        assert!(limiter.limiter.check_key(&ip2).is_ok());
     }
 }
