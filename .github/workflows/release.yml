@@ -138,3 +138,12 @@ jobs:
           echo "Triggering CLI binary builds for tag $TAG..."
           gh workflow run cli-binaries.yml --ref "$TAG" -f "tag=$TAG"
           echo "CLI binary builds triggered for $TAG"
+
+      - name: Trigger server & worker binary builds for release tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          echo "Triggering server & worker binary builds for tag $TAG..."
+          gh workflow run server-worker-binaries.yml --ref "$TAG" -f "tag=$TAG"
+          echo "Server & worker binary builds triggered for $TAG"
