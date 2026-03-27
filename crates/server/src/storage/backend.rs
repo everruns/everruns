@@ -1974,4 +1974,145 @@ impl StorageBackend {
     pub async fn delete_app_channel(&self, id: Uuid) -> Result<bool> {
         dispatch!(self, delete_app_channel, id)
     }
+
+    // ============================================
+    // Eval CRUD
+    // ============================================
+
+    pub async fn create_eval(&self, org_id: i64, input: CreateEvalRow) -> Result<EvalRow> {
+        dispatch!(self, create_eval, org_id, input)
+    }
+
+    pub async fn get_eval_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<EvalRow>> {
+        dispatch!(self, get_eval_by_public_id, org_id, public_id)
+    }
+
+    pub async fn list_evals(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<EvalRow>> {
+        dispatch!(self, list_evals, org_id, search, include_archived)
+    }
+
+    pub async fn update_eval(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateEvalRow,
+    ) -> Result<Option<EvalRow>> {
+        dispatch!(self, update_eval, org_id, id, input)
+    }
+
+    pub async fn delete_eval(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_eval, org_id, id)
+    }
+
+    // ============================================
+    // Eval Case CRUD
+    // ============================================
+
+    pub async fn create_eval_case(
+        &self,
+        eval_id: Uuid,
+        input: CreateEvalCaseRow,
+    ) -> Result<EvalCaseRow> {
+        dispatch!(self, create_eval_case, eval_id, input)
+    }
+
+    pub async fn list_eval_cases(&self, eval_id: Uuid) -> Result<Vec<EvalCaseRow>> {
+        dispatch!(self, list_eval_cases, eval_id)
+    }
+
+    pub async fn get_eval_case_by_public_id(
+        &self,
+        eval_id: Uuid,
+        public_id: &str,
+    ) -> Result<Option<EvalCaseRow>> {
+        dispatch!(self, get_eval_case_by_public_id, eval_id, public_id)
+    }
+
+    pub async fn update_eval_case(
+        &self,
+        id: Uuid,
+        input: UpdateEvalCaseRow,
+    ) -> Result<Option<EvalCaseRow>> {
+        dispatch!(self, update_eval_case, id, input)
+    }
+
+    pub async fn delete_eval_case(&self, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_eval_case, id)
+    }
+
+    pub async fn count_eval_cases(&self, eval_id: Uuid) -> Result<i64> {
+        dispatch!(self, count_eval_cases, eval_id)
+    }
+
+    // ============================================
+    // Eval Run CRUD
+    // ============================================
+
+    pub async fn create_eval_run(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunRow,
+    ) -> Result<EvalRunRow> {
+        dispatch!(self, create_eval_run, org_id, input)
+    }
+
+    pub async fn list_eval_runs(&self, eval_id: Uuid) -> Result<Vec<EvalRunRow>> {
+        dispatch!(self, list_eval_runs, eval_id)
+    }
+
+    pub async fn get_eval_run_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<EvalRunRow>> {
+        dispatch!(self, get_eval_run_by_public_id, org_id, public_id)
+    }
+
+    pub async fn update_eval_run_status(
+        &self,
+        id: Uuid,
+        status: &str,
+        summary: Option<serde_json::Value>,
+    ) -> Result<Option<EvalRunRow>> {
+        dispatch!(self, update_eval_run_status, id, status, summary)
+    }
+
+    pub async fn get_latest_eval_run(&self, eval_id: Uuid) -> Result<Option<EvalRunRow>> {
+        dispatch!(self, get_latest_eval_run, eval_id)
+    }
+
+    // ============================================
+    // Eval Case Result CRUD
+    // ============================================
+
+    pub async fn create_eval_case_result(
+        &self,
+        input: CreateEvalCaseResultRow,
+    ) -> Result<EvalCaseResultRow> {
+        dispatch!(self, create_eval_case_result, input)
+    }
+
+    pub async fn list_eval_case_results(
+        &self,
+        eval_run_id: Uuid,
+    ) -> Result<Vec<EvalCaseResultRow>> {
+        dispatch!(self, list_eval_case_results, eval_run_id)
+    }
+
+    pub async fn update_eval_case_result(
+        &self,
+        id: Uuid,
+        input: UpdateEvalCaseResultRow,
+    ) -> Result<Option<EvalCaseResultRow>> {
+        dispatch!(self, update_eval_case_result, id, input)
+    }
 }

@@ -21,6 +21,7 @@ import {
   Boxes,
   BookOpen,
   Calendar,
+  ClipboardCheck,
   FlaskConical,
   LayoutDashboard,
   ListTodo,
@@ -88,6 +89,7 @@ export const defaultBuildingBlocksNavigation: NavigationItem[] = [
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
   { name: "MCP Servers", href: "/mcp-servers", icon: capabilityIconMap.mcp },
   { name: "Apps", href: "/apps", icon: Rocket, flag: "apps", experimental: true },
+  { name: "Evals", href: "/evals", icon: ClipboardCheck },
 ];
 
 export const defaultBottomNavigation: NavigationItem[] = [

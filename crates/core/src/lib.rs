@@ -48,6 +48,7 @@ pub mod agent_identity;
 pub mod app;
 pub mod capability_dto;
 pub mod connection_provider;
+pub mod eval;
 pub mod events;
 pub mod harness;
 pub mod leased_resource;
@@ -283,9 +284,10 @@ pub use skill::{
     SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
 };
 pub use typed_id::{
-    AgentId, AgentIdentityId, AppChannelId, AppId, EventId, ExecId, HarnessId, IdMarker,
-    IdParseError, ImageId, LeasedResourceId, McpServerId, MemoryId, MemoryStoreId, MessageId,
-    ModelId, NotificationId, OrgId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
+    AgentId, AgentIdentityId, AppChannelId, AppId, EvalCaseId, EvalId, EvalResultId, EvalRunId,
+    EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, LeasedResourceId, McpServerId,
+    MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId, OrgId, ProviderId, ScheduleId,
+    SessionId, SkillId, TurnId, TypedId,
 };
 
 // Permissions re-exports

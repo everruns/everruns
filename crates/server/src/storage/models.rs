@@ -1464,3 +1464,163 @@ pub struct UpdateAppChannel {
     pub channel_config_encrypted: Option<Vec<u8>>,
     pub enabled: Option<bool>,
 }
+
+// ============================================
+// Eval models
+// ============================================
+
+/// Eval row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct EvalRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub agent_id: Uuid,
+    pub harness_id: Uuid,
+    pub model_override: Option<String>,
+    pub tags: Vec<String>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+/// Input for creating an eval
+#[derive(Debug, Clone)]
+pub struct CreateEvalRow {
+    pub public_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub agent_id: Uuid,
+    pub harness_id: Uuid,
+    pub model_override: Option<String>,
+    pub tags: Vec<String>,
+}
+
+/// Input for updating an eval
+#[derive(Debug, Clone, Default)]
+pub struct UpdateEvalRow {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub agent_id: Option<Uuid>,
+    pub harness_id: Option<Uuid>,
+    pub model_override: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub status: Option<String>,
+}
+
+/// Eval case row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct EvalCaseRow {
+    pub id: Uuid,
+    pub eval_id: Uuid,
+    pub public_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub conversation: serde_json::Value,
+    pub scorers: serde_json::Value,
+    pub max_turns: Option<i32>,
+    pub timeout_seconds: Option<i32>,
+    pub position: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating an eval case
+#[derive(Debug, Clone)]
+pub struct CreateEvalCaseRow {
+    pub public_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub conversation: serde_json::Value,
+    pub scorers: serde_json::Value,
+    pub max_turns: Option<i32>,
+    pub timeout_seconds: Option<i32>,
+    pub position: i32,
+}
+
+/// Input for updating an eval case
+#[derive(Debug, Clone, Default)]
+pub struct UpdateEvalCaseRow {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub conversation: Option<serde_json::Value>,
+    pub scorers: Option<serde_json::Value>,
+    pub max_turns: Option<i32>,
+    pub timeout_seconds: Option<i32>,
+    pub position: Option<i32>,
+}
+
+/// Eval run row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct EvalRunRow {
+    pub id: Uuid,
+    pub eval_id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub model_override: Option<String>,
+    pub filter_tags: Option<Vec<String>>,
+    pub status: String,
+    pub triggered_by: String,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub summary: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating an eval run
+#[derive(Debug, Clone)]
+pub struct CreateEvalRunRow {
+    pub public_id: String,
+    pub eval_id: Uuid,
+    pub model_override: Option<String>,
+    pub filter_tags: Option<Vec<String>>,
+    pub triggered_by: String,
+}
+
+/// Eval case result row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct EvalCaseResultRow {
+    pub id: Uuid,
+    pub eval_run_id: Uuid,
+    pub eval_case_id: Uuid,
+    pub public_id: String,
+    pub session_id: Option<Uuid>,
+    pub status: String,
+    pub scores: Option<serde_json::Value>,
+    pub turns: Option<i32>,
+    pub latency_ms: Option<i64>,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub error_message: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating an eval case result
+#[derive(Debug, Clone)]
+pub struct CreateEvalCaseResultRow {
+    pub public_id: String,
+    pub eval_run_id: Uuid,
+    pub eval_case_id: Uuid,
+}
+
+/// Input for updating an eval case result
+#[derive(Debug, Clone, Default)]
+pub struct UpdateEvalCaseResultRow {
+    pub session_id: Option<Uuid>,
+    pub status: Option<String>,
+    pub scores: Option<serde_json::Value>,
+    pub turns: Option<i32>,
+    pub latency_ms: Option<i64>,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub error_message: Option<String>,
+}

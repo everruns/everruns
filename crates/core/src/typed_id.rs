@@ -434,6 +434,34 @@ impl IdMarker for MemoryIdMarker {
     const PREFIX: &'static str = "mem";
 }
 
+/// Marker for Eval IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EvalIdMarker;
+impl IdMarker for EvalIdMarker {
+    const PREFIX: &'static str = "eval";
+}
+
+/// Marker for Eval Case IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EvalCaseIdMarker;
+impl IdMarker for EvalCaseIdMarker {
+    const PREFIX: &'static str = "evalcase";
+}
+
+/// Marker for Eval Run IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EvalRunIdMarker;
+impl IdMarker for EvalRunIdMarker {
+    const PREFIX: &'static str = "evalrun";
+}
+
+/// Marker for Eval Case Result IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EvalResultIdMarker;
+impl IdMarker for EvalResultIdMarker {
+    const PREFIX: &'static str = "evalresult";
+}
+
 // ============================================================================
 // Type aliases for convenience
 // ============================================================================
@@ -478,6 +506,14 @@ pub type AppChannelId = TypedId<AppChannelIdMarker>;
 pub type NotificationId = TypedId<NotificationIdMarker>;
 pub type MemoryStoreId = TypedId<MemoryStoreIdMarker>;
 pub type MemoryId = TypedId<MemoryIdMarker>;
+/// Eval ID
+pub type EvalId = TypedId<EvalIdMarker>;
+/// Eval Case ID
+pub type EvalCaseId = TypedId<EvalCaseIdMarker>;
+/// Eval Run ID
+pub type EvalRunId = TypedId<EvalRunIdMarker>;
+/// Eval Case Result ID
+pub type EvalResultId = TypedId<EvalResultIdMarker>;
 
 // ============================================================================
 // Well-known IDs (for seeding and defaults)

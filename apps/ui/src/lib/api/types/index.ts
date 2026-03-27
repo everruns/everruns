@@ -17,3 +17,4 @@ export * from "./skill-types";
 export * from "./image-types";
 export * from "./app-types";
 export * from "./command-types";
+export * from "./eval-types";
