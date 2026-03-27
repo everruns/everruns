@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,8 @@ export default function MainError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const router = useRouter();
+
   useEffect(() => {
     console.error("Unhandled error:", error);
   }, [error]);
@@ -29,7 +32,7 @@ export default function MainError({
           </CardDescription>
         </CardHeader>
         <CardContent className="flex justify-center gap-3">
-          <Button variant="outline" onClick={() => (window.location.href = "/")}>
+          <Button variant="outline" onClick={() => router.push("/dashboard")}>
             Dashboard
           </Button>
           <Button onClick={reset}>Try again</Button>
