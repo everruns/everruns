@@ -2061,17 +2061,41 @@ async fn test_delete_user_account() {
     .await
     .unwrap();
 
-    // Verify user exists
+    // Create refresh token for user
+    db.create_refresh_token(CreateRefreshTokenRow {
+        user_id: user.id,
+        token_hash: "refresh_hash".to_string(),
+        expires_at: Utc::now() + chrono::Duration::hours(1),
+    })
+    .await
+    .unwrap();
+
+    // Add user to default org
+    db.add_organization_member(DEFAULT_ORG_ID, user.id, "member")
+        .await
+        .unwrap();
+
+    // Verify user exists with related data
     assert!(db.get_user(user.id).await.unwrap().is_some());
     assert_eq!(db.list_api_keys_for_user(user.id).await.unwrap().len(), 1);
+    assert!(
+        db.is_organization_member(DEFAULT_ORG_ID, user.id)
+            .await
+            .unwrap()
+    );
 
     // Delete account
     let deleted = db.delete_user_account(user.id).await.unwrap();
     assert!(deleted);
 
-    // Verify cascading delete
+    // Verify cascading delete of all user data
     assert!(db.get_user(user.id).await.unwrap().is_none());
     assert_eq!(db.list_api_keys_for_user(user.id).await.unwrap().len(), 0);
+    assert!(
+        !db.is_organization_member(DEFAULT_ORG_ID, user.id)
+            .await
+            .unwrap()
+    );
 
     // Deleting non-existent user returns false
     let deleted_again = db.delete_user_account(user.id).await.unwrap();

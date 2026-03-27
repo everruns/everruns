@@ -164,6 +164,10 @@ impl InMemoryDatabase {
             self.notifications
                 .write()
                 .retain(|_, n| n.user_id != user_id);
+            // Cascade: remove notification turn requests
+            self.notification_turn_requests
+                .write()
+                .retain(|_, r| r.user_id != user_id);
             // Cascade: remove OAuth auth codes
             self.oauth_authorization_codes
                 .write()
