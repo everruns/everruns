@@ -91,7 +91,7 @@ async fn live_function() {
 #[tokio::test]
 async fn live_cdp_session_navigate_and_screenshot() {
     let token = api_token();
-    let ws_url = format!("wss://production-sfo.browserless.io?token={token}");
+    let ws_url = format!("wss://production-sfo.browserless.io/chromium?token={token}");
 
     let mut session = CdpSession::connect(&ws_url)
         .await
@@ -139,7 +139,7 @@ async fn live_cdp_session_navigate_and_screenshot() {
 #[tokio::test]
 async fn live_cdp_session_reconnect() {
     let token = api_token();
-    let ws_url = format!("wss://production-sfo.browserless.io?token={token}");
+    let ws_url = format!("wss://production-sfo.browserless.io/chromium?token={token}");
 
     // Open session, navigate, reconnect, disconnect
     let mut session = CdpSession::connect(&ws_url)
@@ -186,7 +186,7 @@ async fn live_cdp_session_reconnect() {
 #[tokio::test]
 async fn live_cdp_session_interact() {
     let token = api_token();
-    let ws_url = format!("wss://production-sfo.browserless.io?token={token}");
+    let ws_url = format!("wss://production-sfo.browserless.io/chromium?token={token}");
 
     let mut session = CdpSession::connect(&ws_url)
         .await
@@ -242,7 +242,7 @@ async fn live_no_resources_leaked_cdp() {
     // Open a CDP session, then let it expire without explicitly closing.
     // Verify no resources are leaked (browser destroyed after timeout).
     let token = api_token();
-    let ws_url = format!("wss://production-sfo.browserless.io?token={token}");
+    let ws_url = format!("wss://production-sfo.browserless.io/chromium?token={token}");
 
     let mut session = CdpSession::connect(&ws_url)
         .await

@@ -78,6 +78,9 @@ Auth: `?token=<api_token>` query parameter on all requests.
 
 Base URL: `wss://production-sfo.browserless.io`
 
+New browser sessions connect to `/chromium` path (Browserless v2 requirement).
+Reconnect endpoints use the path returned by `Browserless.reconnect`.
+
 Auth: `?token=<api_token>` query parameter on WebSocket URL.
 
 CDP commands used:

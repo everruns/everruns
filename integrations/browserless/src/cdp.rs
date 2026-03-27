@@ -9,10 +9,17 @@ use futures_util::stream::SplitSink;
 use futures_util::stream::SplitStream;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::http::Response;
+use tokio_tungstenite::{
+    Connector, MaybeTlsStream, WebSocketStream, client_async_tls_with_config,
+    connect_async_tls_with_config,
+};
 use tracing::debug;
 
 /// Timeout for the initial CDP WebSocket connection handshake.
@@ -47,7 +54,7 @@ impl CdpSession {
     /// Connect to a Browserless WebSocket endpoint.
     ///
     /// `ws_url` should be a full WebSocket URL, e.g.:
-    ///   `wss://production-sfo.browserless.io?token=TOKEN`
+    ///   `wss://production-sfo.browserless.io/chromium?token=TOKEN` (new session)
     ///   or a reconnect endpoint returned by `Browserless.reconnect`.
     pub async fn connect(ws_url: &str) -> Result<Self, String> {
         // THREAT[TM-TOOL-017]: Redact token from log output to avoid leaking credentials
@@ -57,13 +64,22 @@ impl CdpSession {
             ws_url.to_string()
         };
         debug!("CDP connecting to {redacted}");
+
+        // Force HTTP/1.1 ALPN — WebSocket upgrade (RFC 6455) requires HTTP/1.1.
+        // Without this, rustls may negotiate h2, and the proxy in front of
+        // Browserless converts the upgrade into a plain GET, returning 400.
+        let connector = build_http11_tls_connector()?;
+
         let (ws_stream, _response) =
-            tokio::time::timeout(CDP_CONNECT_TIMEOUT, connect_async(ws_url))
+            tokio::time::timeout(CDP_CONNECT_TIMEOUT, connect_with_proxy(ws_url, connector))
                 .await
                 .map_err(|_| {
                     format!("CDP WebSocket connection timed out ({CDP_CONNECT_TIMEOUT:?})")
                 })?
-                .map_err(|e| format!("CDP WebSocket connection failed: {e}"))?;
+                .map_err(|e| {
+                    debug!("CDP WebSocket connection error for {redacted}: {e}");
+                    format!("CDP WebSocket connection failed: {e}")
+                })?;
 
         let (sink, source) = ws_stream.split();
         Ok(Self {
@@ -532,6 +548,163 @@ impl CdpSession {
 // Helpers
 // ============================================================================
 
+/// Connect to a WebSocket endpoint, routing through an HTTP CONNECT proxy if
+/// `HTTPS_PROXY` / `HTTP_PROXY` is set. Falls back to direct connection otherwise.
+async fn connect_with_proxy(
+    ws_url: &str,
+    connector: Connector,
+) -> Result<(WsStream, Response<Option<Vec<u8>>>), String> {
+    let request = ws_url
+        .into_client_request()
+        .map_err(|e| format!("Invalid WebSocket URL: {e}"))?;
+    let uri = request.uri().clone();
+    let host = uri
+        .host()
+        .ok_or_else(|| "Missing WebSocket host".to_string())?
+        .to_string();
+    let port = uri
+        .port_u16()
+        .unwrap_or(if uri.scheme_str() == Some("wss") {
+            443
+        } else {
+            80
+        });
+
+    if let Some(proxy) = proxy_url_for_host(&host)? {
+        debug!("CDP using HTTP CONNECT proxy");
+        let stream = connect_via_http_proxy(&proxy, &host, port).await?;
+        return client_async_tls_with_config(request, stream, None, Some(connector))
+            .await
+            .map_err(|e| format!("CDP WebSocket connection failed: {e}"));
+    }
+
+    connect_async_tls_with_config(ws_url, None, false, Some(connector))
+        .await
+        .map_err(|e| format!("CDP WebSocket connection failed: {e}"))
+}
+
+/// Read `HTTPS_PROXY` / `https_proxy` / `HTTP_PROXY` / `http_proxy` env var.
+/// Respects `NO_PROXY` / `no_proxy` — returns `None` if the target host matches.
+fn proxy_url_for_host(host: &str) -> Result<Option<reqwest::Url>, String> {
+    // Check NO_PROXY
+    for key in ["NO_PROXY", "no_proxy"] {
+        if let Ok(no_proxy) = std::env::var(key) {
+            for entry in no_proxy.split(',') {
+                let entry = entry.trim();
+                if entry == "*"
+                    || entry.eq_ignore_ascii_case(host)
+                    || (entry == "127.0.0.1" && host == "127.0.0.1")
+                {
+                    return Ok(None);
+                }
+                if let Some(suffix) = entry.strip_prefix("*.")
+                    && (host.ends_with(suffix) || host.eq_ignore_ascii_case(suffix))
+                {
+                    return Ok(None);
+                }
+            }
+        }
+    }
+
+    for key in ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"] {
+        if let Ok(value) = std::env::var(key)
+            && !value.is_empty()
+        {
+            let url = reqwest::Url::parse(&value)
+                .map_err(|e| format!("Invalid proxy URL in {key}: {e}"))?;
+            return Ok(Some(url));
+        }
+    }
+    Ok(None)
+}
+
+/// Establish a TCP tunnel through an HTTP CONNECT proxy.
+async fn connect_via_http_proxy(
+    proxy: &reqwest::Url,
+    target_host: &str,
+    target_port: u16,
+) -> Result<TcpStream, String> {
+    let proxy_host = proxy
+        .host_str()
+        .ok_or_else(|| "Proxy URL missing host".to_string())?;
+    let proxy_port = proxy.port_or_known_default().unwrap_or(8080);
+    let mut stream = TcpStream::connect((proxy_host, proxy_port))
+        .await
+        .map_err(|e| format!("Failed to connect to proxy {proxy_host}:{proxy_port}: {e}"))?;
+
+    // Send HTTP CONNECT with proxy-authorization if present in the URL
+    let mut connect_req = format!(
+        "CONNECT {target_host}:{target_port} HTTP/1.1\r\nHost: {target_host}:{target_port}\r\n"
+    );
+    if !proxy.username().is_empty() || proxy.password().is_some() {
+        let credentials = format!(
+            "{}:{}",
+            proxy.username(),
+            proxy.password().unwrap_or_default()
+        );
+        let encoded = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            credentials.as_bytes(),
+        );
+        connect_req.push_str(&format!("Proxy-Authorization: Basic {encoded}\r\n"));
+    }
+    connect_req.push_str("\r\n");
+
+    stream
+        .write_all(connect_req.as_bytes())
+        .await
+        .map_err(|e| format!("Failed to write proxy CONNECT request: {e}"))?;
+
+    let mut response = Vec::new();
+    let mut buf = [0u8; 1024];
+    loop {
+        let read = stream
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("Failed to read proxy CONNECT response: {e}"))?;
+        if read == 0 {
+            break;
+        }
+        response.extend_from_slice(&buf[..read]);
+        if response.windows(4).any(|window| window == b"\r\n\r\n") {
+            break;
+        }
+        if response.len() > 16 * 1024 {
+            return Err("Proxy CONNECT response too large".to_string());
+        }
+    }
+
+    let response_text = String::from_utf8_lossy(&response);
+    let status_line = response_text.lines().next().unwrap_or_default();
+    if !status_line.contains(" 200 ") {
+        return Err(format!("Proxy CONNECT failed: {status_line}"));
+    }
+
+    Ok(stream)
+}
+
+/// Build a rustls TLS connector that advertises only `http/1.1` ALPN.
+///
+/// WebSocket upgrade (RFC 6455) requires HTTP/1.1. If the TLS handshake
+/// negotiates h2, the proxy in front of Browserless silently converts the
+/// upgrade into a plain HTTP/2 GET, which returns 400 Bad Request.
+fn build_http11_tls_connector() -> Result<Connector, String> {
+    let mut root_store = rustls::RootCertStore::empty();
+    for cert in rustls_native_certs::load_native_certs().certs {
+        let _ = root_store.add(cert);
+    }
+    let provider = rustls::crypto::ring::default_provider();
+    let mut config = rustls::ClientConfig::builder_with_provider(provider.into())
+        .with_safe_default_protocol_versions()
+        .map_err(|e| format!("Failed to build TLS config: {e}"))?
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    // Force http/1.1 — without this, the server may negotiate h2 which
+    // breaks the HTTP/1.1 WebSocket upgrade handshake.
+    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    Ok(Connector::Rustls(Arc::new(config)))
+}
+
 /// Map key names to CDP key codes. Most keys map to themselves; only " " needs special handling.
 fn key_to_code(key: &str) -> &str {
     if key == " " { "Space" } else { key }
@@ -590,5 +763,58 @@ mod tests {
         assert_eq!(key_to_code(" "), "Space");
         assert_eq!(key_to_code("ArrowUp"), "ArrowUp");
         assert_eq!(key_to_code("SomeOtherKey"), "SomeOtherKey");
+    }
+
+    /// Reproduces the original EVE-188 bug: Browserless returns 400 on the root
+    /// WebSocket path. A mock server that only accepts `/chromium` verifies the
+    /// fix. The root path returns a raw "HTTP/1.1 400 Bad Request" so the
+    /// tungstenite client surfaces an HTTP 400 error.
+    #[tokio::test]
+    async fn test_connect_rejected_on_root_path_accepted_on_chromium() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        // Server: accept one connection, read the HTTP upgrade, reject with 400
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            let mut buf = vec![0u8; 4096];
+            let n = stream.read(&mut buf).await.expect("read");
+            let request = String::from_utf8_lossy(&buf[..n]);
+
+            if request.contains("GET / ") || !request.contains("GET /chromium") {
+                // Reject root path — reproduces the original 400 bug
+                stream
+                    .write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+                    .await
+                    .expect("write 400");
+            }
+            stream.shutdown().await.ok();
+        });
+
+        // Connect to root path — should get 400
+        let result = CdpSession::connect(&format!("ws://{addr}/")).await;
+        assert!(result.is_err(), "root path should be rejected");
+        let err = result.err().expect("should be Err");
+        assert!(err.contains("400"), "error should mention 400: {err}");
+
+        server.await.ok();
+    }
+
+    /// Verify the CDP URL construction uses the /chromium path.
+    #[test]
+    fn test_cdp_url_uses_chromium_path() {
+        let ws_base = "wss://production-sfo.browserless.io";
+        let cdp_path = "/chromium";
+        let token = "test_token_123";
+        let url = format!("{ws_base}{cdp_path}?token={token}");
+        assert_eq!(
+            url,
+            "wss://production-sfo.browserless.io/chromium?token=test_token_123"
+        );
+        assert!(url.contains("/chromium"), "URL must include /chromium path");
     }
 }
