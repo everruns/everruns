@@ -214,6 +214,23 @@ Primary "create new" actions (New Session, New Agent, etc.) use consistent styli
 - **Icon**: Plus icon, `h-4 w-4` size, `mr-2` margin
 - **Label**: "New [Entity]" format (e.g., "New Session", "New Agent")
 
+### Figma Design System
+
+The canonical Figma file for the Everruns design system lives in the **Everruns** team project:
+
+| Asset | URL |
+|-------|-----|
+| Component Library & Agents Page | https://www.figma.com/design/ib5pQ5VGUcbsqiWPDt6Ds7 |
+
+**File structure:**
+
+- **Page 1 — Component Library**: Color palette (13 tokens, light/dark), typography scale (7 levels), button variants (7 × 3 sizes), badge variants (5), inputs (text, search with ⌘K), card component, capability chips, navigation items (active/inactive), and Agent Card component.
+- **Page 2 — Agents Page**: Full desktop (1440px) recreation of the `/agents` route with sidebar, populated agent cards, and example agents section. Uses real Lucide SVG icons imported from `lucide-react`.
+
+**Design tokens** are defined as Figma variables with Light and Dark modes in the "Slate Design System" collection, matching `apps/ui/src/app/globals.css`.
+
+**Agent Card component** (`Component Library` page) mirrors `src/components/agents/agent-card.tsx` with exact Tailwind spacing: `py-6` (24px), `gap-6` (24px), `px-6` (24px), `text-lg` (18px) title, `text-sm` (14px) description, `text-xs` (12px) badges/chips/tags.
+
 ### External Resources
 
 | Resource | URL |
