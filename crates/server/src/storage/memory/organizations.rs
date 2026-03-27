@@ -273,6 +273,21 @@ impl InMemoryDatabase {
         Ok(count as i64)
     }
 
+    pub async fn count_user_created_organizations(&self, user_id: Uuid) -> Result<i64> {
+        let orgs = self.organizations.read();
+        let count = orgs
+            .values()
+            .filter(|o| o.created_by == Some(user_id))
+            .count();
+        Ok(count as i64)
+    }
+
+    pub async fn count_organization_members(&self, org_id: i64) -> Result<i64> {
+        let members = self.organization_members.read();
+        let count = members.values().filter(|m| m.org_id == org_id).count();
+        Ok(count as i64)
+    }
+
     pub async fn list_user_organizations(
         &self,
         user_id: Uuid,

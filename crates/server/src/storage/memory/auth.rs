@@ -39,6 +39,15 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn count_api_keys_for_user_in_org(&self, user_id: Uuid, org_id: i64) -> Result<i64> {
+        let keys = self.api_keys.read();
+        let count = keys
+            .values()
+            .filter(|k| k.user_id == user_id && k.org_id == org_id)
+            .count();
+        Ok(count as i64)
+    }
+
     pub async fn list_api_keys_for_user(&self, user_id: Uuid) -> Result<Vec<ApiKeyRow>> {
         let keys = self.api_keys.read();
         let mut result: Vec<_> = keys

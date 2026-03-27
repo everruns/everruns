@@ -4,7 +4,40 @@
 
 use axum::Router;
 use axum::http::HeaderValue;
-use everruns_config::{env_bool, env_list, env_string};
+use everruns_config::{env_bool, env_list, env_or, env_string};
+
+/// Configurable resource limits for orgs, members, API keys.
+///
+/// Defaults are sane for self-hosted. SaaS overrides per plan.
+#[derive(Debug, Clone)]
+pub struct ResourceLimitsConfig {
+    pub max_orgs_per_user: i64,
+    pub max_members_per_org: i64,
+    pub max_api_keys_per_user_per_org: i64,
+}
+
+impl Default for ResourceLimitsConfig {
+    fn default() -> Self {
+        Self {
+            max_orgs_per_user: 5,
+            max_members_per_org: 50,
+            max_api_keys_per_user_per_org: 10,
+        }
+    }
+}
+
+impl ResourceLimitsConfig {
+    pub fn from_env() -> Self {
+        Self {
+            max_orgs_per_user: env_or("RESOURCE_LIMIT_MAX_ORGS_PER_USER", 5),
+            max_members_per_org: env_or("RESOURCE_LIMIT_MAX_MEMBERS_PER_ORG", 50),
+            max_api_keys_per_user_per_org: env_or(
+                "RESOURCE_LIMIT_MAX_API_KEYS_PER_USER_PER_ORG",
+                10,
+            ),
+        }
+    }
+}
 
 /// Server configuration loaded from environment
 pub struct ServerConfig {

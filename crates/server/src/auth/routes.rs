@@ -889,6 +889,28 @@ pub async fn create_api_key_route(
         ));
     }
 
+    // Enforce API key limit per user per org
+    let key_count = state
+        .db
+        .count_api_keys_for_user_in_org(user.id, org.org_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to count API keys: {e}");
+            AuthError {
+                error: "Internal server error".to_string(),
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+            }
+        })?;
+    if key_count >= state.resource_limits.max_api_keys_per_user_per_org {
+        return Err(AuthError {
+            error: format!(
+                "API key limit reached (max {})",
+                state.resource_limits.max_api_keys_per_user_per_org
+            ),
+            status: StatusCode::CONFLICT,
+        });
+    }
+
     let generated = generate_api_key();
 
     let scopes = if req.scopes.is_empty() {
