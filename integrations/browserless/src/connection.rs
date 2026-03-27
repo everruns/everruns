@@ -1,7 +1,10 @@
 // Browserless Connection Provider
 //
 // Decision: API-token-based connection (not OAuth). User enters token from Browserless dashboard.
-// Decision: Validate token by calling GET /active — 200/204 means valid, 401/403 means invalid.
+// Decision: Validate token with two probes:
+//   1. GET /active — 200/204 means REST works, 401/403 means invalid token.
+//   2. GET /chromium — 400 means CDP endpoint reachable (expects WS upgrade, not GET),
+//      401/403 means token lacks CDP access.
 
 use async_trait::async_trait;
 use everruns_core::connection_provider::{
@@ -90,13 +93,14 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
             .await;
 
         match cdp_probe {
-            Ok(resp) => {
-                let status = resp.status().as_u16();
-                // 400 is expected: the endpoint expects a WebSocket upgrade, not HTTP GET.
+            Ok(resp) => match resp.status().as_u16() {
+                // 400 is the expected success: endpoint expects a WebSocket upgrade, not GET.
+                400 => {}
                 // 401/403 means the token doesn't have CDP access.
-                if status == 401 || status == 403 {
+                401 | 403 => {
                     warn!(
-                        "Browserless token validated for REST but rejected for CDP (HTTP {status})"
+                        "Browserless token validated for REST but rejected for CDP (HTTP {})",
+                        resp.status().as_u16()
                     );
                     return Err(
                         "API token works for REST but does not support CDP/WebSocket sessions. \
@@ -104,7 +108,10 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
                             .into(),
                     );
                 }
-            }
+                other => {
+                    warn!("Unexpected status from Browserless CDP probe: HTTP {other}");
+                }
+            },
             Err(e) => {
                 warn!("CDP probe failed during validation: {e}");
             }

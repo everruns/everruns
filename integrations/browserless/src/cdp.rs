@@ -54,7 +54,7 @@ impl CdpSession {
     /// Connect to a Browserless WebSocket endpoint.
     ///
     /// `ws_url` should be a full WebSocket URL, e.g.:
-    ///   `wss://production-sfo.browserless.io?token=TOKEN`
+    ///   `wss://production-sfo.browserless.io/chromium?token=TOKEN` (new session)
     ///   or a reconnect endpoint returned by `Browserless.reconnect`.
     pub async fn connect(ws_url: &str) -> Result<Self, String> {
         // THREAT[TM-TOOL-017]: Redact token from log output to avoid leaking credentials
