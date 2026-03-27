@@ -173,6 +173,47 @@ pub fn extract_client_ip(req: &Request<Body>) -> IpAddr {
     IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
 }
 
+// ============================================================================
+// Generic API rate limiting middleware
+// ============================================================================
+
+/// Global per-IP rate limiter for all API endpoints.
+///
+/// Applied as Axum middleware. Uses governor in-memory backend.
+/// Configurable via `RATE_LIMIT_API_REQUESTS_PER_MINUTE` env var (default: 120).
+#[derive(Clone)]
+pub struct ApiRateLimiter {
+    limiter: Arc<KeyedLimiter>,
+}
+
+impl ApiRateLimiter {
+    pub fn from_env() -> Self {
+        let rpm: u32 = everruns_config::env_or("RATE_LIMIT_API_REQUESTS_PER_MINUTE", 120);
+        let rpm = rpm.max(1); // ensure nonzero
+        Self {
+            limiter: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                NonZeroU32::new(rpm).unwrap(),
+            ))),
+        }
+    }
+}
+
+/// Axum middleware function for global API rate limiting.
+pub async fn api_rate_limit_middleware(
+    limiter: ApiRateLimiter,
+    req: Request<Body>,
+    next: axum::middleware::Next,
+) -> Response {
+    let ip = extract_client_ip(&req);
+    match limiter.limiter.check_key(&ip) {
+        Ok(_) => next.run(req).await,
+        Err(_) => {
+            tracing::warn!(ip = %ip, "API rate limit exceeded");
+            RateLimitError.into()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

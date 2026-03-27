@@ -793,6 +793,13 @@ impl ServerAppBuilder {
             app
         };
 
+        // TM-DOS: Global per-IP API rate limiting
+        let api_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env();
+        let app = app.layer(axum::middleware::from_fn(move |req, next| {
+            let limiter = api_rate_limiter.clone();
+            crate::auth::rate_limit::api_rate_limit_middleware(limiter, req, next)
+        }));
+
         // TM-WEB-004/005: Security response headers
         let app = app
             .layer(SetResponseHeaderLayer::if_not_present(
