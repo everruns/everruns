@@ -1430,7 +1430,16 @@ async fn json_response_or_error<T: serde::de::DeserializeOwned>(
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        tracing::error!("External service error: {status}: {body}");
+        let truncated: &str = if body.len() > 512 {
+            &body[..512]
+        } else {
+            &body
+        };
+        tracing::error!(
+            status = %status,
+            body_len = body.len(),
+            "External service error: {truncated}"
+        );
         return Err((StatusCode::BAD_GATEWAY, "Bad gateway".to_string()));
     }
     response

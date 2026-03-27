@@ -226,13 +226,16 @@ async fn log(
         .await
         .map_err(|e| {
             let msg = e.to_string();
-            // Fix: return empty list for missing ref (no commits yet) instead of 500
+            // Return empty list for missing ref (no commits yet) instead of 500
             if msg.contains("not found") {
                 tracing::debug!(error = %msg, "git log: ref not found (no commits yet)");
-                (StatusCode::NOT_FOUND, format!("Ref not found: {msg}"))
+                (StatusCode::NOT_FOUND, "Ref not found".to_string())
             } else {
                 tracing::error!(error = %msg, "git log failed");
-                (StatusCode::INTERNAL_SERVER_ERROR, msg)
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
         })?;
 
@@ -307,7 +310,10 @@ async fn list_refs(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "git list refs failed");
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            )
         })?;
 
     Ok(Json(refs))
@@ -377,7 +383,10 @@ async fn delete_branch(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "git delete branch failed");
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            )
         })?;
 
     if !deleted {
