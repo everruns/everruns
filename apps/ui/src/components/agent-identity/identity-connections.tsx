@@ -160,13 +160,6 @@ export function IdentityConnections({ identityId }: { identityId: string }) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold">Connections</h3>
-        <p className="text-sm text-muted-foreground">
-          Connections assigned to this identity are used in sessions running as this identity.
-        </p>
-      </div>
-
       {error && (
         <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
           Failed to load connections: {error.message}
