@@ -1078,7 +1078,12 @@ impl Tool for DaytonaGitCloneTool {
             Err(e) => return e,
         };
         let repo_url_raw = match required_str(&arguments, "repo_url") {
-            Ok(s) => s,
+            Ok(s) if !s.trim().is_empty() => s,
+            Ok(_) => {
+                return ToolExecutionResult::tool_error(
+                    "repo_url must not be empty".to_string(),
+                );
+            }
             Err(e) => return e,
         };
         let branch = arguments
@@ -1132,10 +1137,13 @@ impl Tool for DaytonaGitCloneTool {
             repo_url.clone()
         };
 
-        // Build git clone command (quote args to handle special characters)
-        let mut cmd = format!("git clone --depth 1 '{clone_url}' '{target_path}'");
+        // Build git clone command (shell-escape args to handle special characters)
+        let esc_url = shell_escape(&clone_url);
+        let esc_path = shell_escape(target_path);
+        let mut cmd = format!("git clone --depth 1 {esc_url} {esc_path}");
         if let Some(b) = branch {
-            cmd = format!("git clone --depth 1 --branch '{b}' '{clone_url}' '{target_path}'");
+            let esc_branch = shell_escape(b);
+            cmd = format!("git clone --depth 1 --branch {esc_branch} {esc_url} {esc_path}");
         }
 
         debug!("Cloning repository via exec: {repo_url} → {target_path}");
@@ -1166,7 +1174,7 @@ impl Tool for DaytonaGitCloneTool {
         let commit_sha = match client
             .exec(
                 sandbox_id,
-                &format!("cd {target_path} && git rev-parse --short HEAD"),
+                &format!("cd {} && git rev-parse --short HEAD", shell_escape(target_path)),
                 None,
                 None,
                 |_| {},
@@ -1331,6 +1339,12 @@ impl Tool for DaytonaGitCredentialsTool {
 // ============================================================================
 // Git Clone Helpers
 // ============================================================================
+
+/// Escape a string for safe use inside POSIX single quotes.
+/// Replaces `'` with `'\''` (end quote, escaped quote, start quote).
+fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
 
 /// Normalize repository URL: "user/repo" → "https://github.com/user/repo.git"
 fn normalize_repo_url(url: &str) -> String {
@@ -1852,6 +1866,21 @@ mod tests {
     fn test_normalize_repo_url_http() {
         let url = "http://github.com/user/repo";
         assert_eq!(normalize_repo_url(url), url);
+    }
+
+    #[test]
+    fn test_shell_escape_simple() {
+        assert_eq!(shell_escape("hello"), "'hello'");
+    }
+
+    #[test]
+    fn test_shell_escape_with_single_quote() {
+        assert_eq!(shell_escape("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn test_shell_escape_with_spaces() {
+        assert_eq!(shell_escape("path with spaces"), "'path with spaces'");
     }
 
     #[test]
