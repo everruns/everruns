@@ -1864,8 +1864,10 @@ mod tests {
         .await;
 
         assert_eq!(collected.mounts.len(), 1);
-        // 3 = session_file_system (dependency) + sample_data + current_time
-        assert_eq!(collected.applied_ids.len(), 3);
+        // Verify expected capabilities were applied (including auto-resolved dependency)
+        assert!(collected.applied_ids.iter().any(|id| id == "session_file_system"));
+        assert!(collected.applied_ids.iter().any(|id| id == "sample_data"));
+        assert!(collected.applied_ids.iter().any(|id| id == "current_time"));
     }
 
     #[test]
@@ -2427,8 +2429,8 @@ mod tests {
     }
 
     /// Regression test for EVE-189: collect_capabilities must resolve dependencies
-    /// so that transitive capabilities (e.g. session_storage via browserless) register
-    /// their tools even when not explicitly listed.
+    /// so that transitive capabilities register their tools even when not explicitly
+    /// listed. Uses sample_data (depends on session_file_system) as the test case.
     #[tokio::test]
     async fn test_collect_capabilities_resolves_dependencies() {
         // sample_data depends on session_file_system
@@ -2437,15 +2439,22 @@ mod tests {
         let collected =
             collect_capabilities(&["sample_data".to_string()], &registry, &test_ctx()).await;
 
+        // Verify the transitive dependency capability itself was applied
+        assert!(
+            collected.applied_ids.iter().any(|id| id == "session_file_system"),
+            "collect_capabilities must apply session_file_system as a dependency; applied_ids: {:?}",
+            collected.applied_ids
+        );
+
         let tool_names: Vec<&str> = collected
             .tool_definitions
             .iter()
             .map(|t| t.name())
             .collect();
 
-        // session_file_system provides these tools
+        // session_file_system provides these tools; both should be present
         assert!(
-            tool_names.contains(&"read_file") || tool_names.contains(&"write_file"),
+            tool_names.contains(&"read_file") && tool_names.contains(&"write_file"),
             "collect_capabilities must resolve dependencies and include dependency tools, got: {:?}",
             tool_names
         );
