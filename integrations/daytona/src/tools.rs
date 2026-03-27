@@ -731,10 +731,14 @@ impl Tool for DaytonaDownloadWorkspaceTool {
             .get("sandbox_path")
             .and_then(|v| v.as_str())
             .unwrap_or(&state.workspace_path);
-        let session_root = arguments
+        let session_root_raw = arguments
             .get("session_path")
             .and_then(|v| v.as_str())
             .unwrap_or("/workspace");
+        // Normalize: strip /workspace prefix to match session filesystem conventions.
+        // The session_file_system capability strips /workspace/ from all paths, so
+        // files stored here must use the same normalized form to be discoverable.
+        let session_root = normalize_session_path(session_root_raw);
 
         let client = DaytonaClient::new(api_key);
 
@@ -1338,6 +1342,23 @@ impl Tool for DaytonaGitCredentialsTool {
 }
 
 // ============================================================================
+// Session Path Helpers
+// ============================================================================
+
+/// Normalize a session filesystem path by stripping the `/workspace` prefix.
+/// The session_file_system capability stores paths without /workspace, so
+/// daytona tools must match this convention for files to be discoverable.
+fn normalize_session_path(path: &str) -> String {
+    if path == "/workspace" {
+        "/".to_string()
+    } else if let Some(stripped) = path.strip_prefix("/workspace/") {
+        format!("/{stripped}")
+    } else {
+        path.to_string()
+    }
+}
+
+// ============================================================================
 // Git Clone Helpers
 // ============================================================================
 
@@ -1842,6 +1863,33 @@ mod tests {
         assert!(schema["properties"]["branch"].is_object());
         assert!(schema["properties"]["path"].is_object());
     }
+
+    // --- Session path normalization tests ---
+
+    #[test]
+    fn test_normalize_session_path_workspace() {
+        assert_eq!(normalize_session_path("/workspace"), "/");
+    }
+
+    #[test]
+    fn test_normalize_session_path_workspace_subpath() {
+        assert_eq!(
+            normalize_session_path("/workspace/reports/chat"),
+            "/reports/chat"
+        );
+    }
+
+    #[test]
+    fn test_normalize_session_path_no_prefix() {
+        assert_eq!(normalize_session_path("/reports/chat"), "/reports/chat");
+    }
+
+    #[test]
+    fn test_normalize_session_path_root() {
+        assert_eq!(normalize_session_path("/"), "/");
+    }
+
+    // --- Git URL normalization tests ---
 
     #[test]
     fn test_normalize_repo_url_shorthand() {
