@@ -25,6 +25,8 @@ pub struct FeatureFlags {
     pub notifications: bool,
     /// MCP endpoint (POST /mcp — Everruns as an MCP server). Experimental.
     pub mcp_endpoint: bool,
+    /// Evals (user-facing behavioral evals for agents). Experimental.
+    pub evals: bool,
 }
 
 impl FeatureFlags {
@@ -35,6 +37,7 @@ impl FeatureFlags {
             apps: experimental_flag("FEATURE_APPS", grade),
             notifications: standard_flag("FEATURE_NOTIFICATIONS", false),
             mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
+            evals: experimental_flag("FEATURE_EVALS", grade),
         }
     }
 
@@ -45,6 +48,7 @@ impl FeatureFlags {
             "apps" => self.apps,
             "notifications" => self.notifications,
             "mcp_endpoint" => self.mcp_endpoint,
+            "evals" => self.evals,
             _ => false,
         }
     }
@@ -57,6 +61,7 @@ impl FeatureFlags {
             apps: true,
             notifications: true,
             mcp_endpoint: true,
+            evals: true,
         }
     }
 }
@@ -107,9 +112,11 @@ mod tests {
         let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
         unsafe { std::env::remove_var("FEATURE_APPS") };
+        unsafe { std::env::remove_var("FEATURE_EVALS") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
         assert!(flags.global_chat);
         assert!(flags.apps);
+        assert!(flags.evals);
     }
 
     #[test]
@@ -117,9 +124,11 @@ mod tests {
         let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
         unsafe { std::env::remove_var("FEATURE_APPS") };
+        unsafe { std::env::remove_var("FEATURE_EVALS") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
         assert!(!flags.global_chat);
         assert!(!flags.apps);
+        assert!(!flags.evals);
     }
 
     #[test]
@@ -147,11 +156,13 @@ mod tests {
             apps: true,
             notifications: true,
             mcp_endpoint: true,
+            evals: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("apps"));
         assert!(flags.is_enabled("notifications"));
         assert!(flags.is_enabled("mcp_endpoint"));
+        assert!(flags.is_enabled("evals"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -162,6 +173,7 @@ mod tests {
             apps: true,
             notifications: true,
             mcp_endpoint: true,
+            evals: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));

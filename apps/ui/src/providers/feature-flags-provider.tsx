@@ -16,6 +16,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   apps: false,
   notifications: false,
   mcp_endpoint: false,
+  evals: false,
 };
 
 export interface FeatureFlagsContextValue {
