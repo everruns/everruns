@@ -206,6 +206,7 @@ pub struct DenoClient {
     sandbox_base_domain: String,
     rpc_timeout: Duration,
     stream_idle_timeout: Duration,
+    tls_connector: Connector,
 }
 
 impl DenoClient {
@@ -224,6 +225,8 @@ impl DenoClient {
         console_api_base: String,
         sandbox_base_domain: String,
     ) -> Self {
+        let tls_connector = build_http11_tls_connector()
+            .expect("Failed to build TLS connector for Deno sandbox WebSocket");
         Self {
             http: reqwest::Client::new(),
             token,
@@ -232,6 +235,7 @@ impl DenoClient {
             sandbox_base_domain,
             rpc_timeout: DENO_RPC_TIMEOUT,
             stream_idle_timeout: DENO_STREAM_IDLE_TIMEOUT,
+            tls_connector,
         }
     }
 
@@ -465,8 +469,7 @@ impl DenoClient {
                     .map_err(|e| format!("Invalid x-deno-sandbox-config header: {e}"))?,
             );
         }
-        let connector = build_http11_tls_connector()?;
-        let (ws, response) = connect_async_all_addrs(request, connector).await?;
+        let (ws, response) = connect_async_all_addrs(request, self.tls_connector.clone()).await?;
         let sandbox_id = response
             .headers()
             .get("x-deno-sandbox-id")
@@ -726,7 +729,16 @@ fn map_ws_error(error: tungstenite::Error) -> String {
             let body = response
                 .body()
                 .as_ref()
-                .map(|b| String::from_utf8_lossy(b))
+                .map(|b| {
+                    let s = String::from_utf8_lossy(b);
+                    // Sanitize: collapse whitespace and truncate to keep errors readable
+                    let sanitized: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+                    if sanitized.len() > 256 {
+                        format!("{}…", &sanitized[..256])
+                    } else {
+                        sanitized
+                    }
+                })
                 .unwrap_or_default();
             if body.is_empty() {
                 format!("Deno sandbox websocket HTTP error: {status}")
