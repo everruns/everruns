@@ -288,8 +288,14 @@ struct CollectedFile {
     is_readonly: bool,
 }
 
-/// Recursively collect all non-hidden text files from a directory.
-/// Returns them as initial_files entries with paths relative to /workspace.
+/// Directories always skipped during initial-files collection.
+/// We use a blocklist instead of blanket dot-prefix filtering so that
+/// well-known dotfile directories like `.agents/` are included.
+const IGNORED_DOTDIRS: &[&str] = &[".git", ".DS_Store", ".svn", ".hg"];
+
+/// Recursively collect text files from a directory, including well-known
+/// dotfile directories (e.g. `.agents/`). Returns them as initial_files
+/// entries with paths relative to /workspace.
 fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
     let base =
         std::fs::canonicalize(dir).with_context(|| format!("Cannot resolve directory: {}", dir))?;
@@ -298,7 +304,7 @@ fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
     }
 
     let walker = ignore::WalkBuilder::new(&base)
-        .hidden(true) // respect hidden files filter
+        .hidden(false) // include dotfiles; we filter with IGNORED_DOTDIRS instead
         .git_ignore(true) // respect .gitignore (repo-local)
         .git_global(false) // ignore global gitignore for predictable behavior
         .git_exclude(false) // ignore repo exclude files for predictable behavior
@@ -327,12 +333,12 @@ fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
             .strip_prefix(&base)
             .context("File outside base directory")?;
 
-        // Skip hidden files/directories (dot-prefixed relative components).
-        // The ignore crate handles this too, but belt-and-suspenders.
-        if rel
-            .components()
-            .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
-        {
+        // Skip explicitly ignored dot-directories (e.g. .git) while
+        // allowing well-known ones like .agents/.
+        if rel.components().any(|c| {
+            let s = c.as_os_str().to_string_lossy();
+            IGNORED_DOTDIRS.iter().any(|ignored| *ignored == &*s)
+        }) {
             continue;
         }
         // Normalize path separators to POSIX-style for workspace paths
@@ -652,8 +658,9 @@ mod tests {
         std::fs::create_dir(dir.path().join("sub")).unwrap();
         std::fs::write(dir.path().join("sub/nested.txt"), "content").unwrap();
 
-        // Hidden files should be skipped
-        std::fs::write(dir.path().join(".hidden"), "secret").unwrap();
+        // .git directory should be skipped
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+        std::fs::write(dir.path().join(".git/config"), "gitdata").unwrap();
 
         let files = glob_initial_files(dir.path().to_str().unwrap()).unwrap();
         assert_eq!(files.len(), 2);
@@ -661,6 +668,27 @@ mod tests {
         assert!(files.iter().any(|f| f.path == "/workspace/sub/nested.txt"));
         assert!(files.iter().all(|f| f.is_readonly));
         assert!(files.iter().all(|f| f.encoding == "text"));
+    }
+
+    #[test]
+    fn test_glob_initial_files_includes_dot_agents() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("agent.md"), "# Agent").unwrap();
+        std::fs::create_dir_all(dir.path().join(".agents/skills/search")).unwrap();
+        std::fs::write(
+            dir.path().join(".agents/skills/search/SKILL.md"),
+            "# Search skill",
+        )
+        .unwrap();
+
+        let files = glob_initial_files(dir.path().to_str().unwrap()).unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().any(|f| f.path == "/workspace/agent.md"));
+        assert!(
+            files
+                .iter()
+                .any(|f| f.path == "/workspace/.agents/skills/search/SKILL.md")
+        );
     }
 
     #[test]
