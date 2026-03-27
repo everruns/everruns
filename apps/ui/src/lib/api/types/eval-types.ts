@@ -128,5 +128,4 @@ export interface CreateEvalCaseRequest {
 
 export interface CreateEvalRunRequest {
   model_override?: string;
-  filter_tags?: string[];
 }

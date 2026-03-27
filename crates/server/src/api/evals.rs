@@ -125,8 +125,6 @@ pub struct UpdateEvalCaseRequest {
 pub struct CreateEvalRunRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_override: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub filter_tags: Option<Vec<String>>,
 }
 
 /// Query parameters for listing evals

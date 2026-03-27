@@ -133,6 +133,9 @@ impl EvalService {
                 .get_agent_by_public_id(caller.org_id, &agent_id.to_string())
                 .await?
                 .ok_or_else(|| ResourceNotFoundError::new("Agent"))?;
+            if agent_row.status != "active" {
+                anyhow::bail!("Archived or deleted agents cannot be assigned to evals");
+            }
             Some(agent_row.id.uuid())
         } else {
             None
@@ -144,6 +147,9 @@ impl EvalService {
                 .get_harness(caller.org_id, *harness_id)
                 .await?
                 .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
+            if harness_row.status != "active" {
+                anyhow::bail!("Archived or deleted harnesses cannot be assigned to evals");
+            }
             Some(harness_row.id.uuid())
         } else {
             None
@@ -277,10 +283,9 @@ impl EvalService {
             tags: req.tags,
             conversation: req
                 .conversation
-                .map(|c| serde_json::to_value(c).unwrap_or_default()),
-            scorers: req
-                .scorers
-                .map(|s| serde_json::to_value(s).unwrap_or_default()),
+                .map(serde_json::to_value)
+                .transpose()?,
+            scorers: req.scorers.map(serde_json::to_value).transpose()?,
             max_turns: req.max_turns.map(|v| v as i32),
             timeout_seconds: req.timeout_seconds.map(|v| v as i32),
             position: req.position,
@@ -337,7 +342,7 @@ impl EvalService {
             public_id: run_public_id.to_string(),
             eval_id: eval.id,
             model_override: req.model_override,
-            filter_tags: req.filter_tags,
+            filter_tags: None, // Phase 2: tag-based partial runs
             triggered_by: "user".to_string(),
         };
 
@@ -381,8 +386,8 @@ impl EvalService {
         eval_public_id: &str,
         run_public_id: &str,
     ) -> Result<Option<EvalRun>> {
-        // Verify eval ownership
-        let _eval = self
+        // Verify eval ownership and run belongs to eval
+        let eval = self
             .db
             .get_eval_by_public_id(caller.org_id, eval_public_id)
             .await?
@@ -395,6 +400,9 @@ impl EvalService {
         let Some(run_row) = run_row else {
             return Ok(None);
         };
+        if run_row.eval_id != eval.id {
+            return Ok(None);
+        }
 
         // Load case results with case names
         let result_rows = self.db.list_eval_case_results(run_row.id).await?;
@@ -421,7 +429,7 @@ impl EvalService {
         eval_public_id: &str,
         run_public_id: &str,
     ) -> Result<Option<EvalRun>> {
-        let _eval = self
+        let eval = self
             .db
             .get_eval_by_public_id(caller.org_id, eval_public_id)
             .await?
@@ -434,6 +442,9 @@ impl EvalService {
         let Some(run_row) = run_row else {
             return Ok(None);
         };
+        if run_row.eval_id != eval.id {
+            return Ok(None);
+        }
 
         if !matches!(run_row.status.as_str(), "pending" | "running") {
             anyhow::bail!("Can only cancel pending or running eval runs");

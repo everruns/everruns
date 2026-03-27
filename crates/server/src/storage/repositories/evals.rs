@@ -336,8 +336,8 @@ impl Database {
             UPDATE eval_runs
             SET
                 status = $2,
-                started_at = COALESCE($3, started_at),
-                completed_at = COALESCE($4, completed_at),
+                started_at = COALESCE(started_at, $3),
+                completed_at = COALESCE(completed_at, $4),
                 summary = COALESCE($5, summary),
                 updated_at = NOW()
             WHERE id = $1
