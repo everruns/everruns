@@ -6,7 +6,8 @@
 //! Decision: External integration crate, auto-registered via inventory plugin system
 //! Decision: Use secrets store for all state (API key + per-sandbox connection info)
 //! Decision: Two-tier API: Management API for lifecycle, Toolbox API for in-sandbox ops
-//! Decision: Streaming exec via background process + file polling for real-time output
+//! Decision: All exec goes through Session API (/process/session) — persistent shell,
+//!           async execution, and log polling for real-time streaming output
 //! Decision: session_storage dependency for API key and state persistence
 
 pub mod client;

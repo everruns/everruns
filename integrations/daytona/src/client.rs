@@ -1,4 +1,10 @@
 //! Daytona API client and URL encoding utilities.
+//!
+//! Decision: All command execution goes through the Session API
+//! (`/process/session/{id}/exec`). The session provides a persistent shell
+//! so commands always get proper shell interpretation (pipes, redirects,
+//! variable expansion, etc.). The old stateless `/process/execute` endpoint
+//! is NOT used — it doesn't support async execution or output streaming.
 
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -6,6 +12,10 @@ use tracing::debug;
 
 use crate::state::{ExecResult, SandboxInfo};
 use crate::{EXEC_POLL_INTERVAL, SANDBOX_READY_MAX_WAIT, SANDBOX_READY_POLL_INTERVAL};
+
+/// Fixed session ID used for all command execution in a sandbox.
+/// One session per sandbox, created on first exec, reused thereafter.
+const EXEC_SESSION_ID: &str = "everruns-exec";
 
 // ============================================================================
 // DaytonaClient - HTTP client for Daytona APIs
@@ -282,8 +292,35 @@ impl DaytonaClient {
         ))
     }
 
-    // --- Toolbox API: Process ---
+    // --- Toolbox API: Process (Session-based) ---
 
+    /// Ensure a persistent shell session exists for the sandbox.
+    /// Idempotent — 409 means the session already exists.
+    async fn ensure_session(&self, sandbox_id: &str) -> Result<(), String> {
+        let url = format!("{}/{sandbox_id}/process/session", self.toolbox_base);
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .header("Content-Type", "application/json")
+            .json(&json!({"sessionId": EXEC_SESSION_ID}))
+            .send()
+            .await
+            .map_err(|e| format!("Failed to create session: {e}"))?;
+
+        let status = resp.status();
+        if status.is_success() || status.as_u16() == 409 {
+            Ok(())
+        } else {
+            let body = resp.text().await.unwrap_or_default();
+            Err(format!("Failed to create session ({status}): {body}"))
+        }
+    }
+
+    /// Execute a command in the sandbox and return the result.
+    ///
+    /// Uses the Session API with async execution + log polling so all
+    /// commands go through a proper shell and support streaming output.
     pub async fn exec(
         &self,
         sandbox_id: &str,
@@ -291,33 +328,16 @@ impl DaytonaClient {
         cwd: Option<&str>,
         timeout_ms: Option<u64>,
     ) -> Result<ExecResult, String> {
-        // Daytona's process/execute endpoint runs commands without a shell —
-        // shell operators (|, >, &&, $(), etc.) are passed as literal args.
-        // Wrap in sh -c so they are interpreted correctly.
-        let escaped = command.replace('\'', "'\\''");
-        let wrapped = format!("sh -c '{escaped}'");
-        let mut body = json!({ "command": wrapped });
-        if let Some(c) = cwd {
-            body["cwd"] = json!(c);
-        }
-        if let Some(t) = timeout_ms {
-            body["timeout"] = json!(t);
-        }
-        let resp = self
-            .toolbox_request(
-                reqwest::Method::POST,
-                sandbox_id,
-                "/process/execute",
-                Some(body),
-            )
-            .await?;
-        serde_json::from_value(resp).map_err(|e| format!("Failed to parse exec result: {e}"))
+        let timeout = timeout_ms.unwrap_or(crate::EXEC_TIMEOUT_MS);
+        self.exec_streaming(sandbox_id, command, cwd, timeout, |_| {})
+            .await
     }
 
-    /// Execute a command with real-time output streaming via background process + file polling.
+    /// Execute a command with real-time output streaming via the Session API.
     ///
-    /// Returns `(exit_code, full_output)`. Calls `on_output` with each new chunk of output
-    /// as it becomes available.
+    /// Creates a persistent session (if needed), runs the command asynchronously,
+    /// and polls the session logs endpoint for output. Calls `on_output` with each
+    /// new chunk as it becomes available.
     pub async fn exec_streaming<F>(
         &self,
         sandbox_id: &str,
@@ -329,151 +349,81 @@ impl DaytonaClient {
     where
         F: FnMut(&str),
     {
-        let exec_id = format!(
-            "{:x}",
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
-        );
-        let out_file = format!("/tmp/everruns_exec_{exec_id}.out");
-        let exit_file = format!("/tmp/everruns_exec_{exec_id}.exit");
-        let pid_file = format!("/tmp/everruns_exec_{exec_id}.pid");
+        self.ensure_session(sandbox_id).await?;
 
-        // Write command to a temp script to avoid shell quoting issues (commands
-        // frequently contain single/double quotes, backticks, $(), etc.).
-        let script_file = format!("/tmp/everruns_exec_{exec_id}.sh");
-        let cwd_part = cwd.map(|c| format!("cd {c} && ")).unwrap_or_default();
-        let script_body = format!("{cwd_part}({command}) > {out_file} 2>&1; echo $? > {exit_file}");
+        let cmd = match cwd {
+            Some(c) => format!("cd {c} && {command}"),
+            None => command.to_string(),
+        };
 
-        // Write the script, make executable, run in background, capture PID.
-        let write_result = self
-            .exec(
+        // Start async execution in the persistent session.
+        // runAsync: true returns immediately with a cmdId.
+        let resp = self
+            .toolbox_request(
+                reqwest::Method::POST,
                 sandbox_id,
-                &format!(
-                    "cat > {script_file} << 'EVERRUNS_EXEC_EOF'\n{script_body}\nEVERRUNS_EXEC_EOF\nchmod +x {script_file}"
-                ),
-                None,
-                Some(10_000),
+                &format!("/process/session/{EXEC_SESSION_ID}/exec"),
+                Some(json!({
+                    "command": cmd,
+                    "runAsync": true
+                })),
             )
-            .await;
-        if let Err(e) = write_result {
-            return Err(format!("Failed to write exec script: {e}"));
-        }
+            .await?;
 
-        let start_result = self
-            .exec(
-                sandbox_id,
-                &format!("nohup sh {script_file} > /dev/null 2>&1 & echo $! > {pid_file}"),
-                None,
-                Some(10_000),
-            )
-            .await;
-        if let Err(e) = start_result {
-            return Err(format!("Failed to start background command: {e}"));
-        }
+        let cmd_id = resp
+            .get("cmdId")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing cmdId in session exec response")?
+            .to_string();
 
-        // Poll for output
+        // Poll for output and completion.
         let deadline = std::time::Instant::now() + Duration::from_millis(timeout_ms);
-        let mut bytes_read: usize = 0;
+        let mut output_emitted: usize = 0;
+        let logs_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}/logs");
+        let status_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}");
 
         loop {
             if std::time::Instant::now() >= deadline {
-                // Timeout — kill the process by PID and clean up
-                let _ = self
-                    .exec(
-                        sandbox_id,
-                        &format!(
-                            "if [ -f {pid_file} ]; then kill $(cat {pid_file}) 2>/dev/null; fi"
-                        ),
-                        None,
-                        Some(5_000),
-                    )
-                    .await;
-                let _ = self
-                    .exec(
-                        sandbox_id,
-                        &format!("rm -f {out_file} {exit_file} {script_file} {pid_file}"),
-                        None,
-                        Some(5_000),
-                    )
-                    .await;
-                return Err(format!("Command timed out after {}ms", timeout_ms));
+                return Err(format!("Command timed out after {timeout_ms}ms"));
             }
 
             tokio::time::sleep(EXEC_POLL_INTERVAL).await;
 
-            // Check for new output
-            let new_output = self
-                .exec(
-                    sandbox_id,
-                    &format!("tail -c +{} {} 2>/dev/null", bytes_read + 1, out_file),
-                    None,
-                    Some(10_000),
-                )
-                .await;
+            // Fetch session command logs (raw bytes with stream markers).
+            let logs = self
+                .toolbox_download(sandbox_id, &logs_path)
+                .await
+                .unwrap_or_default();
 
-            if let Ok(ref chunk) = new_output
-                && !chunk.result.is_empty()
-            {
-                bytes_read += chunk.result.len();
-                on_output(&chunk.result);
+            let text = strip_stream_markers(&logs);
+            if text.len() > output_emitted {
+                on_output(&text[output_emitted..]);
+                output_emitted = text.len();
             }
 
-            // Check if the process has completed (exit file exists)
-            let done_check = self
-                .exec(
-                    sandbox_id,
-                    &format!("cat {exit_file} 2>/dev/null"),
-                    None,
-                    Some(5_000),
-                )
+            // Check if command completed (exitCode is present).
+            let status = self
+                .toolbox_request(reqwest::Method::GET, sandbox_id, &status_path, None)
                 .await;
 
-            if let Ok(ref done) = done_check {
-                let trimmed = done.result.trim();
-                if !trimmed.is_empty() {
-                    // Process finished — read any remaining output
-                    let final_output = self
-                        .exec(
-                            sandbox_id,
-                            &format!("tail -c +{} {} 2>/dev/null", bytes_read + 1, out_file),
-                            None,
-                            Some(10_000),
-                        )
-                        .await;
-                    if let Ok(ref tail) = final_output
-                        && !tail.result.is_empty()
-                    {
-                        on_output(&tail.result);
-                    }
+            if let Ok(ref s) = status
+                && let Some(exit_code) = s.get("exitCode").and_then(|v| v.as_i64())
+            {
+                // Final log fetch to capture any trailing output.
+                let final_logs = self
+                    .toolbox_download(sandbox_id, &logs_path)
+                    .await
+                    .unwrap_or_default();
 
-                    // Read the full output for the final result
-                    let full_output = self
-                        .exec(
-                            sandbox_id,
-                            &format!("cat {out_file} 2>/dev/null"),
-                            None,
-                            Some(10_000),
-                        )
-                        .await
-                        .map(|r| r.result)
-                        .unwrap_or_default();
-
-                    let exit_code = trimmed.parse::<i32>().unwrap_or(-1);
-
-                    // Clean up temp files
-                    let _ = self
-                        .exec(
-                            sandbox_id,
-                            &format!("rm -f {out_file} {exit_file} {script_file} {pid_file}"),
-                            None,
-                            Some(5_000),
-                        )
-                        .await;
-
-                    return Ok(ExecResult {
-                        result: full_output,
-                        exit_code,
-                    });
+                let final_text = strip_stream_markers(&final_logs);
+                if final_text.len() > output_emitted {
+                    on_output(&final_text[output_emitted..]);
                 }
+
+                return Ok(ExecResult {
+                    result: final_text,
+                    exit_code: exit_code as i32,
+                });
             }
         }
     }
@@ -544,6 +494,31 @@ impl DaytonaClient {
         .await?;
         Ok(())
     }
+}
+
+/// Strip Daytona session log stream multiplexing markers from raw output.
+///
+/// The session API multiplexes stdout/stderr with 3-byte prefix markers:
+/// - `\x01\x01\x01` = stdout data follows
+/// - `\x02\x02\x02` = stderr data follows
+///
+/// We strip the markers and return combined text (matching the previous
+/// behavior where `ExecResult.result` contains combined stdout+stderr).
+pub(crate) fn strip_stream_markers(raw: &[u8]) -> String {
+    let mut result = Vec::with_capacity(raw.len());
+    let mut i = 0;
+    while i < raw.len() {
+        if i + 3 <= raw.len()
+            && ((raw[i] == 0x01 && raw[i + 1] == 0x01 && raw[i + 2] == 0x01)
+                || (raw[i] == 0x02 && raw[i + 1] == 0x02 && raw[i + 2] == 0x02))
+        {
+            i += 3;
+            continue;
+        }
+        result.push(raw[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&result).into_owned()
 }
 
 pub(crate) mod urlencoding {
@@ -661,17 +636,60 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Set up mock responses for the session-based exec flow.
+    async fn setup_session_mocks(
+        mock_server: &MockServer,
+        sandbox_id: &str,
+        exit_code: i64,
+        output: &str,
+    ) {
+        // 1. Create session → 201 (or 409 if exists)
+        Mock::given(method("POST"))
+            .and(path(format!("/{sandbox_id}/process/session")))
+            .respond_with(ResponseTemplate::new(201))
+            .mount(mock_server)
+            .await;
+
+        // 2. Async exec → 202 with cmdId
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/{sandbox_id}/process/session/everruns-exec/exec"
+            )))
+            .respond_with(ResponseTemplate::new(202).set_body_json(json!({
+                "cmdId": "cmd_001"
+            })))
+            .mount(mock_server)
+            .await;
+
+        // 3. Logs → output bytes with stdout marker prefix
+        let mut log_bytes = vec![0x01, 0x01, 0x01];
+        log_bytes.extend_from_slice(output.as_bytes());
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/{sandbox_id}/process/session/everruns-exec/command/cmd_001/logs"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(log_bytes))
+            .mount(mock_server)
+            .await;
+
+        // 4. Command status → exitCode
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/{sandbox_id}/process/session/everruns-exec/command/cmd_001"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "cmd_001",
+                "command": "test",
+                "exitCode": exit_code
+            })))
+            .mount(mock_server)
+            .await;
+    }
+
     #[tokio::test]
     async fn test_client_exec() {
         let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/sb_test/process/execute"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "result": "hello world\n",
-                "exitCode": 0
-            })))
-            .mount(&mock_server)
-            .await;
+        setup_session_mocks(&mock_server, "sb_test", 0, "hello world\n").await;
 
         let client = DaytonaClient::with_base_urls(
             "test_key".to_string(),
@@ -938,14 +956,7 @@ mod tests {
     #[tokio::test]
     async fn test_client_exec_with_cwd_and_timeout() {
         let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/sb_test/process/execute"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "result": "output",
-                "exitCode": 1
-            })))
-            .mount(&mock_server)
-            .await;
+        setup_session_mocks(&mock_server, "sb_test", 1, "output").await;
 
         let client = DaytonaClient::with_base_urls(
             "test_key".to_string(),
@@ -962,14 +973,7 @@ mod tests {
     #[tokio::test]
     async fn test_client_exec_nonzero_exit() {
         let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/sb_test/process/execute"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "result": "command not found",
-                "exitCode": 127
-            })))
-            .mount(&mock_server)
-            .await;
+        setup_session_mocks(&mock_server, "sb_test", 127, "command not found").await;
 
         let client = DaytonaClient::with_base_urls(
             "test_key".to_string(),
@@ -1174,70 +1178,9 @@ mod tests {
     #[tokio::test]
     async fn test_exec_streaming_collects_output_and_exit_code() {
         use std::sync::{Arc, Mutex};
-        use wiremock::matchers::body_string_contains;
 
         let mock_server = MockServer::start().await;
-        let exec_path = "/sb_test/process/execute";
-
-        // 1. Write script → success
-        Mock::given(method("POST"))
-            .and(path(exec_path))
-            .and(body_string_contains("cat >"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "result": "", "exitCode": 0
-            })))
-            .mount(&mock_server)
-            .await;
-
-        // 2. Start script → success
-        Mock::given(method("POST"))
-            .and(path(exec_path))
-            .and(body_string_contains("nohup sh"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "result": "", "exitCode": 0
-            })))
-            .mount(&mock_server)
-            .await;
-
-        // 3. Poll output via tail → return a chunk
-        Mock::given(method("POST"))
-            .and(path(exec_path))
-            .and(body_string_contains("tail -c"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "result": "hello streaming\n", "exitCode": 0
-            })))
-            .mount(&mock_server)
-            .await;
-
-        // 4. Check exit file → return exit code (process done)
-        Mock::given(method("POST"))
-            .and(path(exec_path))
-            .and(body_string_contains(".exit"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "result": "0\n", "exitCode": 0
-            })))
-            .mount(&mock_server)
-            .await;
-
-        // 5. Full output cat → return complete output
-        Mock::given(method("POST"))
-            .and(path(exec_path))
-            .and(body_string_contains("cat /tmp"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "result": "hello streaming\n", "exitCode": 0
-            })))
-            .mount(&mock_server)
-            .await;
-
-        // 6. Cleanup rm → success
-        Mock::given(method("POST"))
-            .and(path(exec_path))
-            .and(body_string_contains("rm -f"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "result": "", "exitCode": 0
-            })))
-            .mount(&mock_server)
-            .await;
+        setup_session_mocks(&mock_server, "sb_test", 0, "hello streaming\n").await;
 
         let client = DaytonaClient::with_base_urls(
             "test_key".to_string(),
@@ -1261,5 +1204,57 @@ mod tests {
 
         let collected = chunks.lock().unwrap();
         assert!(!collected.is_empty(), "should have received output chunks");
+    }
+
+    #[tokio::test]
+    async fn test_ensure_session_handles_existing() {
+        let mock_server = MockServer::start().await;
+
+        // Return 409 Conflict (session already exists)
+        Mock::given(method("POST"))
+            .and(path("/sb_test/process/session"))
+            .respond_with(ResponseTemplate::new(409))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client.ensure_session("sb_test").await;
+        assert!(result.is_ok(), "409 should be treated as success");
+    }
+
+    #[test]
+    fn test_strip_stream_markers_stdout_only() {
+        let mut raw = vec![0x01, 0x01, 0x01];
+        raw.extend_from_slice(b"hello world\n");
+        assert_eq!(strip_stream_markers(&raw), "hello world\n");
+    }
+
+    #[test]
+    fn test_strip_stream_markers_mixed_streams() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&[0x01, 0x01, 0x01]);
+        raw.extend_from_slice(b"stdout line\n");
+        raw.extend_from_slice(&[0x02, 0x02, 0x02]);
+        raw.extend_from_slice(b"stderr line\n");
+        raw.extend_from_slice(&[0x01, 0x01, 0x01]);
+        raw.extend_from_slice(b"more stdout\n");
+        assert_eq!(
+            strip_stream_markers(&raw),
+            "stdout line\nstderr line\nmore stdout\n"
+        );
+    }
+
+    #[test]
+    fn test_strip_stream_markers_no_markers() {
+        assert_eq!(strip_stream_markers(b"plain text\n"), "plain text\n");
+    }
+
+    #[test]
+    fn test_strip_stream_markers_empty() {
+        assert_eq!(strip_stream_markers(b""), "");
     }
 }

@@ -154,20 +154,60 @@ fn get_tool(name: &str) -> Box<dyn Tool> {
 // ============================================================================
 // These test the client directly with custom base URLs pointing at wiremock.
 
+/// Set up mock responses for the session-based exec flow.
+async fn setup_session_mocks(
+    mock_server: &MockServer,
+    sandbox_id: &str,
+    exit_code: i64,
+    output: &str,
+) {
+    // 1. Create session → 201
+    Mock::given(method("POST"))
+        .and(path(format!("/{sandbox_id}/process/session")))
+        .respond_with(ResponseTemplate::new(201))
+        .mount(mock_server)
+        .await;
+
+    // 2. Async exec → 202 with cmdId
+    Mock::given(method("POST"))
+        .and(path(format!(
+            "/{sandbox_id}/process/session/everruns-exec/exec"
+        )))
+        .respond_with(ResponseTemplate::new(202).set_body_json(json!({
+            "cmdId": "cmd_001"
+        })))
+        .mount(mock_server)
+        .await;
+
+    // 3. Logs → output bytes with stdout marker prefix
+    let mut log_bytes = vec![0x01, 0x01, 0x01];
+    log_bytes.extend_from_slice(output.as_bytes());
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/{sandbox_id}/process/session/everruns-exec/command/cmd_001/logs"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(log_bytes))
+        .mount(mock_server)
+        .await;
+
+    // 4. Command status → exitCode
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/{sandbox_id}/process/session/everruns-exec/command/cmd_001"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "cmd_001",
+            "command": "test",
+            "exitCode": exit_code
+        })))
+        .mount(mock_server)
+        .await;
+}
+
 #[tokio::test]
 async fn test_exec_tool_full_flow_via_client() {
     let mock_server = MockServer::start().await;
-
-    // Mock the exec endpoint
-    Mock::given(method("POST"))
-        .and(path("/sb_int/process/execute"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "result": "Hello from sandbox!\n",
-            "exitCode": 0
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
+    setup_session_mocks(&mock_server, "sb_int", 0, "Hello from sandbox!\n").await;
 
     let client =
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
@@ -285,21 +325,17 @@ async fn test_sandbox_lifecycle_via_client() {
     client.delete_sandbox("sb_lifecycle").await.unwrap();
 }
 
-/// Git clone now uses exec instead of the toolbox /git/clone endpoint.
-/// This test verifies that git clone works via the process/execute endpoint.
+/// Git clone uses exec via the session API.
 #[tokio::test]
 async fn test_git_clone_via_exec() {
     let mock_server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/sb_git/process/execute"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "result": "Cloning into '/home/daytona/user/repo'...\n",
-            "exitCode": 0
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
+    setup_session_mocks(
+        &mock_server,
+        "sb_git",
+        0,
+        "Cloning into '/home/daytona/user/repo'...\n",
+    )
+    .await;
 
     let client =
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
@@ -635,15 +671,13 @@ async fn test_client_folder_and_file_operations() {
 #[tokio::test]
 async fn test_exec_with_nonzero_exit_preserves_output() {
     let mock_server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/sb_err/process/execute"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "result": "bash: foobar: command not found\n",
-            "exitCode": 127
-        })))
-        .mount(&mock_server)
-        .await;
+    setup_session_mocks(
+        &mock_server,
+        "sb_err",
+        127,
+        "bash: foobar: command not found\n",
+    )
+    .await;
 
     let client =
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
@@ -654,32 +688,20 @@ async fn test_exec_with_nonzero_exit_preserves_output() {
 }
 
 // ============================================================================
-// Shell wrapping integration tests (EVE-186)
+// Session-based exec integration tests (EVE-186)
 // ============================================================================
-// Daytona's process/execute endpoint runs commands without a shell.
-// exec() must wrap all commands in sh -c '...' so shell operators work.
+// All exec goes through the Session API — persistent shell, async execution,
+// and log polling for real-time streaming output.
 
 #[tokio::test]
-async fn test_exec_wraps_command_in_shell() {
+async fn test_exec_session_with_shell_operators() {
     let mock_server = MockServer::start().await;
-
-    // The mock expects the command wrapped in sh -c '...'
-    Mock::given(method("POST"))
-        .and(path("/sb_shell/process/execute"))
-        .and(wiremock::matchers::body_json(json!({
-            "command": "sh -c 'echo hello && echo world'"
-        })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "result": "hello\nworld\n",
-            "exitCode": 0
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
+    setup_session_mocks(&mock_server, "sb_shell", 0, "hello\nworld\n").await;
 
     let client =
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
+    // Shell operators (&&) are handled natively by the session's shell
     let result = client
         .exec("sb_shell", "echo hello && echo world", None, None)
         .await
@@ -690,21 +712,9 @@ async fn test_exec_wraps_command_in_shell() {
 }
 
 #[tokio::test]
-async fn test_exec_wraps_pipes_and_redirects_in_shell() {
+async fn test_exec_session_with_pipes_and_redirects() {
     let mock_server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/sb_pipe/process/execute"))
-        .and(wiremock::matchers::body_json(json!({
-            "command": "sh -c 'cat /etc/os-release | head -1 > /tmp/out.txt'"
-        })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "result": "",
-            "exitCode": 0
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
+    setup_session_mocks(&mock_server, "sb_pipe", 0, "").await;
 
     let client =
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
@@ -723,22 +733,49 @@ async fn test_exec_wraps_pipes_and_redirects_in_shell() {
 }
 
 #[tokio::test]
-async fn test_exec_shell_wrapping_escapes_single_quotes() {
+async fn test_exec_session_with_cwd_prepended() {
     let mock_server = MockServer::start().await;
 
-    // Command: echo 'hello world'
-    // After escaping: echo '\''hello world'\''
-    // Wrapped: sh -c 'echo '\''hello world'\'''
+    // Create session
     Mock::given(method("POST"))
-        .and(path("/sb_quote/process/execute"))
+        .and(path("/sb_cwd/process/session"))
+        .respond_with(ResponseTemplate::new(201))
+        .mount(&mock_server)
+        .await;
+
+    // Verify the command is prepended with cd
+    Mock::given(method("POST"))
+        .and(path("/sb_cwd/process/session/everruns-exec/exec"))
         .and(wiremock::matchers::body_json(json!({
-            "command": r"sh -c 'echo '\''hello world'\'''"
+            "command": "cd /workspace && ls -la",
+            "runAsync": true
         })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "result": "hello world\n",
-            "exitCode": 0
+        .respond_with(ResponseTemplate::new(202).set_body_json(json!({
+            "cmdId": "cmd_cwd"
         })))
         .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    // Logs
+    let mut log_bytes = vec![0x01, 0x01, 0x01];
+    log_bytes.extend_from_slice(b"file.txt\n");
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_cwd/process/session/everruns-exec/command/cmd_cwd/logs",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(log_bytes))
+        .mount(&mock_server)
+        .await;
+
+    // Status
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_cwd/process/session/everruns-exec/command/cmd_cwd",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "cmd_cwd", "exitCode": 0
+        })))
         .mount(&mock_server)
         .await;
 
@@ -746,37 +783,7 @@ async fn test_exec_shell_wrapping_escapes_single_quotes() {
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
     let result = client
-        .exec("sb_quote", "echo 'hello world'", None, None)
-        .await
-        .unwrap();
-
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.result, "hello world\n");
-}
-
-#[tokio::test]
-async fn test_exec_shell_wrapping_with_cwd() {
-    let mock_server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/sb_cwd/process/execute"))
-        .and(wiremock::matchers::body_json(json!({
-            "command": "sh -c 'ls -la | grep foo'",
-            "cwd": "/workspace"
-        })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "result": "-rw-r--r-- 1 user user 0 Jan 1 00:00 foo\n",
-            "exitCode": 0
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client =
-        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
-
-    let result = client
-        .exec("sb_cwd", "ls -la | grep foo", Some("/workspace"), None)
+        .exec("sb_cwd", "ls -la", Some("/workspace"), None)
         .await
         .unwrap();
 
@@ -784,25 +791,14 @@ async fn test_exec_shell_wrapping_with_cwd() {
 }
 
 #[tokio::test]
-async fn test_exec_shell_wrapping_with_variable_expansion() {
+async fn test_exec_session_with_variable_expansion() {
     let mock_server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .and(path("/sb_var/process/execute"))
-        .and(wiremock::matchers::body_json(json!({
-            "command": "sh -c 'echo $HOME'"
-        })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "result": "/home/daytona\n",
-            "exitCode": 0
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
+    setup_session_mocks(&mock_server, "sb_var", 0, "/home/daytona\n").await;
 
     let client =
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
+    // Variable expansion is handled natively by the session's shell
     let result = client
         .exec("sb_var", "echo $HOME", None, None)
         .await
@@ -810,6 +806,135 @@ async fn test_exec_shell_wrapping_with_variable_expansion() {
 
     assert_eq!(result.exit_code, 0);
     assert_eq!(result.result, "/home/daytona\n");
+}
+
+#[tokio::test]
+async fn test_exec_session_reuses_existing() {
+    let mock_server = MockServer::start().await;
+
+    // Session already exists → 409
+    Mock::given(method("POST"))
+        .and(path("/sb_reuse/process/session"))
+        .respond_with(ResponseTemplate::new(409))
+        .mount(&mock_server)
+        .await;
+
+    // Exec still works
+    Mock::given(method("POST"))
+        .and(path("/sb_reuse/process/session/everruns-exec/exec"))
+        .respond_with(ResponseTemplate::new(202).set_body_json(json!({"cmdId": "cmd_r"})))
+        .mount(&mock_server)
+        .await;
+
+    let mut log_bytes = vec![0x01, 0x01, 0x01];
+    log_bytes.extend_from_slice(b"ok\n");
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_reuse/process/session/everruns-exec/command/cmd_r/logs",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(log_bytes))
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_reuse/process/session/everruns-exec/command/cmd_r",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "cmd_r", "exitCode": 0
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let result = client
+        .exec("sb_reuse", "echo ok", None, None)
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.result, "ok\n");
+}
+
+#[tokio::test]
+async fn test_exec_session_streaming_emits_chunks() {
+    use std::sync::{Arc, Mutex};
+
+    let mock_server = MockServer::start().await;
+    setup_session_mocks(&mock_server, "sb_stream", 0, "chunk1\nchunk2\n").await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let chunks: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let chunks_clone = chunks.clone();
+
+    let result = client
+        .exec_streaming("sb_stream", "echo streaming", None, 30_000, |chunk| {
+            chunks_clone.lock().unwrap().push(chunk.to_string());
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.result, "chunk1\nchunk2\n");
+
+    let collected = chunks.lock().unwrap();
+    assert!(!collected.is_empty(), "should have received output chunks");
+}
+
+#[tokio::test]
+async fn test_exec_session_strips_stream_markers() {
+    let mock_server = MockServer::start().await;
+
+    // Create session
+    Mock::given(method("POST"))
+        .and(path("/sb_markers/process/session"))
+        .respond_with(ResponseTemplate::new(201))
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/sb_markers/process/session/everruns-exec/exec"))
+        .respond_with(ResponseTemplate::new(202).set_body_json(json!({"cmdId": "cmd_m"})))
+        .mount(&mock_server)
+        .await;
+
+    // Logs with mixed stdout/stderr markers
+    let mut log_bytes = Vec::new();
+    log_bytes.extend_from_slice(&[0x01, 0x01, 0x01]); // stdout marker
+    log_bytes.extend_from_slice(b"stdout line\n");
+    log_bytes.extend_from_slice(&[0x02, 0x02, 0x02]); // stderr marker
+    log_bytes.extend_from_slice(b"stderr line\n");
+    log_bytes.extend_from_slice(&[0x01, 0x01, 0x01]); // stdout marker
+    log_bytes.extend_from_slice(b"more stdout\n");
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_markers/process/session/everruns-exec/command/cmd_m/logs",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(log_bytes))
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_markers/process/session/everruns-exec/command/cmd_m",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "cmd_m", "exitCode": 0
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let result = client.exec("sb_markers", "test", None, None).await.unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    // All markers stripped, combined output returned
+    assert_eq!(result.result, "stdout line\nstderr line\nmore stdout\n");
 }
 
 // ============================================================================
