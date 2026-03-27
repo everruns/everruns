@@ -21,15 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CopyButton } from "@/components/ui/copy-button";
-import {
-  ArrowLeft,
-  Pencil,
-  Play,
-  Plus,
-  Trash2,
-  ListChecks,
-  BarChart3,
-} from "lucide-react";
+import { ArrowLeft, Pencil, Play, Plus, Trash2, ListChecks, BarChart3 } from "lucide-react";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import type { EvalCase, EvalRun, Scorer, EvalInputMessage } from "@/lib/api/types";
 
@@ -175,18 +167,14 @@ function RunRow({ evalId, run }: { evalId: string; run: EvalRun }) {
   );
 }
 
-function AddCaseForm({
-  evalId,
-  onCreated,
-}: {
-  evalId: string;
-  onCreated: () => void;
-}) {
+function AddCaseForm({ evalId, onCreated }: { evalId: string; onCreated: () => void }) {
   const createCase = useCreateEvalCase(evalId);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [messageContent, setMessageContent] = useState("");
-  const [scorerType, setScorerType] = useState<"contains" | "not_contains" | "regex" | "tool_called">("contains");
+  const [scorerType, setScorerType] = useState<
+    "contains" | "not_contains" | "regex" | "tool_called"
+  >("contains");
   const [scorerValue, setScorerValue] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -372,9 +360,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
             <CopyButton value={ev.id} />
             <Badge variant={getEntityStatusBadgeVariant(ev.status)}>{ev.status}</Badge>
           </h1>
-          {ev.description && (
-            <p className="text-muted-foreground mt-1">{ev.description}</p>
-          )}
+          {ev.description && <p className="text-muted-foreground mt-1">{ev.description}</p>}
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
             {agentName && <span>Agent: {agentName}</span>}
             <span>{ev.case_count} cases</span>
@@ -391,9 +377,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
           {ev.last_run?.summary && (
             <div className="flex items-center gap-3 mt-2 text-sm">
               <span>Last run:</span>
-              <Badge variant={runStatusVariant(ev.last_run.status)}>
-                {ev.last_run.status}
-              </Badge>
+              <Badge variant={runStatusVariant(ev.last_run.status)}>{ev.last_run.status}</Badge>
               <span className={passRateColor(ev.last_run.summary.pass_rate)}>
                 {(ev.last_run.summary.pass_rate * 100).toFixed(0)}% pass rate
               </span>
@@ -433,19 +417,13 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
         <TabsContent value="cases">
           <div className="space-y-4">
             <div className="flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowAddCase(!showAddCase)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setShowAddCase(!showAddCase)}>
                 <Plus className="w-4 h-4 mr-2" />
                 {showAddCase ? "Cancel" : "Add Case"}
               </Button>
             </div>
 
-            {showAddCase && (
-              <AddCaseForm evalId={evalId} onCreated={() => setShowAddCase(false)} />
-            )}
+            {showAddCase && <AddCaseForm evalId={evalId} onCreated={() => setShowAddCase(false)} />}
 
             {casesLoading ? (
               <div className="space-y-3">

@@ -28,7 +28,10 @@ export async function listEvalCases(evalId: string): Promise<EvalCase[]> {
   return response.data.data;
 }
 
-export async function createEvalCase(evalId: string, request: CreateEvalCaseRequest): Promise<EvalCase> {
+export async function createEvalCase(
+  evalId: string,
+  request: CreateEvalCaseRequest,
+): Promise<EvalCase> {
   const response = await api.post<EvalCase>(`/v1/evals/${evalId}/cases`, request);
   return response.data;
 }
@@ -48,7 +51,10 @@ export async function getEvalRun(evalId: string, runId: string): Promise<EvalRun
   return response.data;
 }
 
-export async function createEvalRun(evalId: string, request: CreateEvalRunRequest): Promise<EvalRun> {
+export async function createEvalRun(
+  evalId: string,
+  request: CreateEvalRunRequest,
+): Promise<EvalRun> {
   const response = await api.post<EvalRun>(`/v1/evals/${evalId}/runs`, request);
   return response.data;
 }

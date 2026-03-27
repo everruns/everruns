@@ -16,9 +16,7 @@ function passRateColor(rate: number): string {
   return "text-red-600";
 }
 
-function resultStatusVariant(
-  status: string,
-): "default" | "secondary" | "destructive" | "outline" {
+function resultStatusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
     case "passed":
       return "default";
@@ -34,7 +32,9 @@ function resultStatusVariant(
   }
 }
 
-function runStatusVariant(status: EvalRunStatus): "default" | "secondary" | "destructive" | "outline" {
+function runStatusVariant(
+  status: EvalRunStatus,
+): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
     case "completed":
       return "default";
@@ -70,9 +70,7 @@ function ResultRow({ result }: { result: EvalCaseResult }) {
       <td className="py-3 px-4">
         <Badge variant={resultStatusVariant(result.status)}>{result.status}</Badge>
       </td>
-      <td className="py-3 px-4 text-sm text-muted-foreground">
-        {result.turns ?? "-"}
-      </td>
+      <td className="py-3 px-4 text-sm text-muted-foreground">{result.turns ?? "-"}</td>
       <td className="py-3 px-4 text-sm text-muted-foreground">
         {result.latency_ms ? formatDuration(result.latency_ms) : "-"}
       </td>
@@ -163,7 +161,9 @@ export default function EvalRunDetailPage({
             <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
           </h1>
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-            <span>Started: {run.started_at ? new Date(run.started_at).toLocaleString() : "Pending"}</span>
+            <span>
+              Started: {run.started_at ? new Date(run.started_at).toLocaleString() : "Pending"}
+            </span>
             {run.completed_at && (
               <span>Completed: {new Date(run.completed_at).toLocaleString()}</span>
             )}
@@ -172,11 +172,7 @@ export default function EvalRunDetailPage({
           </div>
         </div>
         {canCancel && (
-          <Button
-            variant="destructive"
-            onClick={handleCancel}
-            disabled={cancelRun.isPending}
-          >
+          <Button variant="destructive" onClick={handleCancel} disabled={cancelRun.isPending}>
             <Square className="w-4 h-4 mr-2" />
             {cancelRun.isPending ? "Cancelling..." : "Cancel Run"}
           </Button>
@@ -208,19 +204,20 @@ export default function EvalRunDetailPage({
           <Card>
             <CardContent className="pt-4">
               <p className="text-xs text-muted-foreground">Avg Latency</p>
-              <p className="text-2xl font-bold">
-                {formatDuration(run.summary.avg_latency_ms)}
-              </p>
+              <p className="text-2xl font-bold">{formatDuration(run.summary.avg_latency_ms)}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
               <p className="text-xs text-muted-foreground">Total Tokens</p>
               <p className="text-2xl font-bold">
-                {(run.summary.total_input_tokens + run.summary.total_output_tokens).toLocaleString()}
+                {(
+                  run.summary.total_input_tokens + run.summary.total_output_tokens
+                ).toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">
-                {run.summary.total_input_tokens.toLocaleString()} in / {run.summary.total_output_tokens.toLocaleString()} out
+                {run.summary.total_input_tokens.toLocaleString()} in /{" "}
+                {run.summary.total_output_tokens.toLocaleString()} out
               </p>
             </CardContent>
           </Card>
