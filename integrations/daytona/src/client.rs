@@ -317,33 +317,18 @@ impl DaytonaClient {
         }
     }
 
-    /// Execute a command in the sandbox and return the result.
+    /// Execute a command in the sandbox via the Session API.
     ///
-    /// Uses the Session API with async execution + log polling so all
-    /// commands go through a proper shell and support streaming output.
-    pub async fn exec(
+    /// Creates a persistent shell session (if needed), runs the command
+    /// asynchronously, and polls the session logs endpoint for output.
+    /// Calls `on_output` with each new chunk as it becomes available.
+    /// Pass `|_| {}` if streaming is not needed.
+    pub async fn exec<F>(
         &self,
         sandbox_id: &str,
         command: &str,
         cwd: Option<&str>,
         timeout_ms: Option<u64>,
-    ) -> Result<ExecResult, String> {
-        let timeout = timeout_ms.unwrap_or(crate::EXEC_TIMEOUT_MS);
-        self.exec_streaming(sandbox_id, command, cwd, timeout, |_| {})
-            .await
-    }
-
-    /// Execute a command with real-time output streaming via the Session API.
-    ///
-    /// Creates a persistent session (if needed), runs the command asynchronously,
-    /// and polls the session logs endpoint for output. Calls `on_output` with each
-    /// new chunk as it becomes available.
-    pub async fn exec_streaming<F>(
-        &self,
-        sandbox_id: &str,
-        command: &str,
-        cwd: Option<&str>,
-        timeout_ms: u64,
         mut on_output: F,
     ) -> Result<ExecResult, String>
     where
@@ -355,6 +340,8 @@ impl DaytonaClient {
             Some(c) => format!("cd {c} && {command}"),
             None => command.to_string(),
         };
+
+        let timeout = timeout_ms.unwrap_or(crate::EXEC_TIMEOUT_MS);
 
         // Start async execution in the persistent session.
         // runAsync: true returns immediately with a cmdId.
@@ -377,14 +364,14 @@ impl DaytonaClient {
             .to_string();
 
         // Poll for output and completion.
-        let deadline = std::time::Instant::now() + Duration::from_millis(timeout_ms);
+        let deadline = std::time::Instant::now() + Duration::from_millis(timeout);
         let mut output_emitted: usize = 0;
         let logs_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}/logs");
         let status_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}");
 
         loop {
             if std::time::Instant::now() >= deadline {
-                return Err(format!("Command timed out after {timeout_ms}ms"));
+                return Err(format!("Command timed out after {timeout}ms"));
             }
 
             tokio::time::sleep(EXEC_POLL_INTERVAL).await;
@@ -696,7 +683,9 @@ mod tests {
             mock_server.uri(),
             mock_server.uri(),
         );
-        let result = client.exec("sb_test", "echo hello world", None, None).await;
+        let result = client
+            .exec("sb_test", "echo hello world", None, None, |_| {})
+            .await;
         assert!(result.is_ok());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 0);
@@ -963,7 +952,9 @@ mod tests {
             mock_server.uri(),
             mock_server.uri(),
         );
-        let result = client.exec("sb_test", "ls", Some("/tmp"), Some(5000)).await;
+        let result = client
+            .exec("sb_test", "ls", Some("/tmp"), Some(5000), |_| {})
+            .await;
         assert!(result.is_ok());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 1);
@@ -980,7 +971,9 @@ mod tests {
             mock_server.uri(),
             mock_server.uri(),
         );
-        let result = client.exec("sb_test", "nonexistent", None, None).await;
+        let result = client
+            .exec("sb_test", "nonexistent", None, None, |_| {})
+            .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().exit_code, 127);
     }
@@ -1192,9 +1185,15 @@ mod tests {
         let chunks_clone = chunks.clone();
 
         let result = client
-            .exec_streaming("sb_test", "echo hello streaming", None, 30_000, |chunk| {
-                chunks_clone.lock().unwrap().push(chunk.to_string());
-            })
+            .exec(
+                "sb_test",
+                "echo hello streaming",
+                None,
+                Some(30_000),
+                |chunk| {
+                    chunks_clone.lock().unwrap().push(chunk.to_string());
+                },
+            )
             .await;
 
         assert!(result.is_ok(), "exec_streaming failed: {:?}", result.err());

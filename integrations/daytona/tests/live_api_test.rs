@@ -119,7 +119,9 @@ async fn test_live_sandbox_lifecycle() {
     let id = &guard.sandbox_id;
 
     // Exec: simple echo
-    let result = client.exec(id, "echo hello-everruns", None, None).await;
+    let result = client
+        .exec(id, "echo hello-everruns", None, None, |_| {})
+        .await;
     let exec = result.expect("exec failed");
     assert_eq!(exec.exit_code, 0);
     assert!(
@@ -164,7 +166,7 @@ async fn test_live_exec_cwd_and_exit_code() {
 
     // Exec with cwd
     let result = client
-        .exec(id, "pwd", Some("/tmp"), None)
+        .exec(id, "pwd", Some("/tmp"), None, |_| {})
         .await
         .expect("exec with cwd failed");
     assert_eq!(result.exit_code, 0);
@@ -176,7 +178,7 @@ async fn test_live_exec_cwd_and_exit_code() {
 
     // Nonzero exit code (Daytona may return -1 instead of the exact code)
     let result = client
-        .exec(id, "exit 42", None, None)
+        .exec(id, "exit 42", None, None, |_| {})
         .await
         .expect("exec with nonzero exit failed");
     assert_ne!(result.exit_code, 0, "Expected nonzero exit code, got 0");
@@ -243,7 +245,7 @@ async fn test_live_exec_streaming_returns_output() {
 
     let mut chunks = Vec::new();
     let result = client
-        .exec_streaming(id, "echo hello-streaming", None, 30_000, |chunk| {
+        .exec(id, "echo hello-streaming", None, Some(30_000), |chunk| {
             chunks.push(chunk.to_string());
         })
         .await
@@ -291,7 +293,7 @@ async fn test_live_stop_and_start() {
 
     // Verify we can exec after restart
     let result = client
-        .exec(id, "echo restarted", None, None)
+        .exec(id, "echo restarted", None, None, |_| {})
         .await
         .expect("exec after restart failed");
     assert_eq!(result.exit_code, 0);

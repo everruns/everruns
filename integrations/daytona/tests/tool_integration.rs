@@ -213,7 +213,13 @@ async fn test_exec_tool_full_flow_via_client() {
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
     let result = client
-        .exec("sb_int", "echo Hello from sandbox!", Some("/sandbox"), None)
+        .exec(
+            "sb_int",
+            "echo Hello from sandbox!",
+            Some("/sandbox"),
+            None,
+            |_| {},
+        )
         .await
         .unwrap();
 
@@ -346,6 +352,7 @@ async fn test_git_clone_via_exec() {
             "git clone --depth 1 https://github.com/user/repo.git /home/daytona/user/repo",
             None,
             None,
+            |_| {},
         )
         .await
         .unwrap();
@@ -682,7 +689,10 @@ async fn test_exec_with_nonzero_exit_preserves_output() {
     let client =
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
-    let result = client.exec("sb_err", "foobar", None, None).await.unwrap();
+    let result = client
+        .exec("sb_err", "foobar", None, None, |_| {})
+        .await
+        .unwrap();
     assert_eq!(result.exit_code, 127);
     assert!(result.result.contains("command not found"));
 }
@@ -703,7 +713,7 @@ async fn test_exec_session_with_shell_operators() {
 
     // Shell operators (&&) are handled natively by the session's shell
     let result = client
-        .exec("sb_shell", "echo hello && echo world", None, None)
+        .exec("sb_shell", "echo hello && echo world", None, None, |_| {})
         .await
         .unwrap();
 
@@ -725,6 +735,7 @@ async fn test_exec_session_with_pipes_and_redirects() {
             "cat /etc/os-release | head -1 > /tmp/out.txt",
             None,
             None,
+            |_| {},
         )
         .await
         .unwrap();
@@ -783,7 +794,7 @@ async fn test_exec_session_with_cwd_prepended() {
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
     let result = client
-        .exec("sb_cwd", "ls -la", Some("/workspace"), None)
+        .exec("sb_cwd", "ls -la", Some("/workspace"), None, |_| {})
         .await
         .unwrap();
 
@@ -800,7 +811,7 @@ async fn test_exec_session_with_variable_expansion() {
 
     // Variable expansion is handled natively by the session's shell
     let result = client
-        .exec("sb_var", "echo $HOME", None, None)
+        .exec("sb_var", "echo $HOME", None, None, |_| {})
         .await
         .unwrap();
 
@@ -850,7 +861,7 @@ async fn test_exec_session_reuses_existing() {
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
     let result = client
-        .exec("sb_reuse", "echo ok", None, None)
+        .exec("sb_reuse", "echo ok", None, None, |_| {})
         .await
         .unwrap();
     assert_eq!(result.exit_code, 0);
@@ -871,7 +882,7 @@ async fn test_exec_session_streaming_emits_chunks() {
     let chunks_clone = chunks.clone();
 
     let result = client
-        .exec_streaming("sb_stream", "echo streaming", None, 30_000, |chunk| {
+        .exec("sb_stream", "echo streaming", None, Some(30_000), |chunk| {
             chunks_clone.lock().unwrap().push(chunk.to_string());
         })
         .await
@@ -930,7 +941,10 @@ async fn test_exec_session_strips_stream_markers() {
     let client =
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
-    let result = client.exec("sb_markers", "test", None, None).await.unwrap();
+    let result = client
+        .exec("sb_markers", "test", None, None, |_| {})
+        .await
+        .unwrap();
 
     assert_eq!(result.exit_code, 0);
     // All markers stripped, combined output returned
