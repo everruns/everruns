@@ -682,7 +682,7 @@ impl ServerAppBuilder {
                 agent_identity_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
-            .merge(api::evals::routes(evals_state))
+            //.merge(api::evals::routes(evals_state)) — conditionally merged below
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
@@ -728,6 +728,12 @@ impl ServerAppBuilder {
 
         if let Some(notifications_state) = notifications_state {
             api_routes = api_routes.merge(api::notifications::routes(notifications_state));
+        }
+
+        if feature_flags.evals {
+            api_routes = api_routes.merge(api::evals::routes(evals_state));
+        } else {
+            tracing::info!("Evals disabled via feature flag");
         }
 
         if feature_flags.mcp_endpoint {
