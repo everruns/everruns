@@ -3021,3 +3021,50 @@ async fn test_identity_connections_create_unknown_provider() {
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
+
+// ============================================
+// Account Deletion & Data Export Tests
+// ============================================
+
+#[tokio::test]
+async fn test_export_user_data() {
+    let server = TestServer::in_memory().await;
+
+    let resp: Value = server
+        .get("/v1/users/me/export")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    // Verify export structure
+    assert!(resp["user"]["id"].is_string());
+    assert!(resp["user"]["email"].is_string());
+    assert!(resp["user"]["name"].is_string());
+    assert!(resp["user"]["created_at"].is_string());
+    assert!(resp["organizations"].is_array());
+    assert!(resp["api_keys"].is_array());
+    assert!(resp["exported_at"].is_string());
+    // Verify no sensitive fields
+    assert!(resp["user"].get("password_hash").is_none());
+    assert!(resp["user"].get("roles").is_none());
+}
+
+#[tokio::test]
+async fn test_delete_user_account() {
+    let server = TestServer::in_memory().await;
+
+    // Delete account
+    let resp: Value = server
+        .delete("/v1/users/me")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(resp["deleted"], true);
+
+    // After deletion, export should fail with 404
+    server
+        .get("/v1/users/me/export")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}

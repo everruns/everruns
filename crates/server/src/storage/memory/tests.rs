@@ -2027,3 +2027,126 @@ async fn test_session_system_prompt_defaults_to_none() {
     assert_eq!(session.system_prompt, None);
     assert_eq!(session.initial_files, serde_json::json!([]));
 }
+
+#[tokio::test]
+async fn test_delete_user_account() {
+    let db = InMemoryDatabase::new();
+
+    let user = db
+        .create_user(CreateUserRow {
+            email: "delete@example.com".to_string(),
+            name: "Delete Me".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    // Create API key for user
+    db.create_api_key(CreateApiKeyRow {
+        org_id: DEFAULT_ORG_ID,
+        user_id: user.id,
+        name: "test-key".to_string(),
+        key_hash: "hash123".to_string(),
+        key_prefix: "evr_".to_string(),
+        scopes: vec![],
+        expires_at: None,
+        metadata: serde_json::json!({}),
+    })
+    .await
+    .unwrap();
+
+    // Create refresh token for user
+    db.create_refresh_token(CreateRefreshTokenRow {
+        user_id: user.id,
+        token_hash: "refresh_hash".to_string(),
+        expires_at: Utc::now() + chrono::Duration::hours(1),
+    })
+    .await
+    .unwrap();
+
+    // Add user to default org
+    db.add_organization_member(DEFAULT_ORG_ID, user.id, "member")
+        .await
+        .unwrap();
+
+    // Verify user exists with related data
+    assert!(db.get_user(user.id).await.unwrap().is_some());
+    assert_eq!(db.list_api_keys_for_user(user.id).await.unwrap().len(), 1);
+    assert!(
+        db.is_organization_member(DEFAULT_ORG_ID, user.id)
+            .await
+            .unwrap()
+    );
+
+    // Delete account
+    let deleted = db.delete_user_account(user.id).await.unwrap();
+    assert!(deleted);
+
+    // Verify cascading delete of all user data
+    assert!(db.get_user(user.id).await.unwrap().is_none());
+    assert_eq!(db.list_api_keys_for_user(user.id).await.unwrap().len(), 0);
+    assert!(
+        !db.is_organization_member(DEFAULT_ORG_ID, user.id)
+            .await
+            .unwrap()
+    );
+
+    // Deleting non-existent user returns false
+    let deleted_again = db.delete_user_account(user.id).await.unwrap();
+    assert!(!deleted_again);
+}
+
+#[tokio::test]
+async fn test_export_user_data() {
+    let db = InMemoryDatabase::new();
+
+    let user = db
+        .create_user(CreateUserRow {
+            email: "export@example.com".to_string(),
+            name: "Export User".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: Some("local".to_string()),
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    // Create API key
+    db.create_api_key(CreateApiKeyRow {
+        org_id: DEFAULT_ORG_ID,
+        user_id: user.id,
+        name: "my-key".to_string(),
+        key_hash: "hash456".to_string(),
+        key_prefix: "evr_".to_string(),
+        scopes: vec!["read".to_string()],
+        expires_at: None,
+        metadata: serde_json::json!({}),
+    })
+    .await
+    .unwrap();
+
+    // Export data
+    let export = db.export_user_data(user.id).await.unwrap().unwrap();
+
+    assert_eq!(export["user"]["email"], "export@example.com");
+    assert_eq!(export["user"]["name"], "Export User");
+    assert_eq!(export["api_keys"].as_array().unwrap().len(), 1);
+    assert_eq!(export["api_keys"][0]["name"], "my-key");
+    // Verify no sensitive data is exported
+    assert!(export["api_keys"][0].get("key_hash").is_none());
+    assert!(export.get("exported_at").is_some());
+
+    // Non-existent user returns None
+    let missing = db.export_user_data(uuid::Uuid::now_v7()).await.unwrap();
+    assert!(missing.is_none());
+}

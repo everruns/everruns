@@ -134,6 +134,94 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    /// Hard-delete a user and all associated data.
+    pub async fn delete_user_account(&self, user_id: Uuid) -> Result<bool> {
+        let removed = self.users.write().remove(&user_id).is_some();
+        if removed {
+            // Cascade: remove API keys
+            self.api_keys.write().retain(|_, k| k.user_id != user_id);
+            // Cascade: remove refresh tokens
+            self.refresh_tokens
+                .write()
+                .retain(|_, t| t.user_id != user_id);
+            // Cascade: remove CLI auth sessions
+            self.cli_auth_sessions
+                .write()
+                .retain(|_, s| s.user_id != Some(user_id));
+            // Cascade: remove organization memberships
+            self.organization_members
+                .write()
+                .retain(|&(_, uid), _| uid != user_id);
+            // Cascade: remove user connections
+            self.user_connections
+                .write()
+                .retain(|_, c| c.user_id != user_id);
+            // Cascade: remove pinned sessions
+            self.pinned_sessions
+                .write()
+                .retain(|&(uid, _), _| uid != user_id);
+            // Cascade: remove notifications
+            self.notifications
+                .write()
+                .retain(|_, n| n.user_id != user_id);
+            // Cascade: remove notification turn requests
+            self.notification_turn_requests
+                .write()
+                .retain(|_, r| r.user_id != user_id);
+            // Cascade: remove OAuth auth codes
+            self.oauth_authorization_codes
+                .write()
+                .retain(|_, c| c.user_id != user_id);
+            // Cascade: remove OAuth refresh tokens
+            self.oauth_refresh_tokens
+                .write()
+                .retain(|_, t| t.user_id != user_id);
+        }
+        Ok(removed)
+    }
+
+    /// Export all user-owned data as a structured JSON value.
+    pub async fn export_user_data(&self, user_id: Uuid) -> Result<Option<serde_json::Value>> {
+        let user = self.get_user(user_id).await?;
+        let Some(user) = user else {
+            return Ok(None);
+        };
+
+        let api_keys = self.list_api_keys_for_user(user_id).await?;
+        let orgs = self.list_user_organizations(user_id).await?;
+
+        let export = serde_json::json!({
+            "user": {
+                "id": user.id.to_string(),
+                "email": user.email,
+                "name": user.name,
+                "avatar_url": user.avatar_url,
+                "email_verified": user.email_verified,
+                "auth_provider": user.auth_provider,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at,
+            },
+            "organizations": orgs.iter().map(|o| serde_json::json!({
+                "org_id": o.org_id,
+                "public_id": o.public_id,
+                "name": o.name,
+                "role": o.role,
+            })).collect::<Vec<_>>(),
+            "api_keys": api_keys.iter().map(|k| serde_json::json!({
+                "id": k.id.to_string(),
+                "name": k.name,
+                "key_prefix": k.key_prefix,
+                "scopes": k.scopes,
+                "expires_at": k.expires_at,
+                "last_used_at": k.last_used_at,
+                "created_at": k.created_at,
+            })).collect::<Vec<_>>(),
+            "exported_at": chrono::Utc::now(),
+        });
+
+        Ok(Some(export))
+    }
+
     /// List users within an organization (TM-TENANT-008: org-scoped user listing)
     pub async fn list_users_by_org(
         &self,

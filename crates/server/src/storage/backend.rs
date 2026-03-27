@@ -124,6 +124,17 @@ impl StorageBackend {
         dispatch!(self, list_users_by_org, org_id, search)
     }
 
+    /// Hard-delete a user and all associated data (cascading).
+    /// Returns true if the user existed and was deleted.
+    pub async fn delete_user_account(&self, user_id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_user_account, user_id)
+    }
+
+    /// Export all user-owned data as a structured JSON value.
+    pub async fn export_user_data(&self, user_id: Uuid) -> Result<Option<serde_json::Value>> {
+        dispatch!(self, export_user_data, user_id)
+    }
+
     // ============================================
     // API Keys
     // ============================================

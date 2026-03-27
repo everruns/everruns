@@ -90,11 +90,65 @@ pub struct ProfileResponse {
     pub avatar_url: Option<String>,
 }
 
+/// Response for account deletion
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct DeleteAccountResponse {
+    pub deleted: bool,
+}
+
+/// Exported user profile data
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ExportedUserProfile {
+    pub id: String,
+    pub email: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    pub email_verified: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_provider: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Exported organization membership
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ExportedOrganization {
+    pub org_id: i64,
+    pub public_id: String,
+    pub name: String,
+    pub role: String,
+}
+
+/// Exported API key metadata (no sensitive data)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ExportedApiKey {
+    pub id: String,
+    pub name: String,
+    pub key_prefix: String,
+    pub scopes: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Full user data export response (GDPR compliance)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ExportUserDataResponse {
+    pub user: ExportedUserProfile,
+    pub organizations: Vec<ExportedOrganization>,
+    pub api_keys: Vec<ExportedApiKey>,
+    pub exported_at: DateTime<Utc>,
+}
+
 /// Create users routes
 pub fn routes(state: UsersState) -> Router {
     Router::new()
         .route("/v1/users", get(list_users))
-        .route("/v1/users/me", patch(update_profile))
+        .route("/v1/users/me", patch(update_profile).delete(delete_account))
+        .route("/v1/users/me/export", get(export_user_data))
         .route("/v1/users/me/switch-org", post(switch_org))
         .with_state(state)
 }
@@ -266,6 +320,77 @@ pub async fn switch_org(
             org_id: req.org_id,
         }),
     ))
+}
+
+/// DELETE /v1/users/me - Delete current user's account
+///
+/// Hard-deletes the user and all associated data (API keys, memberships, tokens).
+/// This action is irreversible.
+#[utoipa::path(
+    delete,
+    path = "/v1/users/me",
+    responses(
+        (status = 200, description = "Account deleted", body = DeleteAccountResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
+pub async fn delete_account(
+    State(state): State<UsersState>,
+    auth: AuthUser,
+) -> Result<Json<DeleteAccountResponse>, StatusCode> {
+    let deleted = state.db.delete_user_account(auth.id).await.map_err(|e| {
+        tracing::error!("Failed to delete user account: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if !deleted {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    tracing::info!("User {} deleted their account", auth.id);
+
+    Ok(Json(DeleteAccountResponse { deleted: true }))
+}
+
+/// GET /v1/users/me/export - Export current user's data
+///
+/// Returns all user-owned data in a structured JSON format for GDPR compliance.
+#[utoipa::path(
+    get,
+    path = "/v1/users/me/export",
+    responses(
+        (status = 200, description = "User data export", body = ExportUserDataResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
+pub async fn export_user_data(
+    State(state): State<UsersState>,
+    auth: AuthUser,
+) -> Result<Json<ExportUserDataResponse>, StatusCode> {
+    let export_value = state
+        .db
+        .export_user_data(auth.id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to export user data: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let export: ExportUserDataResponse = serde_json::from_value(export_value).map_err(|e| {
+        tracing::error!("Failed to deserialize export data: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tracing::info!("User {} exported their data", auth.id);
+
+    Ok(Json(export))
 }
 
 #[cfg(test)]
