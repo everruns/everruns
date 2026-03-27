@@ -196,6 +196,14 @@ impl ApiRateLimiter {
             ))),
         }
     }
+
+    /// Check if rate limiting is disabled (set to 0 via env var).
+    pub fn is_disabled() -> bool {
+        std::env::var("RATE_LIMIT_API_REQUESTS_PER_MINUTE")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            == Some(0)
+    }
 }
 
 /// Axum middleware function for global API rate limiting.
