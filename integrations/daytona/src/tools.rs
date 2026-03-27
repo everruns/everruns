@@ -1708,6 +1708,25 @@ mod tests {
     }
 
     #[test]
+    fn test_encode_content_text_files() {
+        let text_bytes = b"hello world\nline two\n";
+        let (content, encoding) = SessionFile::encode_content(text_bytes);
+        assert_eq!(encoding, "text");
+        assert_eq!(content, "hello world\nline two\n");
+    }
+
+    #[test]
+    fn test_encode_content_binary_files() {
+        // PNG-like header with null bytes
+        let binary_bytes: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00];
+        let (content, encoding) = SessionFile::encode_content(binary_bytes);
+        assert_eq!(encoding, "base64");
+        // Verify round-trip
+        let decoded = SessionFile::decode_content(&content, &encoding).unwrap();
+        assert_eq!(decoded, binary_bytes);
+    }
+
+    #[test]
     fn test_all_tools_have_descriptions() {
         let tools: Vec<Box<dyn Tool>> = vec![
             Box::new(DaytonaCreateSandboxTool),

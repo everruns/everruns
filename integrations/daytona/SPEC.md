@@ -126,7 +126,7 @@ Executes a shell command in a sandbox with real-time output streaming.
 Read a file from sandbox filesystem.
 
 - **Parameters**: `sandbox_id` (required), `path` (required)
-- **Returns**: `{ path, content }`
+- **Returns**: `{ path, content, encoding }` — `encoding` is `"text"` for UTF-8 text files or `"base64"` for binary files (auto-detected via null-byte heuristic)
 
 ### daytona_write_file
 
