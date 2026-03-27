@@ -305,11 +305,14 @@ async fn cli_auth_exchange(
             AuthError::unauthorized("Failed to fetch organizations")
         })?;
 
-    // Use default org if user has any
-    let org_id = orgs
-        .first()
-        .map(|o| o.org_id)
-        .unwrap_or(everruns_core::DEFAULT_ORG_ID);
+    // Require at least one org — don't silently fall back to DEFAULT_ORG_ID
+    let org_id = orgs.first().map(|o| o.org_id).ok_or_else(|| {
+        tracing::warn!(user_id = %user_id, "CLI login: user has no organizations");
+        AuthError {
+            error: "You must create an organization before using the CLI. Log in to the web UI to create one.".to_string(),
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+        }
+    })?;
 
     // Generate API key with CLI metadata
     let generated = generate_api_key();
