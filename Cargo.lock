@@ -1629,6 +1629,8 @@ dependencies = [
  "http",
  "inventory",
  "reqwest 0.13.2",
+ "rustls",
+ "rustls-native-certs",
  "serde",
  "serde_json",
  "tokio",

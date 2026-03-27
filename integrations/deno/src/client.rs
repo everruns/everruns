@@ -5,6 +5,8 @@
 //! Decision: open a fresh websocket per tool call; operations are short-lived
 //! and this keeps session state small and deterministic.
 
+use std::sync::Arc;
+
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use http::Request;
@@ -13,7 +15,7 @@ use serde_json::{Value, json};
 use tokio::net::TcpStream;
 use tokio::time::{Duration, timeout};
 use tokio_tungstenite::{
-    MaybeTlsStream, WebSocketStream, client_async_tls,
+    Connector, MaybeTlsStream, WebSocketStream, client_async_tls_with_config,
     tungstenite::{self, Message, client::IntoClientRequest},
 };
 
@@ -28,6 +30,7 @@ type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 async fn connect_async_all_addrs(
     request: Request<()>,
+    connector: Connector,
 ) -> Result<(WsStream, http::Response<Option<Vec<u8>>>), String> {
     let uri = request.uri().clone();
     let host = uri
@@ -44,7 +47,7 @@ async fn connect_async_all_addrs(
 
     if let Some(proxy) = proxy_url_for_scheme(uri.scheme_str())? {
         let stream = connect_via_http_proxy(&proxy, &host, port).await?;
-        return client_async_tls(request, stream)
+        return client_async_tls_with_config(request, stream, None, Some(connector))
             .await
             .map_err(map_ws_error);
     }
@@ -56,10 +59,19 @@ async fn connect_async_all_addrs(
 
     for addr in addrs {
         match TcpStream::connect(addr).await {
-            Ok(stream) => match client_async_tls(request.clone(), stream).await {
-                Ok((ws, response)) => return Ok((ws, response)),
-                Err(error) => last_error = Some(map_ws_error(error)),
-            },
+            Ok(stream) => {
+                match client_async_tls_with_config(
+                    request.clone(),
+                    stream,
+                    None,
+                    Some(connector.clone()),
+                )
+                .await
+                {
+                    Ok((ws, response)) => return Ok((ws, response)),
+                    Err(error) => last_error = Some(map_ws_error(error)),
+                }
+            }
             Err(error) => {
                 last_error = Some(format!(
                     "Failed to connect to Deno sandbox websocket address {addr}: {error}"
@@ -103,9 +115,23 @@ async fn connect_via_http_proxy(
         .await
         .map_err(|e| format!("Failed to connect to proxy {proxy_host}:{proxy_port}: {e}"))?;
 
-    let connect_request = format!(
-        "CONNECT {target_host}:{target_port} HTTP/1.1\r\nHost: {target_host}:{target_port}\r\n\r\n"
+    let mut connect_request = format!(
+        "CONNECT {target_host}:{target_port} HTTP/1.1\r\nHost: {target_host}:{target_port}\r\n"
     );
+    if !proxy.username().is_empty() || proxy.password().is_some() {
+        let credentials = format!(
+            "{}:{}",
+            proxy.username(),
+            proxy.password().unwrap_or_default()
+        );
+        let encoded = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            credentials.as_bytes(),
+        );
+        connect_request.push_str(&format!("Proxy-Authorization: Basic {encoded}\r\n"));
+    }
+    connect_request.push_str("\r\n");
+
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     stream
         .write_all(connect_request.as_bytes())
@@ -439,7 +465,8 @@ impl DenoClient {
                     .map_err(|e| format!("Invalid x-deno-sandbox-config header: {e}"))?,
             );
         }
-        let (ws, response) = connect_async_all_addrs(request).await?;
+        let connector = build_http11_tls_connector()?;
+        let (ws, response) = connect_async_all_addrs(request, connector).await?;
         let sandbox_id = response
             .headers()
             .get("x-deno-sandbox-id")
@@ -672,10 +699,40 @@ fn decode_message(message: Message) -> Result<Option<Value>, String> {
     }
 }
 
+/// Build a rustls TLS connector that advertises only `http/1.1` ALPN.
+///
+/// WebSocket upgrade (RFC 6455) requires HTTP/1.1. If the TLS handshake
+/// negotiates h2, proxies silently convert the upgrade into a plain HTTP/2
+/// GET, which returns 400 Bad Request ("invalid upgrade request").
+fn build_http11_tls_connector() -> Result<Connector, String> {
+    let mut root_store = rustls::RootCertStore::empty();
+    for cert in rustls_native_certs::load_native_certs().certs {
+        let _ = root_store.add(cert);
+    }
+    let provider = rustls::crypto::ring::default_provider();
+    let mut config = rustls::ClientConfig::builder_with_provider(provider.into())
+        .with_safe_default_protocol_versions()
+        .map_err(|e| format!("Failed to build TLS config: {e}"))?
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    Ok(Connector::Rustls(Arc::new(config)))
+}
+
 fn map_ws_error(error: tungstenite::Error) -> String {
     match error {
         tungstenite::Error::Http(response) => {
-            format!("Deno sandbox websocket HTTP error: {}", response.status())
+            let status = response.status();
+            let body = response
+                .body()
+                .as_ref()
+                .map(|b| String::from_utf8_lossy(b))
+                .unwrap_or_default();
+            if body.is_empty() {
+                format!("Deno sandbox websocket HTTP error: {status}")
+            } else {
+                format!("Deno sandbox websocket HTTP error: {status} — {body}")
+            }
         }
         other => format!("Failed to connect to Deno sandbox websocket: {other}"),
     }
