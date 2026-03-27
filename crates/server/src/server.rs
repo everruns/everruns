@@ -4,7 +4,7 @@
 
 use axum::Router;
 use axum::http::HeaderValue;
-use everruns_config::{env_bool, env_list, env_string};
+use everruns_config::{env_bool, env_list, env_or, env_string};
 
 /// Configurable resource limits for orgs, members, API keys.
 ///
@@ -28,29 +28,15 @@ impl Default for ResourceLimitsConfig {
 
 impl ResourceLimitsConfig {
     pub fn from_env() -> Self {
-        let defaults = Self::default();
         Self {
-            max_orgs_per_user: parse_env_i64(
-                "RESOURCE_LIMIT_MAX_ORGS_PER_USER",
-                defaults.max_orgs_per_user,
-            ),
-            max_members_per_org: parse_env_i64(
-                "RESOURCE_LIMIT_MAX_MEMBERS_PER_ORG",
-                defaults.max_members_per_org,
-            ),
-            max_api_keys_per_user_per_org: parse_env_i64(
+            max_orgs_per_user: env_or("RESOURCE_LIMIT_MAX_ORGS_PER_USER", 5),
+            max_members_per_org: env_or("RESOURCE_LIMIT_MAX_MEMBERS_PER_ORG", 50),
+            max_api_keys_per_user_per_org: env_or(
                 "RESOURCE_LIMIT_MAX_API_KEYS_PER_USER_PER_ORG",
-                defaults.max_api_keys_per_user_per_org,
+                10,
             ),
         }
     }
-}
-
-fn parse_env_i64(var: &str, default: i64) -> i64 {
-    std::env::var(var)
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(default)
 }
 
 /// Server configuration loaded from environment

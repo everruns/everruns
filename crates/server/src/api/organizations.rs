@@ -211,12 +211,12 @@ pub async fn create_organization(
         ));
     }
 
-    // Enforce org-per-user limit
+    // Enforce org-per-user limit (counts orgs created by this user, not memberships)
     let org_count = state
         .db
-        .count_user_organizations(user.id)
+        .count_user_created_organizations(user.id)
         .await
-        .log_internal_error_json("count user organizations")?;
+        .log_internal_error_json("count user created organizations")?;
     if org_count >= state.resource_limits.max_orgs_per_user {
         return Err((
             StatusCode::CONFLICT,

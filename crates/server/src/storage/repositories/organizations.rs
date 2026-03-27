@@ -377,10 +377,10 @@ impl Database {
         Ok(row.0)
     }
 
-    /// Count organizations a user belongs to (for resource limits).
-    pub async fn count_user_organizations(&self, user_id: Uuid) -> Result<i64> {
+    /// Count organizations created by a user (for resource limits).
+    pub async fn count_user_created_organizations(&self, user_id: Uuid) -> Result<i64> {
         let row: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM organization_members WHERE user_id = $1")
+            sqlx::query_as("SELECT COUNT(*) FROM organizations WHERE created_by = $1")
                 .bind(user_id)
                 .fetch_one(&self.pool)
                 .await?;
