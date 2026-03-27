@@ -455,7 +455,10 @@ impl EvalService {
         let last_run = self.db.get_latest_eval_run(row.id).await?;
 
         let last_run_view = last_run.map(|r| EvalRunSummaryView {
-            public_id: EvalRunId::from_uuid(r.id),
+            public_id: r
+                .public_id
+                .parse()
+                .unwrap_or_else(|_| EvalRunId::from_uuid(r.id)),
             status: EvalRunStatus::from(r.status.as_str()),
             summary: r.summary.and_then(|s| serde_json::from_value(s).ok()),
             created_at: r.created_at,
@@ -465,8 +468,13 @@ impl EvalService {
         let agent_id = AgentId::from_uuid(row.agent_id);
         let harness_id = HarnessId::from_uuid(row.harness_id);
 
+        let public_id: EvalId = row
+            .public_id
+            .parse()
+            .unwrap_or_else(|_| EvalId::from_uuid(row.id));
+
         Ok(Eval {
-            public_id: EvalId::from_uuid(row.id),
+            public_id,
             internal_id: row.id,
             org_id: row.org_id,
             name: row.name,
@@ -488,7 +496,10 @@ impl EvalService {
 
 fn case_row_to_case(row: crate::storage::models::EvalCaseRow) -> EvalCase {
     EvalCase {
-        public_id: EvalCaseId::from_uuid(row.id),
+        public_id: row
+            .public_id
+            .parse()
+            .unwrap_or_else(|_| EvalCaseId::from_uuid(row.id)),
         internal_id: row.id,
         name: row.name,
         description: row.description,
@@ -508,7 +519,10 @@ fn run_row_to_run(
     results: Vec<EvalCaseResult>,
 ) -> EvalRun {
     EvalRun {
-        public_id: EvalRunId::from_uuid(row.id),
+        public_id: row
+            .public_id
+            .parse()
+            .unwrap_or_else(|_| EvalRunId::from_uuid(row.id)),
         internal_id: row.id,
         org_id: row.org_id,
         model_override: row.model_override,
@@ -529,7 +543,10 @@ fn result_row_to_result(
     case_name: Option<String>,
 ) -> EvalCaseResult {
     EvalCaseResult {
-        public_id: EvalResultId::from_uuid(row.id),
+        public_id: row
+            .public_id
+            .parse()
+            .unwrap_or_else(|_| EvalResultId::from_uuid(row.id)),
         internal_id: row.id,
         eval_case_id: EvalCaseId::from_uuid(row.eval_case_id),
         case_name,
