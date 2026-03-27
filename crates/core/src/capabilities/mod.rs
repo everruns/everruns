@@ -1865,7 +1865,12 @@ mod tests {
 
         assert_eq!(collected.mounts.len(), 1);
         // Verify expected capabilities were applied (including auto-resolved dependency)
-        assert!(collected.applied_ids.iter().any(|id| id == "session_file_system"));
+        assert!(
+            collected
+                .applied_ids
+                .iter()
+                .any(|id| id == "session_file_system")
+        );
         assert!(collected.applied_ids.iter().any(|id| id == "sample_data"));
         assert!(collected.applied_ids.iter().any(|id| id == "current_time"));
     }
@@ -2441,7 +2446,10 @@ mod tests {
 
         // Verify the transitive dependency capability itself was applied
         assert!(
-            collected.applied_ids.iter().any(|id| id == "session_file_system"),
+            collected
+                .applied_ids
+                .iter()
+                .any(|id| id == "session_file_system"),
             "collect_capabilities must apply session_file_system as a dependency; applied_ids: {:?}",
             collected.applied_ids
         );
