@@ -744,6 +744,14 @@ impl ServerAppBuilder {
             api_routes = api_routes.merge(routes);
         }
 
+        // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
+        // not /health or /metrics)
+        let api_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env();
+        let api_routes = api_routes.layer(axum::middleware::from_fn(move |req, next| {
+            let limiter = api_rate_limiter.clone();
+            crate::auth::rate_limit::api_rate_limit_middleware(limiter, req, next)
+        }));
+
         // Main router
         let mut app = Router::new()
             .route("/health", get(health).with_state(health_state))
@@ -792,13 +800,6 @@ impl ServerAppBuilder {
         } else {
             app
         };
-
-        // TM-DOS: Global per-IP API rate limiting
-        let api_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env();
-        let app = app.layer(axum::middleware::from_fn(move |req, next| {
-            let limiter = api_rate_limiter.clone();
-            crate::auth::rate_limit::api_rate_limit_middleware(limiter, req, next)
-        }));
 
         // TM-WEB-004/005: Security response headers
         let app = app

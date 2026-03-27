@@ -208,7 +208,7 @@ pub async fn api_rate_limit_middleware(
     match limiter.limiter.check_key(&ip) {
         Ok(_) => next.run(req).await,
         Err(_) => {
-            tracing::warn!(ip = %ip, "API rate limit exceeded");
+            tracing::debug!(ip = %ip, "API rate limit exceeded");
             RateLimitError.into()
         }
     }
@@ -286,5 +286,50 @@ mod tests {
         let req = Request::builder().body(Body::empty()).unwrap();
         let ip = extract_client_ip(&req);
         assert_eq!(ip, IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+
+    // ============================================
+    // API rate limiter tests
+    // ============================================
+
+    #[test]
+    fn test_api_rate_limiter_allows_initial_requests() {
+        let limiter = ApiRateLimiter::from_env();
+        let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
+        assert!(limiter.limiter.check_key(&ip).is_ok());
+    }
+
+    #[test]
+    fn test_api_rate_limiter_blocks_after_burst() {
+        // Set a low limit for testing
+        let limiter = ApiRateLimiter {
+            limiter: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                NonZeroU32::new(5).unwrap(),
+            ))),
+        };
+        let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 101));
+        for _ in 0..5 {
+            let _ = limiter.limiter.check_key(&ip);
+        }
+        assert!(
+            limiter.limiter.check_key(&ip).is_err(),
+            "Should block after exceeding limit"
+        );
+    }
+
+    #[test]
+    fn test_api_rate_limiter_separate_ips() {
+        let limiter = ApiRateLimiter {
+            limiter: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                NonZeroU32::new(2).unwrap(),
+            ))),
+        };
+        let ip1 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10));
+        let ip2 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 11));
+        for _ in 0..2 {
+            let _ = limiter.limiter.check_key(&ip1);
+        }
+        assert!(limiter.limiter.check_key(&ip1).is_err());
+        assert!(limiter.limiter.check_key(&ip2).is_ok());
     }
 }
