@@ -1,5 +1,6 @@
 //! Tool implementations for Daytona sandbox operations.
 
+use everruns_core::SessionFile;
 use everruns_core::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -529,10 +530,11 @@ impl Tool for DaytonaReadFileTool {
                 if let Err(e) = touch_sandbox_lease(context, &state, None).await {
                     return e;
                 }
-                let content = String::from_utf8_lossy(&bytes).to_string();
+                let (content, encoding) = SessionFile::encode_content(&bytes);
                 ToolExecutionResult::success(json!({
                     "path": path,
-                    "content": content
+                    "content": content,
+                    "encoding": encoding
                 }))
             }
             Err(e) => ToolExecutionResult::tool_error(e),
@@ -774,7 +776,7 @@ impl Tool for DaytonaDownloadWorkspaceTool {
                     // Download file
                     match client.file_download(sandbox_id, &full_path).await {
                         Ok(bytes) => {
-                            let content = String::from_utf8_lossy(&bytes).to_string();
+                            let (content, encoding) = SessionFile::encode_content(&bytes);
                             let relative =
                                 full_path.strip_prefix(sandbox_root).unwrap_or(&full_path);
                             let session_dest = format!(
@@ -788,7 +790,7 @@ impl Tool for DaytonaDownloadWorkspaceTool {
                             );
 
                             match file_store
-                                .write_file(context.session_id, &session_dest, &content, "utf-8")
+                                .write_file(context.session_id, &session_dest, &content, &encoding)
                                 .await
                             {
                                 Ok(_) => downloaded += 1,
@@ -1703,6 +1705,25 @@ mod tests {
                 tool.name()
             );
         }
+    }
+
+    #[test]
+    fn test_encode_content_text_files() {
+        let text_bytes = b"hello world\nline two\n";
+        let (content, encoding) = SessionFile::encode_content(text_bytes);
+        assert_eq!(encoding, "text");
+        assert_eq!(content, "hello world\nline two\n");
+    }
+
+    #[test]
+    fn test_encode_content_binary_files() {
+        // PNG-like header with null bytes
+        let binary_bytes: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00];
+        let (content, encoding) = SessionFile::encode_content(binary_bytes);
+        assert_eq!(encoding, "base64");
+        // Verify round-trip
+        let decoded = SessionFile::decode_content(&content, &encoding).unwrap();
+        assert_eq!(decoded, binary_bytes);
     }
 
     #[test]
