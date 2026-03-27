@@ -51,6 +51,7 @@ The recommended default harness. Bundles the core capabilities needed for genera
 | `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem | |
 | `infinity_context` | Infinity Context | Trims older messages from the live prompt while exposing `query_history` for long sessions | |
 | `openai_tool_search` | OpenAI Tool Search | Defers tool schema loading on supported OpenAI models | |
+| `compaction` | Context Compaction | Auto-compacts context at 85% budget via cascading strategies | `{"strategy": "auto", "proactive": true, "budget_percent": 0.85}` |
 
 **Use cases:**
 - Default harness for most agents

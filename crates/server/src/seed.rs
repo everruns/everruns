@@ -2206,7 +2206,7 @@ mod tests {
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(cap_ids.len(), 9);
+        assert_eq!(cap_ids.len(), 10);
         assert!(cap_ids.contains(&"session_file_system"));
         assert!(cap_ids.contains(&"virtual_bash"));
         assert!(cap_ids.contains(&"web_fetch"));
@@ -2216,6 +2216,16 @@ mod tests {
         assert!(cap_ids.contains(&"skills"));
         assert!(cap_ids.contains(&"infinity_context"));
         assert!(cap_ids.contains(&"openai_tool_search"));
+        assert!(cap_ids.contains(&"compaction"));
+        // Verify compaction default config
+        let compaction_cap = generic
+            .capabilities
+            .iter()
+            .find(|c| c.id == "compaction")
+            .expect("compaction capability should exist");
+        assert_eq!(compaction_cap.config["strategy"], "auto");
+        assert_eq!(compaction_cap.config["proactive"], true);
+        assert_eq!(compaction_cap.config["budget_percent"], 0.85);
         assert!(generic.tags.iter().any(|tag| tag == "generic"));
         assert!(generic.tags.iter().any(|tag| tag == "default"));
     }
