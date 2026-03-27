@@ -654,6 +654,165 @@ async fn test_exec_with_nonzero_exit_preserves_output() {
 }
 
 // ============================================================================
+// Shell wrapping integration tests (EVE-186)
+// ============================================================================
+// Daytona's process/execute endpoint runs commands without a shell.
+// exec() must wrap all commands in sh -c '...' so shell operators work.
+
+#[tokio::test]
+async fn test_exec_wraps_command_in_shell() {
+    let mock_server = MockServer::start().await;
+
+    // The mock expects the command wrapped in sh -c '...'
+    Mock::given(method("POST"))
+        .and(path("/sb_shell/process/execute"))
+        .and(wiremock::matchers::body_json(json!({
+            "command": "sh -c 'echo hello && echo world'"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": "hello\nworld\n",
+            "exitCode": 0
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let result = client
+        .exec("sb_shell", "echo hello && echo world", None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.result, "hello\nworld\n");
+}
+
+#[tokio::test]
+async fn test_exec_wraps_pipes_and_redirects_in_shell() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/sb_pipe/process/execute"))
+        .and(wiremock::matchers::body_json(json!({
+            "command": "sh -c 'cat /etc/os-release | head -1 > /tmp/out.txt'"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": "",
+            "exitCode": 0
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let result = client
+        .exec(
+            "sb_pipe",
+            "cat /etc/os-release | head -1 > /tmp/out.txt",
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+}
+
+#[tokio::test]
+async fn test_exec_shell_wrapping_escapes_single_quotes() {
+    let mock_server = MockServer::start().await;
+
+    // Command: echo 'hello world'
+    // After escaping: echo '\''hello world'\''
+    // Wrapped: sh -c 'echo '\''hello world'\'''
+    Mock::given(method("POST"))
+        .and(path("/sb_quote/process/execute"))
+        .and(wiremock::matchers::body_json(json!({
+            "command": r"sh -c 'echo '\''hello world'\'''"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": "hello world\n",
+            "exitCode": 0
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let result = client
+        .exec("sb_quote", "echo 'hello world'", None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.result, "hello world\n");
+}
+
+#[tokio::test]
+async fn test_exec_shell_wrapping_with_cwd() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/sb_cwd/process/execute"))
+        .and(wiremock::matchers::body_json(json!({
+            "command": "sh -c 'ls -la | grep foo'",
+            "cwd": "/workspace"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": "-rw-r--r-- 1 user user 0 Jan 1 00:00 foo\n",
+            "exitCode": 0
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let result = client
+        .exec("sb_cwd", "ls -la | grep foo", Some("/workspace"), None)
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+}
+
+#[tokio::test]
+async fn test_exec_shell_wrapping_with_variable_expansion() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/sb_var/process/execute"))
+        .and(wiremock::matchers::body_json(json!({
+            "command": "sh -c 'echo $HOME'"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": "/home/daytona\n",
+            "exitCode": 0
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let result = client
+        .exec("sb_var", "echo $HOME", None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.result, "/home/daytona\n");
+}
+
+// ============================================================================
 // State management integration tests
 // ============================================================================
 

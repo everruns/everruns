@@ -291,7 +291,12 @@ impl DaytonaClient {
         cwd: Option<&str>,
         timeout_ms: Option<u64>,
     ) -> Result<ExecResult, String> {
-        let mut body = json!({ "command": command });
+        // Daytona's process/execute endpoint runs commands without a shell —
+        // shell operators (|, >, &&, $(), etc.) are passed as literal args.
+        // Wrap in sh -c so they are interpreted correctly.
+        let escaped = command.replace('\'', "'\\''");
+        let wrapped = format!("sh -c '{escaped}'");
+        let mut body = json!({ "command": wrapped });
         if let Some(c) = cwd {
             body["cwd"] = json!(c);
         }
@@ -376,7 +381,7 @@ impl DaytonaClient {
                     .exec(
                         sandbox_id,
                         &format!(
-                            "sh -c 'if [ -f {pid_file} ]; then kill $(cat {pid_file}) 2>/dev/null; fi'"
+                            "if [ -f {pid_file} ]; then kill $(cat {pid_file}) 2>/dev/null; fi"
                         ),
                         None,
                         Some(5_000),
@@ -399,11 +404,7 @@ impl DaytonaClient {
             let new_output = self
                 .exec(
                     sandbox_id,
-                    &format!(
-                        "sh -c 'tail -c +{} {} 2>/dev/null'",
-                        bytes_read + 1,
-                        out_file
-                    ),
+                    &format!("tail -c +{} {} 2>/dev/null", bytes_read + 1, out_file),
                     None,
                     Some(10_000),
                 )
@@ -420,7 +421,7 @@ impl DaytonaClient {
             let done_check = self
                 .exec(
                     sandbox_id,
-                    &format!("sh -c 'cat {exit_file} 2>/dev/null'"),
+                    &format!("cat {exit_file} 2>/dev/null"),
                     None,
                     Some(5_000),
                 )
@@ -433,11 +434,7 @@ impl DaytonaClient {
                     let final_output = self
                         .exec(
                             sandbox_id,
-                            &format!(
-                                "sh -c 'tail -c +{} {} 2>/dev/null'",
-                                bytes_read + 1,
-                                out_file
-                            ),
+                            &format!("tail -c +{} {} 2>/dev/null", bytes_read + 1, out_file),
                             None,
                             Some(10_000),
                         )
@@ -452,7 +449,7 @@ impl DaytonaClient {
                     let full_output = self
                         .exec(
                             sandbox_id,
-                            &format!("sh -c 'cat {out_file} 2>/dev/null'"),
+                            &format!("cat {out_file} 2>/dev/null"),
                             None,
                             Some(10_000),
                         )
