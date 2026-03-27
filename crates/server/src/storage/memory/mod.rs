@@ -14,6 +14,7 @@ mod app_channels;
 mod apps;
 mod audit_logs;
 mod auth;
+mod evals;
 mod events;
 mod harnesses;
 mod llm;
@@ -125,6 +126,11 @@ pub struct InMemoryDatabase {
     agent_identity_connections: RwLock<HashMap<Uuid, AgentIdentityConnectionRow>>,
     // Organization settings (default model, etc.)
     org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
+    // Evals (user-facing behavioral tests)
+    evals: RwLock<HashMap<Uuid, EvalRow>>,
+    eval_cases: RwLock<HashMap<Uuid, EvalCaseRow>>,
+    eval_runs: RwLock<HashMap<Uuid, EvalRunRow>>,
+    eval_case_results: RwLock<HashMap<Uuid, EvalCaseResultRow>>,
     // OAuth clients (MCP OAuth 2.1)
     oauth_clients: RwLock<HashMap<Uuid, OAuthClientRow>>,
     oauth_authorization_codes: RwLock<HashMap<Uuid, OAuthAuthorizationCodeRow>>,
@@ -187,6 +193,10 @@ impl Default for InMemoryDatabase {
             agent_identities: RwLock::new(HashMap::new()),
             agent_identity_connections: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
+            evals: RwLock::new(HashMap::new()),
+            eval_cases: RwLock::new(HashMap::new()),
+            eval_runs: RwLock::new(HashMap::new()),
+            eval_case_results: RwLock::new(HashMap::new()),
             oauth_clients: RwLock::new(HashMap::new()),
             oauth_authorization_codes: RwLock::new(HashMap::new()),
             oauth_refresh_tokens: RwLock::new(HashMap::new()),

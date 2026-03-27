@@ -104,6 +104,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/braintrust-integration.md` - Braintrust observability
 - `specs/otel-observability.md` - OpenTelemetry Gen-AI semantic convention tracing
 - `specs/prometheus-metrics.md` - Prometheus `/metrics` endpoint and scrape configuration
+- `specs/evals.md` - User-facing behavioral evals for agents (cases, scorers, runs)
 - `specs/encryption.md` - Envelope encryption for sensitive data
 - `specs/session-filesystem.md` - Per-session virtual filesystem
 - `specs/cli.md` - CLI specification (commands, file sync, wire protocol)

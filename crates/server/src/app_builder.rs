@@ -555,6 +555,7 @@ impl ServerAppBuilder {
         );
         let apps_state =
             api::apps::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
+        let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone());
         let slack_state = api::slack_events::SlackState::new(
             db.clone(),
             encryption.clone(),
@@ -681,6 +682,7 @@ impl ServerAppBuilder {
                 agent_identity_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
+            .merge(api::evals::routes(evals_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))

@@ -166,6 +166,16 @@ export const queryKeys = {
     detail: (appId: string) => ["app", appId] as const,
   },
 
+  // Eval queries
+  evals: {
+    all: ["evals"] as const,
+    list: (includeArchived = false) => ["evals", { includeArchived }] as const,
+    detail: (evalId: string) => ["eval", evalId] as const,
+    cases: (evalId: string) => ["eval", evalId, "cases"] as const,
+    runs: (evalId: string) => ["eval", evalId, "runs"] as const,
+    runDetail: (evalId: string, runId: string) => ["eval", evalId, "run", runId] as const,
+  },
+
   // Policy queries
   policies: {
     config: (resource: string) => ["policies", resource] as const,
