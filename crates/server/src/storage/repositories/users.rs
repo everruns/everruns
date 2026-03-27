@@ -181,6 +181,58 @@ impl Database {
         Ok(rows)
     }
 
+    /// Hard-delete a user and all associated data.
+    /// FK constraints use ON DELETE CASCADE, so this removes all dependent rows.
+    pub async fn delete_user_account(&self, user_id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Export all user-owned data as a structured JSON value.
+    pub async fn export_user_data(&self, user_id: Uuid) -> Result<Option<serde_json::Value>> {
+        let user = self.get_user(user_id).await?;
+        let Some(user) = user else {
+            return Ok(None);
+        };
+
+        let api_keys = self.list_api_keys_for_user(user_id).await?;
+        let orgs = self.list_user_organizations(user_id).await?;
+
+        let export = serde_json::json!({
+            "user": {
+                "id": user.id.to_string(),
+                "email": user.email,
+                "name": user.name,
+                "avatar_url": user.avatar_url,
+                "email_verified": user.email_verified,
+                "auth_provider": user.auth_provider,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at,
+            },
+            "organizations": orgs.iter().map(|o| serde_json::json!({
+                "org_id": o.org_id,
+                "public_id": o.public_id,
+                "name": o.name,
+                "role": o.role,
+            })).collect::<Vec<_>>(),
+            "api_keys": api_keys.iter().map(|k| serde_json::json!({
+                "id": k.id.to_string(),
+                "name": k.name,
+                "key_prefix": k.key_prefix,
+                "scopes": k.scopes,
+                "expires_at": k.expires_at,
+                "last_used_at": k.last_used_at,
+                "created_at": k.created_at,
+            })).collect::<Vec<_>>(),
+            "exported_at": chrono::Utc::now(),
+        });
+
+        Ok(Some(export))
+    }
+
     /// List users within an organization (TM-TENANT-008: org-scoped user listing)
     /// Filters via organization_members join to enforce tenant isolation.
     pub async fn list_users_by_org(

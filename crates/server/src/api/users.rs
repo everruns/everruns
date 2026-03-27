@@ -90,11 +90,18 @@ pub struct ProfileResponse {
     pub avatar_url: Option<String>,
 }
 
+/// Response for account deletion
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct DeleteAccountResponse {
+    pub deleted: bool,
+}
+
 /// Create users routes
 pub fn routes(state: UsersState) -> Router {
     Router::new()
         .route("/v1/users", get(list_users))
-        .route("/v1/users/me", patch(update_profile))
+        .route("/v1/users/me", patch(update_profile).delete(delete_account))
+        .route("/v1/users/me/export", get(export_user_data))
         .route("/v1/users/me/switch-org", post(switch_org))
         .with_state(state)
 }
@@ -266,6 +273,72 @@ pub async fn switch_org(
             org_id: req.org_id,
         }),
     ))
+}
+
+/// DELETE /v1/users/me - Delete current user's account
+///
+/// Hard-deletes the user and all associated data (API keys, memberships, tokens).
+/// This action is irreversible.
+#[utoipa::path(
+    delete,
+    path = "/v1/users/me",
+    responses(
+        (status = 200, description = "Account deleted", body = DeleteAccountResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
+pub async fn delete_account(
+    State(state): State<UsersState>,
+    auth: AuthUser,
+) -> Result<Json<DeleteAccountResponse>, StatusCode> {
+    let deleted = state.db.delete_user_account(auth.id).await.map_err(|e| {
+        tracing::error!("Failed to delete user account: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if !deleted {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    tracing::info!("User {} deleted their account", auth.id);
+
+    Ok(Json(DeleteAccountResponse { deleted: true }))
+}
+
+/// GET /v1/users/me/export - Export current user's data
+///
+/// Returns all user-owned data in a structured JSON format for GDPR compliance.
+#[utoipa::path(
+    get,
+    path = "/v1/users/me/export",
+    responses(
+        (status = 200, description = "User data export"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "users"
+)]
+pub async fn export_user_data(
+    State(state): State<UsersState>,
+    auth: AuthUser,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let export = state
+        .db
+        .export_user_data(auth.id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to export user data: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    tracing::info!("User {} exported their data", auth.id);
+
+    Ok(Json(export))
 }
 
 #[cfg(test)]
