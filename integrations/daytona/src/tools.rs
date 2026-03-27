@@ -1080,9 +1080,7 @@ impl Tool for DaytonaGitCloneTool {
         let repo_url_raw = match required_str(&arguments, "repo_url") {
             Ok(s) if !s.trim().is_empty() => s,
             Ok(_) => {
-                return ToolExecutionResult::tool_error(
-                    "repo_url must not be empty".to_string(),
-                );
+                return ToolExecutionResult::tool_error("repo_url must not be empty".to_string());
             }
             Err(e) => return e,
         };
@@ -1174,7 +1172,10 @@ impl Tool for DaytonaGitCloneTool {
         let commit_sha = match client
             .exec(
                 sandbox_id,
-                &format!("cd {} && git rev-parse --short HEAD", shell_escape(target_path)),
+                &format!(
+                    "cd {} && git rev-parse --short HEAD",
+                    shell_escape(target_path)
+                ),
                 None,
                 None,
                 |_| {},
