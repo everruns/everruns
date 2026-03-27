@@ -58,7 +58,7 @@ jobs:
           shared-key: "${{ matrix.binary }}-${{ matrix.target }}"
 
       - name: Build binary
-        run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.package }}
+        run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.package }} --bin ${{ matrix.binary }}
 
       - name: Package binary
         run: |
