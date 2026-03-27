@@ -927,4 +927,94 @@ mod tests {
         };
         assert_eq!(request.memory_mb.unwrap_or(DENO_DEFAULT_MEMORY_MB), 1_280);
     }
+
+    #[test]
+    fn tls_connector_sets_http11_alpn() {
+        let connector = build_http11_tls_connector().expect("build connector");
+        let Connector::Rustls(config) = connector else {
+            panic!("Expected Connector::Rustls");
+        };
+        assert_eq!(config.alpn_protocols, vec![b"http/1.1".to_vec()]);
+    }
+
+    /// Verify that connect_via_http_proxy sends Proxy-Authorization when
+    /// credentials are present in the proxy URL.
+    #[tokio::test]
+    async fn proxy_connect_sends_authorization() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            let mut buf = vec![0u8; 4096];
+            let n = stream.read(&mut buf).await.expect("read");
+            let request = String::from_utf8_lossy(&buf[..n]).to_string();
+            // Respond with 200 so the function returns Ok
+            stream
+                .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                .await
+                .expect("write");
+            request
+        });
+
+        let proxy_url =
+            reqwest::Url::parse(&format!("http://user:secret@127.0.0.1:{}", addr.port()))
+                .expect("parse proxy URL");
+        let _ = connect_via_http_proxy(&proxy_url, "example.com", 443).await;
+
+        let request = server.await.expect("server join");
+        assert!(
+            request.contains("CONNECT example.com:443 HTTP/1.1"),
+            "missing CONNECT line: {request}"
+        );
+        assert!(
+            request.contains("Proxy-Authorization: Basic "),
+            "missing Proxy-Authorization header: {request}"
+        );
+        // "user:secret" in base64
+        let expected =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b"user:secret");
+        assert!(request.contains(&expected), "wrong credentials: {request}");
+    }
+
+    /// Verify no Proxy-Authorization header when proxy URL has no credentials.
+    #[tokio::test]
+    async fn proxy_connect_omits_auth_without_credentials() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            let mut buf = vec![0u8; 4096];
+            let n = stream.read(&mut buf).await.expect("read");
+            let request = String::from_utf8_lossy(&buf[..n]).to_string();
+            stream
+                .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                .await
+                .expect("write");
+            request
+        });
+
+        let proxy_url = reqwest::Url::parse(&format!("http://127.0.0.1:{}", addr.port()))
+            .expect("parse proxy URL");
+        let _ = connect_via_http_proxy(&proxy_url, "example.com", 443).await;
+
+        let request = server.await.expect("server join");
+        assert!(
+            request.contains("CONNECT example.com:443 HTTP/1.1"),
+            "missing CONNECT line: {request}"
+        );
+        assert!(
+            !request.contains("Proxy-Authorization"),
+            "should not contain Proxy-Authorization: {request}"
+        );
+    }
 }
