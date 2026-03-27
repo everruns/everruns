@@ -61,6 +61,10 @@ inventory::submit! {
 const BROWSERLESS_API_BASE: &str = "https://production-sfo.browserless.io";
 const BROWSERLESS_WS_BASE: &str = "wss://production-sfo.browserless.io";
 
+/// Path for new CDP browser sessions. Browserless v2 requires `/chromium` —
+/// the root path returns 400 Bad Request for WebSocket upgrades.
+const BROWSERLESS_CDP_PATH: &str = "/chromium";
+
 // ============================================================================
 // BrowserlessCapability
 // ============================================================================
@@ -201,6 +205,14 @@ mod tests {
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("browserless"));
         assert_eq!(cap.category(), Some("Browser"));
+    }
+
+    #[test]
+    fn test_cdp_path_is_set() {
+        assert_eq!(BROWSERLESS_CDP_PATH, "/chromium");
+        // New CDP sessions must connect to /chromium — root path returns 400
+        let full_url = format!("{}{}", BROWSERLESS_WS_BASE, BROWSERLESS_CDP_PATH);
+        assert_eq!(full_url, "wss://production-sfo.browserless.io/chromium");
     }
 
     #[test]

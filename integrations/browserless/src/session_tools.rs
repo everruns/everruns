@@ -207,7 +207,12 @@ impl Tool for BrowserlessOpenBrowserTool {
             .emit_progress("browserless_open_browser", "Connecting to browser…")
             .await;
 
-        let ws_url = format!("{}?token={}", crate::BROWSERLESS_WS_BASE, api_token);
+        let ws_url = format!(
+            "{}{}?token={}",
+            crate::BROWSERLESS_WS_BASE,
+            crate::BROWSERLESS_CDP_PATH,
+            api_token
+        );
 
         let mut session = match CdpSession::connect(&ws_url).await {
             Ok(s) => s,

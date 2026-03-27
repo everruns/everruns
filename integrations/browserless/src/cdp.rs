@@ -63,7 +63,10 @@ impl CdpSession {
                 .map_err(|_| {
                     format!("CDP WebSocket connection timed out ({CDP_CONNECT_TIMEOUT:?})")
                 })?
-                .map_err(|e| format!("CDP WebSocket connection failed: {e}"))?;
+                .map_err(|e| {
+                    debug!("CDP WebSocket connection error for {redacted}: {e}");
+                    format!("CDP WebSocket connection failed: {e}")
+                })?;
 
         let (sink, source) = ws_stream.split();
         Ok(Self {

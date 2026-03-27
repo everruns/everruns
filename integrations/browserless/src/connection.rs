@@ -8,6 +8,7 @@ use everruns_core::connection_provider::{
     ConnectionFormSchema, ConnectionProvider, ConnectionType, ConnectionValidation, FieldType,
     FormField,
 };
+use tracing::warn;
 
 use crate::BROWSERLESS_API_BASE;
 
@@ -63,17 +64,56 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
 
         match response.status().as_u16() {
             // Browserless v2 /active returns 204 No Content; v1 returned 200.
-            200 | 204 => Ok(ConnectionValidation {
-                provider_username: None,
-                provider_metadata: None,
-            }),
+            200 | 204 => {}
             401 | 403 => {
-                Err("Invalid API token. Check that the token is correct and active.".into())
+                return Err(
+                    "Invalid API token. Check that the token is correct and active.".into(),
+                );
             }
-            status => Err(format!(
-                "Unexpected response from Browserless API (HTTP {status})"
-            )),
+            status => {
+                return Err(format!(
+                    "Unexpected response from Browserless API (HTTP {status})"
+                ));
+            }
         }
+
+        // Probe the CDP WebSocket endpoint (/chromium) with a plain HTTP GET.
+        // A valid token returns 400 (expects WebSocket upgrade, not HTTP GET).
+        // An invalid/expired token for CDP returns 401/403.
+        // This catches tokens that work for REST but not for CDP sessions.
+        let cdp_probe = client
+            .get(format!(
+                "{BROWSERLESS_API_BASE}{}?token={credential}",
+                crate::BROWSERLESS_CDP_PATH
+            ))
+            .send()
+            .await;
+
+        match cdp_probe {
+            Ok(resp) => {
+                let status = resp.status().as_u16();
+                // 400 is expected: the endpoint expects a WebSocket upgrade, not HTTP GET.
+                // 401/403 means the token doesn't have CDP access.
+                if status == 401 || status == 403 {
+                    warn!(
+                        "Browserless token validated for REST but rejected for CDP (HTTP {status})"
+                    );
+                    return Err(
+                        "API token works for REST but does not support CDP/WebSocket sessions. \
+                         Check that your Browserless plan includes persistent browser sessions."
+                            .into(),
+                    );
+                }
+            }
+            Err(e) => {
+                warn!("CDP probe failed during validation: {e}");
+            }
+        }
+
+        Ok(ConnectionValidation {
+            provider_username: None,
+            provider_metadata: None,
+        })
     }
 }
 
