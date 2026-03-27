@@ -122,17 +122,26 @@ fn parse_session_id(s: &str) -> Result<SessionId, (StatusCode, String)> {
 }
 
 /// Classify a git error into an appropriate HTTP status code.
+///
+/// Returns user-safe error messages — internal details are logged server-side.
 fn classify_git_error(e: &anyhow::Error) -> (StatusCode, String) {
     let msg = e.to_string();
     if msg.contains("not found") || msg.contains("unknown revision") {
-        (StatusCode::NOT_FOUND, msg)
+        (StatusCode::NOT_FOUND, "Resource not found".to_string())
     } else if msg.contains("bad hex")
         || msg.contains("invalid object id")
         || msg.contains("invalid oid")
     {
-        (StatusCode::BAD_REQUEST, msg)
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid object identifier".to_string(),
+        )
     } else {
-        (StatusCode::INTERNAL_SERVER_ERROR, msg)
+        tracing::error!("Git operation failed: {msg}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal server error".to_string(),
+        )
     }
 }
 

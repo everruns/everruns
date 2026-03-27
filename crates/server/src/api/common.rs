@@ -79,6 +79,32 @@ impl ErrorResponse {
     pub fn conflict(message: &str) -> (StatusCode, Json<Self>) {
         Self::new(message).into_response(StatusCode::CONFLICT)
     }
+
+    /// Create a bad gateway error response (502)
+    pub fn bad_gateway() -> (StatusCode, Json<Self>) {
+        Self::new("Bad gateway").into_response(StatusCode::BAD_GATEWAY)
+    }
+}
+
+/// Log an internal error and return a generic 500 tuple `(StatusCode, String)`.
+///
+/// Use this in handlers that return `Result<T, (StatusCode, String)>` to avoid
+/// leaking internal error details to clients.
+pub fn sanitized_internal_error(
+    context: &str,
+    error: &dyn std::fmt::Display,
+) -> (StatusCode, String) {
+    tracing::error!("{context}: {error}");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Internal server error".to_string(),
+    )
+}
+
+/// Log an external-service error and return a generic 502 tuple `(StatusCode, String)`.
+pub fn sanitized_bad_gateway(context: &str, error: &dyn std::fmt::Display) -> (StatusCode, String) {
+    tracing::error!("{context}: {error}");
+    (StatusCode::BAD_GATEWAY, "Bad gateway".to_string())
 }
 
 fn classify_anyhow_error(message: &str) -> Option<(StatusCode, Json<ErrorResponse>)> {
