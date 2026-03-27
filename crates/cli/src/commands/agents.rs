@@ -288,12 +288,12 @@ struct CollectedFile {
     is_readonly: bool,
 }
 
-/// Directories always skipped during initial-files collection.
-/// We use a blocklist instead of blanket dot-prefix filtering so that
-/// well-known dotfile directories like `.agents/` are included.
-const IGNORED_DOTDIRS: &[&str] = &[".git", ".DS_Store", ".svn", ".hg"];
+/// Dot-prefixed path components explicitly allowed in initial-files collection.
+/// Everything else starting with `.` is skipped to prevent accidental upload of
+/// secrets (`.env`, `.ssh/`, `.npmrc`, etc.).
+const ALLOWED_DOT_ENTRIES: &[&str] = &[".agents"];
 
-/// Recursively collect text files from a directory, including well-known
+/// Recursively collect text files from a directory, including allowed
 /// dotfile directories (e.g. `.agents/`). Returns them as initial_files
 /// entries with paths relative to /workspace.
 fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
@@ -303,15 +303,38 @@ fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
         anyhow::bail!("Not a directory: {}", base.display());
     }
 
+    // hidden(true) prunes most dotfiles/dirs during traversal for performance.
+    // We do a second walk of ALLOWED_DOT_ENTRIES below to include them.
     let walker = ignore::WalkBuilder::new(&base)
-        .hidden(false) // include dotfiles; we filter with IGNORED_DOTDIRS instead
+        .hidden(true) // skip dotfiles by default (perf: avoids traversing .git/)
         .git_ignore(true) // respect .gitignore (repo-local)
         .git_global(false) // ignore global gitignore for predictable behavior
         .git_exclude(false) // ignore repo exclude files for predictable behavior
         .build();
 
+    // Also walk allowed dot-directories that hidden(true) would skip.
+    let dot_walkers: Vec<_> = ALLOWED_DOT_ENTRIES
+        .iter()
+        .filter_map(|name| {
+            let dot_path = base.join(name);
+            if dot_path.is_dir() {
+                Some(
+                    ignore::WalkBuilder::new(&dot_path)
+                        .hidden(false) // include nested dotfiles within allowed dirs
+                        .git_ignore(true)
+                        .git_global(false)
+                        .git_exclude(false)
+                        .build(),
+                )
+            } else {
+                None
+            }
+        })
+        .collect();
+
     let mut files = Vec::new();
-    for entry in walker {
+    let all_entries = walker.chain(dot_walkers.into_iter().flatten());
+    for entry in all_entries {
         let entry = entry.context("Failed to read directory entry")?;
         let path = entry.path();
         if !path.is_file() {
@@ -333,14 +356,6 @@ fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
             .strip_prefix(&base)
             .context("File outside base directory")?;
 
-        // Skip explicitly ignored dot-directories (e.g. .git) while
-        // allowing well-known ones like .agents/.
-        if rel.components().any(|c| {
-            let s = c.as_os_str().to_string_lossy();
-            IGNORED_DOTDIRS.iter().any(|ignored| *ignored == &*s)
-        }) {
-            continue;
-        }
         // Normalize path separators to POSIX-style for workspace paths
         let rel_normalized = rel.to_string_lossy().replace('\\', "/");
         let workspace_path = format!("/workspace/{}", rel_normalized);
@@ -658,7 +673,8 @@ mod tests {
         std::fs::create_dir(dir.path().join("sub")).unwrap();
         std::fs::write(dir.path().join("sub/nested.txt"), "content").unwrap();
 
-        // .git directory should be skipped
+        // Hidden files/dirs should be skipped (security: prevents .env, .ssh leaks)
+        std::fs::write(dir.path().join(".env"), "SECRET=key").unwrap();
         std::fs::create_dir(dir.path().join(".git")).unwrap();
         std::fs::write(dir.path().join(".git/config"), "gitdata").unwrap();
 
