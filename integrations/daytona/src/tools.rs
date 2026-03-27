@@ -1081,8 +1081,14 @@ impl Tool for DaytonaGitCloneTool {
             Ok(s) => s,
             Err(e) => return e,
         };
-        let branch = arguments.get("branch").and_then(|v| v.as_str());
-        let clone_path = arguments.get("path").and_then(|v| v.as_str());
+        let branch = arguments
+            .get("branch")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        let clone_path = arguments
+            .get("path")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
 
         let api_key = match get_api_key(context).await {
             Ok(k) => k,
@@ -1126,10 +1132,10 @@ impl Tool for DaytonaGitCloneTool {
             repo_url.clone()
         };
 
-        // Build git clone command
-        let mut cmd = format!("git clone --depth 1 {clone_url} {target_path}");
+        // Build git clone command (quote args to handle special characters)
+        let mut cmd = format!("git clone --depth 1 '{clone_url}' '{target_path}'");
         if let Some(b) = branch {
-            cmd = format!("git clone --depth 1 --branch {b} {clone_url} {target_path}");
+            cmd = format!("git clone --depth 1 --branch '{b}' '{clone_url}' '{target_path}'");
         }
 
         debug!("Cloning repository via exec: {repo_url} → {target_path}");
@@ -1845,6 +1851,13 @@ mod tests {
     #[test]
     fn test_normalize_repo_url_http() {
         let url = "http://github.com/user/repo";
+        assert_eq!(normalize_repo_url(url), url);
+    }
+
+    #[test]
+    fn test_normalize_repo_url_https_without_git_suffix() {
+        // HTTPS URLs without .git are valid and returned as-is
+        let url = "https://github.com/user/repo";
         assert_eq!(normalize_repo_url(url), url);
     }
 
