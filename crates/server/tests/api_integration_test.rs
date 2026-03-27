@@ -1546,10 +1546,7 @@ async fn test_get_generic_harness() {
         cap_ids.contains(&"openai_tool_search"),
         "Should have OpenAI tool search"
     );
-    assert!(
-        cap_ids.contains(&"compaction"),
-        "Should have compaction"
-    );
+    assert!(cap_ids.contains(&"compaction"), "Should have compaction");
 }
 
 #[tokio::test]
