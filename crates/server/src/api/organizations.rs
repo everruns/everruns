@@ -30,6 +30,7 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
     pub built_in_harnesses: Vec<BuiltInHarnessDefinition>,
+    pub resource_limits: crate::server::ResourceLimitsConfig,
 }
 
 impl AppState {
@@ -38,6 +39,7 @@ impl AppState {
             db,
             auth,
             built_in_harnesses: crate::platform::oss_built_in_harnesses(),
+            resource_limits: crate::server::ResourceLimitsConfig::from_env(),
         }
     }
 
@@ -50,6 +52,7 @@ impl AppState {
             db,
             auth,
             built_in_harnesses,
+            resource_limits: crate::server::ResourceLimitsConfig::from_env(),
         }
     }
 }
@@ -205,6 +208,22 @@ pub async fn create_organization(
             Json(ErrorResponse::new(
                 "Organization name cannot exceed 255 characters",
             )),
+        ));
+    }
+
+    // Enforce org-per-user limit
+    let org_count = state
+        .db
+        .count_user_organizations(user.id)
+        .await
+        .log_internal_error_json("count user organizations")?;
+    if org_count >= state.resource_limits.max_orgs_per_user {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse::new(format!(
+                "Organization limit reached (max {})",
+                state.resource_limits.max_orgs_per_user
+            ))),
         ));
     }
 
@@ -603,6 +622,22 @@ pub async fn add_member(
         return Err((
             StatusCode::CONFLICT,
             Json(ErrorResponse::new("User is already a member")),
+        ));
+    }
+
+    // Enforce member-per-org limit
+    let member_count = state
+        .db
+        .count_organization_members(org.org_id)
+        .await
+        .log_internal_error_json("count organization members")?;
+    if member_count >= state.resource_limits.max_members_per_org {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse::new(format!(
+                "Member limit reached (max {})",
+                state.resource_limits.max_members_per_org
+            ))),
         ));
     }
 

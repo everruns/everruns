@@ -377,6 +377,26 @@ impl Database {
         Ok(row.0)
     }
 
+    /// Count organizations a user belongs to (for resource limits).
+    pub async fn count_user_organizations(&self, user_id: Uuid) -> Result<i64> {
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM organization_members WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(row.0)
+    }
+
+    /// Count members in an organization (for resource limits).
+    pub async fn count_organization_members(&self, org_id: i64) -> Result<i64> {
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM organization_members WHERE org_id = $1")
+                .bind(org_id)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(row.0)
+    }
+
     pub async fn list_user_organizations(
         &self,
         user_id: Uuid,

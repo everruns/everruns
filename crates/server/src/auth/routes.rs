@@ -889,6 +889,26 @@ pub async fn create_api_key_route(
         ));
     }
 
+    // Enforce API key limit per user per org
+    let limits = crate::server::ResourceLimitsConfig::from_env();
+    let key_count = state
+        .db
+        .count_api_keys_for_user_in_org(user.id, org.org_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to count API keys: {e}");
+            AuthError::unauthorized("Failed to create API key")
+        })?;
+    if key_count >= limits.max_api_keys_per_user_per_org {
+        return Err(AuthError {
+            error: format!(
+                "API key limit reached (max {})",
+                limits.max_api_keys_per_user_per_org
+            ),
+            status: StatusCode::CONFLICT,
+        });
+    }
+
     let generated = generate_api_key();
 
     let scopes = if req.scopes.is_empty() {

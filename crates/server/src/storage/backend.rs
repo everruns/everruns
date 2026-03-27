@@ -1527,6 +1527,18 @@ impl StorageBackend {
         dispatch!(self, count_organization_owners, org_id)
     }
 
+    pub async fn count_user_organizations(&self, user_id: Uuid) -> Result<i64> {
+        dispatch!(self, count_user_organizations, user_id)
+    }
+
+    pub async fn count_organization_members(&self, org_id: i64) -> Result<i64> {
+        dispatch!(self, count_organization_members, org_id)
+    }
+
+    pub async fn count_api_keys_for_user_in_org(&self, user_id: Uuid, org_id: i64) -> Result<i64> {
+        dispatch!(self, count_api_keys_for_user_in_org, user_id, org_id)
+    }
+
     pub async fn list_user_organizations(
         &self,
         user_id: Uuid,
