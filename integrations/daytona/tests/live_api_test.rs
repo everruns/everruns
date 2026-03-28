@@ -157,7 +157,7 @@ async fn test_live_sandbox_lifecycle() {
         .expect("delete_sandbox failed");
 }
 
-/// Exec with working directory and nonzero exit code.
+/// Exec with working directory, nonzero exit code, and session death recovery.
 #[tokio::test]
 async fn test_live_exec_cwd_and_exit_code() {
     let api_key = require_api_key!();
@@ -176,12 +176,33 @@ async fn test_live_exec_cwd_and_exit_code() {
         result.result
     );
 
-    // Nonzero exit code (Daytona may return -1 instead of the exact code)
+    // Nonzero exit code — use `bash -c` to run in a subshell so the
+    // persistent session shell is not killed by `exit`.
     let result = client
-        .exec(id, "exit 42", None, None, |_| {})
+        .exec(id, "bash -c 'exit 42'", None, None, |_| {})
         .await
         .expect("exec with nonzero exit failed");
     assert_ne!(result.exit_code, 0, "Expected nonzero exit code, got 0");
+
+    // Bare `exit` kills the persistent session shell. The client must
+    // detect the dead session and return an error instead of hanging.
+    let result = client.exec(id, "exit 1", None, None, |_| {}).await;
+    assert!(
+        result.is_err(),
+        "bare `exit` should be detected as session termination"
+    );
+
+    // Subsequent exec should recover — ensure_session re-creates it.
+    let result = client
+        .exec(id, "echo recovered", None, None, |_| {})
+        .await
+        .expect("exec after session recovery failed");
+    assert_eq!(result.exit_code, 0);
+    assert!(
+        result.result.contains("recovered"),
+        "Expected 'recovered' in output: {}",
+        result.result
+    );
 }
 
 /// Folder creation and file listing.
