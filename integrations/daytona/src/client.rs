@@ -317,6 +317,81 @@ impl DaytonaClient {
         }
     }
 
+    /// Probe session health by running a trivial command and checking if
+    /// it completes within a few seconds. Returns `true` if the session
+    /// shell is responsive, `false` if the heartbeat stalls (dead shell).
+    async fn session_heartbeat(&self, sandbox_id: &str) -> bool {
+        // Fire a heartbeat command.
+        let resp = self
+            .toolbox_request(
+                reqwest::Method::POST,
+                sandbox_id,
+                &format!("/process/session/{EXEC_SESSION_ID}/exec"),
+                Some(json!({
+                    "command": "true",
+                    "runAsync": true
+                })),
+            )
+            .await;
+
+        let cmd_id = match resp {
+            Ok(ref v) => match v.get("cmdId").and_then(|v| v.as_str()) {
+                Some(id) => id.to_string(),
+                None => return false,
+            },
+            Err(_) => return false,
+        };
+
+        let status_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}");
+
+        // Poll for up to SESSION_HEARTBEAT_TIMEOUT.
+        let deadline =
+            std::time::Instant::now() + Duration::from_millis(crate::SESSION_HEARTBEAT_TIMEOUT_MS);
+
+        while std::time::Instant::now() < deadline {
+            tokio::time::sleep(EXEC_POLL_INTERVAL).await;
+            if let Ok(s) = self
+                .toolbox_request(reqwest::Method::GET, sandbox_id, &status_path, None)
+                .await
+                && s.get("exitCode").is_some()
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Delete the persistent session. Used to reset a dead session whose
+    /// shell was terminated by a command like `exit`.
+    async fn delete_session(&self, sandbox_id: &str) -> Result<(), String> {
+        let url = format!(
+            "{}/{sandbox_id}/process/session/{EXEC_SESSION_ID}",
+            self.toolbox_base
+        );
+        let resp = self
+            .http
+            .delete(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to delete session: {e}"))?;
+
+        let status = resp.status();
+        if status.is_success() || status.as_u16() == 404 {
+            Ok(())
+        } else {
+            let body = resp.text().await.unwrap_or_default();
+            Err(format!("Failed to delete session ({status}): {body}"))
+        }
+    }
+
+    /// Reset a dead session by deleting and re-creating it.
+    async fn reset_session(&self, sandbox_id: &str) -> Result<(), String> {
+        self.delete_session(sandbox_id).await?;
+        self.ensure_session(sandbox_id).await
+    }
+
     /// Execute a command in the sandbox via the Session API.
     ///
     /// Creates a persistent shell session (if needed), runs the command
@@ -364,8 +439,17 @@ impl DaytonaClient {
             .to_string();
 
         // Poll for output and completion.
+        //
+        // Dead-session detection: When a command like `exit` kills the
+        // persistent shell, Daytona keeps the session metadata alive (GET
+        // returns 200) but the command never gets an exitCode and logs stay
+        // empty. We detect this by tracking consecutive "stale" polls — polls
+        // where there is no exitCode and no new output. After enough stale
+        // polls we probe with a heartbeat command; if it also stalls, we
+        // know the session is dead and reset it.
         let deadline = std::time::Instant::now() + Duration::from_millis(timeout);
         let mut output_emitted: usize = 0;
+        let mut stale_polls: u32 = 0;
         let logs_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}/logs");
         let status_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}");
 
@@ -377,13 +461,14 @@ impl DaytonaClient {
             tokio::time::sleep(EXEC_POLL_INTERVAL).await;
 
             // Fetch session command logs (raw bytes with stream markers).
-            let logs = self
-                .toolbox_download(sandbox_id, &logs_path)
-                .await
-                .unwrap_or_default();
+            let logs_ok = self.toolbox_download(sandbox_id, &logs_path).await.ok();
 
-            let text = strip_stream_markers(&logs);
-            if text.len() > output_emitted {
+            let text = logs_ok
+                .as_deref()
+                .map(strip_stream_markers)
+                .unwrap_or_default();
+            let had_new_output = text.len() > output_emitted;
+            if had_new_output {
                 on_output(&text[output_emitted..]);
                 output_emitted = text.len();
             }
@@ -411,6 +496,48 @@ impl DaytonaClient {
                     result: final_text,
                     exit_code: exit_code as i32,
                 });
+            }
+
+            // Track stale polls: no exitCode and no new output.
+            // Only count polls where both log and status calls succeeded —
+            // transient HTTP failures should not trigger dead-session detection.
+            if had_new_output {
+                stale_polls = 0;
+            } else if status.is_ok() && logs_ok.is_some() {
+                stale_polls += 1;
+            }
+
+            // After several stale polls, probe session health with a
+            // heartbeat. If the heartbeat doesn't complete quickly, the
+            // session shell is dead.
+            if stale_polls >= crate::SESSION_STALE_THRESHOLD {
+                debug!(
+                    "Command {cmd_id} stale for {stale_polls} polls, \
+                     probing session health"
+                );
+                if self.session_heartbeat(sandbox_id).await {
+                    // Session is alive; command is just slow. Reset counter
+                    // so we don't probe again for a while.
+                    stale_polls = 0;
+                } else {
+                    debug!(
+                        "Session {EXEC_SESSION_ID} is dead (heartbeat failed); \
+                         resetting session"
+                    );
+                    return match self.reset_session(sandbox_id).await {
+                        Ok(()) => Err("Session terminated by command (the command likely ran \
+                             `exit` which killed the shell)"
+                            .to_string()),
+                        Err(e) => {
+                            debug!("Failed to reset session {EXEC_SESSION_ID}: {e}");
+                            Err(format!(
+                                "Session terminated by command (the command likely \
+                                 ran `exit` which killed the shell); additionally, \
+                                 failed to reset session: {e}"
+                            ))
+                        }
+                    };
+                }
             }
         }
     }
@@ -690,6 +817,97 @@ mod tests {
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 0);
         assert_eq!(exec_result.result, "hello world\n");
+    }
+
+    /// Simulates Daytona's real behavior when `exit` kills the session shell:
+    /// - Session metadata stays alive (GET /session → 200)
+    /// - Command status returns 200 with no exitCode (forever)
+    /// - Logs return 200 with empty body
+    /// - Heartbeat exec accepts (202) but never completes
+    /// After enough stale polls + failed heartbeat, the client detects
+    /// the dead session, resets it (DELETE + POST), and returns an error.
+    #[tokio::test]
+    async fn test_client_exec_detects_dead_session() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let mock_server = MockServer::start().await;
+        let exec_call_count = std::sync::Arc::new(AtomicU32::new(0));
+
+        // 1. Create session → 201
+        Mock::given(method("POST"))
+            .and(path("/sb_dead/process/session"))
+            .respond_with(ResponseTemplate::new(201))
+            .mount(&mock_server)
+            .await;
+
+        // 2. All exec calls → 202 with unique cmdId (both the real command
+        //    and the heartbeat probe). Use a counter to generate unique IDs.
+        let counter = exec_call_count.clone();
+        Mock::given(method("POST"))
+            .and(path("/sb_dead/process/session/everruns-exec/exec"))
+            .respond_with(move |_: &wiremock::Request| {
+                let n = counter.fetch_add(1, Ordering::SeqCst);
+                ResponseTemplate::new(202).set_body_json(json!({
+                    "cmdId": format!("cmd_{n}")
+                }))
+            })
+            .mount(&mock_server)
+            .await;
+
+        // 3. All command logs → 200 with empty body (dead shell produces nothing)
+        Mock::given(method("GET"))
+            .and(wiremock::matchers::path_regex(
+                r"/sb_dead/process/session/everruns-exec/command/cmd_\d+/logs",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![]))
+            .mount(&mock_server)
+            .await;
+
+        // 4. All command status → 200 with no exitCode (dead shell never reports)
+        Mock::given(method("GET"))
+            .and(wiremock::matchers::path_regex(
+                r"/sb_dead/process/session/everruns-exec/command/cmd_\d+$",
+            ))
+            .respond_with(|req: &wiremock::Request| {
+                let path = req.url.path();
+                let cmd_id = path.rsplit('/').next().unwrap_or("unknown");
+                ResponseTemplate::new(200).set_body_json(json!({
+                    "id": cmd_id,
+                    "command": "exit 1"
+                }))
+            })
+            .mount(&mock_server)
+            .await;
+
+        // 5. DELETE session → 204
+        Mock::given(method("DELETE"))
+            .and(path("/sb_dead/process/session/everruns-exec"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client
+            .exec("sb_dead", "exit 1", None, Some(30_000), |_| {})
+            .await;
+        assert!(result.is_err(), "Should detect dead session");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Session terminated"),
+            "Error should mention session termination, got: {err}"
+        );
+
+        // Verify the heartbeat was attempted (at least 2 exec calls: the
+        // original command + the heartbeat probe).
+        assert!(
+            exec_call_count.load(Ordering::SeqCst) >= 2,
+            "Expected at least 2 exec calls (command + heartbeat), got {}",
+            exec_call_count.load(Ordering::SeqCst)
+        );
     }
 
     #[tokio::test]
