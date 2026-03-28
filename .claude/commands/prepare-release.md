@@ -32,9 +32,12 @@ See `specs/release-process.md` for the full release process specification.
    fi
    ```
 
-3. **Show the generated list to the user** and ask them to:
-   - Review commits and confirm they look correct
-   - Provide 3-5 highlights for the release
+3. **Analyze commits and suggest highlights**:
+   - Review the commit list and identify the 3-5 most impactful **user-facing** features and changes
+   - Prioritize: new capabilities users can interact with, new integrations, significant UX improvements, security/reliability improvements that affect users
+   - Deprioritize: internal refactors, CI changes, spec/docs updates, test additions (unless they enable a user-facing feature)
+   - Present the commit list and your suggested highlights to the user
+   - Ask the user to confirm, adjust, or replace the highlights
    - Note: Add markdown links for PRs `([#123](url))` and usernames `[@user](url))`
 
 4. **After user approval**, update these files:
