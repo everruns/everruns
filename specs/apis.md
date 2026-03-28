@@ -709,7 +709,7 @@ See `specs/permissions.md` for the full policy model and `ResourceConfigResponse
 
 ### Rate Limiting
 
-Global per-IP rate limiting applies to all authenticated API routes (excludes `/health` and `/metrics`). See `crates/server/src/auth/rate_limit.rs` for implementation.
+Global per-IP rate limiting applies to all `/v1` API routes (excluding `/health` and `/metrics`), including unauthenticated endpoints. See `crates/server/src/auth/rate_limit.rs` for implementation.
 
 | Scope | Default Limit | Env Var |
 |-------|---------------|---------|
@@ -722,7 +722,7 @@ Set `RATE_LIMIT_API_REQUESTS_PER_MINUTE=0` to disable global API rate limiting. 
 
 ### Resource Limits
 
-Configurable limits on resource creation. See `crates/server/src/server.rs` for `ResourceLimits`.
+Configurable limits on resource creation. See `crates/server/src/server.rs` for `ResourceLimitsConfig`.
 
 | Resource | Default | Env Var |
 |----------|---------|---------|
@@ -746,7 +746,7 @@ Standard HTTP status codes:
 - `401` - Unauthorized (missing/invalid auth)
 - `403` - Forbidden (insufficient permissions)
 - `404` - Not Found
-- `409` - Conflict (resource limit exceeded)
+- `409` - Conflict (request conflicts with current resource state; e.g., already exists, resource limit exceeded)
 - `422` - Unprocessable Entity (validation error)
 - `429` - Too Many Requests (rate limited)
 - `500` - Internal Server Error
