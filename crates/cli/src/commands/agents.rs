@@ -19,9 +19,13 @@ pub enum AgentsCommand {
         #[arg(short, long)]
         file: Option<String>,
 
-        /// Directory of files to upload as read-only initial_files
+        /// Directory of files to upload as initial_files (read-only by default)
         #[arg(long)]
         initial_files_dir: Option<String>,
+
+        /// Make initial files writable (default: read-only)
+        #[arg(long)]
+        writable: bool,
 
         /// Agent name (required if no --file)
         #[arg(long)]
@@ -53,9 +57,13 @@ pub enum AgentsCommand {
         #[arg(short, long)]
         file: Option<String>,
 
-        /// Directory of files to upload as read-only initial_files
+        /// Directory of files to upload as initial_files (read-only by default)
         #[arg(long)]
         initial_files_dir: Option<String>,
+
+        /// Make initial files writable (default: read-only)
+        #[arg(long)]
+        writable: bool,
 
         /// Agent name
         #[arg(long)]
@@ -113,6 +121,7 @@ pub async fn run(
         AgentsCommand::Create {
             file,
             initial_files_dir,
+            writable,
             name,
             system_prompt,
             description,
@@ -133,6 +142,7 @@ pub async fn run(
                     api_key,
                     &path,
                     initial_files_dir.as_deref(),
+                    writable,
                     output,
                     quiet,
                 )
@@ -158,6 +168,7 @@ pub async fn run(
             agent_id,
             file,
             initial_files_dir,
+            writable,
             name,
             system_prompt,
             description,
@@ -179,6 +190,7 @@ pub async fn run(
                     api_key,
                     &path,
                     initial_files_dir.as_deref(),
+                    writable,
                     output,
                     quiet,
                 )
@@ -218,6 +230,7 @@ async fn import_from_file(
     api_key: &str,
     path: &str,
     initial_files_dir: Option<&str>,
+    writable: bool,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -227,7 +240,7 @@ async fn import_from_file(
     // If --initial-files-dir is provided, parse the agent file, inject the files,
     // and send as JSON so the server receives initial_files in the payload.
     let (body, content_type) = if let Some(dir) = initial_files_dir {
-        let files = glob_initial_files(dir)?;
+        let files = glob_initial_files(dir, writable)?;
         let mut agent: serde_json::Value =
             parse_agent_file_as_json(&content).context("Failed to parse agent file")?;
         agent["initial_files"] = serde_json::to_value(&files)?;
@@ -296,7 +309,7 @@ const ALLOWED_DOT_ENTRIES: &[&str] = &[".agents"];
 /// Recursively collect text files from a directory, including allowed
 /// dotfile directories (e.g. `.agents/`). Returns them as initial_files
 /// entries with paths relative to /workspace.
-fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
+fn glob_initial_files(dir: &str, writable: bool) -> Result<Vec<CollectedFile>> {
     let base =
         std::fs::canonicalize(dir).with_context(|| format!("Cannot resolve directory: {}", dir))?;
     if !base.is_dir() {
@@ -367,7 +380,7 @@ fn glob_initial_files(dir: &str) -> Result<Vec<CollectedFile>> {
                     path: workspace_path,
                     content,
                     encoding: "text".to_string(),
-                    is_readonly: true,
+                    is_readonly: !writable,
                 });
             }
             Err(_) => {
@@ -678,12 +691,22 @@ mod tests {
         std::fs::create_dir(dir.path().join(".git")).unwrap();
         std::fs::write(dir.path().join(".git/config"), "gitdata").unwrap();
 
-        let files = glob_initial_files(dir.path().to_str().unwrap()).unwrap();
+        let files = glob_initial_files(dir.path().to_str().unwrap(), false).unwrap();
         assert_eq!(files.len(), 2);
         assert!(files.iter().any(|f| f.path == "/workspace/hello.txt"));
         assert!(files.iter().any(|f| f.path == "/workspace/sub/nested.txt"));
         assert!(files.iter().all(|f| f.is_readonly));
         assert!(files.iter().all(|f| f.encoding == "text"));
+    }
+
+    #[test]
+    fn test_glob_initial_files_writable() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hello.txt"), "world").unwrap();
+
+        let files = glob_initial_files(dir.path().to_str().unwrap(), true).unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files.iter().all(|f| !f.is_readonly));
     }
 
     #[test]
@@ -697,7 +720,7 @@ mod tests {
         )
         .unwrap();
 
-        let files = glob_initial_files(dir.path().to_str().unwrap()).unwrap();
+        let files = glob_initial_files(dir.path().to_str().unwrap(), false).unwrap();
         assert_eq!(files.len(), 2);
         assert!(files.iter().any(|f| f.path == "/workspace/agent.md"));
         assert!(
@@ -710,7 +733,7 @@ mod tests {
     #[test]
     fn test_glob_initial_files_empty_dir() {
         let dir = tempfile::tempdir().unwrap();
-        let result = glob_initial_files(dir.path().to_str().unwrap());
+        let result = glob_initial_files(dir.path().to_str().unwrap(), false);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("No files found"));
     }
@@ -720,7 +743,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("file.txt");
         std::fs::write(&file_path, "content").unwrap();
-        let result = glob_initial_files(file_path.to_str().unwrap());
+        let result = glob_initial_files(file_path.to_str().unwrap(), false);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Not a directory"));
     }
@@ -737,7 +760,7 @@ mod tests {
         )
         .unwrap();
         // Should error because only file is the symlink (skipped)
-        let result = glob_initial_files(dir.path().to_str().unwrap());
+        let result = glob_initial_files(dir.path().to_str().unwrap(), false);
         assert!(result.is_err());
     }
 
