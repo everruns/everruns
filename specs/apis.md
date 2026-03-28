@@ -438,6 +438,8 @@ User-scoped external service accounts (e.g., GitHub) for repo access. See [user-
 |--------|------|-------------|
 | GET | `/v1/users` | List users in current organization (supports `?search=` query) |
 | PATCH | `/v1/users/me` | Update current user's profile (`name`, `locale`, `timezone`). |
+| DELETE | `/v1/users/me` | Delete current user's account and all associated data |
+| GET | `/v1/users/me/export` | Export current user's data (GDPR data portability) |
 | POST | `/v1/users/me/switch-org` | Switch current organization context |
 
 `PATCH /v1/users/me` should use patch semantics:
@@ -705,6 +707,31 @@ GET /v1/{resource}/config → ResourceConfigResponse
 
 See `specs/permissions.md` for the full policy model and `ResourceConfigResponse` details.
 
+### Rate Limiting
+
+Global per-IP rate limiting applies to all `/v1` API routes (excluding `/health` and `/metrics`), including unauthenticated endpoints. See `crates/server/src/auth/rate_limit.rs` for implementation.
+
+| Scope | Default Limit | Env Var |
+|-------|---------------|---------|
+| Global API | 120 req/min per IP | `RATE_LIMIT_API_REQUESTS_PER_MINUTE` |
+| Login | 10 req/min per IP | — |
+| Register | 5 req/min per IP | — |
+| Token refresh | 30 req/min per IP | — |
+
+Set `RATE_LIMIT_API_REQUESTS_PER_MINUTE=0` to disable global API rate limiting. Auth endpoint limits are not configurable. Returns `429 Too Many Requests` when exceeded.
+
+### Resource Limits
+
+Configurable limits on resource creation. See `crates/server/src/server.rs` for `ResourceLimitsConfig`.
+
+| Resource | Default | Env Var |
+|----------|---------|---------|
+| Orgs per user | 5 | `RESOURCE_LIMIT_MAX_ORGS_PER_USER` |
+| Members per org | 50 | `RESOURCE_LIMIT_MAX_MEMBERS_PER_ORG` |
+| API keys per user per org | 10 | `RESOURCE_LIMIT_MAX_API_KEYS_PER_USER_PER_ORG` |
+
+Returns `409 Conflict` when a limit is exceeded.
+
 ### Error Responses
 
 ```json
@@ -719,7 +746,9 @@ Standard HTTP status codes:
 - `401` - Unauthorized (missing/invalid auth)
 - `403` - Forbidden (insufficient permissions)
 - `404` - Not Found
+- `409` - Conflict (request conflicts with current resource state; e.g., already exists, resource limit exceeded)
 - `422` - Unprocessable Entity (validation error)
+- `429` - Too Many Requests (rate limited)
 - `500` - Internal Server Error
 
 ### Error Handling Guidelines
