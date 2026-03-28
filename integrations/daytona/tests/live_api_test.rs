@@ -176,10 +176,10 @@ async fn test_live_exec_cwd_and_exit_code() {
         result.result
     );
 
-    // Nonzero exit code — use `bash -c` to run in a subshell so the
+    // Nonzero exit code — use `sh -c` to run in a subshell so the
     // persistent session shell is not killed by `exit`.
     let result = client
-        .exec(id, "bash -c 'exit 42'", None, None, |_| {})
+        .exec(id, "sh -c 'exit 42'", None, None, |_| {})
         .await
         .expect("exec with nonzero exit failed");
     assert_ne!(result.exit_code, 0, "Expected nonzero exit code, got 0");

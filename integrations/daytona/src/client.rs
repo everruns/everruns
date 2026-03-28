@@ -461,12 +461,12 @@ impl DaytonaClient {
             tokio::time::sleep(EXEC_POLL_INTERVAL).await;
 
             // Fetch session command logs (raw bytes with stream markers).
-            let logs = self
-                .toolbox_download(sandbox_id, &logs_path)
-                .await
-                .unwrap_or_default();
+            let logs_ok = self.toolbox_download(sandbox_id, &logs_path).await.ok();
 
-            let text = strip_stream_markers(&logs);
+            let text = logs_ok
+                .as_deref()
+                .map(strip_stream_markers)
+                .unwrap_or_default();
             let had_new_output = text.len() > output_emitted;
             if had_new_output {
                 on_output(&text[output_emitted..]);
@@ -499,9 +499,11 @@ impl DaytonaClient {
             }
 
             // Track stale polls: no exitCode and no new output.
+            // Only count polls where both log and status calls succeeded —
+            // transient HTTP failures should not trigger dead-session detection.
             if had_new_output {
                 stale_polls = 0;
-            } else {
+            } else if status.is_ok() && logs_ok.is_some() {
                 stale_polls += 1;
             }
 
@@ -522,10 +524,19 @@ impl DaytonaClient {
                         "Session {EXEC_SESSION_ID} is dead (heartbeat failed); \
                          resetting session"
                     );
-                    let _ = self.reset_session(sandbox_id).await;
-                    return Err("Session terminated by command (the command likely ran \
-                         `exit` which killed the shell)"
-                        .to_string());
+                    return match self.reset_session(sandbox_id).await {
+                        Ok(()) => Err("Session terminated by command (the command likely ran \
+                             `exit` which killed the shell)"
+                            .to_string()),
+                        Err(e) => {
+                            debug!("Failed to reset session {EXEC_SESSION_ID}: {e}");
+                            Err(format!(
+                                "Session terminated by command (the command likely \
+                                 ran `exit` which killed the shell); additionally, \
+                                 failed to reset session: {e}"
+                            ))
+                        }
+                    };
                 }
             }
         }
@@ -888,6 +899,14 @@ mod tests {
         assert!(
             err.contains("Session terminated"),
             "Error should mention session termination, got: {err}"
+        );
+
+        // Verify the heartbeat was attempted (at least 2 exec calls: the
+        // original command + the heartbeat probe).
+        assert!(
+            exec_call_count.load(Ordering::SeqCst) >= 2,
+            "Expected at least 2 exec calls (command + heartbeat), got {}",
+            exec_call_count.load(Ordering::SeqCst)
         );
     }
 
