@@ -1404,168 +1404,138 @@ impl DurableWorker {
                 // Carry response_id forward for next reason iteration
                 chained_input.previous_response_id = reason_result.response_id.clone();
 
-                // Consume pending signals and let the shared scheduler decide
-                let pending_signals = if !reason_result.has_tool_calls && reason_result.success {
-                    store
+                // Check for pending user messages (steering signals) only when
+                // the turn would otherwise complete (no tool calls, success).
+                let has_pending_user_messages = if !reason_result.has_tool_calls
+                    && reason_result.success
+                {
+                    let signals = store
                         .get_and_consume_signals(workflow_id)
                         .await
-                        .unwrap_or_default()
-                } else {
-                    vec![]
-                };
-
-                let decision =
-                    crate::turn_scheduler::after_reason_completed(&reason_result, &pending_signals);
-
-                match decision {
-                    crate::turn_scheduler::ReasonDecision::ScheduleAct => {
-                        let tool_count = reason_result.tool_calls.len();
-                        let turn_id = input.turn_id.unwrap_or_default();
-
-                        let act_task_input = ActTaskInput {
-                            org_id: input.org_id,
-                            act_input: ActInput {
-                                org_id: Some(input.org_id),
-                                context: AtomContext {
-                                    session_id: input.session_id,
-                                    turn_id,
-                                    input_message_id: input.input_message_id,
-                                    exec_id: ExecId::new(),
-                                },
-                                harness_id: input.harness_id,
-                                agent_id: input.agent_id,
-                                tool_calls: reason_result.tool_calls,
-                                tool_definitions: reason_result.tool_definitions,
-                                locale: reason_result.locale,
-                                blueprint_id: None,
-                            },
-                        };
-                        let mut act_input_json = serde_json::to_value(&act_task_input)?;
-                        if let Some(rid) = &chained_input.previous_response_id {
-                            act_input_json["previous_response_id"] = serde_json::json!(rid);
-                        }
-                        act_input_json["iteration"] = serde_json::json!(input.iteration);
-
-                        store
-                            .enqueue_task(
-                                workflow_id,
-                                format!("act_{}", Uuid::now_v7()),
-                                "act".to_string(),
-                                act_input_json,
-                            )
-                            .await
-                            .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
-
-                        debug!(
-                            workflow_id = %workflow_id,
-                            tool_count = tool_count,
-                            "Scheduled act activity for tool execution"
-                        );
-                    }
-                    crate::turn_scheduler::ReasonDecision::ContinueTurn {
-                        queued_message_count,
-                    } => {
-                        let next_iteration = input.iteration.saturating_add(1);
-                        let continued_input = DurableTurnInput {
-                            org_id: input.org_id,
-                            session_id: input.session_id,
-                            harness_id: input.harness_id,
-                            agent_id: input.agent_id,
-                            input_message_id: input.input_message_id,
-                            turn_id: input.turn_id,
-                            previous_response_id: chained_input.previous_response_id.clone(),
-                            iteration: next_iteration,
-                        };
-                        let continued_json = serde_json::to_value(&continued_input)?;
-
-                        store
-                            .enqueue_task(
-                                workflow_id,
-                                format!("reason_{}", Uuid::now_v7()),
-                                "reason".to_string(),
-                                continued_json,
-                            )
-                            .await
-                            .map_err(|e| {
-                                anyhow::anyhow!("Failed to enqueue steered reason iteration: {}", e)
-                            })?;
-
+                        .unwrap_or_default();
+                    let count = signals
+                        .iter()
+                        .filter(|s| s.signal_type == everruns_durable::signal_types::USER_MESSAGE)
+                        .count();
+                    if count > 1 {
                         info!(
                             workflow_id = %workflow_id,
-                            iteration = next_iteration,
-                            queued_messages = queued_message_count,
-                            "Steering: continuing turn with new reason iteration"
+                            queued_count = count,
+                            "Multiple user messages arrived during turn"
                         );
                     }
-                    crate::turn_scheduler::ReasonDecision::Complete => {
-                        let turn_id = input.turn_id.unwrap_or_default();
-                        let grpc_address = self.grpc_address.clone();
-                        let org_id = input.org_id;
-                        let session_id = input.session_id;
-                        let input_message_id = input.input_message_id;
-                        let iteration = input.iteration;
-                        let usage = reason_result.usage.clone();
+                    count > 0
+                } else {
+                    false
+                };
 
-                        store
-                            .update_workflow_status(
-                                workflow_id,
-                                WorkflowStatus::Completed,
-                                None,
-                                None,
-                            )
-                            .await
-                            .map_err(|e| {
-                                anyhow::anyhow!("Failed to update workflow status: {}", e)
-                            })?;
+                if reason_result.has_tool_calls && reason_result.success {
+                    let tool_count = reason_result.tool_calls.len();
+                    let turn_id = input.turn_id.unwrap_or_default();
 
-                        drop(store);
-
-                        emit_session_idled(
-                            &grpc_address,
-                            org_id,
-                            session_id,
-                            turn_id,
-                            input_message_id,
-                            Some(iteration),
-                            usage,
-                        )
-                        .await;
-
-                        info!(workflow_id = %workflow_id, "Workflow completed");
-                        return Ok(());
+                    let act_task_input = ActTaskInput {
+                        org_id: input.org_id,
+                        act_input: ActInput {
+                            org_id: Some(input.org_id),
+                            context: AtomContext {
+                                session_id: input.session_id,
+                                turn_id,
+                                input_message_id: input.input_message_id,
+                                exec_id: ExecId::new(),
+                            },
+                            harness_id: input.harness_id,
+                            agent_id: input.agent_id,
+                            tool_calls: reason_result.tool_calls,
+                            tool_definitions: reason_result.tool_definitions,
+                            locale: reason_result.locale,
+                            blueprint_id: None,
+                        },
+                    };
+                    let mut act_input_json = serde_json::to_value(&act_task_input)?;
+                    if let Some(rid) = &chained_input.previous_response_id {
+                        act_input_json["previous_response_id"] = serde_json::json!(rid);
                     }
-                    crate::turn_scheduler::ReasonDecision::Failed => {
-                        let turn_id = input.turn_id.unwrap_or_default();
-                        let grpc_address = self.grpc_address.clone();
+                    act_input_json["iteration"] = serde_json::json!(input.iteration);
 
-                        store
-                            .update_workflow_status(
-                                workflow_id,
-                                WorkflowStatus::Completed,
-                                None,
-                                reason_result.error.clone(),
-                            )
-                            .await
-                            .map_err(|e| {
-                                anyhow::anyhow!("Failed to update workflow status: {}", e)
-                            })?;
-
-                        drop(store);
-
-                        emit_session_idled(
-                            &grpc_address,
-                            input.org_id,
-                            input.session_id,
-                            turn_id,
-                            input.input_message_id,
-                            Some(input.iteration),
-                            None,
+                    store
+                        .enqueue_task(
+                            workflow_id,
+                            format!("act_{}", Uuid::now_v7()),
+                            "act".to_string(),
+                            act_input_json,
                         )
-                        .await;
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
 
-                        info!(workflow_id = %workflow_id, "Workflow completed (failed)");
-                        return Ok(());
-                    }
+                    debug!(
+                        workflow_id = %workflow_id,
+                        tool_count = tool_count,
+                        "Scheduled act activity for tool execution"
+                    );
+                } else if has_pending_user_messages {
+                    // User message(s) arrived during this turn. Continue the same
+                    // turn — the message retriever re-queries the DB on next reason.
+                    let next_iteration = input.iteration.saturating_add(1);
+                    let continued_input = DurableTurnInput {
+                        org_id: input.org_id,
+                        session_id: input.session_id,
+                        harness_id: input.harness_id,
+                        agent_id: input.agent_id,
+                        input_message_id: input.input_message_id,
+                        turn_id: input.turn_id,
+                        previous_response_id: chained_input.previous_response_id.clone(),
+                        iteration: next_iteration,
+                    };
+                    let continued_json = serde_json::to_value(&continued_input)?;
+
+                    store
+                        .enqueue_task(
+                            workflow_id,
+                            format!("reason_{}", Uuid::now_v7()),
+                            "reason".to_string(),
+                            continued_json,
+                        )
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to enqueue steered reason iteration: {}", e)
+                        })?;
+
+                    info!(
+                        workflow_id = %workflow_id,
+                        iteration = next_iteration,
+                        "Steering: continuing turn with new reason iteration"
+                    );
+                } else {
+                    // Turn truly complete. Emit session.idled and mark done.
+                    let turn_id = input.turn_id.unwrap_or_default();
+                    let grpc_address = self.grpc_address.clone();
+                    let org_id = input.org_id;
+                    let session_id = input.session_id;
+                    let input_message_id = input.input_message_id;
+                    let iteration = input.iteration;
+                    let usage = reason_result.usage.clone();
+                    let error = reason_result.error.clone();
+
+                    store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, error)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+
+                    drop(store);
+
+                    emit_session_idled(
+                        &grpc_address,
+                        org_id,
+                        session_id,
+                        turn_id,
+                        input_message_id,
+                        Some(iteration),
+                        usage,
+                    )
+                    .await;
+
+                    info!(workflow_id = %workflow_id, "Workflow completed");
+                    return Ok(());
                 }
             }
             "act" => {

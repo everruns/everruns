@@ -21,7 +21,6 @@ pub mod mcp_executor;
 pub mod platform;
 pub mod runner;
 pub mod session_lifecycle;
-pub mod turn_scheduler;
 pub mod unified_worker;
 pub mod worker_adapters;
 
