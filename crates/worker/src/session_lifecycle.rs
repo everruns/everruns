@@ -80,6 +80,10 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
     }
 
     /// Turn completed successfully: emit turn.completed + session.idled, set session to "idle".
+    ///
+    /// Use this only when the turn is truly done and no steering signals are pending.
+    /// If steering signals may exist, use [`emit_turn_completed`] first, check signals,
+    /// then call [`emit_session_idled`] only if no signals were found.
     pub async fn turn_completed(
         &self,
         turn_id: TurnId,
@@ -87,6 +91,58 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
         iterations: u32,
         usage: Option<TokenUsage>,
         input_content: Option<String>,
+    ) {
+        self.emit_turn_completed(
+            turn_id,
+            input_message_id,
+            iterations,
+            usage.clone(),
+            input_content,
+        )
+        .await;
+        self.emit_session_idled(turn_id, input_message_id, Some(iterations), usage)
+            .await;
+    }
+
+    /// Emit turn.completed event only (no session status change).
+    ///
+    /// Call this from reason activity completion, then check for steering signals
+    /// before deciding whether to idle the session or continue the turn.
+    pub async fn emit_turn_completed(
+        &self,
+        turn_id: TurnId,
+        input_message_id: MessageId,
+        iterations: u32,
+        usage: Option<TokenUsage>,
+        input_content: Option<String>,
+    ) {
+        let turn_completed_event = EventRequest::new(
+            self.session_id,
+            EventContext::turn(turn_id, input_message_id),
+            TurnCompletedData {
+                turn_id,
+                iterations,
+                duration_ms: None,
+                usage,
+                input_content,
+            },
+        );
+        if let Err(e) = self.adapters.emit_event(turn_completed_event).await {
+            warn!(error = %e, "Failed to emit turn.completed event");
+        }
+    }
+
+    /// Emit session.idled event and set session status to "idle".
+    ///
+    /// Call this only after confirming no pending steering signals exist.
+    /// This separation prevents idle→active flicker when a queued user message
+    /// triggers a consecutive reason iteration within the same turn.
+    pub async fn emit_session_idled(
+        &self,
+        turn_id: TurnId,
+        input_message_id: MessageId,
+        iterations: Option<u32>,
+        usage: Option<TokenUsage>,
     ) {
         if let Err(e) = self
             .adapters
@@ -96,27 +152,12 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
             warn!(error = %e, "Failed to set session status to idle");
         }
 
-        let turn_completed_event = EventRequest::new(
-            self.session_id,
-            EventContext::turn(turn_id, input_message_id),
-            TurnCompletedData {
-                turn_id,
-                iterations,
-                duration_ms: None,
-                usage: usage.clone(),
-                input_content,
-            },
-        );
-        if let Err(e) = self.adapters.emit_event(turn_completed_event).await {
-            warn!(error = %e, "Failed to emit turn.completed event");
-        }
-
         let idled_event = EventRequest::new(
             self.session_id,
             EventContext::turn(turn_id, input_message_id),
             SessionIdledData {
                 turn_id,
-                iterations: Some(iterations),
+                iterations,
                 usage,
             },
         );

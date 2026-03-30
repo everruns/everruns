@@ -448,6 +448,27 @@ impl TurnStateMachine {
     pub fn is_completed(&self) -> bool {
         self.phase == TurnPhase::Completed
     }
+
+    /// Signal that new user messages were received during this turn.
+    ///
+    /// If the turn was about to complete successfully (no tool calls, no error),
+    /// re-enter PendingReason so the next reason iteration picks up the new
+    /// messages from the conversation history. This implements "in-turn steering"
+    /// — mid-turn user messages are injected into the active context rather than
+    /// queued for a separate turn, matching how Claude Code and Codex behave.
+    ///
+    /// Returns `true` if the turn was re-opened for another iteration,
+    /// `false` if it cannot be (e.g., the turn failed or hasn't completed yet).
+    pub fn on_pending_user_message(&mut self) -> bool {
+        // Only re-open a successfully completed turn (no error).
+        // Failed turns should stay completed — the error is terminal.
+        if self.phase == TurnPhase::Completed && self.pending_error.is_none() {
+            self.phase = TurnPhase::PendingReason;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 // ============================================================================
@@ -602,5 +623,66 @@ mod tests {
         assert!(!failed.is_success());
         assert!(failed.response().is_none());
         assert_eq!(failed.error(), Some("oops"));
+    }
+
+    #[test]
+    fn test_pending_user_message_reopens_completed_turn() {
+        let mut sm = TurnStateMachine::new(test_context(), 10);
+
+        // Run a simple turn to completion (no tools)
+        sm.on_input_completed();
+        sm.on_reason_completed("Hello!".to_string(), false, 0, true, None);
+        assert!(sm.is_completed());
+
+        // Pending user message should re-open the turn
+        assert!(sm.on_pending_user_message());
+        assert_eq!(sm.phase(), TurnPhase::PendingReason);
+        assert!(!sm.is_completed());
+
+        // Next action should be ExecuteReason
+        assert!(matches!(sm.next_action(), TurnAction::ExecuteReason));
+
+        // Second reason completes normally
+        sm.on_reason_completed("Got your message!".to_string(), false, 0, true, None);
+        match sm.next_action() {
+            TurnAction::Complete(TurnOutcome::Success {
+                response,
+                iterations,
+                ..
+            }) => {
+                assert_eq!(response, "Got your message!");
+                assert_eq!(iterations, 2); // Two reason iterations in one turn
+            }
+            other => panic!("Expected Success, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_pending_user_message_does_not_reopen_failed_turn() {
+        let mut sm = TurnStateMachine::new(test_context(), 10);
+
+        sm.on_input_completed();
+        sm.on_reason_completed(
+            String::new(),
+            false,
+            0,
+            false,
+            Some("LLM error".to_string()),
+        );
+        assert!(sm.is_completed());
+
+        // Should NOT re-open a failed turn
+        assert!(!sm.on_pending_user_message());
+        assert!(sm.is_completed());
+    }
+
+    #[test]
+    fn test_pending_user_message_during_active_turn_noop() {
+        let mut sm = TurnStateMachine::new(test_context(), 10);
+
+        sm.on_input_completed();
+        // Turn is in PendingReason, not Completed
+        assert!(!sm.on_pending_user_message());
+        assert_eq!(sm.phase(), TurnPhase::PendingReason);
     }
 }

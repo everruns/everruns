@@ -562,6 +562,7 @@ where
                     if let (Some(turn_input), Some(wf_id)) = (turn_input_opt, task.workflow_id) {
                         schedule_next_activity(
                             store,
+                            adapters,
                             wf_id,
                             &task.activity_type,
                             &turn_input,
@@ -730,11 +731,17 @@ async fn execute_reason_activity<A: WorkerAdapters>(
 
     let result = atom.execute(reason_input).await?;
 
-    // If turn is complete (no tool calls or failure), emit lifecycle events.
-    // Client-side tool handling is now done by ActAtom's hooks.
+    // If turn is complete (no tool calls or failure), emit turn-level events.
+    //
+    // IMPORTANT: session.idled is NOT emitted here. It is deferred to the
+    // scheduler (schedule_next_activity) which checks for pending steering
+    // signals before deciding whether to idle the session or continue the
+    // turn with another reason iteration. This prevents the idle→active
+    // status flicker when a queued user message triggers a continuation.
     let turn_complete = !result.has_tool_calls || !result.success;
     if turn_complete {
         if !result.success {
+            // Failures are terminal — emit turn.failed + session.idled immediately
             lifecycle
                 .turn_failed(
                     turn_id,
@@ -744,8 +751,11 @@ async fn execute_reason_activity<A: WorkerAdapters>(
                 )
                 .await;
         } else {
+            // Success with no tool calls — emit only turn.completed.
+            // session.idled will be emitted by the scheduler after checking
+            // for pending steering signals.
             lifecycle
-                .turn_completed(
+                .emit_turn_completed(
                     turn_id,
                     input_message_id,
                     input.iteration,
@@ -841,8 +851,9 @@ async fn execute_act_activity<A: WorkerAdapters>(
 // =============================================================================
 
 /// Schedule the next activity based on current activity completion
-async fn schedule_next_activity<S: WorkflowEventStore>(
+async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone>(
     store: &Arc<S>,
+    adapters: &A,
     workflow_id: Uuid,
     completed_activity: &str,
     input: &DurableTurnInput,
@@ -950,15 +961,96 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
 
                 debug!(workflow_id = %workflow_id, "Scheduled act activity");
             } else {
-                // Workflow complete
-                record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
-
-                store
-                    .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
+                // No tool calls or failure — turn wants to complete.
+                // Check for pending steering signals (user messages that arrived
+                // during this turn). If found, continue the SAME turn with another
+                // reason iteration — the message retriever re-queries the DB and
+                // picks up the new input.message event(s) naturally.
+                let pending_signals = store
+                    .consume_pending_signals(workflow_id)
                     .await
-                    .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+                    .unwrap_or_default();
 
-                info!(workflow_id = %workflow_id, "Workflow completed");
+                let user_message_count = pending_signals
+                    .iter()
+                    .filter(|sig| sig.signal_type == everruns_durable::signal_types::USER_MESSAGE)
+                    .count();
+
+                if user_message_count > 0 {
+                    if user_message_count > 1 {
+                        info!(
+                            workflow_id = %workflow_id,
+                            queued_count = user_message_count,
+                            "Multiple user messages arrived during turn — all in \
+                             conversation history, continuing with next reason iteration"
+                        );
+                    }
+
+                    // Continue the same turn with another reason iteration
+                    let next_iteration = input.iteration.saturating_add(1);
+                    let continued_input = DurableTurnInput {
+                        org_id: input.org_id,
+                        session_id: input.session_id,
+                        harness_id: input.harness_id,
+                        agent_id: input.agent_id,
+                        input_message_id: input.input_message_id,
+                        turn_id: input.turn_id,
+                        previous_response_id: response_id,
+                        iteration: next_iteration,
+                    };
+                    let continued_json = serde_json::to_value(&continued_input)?;
+                    let activity_id = format!("reason_{}", Uuid::now_v7());
+
+                    let task = everruns_durable::TaskDefinition {
+                        workflow_id: Some(workflow_id),
+                        activity_id: activity_id.clone(),
+                        activity_type: "reason".to_string(),
+                        input: continued_json.clone(),
+                        options: Default::default(),
+                    };
+                    store.enqueue_task(task).await.map_err(|e| {
+                        anyhow::anyhow!("Failed to enqueue steered reason iteration: {}", e)
+                    })?;
+
+                    let scheduled_event = WorkflowEvent::ActivityScheduled {
+                        activity_id,
+                        activity_type: "reason".to_string(),
+                        input: continued_json,
+                        options: ActivityOptions::default(),
+                    };
+                    let _ = append_event(store.as_ref(), workflow_id, scheduled_event).await;
+
+                    info!(
+                        workflow_id = %workflow_id,
+                        iteration = next_iteration,
+                        queued_messages = user_message_count,
+                        "Steering: continuing turn with new reason iteration \
+                         to process mid-turn user message(s)"
+                    );
+                } else {
+                    // No pending messages — workflow truly complete.
+                    // NOW emit session.idled and set session status to idle.
+                    let turn_id = input.turn_id.unwrap_or_default();
+                    let lifecycle =
+                        SessionLifecycle::new(adapters.clone(), input.org_id, input.session_id);
+                    lifecycle
+                        .emit_session_idled(
+                            turn_id,
+                            input.input_message_id,
+                            Some(input.iteration),
+                            reason_result.usage.clone(),
+                        )
+                        .await;
+
+                    record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
+
+                    store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+
+                    info!(workflow_id = %workflow_id, "Workflow completed");
+                }
             }
         }
         "act" => {
