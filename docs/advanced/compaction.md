@@ -122,7 +122,7 @@ The flow for a long-running Generic session:
        │
        ▼
 4. Messages trimmed or summarized away remain
-   queryable via query_history
+   queryable via `query_history`
 ```
 
 No configuration is needed — creating a session with the Generic harness gives you this behavior out of the box. To customize, override either capability's config on the agent or session level.
