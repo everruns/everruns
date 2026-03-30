@@ -528,7 +528,8 @@ case "$cmd" in
     export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
     export DEPLOYMENT_GRADE=dev
     if [ -z "${WORKER_GRPC_AUTH_TOKEN:-}" ]; then
-      WORKER_GRPC_AUTH_TOKEN="$(head -c 32 /dev/urandom | base64 | tr -d '=+/\n\r\t' | head -c 32)"
+      _raw="$(head -c 32 /dev/urandom | base64 | tr -d '=+/\n\r\t')"
+      WORKER_GRPC_AUTH_TOKEN="${_raw:0:32}"
     fi
     export WORKER_GRPC_AUTH_TOKEN
     export RUST_LOG=${RUST_LOG:-info}
@@ -812,7 +813,8 @@ case "$cmd" in
     export FRONTEND_URL=${FRONTEND_URL:-$PROXY_URL_DEFAULT}
     export DEPLOYMENT_GRADE=dev
     if [ -z "${WORKER_GRPC_AUTH_TOKEN:-}" ]; then
-      WORKER_GRPC_AUTH_TOKEN="$(head -c 32 /dev/urandom | base64 | tr -d '=+/\n\r\t' | head -c 32)"
+      _raw="$(head -c 32 /dev/urandom | base64 | tr -d '=+/\n\r\t')"
+      WORKER_GRPC_AUTH_TOKEN="${_raw:0:32}"
     fi
     export WORKER_GRPC_AUTH_TOKEN
     export RUST_LOG=${RUST_LOG:-info}
