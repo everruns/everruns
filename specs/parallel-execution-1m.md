@@ -458,24 +458,87 @@ impl LlmRouter {
 
 **Impact**: Maximizes LLM throughput across all available API keys. Prevents 429s from killing agent runs. Priority queuing ensures interactive agents aren't starved by background batch jobs.
 
-#### 3d. Event Streaming with Kafka/Redpanda
+#### 3d. Event Log as Separate Storage
 
-For 1M+ agents, move event storage to a streaming platform:
+The `events` table is everruns' highest-volume table. It's append-only (enforced by `prevent_event_mutation()` trigger), ordered by `(session_id, sequence)`, and accessed almost exclusively by session_id. This is a **log**, not relational data — it shares no foreign keys with anything except sessions, and the only queries are "give me events for session X since sequence Y."
+
+PostgreSQL is the wrong tool for a high-throughput append-only log. The current schema (4 indexes, JSONB data column, UUIDv7 PK, sequence allocation via row lock) adds overhead that a log doesn't need.
+
+**Pattern: Event log as first-class separate storage** (same as Codex)
+
+OpenAI Codex stores the message log separately from agent state. This isn't just an optimization — it's a recognition that events have fundamentally different access patterns from relational data:
+
+| Property | Relational state (sessions, agents) | Event log |
+|---|---|---|
+| Access pattern | Random read/write by ID | Append + sequential read by session |
+| Volume | Low (1 row per session) | High (100s-1000s per session) |
+| Mutations | Frequent (status updates) | Never (append-only) |
+| Indexes needed | Many (status, org, agent, timestamps) | One (session_id + sequence) |
+| Consistency | ACID required | Ordered append sufficient |
+| Retention | Permanent | Tiered (hot/warm/cold) |
+
+**Implementation: Kafka/Redpanda as primary event store**
 
 ```
-Workers → Kafka/Redpanda (events topic, partitioned by session_id)
-                ↓
-         Consumer: PostgreSQL writer (batched, async)
-         Consumer: SSE broadcaster (real-time)
-         Consumer: Analytics pipeline
+                    Write path (hot)                    Read path
+                    ─────────────                       ─────────
+Worker executes     Kafka topic: events                 SSE stream subscribes
+  turn atom     ──► partitioned by session_id ────────► to Kafka partition
+  │                      │                                   │
+  │                      │ consumer group                    │ (real-time)
+  │                      ▼                                   │
+  │                 Batch writer                              │
+  │                   (async)                                 │
+  │                      │                                   │
+  │                      ▼                                   │
+  │                 PostgreSQL                                │
+  │                 events table ◄───────────────────────── REST API
+  │                 (cold storage)            (historical queries,
+  │                                           dashboard, search)
+  │
+  └─► gRPC: update session status, workflow state → PostgreSQL (directly)
 ```
 
-- Events written to Kafka first (high-throughput append)
-- Async consumer batches into PostgreSQL for durability/queries
-- SSE connections read from Kafka directly (no PostgreSQL polling)
-- Retention policy: hot events in Kafka (7 days), cold in PostgreSQL
+**What changes in the codebase:**
 
-**Impact**: Event write throughput effectively unlimited. Decouples write path from read path.
+1. **`EventService.create_event()`** — currently calls `Database.create_event()` which does `INSERT INTO events`. Change to publish to Kafka topic. Sequence allocation moves from PG function (`allocate_event_sequence`) to Kafka partition offset (naturally ordered).
+
+2. **`EventNotificationBroadcaster`** — currently listens on PG `NOTIFY 'event_available'`. Replace with Kafka consumer that pushes to in-process broadcast channels. No PG listener needed.
+
+3. **SSE event streams** — currently poll PG with `list_events(session_id, since_sequence)`. Change to subscribe to Kafka partition for the session. Instant delivery, no polling.
+
+4. **REST `GET /v1/sessions/{id}/events`** — unchanged, reads from PG (cold storage). Kafka consumer backfills PG asynchronously (seconds of lag, acceptable for REST).
+
+5. **`events` table in PG** — kept as cold storage for historical queries, search, dashboards. Indexes can be reduced (no need for real-time partial indexes on turn/tool events since those are served from Kafka).
+
+**Sequence numbering without PostgreSQL:**
+
+Current `allocate_event_sequence()` uses a PG advisory lock per session to allocate monotonic sequence numbers. This is a per-session bottleneck (serializes event creation within a session).
+
+With Kafka, sequence = Kafka offset within the session's partition. Since each session maps to one partition (by `session_id` hash), ordering is guaranteed by Kafka. No locks, no allocation.
+
+For sessions that span partitions (unlikely but possible with repartitioning), use a logical sequence counter in the worker's in-memory session state, included in the Kafka message payload.
+
+**Retention tiers:**
+
+| Tier | Storage | Retention | Purpose |
+|---|---|---|---|
+| Hot | Kafka | 7 days | Real-time SSE, recent session replay |
+| Warm | PostgreSQL | 90 days | REST API, dashboard queries, search |
+| Cold | S3/object store | Indefinite | Audit trail, compliance, replay |
+
+The Kafka → PG consumer only writes events older than a few seconds (batched, COPY protocol). The Kafka → S3 consumer runs daily, compacting events into Parquet files by org/session for cheap long-term storage.
+
+**Capacity at 1M agents:**
+
+| Metric | Value |
+|---|---|
+| Events/sec peak (1M agents × 5 events/turn, 1 turn/sec) | 5M/sec |
+| Kafka partitions | 256 (handles 5M/sec easily) |
+| Kafka cluster | 3 brokers (Redpanda: single binary, lower ops) |
+| Kafka retention | 7 days (~3TB at 100 bytes/event avg) |
+| PG backfill rate | ~100K inserts/sec (batched COPY, well within PG capacity) |
+| PG backfill lag | 2-5 seconds (acceptable for cold storage) |
 
 ## Capacity Planning
 
