@@ -527,6 +527,7 @@ case "$cmd" in
     export FRONTEND_URL=${FRONTEND_URL:-$PROXY_URL_DEFAULT}
     export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
     export DEPLOYMENT_GRADE=dev
+    export WORKER_GRPC_AUTH_TOKEN=${WORKER_GRPC_AUTH_TOKEN:-local-dev-token}
     export RUST_LOG=${RUST_LOG:-info}
     if [ "$NO_WATCH" = true ]; then
       echo "3️⃣  Starting API server (auto-migrates on startup)..."
@@ -807,6 +808,7 @@ case "$cmd" in
     export AUTH_BASE_URL=${AUTH_BASE_URL:-${PROXY_URL_DEFAULT}/api}
     export FRONTEND_URL=${FRONTEND_URL:-$PROXY_URL_DEFAULT}
     export DEPLOYMENT_GRADE=dev
+    export WORKER_GRPC_AUTH_TOKEN=${WORKER_GRPC_AUTH_TOKEN:-local-dev-token}
     export RUST_LOG=${RUST_LOG:-info}
 
     echo "5️⃣  Starting server (release)..."

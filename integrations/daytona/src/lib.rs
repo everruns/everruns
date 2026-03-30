@@ -59,9 +59,9 @@ const EXEC_TIMEOUT_MS: u64 = 120_000;
 const EXEC_POLL_INTERVAL: Duration = Duration::from_millis(1_000);
 /// Number of consecutive stale polls (no exitCode, no new output) before
 /// probing session health with a heartbeat command.
-const SESSION_STALE_THRESHOLD: u32 = 5;
+const SESSION_STALE_THRESHOLD: u32 = 30;
 /// Timeout (ms) for the heartbeat probe command (`true`).
-const SESSION_HEARTBEAT_TIMEOUT_MS: u64 = 5_000;
+const SESSION_HEARTBEAT_TIMEOUT_MS: u64 = 15_000;
 const SANDBOX_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
 const SANDBOX_READY_MAX_WAIT: Duration = Duration::from_secs(60);
 /// Auto-stop after 5 minutes of inactivity (safety net)
