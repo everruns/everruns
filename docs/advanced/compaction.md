@@ -90,6 +90,43 @@ You can configure:
 
 Last resort. Drops the oldest messages to fit within the token budget. The system prompt and the most recent messages are always preserved. This is lossy — dropped messages cannot be recovered unless Infinity Context is enabled.
 
+## Generic Harness Defaults
+
+The built-in **Generic** harness enables both `compaction` and `infinity_context` by default. Together they keep long sessions unbounded without manual configuration.
+
+| Capability | Role | Default in Generic |
+|---|---|---|
+| **Infinity Context** | Limits how many messages are loaded from the database into the prompt; provides `query_history` for retrieval | `context_budget_tokens: 100000`, `min_recent_messages: 10` |
+| **Context Compaction** | Reduces the size of messages that *are* in the prompt — masking tool outputs, summarizing, or trimming | `strategy: auto`, `proactive: true`, `budget_percent: 0.85` |
+
+The flow for a long-running Generic session:
+
+```
+1. Session has 500 messages in the database
+       │
+       ▼
+2. Infinity Context loads only the most recent
+   messages that fit ~100k tokens
+       │
+       ▼
+3. Compaction checks: does the loaded context
+   exceed 85% of the model's window?
+       │
+   No ──► Send to LLM as-is
+       │
+   Yes ─► Run cascade:
+          a. Mask old tool outputs (free)
+          b. Native provider compaction (if available)
+          c. Summarize older turns (LLM call)
+          d. Aggressive trim (last resort)
+       │
+       ▼
+4. Messages trimmed or summarized away remain
+   queryable via `query_history`
+```
+
+No configuration is needed — creating a session with the Generic harness gives you this behavior out of the box. To customize, override either capability's config on the agent or session level.
+
 ## Configuration
 
 Compaction is a capability configured per agent or harness via `AgentCapabilityConfig`.
