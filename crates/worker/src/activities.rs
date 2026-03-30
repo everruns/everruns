@@ -219,9 +219,7 @@ pub async fn reason_activity(
     platform_definition: &PlatformDefinition,
 ) -> Result<ReasonResult> {
     use everruns_core::MessageRetriever;
-    use everruns_core::events::{
-        EventContext, EventRequest, SessionIdledData, TurnCompletedData, TurnFailedData,
-    };
+    use everruns_core::events::{EventContext, EventRequest, TurnCompletedData, TurnFailedData};
     use everruns_core::traits::EventEmitter;
 
     tracing::info!(
@@ -289,17 +287,15 @@ pub async fn reason_activity(
         .await
         .context("ReasonAtom execution failed")?;
 
-    // If turn is complete (no tool calls, or failure), set session to idle
+    // If turn is complete (no tool calls, or failure), emit turn-level events.
+    //
+    // IMPORTANT: session.idled and set_session_status("idle") are NOT emitted here.
+    // They are deferred to the workflow scheduler (durable_worker) which checks for
+    // pending steering signals (user messages that arrived during this turn) before
+    // deciding whether to idle the session or start a new turn. This prevents a
+    // visible idle→active flicker when a queued message triggers a consecutive turn.
     let turn_complete = !result.has_tool_calls || !result.success;
     if turn_complete {
-        // Set session status to "idle"
-        if let Err(e) = grpc_client
-            .set_session_status(org_id, session_id, "idle")
-            .await
-        {
-            tracing::warn!(error = %e, "Failed to set session status to idle");
-        }
-
         let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
 
         // Emit turn.failed or turn.completed based on success
@@ -344,22 +340,6 @@ pub async fn reason_activity(
             if let Err(e) = event_emitter.emit(turn_completed_event).await {
                 tracing::warn!(error = %e, "Failed to emit turn.completed event");
             }
-        }
-
-        // Emit session.idled event
-        // Note: Using turn usage as fallback since worker doesn't have DB access
-        // for cumulative session usage. The UI should handle accumulation.
-        let idled_event = EventRequest::new(
-            session_id,
-            EventContext::turn(turn_id, input_message_id),
-            SessionIdledData {
-                turn_id,
-                iterations: Some(iteration),
-                usage: result.usage.clone(),
-            },
-        );
-        if let Err(e) = event_emitter.emit(idled_event).await {
-            tracing::warn!(error = %e, "Failed to emit session.idled event");
         }
     }
 

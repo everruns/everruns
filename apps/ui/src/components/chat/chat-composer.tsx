@@ -254,7 +254,7 @@ export function ChatComposer({
           </div>
 
           <div className="flex items-center gap-2">
-            {isActive && !inputValue.trim() && !hasImages && (
+            {isActive && (
               <Button
                 type="button"
                 size="icon-lg"
