@@ -94,6 +94,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/session-filesystem.md` - Per-session virtual filesystem
 - `specs/cli.md` - CLI specification (commands, file sync, wire protocol)
 - `specs/usage-tracking.md` - LLM token usage tracking
+- `specs/budgeting.md` - Extensible budgeting system (budgets, meters, rules, soft enforcement)
 - `specs/documentation.md` - Documentation site (Astro Starlight)
 - `specs/brand.md` - Brand identity, colors, typography
 - `specs/dismissed-options.md` - Technical options considered but dismissed
