@@ -509,8 +509,12 @@ impl DaytonaClient {
 
             // After several stale polls, probe session health with a
             // heartbeat. If the heartbeat doesn't complete quickly, the
-            // session shell is dead.
-            if stale_polls >= crate::SESSION_STALE_THRESHOLD {
+            // session shell is dead. Skip the probe if remaining time is
+            // less than the heartbeat timeout to avoid exceeding deadline.
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if stale_polls >= crate::SESSION_STALE_THRESHOLD
+                && remaining > Duration::from_millis(crate::SESSION_HEARTBEAT_TIMEOUT_MS)
+            {
                 debug!(
                     "Command {cmd_id} stale for {stale_polls} polls, \
                      probing session health"
@@ -891,8 +895,14 @@ mod tests {
             mock_server.uri(),
             mock_server.uri(),
         );
+        // Timeout must exceed stale detection window + heartbeat so the
+        // dead-session path fires before the exec timeout path.
+        let detection_window_ms = (crate::SESSION_STALE_THRESHOLD as u64)
+            * crate::EXEC_POLL_INTERVAL.as_millis() as u64
+            + crate::SESSION_HEARTBEAT_TIMEOUT_MS
+            + 5_000; // buffer
         let result = client
-            .exec("sb_dead", "exit 1", None, Some(60_000), |_| {})
+            .exec("sb_dead", "exit 1", None, Some(detection_window_ms), |_| {})
             .await;
         assert!(result.is_err(), "Should detect dead session");
         let err = result.unwrap_err();
