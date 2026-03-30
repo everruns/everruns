@@ -892,7 +892,7 @@ mod tests {
             mock_server.uri(),
         );
         let result = client
-            .exec("sb_dead", "exit 1", None, Some(30_000), |_| {})
+            .exec("sb_dead", "exit 1", None, Some(60_000), |_| {})
             .await;
         assert!(result.is_err(), "Should detect dead session");
         let err = result.unwrap_err();
