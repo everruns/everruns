@@ -523,15 +523,75 @@ Workers → Kafka/Redpanda (events topic, partitioned by session_id)
 
 ## Key Design Decisions
 
-1. **PostgreSQL stays as source of truth** — No migration to a different database. Partitioning and sharding within PostgreSQL ecosystem.
+1. **PostgreSQL for durable state only** — PostgreSQL is the right tool for sessions, agents, orgs, and workflow state (CRUD with ACID). It is the wrong tool for high-throughput task queuing, event streaming, and pub/sub notifications. At 1M scale, stop forcing PG to do jobs better served by purpose-built systems.
 
-2. **Workers remain stateless** — No architectural change to worker model. Just more of them with partition affinity.
+2. **Right tool for each job:**
 
-3. **Org-based sharding key** — Natural tenant boundary. No cross-shard queries needed for normal operations. Cross-org queries (admin dashboards) go through aggregation layer.
+   | Job | Current (PG) | At 1M scale | Why |
+   |-----|---|---|---|
+   | **Durable state** (sessions, agents, orgs, workflow instances) | PostgreSQL | PostgreSQL (sharded by org) | ACID, relational queries, proven |
+   | **Task queue** | `durable_task_queue` with `SKIP LOCKED` | **NATS JetStream** | Purpose-built work queue. No row locking, no index bloat, built-in consumer groups, backpressure, replay. PG `SKIP LOCKED` hits hot-page contention at 100K+ pending tasks |
+   | **Event log** (session events, tool calls) | `events` table, INSERT-per-event | **Kafka/Redpanda** → async consumer writes to PG | Append-optimized, partitioned by session, millions/sec. PG WAL bottlenecks at ~100K inserts/sec. Cold events still land in PG for queries |
+   | **Push notifications** (task available, event available) | `NOTIFY/LISTEN` | **NATS pub/sub** | Fan-out to 1000+ subscribers. PG NOTIFY is single-threaded sender, single channel, no partitioning |
+   | **Workflow event sourcing** | `durable_workflow_events` | PostgreSQL with aggressive snapshotting | Keep in PG — low volume per workflow (100s of events). Snapshot every 100 events, archive old ones. Not the bottleneck |
 
-4. **NATS over Redis/Kafka for notifications** — Lightweight, built for pub/sub fan-out, JetStream gives at-least-once delivery. Kafka reserved for event streaming where throughput matters more than latency.
+3. **Workers remain stateless** — No architectural change to worker model. Just more of them with partition affinity.
 
-5. **Incremental adoption** — Each tier is independently deployable. A single-org deployment can stay on Tier 1 forever. Multi-tenant SaaS deployments add Tier 2-3 as needed.
+4. **Org-based sharding key** — Natural tenant boundary. No cross-shard queries needed for normal operations. Cross-org queries (admin dashboards) go through aggregation layer.
+
+5. **Incremental adoption** — Each tier is independently deployable. A single-org deployment stays on pure PostgreSQL forever (Tier 1). NATS and Kafka are only added when crossing 50K concurrent agents.
+
+6. **PostgreSQL as cold storage, not hot path** — At 1M, PG serves reads (session history, agent config, dashboards) and receives async bulk writes (batched events from Kafka consumer). It never sits in the hot path of task dispatch or real-time event delivery.
+
+## Data Flow at 1M (Revised)
+
+```
+                         ┌──────────────────────────┐
+                         │      LLM Providers        │
+                         └────────────▲─────────────┘
+                                      │
+┌─────────────────────────────────────┼─────────────────────────────────────┐
+│                              Workers (1000+)                               │
+│                                     │                                      │
+│  ┌──────────────────────────────────┼──────────────────────────────────┐  │
+│  │  1. Claim task from NATS JetStream (consumer group, partitioned)   │  │
+│  │  2. Execute: Input → Reason (LLM) → Act (tools)                    │  │
+│  │  3. Publish events to Kafka topic (session events)                 │  │
+│  │  4. ACK task in NATS                                                │  │
+│  │  5. Publish task notifications to NATS (if spawned child tasks)    │  │
+│  └──────────────────────────────────┼──────────────────────────────────┘  │
+│                                     │                                      │
+└─────────────────────────────────────┼─────────────────────────────────────┘
+                                      │
+          ┌───────────────────────────┼───────────────────────────┐
+          │                           │                           │
+   ┌──────▼──────┐           ┌────────▼────────┐         ┌───────▼───────┐
+   │ NATS         │           │ Kafka/Redpanda  │         │ PostgreSQL    │
+   │ JetStream    │           │                 │         │ (sharded)     │
+   │              │           │ • events topic  │         │               │
+   │ • task queue │           │   (by session)  │         │ • sessions    │
+   │   (by type   │           │ • async PG      │         │ • agents      │
+   │    + org)    │           │   writer        │─batch──▶│ • events      │
+   │ • pub/sub    │──push────▶│ • SSE fan-out   │         │   (cold)      │
+   │   (notifs)   │           │                 │         │ • workflows   │
+   └──────────────┘           └─────────────────┘         │ • orgs        │
+                                      │                   └───────────────┘
+                                      │ push
+                               ┌──────▼──────┐
+                               │ Control     │
+                               │ Plane (×4)  │
+                               │             │
+                               │ • REST API  │
+                               │ • SSE out   │
+                               │ • gRPC      │
+                               └─────────────┘
+```
+
+**Hot path** (task dispatch + event delivery): NATS + Kafka only. No PostgreSQL in the loop.
+
+**Warm path** (session state reads during execution): PostgreSQL via gRPC, with connection pooling. Workers read session config, write workflow state updates.
+
+**Cold path** (dashboards, history, search): PostgreSQL read replicas. Kafka consumer backfills events asynchronously.
 
 ## Risks
 
@@ -540,5 +600,7 @@ Workers → Kafka/Redpanda (events topic, partitioned by session_id)
 | Cross-shard operations (admin queries, global search) | Aggregation API that fans out to all shards |
 | Shard hotspots (one org with 500K agents) | Sub-org sharding key (org_id + session_id hash) |
 | NATS as new SPOF | 3-node cluster, fallback to PostgreSQL polling |
+| Kafka consumer lag (events delayed to PG) | Monitor consumer lag, alert at >10s. Acceptable for cold storage — SSE reads from Kafka directly |
+| Operational complexity (3 stateful systems) | NATS + Kafka only deployed at Tier 2/3. Single-org stays on PG-only |
 | Migration complexity (partitioning existing tables) | pg_partman for online partition creation, backfill in background |
 | LLM cost at 1M scale | Tiered models (fast/cheap for simple tasks, expensive for complex), aggressive caching of common prompts |
