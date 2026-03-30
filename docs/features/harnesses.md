@@ -40,9 +40,16 @@ A general-purpose harness bundling the core capabilities most agents need. This 
 |------------|-----------------|
 | **File System** | Read, write, list, grep, and delete files in the session workspace (`/workspace`) |
 | **Virtual Bash** | Sandboxed bash shell for running commands, scripts, and text processing |
+| **Web Fetch** | Fetch web content with file download support (`enable_file_download: true`) |
 | **Storage** | Key/value store for general data and encrypted secret storage for API keys and credentials |
 | **Session** | Access session metadata and manage session title |
-| **Infinity Context** | Keeps long sessions within prompt budget while exposing older history via `query_history` |
+| **AGENTS.md** | Reads AGENTS.md from workspace and injects project-level instructions into the system prompt |
+| **Skills** | Discover and activate skills from `/.agents/skills/` in the session filesystem |
+| **[Infinity Context](/capabilities/infinity-context/)** | Trims older messages from the live prompt while exposing earlier history via `query_history` |
+| **[OpenAI Tool Search](/capabilities/tool-search/)** | Defers tool schema loading on supported OpenAI models to reduce prompt size |
+| **[Context Compaction](/advanced/compaction/)** | Auto-compacts context at 85% budget via cascading strategies (observation masking → native → summarization → trim) |
+
+Infinity Context and Context Compaction work together to keep long sessions unbounded: Infinity Context windows how many messages are loaded into the prompt, while Compaction reduces the size of what's loaded. See [Context Compaction — Generic Harness Defaults](/advanced/compaction/#generic-harness-defaults) for details.
 
 ## Choosing a Harness
 

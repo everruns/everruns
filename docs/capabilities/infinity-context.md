@@ -73,5 +73,6 @@ Custom budget:
 
 ## See Also
 
+- [Context Compaction](/advanced/compaction/) — Complementary capability that reduces the size of messages in the prompt; see [Generic Harness Defaults](/advanced/compaction/#generic-harness-defaults) for how they work together
 - [Capabilities Overview](/capabilities/)
 - [Harnesses](/features/harnesses/)
