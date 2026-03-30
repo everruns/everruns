@@ -1398,99 +1398,73 @@ impl DurableWorker {
                 debug!(workflow_id = %workflow_id, turn_id = ?turn_id, "Scheduled reason activity");
             }
             "reason" => {
-                // After reasoning, check if there are tool calls
                 let reason_result: ReasonResult = serde_json::from_value(output.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse ReasonResult: {}", e))?;
 
                 // Carry response_id forward for next reason iteration
                 chained_input.previous_response_id = reason_result.response_id.clone();
 
-                if reason_result.has_tool_calls && reason_result.success {
-                    // Schedule act activity to execute the tool calls
-                    let tool_count = reason_result.tool_calls.len();
-
-                    // Use turn_id from input (propagated from input activity)
-                    let turn_id = input.turn_id.unwrap_or_default();
-
-                    let act_task_input = ActTaskInput {
-                        org_id: input.org_id,
-                        act_input: ActInput {
-                            org_id: Some(input.org_id),
-                            context: AtomContext {
-                                session_id: input.session_id,
-                                turn_id,
-                                input_message_id: input.input_message_id,
-                                exec_id: ExecId::new(),
-                            },
-                            harness_id: input.harness_id,
-                            agent_id: input.agent_id,
-                            tool_calls: reason_result.tool_calls,
-                            tool_definitions: reason_result.tool_definitions,
-                            locale: reason_result.locale,
-                            blueprint_id: None, // Resolved by act_activity from session
-                        },
-                    };
-                    let mut act_input_json = serde_json::to_value(&act_task_input)?;
-                    // Carry response_id and iteration through act task for next reason iteration
-                    if let Some(rid) = &chained_input.previous_response_id {
-                        act_input_json["previous_response_id"] = serde_json::json!(rid);
-                    }
-                    act_input_json["iteration"] = serde_json::json!(input.iteration);
-
+                // Consume pending signals and let the shared scheduler decide
+                let pending_signals = if !reason_result.has_tool_calls && reason_result.success {
                     store
-                        .enqueue_task(
-                            workflow_id,
-                            format!("act_{}", Uuid::now_v7()),
-                            "act".to_string(),
-                            act_input_json,
-                        )
-                        .await
-                        .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
-
-                    debug!(
-                        workflow_id = %workflow_id,
-                        tool_count = tool_count,
-                        "Scheduled act activity for tool execution"
-                    );
-                } else {
-                    // No tool calls or failure — turn is done.
-                    // Check for pending steering signals (user messages that arrived
-                    // during this turn). If found, continue the SAME turn with another
-                    // reason iteration — the new user message is already persisted in
-                    // the events table and will be loaded by the message retriever on
-                    // the next reason call. This mirrors how Claude Code / Codex handle
-                    // mid-turn messages: they're injected into the active context, not
-                    // queued for a separate turn.
-                    //
-                    // IMPORTANT: session.idled is emitted HERE (not in reason_activity)
-                    // so we can skip it when a steering signal continues the turn. This
-                    // prevents the idle→active status flicker in the UI.
-                    let pending_signals = store
                         .get_and_consume_signals(workflow_id)
                         .await
-                        .map_err(|e| anyhow::anyhow!("Failed to consume pending signals: {}", e))?;
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                };
 
-                    let user_message_count = pending_signals
-                        .iter()
-                        .filter(|sig| {
-                            sig.signal_type == everruns_durable::signal_types::USER_MESSAGE
-                        })
-                        .count();
+                let decision =
+                    crate::turn_scheduler::after_reason_completed(&reason_result, &pending_signals);
 
-                    if user_message_count > 0 {
-                        if user_message_count > 1 {
-                            info!(
-                                workflow_id = %workflow_id,
-                                queued_count = user_message_count,
-                                "Multiple user messages arrived during turn — all are \
-                                 in conversation history, continuing with next reason iteration"
-                            );
+                match decision {
+                    crate::turn_scheduler::ReasonDecision::ScheduleAct => {
+                        let tool_count = reason_result.tool_calls.len();
+                        let turn_id = input.turn_id.unwrap_or_default();
+
+                        let act_task_input = ActTaskInput {
+                            org_id: input.org_id,
+                            act_input: ActInput {
+                                org_id: Some(input.org_id),
+                                context: AtomContext {
+                                    session_id: input.session_id,
+                                    turn_id,
+                                    input_message_id: input.input_message_id,
+                                    exec_id: ExecId::new(),
+                                },
+                                harness_id: input.harness_id,
+                                agent_id: input.agent_id,
+                                tool_calls: reason_result.tool_calls,
+                                tool_definitions: reason_result.tool_definitions,
+                                locale: reason_result.locale,
+                                blueprint_id: None,
+                            },
+                        };
+                        let mut act_input_json = serde_json::to_value(&act_task_input)?;
+                        if let Some(rid) = &chained_input.previous_response_id {
+                            act_input_json["previous_response_id"] = serde_json::json!(rid);
                         }
+                        act_input_json["iteration"] = serde_json::json!(input.iteration);
 
-                        // User message(s) arrived during this turn. Continue the same
-                        // turn with another reason iteration. The message retriever
-                        // re-queries the DB and will pick up the new input.message
-                        // event(s) naturally.
+                        store
+                            .enqueue_task(
+                                workflow_id,
+                                format!("act_{}", Uuid::now_v7()),
+                                "act".to_string(),
+                                act_input_json,
+                            )
+                            .await
+                            .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
+
+                        debug!(
+                            workflow_id = %workflow_id,
+                            tool_count = tool_count,
+                            "Scheduled act activity for tool execution"
+                        );
+                    }
+                    crate::turn_scheduler::ReasonDecision::ContinueTurn {
+                        queued_message_count,
+                    } => {
                         let next_iteration = input.iteration.saturating_add(1);
                         let continued_input = DurableTurnInput {
                             org_id: input.org_id,
@@ -1519,13 +1493,11 @@ impl DurableWorker {
                         info!(
                             workflow_id = %workflow_id,
                             iteration = next_iteration,
-                            queued_messages = user_message_count,
-                            "Steering: continuing turn with new reason iteration \
-                             to process mid-turn user message(s)"
+                            queued_messages = queued_message_count,
+                            "Steering: continuing turn with new reason iteration"
                         );
-                    } else {
-                        // No pending messages — workflow is truly complete.
-                        // NOW emit session.idled and set session status to idle.
+                    }
+                    crate::turn_scheduler::ReasonDecision::Complete => {
                         let turn_id = input.turn_id.unwrap_or_default();
                         let grpc_address = self.grpc_address.clone();
                         let org_id = input.org_id;
@@ -1546,7 +1518,6 @@ impl DurableWorker {
                                 anyhow::anyhow!("Failed to update workflow status: {}", e)
                             })?;
 
-                        // Release store lock before async gRPC call
                         drop(store);
 
                         emit_session_idled(
@@ -1561,7 +1532,38 @@ impl DurableWorker {
                         .await;
 
                         info!(workflow_id = %workflow_id, "Workflow completed");
+                        return Ok(());
+                    }
+                    crate::turn_scheduler::ReasonDecision::Failed => {
+                        let turn_id = input.turn_id.unwrap_or_default();
+                        let grpc_address = self.grpc_address.clone();
 
+                        store
+                            .update_workflow_status(
+                                workflow_id,
+                                WorkflowStatus::Completed,
+                                None,
+                                reason_result.error.clone(),
+                            )
+                            .await
+                            .map_err(|e| {
+                                anyhow::anyhow!("Failed to update workflow status: {}", e)
+                            })?;
+
+                        drop(store);
+
+                        emit_session_idled(
+                            &grpc_address,
+                            input.org_id,
+                            input.session_id,
+                            turn_id,
+                            input.input_message_id,
+                            Some(input.iteration),
+                            None,
+                        )
+                        .await;
+
+                        info!(workflow_id = %workflow_id, "Workflow completed (failed)");
                         return Ok(());
                     }
                 }

@@ -913,80 +913,70 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
 
             let response_id = reason_result.response_id.clone();
 
-            if reason_result.has_tool_calls && reason_result.success {
-                let turn_id = input.turn_id.unwrap_or_default();
-
-                // Send ALL tool calls to ActAtom — it handles client/server partitioning internally
-                let act_input = ActInput {
-                    org_id: Some(input.org_id),
-                    context: AtomContext {
-                        session_id: input.session_id,
-                        turn_id,
-                        input_message_id: input.input_message_id,
-                        exec_id: ExecId::new(),
-                    },
-                    harness_id: input.harness_id,
-                    agent_id: input.agent_id,
-                    tool_calls: reason_result.tool_calls,
-                    tool_definitions: reason_result.tool_definitions,
-                    locale: reason_result.locale,
-                    blueprint_id: None, // Resolved by act_activity from session
-                };
-                let mut act_input_json = serde_json::to_value(&act_input)?;
-                if let Some(rid) = &response_id {
-                    act_input_json["previous_response_id"] = serde_json::json!(rid);
-                }
-                act_input_json["iteration"] = serde_json::json!(input.iteration);
-                let activity_id = format!("act_{}", Uuid::now_v7());
-
-                let task = TaskDefinition {
-                    workflow_id: Some(workflow_id),
-                    activity_id: activity_id.clone(),
-                    activity_type: "act".to_string(),
-                    input: act_input_json.clone(),
-                    options: Default::default(),
-                };
+            // Consume pending signals and let the shared scheduler decide
+            let pending_signals = if !reason_result.has_tool_calls && reason_result.success {
                 store
-                    .enqueue_task(task)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
-
-                let scheduled_event = WorkflowEvent::ActivityScheduled {
-                    activity_id,
-                    activity_type: "act".to_string(),
-                    input: act_input_json,
-                    options: ActivityOptions::default(),
-                };
-                let _ = append_event(store.as_ref(), workflow_id, scheduled_event).await;
-
-                debug!(workflow_id = %workflow_id, "Scheduled act activity");
-            } else {
-                // No tool calls or failure — turn wants to complete.
-                // Check for pending steering signals (user messages that arrived
-                // during this turn). If found, continue the SAME turn with another
-                // reason iteration — the message retriever re-queries the DB and
-                // picks up the new input.message event(s) naturally.
-                let pending_signals = store
                     .consume_pending_signals(workflow_id)
                     .await
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+            } else {
+                vec![]
+            };
 
-                let user_message_count = pending_signals
-                    .iter()
-                    .filter(|sig| sig.signal_type == everruns_durable::signal_types::USER_MESSAGE)
-                    .count();
+            let decision =
+                crate::turn_scheduler::after_reason_completed(&reason_result, &pending_signals);
 
-                if user_message_count > 0 {
-                    if user_message_count > 1 {
-                        info!(
-                            workflow_id = %workflow_id,
-                            queued_count = user_message_count,
-                            "Multiple user messages arrived during turn — all in \
-                             conversation history, continuing with next reason iteration"
-                        );
+            match decision {
+                crate::turn_scheduler::ReasonDecision::ScheduleAct => {
+                    let turn_id = input.turn_id.unwrap_or_default();
+
+                    let act_input = ActInput {
+                        org_id: Some(input.org_id),
+                        context: AtomContext {
+                            session_id: input.session_id,
+                            turn_id,
+                            input_message_id: input.input_message_id,
+                            exec_id: ExecId::new(),
+                        },
+                        harness_id: input.harness_id,
+                        agent_id: input.agent_id,
+                        tool_calls: reason_result.tool_calls,
+                        tool_definitions: reason_result.tool_definitions,
+                        locale: reason_result.locale,
+                        blueprint_id: None,
+                    };
+                    let mut act_input_json = serde_json::to_value(&act_input)?;
+                    if let Some(rid) = &response_id {
+                        act_input_json["previous_response_id"] = serde_json::json!(rid);
                     }
+                    act_input_json["iteration"] = serde_json::json!(input.iteration);
+                    let activity_id = format!("act_{}", Uuid::now_v7());
 
-                    // Continue the same turn with another reason iteration
+                    let task = TaskDefinition {
+                        workflow_id: Some(workflow_id),
+                        activity_id: activity_id.clone(),
+                        activity_type: "act".to_string(),
+                        input: act_input_json.clone(),
+                        options: Default::default(),
+                    };
+                    store
+                        .enqueue_task(task)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
+
+                    let scheduled_event = WorkflowEvent::ActivityScheduled {
+                        activity_id,
+                        activity_type: "act".to_string(),
+                        input: act_input_json,
+                        options: ActivityOptions::default(),
+                    };
+                    let _ = append_event(store.as_ref(), workflow_id, scheduled_event).await;
+
+                    debug!(workflow_id = %workflow_id, "Scheduled act activity");
+                }
+                crate::turn_scheduler::ReasonDecision::ContinueTurn {
+                    queued_message_count,
+                } => {
                     let next_iteration = input.iteration.saturating_add(1);
                     let continued_input = DurableTurnInput {
                         org_id: input.org_id,
@@ -1001,7 +991,7 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
                     let continued_json = serde_json::to_value(&continued_input)?;
                     let activity_id = format!("reason_{}", Uuid::now_v7());
 
-                    let task = everruns_durable::TaskDefinition {
+                    let task = TaskDefinition {
                         workflow_id: Some(workflow_id),
                         activity_id: activity_id.clone(),
                         activity_type: "reason".to_string(),
@@ -1023,13 +1013,11 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
                     info!(
                         workflow_id = %workflow_id,
                         iteration = next_iteration,
-                        queued_messages = user_message_count,
-                        "Steering: continuing turn with new reason iteration \
-                         to process mid-turn user message(s)"
+                        queued_messages = queued_message_count,
+                        "Steering: continuing turn with new reason iteration"
                     );
-                } else {
-                    // No pending messages — workflow truly complete.
-                    // NOW emit session.idled and set session status to idle.
+                }
+                crate::turn_scheduler::ReasonDecision::Complete => {
                     let turn_id = input.turn_id.unwrap_or_default();
                     let lifecycle =
                         SessionLifecycle::new(adapters.clone(), input.org_id, input.session_id);
@@ -1043,13 +1031,28 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
                         .await;
 
                     record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
-
                     store
                         .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
 
                     info!(workflow_id = %workflow_id, "Workflow completed");
+                }
+                crate::turn_scheduler::ReasonDecision::Failed => {
+                    let turn_id = input.turn_id.unwrap_or_default();
+                    let lifecycle =
+                        SessionLifecycle::new(adapters.clone(), input.org_id, input.session_id);
+                    lifecycle
+                        .emit_session_idled(turn_id, input.input_message_id, None, None)
+                        .await;
+
+                    record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
+                    store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+
+                    info!(workflow_id = %workflow_id, "Workflow completed (failed)");
                 }
             }
         }
