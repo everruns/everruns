@@ -271,7 +271,146 @@ Each shard is an independent PostgreSQL instance with its own:
 
 **Impact**: Linear horizontal scaling. Each shard handles ~250K concurrent agents. Add shards for more.
 
-#### 3b. LLM Request Router
+#### 3b. SSE Streaming at Scale
+
+The current SSE architecture has three bottlenecks that break at 1M agents:
+
+1. **Single broadcast channel** — `EventNotificationBroadcaster` uses one `broadcast::channel(4096)`. All event notifications for all sessions flow through it. At 1M agents doing ~1 event/sec, the channel drops messages constantly (capacity 4096), forcing SSE streams to fall back to DB polling.
+
+2. **Single PgListener** — One PostgreSQL connection listens on `event_available`. PostgreSQL NOTIFY is single-threaded on the sender side; at ~1M notifications/sec the WAL sender can't keep up.
+
+3. **Global connection limit** — `SseConnectionTracker` caps at 10K global SSE connections per instance. Even at 10% client attachment rate, 1M agents = 100K SSE connections.
+
+**Solution: Shard-local SSE with NATS fan-out**
+
+```
+                    ┌─────────────────────────────────────────────┐
+                    │              Load Balancer                    │
+                    │   Route SSE by org_id → correct shard        │
+                    └──────────┬──────────┬──────────┬────────────┘
+                               │          │          │
+                    ┌──────────▼──┐ ┌─────▼──────┐ ┌▼───────────┐
+                    │ CP Shard A  │ │ CP Shard B │ │ CP Shard C │
+                    │ 25K SSE     │ │ 25K SSE    │ │ 25K SSE    │  × N shards
+                    │ connections │ │ connections│ │ connections│
+                    └──────┬──────┘ └─────┬──────┘ └──────┬──────┘
+                           │              │               │
+                    ┌──────▼──────────────▼───────────────▼──────┐
+                    │              NATS JetStream                  │
+                    │   Subject: events.shard.{0..N}              │
+                    │   Per-shard subjects → no cross-talk        │
+                    └──────┬──────────────┬───────────────┬──────┘
+                           │              │               │
+                    ┌──────▼──────┐ ┌─────▼──────┐ ┌─────▼──────┐
+                    │ PG Shard A  │ │ PG Shard B │ │ PG Shard C │
+                    │ NOTIFY →    │ │ NOTIFY →   │ │ NOTIFY →   │
+                    │ local only  │ │ local only │ │ local only │
+                    └─────────────┘ └────────────┘ └────────────┘
+```
+
+**How it works at each tier:**
+
+**Tier 1 (single instance, 50K agents):**
+- Partition the broadcast channel by session_id hash (16 channels instead of 1)
+- Each SSE stream subscribes to the channel matching its session's partition
+- Reduces per-channel throughput from 1M msg/sec to ~3K msg/sec per channel (well within 4096 capacity)
+
+```rust
+/// Partitioned event broadcaster — reduces per-channel load
+pub struct PartitionedEventBroadcaster {
+    /// 16 broadcast channels, selected by session_id hash
+    channels: [broadcast::Sender<EventNotificationPayload>; 16],
+}
+
+impl PartitionedEventBroadcaster {
+    fn channel_for(&self, session_id: Uuid) -> usize {
+        (session_id.as_u128() % 16) as usize
+    }
+
+    fn publish(&self, payload: EventNotificationPayload) {
+        let idx = self.channel_for(payload.session_id);
+        let _ = self.channels[idx].send(payload);
+    }
+
+    fn subscribe(&self, session_id: Uuid) -> broadcast::Receiver<EventNotificationPayload> {
+        let idx = self.channel_for(session_id);
+        self.channels[idx].subscribe()
+    }
+}
+```
+
+**Tier 2 (distributed, 500K agents):**
+- Replace PostgreSQL NOTIFY with NATS for event notifications
+- Workers publish to `events.session.{partition}` after writing events
+- Control plane SSE streams subscribe to the partition matching their session
+- NATS handles fan-out at millions of messages/sec (vs PostgreSQL NOTIFY's ~50K/sec)
+- PostgreSQL NOTIFY kept only as fallback when NATS is unavailable
+
+```rust
+/// NATS-backed event notifier — replaces PgListener for scale
+pub struct NatsEventNotifier {
+    client: async_nats::Client,
+    num_partitions: u32,
+}
+
+impl NatsEventNotifier {
+    /// Worker calls this after inserting events
+    async fn notify(&self, session_id: Uuid) {
+        let partition = (session_id.as_u128() % self.num_partitions as u128) as u32;
+        let subject = format!("events.partition.{partition}");
+        self.client.publish(subject, session_id.to_string().into()).await.ok();
+    }
+
+    /// SSE stream subscribes to its session's partition
+    async fn subscribe(&self, session_id: Uuid) -> async_nats::Subscriber {
+        let partition = (session_id.as_u128() % self.num_partitions as u128) as u32;
+        let subject = format!("events.partition.{partition}");
+        self.client.subscribe(subject).await.unwrap()
+    }
+}
+```
+
+**Tier 3 (sharded, 1M+ agents):**
+- Each control plane shard handles only its org partition's SSE connections
+- 4 shards × 25K SSE connections each = 100K total (enough for 1M agents at 10% client rate)
+- Each shard has its own `SseConnectionTracker` with `global_max: 25_000`
+- NATS subjects are per-shard: `events.shard.{shard_id}.partition.{partition_id}`
+- No cross-shard SSE traffic — load balancer routes SSE connections to the correct shard by org_id
+- If a client connects to the wrong shard, return `HTTP 307 Temporary Redirect` to the correct one
+
+**SSE connection math at 1M:**
+
+| Metric | Value |
+|--------|-------|
+| Total agents | 1,000,000 |
+| Agents with active SSE client | ~100,000 (10%) |
+| Control plane shards | 4 |
+| SSE connections per shard | ~25,000 |
+| Memory per SSE connection | ~8KB (tokio task + buffers) |
+| Total SSE memory per shard | ~200MB |
+| NATS partitions per shard | 64 |
+| Events/sec per partition | ~4,000 |
+
+**Key change: event delivery path**
+
+Current (polling-based fallback dominates at scale):
+```
+Event INSERT → PG NOTIFY → PgListener → broadcast::channel(4096) → SSE stream
+                                              ↓ (overflow)
+                                         SSE polls DB every 100-500ms ← kills DB
+```
+
+Proposed (push-based, no polling):
+```
+Event INSERT → Worker publishes to NATS → SSE stream gets push notification
+                                                ↓
+                                         SSE reads event by ID from DB (single row fetch)
+                                         OR from local cache (for hot sessions)
+```
+
+The DB is never polled in a loop. Each SSE stream gets a targeted push for its partition, reads the specific event by ID, and sends it to the client. At 1M agents, this is ~1M targeted reads/sec across 4 PostgreSQL shards = ~250K reads/sec per shard (well within PostgreSQL capacity with connection pooling).
+
+#### 3c. LLM Request Router
 
 Centralized LLM routing layer that pools API keys and manages rate limits:
 
@@ -319,7 +458,7 @@ impl LlmRouter {
 
 **Impact**: Maximizes LLM throughput across all available API keys. Prevents 429s from killing agent runs. Priority queuing ensures interactive agents aren't starved by background batch jobs.
 
-#### 3c. Event Streaming with Kafka/Redpanda
+#### 3d. Event Streaming with Kafka/Redpanda
 
 For 1M+ agents, move event storage to a streaming platform:
 
