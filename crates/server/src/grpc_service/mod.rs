@@ -17,7 +17,7 @@ use crate::services::{
     session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
 };
 use crate::storage::{EncryptionService, StorageBackend};
-use crate::task_notifications::TaskNotificationBroadcaster;
+use crate::task_notifications::TaskBroadcaster;
 use base64::Engine;
 use everruns_core::PlatformDefinition;
 use everruns_durable::{
@@ -334,8 +334,8 @@ pub struct WorkerServiceImpl {
     mcp_server_service: McpServerService,
     capability_service: CapabilityService,
     durable_store: Option<Arc<PostgresWorkflowEventStore>>,
-    /// Task notification broadcaster for push-based notifications
-    task_broadcaster: Option<Arc<TaskNotificationBroadcaster>>,
+    /// Task notification broadcaster for push-based notifications (PG NOTIFY or NATS)
+    task_broadcaster: Option<Arc<TaskBroadcaster>>,
     /// Storage backend for image resolution
     db: Arc<StorageBackend>,
     /// Session storage store for key/value and secret operations
@@ -444,7 +444,7 @@ impl WorkerServiceImpl {
     }
 
     /// Set the task notification broadcaster (must be called after async initialization)
-    pub fn set_task_broadcaster(&mut self, broadcaster: Arc<TaskNotificationBroadcaster>) {
+    pub fn set_task_broadcaster(&mut self, broadcaster: Arc<TaskBroadcaster>) {
         self.task_broadcaster = Some(broadcaster);
     }
 

@@ -992,16 +992,29 @@ to fire-and-forget with ~0ms overhead per delta.
 
 See `crates/worker/src/grpc_adapters.rs` — `GrpcAdapter::emit_ephemeral()`.
 
-### Phase 3: NATS JetStream for task queue — ~2-3 weeks
+### Phase 3: NATS pub/sub for task notifications — ~1 day ✅
 
-NATS is already deployed from Phase 1. Extend it for task distribution.
+NATS is already deployed from Phase 1. Replace PG `NOTIFY/LISTEN` for task availability
+notifications with NATS pub/sub when `NATS_URL` is set.
 
-1. Task enqueue publishes to NATS JetStream (instead of PG `INSERT INTO durable_task_queue`)
-2. Workers subscribe to NATS consumer groups (instead of gRPC task claiming via PG)
-3. PG `durable_task_queue` kept for persistence/recovery, backfilled from NATS
-4. Replace PG `NOTIFY` for task notifications with NATS pub/sub
+**What changed:**
+- New `TaskBroadcaster` enum wrapping PG and NATS backends with the same API
+- `NatsTaskNotificationBroadcaster`: subscribes to `task.available.>`, forwards to
+  broadcast channel. Workers are transparent — they still get gRPC push notifications.
+- `TaskBroadcaster::from_env()` selects NATS if `NATS_URL` is set, falls back to PG NOTIFY
+- No worker code changes. No task claim changes. PG `SKIP LOCKED` remains the claim path.
+- `notify_task_available()` publishes to NATS subjects (PG backend uses DB triggers instead)
 
-**Impact**: Task distribution off PG. No row locking, no index bloat. NATS cluster already running.
+**What didn't change (deferred):**
+- Task enqueue still goes to PG only (NATS notification is supplementary)
+- Workers still claim via gRPC → PG `SELECT FOR UPDATE SKIP LOCKED`
+- Moving task claiming itself to NATS consumer groups is future work if PG contention
+  becomes a bottleneck at >100K concurrent tasks
+
+See `crates/server/src/nats_task_notifications.rs` and `crates/server/src/task_notifications.rs`.
+
+**Impact**: Task notification delivery off PG NOTIFY. Lower latency (~1ms vs ~30ms),
+multi-instance support, no PG connection dedicated to LISTEN. Gated on `NATS_URL`.
 
 ### Phase 4: Kafka for durable event cold storage (future consideration)
 

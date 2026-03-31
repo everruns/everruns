@@ -1,7 +1,12 @@
 // Task notification broadcaster for push-based task notifications
-// Decision: Uses PostgreSQL NOTIFY/LISTEN for low-latency task availability signaling
-// Decision: Broadcasts to all subscribed workers matching the activity type
+//
+// Decision: Uses PostgreSQL NOTIFY/LISTEN by default. When NATS_URL is set,
+// uses NATS pub/sub instead for lower latency and multi-instance support.
+// Workers are transparent to the backend — they receive notifications via gRPC.
+//
+// The TaskBroadcaster enum wraps both backends with the same API.
 
+use crate::nats_task_notifications::NatsTaskNotificationBroadcaster;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -179,6 +184,92 @@ impl Drop for TaskNotificationBroadcaster {
     fn drop(&mut self) {
         // Signal shutdown (best effort)
         let _ = self.shutdown_tx.try_send(());
+    }
+}
+
+// ============================================================================
+// TaskBroadcaster enum — unified API over PG and NATS backends
+// ============================================================================
+
+/// Unified task notification broadcaster.
+/// Wraps either PG NOTIFY or NATS pub/sub with the same API.
+/// Selected at startup based on NATS_URL environment variable.
+pub enum TaskBroadcaster {
+    /// PostgreSQL NOTIFY/LISTEN (default, no NATS required)
+    Postgres(TaskNotificationBroadcaster),
+    /// NATS pub/sub (when NATS_URL is set)
+    Nats(NatsTaskNotificationBroadcaster),
+}
+
+impl TaskBroadcaster {
+    /// Create from environment: NATS if `NATS_URL` is set, otherwise PG NOTIFY.
+    /// Returns None if neither is available (dev mode without PG).
+    pub async fn from_env(pool: Option<&PgPool>) -> Option<Self> {
+        // Try NATS first (preferred when configured)
+        if let Ok(nats_url) = std::env::var("NATS_URL") {
+            match NatsTaskNotificationBroadcaster::new(&nats_url).await {
+                Ok(nats) => {
+                    info!("Task notifications: NATS pub/sub");
+                    return Some(Self::Nats(nats));
+                }
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        "Failed to connect NATS for task notifications, falling back to PG NOTIFY"
+                    );
+                }
+            }
+        }
+
+        // Fall back to PG NOTIFY
+        if let Some(pool) = pool {
+            let broadcaster = TaskNotificationBroadcaster::new(pool.clone()).await;
+            info!("Task notifications: PostgreSQL NOTIFY");
+            return Some(Self::Postgres(broadcaster));
+        }
+
+        warn!("Task notification broadcaster not available (no NATS or PostgreSQL)");
+        None
+    }
+
+    pub async fn subscribe(
+        &self,
+        worker_id: String,
+        activity_types: Vec<String>,
+    ) -> WorkerSubscription {
+        match self {
+            Self::Postgres(b) => b.subscribe(worker_id, activity_types).await,
+            Self::Nats(b) => b.subscribe(worker_id, activity_types).await,
+        }
+    }
+
+    pub async fn unsubscribe(&self, worker_id: &str) {
+        match self {
+            Self::Postgres(b) => b.unsubscribe(worker_id).await,
+            Self::Nats(b) => b.unsubscribe(worker_id).await,
+        }
+    }
+
+    pub async fn subscriber_count(&self) -> usize {
+        match self {
+            Self::Postgres(b) => b.subscriber_count().await,
+            Self::Nats(b) => b.subscriber_count().await,
+        }
+    }
+
+    /// Publish a task notification (NATS only — PG uses NOTIFY triggers).
+    /// No-op for PG backend since NOTIFY is handled by database triggers.
+    pub async fn notify_task_available(&self, activity_type: &str) {
+        if let Self::Nats(b) = self {
+            b.notify_task_available(activity_type).await;
+        }
+    }
+
+    pub async fn shutdown(&self) {
+        match self {
+            Self::Postgres(b) => b.shutdown().await,
+            Self::Nats(b) => b.shutdown().await,
+        }
     }
 }
 
