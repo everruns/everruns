@@ -62,9 +62,12 @@ static BASHKIT_TOOL: LazyLock<BashkitTool> = LazyLock::new(|| {
 static TOOL_DESCRIPTION: LazyLock<String> =
     LazyLock::new(|| BASHKIT_TOOL.description().to_string());
 
-/// System prompt addition from bashkit library.
-static TOOL_SYSTEM_PROMPT: LazyLock<String> =
-    LazyLock::new(|| BASHKIT_TOOL.system_prompt().to_string());
+/// System prompt addition from bashkit library + output economy hint.
+static TOOL_SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    let mut prompt = BASHKIT_TOOL.system_prompt().to_string();
+    prompt.push_str(crate::tool_output_sanitizer::EXEC_OUTPUT_HINT);
+    prompt
+});
 
 /// Virtual Bash capability - execute bash commands in a sandboxed environment
 pub struct VirtualBashCapability;
