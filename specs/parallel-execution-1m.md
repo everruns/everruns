@@ -735,30 +735,80 @@ The Kafka → PG consumer batches durable events (COPY protocol). The Kafka → 
 - 4 control planes (c6i.2xlarge): ~$2K/mo
 - LLM API costs: dominant cost, ~$500K-5M/mo depending on model/usage
 
-## Implementation Phases
+## Implementation Phases (Revised)
 
-### Phase 1: Foundation (Tier 1) — 2-3 weeks
+The original phases (Tier 1/2/3) map to infrastructure layers. These revised phases are ordered by **impact per effort** and build on each other without throwaway code.
 
-1. Table partitioning migration (hash by org_id/session_id)
+### Phase 1: Ephemeral delta events via Valkey — ~1-2 weeks
+
+**Problem with naive approach**: If we just skip `db.create_event()` for deltas, SSE streams stop seeing them entirely. SSE works by polling `event_service.list()` from PostgreSQL (`crates/server/src/api/events.rs:418`). The `EventNotificationBroadcaster` doesn't carry event data — it's just a "wake up and poll PG" signal. Deltas must still reach SSE clients, just not through PG.
+
+**Approach — use Valkey pub/sub for deltas from day 1:**
+
+Even for a single control plane instance, use Valkey (already deployed) as the delta channel. This makes Phase 1 horizontally scalable from the start and avoids building an in-process-only path that gets thrown away later.
+
+```
+EventService.emit():
+  ├─ is_ephemeral? → Valkey PUBLISH session:{id}:deltas (skip PG)
+  └─ is_durable?   → db.create_event() (PG INSERT, unchanged)
+
+SSE stream (two sources, merged):
+  ├─ Valkey SUBSCRIBE session:{id}:deltas → ephemeral events (real-time)
+  └─ Poll event_service.list() from PG   → durable events (existing path)
+```
+
+**Steps:**
+
+1. Add `is_ephemeral()` to `EventRequest` — classify 5 event types (`output.message.delta`, `output.message.started`, `reason.thinking.delta`, `reason.thinking.started`, `tool.output.delta`)
+2. `EventService.emit()` — ephemeral events go to Valkey `PUBLISH`, return synthetic Event (no PG id/sequence)
+3. SSE stream — spawn Valkey `SUBSCRIBE` task per session alongside existing PG poll. On message: deserialize, push to SSE client directly
+4. Fallback: if `VALKEY_URL` not set (dev mode), all events go to PG as today. Zero regression for `just start-dev`
+5. Load test: validate delta throughput and SSE latency
+
+**Why Valkey from day 1**: An in-process `broadcast::channel` only works single-instance. Starting with Valkey (~50 lines of `fred` pub/sub) works at any number of control plane instances. No throwaway code.
+
+**Impact**: Eliminates ~80% of PG event writes. Horizontally scalable from the start.
+
+### Phase 2: gRPC streaming for deltas — ~1 week
+
+1. Add `StreamEphemeralEvents` bidirectional streaming RPC to proto
+2. Worker `GrpcEventEmitter` routes ephemeral events to stream, durable to unary RPC
+3. Control plane reads stream, publishes to Valkey
+4. `EventEmitter` trait unchanged — transparent to `ReasonAtom`
+
+**Impact**: Removes per-delta gRPC round-trip. Workers go from 10 blocking calls/sec to 1 stream per session.
+
+### Phase 3: Kafka for durable events — ~2-3 weeks
+
+1. Kafka/Redpanda cluster deployment
+2. `EventService.emit()` publishes durable events to Kafka topic (partitioned by session_id)
+3. Kafka consumer backfills PG events table (batched COPY)
+4. SSE durable events read from Kafka partition (not PG poll)
+5. Sequence numbers from Kafka offsets (remove `allocate_event_sequence()` PG lock)
+
+**Impact**: Durable event writes off the PG hot path. PG becomes cold storage.
+
+### Phase 4: NATS JetStream for task queue — ~2-3 weeks
+
+1. NATS cluster deployment
+2. Task enqueue publishes to NATS JetStream (instead of PG `INSERT INTO durable_task_queue`)
+3. Workers subscribe to NATS consumer groups (instead of gRPC task claiming)
+4. PG `durable_task_queue` kept for persistence/recovery, backfilled from NATS
+5. Replace PG `NOTIFY` for task notifications with NATS pub/sub
+6. At this scale, delta pub/sub can migrate from Valkey to NATS (NATS is already deployed, consolidate)
+
+**Impact**: Task distribution off PG. No row locking, no index bloat.
+
+### Phase 5: Horizontal sharding — ~4-6 weeks
+
+1. PG table partitioning by org_id (hash, 32 partitions)
 2. Worker partition affinity in `DurableWorkerConfig`
-3. Lightweight session creation (`lite` mode)
-4. Event batching with `COPY` protocol
-5. Load test: validate 50K concurrent sessions
+3. Multi-instance control plane with org-based routing
+4. Shard-local SSE (load balancer routes by org)
+5. LLM request router with key pooling and priority queuing
+6. Lightweight session creation (`lite` mode)
 
-### Phase 2: Distribution (Tier 2) — 3-4 weeks
-
-1. NATS JetStream integration for task notifications
-2. Read replica routing in storage layer
-3. PgBouncer deployment
-4. Load test: validate 500K concurrent sessions
-
-### Phase 3: Sharding (Tier 3) — 4-6 weeks
-
-1. Org-based routing proxy
-2. Multi-instance control plane with shard assignment
-3. LLM request router with key pooling
-4. Kafka/Redpanda for event streaming
-5. Load test: validate 1M concurrent sessions
+**Impact**: Linear horizontal scale. 4 shards = 1M agents.
 
 ## Key Design Decisions
 
