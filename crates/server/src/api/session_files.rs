@@ -21,7 +21,9 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::events::{EventContext, EventRequest, FileWrittenData};
+use everruns_core::events::{
+    EventContext, EventRequest, FILE_OP_CREATE, FILE_OP_UPDATE, FileWrittenData,
+};
 use everruns_core::typed_id::SessionId;
 use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
 
@@ -483,7 +485,7 @@ pub async fn create_path(
             EventContext::empty(),
             FileWrittenData {
                 path: file.path.clone(),
-                operation: "create".into(),
+                operation: FILE_OP_CREATE.into(),
                 size_bytes: file.size_bytes,
                 created: true,
             },
@@ -570,7 +572,7 @@ pub async fn update_path(
         EventContext::empty(),
         FileWrittenData {
             path: file.path.clone(),
-            operation: "update".into(),
+            operation: FILE_OP_UPDATE.into(),
             size_bytes: file.size_bytes,
             created: false,
         },

@@ -1622,15 +1622,19 @@ pub struct ContextCompactedData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct FileWrittenData {
-    /// File path within the session filesystem.
+    /// File path within the session filesystem (normalized, e.g. "/reports/summary.md").
     pub path: String,
-    /// Operation type: "create" or "update".
+    /// Operation type (see `FILE_OP_*` constants).
     pub operation: String,
     /// File size in bytes after write.
     pub size_bytes: i64,
     /// Whether this is a new file (true) or an update to an existing file (false).
     pub created: bool,
 }
+
+/// File operation constants for `FileWrittenData.operation`.
+pub const FILE_OP_CREATE: &str = "create";
+pub const FILE_OP_UPDATE: &str = "update";
 
 // ============================================================================
 // Budget event data
