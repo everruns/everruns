@@ -76,6 +76,11 @@ fn http_client() -> reqwest::Client {
     reqwest::Client::new()
 }
 
+/// Build a connection API URL, normalizing trailing slashes.
+fn connection_url(api_url: &str, path: &str) -> String {
+    format!("{}{}", api_url.trim_end_matches('/'), path)
+}
+
 async fn set(
     api_url: &str,
     api_key: &str,
@@ -85,7 +90,10 @@ async fn set(
     provider_api_key: &str,
 ) -> Result<()> {
     let resp = http_client()
-        .post(format!("{}/v1/user/connections/{}", api_url, provider))
+        .post(connection_url(
+            api_url,
+            &format!("/v1/user/connections/{}", provider),
+        ))
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&CreateApiKeyRequest {
             api_key: provider_api_key.to_string(),
@@ -134,7 +142,7 @@ async fn set(
 
 async fn list(api_url: &str, api_key: &str, output: OutputFormat) -> Result<()> {
     let resp = http_client()
-        .get(format!("{}/v1/user/connections", api_url))
+        .get(connection_url(api_url, "/v1/user/connections"))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await
@@ -195,7 +203,10 @@ async fn remove(
     provider: &str,
 ) -> Result<()> {
     let resp = http_client()
-        .delete(format!("{}/v1/user/connections/{}", api_url, provider))
+        .delete(connection_url(
+            api_url,
+            &format!("/v1/user/connections/{}", provider),
+        ))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await
