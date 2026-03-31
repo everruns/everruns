@@ -218,8 +218,8 @@ pub use capabilities::{
 // Atoms re-exports (stateless atomic operations)
 pub use atoms::{
     ActAtom, ActInput, ActResult, Atom, AtomContext, ClientSideToolHook, ConnectionSetupHook,
-    InputAtom, InputAtomInput, InputAtomResult, PostActAction, PostActHook, ReasonAtom,
-    ReasonInput, ReasonResult, ToolCallResult,
+    InputAtom, InputAtomInput, InputAtomResult, PostActAction, PostActHook, PostToolExecHook,
+    ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
 };
 
 // Tool types (runtime types defined in this crate)
