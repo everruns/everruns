@@ -57,7 +57,7 @@ Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convent
 | `open_world` | Interacts with external entities (network, APIs) | Assume closed-world |
 | `requires_secrets` | Needs API keys or credentials | Assume no secrets needed |
 | `long_running` | May take significant time (> ~5s typical) | Assume fast |
-| `persist_output` | Full output persisted to VFS before truncation | Assume no persistence |
+| `persist_output` | Tool requests full output be persisted to VFS before truncation when supported | Assume no persistence |
 
 **Design rules:**
 - Hints are informational — they do not enforce policy. Use `ToolPolicy` for execution gating.

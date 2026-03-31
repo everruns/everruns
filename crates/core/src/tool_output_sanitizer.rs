@@ -30,10 +30,10 @@ pub fn strip_ansi(text: &str) -> String {
             // ESC sequence — consume until terminator
             match chars.peek() {
                 Some('[') => {
-                    // CSI sequence: ESC [ ... (letter or @)
+                    // CSI sequence: ESC [ ... (final byte 0x40..=0x7E, '@'..='~')
                     chars.next(); // consume '['
                     for c in chars.by_ref() {
-                        if c.is_ascii_alphabetic() || c == '@' {
+                        if ('@'..='~').contains(&c) {
                             break;
                         }
                     }
@@ -85,9 +85,17 @@ pub fn collapse_cr_lines(text: &str) -> String {
             result.push('\n');
         }
 
-        // Find the last \r in this line — everything before it is overwritten
+        // Find the last \r in this line — everything before it is overwritten,
+        // except when the \r is a trailing CR from a CRLF sequence. In that
+        // case, keep the content before the \r instead of dropping it.
         if let Some(pos) = line.rfind('\r') {
-            result.push_str(&line[pos + 1..]);
+            if pos + 1 == line.len() {
+                // Trailing \r (likely from CRLF): keep content before it.
+                result.push_str(&line[..pos]);
+            } else {
+                // In-line \r used for overwriting: keep content after it.
+                result.push_str(&line[pos + 1..]);
+            }
         } else {
             result.push_str(line);
         }
@@ -110,7 +118,12 @@ pub fn middle_truncate(text: &str, max_bytes: usize) -> String {
     let marker_budget = 80; // "[... NNNNN bytes omitted ...]" + newlines
     let content_budget = max_bytes.saturating_sub(marker_budget);
     if content_budget == 0 {
-        return format!("[... {} bytes omitted ...]", text.len());
+        let mut marker = format!("[... {} bytes omitted ...]", text.len());
+        if marker.len() > max_bytes {
+            let cutoff = utf8_floor(&marker, max_bytes);
+            marker.truncate(cutoff);
+        }
+        return marker;
     }
 
     // 20% head, 80% tail
@@ -244,8 +257,14 @@ mod tests {
 
     #[test]
     fn test_collapse_cr_trailing_cr() {
-        // CR at end of line — everything before it is overwritten, leaving empty
-        assert_eq!(collapse_cr_lines("overwritten\r"), "");
+        // Trailing CR (from CRLF): keep content before it
+        assert_eq!(collapse_cr_lines("hello\r"), "hello");
+    }
+
+    #[test]
+    fn test_collapse_cr_crlf_preserved() {
+        // CRLF line endings — content should be preserved
+        assert_eq!(collapse_cr_lines("line1\r\nline2\r\n"), "line1\nline2\n");
     }
 
     #[test]

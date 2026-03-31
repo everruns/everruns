@@ -278,16 +278,8 @@ impl Tool for SpritesExecTool {
                 };
                 let stdout = sanitize_exec_output(&result.stdout, EXEC_OUTPUT_BUDGET);
                 let stderr = sanitize_exec_output(&result.stderr, 4096);
-                let mut output = stdout.clone();
-                if !stderr.is_empty() {
-                    if !output.is_empty() {
-                        output.push('\n');
-                    }
-                    output.push_str(&stderr);
-                }
                 ToolExecutionResult::success(json!({
                     "exit_code": result.exit_code,
-                    "output": output,
                     "stdout": stdout,
                     "stderr": stderr,
                 }))

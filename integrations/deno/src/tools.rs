@@ -280,33 +280,14 @@ impl Tool for DenoExecTool {
             return error;
         }
 
-        let output = if exec.stderr.is_empty() {
-            exec.stdout.clone()
-        } else if exec.stdout.is_empty() {
-            exec.stderr.clone()
-        } else {
-            format!(
-                "{}{}{}",
-                exec.stdout,
-                if exec.stdout.ends_with('\n') {
-                    ""
-                } else {
-                    "\n"
-                },
-                exec.stderr
-            )
-        };
-
         {
             use everruns_core::tool_output_sanitizer::{EXEC_OUTPUT_BUDGET, sanitize_exec_output};
             let stdout = sanitize_exec_output(&exec.stdout, EXEC_OUTPUT_BUDGET);
             let stderr = sanitize_exec_output(&exec.stderr, 4096);
-            let output = sanitize_exec_output(&output, EXEC_OUTPUT_BUDGET);
             ToolExecutionResult::success(json!({
                 "exit_code": exec.exit_code,
                 "stdout": stdout,
                 "stderr": stderr,
-                "output": output,
             }))
         }
     }
