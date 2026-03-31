@@ -477,13 +477,74 @@ OpenAI Codex stores the message log separately from agent state. This isn't just
 | Consistency | ACID required | Ordered append sufficient |
 | Retention | Permanent | Tiered (hot/warm/cold) |
 
-**Implementation: Kafka/Redpanda as primary event store**
+**Implementation: Two-Tier Event Architecture**
+
+Today, `EventService.emit()` stores every event — including every `output.message.delta` token chunk — to PostgreSQL via `INSERT INTO events`. This is the single biggest scalability problem. Delta events are:
+
+- **Ephemeral**: nobody reads them back. `output.message.completed` has the final text.
+- **Highest volume**: a 500-token response at ~100ms batching = ~50 delta events per turn. At 1M agents, that's ~50M delta events/sec peak.
+- **Latency-critical**: users expect <100ms token delivery. Kafka adds 2-5ms per message (batching, replication, consumer poll). Acceptable but unnecessary — why persist something nobody reads?
+
+**Tier 1: Ephemeral events — in-memory pub/sub, never stored**
+
+Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`) go through an in-process broadcast channel (current deployment) or NATS core pub/sub (multi-instance). No Kafka. No PostgreSQL. No persistence at all.
+
+```
+Worker LLM stream                     SSE client
+  ├─ token chunk                        │
+  ├─ token chunk    ──► NATS pub/sub ──►│ (~1ms latency)
+  ├─ token chunk        (fire & forget) │
+  └─ [completed]    ──► Kafka ──► PG    │ (durable)
+```
+
+```rust
+/// EventService.emit() — split by event durability
+pub async fn emit(&self, request: EventRequest) -> Result<Event> {
+    Self::validate_event_type_consistency(&request)?;
+
+    if request.is_ephemeral() {
+        // Ephemeral: broadcast only, no storage
+        // Sequence assigned from in-memory counter (per session)
+        let event = self.to_ephemeral_event(request);
+        self.ephemeral_broadcaster.publish(&event);
+        return Ok(event);
+    }
+
+    // Durable: publish to Kafka, sequence = partition offset
+    let event = self.kafka_producer.publish(request).await?;
+
+    // Notify listeners (OTel, metrics)
+    self.notify_listeners(&event).await;
+    Ok(event)
+}
+
+impl EventRequest {
+    fn is_ephemeral(&self) -> bool {
+        matches!(self.event_type.as_str(),
+            "output.message.delta"
+            | "output.message.started"
+            | "reason.thinking.delta"
+            | "reason.thinking.started"
+            | "tool.output.delta"
+        )
+    }
+}
+```
+
+**Why not Kafka for deltas:**
+- Kafka's minimum end-to-end latency is ~2-5ms (producer batch → broker → consumer poll). Acceptable for durable events. Wasteful for deltas that are consumed in real-time and thrown away.
+- At 50M delta events/sec, Kafka would need ~50 brokers just for ephemeral data that has zero replay value.
+- NATS core pub/sub is fire-and-forget with ~0.1ms latency. If a subscriber misses a delta, it doesn't matter — the `completed` event has the full content.
+
+**Tier 2: Durable events — Kafka as primary store, PG as cold storage**
+
+All non-delta events go to Kafka. These are the events that matter for replay, history, and API queries:
 
 ```
                     Write path (hot)                    Read path
                     ─────────────                       ─────────
-Worker executes     Kafka topic: events                 SSE stream subscribes
-  turn atom     ──► partitioned by session_id ────────► to Kafka partition
+Worker completes    Kafka topic: events                 SSE stream subscribes
+  turn/tool/msg ──► partitioned by session_id ────────► to Kafka partition
   │                      │                                   │
   │                      │ consumer group                    │ (real-time)
   │                      ▼                                   │
@@ -501,25 +562,43 @@ Worker executes     Kafka topic: events                 SSE stream subscribes
 
 **What changes in the codebase:**
 
-1. **`EventService.create_event()`** — currently calls `Database.create_event()` which does `INSERT INTO events`. Change to publish to Kafka topic. Sequence allocation moves from PG function (`allocate_event_sequence`) to Kafka partition offset (naturally ordered).
+1. **`EventService.emit()`** — split: ephemeral events go to in-memory/NATS broadcast (no storage), durable events go to Kafka topic. Current code path (`db.create_event()` → PG INSERT) is removed from the hot path.
 
-2. **`EventNotificationBroadcaster`** — currently listens on PG `NOTIFY 'event_available'`. Replace with Kafka consumer that pushes to in-process broadcast channels. No PG listener needed.
+2. **`EventNotificationBroadcaster`** — replaced by two channels:
+   - Ephemeral: NATS core pub/sub (or in-process `broadcast::channel` for single-instance)
+   - Durable: Kafka consumer that pushes to SSE streams
 
-3. **SSE event streams** — currently poll PG with `list_events(session_id, since_sequence)`. Change to subscribe to Kafka partition for the session. Instant delivery, no polling.
+3. **SSE event streams** — subscribe to both channels. Ephemeral events arrive with ~0.1ms latency (NATS). Durable events arrive with ~2-5ms latency (Kafka). Client sees a unified ordered stream.
 
-4. **REST `GET /v1/sessions/{id}/events`** — unchanged, reads from PG (cold storage). Kafka consumer backfills PG asynchronously (seconds of lag, acceptable for REST).
+4. **REST `GET /v1/sessions/{id}/events`** — reads from PG only. Delta events are excluded (they were never stored). This is already supported: the API has `exclude_types` filtering, and clients can opt out of deltas with `?exclude=output.message.delta`.
 
-5. **`events` table in PG** — kept as cold storage for historical queries, search, dashboards. Indexes can be reduced (no need for real-time partial indexes on turn/tool events since those are served from Kafka).
+5. **`events` table in PG** — much smaller without deltas. The heaviest index (`idx_events_session_sequence`) sees ~10x less write pressure since deltas were ~90% of event volume.
 
-**Sequence numbering without PostgreSQL:**
+**Volume reduction:**
 
-Current `allocate_event_sequence()` uses a PG advisory lock per session to allocate monotonic sequence numbers. This is a per-session bottleneck (serializes event creation within a session).
+| Event category | Events/turn (typical) | % of total | Storage tier |
+|---|---|---|---|
+| Deltas (message, thinking, tool output) | ~50 | ~80% | Ephemeral (none) |
+| Lifecycle (turn.started, turn.completed) | 2 | ~3% | Durable (Kafka → PG) |
+| Messages (input, output.completed) | 2 | ~3% | Durable (Kafka → PG) |
+| Tool calls (started, completed) | ~5 | ~8% | Durable (Kafka → PG) |
+| Other (status, metadata) | ~3 | ~5% | Durable (Kafka → PG) |
 
-With Kafka, sequence = Kafka offset within the session's partition. Since each session maps to one partition (by `session_id` hash), ordering is guaranteed by Kafka. No locks, no allocation.
+**At 1M agents, this changes the Kafka sizing dramatically:**
 
-For sessions that span partitions (unlikely but possible with repartitioning), use a logical sequence counter in the worker's in-memory session state, included in the Kafka message payload.
+| Metric | All events (original) | Durable only (revised) |
+|---|---|---|
+| Events/sec peak | 5M/sec | ~500K/sec |
+| Kafka partitions | 256 | 64 |
+| Kafka brokers | 3-5 | 3 |
+| Kafka retention (7d) | ~3TB | ~300GB |
+| PG backfill rate | 100K/sec | ~50K/sec |
 
-**Retention tiers:**
+**Sequence numbering:**
+
+Durable events use Kafka partition offset as sequence (naturally ordered per session). Ephemeral events use a lightweight in-memory counter per session in the worker — no PG advisory lock, no coordination. If a worker restarts mid-stream, the sequence resets, but that's fine — deltas are consumed in real-time and never queried by sequence.
+
+**Retention tiers (durable events only):**
 
 | Tier | Storage | Retention | Purpose |
 |---|---|---|---|
@@ -527,18 +606,7 @@ For sessions that span partitions (unlikely but possible with repartitioning), u
 | Warm | PostgreSQL | 90 days | REST API, dashboard queries, search |
 | Cold | S3/object store | Indefinite | Audit trail, compliance, replay |
 
-The Kafka → PG consumer only writes events older than a few seconds (batched, COPY protocol). The Kafka → S3 consumer runs daily, compacting events into Parquet files by org/session for cheap long-term storage.
-
-**Capacity at 1M agents:**
-
-| Metric | Value |
-|---|---|
-| Events/sec peak (1M agents × 5 events/turn, 1 turn/sec) | 5M/sec |
-| Kafka partitions | 256 (handles 5M/sec easily) |
-| Kafka cluster | 3 brokers (Redpanda: single binary, lower ops) |
-| Kafka retention | 7 days (~3TB at 100 bytes/event avg) |
-| PG backfill rate | ~100K inserts/sec (batched COPY, well within PG capacity) |
-| PG backfill lag | 2-5 seconds (acceptable for cold storage) |
+The Kafka → PG consumer batches durable events (COPY protocol). The Kafka → S3 consumer runs daily, compacting events into Parquet files by org/session for cheap long-term storage. Ephemeral events are never written to any persistent store.
 
 ## Capacity Planning
 
