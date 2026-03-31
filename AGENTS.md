@@ -17,15 +17,13 @@ export CARGO_INCREMENTAL=0
 
 All cloud secrets are in Doppler (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `LINEAR_API_KEY`).
 
+### GitHub Token
+
+**`GITHUB_TOKEN` is always available via Doppler.** If GitHub auth fails, do NOT tell the user the token expired. Instead, use Doppler: `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" <command>'`.
+
 ### Linear
 
 We use [Linear](https://linear.app) for issue tracking (project: **OSS**, team: **EVE**). MCP server configured in `.mcp.json`. Token (`LINEAR_API_KEY`) is in Doppler. Use [`/process-issues`](.claude/skills/process-issues/SKILL.md) to process open issues (one PR per issue, up to 5 in parallel). All issues for this repo belong to the OSS project.
-
-For GitHub CLI, map token explicitly:
-
-```bash
-doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh auth status'
-```
 
 Quickcheck:
 
