@@ -31,6 +31,13 @@ pub enum EventDelivery {
 }
 
 impl EventDelivery {
+    /// Whether this backend supports ephemeral-only delivery (skip PG).
+    /// Only NATS provides durable pub/sub with replay — InMemory events are
+    /// lost on restart, so we must persist everything to PG as fallback.
+    pub fn supports_ephemeral_skip(&self) -> bool {
+        matches!(self, Self::Nats(_))
+    }
+
     /// Create from environment. Uses NATS if `NATS_URL` is set, otherwise in-memory.
     pub async fn from_env() -> Self {
         match std::env::var("NATS_URL") {

@@ -121,11 +121,11 @@ impl EventService {
     /// Emit a typed event request.
     ///
     /// Routing:
-    /// - **Ephemeral** events (deltas, LLM generation): published to EventDelivery
-    ///   only. No PG write, no sequence allocation. Returns a synthetic Event with
-    ///   a locally-generated ID.
-    /// - **Durable** events: stored in PG (gets DB-assigned id + sequence), then
-    ///   published to EventDelivery for real-time SSE push.
+    /// - **Ephemeral** events (deltas, LLM generation) when NATS is active:
+    ///   published to EventDelivery only. No PG write, no sequence allocation.
+    /// - **All events** when NATS is not active (InMemory mode): stored in PG
+    ///   as before. No behavioral change without explicit NATS opt-in.
+    /// - **Durable** events: always stored in PG + published to EventDelivery.
     ///
     /// All registered listeners are notified regardless of durability.
     ///
@@ -134,7 +134,10 @@ impl EventService {
     pub async fn emit(&self, request: EventRequest) -> Result<Event> {
         Self::validate_event_type_consistency(&request)?;
 
-        if request.is_ephemeral() {
+        // Only skip PG for ephemeral events when the delivery backend supports it
+        // (NATS provides durable pub/sub with replay). InMemory mode persists
+        // everything to PG — zero behavioral change without NATS_URL.
+        if request.is_ephemeral() && self.event_delivery.supports_ephemeral_skip() {
             return self.emit_ephemeral(request).await;
         }
 
@@ -208,7 +211,7 @@ impl EventService {
     }
 
     /// Emit a batch of typed event requests.
-    /// Ephemeral events skip PG; durable events are stored.
+    /// Ephemeral events skip PG only when NATS is active; otherwise all go to PG.
     /// Returns the count of successfully processed events.
     ///
     /// # Errors
@@ -219,10 +222,11 @@ impl EventService {
             Self::validate_event_type_consistency(request)?;
         }
 
+        let skip_ephemeral = self.event_delivery.supports_ephemeral_skip();
         let mut count = 0i32;
 
         for request in requests {
-            if request.is_ephemeral() {
+            if request.is_ephemeral() && skip_ephemeral {
                 self.emit_ephemeral(request).await?;
             } else {
                 self.emit_durable(request).await?;
