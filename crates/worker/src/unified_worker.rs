@@ -562,6 +562,7 @@ where
                     if let (Some(turn_input), Some(wf_id)) = (turn_input_opt, task.workflow_id) {
                         schedule_next_activity(
                             store,
+                            adapters,
                             wf_id,
                             &task.activity_type,
                             &turn_input,
@@ -730,31 +731,11 @@ async fn execute_reason_activity<A: WorkerAdapters>(
 
     let result = atom.execute(reason_input).await?;
 
-    // If turn is complete (no tool calls or failure), emit lifecycle events.
-    // Client-side tool handling is now done by ActAtom's hooks.
-    let turn_complete = !result.has_tool_calls || !result.success;
-    if turn_complete {
-        if !result.success {
-            lifecycle
-                .turn_failed(
-                    turn_id,
-                    input_message_id,
-                    "An error occurred while processing your request.",
-                    Some("llm_error"),
-                )
-                .await;
-        } else {
-            lifecycle
-                .turn_completed(
-                    turn_id,
-                    input_message_id,
-                    input.iteration,
-                    result.usage.clone(),
-                    None,
-                )
-                .await;
-        }
-    }
+    // Turn lifecycle events (turn.completed, turn.failed, session.idled) are NOT
+    // emitted here. They are deferred to the workflow scheduler which checks for
+    // pending steering signals before deciding whether the turn is truly done.
+    // This ensures turn.completed is emitted exactly once and prevents the
+    // idle→active flicker when steering continues the turn.
 
     Ok(serde_json::to_value(&result)?)
 }
@@ -841,8 +822,9 @@ async fn execute_act_activity<A: WorkerAdapters>(
 // =============================================================================
 
 /// Schedule the next activity based on current activity completion
-async fn schedule_next_activity<S: WorkflowEventStore>(
+async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone>(
     store: &Arc<S>,
+    adapters: &A,
     workflow_id: Uuid,
     completed_activity: &str,
     input: &DurableTurnInput,
@@ -902,10 +884,38 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
 
             let response_id = reason_result.response_id.clone();
 
+            // Check for pending user messages (steering signals) only when
+            // the turn would otherwise complete (no tool calls, success).
+            let has_pending_user_messages = if !reason_result.has_tool_calls
+                && reason_result.success
+            {
+                let signals = match store.consume_pending_signals(workflow_id).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        warn!(workflow_id = %workflow_id, error = ?e,
+                                "Failed to consume steering signals; treating as no pending messages");
+                        Vec::new()
+                    }
+                };
+                let count = signals
+                    .iter()
+                    .filter(|s| s.signal_type == everruns_durable::signal_types::USER_MESSAGE)
+                    .count();
+                if count > 1 {
+                    info!(
+                        workflow_id = %workflow_id,
+                        queued_count = count,
+                        "Multiple user messages arrived during turn"
+                    );
+                }
+                count > 0
+            } else {
+                false
+            };
+
             if reason_result.has_tool_calls && reason_result.success {
                 let turn_id = input.turn_id.unwrap_or_default();
 
-                // Send ALL tool calls to ActAtom — it handles client/server partitioning internally
                 let act_input = ActInput {
                     org_id: Some(input.org_id),
                     context: AtomContext {
@@ -919,7 +929,7 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                     tool_calls: reason_result.tool_calls,
                     tool_definitions: reason_result.tool_definitions,
                     locale: reason_result.locale,
-                    blueprint_id: None, // Resolved by act_activity from session
+                    blueprint_id: None,
                 };
                 let mut act_input_json = serde_json::to_value(&act_input)?;
                 if let Some(rid) = &response_id {
@@ -949,10 +959,83 @@ async fn schedule_next_activity<S: WorkflowEventStore>(
                 let _ = append_event(store.as_ref(), workflow_id, scheduled_event).await;
 
                 debug!(workflow_id = %workflow_id, "Scheduled act activity");
-            } else {
-                // Workflow complete
-                record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
+            } else if has_pending_user_messages {
+                // User message(s) arrived during this turn. Continue the same
+                // turn — the message retriever re-queries the DB on next reason.
+                let next_iteration = input.iteration.saturating_add(1);
+                let continued_input = DurableTurnInput {
+                    org_id: input.org_id,
+                    session_id: input.session_id,
+                    harness_id: input.harness_id,
+                    agent_id: input.agent_id,
+                    input_message_id: input.input_message_id,
+                    turn_id: input.turn_id,
+                    previous_response_id: response_id,
+                    iteration: next_iteration,
+                };
+                let continued_json = serde_json::to_value(&continued_input)?;
+                let activity_id = format!("reason_{}", Uuid::now_v7());
 
+                let task = TaskDefinition {
+                    workflow_id: Some(workflow_id),
+                    activity_id: activity_id.clone(),
+                    activity_type: "reason".to_string(),
+                    input: continued_json.clone(),
+                    options: Default::default(),
+                };
+                store.enqueue_task(task).await.map_err(|e| {
+                    anyhow::anyhow!("Failed to enqueue steered reason iteration: {}", e)
+                })?;
+
+                let scheduled_event = WorkflowEvent::ActivityScheduled {
+                    activity_id,
+                    activity_type: "reason".to_string(),
+                    input: continued_json,
+                    options: ActivityOptions::default(),
+                };
+                let _ = append_event(store.as_ref(), workflow_id, scheduled_event).await;
+
+                info!(
+                    workflow_id = %workflow_id,
+                    iteration = next_iteration,
+                    "Steering: continuing turn with new reason iteration"
+                );
+            } else {
+                // Turn truly complete. Emit turn event + session.idled + mark done.
+                let turn_id = input.turn_id.unwrap_or_default();
+                let lifecycle =
+                    SessionLifecycle::new(adapters.clone(), input.org_id, input.session_id);
+
+                if reason_result.success {
+                    lifecycle
+                        .emit_turn_completed(
+                            turn_id,
+                            input.input_message_id,
+                            input.iteration,
+                            reason_result.usage.clone(),
+                            None,
+                        )
+                        .await;
+                    lifecycle
+                        .emit_session_idled(
+                            turn_id,
+                            input.input_message_id,
+                            Some(input.iteration),
+                            reason_result.usage.clone(),
+                        )
+                        .await;
+                } else {
+                    lifecycle
+                        .turn_failed(
+                            turn_id,
+                            input.input_message_id,
+                            "An error occurred while processing your request.",
+                            Some("llm_error"),
+                        )
+                        .await;
+                }
+
+                record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
                 store
                     .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
                     .await

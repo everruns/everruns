@@ -218,12 +218,6 @@ pub async fn reason_activity(
     input: ReasonInput,
     platform_definition: &PlatformDefinition,
 ) -> Result<ReasonResult> {
-    use everruns_core::MessageRetriever;
-    use everruns_core::events::{
-        EventContext, EventRequest, SessionIdledData, TurnCompletedData, TurnFailedData,
-    };
-    use everruns_core::traits::EventEmitter;
-
     tracing::info!(
         org_id = org_id,
         session_id = %input.context.session_id,
@@ -231,11 +225,6 @@ pub async fn reason_activity(
         agent_id = ?input.agent_id,
         "Executing reason_activity"
     );
-
-    let session_id = input.context.session_id;
-    let turn_id = input.context.turn_id;
-    let input_message_id = input.context.input_message_id;
-    let iteration = input.iteration;
 
     if let Some(blocker) =
         detect_dependency_blocker(&grpc_client, org_id, input.harness_id, input.agent_id).await?
@@ -289,79 +278,11 @@ pub async fn reason_activity(
         .await
         .context("ReasonAtom execution failed")?;
 
-    // If turn is complete (no tool calls, or failure), set session to idle
-    let turn_complete = !result.has_tool_calls || !result.success;
-    if turn_complete {
-        // Set session status to "idle"
-        if let Err(e) = grpc_client
-            .set_session_status(org_id, session_id, "idle")
-            .await
-        {
-            tracing::warn!(error = %e, "Failed to set session status to idle");
-        }
-
-        let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
-
-        // Emit turn.failed or turn.completed based on success
-        if !result.success {
-            // Emit turn.failed event with sanitized error message
-            let turn_failed_event = EventRequest::new(
-                session_id,
-                EventContext::turn(turn_id, input_message_id),
-                TurnFailedData {
-                    turn_id,
-                    error: "An error occurred while processing your request.".to_string(),
-                    error_code: Some("llm_error".to_string()),
-                },
-            );
-            if let Err(e) = event_emitter.emit(turn_failed_event).await {
-                tracing::warn!(error = %e, "Failed to emit turn.failed event");
-            }
-        } else {
-            // Fetch input message content for turn.completed (for Braintrust observability)
-            let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
-            let input_content = match message_retriever.get(session_id, input_message_id).await {
-                Ok(Some(msg)) => Some(msg.content_to_llm_string()),
-                Ok(None) => None,
-                Err(e) => {
-                    tracing::warn!(error = %e, "Failed to fetch input message for turn.completed");
-                    None
-                }
-            };
-
-            // Emit turn.completed event with usage
-            let turn_completed_event = EventRequest::new(
-                session_id,
-                EventContext::turn(turn_id, input_message_id),
-                TurnCompletedData {
-                    turn_id,
-                    iterations: iteration,
-                    duration_ms: None,
-                    usage: result.usage.clone(),
-                    input_content,
-                },
-            );
-            if let Err(e) = event_emitter.emit(turn_completed_event).await {
-                tracing::warn!(error = %e, "Failed to emit turn.completed event");
-            }
-        }
-
-        // Emit session.idled event
-        // Note: Using turn usage as fallback since worker doesn't have DB access
-        // for cumulative session usage. The UI should handle accumulation.
-        let idled_event = EventRequest::new(
-            session_id,
-            EventContext::turn(turn_id, input_message_id),
-            SessionIdledData {
-                turn_id,
-                iterations: Some(iteration),
-                usage: result.usage.clone(),
-            },
-        );
-        if let Err(e) = event_emitter.emit(idled_event).await {
-            tracing::warn!(error = %e, "Failed to emit session.idled event");
-        }
-    }
+    // Turn lifecycle events (turn.completed, turn.failed, session.idled) are NOT
+    // emitted here. They are deferred to the workflow scheduler which checks for
+    // pending steering signals (mid-turn user messages) before deciding whether
+    // the turn is truly done. This ensures turn.completed is emitted exactly once
+    // and prevents the idle→active flicker when steering continues the turn.
 
     Ok(result)
 }

@@ -94,7 +94,7 @@
 //!         }
 //!         TurnAction::ExecuteReason => {
 //!             let result = reason_atom.execute(...).await?;
-//!             sm.on_reason_completed(result.has_tool_calls, result.success, result.error)?;
+//!             sm.on_reason_completed(text, result.has_tool_calls, count, result.success, result.error, has_pending)?;
 //!         }
 //!         TurnAction::ExecuteAct { tool_calls } => {
 //!             act_atom.execute(...).await?;
@@ -392,6 +392,11 @@ impl TurnStateMachine {
     /// * `tool_call_count` - Number of tool calls (0 if none)
     /// * `success` - Whether the LLM call succeeded
     /// * `error` - Error message if success is false
+    /// * `has_pending_user_messages` - Whether new user messages arrived during
+    ///   this turn (steering signals). When true and reason would otherwise
+    ///   complete (no tool calls, success), the turn stays in PendingReason so
+    ///   the next iteration picks up the new messages from the conversation
+    ///   history. This is "in-turn steering" — matching Claude Code behavior.
     pub fn on_reason_completed(
         &mut self,
         response: String,
@@ -399,6 +404,7 @@ impl TurnStateMachine {
         tool_call_count: usize,
         success: bool,
         error: Option<String>,
+        has_pending_user_messages: bool,
     ) {
         debug_assert_eq!(self.phase, TurnPhase::PendingReason);
 
@@ -427,8 +433,17 @@ impl TurnStateMachine {
             self.has_pending_tool_calls = true;
             self.total_tool_calls += tool_call_count;
             self.phase = TurnPhase::PendingAct;
+        } else if has_pending_user_messages {
+            // No tool calls but user sent messages during this turn.
+            // Enforce max_iterations before continuing — prevents unbounded
+            // reason loops from a steady stream of user messages.
+            if self.current_iteration >= self.max_iterations {
+                self.phase = TurnPhase::Completed;
+            } else {
+                self.phase = TurnPhase::PendingReason;
+            }
         } else {
-            // No tool calls, turn is complete
+            // No tool calls, no pending messages — turn is complete
             self.phase = TurnPhase::Completed;
         }
     }
@@ -472,7 +487,7 @@ mod tests {
 
         // Then reason
         assert!(matches!(sm.next_action(), TurnAction::ExecuteReason));
-        sm.on_reason_completed("Hello!".to_string(), false, 0, true, None);
+        sm.on_reason_completed("Hello!".to_string(), false, 0, true, None, false);
 
         // Complete
         match sm.next_action() {
@@ -499,7 +514,7 @@ mod tests {
 
         // First reason - requests tool call
         assert!(matches!(sm.next_action(), TurnAction::ExecuteReason));
-        sm.on_reason_completed("Let me check...".to_string(), true, 1, true, None);
+        sm.on_reason_completed("Let me check...".to_string(), true, 1, true, None, false);
 
         // Act
         assert!(matches!(sm.next_action(), TurnAction::ExecuteAct));
@@ -507,7 +522,14 @@ mod tests {
 
         // Second reason - no more tool calls
         assert!(matches!(sm.next_action(), TurnAction::ExecuteReason));
-        sm.on_reason_completed("Here's the result.".to_string(), false, 0, true, None);
+        sm.on_reason_completed(
+            "Here's the result.".to_string(),
+            false,
+            0,
+            true,
+            None,
+            false,
+        );
 
         // Complete
         match sm.next_action() {
@@ -532,11 +554,11 @@ mod tests {
         sm.on_input_completed();
 
         // First reason - requests tool
-        sm.on_reason_completed("Trying...".to_string(), true, 1, true, None);
+        sm.on_reason_completed("Trying...".to_string(), true, 1, true, None, false);
         sm.on_act_completed();
 
         // Second reason - requests another tool (hits max)
-        sm.on_reason_completed("Still trying...".to_string(), true, 1, true, None);
+        sm.on_reason_completed("Still trying...".to_string(), true, 1, true, None, false);
 
         // Should complete with max iterations
         match sm.next_action() {
@@ -561,6 +583,7 @@ mod tests {
             0,
             false,
             Some("LLM error".to_string()),
+            false,
         );
 
         // Should complete with failure
@@ -602,5 +625,64 @@ mod tests {
         assert!(!failed.is_success());
         assert!(failed.response().is_none());
         assert_eq!(failed.error(), Some("oops"));
+    }
+
+    #[test]
+    fn test_pending_user_message_continues_turn() {
+        let mut sm = TurnStateMachine::new(test_context(), 10);
+        sm.on_input_completed();
+
+        // Reason completes with no tools, BUT there are pending user messages
+        sm.on_reason_completed("Hello!".to_string(), false, 0, true, None, true);
+
+        // Should NOT be completed — stays in PendingReason
+        assert!(!sm.is_completed());
+        assert_eq!(sm.phase(), TurnPhase::PendingReason);
+        assert!(matches!(sm.next_action(), TurnAction::ExecuteReason));
+
+        // Second reason picks up the new message and completes normally
+        sm.on_reason_completed("Got your message!".to_string(), false, 0, true, None, false);
+        match sm.next_action() {
+            TurnAction::Complete(TurnOutcome::Success {
+                response,
+                iterations,
+                ..
+            }) => {
+                assert_eq!(response, "Got your message!");
+                assert_eq!(iterations, 2);
+            }
+            other => panic!("Expected Success, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_pending_messages_ignored_on_failure() {
+        let mut sm = TurnStateMachine::new(test_context(), 10);
+        sm.on_input_completed();
+
+        // Failure + pending messages → still fails
+        sm.on_reason_completed(
+            String::new(),
+            false,
+            0,
+            false,
+            Some("LLM error".to_string()),
+            true,
+        );
+        assert!(sm.is_completed());
+        assert!(matches!(
+            sm.next_action(),
+            TurnAction::Complete(TurnOutcome::Failed { .. })
+        ));
+    }
+
+    #[test]
+    fn test_pending_messages_ignored_when_tool_calls() {
+        let mut sm = TurnStateMachine::new(test_context(), 10);
+        sm.on_input_completed();
+
+        // Tool calls + pending messages → tool calls take priority
+        sm.on_reason_completed("Working...".to_string(), true, 2, true, None, true);
+        assert_eq!(sm.phase(), TurnPhase::PendingAct);
     }
 }

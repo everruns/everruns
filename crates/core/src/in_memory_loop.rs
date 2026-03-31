@@ -643,12 +643,15 @@ impl InMemoryAgenticLoop {
 
                     let tool_call_count = reason_result.tool_calls.len();
                     previous_response_id = reason_result.response_id.clone();
+                    // In-memory loop has no signal mechanism, so
+                    // has_pending_user_messages is always false.
                     state_machine.on_reason_completed(
                         reason_result.text.clone(),
                         reason_result.has_tool_calls,
                         tool_call_count,
                         reason_result.success,
                         reason_result.error.clone(),
+                        false,
                     );
 
                     // Store for ActAtom if needed

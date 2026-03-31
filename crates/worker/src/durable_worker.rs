@@ -5,10 +5,11 @@
 use anyhow::Result;
 use everruns_core::atoms::AtomContext;
 use everruns_core::events::{
-    EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData,
+    EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData, TurnCompletedData,
+    TurnFailedData,
 };
 use everruns_core::traits::EventEmitter;
-use everruns_core::typed_id::{AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId};
+use everruns_core::typed_id::{ExecId, MessageId, SessionId, TurnId};
 use everruns_core::{Message, PlatformDefinition};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -99,6 +100,53 @@ async fn emit_cancellation_events(
     }
 
     info!(session_id = %session_id, "Cancellation events emitted");
+}
+
+/// Emit session.idled event and set session status to idle.
+///
+/// Called by the workflow scheduler (not by activities) so that session-level
+/// status is only set to idle after checking for pending steering signals.
+/// This prevents the idle→active flicker when a queued user message triggers
+/// a consecutive turn.
+async fn emit_session_idled(
+    grpc_address: &str,
+    org_id: i64,
+    session_id: SessionId,
+    turn_id: TurnId,
+    input_message_id: MessageId,
+    iterations: Option<u32>,
+    usage: Option<everruns_core::TokenUsage>,
+) {
+    let grpc_client = match GrpcClient::connect(grpc_address).await {
+        Ok(client) => client,
+        Err(e) => {
+            warn!(error = %e, "Failed to connect to gRPC for session.idled");
+            return;
+        }
+    };
+
+    // Set session status to idle
+    if let Err(e) = grpc_client
+        .set_session_status(org_id, session_id, "idle")
+        .await
+    {
+        warn!(session_id = %session_id, error = %e, "Failed to set session status to idle");
+    }
+
+    // Emit session.idled event
+    let event_emitter = GrpcEventEmitter::new(grpc_client);
+    let idled_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        SessionIdledData {
+            turn_id,
+            iterations,
+            usage,
+        },
+    );
+    if let Err(e) = event_emitter.emit(idled_event).await {
+        warn!(session_id = %session_id, error = %e, "Failed to emit session.idled event");
+    }
 }
 
 // =============================================================================
@@ -1351,18 +1399,43 @@ impl DurableWorker {
                 debug!(workflow_id = %workflow_id, turn_id = ?turn_id, "Scheduled reason activity");
             }
             "reason" => {
-                // After reasoning, check if there are tool calls
                 let reason_result: ReasonResult = serde_json::from_value(output.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse ReasonResult: {}", e))?;
 
                 // Carry response_id forward for next reason iteration
                 chained_input.previous_response_id = reason_result.response_id.clone();
 
-                if reason_result.has_tool_calls && reason_result.success {
-                    // Schedule act activity to execute the tool calls
-                    let tool_count = reason_result.tool_calls.len();
+                // Check for pending user messages (steering signals) only when
+                // the turn would otherwise complete (no tool calls, success).
+                let has_pending_user_messages = if !reason_result.has_tool_calls
+                    && reason_result.success
+                {
+                    let signals = match store.get_and_consume_signals(workflow_id).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            warn!(workflow_id = %workflow_id, error = %e,
+                                "Failed to consume steering signals; treating as no pending messages");
+                            vec![]
+                        }
+                    };
+                    let count = signals
+                        .iter()
+                        .filter(|s| s.signal_type == everruns_durable::signal_types::USER_MESSAGE)
+                        .count();
+                    if count > 1 {
+                        info!(
+                            workflow_id = %workflow_id,
+                            queued_count = count,
+                            "Multiple user messages arrived during turn"
+                        );
+                    }
+                    count > 0
+                } else {
+                    false
+                };
 
-                    // Use turn_id from input (propagated from input activity)
+                if reason_result.has_tool_calls && reason_result.success {
+                    let tool_count = reason_result.tool_calls.len();
                     let turn_id = input.turn_id.unwrap_or_default();
 
                     let act_task_input = ActTaskInput {
@@ -1380,11 +1453,10 @@ impl DurableWorker {
                             tool_calls: reason_result.tool_calls,
                             tool_definitions: reason_result.tool_definitions,
                             locale: reason_result.locale,
-                            blueprint_id: None, // Resolved by act_activity from session
+                            blueprint_id: None,
                         },
                     };
                     let mut act_input_json = serde_json::to_value(&act_task_input)?;
-                    // Carry response_id and iteration through act task for next reason iteration
                     if let Some(rid) = &chained_input.previous_response_id {
                         act_input_json["previous_response_id"] = serde_json::json!(rid);
                     }
@@ -1405,91 +1477,110 @@ impl DurableWorker {
                         tool_count = tool_count,
                         "Scheduled act activity for tool execution"
                     );
-                } else {
-                    // No tool calls or failure — turn is done.
-                    // Check for pending steering signals (user messages that arrived
-                    // during this turn). If found, start a new turn for the latest
-                    // message instead of marking the workflow complete.
-                    let pending_signals = store
-                        .get_and_consume_signals(workflow_id)
+                } else if has_pending_user_messages {
+                    // User message(s) arrived during this turn. Continue the same
+                    // turn — the message retriever re-queries the DB on next reason.
+                    let next_iteration = input.iteration.saturating_add(1);
+                    let continued_input = DurableTurnInput {
+                        org_id: input.org_id,
+                        session_id: input.session_id,
+                        harness_id: input.harness_id,
+                        agent_id: input.agent_id,
+                        input_message_id: input.input_message_id,
+                        turn_id: input.turn_id,
+                        previous_response_id: chained_input.previous_response_id.clone(),
+                        iteration: next_iteration,
+                    };
+                    let continued_json = serde_json::to_value(&continued_input)?;
+
+                    store
+                        .enqueue_task(
+                            workflow_id,
+                            format!("reason_{}", Uuid::now_v7()),
+                            "reason".to_string(),
+                            continued_json,
+                        )
                         .await
-                        .map_err(|e| anyhow::anyhow!("Failed to consume pending signals: {}", e))?;
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to enqueue steered reason iteration: {}", e)
+                        })?;
 
-                    let steering_message = pending_signals.iter().rev().find_map(|sig| {
-                        if sig.signal_type == everruns_durable::signal_types::USER_MESSAGE {
-                            Some(sig.payload.clone())
+                    info!(
+                        workflow_id = %workflow_id,
+                        iteration = next_iteration,
+                        "Steering: continuing turn with new reason iteration"
+                    );
+                } else {
+                    // Turn truly complete. Emit turn event + session.idled + mark done.
+                    let turn_id = input.turn_id.unwrap_or_default();
+                    let grpc_address = self.grpc_address.clone();
+                    let org_id = input.org_id;
+                    let session_id = input.session_id;
+                    let input_message_id = input.input_message_id;
+                    let iteration = input.iteration;
+                    let usage = reason_result.usage.clone();
+
+                    store
+                        .update_workflow_status(
+                            workflow_id,
+                            WorkflowStatus::Completed,
+                            None,
+                            reason_result.error.clone(),
+                        )
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
+
+                    drop(store);
+
+                    // Emit turn.completed or turn.failed + session.idled via gRPC
+                    let grpc_client = GrpcClient::connect(&grpc_address).await;
+                    if let Ok(client) = grpc_client {
+                        let event_emitter = GrpcEventEmitter::new(client.clone());
+                        let ctx = EventContext::turn(turn_id, input_message_id);
+
+                        if reason_result.success {
+                            let _ = event_emitter
+                                .emit(EventRequest::new(
+                                    session_id,
+                                    ctx,
+                                    TurnCompletedData {
+                                        turn_id,
+                                        iterations: iteration,
+                                        duration_ms: None,
+                                        usage: usage.clone(),
+                                        input_content: None,
+                                    },
+                                ))
+                                .await;
                         } else {
-                            None
+                            let _ = event_emitter
+                                .emit(EventRequest::new(
+                                    session_id,
+                                    ctx,
+                                    TurnFailedData {
+                                        turn_id,
+                                        error: "An error occurred while processing your request."
+                                            .to_string(),
+                                        error_code: Some("llm_error".to_string()),
+                                    },
+                                ))
+                                .await;
                         }
-                    });
-
-                    if let Some(payload) = steering_message {
-                        // A user message arrived during this turn. Start a new turn.
-                        let new_message_id: MessageId = payload
-                            .get("input_message_id")
-                            .and_then(|v| v.as_str())
-                            .and_then(|s| s.parse().ok())
-                            .unwrap_or(input.input_message_id);
-                        let new_org_id = payload
-                            .get("org_id")
-                            .and_then(|v| v.as_i64())
-                            .unwrap_or(input.org_id);
-                        let new_harness_id: HarnessId = payload
-                            .get("harness_id")
-                            .and_then(|v| v.as_str())
-                            .and_then(|s| s.parse().ok())
-                            .unwrap_or(input.harness_id);
-                        let new_agent_id: Option<AgentId> = payload
-                            .get("agent_id")
-                            .and_then(|v| v.as_str())
-                            .and_then(|s| s.parse().ok())
-                            .or(input.agent_id);
-
-                        let new_input = DurableTurnInput {
-                            org_id: new_org_id,
-                            session_id: input.session_id,
-                            harness_id: new_harness_id,
-                            agent_id: new_agent_id,
-                            input_message_id: new_message_id,
-                            turn_id: None,
-                            previous_response_id: None,
-                            iteration: 1,
-                        };
-                        let new_input_json = serde_json::to_value(&new_input)?;
-
-                        store
-                            .enqueue_task(
-                                workflow_id,
-                                format!("input_{}", Uuid::now_v7()),
-                                "process_input".to_string(),
-                                new_input_json,
-                            )
-                            .await
-                            .map_err(|e| {
-                                anyhow::anyhow!("Failed to enqueue steering turn: {}", e)
-                            })?;
-
-                        info!(
-                            workflow_id = %workflow_id,
-                            new_message_id = %new_message_id,
-                            "Steering: starting new turn for message received during active turn"
-                        );
-                    } else {
-                        // No pending messages — workflow is truly complete
-                        store
-                            .update_workflow_status(
-                                workflow_id,
-                                WorkflowStatus::Completed,
-                                None,
-                                None,
-                            )
-                            .await
-                            .map_err(|e| {
-                                anyhow::anyhow!("Failed to update workflow status: {}", e)
-                            })?;
-
-                        info!(workflow_id = %workflow_id, "Workflow completed");
                     }
+
+                    emit_session_idled(
+                        &grpc_address,
+                        org_id,
+                        session_id,
+                        turn_id,
+                        input_message_id,
+                        Some(iteration),
+                        usage,
+                    )
+                    .await;
+
+                    info!(workflow_id = %workflow_id, "Workflow completed");
+                    return Ok(());
                 }
             }
             "act" => {
