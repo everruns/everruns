@@ -127,10 +127,10 @@
 }
 
 :root[data-theme="dark"] {
-  --ec-codeBg: #111111;
-  --ec-frm-trmBg: #111111;
-  --ec-frm-trmTtbBg: #1a1a1a;
-  --ec-frm-edBg: #111111;
+  --ec-codeBg: #161b22;
+  --ec-frm-trmBg: #161b22;
+  --ec-frm-trmTtbBg: #1c2129;
+  --ec-frm-edBg: #161b22;
 }
 
 /* Hide the empty terminal title bar when there is no title text.
