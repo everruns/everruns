@@ -497,12 +497,110 @@ Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delt
 
 Valkey is the pragmatic default — it's already deployed (`VALKEY_URL`), the `fred` client is already a dependency, and adding `PUBLISH`/`SUBSCRIBE` for deltas is ~50 lines of code. NATS is only added when delta volume exceeds what Valkey can fan out.
 
+**Delta delivery path: workers stay gRPC-only**
+
+Key architecture question: should workers publish directly to NATS/Valkey for deltas?
+
+**No.** Workers must not know about NATS, Valkey, or Kafka. The current principle — workers communicate exclusively via gRPC to the control plane — is load-bearing for deployment simplicity and security (workers don't need pub/sub credentials, don't need network access to message brokers, and can run in isolated environments). Breaking this creates a distributed system inside the worker.
+
+Instead, the control plane is the **routing point** that decides where events go:
+
 ```
-Worker LLM stream                              SSE client
-  ├─ token chunk                                 │
-  ├─ token chunk  ──► Valkey PUBLISH ──► SUBSCRIBE ──►│ (~0.2ms)
-  ├─ token chunk      (fire & forget)            │
-  └─ [completed]  ──► Kafka ──► PG               │ (durable)
+Current (every delta is a blocking gRPC round-trip → PG INSERT):
+
+  Worker ReasonAtom                Control Plane              PostgreSQL
+  ─────────────────                ─────────────              ──────────
+  LLM token chunk
+    → event_emitter.emit()
+      → gRPC EmitEvent ──────────► EventService.emit()
+                                     → db.create_event() ──► INSERT INTO events
+                                     ← EventRow            ◄─ (wait for commit)
+      ← Event response ◄──────────
+    (blocks until PG commit)
+    next token...
+
+
+Proposed (deltas fire-and-forget via gRPC, control plane routes to pub/sub):
+
+  Worker ReasonAtom                Control Plane              Pub/Sub
+  ─────────────────                ─────────────              ───────
+  LLM token chunk
+    → event_emitter.emit()
+      → gRPC EmitEvent ──────────► EventService.emit()
+        (fire-and-forget stream)     is_ephemeral()? → yes
+                                     → NATS/Valkey PUBLISH ──► SSE subscribers
+                                     ← ack (no PG, no wait)
+      ← lightweight ack ◄──────────
+    (non-blocking, ~1ms)                                    (not stored)
+    next token...
+
+  LLM [done]
+    → event_emitter.emit(completed)
+      → gRPC EmitEvent ──────────► EventService.emit()
+                                     is_ephemeral()? → no
+                                     → Kafka produce ──► PG consumer (async)
+                                     ← Event
+      ← Event response ◄──────────
+```
+
+The change is **entirely inside the control plane's `EventService.emit()`** — workers call the same `gRPC EmitEvent` they always did. The control plane routes based on event type:
+
+- Ephemeral → pub/sub PUBLISH, return lightweight ack (no PG)
+- Durable → Kafka produce, return stored event
+
+**Optimization: gRPC streaming for deltas**
+
+The current `EmitEvent` RPC is unary (request-response per event). At 100ms batch interval, that's 10 gRPC round-trips/sec per active agent — fine at small scale, but 10M round-trips/sec at 1M agents is excessive.
+
+Better: use a **bidirectional gRPC stream** for delta events. The worker opens one stream per session and pushes deltas without waiting for responses. The control plane reads from the stream and publishes to pub/sub in bulk.
+
+```protobuf
+// New: streaming RPC for ephemeral events
+service WorkerService {
+    // Existing: unary RPC for durable events
+    rpc EmitEvent(EmitEventRequest) returns (EmitEventResponse);
+
+    // New: streaming RPC for ephemeral delta events
+    // Worker pushes deltas, control plane acks periodically (not per-message)
+    rpc StreamEphemeralEvents(stream EmitEventRequest) returns (stream EphemeralAck);
+}
+
+message EphemeralAck {
+    // Periodic ack — not per-event. Just confirms the stream is alive.
+    uint64 events_received = 1;
+}
+```
+
+The `ReasonAtom` in the worker detects ephemeral events and routes to the stream:
+
+```rust
+// In core: EventEmitter trait stays the same
+// In worker: GrpcEventEmitter splits internally
+
+impl EventEmitter for GrpcEventEmitter {
+    async fn emit(&self, request: EventRequest) -> Result<Event> {
+        if request.is_ephemeral() {
+            // Push to open gRPC stream (fire-and-forget, non-blocking)
+            self.ephemeral_stream.send(request).await?;
+            // Return synthetic Event (no PG id, no sequence)
+            Ok(request.to_ephemeral_event())
+        } else {
+            // Existing unary gRPC call for durable events
+            self.emit_durable(request).await
+        }
+    }
+}
+```
+
+**Workers don't know about NATS/Valkey/Kafka.** They know about gRPC. The control plane decides the routing.
+
+```
+Worker                     Control Plane                 Infrastructure
+──────                     ─────────────                 ──────────────
+                                                          ┌─ NATS/Valkey (deltas)
+gRPC EmitEvent ──────────► EventService.emit() ──────────►├─ Kafka (durable events)
+gRPC StreamEphemeral ────► EphemeralRouter.publish() ────►└─ PG (cold storage)
+                                                         (workers don't know about any of this)
 ```
 
 ```rust
