@@ -8,6 +8,7 @@ start tag="latest":
     source scripts/lib/common.sh
     apply_port_prefix_defaults
     : "${EXAMPLE_PROXY_PORT:=$PROXY_PORT}"
+    export VICTORIAMETRICS_PORT
     : "${EXAMPLE_COMPOSE_PROJECT_NAME:=${COMPOSE_PROJECT_NAME}-example}"
     # Check if local docker compose containers are running (not from example compose)
     # We check the com.docker.compose.project label to distinguish local vs example containers
@@ -47,6 +48,7 @@ start tag="latest":
     docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml up --pull always -d
     echo "✅ Example full stack started!"
     echo "   - UI: http://localhost:${EXAMPLE_PROXY_PORT}"
+    echo "   - VictoriaMetrics: http://localhost:${VICTORIAMETRICS_PORT:-8428}/vmui"
 
 # Stop example docker-compose-full
 stop:

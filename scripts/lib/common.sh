@@ -44,6 +44,7 @@ apply_port_prefix_defaults() {
     : "${UI_PORT:=${PORT_PREFIX}05}"
     : "${OTEL_GRPC_PORT:=${PORT_PREFIX}17}"
     : "${OTEL_HTTP_PORT:=${PORT_PREFIX}18}"
+    : "${VICTORIAMETRICS_PORT:=${PORT_PREFIX}28}"
     : "${VALKEY_PORT:=${PORT_PREFIX}79}"
     : "${DB_PORT:=${PORT_PREFIX}32}"
   else
@@ -54,6 +55,7 @@ apply_port_prefix_defaults() {
     : "${UI_PORT:=9305}"
     : "${OTEL_GRPC_PORT:=4317}"
     : "${OTEL_HTTP_PORT:=4318}"
+    : "${VICTORIAMETRICS_PORT:=8428}"
     : "${VALKEY_PORT:=6379}"
     : "${DB_PORT:=9332}"
   fi
@@ -61,7 +63,7 @@ apply_port_prefix_defaults() {
   # COMPOSE_PROJECT_NAME is still used by example.just for the Docker-based example deployment
   : "${COMPOSE_PROJECT_NAME:=everruns${PORT_PREFIX:+-$PORT_PREFIX}}"
 
-  export PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT COMPOSE_PROJECT_NAME RUN_STATE_DIR
+  export PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VICTORIAMETRICS_PORT VALKEY_PORT DB_PORT COMPOSE_PROJECT_NAME RUN_STATE_DIR
 }
 
 # Check if npm dependencies need to be installed/updated

@@ -7,6 +7,7 @@
 # - 3 Worker instances for parallel processing
 # - UI (Next.js dashboard)
 # - Caddy reverse proxy (unified entry point)
+# - VictoriaMetrics (scrapes Prometheus /metrics from server)
 # - OpenTelemetry tracing (configure OTEL_EXPORTER_OTLP_ENDPOINT for external collector)
 #
 # Quick Start:
@@ -24,9 +25,13 @@
 #      docker compose -f docker-compose-full.yaml up -d
 #
 #   4. Open UI at: http://localhost:9300
+#   5. VictoriaMetrics UI (default): http://localhost:8428/vmui
+#      If you override the port via VICTORIAMETRICS_PORT, use that port instead.
+#      Try query: everruns_http_request_duration_seconds_count
 #
 # Ports:
 #   - 9300: Web UI (Caddy)
+#   - 8428 (default): VictoriaMetrics UI & API (configurable via VICTORIAMETRICS_PORT)
 #
 # Note: Images are from ghcr.io/everruns - ensure you have access or build locally
 
@@ -157,6 +162,37 @@ services:
       - ui
     restart: unless-stopped
 
+  # ==========================================================================
+  # VictoriaMetrics (single-node time-series database)
+  #
+  # Scrapes Prometheus metrics from the server's /metrics endpoint.
+  # UI available at http://localhost:8428/vmui
+  #
+  # Key queries to try:
+  #   - everruns_workflows_running
+  #   - everruns_workers_active
+  #   - rate(everruns_http_request_duration_seconds_count[5m])
+  #   - histogram_quantile(0.95, rate(everruns_http_request_duration_seconds_bucket[5m]))
+  # ==========================================================================
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.108.1
+    ports:
+      - "${VICTORIAMETRICS_PORT:-8428}:8428"
+    volumes:
+      - victoriametrics_data:/victoria-metrics-data
+    configs:
+      - source: prometheus_scrape_config
+        target: /etc/prometheus/prometheus.yml
+    command:
+      - "--storageDataPath=/victoria-metrics-data"
+      - "--promscrape.config=/etc/prometheus/prometheus.yml"
+      - "--httpListenAddr=:8428"
+      - "--retentionPeriod=30d"
+    depends_on:
+      server:
+        condition: service_started
+    restart: unless-stopped
+
 # ==========================================================================
 # Configs (inline configuration files)
 # ==========================================================================
@@ -190,6 +226,21 @@ configs:
         }
       }
 
+  prometheus_scrape_config:
+    content: |
+      global:
+        scrape_interval: 15s
+        scrape_timeout: 10s
+
+      scrape_configs:
+        - job_name: everruns-server
+          metrics_path: /metrics
+          static_configs:
+            - targets: ["server:9301"]
+              labels:
+                service: everruns-server
+
 volumes:
   postgres_data:
   valkey_data:
+  victoriametrics_data:
