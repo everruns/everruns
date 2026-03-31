@@ -155,6 +155,7 @@ fn parse_secrets(raw: &[String]) -> Result<HashMap<String, String>> {
 }
 
 /// Store secrets via PUT /v1/sessions/:id/storage/secrets
+// TODO(everruns/sdk#67): Replace raw reqwest with native SDK client.sessions().set_secrets()
 async fn store_secrets(
     api_url: &str,
     api_key: &str,
