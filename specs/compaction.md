@@ -164,7 +164,7 @@ pub struct CompactionConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservationMaskingConfig {
     /// Number of recent tool outputs to keep verbatim.
-    #[serde(default = "default_keep_recent")]
+    #[serde(default = "default_keep_recent_tool_outputs")]
     pub keep_recent_tool_outputs: usize,  // default: 2
 
     /// Format for masked tool output summaries.
