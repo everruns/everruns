@@ -55,7 +55,7 @@ inventory::submit! {
 const DAYTONA_API_BASE: &str = "https://app.daytona.io/api";
 const DAYTONA_TOOLBOX_BASE: &str = "https://proxy.app.daytona.io/toolbox";
 const DAYTONA_SANDBOX_SECRET_PREFIX: &str = "daytona_sandbox:";
-const EXEC_TIMEOUT_MS: u64 = 120_000;
+const EXEC_TIMEOUT_MS: u64 = 300_000;
 /// Interval for polling streaming exec output from the sandbox.
 const EXEC_POLL_INTERVAL: Duration = Duration::from_millis(1_000);
 /// Number of consecutive stale polls (no exitCode, no new output) before
