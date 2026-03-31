@@ -141,18 +141,6 @@ case "$cmd" in
       echo "  ✅ cargo-watch already installed"
     fi
 
-    # sccache (optional — shared compile cache)
-    echo ""
-    echo "🚀 Compile cache:"
-    if ! command -v sccache &> /dev/null; then
-      echo "  Installing sccache (optional compile cache)..."
-      source "$(dirname "${BASH_SOURCE[0]}")/sccache.sh"
-      _install_sccache || echo "  ⚠️  sccache install failed (non-fatal, builds will still work)"
-    else
-      echo "  ✅ sccache already installed: $(sccache --version)"
-    fi
-    echo "  💡 Activate: source scripts/lib/sccache.sh && activate_sccache"
-
     # UI dependencies
     echo ""
     echo "🖥️  UI setup:"
