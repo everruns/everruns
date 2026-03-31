@@ -9,6 +9,7 @@ pub mod agent_identity_connections;
 pub mod agents;
 pub mod apps;
 pub mod audit_logs;
+pub mod budgets;
 pub mod capabilities;
 pub mod commands;
 pub mod common;

@@ -2111,4 +2111,81 @@ impl StorageBackend {
     ) -> Result<Option<EvalCaseResultRow>> {
         dispatch!(self, update_eval_case_result, id, input)
     }
+
+    // ============================================
+    // Budget CRUD
+    // ============================================
+
+    pub async fn create_budget(&self, input: CreateBudgetRow) -> Result<BudgetRow> {
+        dispatch!(self, create_budget, input)
+    }
+
+    pub async fn get_budget(&self, org_id: i64, id: Uuid) -> Result<Option<BudgetRow>> {
+        dispatch!(self, get_budget, org_id, id)
+    }
+
+    pub async fn list_budgets(
+        &self,
+        org_id: i64,
+        subject_type: Option<&str>,
+        subject_id: Option<&str>,
+    ) -> Result<Vec<BudgetRow>> {
+        dispatch!(self, list_budgets, org_id, subject_type, subject_id)
+    }
+
+    pub async fn get_active_budgets_for_session(
+        &self,
+        org_id: i64,
+        session_id: &str,
+        agent_id: Option<&str>,
+        user_id: Option<&str>,
+        org_public_id: Option<&str>,
+    ) -> Result<Vec<BudgetRow>> {
+        dispatch!(
+            self,
+            get_active_budgets_for_session,
+            org_id,
+            session_id,
+            agent_id,
+            user_id,
+            org_public_id
+        )
+    }
+
+    pub async fn update_budget(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateBudgetRow,
+    ) -> Result<Option<BudgetRow>> {
+        dispatch!(self, update_budget, org_id, id, input)
+    }
+
+    pub async fn delete_budget(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_budget, org_id, id)
+    }
+
+    // ============================================
+    // Budget Ledger
+    // ============================================
+
+    pub async fn create_budget_ledger_entry(
+        &self,
+        input: CreateBudgetLedgerRow,
+    ) -> Result<(BudgetLedgerRow, BudgetRow)> {
+        dispatch!(self, create_budget_ledger_entry, input)
+    }
+
+    pub async fn list_budget_ledger(
+        &self,
+        budget_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<BudgetLedgerRow>> {
+        dispatch!(self, list_budget_ledger, budget_id, limit, offset)
+    }
+
+    pub async fn set_budget_status(&self, id: Uuid, status: &str) -> Result<Option<BudgetRow>> {
+        dispatch!(self, set_budget_status, id, status)
+    }
 }

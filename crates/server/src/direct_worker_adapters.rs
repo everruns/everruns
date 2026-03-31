@@ -1943,6 +1943,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
                 SessionStatus::WaitingForToolResults => {
                     return Ok("waiting_for_tool_results".to_string());
                 }
+                SessionStatus::Paused => return Ok("paused".to_string()),
             }
 
             if start.elapsed() > timeout {

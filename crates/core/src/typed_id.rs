@@ -462,6 +462,20 @@ impl IdMarker for EvalResultIdMarker {
     const PREFIX: &'static str = "evalresult";
 }
 
+/// Marker for Budget IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BudgetIdMarker;
+impl IdMarker for BudgetIdMarker {
+    const PREFIX: &'static str = "bdgt";
+}
+
+/// Marker for Budget Ledger Entry IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LedgerEntryIdMarker;
+impl IdMarker for LedgerEntryIdMarker {
+    const PREFIX: &'static str = "ledger";
+}
+
 // ============================================================================
 // Type aliases for convenience
 // ============================================================================
@@ -514,6 +528,10 @@ pub type EvalCaseId = TypedId<EvalCaseIdMarker>;
 pub type EvalRunId = TypedId<EvalRunIdMarker>;
 /// Eval Case Result ID
 pub type EvalResultId = TypedId<EvalResultIdMarker>;
+/// Budget ID
+pub type BudgetId = TypedId<BudgetIdMarker>;
+/// Budget Ledger Entry ID
+pub type LedgerEntryId = TypedId<LedgerEntryIdMarker>;
 
 // ============================================================================
 // Well-known IDs (for seeding and defaults)

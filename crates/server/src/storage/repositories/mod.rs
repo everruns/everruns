@@ -8,6 +8,7 @@ mod app_channels;
 mod apps;
 mod audit_logs;
 mod auth;
+mod budgets;
 mod evals;
 mod events;
 mod harnesses;

@@ -5,6 +5,9 @@ pub mod agent;
 pub mod agent_identity;
 pub mod app;
 pub mod audit_log;
+pub mod budget;
+#[cfg(test)]
+mod budget_tests;
 pub mod capability;
 pub(crate) mod capability_validation;
 pub mod eval;
@@ -29,6 +32,7 @@ pub use agent::AgentService;
 pub use agent_identity::AgentIdentityService;
 pub use app::AppService;
 pub use audit_log::AuditLogService;
+pub use budget::BudgetService;
 pub use capability::CapabilityService;
 pub use eval::EvalService;
 pub use event::EventService;

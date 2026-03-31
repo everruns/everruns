@@ -83,6 +83,12 @@ pub const SUBAGENT_CANCELLED: &str = "subagent.cancelled";
 pub const CONTEXT_COMPACTING: &str = "context.compacting";
 pub const CONTEXT_COMPACTED: &str = "context.compacted";
 
+// Budget events
+pub const BUDGET_WARNING: &str = "budget.warning";
+pub const BUDGET_PAUSED: &str = "budget.paused";
+pub const BUDGET_EXHAUSTED: &str = "budget.exhausted";
+pub const BUDGET_RESUMED: &str = "budget.resumed";
+
 /// All valid event types for API filtering validation.
 /// Used by `types` and `exclude` query parameter validation to reject unknown types
 /// and prevent unbounded arrays from reaching the database.
@@ -118,6 +124,10 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     SUBAGENT_CANCELLED,
     CONTEXT_COMPACTING,
     CONTEXT_COMPACTED,
+    BUDGET_WARNING,
+    BUDGET_PAUSED,
+    BUDGET_EXHAUSTED,
+    BUDGET_RESUMED,
 ];
 
 // ============================================================================
@@ -1601,6 +1611,30 @@ pub struct ContextCompactedData {
 }
 
 // ============================================================================
+// Budget event data
+// ============================================================================
+
+/// Data for budget lifecycle events (warning, paused, exhausted, resumed).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct BudgetEventData {
+    /// Budget that triggered this event.
+    pub budget_id: String,
+    /// Current remaining balance.
+    pub balance: f64,
+    /// Budget limit.
+    pub limit: f64,
+    /// Budget currency (e.g. "usd", "tokens").
+    pub currency: String,
+    /// Human-readable message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// Soft limit threshold (present for warning/paused events).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub soft_limit: Option<f64>,
+}
+
+// ============================================================================
 // EventData Enum - Typed event payloads
 // ============================================================================
 
@@ -1708,6 +1742,12 @@ pub enum EventData {
     ContextCompacting(ContextCompactingData),
     ContextCompacted(ContextCompactedData),
 
+    // Budget events
+    BudgetWarning(BudgetEventData),
+    BudgetPaused(BudgetEventData),
+    BudgetExhausted(BudgetEventData),
+    BudgetResumed(BudgetEventData),
+
     /// Internal-only variant for unknown event types.
     /// Never serialized to API responses - filtered out before transmission.
     /// Logs a warning when created to alert developers of unknown types.
@@ -1755,6 +1795,10 @@ impl EventData {
             EventData::SubagentCancelled(_) => SUBAGENT_CANCELLED,
             EventData::ContextCompacting(_) => CONTEXT_COMPACTING,
             EventData::ContextCompacted(_) => CONTEXT_COMPACTED,
+            EventData::BudgetWarning(_) => BUDGET_WARNING,
+            EventData::BudgetPaused(_) => BUDGET_PAUSED,
+            EventData::BudgetExhausted(_) => BUDGET_EXHAUSTED,
+            EventData::BudgetResumed(_) => BUDGET_RESUMED,
             EventData::Unsupported { .. } => "unsupported",
         }
     }
@@ -1858,6 +1902,15 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::ContextCompacting),
             CONTEXT_COMPACTED => serde_json::from_value::<ContextCompactedData>(data.clone())
                 .map(EventData::ContextCompacted),
+            BUDGET_WARNING => serde_json::from_value::<BudgetEventData>(data.clone())
+                .map(EventData::BudgetWarning),
+            BUDGET_PAUSED => {
+                serde_json::from_value::<BudgetEventData>(data.clone()).map(EventData::BudgetPaused)
+            }
+            BUDGET_EXHAUSTED => serde_json::from_value::<BudgetEventData>(data.clone())
+                .map(EventData::BudgetExhausted),
+            BUDGET_RESUMED => serde_json::from_value::<BudgetEventData>(data.clone())
+                .map(EventData::BudgetResumed),
             _ => {
                 // Unknown event type - return as unsupported with warning
                 return EventData::unsupported(event_type.to_string(), data);
@@ -1921,6 +1974,20 @@ impl_from_event_data! {
     SessionIdledData => SessionIdled,
     ContextCompactingData => ContextCompacting,
     ContextCompactedData => ContextCompacted,
+}
+
+// Budget events reuse BudgetEventData for all four variants,
+// so we can't use the macro (it would conflict). Named constructor instead.
+impl EventData {
+    pub fn budget_event(data: BudgetEventData, event_type: &str) -> Self {
+        match event_type {
+            BUDGET_WARNING => EventData::BudgetWarning(data),
+            BUDGET_PAUSED => EventData::BudgetPaused(data),
+            BUDGET_EXHAUSTED => EventData::BudgetExhausted(data),
+            BUDGET_RESUMED => EventData::BudgetResumed(data),
+            _ => panic!("Unknown budget event type: {event_type}"),
+        }
+    }
 }
 
 // ============================================================================

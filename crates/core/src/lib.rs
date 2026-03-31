@@ -44,6 +44,9 @@ pub mod typed_id;
 // Audit logging types and trait (EVE-226)
 pub mod audit;
 
+// Budget types (budgets, ledger, rules, actions)
+pub mod budget;
+
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
