@@ -7,13 +7,16 @@
 //! is NOT used — it doesn't support async execution or output streaming.
 //!
 //! Decision: Every command is prefixed with a shell-profile preamble that
-//! sources common profile files (~/.profile, ~/.bashrc, ~/.cargo/env, etc.).
+//! sources common non-interactive profile files (~/.profile, ~/.cargo/env,
+//! ~/.nvm/nvm.sh). `~/.bashrc` is intentionally not sourced because most
+//! distros guard it with an interactive-shell check that returns early in
+//! non-interactive exec contexts.
 //! Daytona sessions use a bare shell (no login flag), so tools installed
 //! mid-session (e.g. rustup writing ~/.cargo/env) aren't visible in PATH.
 //! Unlike E2B and Deno which spawn `bash -l -c` per command, Daytona's
 //! persistent session means even a login shell at creation time wouldn't
 //! pick up later installs. The preamble runs on every exec (~2ms overhead)
-//! and eliminates the entire class of "command not found after install" bugs.
+//! and largely eliminates "command not found after install" bugs.
 
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -38,10 +41,11 @@ const EXEC_SESSION_ID: &str = "everruns-exec";
 /// non-interactive exec contexts. The files listed here are all designed
 /// for non-interactive sourcing (PATH/env exports only).
 ///
-/// Profiles are sourced with `2>/dev/null` to suppress any unexpected noise.
+/// Profiles are sourced with stdout and stderr redirected to `/dev/null`
+/// to suppress any unexpected noise (motd, banners, etc.).
 const SHELL_PROFILE_PREAMBLE: &str = concat!(
-    "for __f in ~/.profile ~/.cargo/env ~/.nvm/nvm.sh; do ",
-    "[ -f \"$__f\" ] && . \"$__f\" 2>/dev/null; ",
+    "for __f in \"$HOME/.profile\" \"$HOME/.cargo/env\" \"$HOME/.nvm/nvm.sh\"; do ",
+    "[ -f \"$__f\" ] && . \"$__f\" >/dev/null 2>&1; ",
     "done; unset __f; ",
 );
 

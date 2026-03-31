@@ -254,7 +254,7 @@ Three fixes were considered:
 2. **Wrap every command with preamble** — Sources `~/.profile`, `~/.cargo/env`, `~/.nvm/nvm.sh` before each command. ~2ms overhead, handles mid-session installs. **Chosen.** Deliberately excludes `~/.bashrc` — most distros guard it with an interactive-mode check (`case $-`) that returns early in non-interactive exec contexts.
 3. **Login shell for session** — Depends on Daytona API support; same limitation as (1) for mid-session installs. Rejected.
 
-The preamble uses `2>/dev/null` on each source to suppress motd/banner noise. The loop variable (`__f`) is `unset` after sourcing to avoid polluting the command's environment.
+The preamble redirects both stdout and stderr to `/dev/null` on each source to suppress noise (motd, banners, etc.). The loop variable (`__f`) is `unset` after sourcing to avoid polluting the command's environment.
 
 ### Configurable auto-stop
 
