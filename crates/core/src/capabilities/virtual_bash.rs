@@ -2303,7 +2303,15 @@ mod tests {
 
         let direct_prompt = BASHKIT_TOOL.system_prompt();
         let static_prompt: &str = &TOOL_SYSTEM_PROMPT;
-        assert_eq!(static_prompt, direct_prompt);
+        // TOOL_SYSTEM_PROMPT = bashkit prompt + EXEC_OUTPUT_HINT (EVE-223)
+        assert!(
+            static_prompt.starts_with(direct_prompt),
+            "system prompt should start with bashkit prompt"
+        );
+        assert!(
+            static_prompt.contains("Output economy"),
+            "system prompt should include output economy hint"
+        );
     }
 
     #[test]
