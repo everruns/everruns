@@ -19,6 +19,8 @@ use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugi
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
+use std::sync::LazyLock;
+
 use connection::SpritesConnectionProvider;
 
 use tools::{
@@ -59,6 +61,35 @@ const SPRITES_WORKSPACE_PATH: &str = "/home/user";
 // SpritesCapability
 // ============================================================================
 
+static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    let mut prompt = String::from(
+        r#"## Sprites
+
+Persistent, hardware-isolated Linux microVMs (Firecracker) via Sprites. Each sprite is
+a full Linux computer with a persistent ext4 filesystem that survives between sessions.
+
+Authentication: Sprites API token is resolved automatically from Settings > Connections > Sprites.
+If not configured, guide the user to set up their token in Settings > Connections.
+
+All tools except `sprites_create_sprite` and `sprites_list_sprites` require a `sprite_name`.
+Sprites persist indefinitely — they hibernate when idle (no compute charges) and wake instantly.
+Always DELETE sprites when done to avoid storage charges.
+
+Key differences from ephemeral sandboxes:
+- **Persistent filesystem**: Data survives idle/sleep, backed to durable object storage.
+- **Checkpoints**: Use `sprites_checkpoint` to snapshot state before risky operations,
+  `sprites_restore_checkpoint` to roll back. Checkpoints complete in ~300ms.
+- **HTTP services**: Each sprite has a unique public URL. Listen on port 8080 inside
+  the sprite and it's accessible at the sprite's URL. Use `sprites_service_url` to get
+  the URL for sharing or testing.
+- **Instant wake**: Sprites wake from hibernation in <1s when you execute a command.
+
+Working directory is `/home/user`."#,
+    );
+    prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
+    prompt
+});
+
 pub struct SpritesCapability;
 
 impl Capability for SpritesCapability {
@@ -93,30 +124,7 @@ impl Capability for SpritesCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            r#"## Sprites
-
-Persistent, hardware-isolated Linux microVMs (Firecracker) via Sprites. Each sprite is
-a full Linux computer with a persistent ext4 filesystem that survives between sessions.
-
-Authentication: Sprites API token is resolved automatically from Settings > Connections > Sprites.
-If not configured, guide the user to set up their token in Settings > Connections.
-
-All tools except `sprites_create_sprite` and `sprites_list_sprites` require a `sprite_name`.
-Sprites persist indefinitely — they hibernate when idle (no compute charges) and wake instantly.
-Always DELETE sprites when done to avoid storage charges.
-
-Key differences from ephemeral sandboxes:
-- **Persistent filesystem**: Data survives idle/sleep, backed to durable object storage.
-- **Checkpoints**: Use `sprites_checkpoint` to snapshot state before risky operations,
-  `sprites_restore_checkpoint` to roll back. Checkpoints complete in ~300ms.
-- **HTTP services**: Each sprite has a unique public URL. Listen on port 8080 inside
-  the sprite and it's accessible at the sprite's URL. Use `sprites_service_url` to get
-  the URL for sharing or testing.
-- **Instant wake**: Sprites wake from hibernation in <1s when you execute a command.
-
-Working directory is `/home/user`."#,
-        )
+        Some(&SYSTEM_PROMPT)
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {

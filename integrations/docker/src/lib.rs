@@ -26,6 +26,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::process::Stdio;
+use std::sync::LazyLock;
 use tokio::process::Command;
 use tracing::{debug, error, info, warn};
 
@@ -90,6 +91,35 @@ impl Default for DockerContainerConfig {
 // DockerContainerCapability
 // ============================================================================
 
+static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    let mut prompt = String::from(
+        r#"## Docker Container (Experimental)
+
+You have access to a Docker container for executing commands and managing files.
+The container is tied to this session and persists across tool calls.
+
+IMPORTANT: This is an EXPERIMENTAL capability. The container uses host networking.
+
+Tools:
+- `docker_exec` - Execute a shell command inside the container. Returns stdout, stderr, and exit code.
+- `docker_read_file` - Read a file from the container filesystem.
+- `docker_write_file` - Write content to a file in the container filesystem.
+- `docker_logs` - Get logs from the container. Useful for debugging long-running processes.
+- `docker_stop` - Stop and remove the container (for cleanup or to reset state).
+
+The container is lazily started on first tool use. Subsequent calls reuse the same container.
+
+Best practices:
+- Use `docker_exec` with `bash -c "..."` for complex commands
+- Check exit codes to verify command success
+- The working directory defaults to /workspace
+- Files written persist for the session duration
+- Use `docker_stop` to clean up when done or to reset container state"#,
+    );
+    prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
+    prompt
+});
+
 pub struct DockerContainerCapability;
 
 impl Capability for DockerContainerCapability {
@@ -124,30 +154,7 @@ impl Capability for DockerContainerCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            r#"## Docker Container (Experimental)
-
-You have access to a Docker container for executing commands and managing files.
-The container is tied to this session and persists across tool calls.
-
-IMPORTANT: This is an EXPERIMENTAL capability. The container uses host networking.
-
-Tools:
-- `docker_exec` - Execute a shell command inside the container. Returns stdout, stderr, and exit code.
-- `docker_read_file` - Read a file from the container filesystem.
-- `docker_write_file` - Write content to a file in the container filesystem.
-- `docker_logs` - Get logs from the container. Useful for debugging long-running processes.
-- `docker_stop` - Stop and remove the container (for cleanup or to reset state).
-
-The container is lazily started on first tool use. Subsequent calls reuse the same container.
-
-Best practices:
-- Use `docker_exec` with `bash -c "..."` for complex commands
-- Check exit codes to verify command success
-- The working directory defaults to /workspace
-- Files written persist for the session duration
-- Use `docker_stop` to clean up when done or to reset container state"#,
-        )
+        Some(&SYSTEM_PROMPT)
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {

@@ -16,6 +16,8 @@ use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
 use everruns_core::tools::Tool;
 
+use std::sync::LazyLock;
+
 use tools::{
     E2BCreateSandboxTool, E2BExecTool, E2BListSandboxesTool, E2BManageSandboxTool, E2BReadFileTool,
     E2BWriteFileTool,
@@ -35,6 +37,20 @@ pub const E2B_DEFAULT_TEMPLATE: &str = "base";
 pub const E2B_DEFAULT_TIMEOUT_SECS: u64 = 60 * 60;
 pub const E2B_DEFAULT_WORKSPACE_PATH: &str = "/home/user";
 pub const E2B_ENVD_PORT: u16 = 49_983;
+
+static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    let mut prompt = String::from(
+        r#"## E2B
+
+Cloud sandboxes via E2B. Each sandbox is an isolated Linux environment with network access.
+
+Use `e2b_create_sandbox` first, then `e2b_exec`, `e2b_read_file`, and `e2b_write_file` against the returned `sandbox_id`.
+Prefer `/home/user` as the workspace root.
+Always pause or delete sandboxes when done. Deleted sandboxes are cleaned up immediately; paused sandboxes may still consume platform quota until resumed or deleted."#,
+    );
+    prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
+    prompt
+});
 
 pub struct E2BCapability;
 
@@ -68,15 +84,7 @@ impl Capability for E2BCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(
-            r#"## E2B
-
-Cloud sandboxes via E2B. Each sandbox is an isolated Linux environment with network access.
-
-Use `e2b_create_sandbox` first, then `e2b_exec`, `e2b_read_file`, and `e2b_write_file` against the returned `sandbox_id`.
-Prefer `/home/user` as the workspace root.
-Always pause or delete sandboxes when done. Deleted sandboxes are cleaned up immediately; paused sandboxes may still consume platform quota until resumed or deleted."#,
-        )
+        Some(&SYSTEM_PROMPT)
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {

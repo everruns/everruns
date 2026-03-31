@@ -62,9 +62,12 @@ static BASHKIT_TOOL: LazyLock<BashkitTool> = LazyLock::new(|| {
 static TOOL_DESCRIPTION: LazyLock<String> =
     LazyLock::new(|| BASHKIT_TOOL.description().to_string());
 
-/// System prompt addition from bashkit library.
-static TOOL_SYSTEM_PROMPT: LazyLock<String> =
-    LazyLock::new(|| BASHKIT_TOOL.system_prompt().to_string());
+/// System prompt addition from bashkit library + output economy hint.
+static TOOL_SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    let mut prompt = BASHKIT_TOOL.system_prompt().to_string();
+    prompt.push_str(crate::tool_output_sanitizer::EXEC_OUTPUT_HINT);
+    prompt
+});
 
 /// Virtual Bash capability - execute bash commands in a sandboxed environment
 pub struct VirtualBashCapability;
@@ -2300,7 +2303,15 @@ mod tests {
 
         let direct_prompt = BASHKIT_TOOL.system_prompt();
         let static_prompt: &str = &TOOL_SYSTEM_PROMPT;
-        assert_eq!(static_prompt, direct_prompt);
+        // TOOL_SYSTEM_PROMPT = bashkit prompt + EXEC_OUTPUT_HINT (EVE-223)
+        assert!(
+            static_prompt.starts_with(&direct_prompt),
+            "system prompt should start with bashkit prompt"
+        );
+        assert!(
+            static_prompt.contains("Output economy"),
+            "system prompt should include output economy hint"
+        );
     }
 
     #[test]

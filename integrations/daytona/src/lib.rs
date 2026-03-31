@@ -21,6 +21,7 @@ use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
 use connection::DaytonaConnectionProvider;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use tools::{
@@ -80,6 +81,35 @@ const LEASE_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(3 * 60);
 // DaytonaCapability
 // ============================================================================
 
+static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
+    let mut prompt = String::from(
+        r#"## Daytona
+
+Cloud-based sandboxes via Daytona. Each sandbox is an isolated environment with full Linux and network access.
+
+Authentication: Daytona API key is resolved automatically from Settings > Connections > Daytona.
+If not configured, guide the user to set up their key in Settings > Connections.
+
+All tools except `daytona_create_sandbox` and `daytona_list_sandboxes` require a `sandbox_id`.
+Sandboxes auto-stop after 5 min of inactivity, auto-archive after 30 min, and auto-delete after 60 min.
+Stopped sandboxes are also cleaned up by the control plane after 20 min.
+Always DELETE sandboxes when done (stop leaves them on the dashboard).
+Active sandboxes also appear in the session Resources tab so users can see what
+may be cleaned automatically later.
+
+Git cloning: Use `daytona_git_clone` to clone repositories into `/home/daytona/owner/repo`.
+If the user has connected their GitHub account (Settings > Connections), private repos
+are automatically authenticated. For public repos, no credentials are needed.
+Supports "user/repo" shorthand. Working directory is `/home/daytona`.
+
+Git push/pull/fetch: After cloning, call `daytona_git_credentials` once to configure
+credentials in the sandbox. Then use `daytona_exec` for any git command (push, pull,
+fetch, rebase, etc.) — they authenticate automatically. Call again to refresh (~1h expiry)."#,
+    );
+    prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
+    prompt
+});
+
 pub struct DaytonaCapability;
 
 impl Capability for DaytonaCapability {
@@ -118,30 +148,7 @@ impl Capability for DaytonaCapability {
         // provided via the tools parameter in the API request.  Duplicating
         // them in the system prompt wastes tokens and can confuse models
         // (especially GPT-5.4+ with tool_search).
-        Some(
-            r#"## Daytona
-
-Cloud-based sandboxes via Daytona. Each sandbox is an isolated environment with full Linux and network access.
-
-Authentication: Daytona API key is resolved automatically from Settings > Connections > Daytona.
-If not configured, guide the user to set up their key in Settings > Connections.
-
-All tools except `daytona_create_sandbox` and `daytona_list_sandboxes` require a `sandbox_id`.
-Sandboxes auto-stop after 5 min of inactivity, auto-archive after 30 min, and auto-delete after 60 min.
-Stopped sandboxes are also cleaned up by the control plane after 20 min.
-Always DELETE sandboxes when done (stop leaves them on the dashboard).
-Active sandboxes also appear in the session Resources tab so users can see what
-may be cleaned automatically later.
-
-Git cloning: Use `daytona_git_clone` to clone repositories into `/home/daytona/owner/repo`.
-If the user has connected their GitHub account (Settings > Connections), private repos
-are automatically authenticated. For public repos, no credentials are needed.
-Supports "user/repo" shorthand. Working directory is `/home/daytona`.
-
-Git push/pull/fetch: After cloning, call `daytona_git_credentials` once to configure
-credentials in the sandbox. Then use `daytona_exec` for any git command (push, pull,
-fetch, rebase, etc.) — they authenticate automatically. Call again to refresh (~1h expiry)."#,
-        )
+        Some(&SYSTEM_PROMPT)
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {

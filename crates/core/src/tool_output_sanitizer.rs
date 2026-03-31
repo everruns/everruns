@@ -17,6 +17,17 @@
 /// Default output budget for exec tools (16 KiB).
 pub const EXEC_OUTPUT_BUDGET: usize = 16 * 1024;
 
+/// System prompt hint for exec tool capabilities (EVE-223).
+/// Appended to each sandbox capability's `system_prompt_addition()` to guide
+/// the LLM toward less verbose command usage.
+pub const EXEC_OUTPUT_HINT: &str = "\n\n**Output economy:** Command output is truncated to ~16 KiB (keeping first 20% + last 80%). \
+For build/install commands, prefer quiet flags or pipe through tail:\n\
+- `cargo build -q`, `cargo test -- --quiet`\n\
+- `npm install --silent`, `npm test 2>&1 | tail -50`\n\
+- `pip install -q`, `make -s`\n\
+- `apt-get install -qq -y`\n\
+Save verbose output to a file and inspect selectively: `cmd > /tmp/out.log 2>&1 && tail -100 /tmp/out.log`";
+
 /// Strip ANSI escape sequences from text.
 ///
 /// Removes SGR sequences (`\x1b[...m`), CSI sequences (`\x1b[...X`),
