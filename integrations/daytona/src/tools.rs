@@ -1046,7 +1046,7 @@ impl Tool for DaytonaGitCloneTool {
 
     fn description(&self) -> &str {
         "Clone a git repository into a Daytona sandbox. \
-         Default clone path: /home/daytona/<repo-name>. \
+         Default clone path: /home/daytona/<owner>/<repo>. \
          Automatically uses the user's connected GitHub credentials if available. \
          For private repos, the user must have connected their GitHub account in Settings > Connections."
     }
