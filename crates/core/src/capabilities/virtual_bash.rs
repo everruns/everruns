@@ -2305,7 +2305,7 @@ mod tests {
         let static_prompt: &str = &TOOL_SYSTEM_PROMPT;
         // TOOL_SYSTEM_PROMPT = bashkit prompt + EXEC_OUTPUT_HINT (EVE-223)
         assert!(
-            static_prompt.starts_with(direct_prompt),
+            static_prompt.starts_with(&direct_prompt),
             "system prompt should start with bashkit prompt"
         );
         assert!(
