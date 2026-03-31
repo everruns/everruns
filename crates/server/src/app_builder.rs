@@ -606,7 +606,9 @@ impl ServerAppBuilder {
             auth_state.clone(),
             platform_definition.built_in_harnesses().to_vec(),
         );
-        let audit_logs_state = api::audit_logs::AppState::new(db.clone(), auth_state.clone());
+        let audit_log_service = Arc::new(crate::services::AuditLogService::new(db.clone()));
+        let audit_logs_state =
+            api::audit_logs::AppState::new(audit_log_service, auth_state.clone());
         let user_connections_state = api::user_connections::AppState::new(
             db.clone(),
             encryption.clone(),

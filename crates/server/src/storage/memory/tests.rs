@@ -1024,6 +1024,10 @@ async fn test_audit_log_create_and_list() {
         event_type: "auth.login.success".to_string(),
         ip_address: Some("1.2.3.4".to_string()),
         metadata: serde_json::json!({"method": "password"}),
+        domain: "management".to_string(),
+        action: "auth.login.success".to_string(),
+        target_type: None,
+        target_id: None,
     })
     .await
     .unwrap();
@@ -1034,13 +1038,21 @@ async fn test_audit_log_create_and_list() {
         event_type: "auth.login.failure".to_string(),
         ip_address: Some("5.6.7.8".to_string()),
         metadata: serde_json::json!({"reason": "invalid_password"}),
+        domain: "management".to_string(),
+        action: "auth.login.failure".to_string(),
+        target_type: None,
+        target_id: None,
     })
     .await
     .unwrap();
 
     // List all
     let logs = db
-        .list_audit_logs(DEFAULT_ORG_ID, 50, None, None, None)
+        .list_audit_logs(AuditLogQuery {
+            org_id: DEFAULT_ORG_ID,
+            limit: 50,
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert_eq!(logs.len(), 2);
@@ -1049,7 +1061,12 @@ async fn test_audit_log_create_and_list() {
 
     // Filter by event type prefix
     let success_only = db
-        .list_audit_logs(DEFAULT_ORG_ID, 50, None, Some("auth.login.success"), None)
+        .list_audit_logs(AuditLogQuery {
+            org_id: DEFAULT_ORG_ID,
+            limit: 50,
+            event_type_prefix: Some("auth.login.success"),
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert_eq!(success_only.len(), 1);
@@ -1057,7 +1074,12 @@ async fn test_audit_log_create_and_list() {
 
     // Filter by actor
     let actor_logs = db
-        .list_audit_logs(DEFAULT_ORG_ID, 50, None, None, Some(user_id))
+        .list_audit_logs(AuditLogQuery {
+            org_id: DEFAULT_ORG_ID,
+            limit: 50,
+            actor_id: Some(user_id),
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert_eq!(actor_logs.len(), 1);
@@ -1065,7 +1087,11 @@ async fn test_audit_log_create_and_list() {
 
     // Limit
     let limited = db
-        .list_audit_logs(DEFAULT_ORG_ID, 1, None, None, None)
+        .list_audit_logs(AuditLogQuery {
+            org_id: DEFAULT_ORG_ID,
+            limit: 1,
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert_eq!(limited.len(), 1);
@@ -1090,6 +1116,10 @@ async fn test_audit_log_org_isolation() {
         event_type: "auth.login.success".to_string(),
         ip_address: None,
         metadata: serde_json::json!({}),
+        domain: "management".to_string(),
+        action: "auth.login.success".to_string(),
+        target_type: None,
+        target_id: None,
     })
     .await
     .unwrap();
@@ -1100,19 +1130,31 @@ async fn test_audit_log_org_isolation() {
         event_type: "auth.login.failure".to_string(),
         ip_address: None,
         metadata: serde_json::json!({}),
+        domain: "management".to_string(),
+        action: "auth.login.failure".to_string(),
+        target_type: None,
+        target_id: None,
     })
     .await
     .unwrap();
 
     let org1_logs = db
-        .list_audit_logs(DEFAULT_ORG_ID, 50, None, None, None)
+        .list_audit_logs(AuditLogQuery {
+            org_id: DEFAULT_ORG_ID,
+            limit: 50,
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert_eq!(org1_logs.len(), 1);
     assert_eq!(org1_logs[0].event_type, "auth.login.success");
 
     let org2_logs = db
-        .list_audit_logs(org2.org_id, 50, None, None, None)
+        .list_audit_logs(AuditLogQuery {
+            org_id: org2.org_id,
+            limit: 50,
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert_eq!(org2_logs.len(), 1);
@@ -1129,6 +1171,10 @@ async fn test_audit_log_retention_delete() {
         event_type: "auth.login.success".to_string(),
         ip_address: None,
         metadata: serde_json::json!({}),
+        domain: "management".to_string(),
+        action: "auth.login.success".to_string(),
+        target_type: None,
+        target_id: None,
     })
     .await
     .unwrap();
@@ -1141,10 +1187,144 @@ async fn test_audit_log_retention_delete() {
     assert_eq!(deleted, 1);
 
     let logs = db
-        .list_audit_logs(DEFAULT_ORG_ID, 50, None, None, None)
+        .list_audit_logs(AuditLogQuery {
+            org_id: DEFAULT_ORG_ID,
+            limit: 50,
+            ..Default::default()
+        })
         .await
         .unwrap();
     assert!(logs.is_empty());
+}
+
+// ─── Audit domain filtering tests (EVE-226) ───
+
+#[tokio::test]
+async fn test_audit_log_domain_filtering() {
+    let db = InMemoryDatabase::new();
+
+    db.create_audit_log(CreateAuditLogRow {
+        org_id: DEFAULT_ORG_ID,
+        actor_id: None,
+        event_type: "management.member.invited".to_string(),
+        ip_address: None,
+        metadata: serde_json::json!({}),
+        domain: "management".to_string(),
+        action: "management.member.invited".to_string(),
+        target_type: Some("member".to_string()),
+        target_id: Some("usr_abc".to_string()),
+    })
+    .await
+    .unwrap();
+
+    db.create_audit_log(CreateAuditLogRow {
+        org_id: DEFAULT_ORG_ID,
+        actor_id: None,
+        event_type: "agent.run.started".to_string(),
+        ip_address: None,
+        metadata: serde_json::json!({}),
+        domain: "agent".to_string(),
+        action: "agent.run.started".to_string(),
+        target_type: Some("session".to_string()),
+        target_id: Some("ses_xyz".to_string()),
+    })
+    .await
+    .unwrap();
+
+    db.create_audit_log(CreateAuditLogRow {
+        org_id: DEFAULT_ORG_ID,
+        actor_id: None,
+        event_type: "management.harness.created".to_string(),
+        ip_address: None,
+        metadata: serde_json::json!({}),
+        domain: "management".to_string(),
+        action: "management.harness.created".to_string(),
+        target_type: Some("harness".to_string()),
+        target_id: Some("harness_001".to_string()),
+    })
+    .await
+    .unwrap();
+
+    // Filter by management domain
+    let mgmt = db
+        .list_audit_logs(AuditLogQuery {
+            org_id: DEFAULT_ORG_ID,
+            limit: 50,
+            domain: Some("management"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(mgmt.len(), 2);
+
+    // Filter by agent domain
+    let agent = db
+        .list_audit_logs(AuditLogQuery {
+            org_id: DEFAULT_ORG_ID,
+            limit: 50,
+            domain: Some("agent"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(agent.len(), 1);
+    assert_eq!(agent[0].action, "agent.run.started");
+
+    // Filter by specific action
+    let action = db
+        .list_audit_logs(AuditLogQuery {
+            org_id: DEFAULT_ORG_ID,
+            limit: 50,
+            action: Some("management.member.invited"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(action.len(), 1);
+    assert_eq!(action[0].target_type.as_deref(), Some("member"));
+    assert_eq!(action[0].target_id.as_deref(), Some("usr_abc"));
+
+    // Domain + action combined
+    let combined = db
+        .list_audit_logs(AuditLogQuery {
+            org_id: DEFAULT_ORG_ID,
+            limit: 50,
+            domain: Some("management"),
+            action: Some("management.harness.created"),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(combined.len(), 1);
+    assert_eq!(combined[0].target_type.as_deref(), Some("harness"));
+}
+
+#[tokio::test]
+async fn test_audit_log_target_fields() {
+    let db = InMemoryDatabase::new();
+
+    let row = db
+        .create_audit_log(CreateAuditLogRow {
+            org_id: DEFAULT_ORG_ID,
+            actor_id: None,
+            event_type: "management.agent.created".to_string(),
+            ip_address: Some("10.0.0.1".to_string()),
+            metadata: serde_json::json!({"name": "test-agent"}),
+            domain: "management".to_string(),
+            action: "management.agent.created".to_string(),
+            target_type: Some("agent".to_string()),
+            target_id: Some("agent_00000000000000000000000000000001".to_string()),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(row.domain, "management");
+    assert_eq!(row.action, "management.agent.created");
+    assert_eq!(row.target_type.as_deref(), Some("agent"));
+    assert_eq!(
+        row.target_id.as_deref(),
+        Some("agent_00000000000000000000000000000001")
+    );
 }
 
 // ─── Search / command-palette tests ───

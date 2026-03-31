@@ -1,4 +1,4 @@
-// Structured audit logging for security-relevant events (TM-OBS-007)
+// Structured audit logging for security-relevant events (TM-OBS-007, EVE-226)
 //
 // Design: fire-and-forget via tokio::spawn. Audit log failures must never
 // block or fail authentication operations. All writes go to the audit_logs
@@ -14,6 +14,7 @@
 use crate::storage::StorageBackend;
 use crate::storage::models::CreateAuditLogRow;
 use axum::http::HeaderMap;
+use everruns_core::{AuditEvent, AuditLogger};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -39,9 +40,9 @@ pub fn client_ip(headers: &HeaderMap) -> Option<String> {
     None
 }
 
-/// Emit an audit log entry. Non-blocking: spawns a background task.
+/// Emit a legacy audit log entry (event_type string format). Non-blocking.
 ///
-/// Failures are logged at warn level but never propagated.
+/// For new code, prefer `emit_event()` with typed `AuditEvent`.
 pub fn emit(
     db: Arc<StorageBackend>,
     org_id: i64,
@@ -51,6 +52,14 @@ pub fn emit(
     metadata: serde_json::Value,
 ) {
     let event_type = event_type.to_string();
+    // Infer domain from event_type prefix
+    let domain = if event_type.starts_with("agent.") {
+        "agent"
+    } else {
+        "management"
+    };
+    let domain_str = domain.to_string();
+    let action = event_type.clone();
     tokio::spawn(async move {
         if let Err(e) = db
             .create_audit_log(CreateAuditLogRow {
@@ -59,12 +68,72 @@ pub fn emit(
                 event_type: event_type.clone(),
                 ip_address,
                 metadata,
+                domain: domain_str,
+                action,
+                target_type: None,
+                target_id: None,
             })
             .await
         {
             tracing::warn!(event_type = %event_type, error = %e, "Failed to write audit log");
         }
     });
+}
+
+/// Emit a typed audit event. Non-blocking (fire-and-forget).
+pub fn emit_event(db: Arc<StorageBackend>, event: AuditEvent) {
+    tokio::spawn(async move {
+        if let Err(e) = db
+            .create_audit_log(CreateAuditLogRow {
+                org_id: event.org_id,
+                actor_id: event.actor_user_id,
+                event_type: event.action.as_str().to_string(),
+                ip_address: event.ip_address,
+                metadata: event.details,
+                domain: event.domain.as_str().to_string(),
+                action: event.action.as_str().to_string(),
+                target_type: event.target.as_ref().map(|t| t.target_type.clone()),
+                target_id: event.target.as_ref().map(|t| t.target_id.clone()),
+            })
+            .await
+        {
+            tracing::warn!(error = %e, "Failed to write audit log");
+        }
+    });
+}
+
+/// `AuditLogger` implementation backed by `StorageBackend`.
+///
+/// Used by the `#[audit]` macro on service methods.
+#[derive(Clone)]
+pub struct StorageAuditLogger {
+    db: Arc<StorageBackend>,
+}
+
+impl StorageAuditLogger {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
+        Self { db }
+    }
+}
+
+#[async_trait::async_trait]
+impl AuditLogger for StorageAuditLogger {
+    async fn log_event(&self, event: AuditEvent) -> anyhow::Result<()> {
+        self.db
+            .create_audit_log(CreateAuditLogRow {
+                org_id: event.org_id,
+                actor_id: event.actor_user_id,
+                event_type: event.action.as_str().to_string(),
+                ip_address: event.ip_address,
+                metadata: event.details,
+                domain: event.domain.as_str().to_string(),
+                action: event.action.as_str().to_string(),
+                target_type: event.target.as_ref().map(|t| t.target_type.clone()),
+                target_id: event.target.as_ref().map(|t| t.target_id.clone()),
+            })
+            .await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

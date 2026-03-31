@@ -48,6 +48,8 @@ pub enum Permission {
     OrgMembersManage,
     /// CRUD on API keys
     OrgApiKeysManage,
+    /// View audit logs (read-only)
+    OrgAuditLogsView,
 }
 
 impl Permission {
@@ -70,6 +72,7 @@ impl Permission {
             Permission::OrgMembersView => "org:members:view",
             Permission::OrgMembersManage => "org:members:manage",
             Permission::OrgApiKeysManage => "org:api-keys:manage",
+            Permission::OrgAuditLogsView => "org:audit-logs:view",
         }
     }
 
@@ -91,6 +94,7 @@ impl Permission {
         Permission::OrgMembersView,
         Permission::OrgMembersManage,
         Permission::OrgApiKeysManage,
+        Permission::OrgAuditLogsView,
     ];
 }
 
@@ -122,6 +126,7 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgMembersView,
     Permission::OrgMembersManage,
     Permission::OrgApiKeysManage,
+    Permission::OrgAuditLogsView,
 ];
 
 /// Permissions granted to Admin role.
@@ -137,6 +142,7 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgMembersView,
     Permission::OrgMembersManage,
     Permission::OrgApiKeysManage,
+    Permission::OrgAuditLogsView,
 ];
 
 /// Permissions granted to Member role.
@@ -876,8 +882,8 @@ mod tests {
 
     #[test]
     fn role_permissions_returns_correct_sets() {
-        assert_eq!(role_permissions(OrgRole::Owner).len(), 16);
-        assert_eq!(role_permissions(OrgRole::Admin).len(), 11);
+        assert_eq!(role_permissions(OrgRole::Owner).len(), 17);
+        assert_eq!(role_permissions(OrgRole::Admin).len(), 12);
         assert_eq!(role_permissions(OrgRole::Member).len(), 6);
     }
 

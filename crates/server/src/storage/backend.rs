@@ -1874,30 +1874,15 @@ impl StorageBackend {
     }
 
     // ============================================
-    // Audit Logs (TM-OBS-007)
+    // Audit Logs (TM-OBS-007, EVE-226)
     // ============================================
 
     pub async fn create_audit_log(&self, input: CreateAuditLogRow) -> Result<AuditLogRow> {
         dispatch!(self, create_audit_log, input)
     }
 
-    pub async fn list_audit_logs(
-        &self,
-        org_id: i64,
-        limit: i64,
-        before: Option<DateTime<Utc>>,
-        event_type_prefix: Option<&str>,
-        actor_id: Option<Uuid>,
-    ) -> Result<Vec<AuditLogRow>> {
-        dispatch!(
-            self,
-            list_audit_logs,
-            org_id,
-            limit,
-            before,
-            event_type_prefix,
-            actor_id
-        )
+    pub async fn list_audit_logs(&self, query: AuditLogQuery<'_>) -> Result<Vec<AuditLogRow>> {
+        dispatch!(self, list_audit_logs, query)
     }
 
     pub async fn delete_audit_logs_before(&self, before: DateTime<Utc>) -> Result<u64> {

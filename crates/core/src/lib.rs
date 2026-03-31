@@ -41,6 +41,9 @@ pub mod observation;
 // See specs/id-schema.md for specification
 pub mod typed_id;
 
+// Audit logging types and trait (EVE-226)
+pub mod audit;
+
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
@@ -289,6 +292,12 @@ pub use typed_id::{
     EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, LeasedResourceId, McpServerId,
     MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId, OrgId, ProviderId, ScheduleId,
     SessionId, SkillId, TurnId, TypedId,
+};
+
+// Audit logging re-exports
+pub use audit::{
+    AgentAction, AuditAction, AuditDomain, AuditEvent, AuditEventBuilder, AuditLogger, AuditTarget,
+    ManagementAction,
 };
 
 // Permissions re-exports
