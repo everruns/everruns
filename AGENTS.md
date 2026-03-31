@@ -19,19 +19,7 @@ All cloud secrets are in Doppler (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB
 
 ### GitHub Token — NEVER claim it is unavailable
 
-**The `GITHUB_TOKEN` is always available via Doppler.** If a GitHub MCP server tool fails with an auth/token error, do NOT tell the user the token expired or is unavailable. Instead, re-authenticate by running:
-
-```bash
-doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh auth status'
-```
-
-For any command that needs GitHub access, wrap it with Doppler:
-
-```bash
-doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" <your-command>'
-```
-
-This applies to `gh` CLI, GitHub API calls, and any tool that needs a GitHub token. The token is managed by Doppler and does not expire in the way MCP server tokens do.
+**`GITHUB_TOKEN` is always available via Doppler.** If GitHub auth fails, do NOT tell the user the token expired. Instead, use Doppler: `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" <command>'`.
 
 ### Linear
 
