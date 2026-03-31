@@ -144,11 +144,18 @@ pub fn middle_truncate(text: &str, max_bytes: usize) -> String {
     result
 }
 
+/// Clean exec output: strip ANSI → collapse CR. No truncation.
+/// Use this when you need the full cleaned output (e.g. for VFS persistence)
+/// and will truncate separately.
+pub fn clean_exec_output(text: &str) -> String {
+    let cleaned = strip_ansi(text);
+    collapse_cr_lines(&cleaned)
+}
+
 /// Full sanitization pipeline: strip ANSI → collapse CR → middle-truncate.
 pub fn sanitize_exec_output(text: &str, max_bytes: usize) -> String {
-    let cleaned = strip_ansi(text);
-    let collapsed = collapse_cr_lines(&cleaned);
-    middle_truncate(&collapsed, max_bytes)
+    let cleaned = clean_exec_output(text);
+    middle_truncate(&cleaned, max_bytes)
 }
 
 /// Find the largest byte index ≤ `pos` that is a valid UTF-8 char boundary.

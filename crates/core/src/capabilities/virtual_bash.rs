@@ -267,15 +267,28 @@ impl Tool for BashTool {
 
         match result {
             Ok(Ok(output)) => {
-                use crate::tool_output_sanitizer::{EXEC_OUTPUT_BUDGET, sanitize_exec_output};
-                let stdout = sanitize_exec_output(&output.stdout, EXEC_OUTPUT_BUDGET);
-                let stderr = sanitize_exec_output(&output.stderr, 4096);
-                ToolExecutionResult::success(json!({
-                    "stdout": stdout,
-                    "stderr": stderr,
-                    "exit_code": output.exit_code,
-                    "success": output.exit_code == 0
-                }))
+                use crate::tool_output_sanitizer::{
+                    EXEC_OUTPUT_BUDGET, clean_exec_output, middle_truncate,
+                };
+                let clean_stdout = clean_exec_output(&output.stdout);
+                let clean_stderr = clean_exec_output(&output.stderr);
+                let stdout = middle_truncate(&clean_stdout, EXEC_OUTPUT_BUDGET);
+                let stderr = middle_truncate(&clean_stderr, 4096);
+                // Build raw output for persistence hook (cleaned but not truncated)
+                let mut raw = clean_stdout;
+                if !clean_stderr.is_empty() {
+                    raw.push_str("\n--- stderr ---\n");
+                    raw.push_str(&clean_stderr);
+                }
+                ToolExecutionResult::success_with_raw_output(
+                    json!({
+                        "stdout": stdout,
+                        "stderr": stderr,
+                        "exit_code": output.exit_code,
+                        "success": output.exit_code == 0
+                    }),
+                    raw,
+                )
             }
             Ok(Err(e)) => {
                 // Execution error (syntax error, resource limit, etc.)

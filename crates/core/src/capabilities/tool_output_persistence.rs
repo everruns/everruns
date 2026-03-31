@@ -69,21 +69,35 @@ impl PostToolExecHook for PersistOutputHook {
             return;
         }
 
+        // Take raw_output (pre-truncation cleaned output) if available.
+        // Falls back to extracting from the (truncated) result JSON.
+        let output_text = result.raw_output.take().unwrap_or_else(|| {
+            result
+                .result
+                .as_ref()
+                .map(extract_output_text)
+                .unwrap_or_default()
+        });
+        if output_text.is_empty() {
+            return;
+        }
+
         // Need file_store from context
         let Some(ref file_store) = context.file_store else {
             return;
         };
 
-        // Extract text content from result JSON
-        let Some(ref result_json) = result.result else {
-            return;
-        };
-        let output_text = extract_output_text(result_json);
-        if output_text.is_empty() {
+        // Sanitize tool_call.id for path safety — use only alphanumeric, dash, underscore
+        let safe_id: String = tool_call
+            .id
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+            .collect();
+        if safe_id.is_empty() {
             return;
         }
 
-        let path = format!("/.exec-logs/{}.log", tool_call.id);
+        let path = format!("/.exec-logs/{safe_id}.log");
         let total_lines = output_text.lines().count();
 
         if let Err(e) = file_store

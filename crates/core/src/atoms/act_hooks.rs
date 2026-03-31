@@ -247,6 +247,7 @@ mod tests {
                 images: None,
                 error: None,
                 connection_required: connection_required.map(|s| s.to_string()),
+                raw_output: None,
             },
             success: true,
             status: "success".to_string(),

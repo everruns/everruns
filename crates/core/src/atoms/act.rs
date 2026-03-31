@@ -331,12 +331,18 @@ where
         mut self,
         registry: crate::capabilities::CapabilityRegistry,
     ) -> Self {
-        // Collect post-tool-exec hooks from all capabilities in the registry
-        for capability in registry.list() {
-            self.post_tool_hooks
-                .extend(capability.post_tool_exec_hooks());
-        }
         self.capability_registry = Some(registry);
+        self
+    }
+
+    /// Add capability-contributed post-tool-exec hooks.
+    /// Callers should pass hooks from the *active* capabilities for this session,
+    /// not from the full platform registry.
+    pub fn with_post_tool_hooks(
+        mut self,
+        hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
+    ) -> Self {
+        self.post_tool_hooks.extend(hooks);
         self
     }
 
@@ -725,6 +731,7 @@ where
                     images: None,
                     error: Some(error_msg),
                     connection_required: None,
+                    raw_output: None,
                 },
                 success: false,
                 status: "error".to_string(),
@@ -935,6 +942,7 @@ where
                         images: None,
                         error: Some(error_msg),
                         connection_required: None,
+                        raw_output: None,
                     },
                     success: false,
                     status: "error".to_string(),
@@ -1146,6 +1154,7 @@ mod tests {
                     images: None,
                     error: None,
                     connection_required: Some("daytona".to_string()),
+                    raw_output: None,
                 },
                 success: false,
                 status: "success".to_string(),

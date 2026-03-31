@@ -78,6 +78,7 @@ impl McpToolExecutor {
                 images: None,
                 error: None,
                 connection_required: Some(provider),
+                raw_output: None,
             });
         }
 
@@ -99,6 +100,7 @@ impl McpToolExecutor {
             },
             error: None,
             connection_required: None,
+            raw_output: None,
         })
     }
 

@@ -349,6 +349,12 @@ pub struct ToolResult {
     /// The workflow should pause and prompt the user to configure the connection.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub connection_required: Option<String>,
+    /// Pre-truncation cleaned output for persistence hooks.
+    /// Populated by exec tools (after ANSI strip + CR collapse, before truncation).
+    /// Consumed by PostToolExecHook (e.g. tool_output_persistence) then cleared.
+    /// Never serialized to messages or sent to LLM.
+    #[serde(skip)]
+    pub raw_output: Option<String>,
 }
 
 #[cfg(test)]
@@ -416,6 +422,7 @@ mod tests {
             images: None,
             error: None,
             connection_required: None,
+            raw_output: None,
         };
 
         let json = serde_json::to_string(&result).unwrap();

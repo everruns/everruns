@@ -100,6 +100,17 @@ impl ToolExecutionResult {
         ToolExecutionResult::Success(value.into())
     }
 
+    /// Create a successful result with pre-truncation raw output for VFS persistence.
+    /// The raw output is transferred to `ToolResult.raw_output` during `into_tool_result()`.
+    pub fn success_with_raw_output(value: impl Into<Value>, raw_output: String) -> Self {
+        let mut value = value.into();
+        // Embed raw output in a sidecar key — extracted in into_tool_result()
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert("_raw_output".to_string(), Value::String(raw_output));
+        }
+        ToolExecutionResult::Success(value)
+    }
+
     /// Create a successful result with images
     pub fn success_with_images(value: impl Into<Value>, images: Vec<ToolResultImage>) -> Self {
         ToolExecutionResult::SuccessWithImages {
@@ -160,13 +171,21 @@ impl ToolExecutionResult {
     /// Internal errors are logged but replaced with a generic message when returned.
     pub fn into_tool_result(self, tool_call_id: &str, tool_name: &str) -> ToolResult {
         match self {
-            ToolExecutionResult::Success(value) => ToolResult {
-                tool_call_id: tool_call_id.to_string(),
-                result: Some(value),
-                images: None,
-                error: None,
-                connection_required: None,
-            },
+            ToolExecutionResult::Success(mut value) => {
+                // Extract sidecar raw output if present (from success_with_raw_output)
+                let raw_output = value
+                    .as_object_mut()
+                    .and_then(|obj| obj.remove("_raw_output"))
+                    .and_then(|v| v.as_str().map(|s| s.to_string()));
+                ToolResult {
+                    tool_call_id: tool_call_id.to_string(),
+                    result: Some(value),
+                    images: None,
+                    error: None,
+                    connection_required: None,
+                    raw_output,
+                }
+            }
             ToolExecutionResult::SuccessWithImages { result, images } => ToolResult {
                 tool_call_id: tool_call_id.to_string(),
                 result: Some(result),
@@ -177,6 +196,7 @@ impl ToolExecutionResult {
                 },
                 error: None,
                 connection_required: None,
+                raw_output: None,
             },
             ToolExecutionResult::ToolError(message) => ToolResult {
                 tool_call_id: tool_call_id.to_string(),
@@ -184,6 +204,7 @@ impl ToolExecutionResult {
                 images: None,
                 error: None,
                 connection_required: None,
+                raw_output: None,
             },
             ToolExecutionResult::InternalError(err) => {
                 // Log the full error details for debugging
@@ -203,6 +224,7 @@ impl ToolExecutionResult {
                     images: None,
                     error: None,
                     connection_required: None,
+                    raw_output: None,
                 }
             }
             ToolExecutionResult::ConnectionRequired { ref provider } => ToolResult {
@@ -213,6 +235,7 @@ impl ToolExecutionResult {
                 images: None,
                 error: None,
                 connection_required: Some(provider.clone()),
+                raw_output: None,
             },
         }
     }

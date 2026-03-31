@@ -442,13 +442,18 @@ impl Tool for DaytonaExecTool {
                 }
                 {
                     use everruns_core::tool_output_sanitizer::{
-                        EXEC_OUTPUT_BUDGET, sanitize_exec_output,
+                        EXEC_OUTPUT_BUDGET, clean_exec_output, middle_truncate,
                     };
-                    let output = sanitize_exec_output(&result.result, EXEC_OUTPUT_BUDGET);
-                    ToolExecutionResult::success(json!({
-                        "exit_code": result.exit_code,
-                        "output": output
-                    }))
+                    let clean_output = clean_exec_output(&result.result);
+                    let output = middle_truncate(&clean_output, EXEC_OUTPUT_BUDGET);
+                    let raw = clean_output;
+                    ToolExecutionResult::success_with_raw_output(
+                        json!({
+                            "exit_code": result.exit_code,
+                            "output": output
+                        }),
+                        raw,
+                    )
                 }
             }
             Err(e) => ToolExecutionResult::tool_error(e),

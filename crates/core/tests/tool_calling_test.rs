@@ -727,6 +727,7 @@ fn test_tool_result_with_images_serialization() {
         }]),
         error: None,
         connection_required: None,
+        raw_output: None,
     };
 
     let json_str = serde_json::to_string(&result).unwrap();
@@ -777,6 +778,7 @@ fn test_connection_required_serialization_roundtrip() {
         images: None,
         error: None,
         connection_required: Some("daytona".to_string()),
+        raw_output: None,
     };
 
     let json_str = serde_json::to_string(&result).unwrap();
