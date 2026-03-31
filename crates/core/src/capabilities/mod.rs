@@ -82,6 +82,7 @@ mod fake_financial;
 mod fake_warehouse;
 mod file_system;
 mod infinity_context;
+mod loop_detection;
 pub mod mcp;
 mod noop;
 mod openai_tool_search;
@@ -152,6 +153,7 @@ pub use file_system::{
 pub use infinity_context::{
     INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, QueryHistoryTool,
 };
+pub use loop_detection::LoopDetectionCapability;
 pub use mcp::{
     MCP_CAPABILITY_PREFIX, McpCapability, is_mcp_capability, mcp_capability_id,
     parse_mcp_capability_id,
@@ -646,6 +648,9 @@ impl CapabilityRegistry {
 
         // Tool output persistence (EVE-222: persist exec output to VFS)
         registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
+
+        // Loop detection (EVE-227: detect repeated identical tool calls)
+        registry.register(LoopDetectionCapability);
 
         // OpenUI generative UI (all environments)
         registry.register(OpenUiCapability);
@@ -1389,6 +1394,7 @@ mod tests {
             "fake_aws",
             "fake_crm",
             "fake_financial",
+            "loop_detection",
         ]
         .into_iter()
         .collect()

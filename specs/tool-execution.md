@@ -91,6 +91,16 @@ Current hooks:
 Current final hooks (always-on, cannot be removed):
 - **OutputHardLimitHook** (EVE-225): Enforces a 64 KiB hard ceiling on serialized tool result text. Head-truncation with UTF-8 safety; appends an LLM-actionable suffix. Logs `tracing::warn!` with tool_name, tool_call_id, result_bytes, limit when truncating. Fires regardless of which capabilities are active. See `crates/core/src/atoms/act_hooks.rs`.
 
+### Loop Detection (EVE-227)
+
+The `loop_detection` capability detects repeated identical tool calls and injects a system warning to break the loop. It uses `MessageFilterProvider::post_load` to scan loaded messages.
+
+**Mechanism:** After messages are loaded, the filter scans recent agent messages in reverse. If `threshold` (default 3) consecutive agent messages carry tool calls with identical signatures (name + arguments, order-independent), a system message is appended warning the model to try a different approach.
+
+**Configuration:** `{"threshold": 5}` to change the default repeat count.
+
+See `crates/core/src/capabilities/loop_detection.rs`.
+
 ### Tool Policies
 
 - `auto`: Execute immediately without approval

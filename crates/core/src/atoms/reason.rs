@@ -562,8 +562,35 @@ impl ReasonAtom {
             .await?
             .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
 
-        // 3. Load messages (needed for controls.model_id extraction)
-        let messages = self.message_retriever.load(session_id).await?;
+        // 3. Load messages with capability message filters applied.
+        //
+        // Collect message filter providers from all capability layers
+        // (harness → agent → session) so that post_load hooks (e.g. loop
+        // detection) can inspect and modify messages after loading.
+        let prompt_ctx_for_filters = crate::capabilities::SystemPromptContext {
+            session_id,
+            locale: None,
+            file_store: self.file_store.clone(),
+        };
+
+        let mut all_capability_configs: Vec<crate::AgentCapabilityConfig> =
+            harness.capabilities.clone();
+        if let Some(ref agent) = agent {
+            all_capability_configs.extend(agent.capabilities.iter().cloned());
+        }
+        all_capability_configs.extend(session.capabilities.iter().cloned());
+
+        let collected_caps = crate::capabilities::collect_capabilities_with_configs(
+            &all_capability_configs,
+            &self.capability_registry,
+            &prompt_ctx_for_filters,
+        )
+        .await;
+
+        let mut query = crate::message_filter::MessageQuery::new(session_id);
+        collected_caps.apply_message_filters(&mut query);
+        let mut messages = self.message_retriever.load_filtered(query).await?;
+        collected_caps.apply_post_load_filters(&mut messages);
 
         if messages.is_empty() {
             return Err(AgentLoopError::NoMessages);

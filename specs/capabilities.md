@@ -461,6 +461,14 @@ Following the agentskills.io specification:
 2. **Activation**: `activate_skill` loads full SKILL.md instructions (<5000 tokens recommended)
 3. **Resources**: Bundled files listed in activation response, accessible via existing session filesystem tools
 
+#### LoopDetection
+
+- **ID**: `loop_detection`
+- **Purpose**: Detects repeated identical tool calls and injects a warning to break the loop
+- **Tools**: None (uses `MessageFilterProvider::post_load` only)
+- **Config**: `{"threshold": N}` — number of consecutive identical tool-call batches before warning (default 3)
+- **Source**: `crates/core/src/capabilities/loop_detection.rs`
+
 ### MCP Virtual Capabilities
 
 MCP servers (see `specs/mcp-servers.md`) are integrated as "virtual capabilities" alongside built-in capabilities. This allows agents to use MCP tools through the same capability selection UI.
