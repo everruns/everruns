@@ -1,5 +1,6 @@
 //! Tool implementations for Sprites operations.
 
+use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 
@@ -222,6 +223,14 @@ impl Tool for SpritesExecTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+            .with_long_running(true)
+            .with_persist_output(true)
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "sprites_exec requires context. This tool must be executed with session context.",
@@ -264,18 +273,23 @@ impl Tool for SpritesExecTool {
                 if let Err(e) = touch_sprite_lease(context, &state, None).await {
                     return e;
                 }
-                let mut output = result.stdout.clone();
-                if !result.stderr.is_empty() {
+                use everruns_core::tool_output_sanitizer::{
+                    EXEC_OUTPUT_BUDGET, sanitize_exec_output,
+                };
+                let stdout = sanitize_exec_output(&result.stdout, EXEC_OUTPUT_BUDGET);
+                let stderr = sanitize_exec_output(&result.stderr, 4096);
+                let mut output = stdout.clone();
+                if !stderr.is_empty() {
                     if !output.is_empty() {
                         output.push('\n');
                     }
-                    output.push_str(&result.stderr);
+                    output.push_str(&stderr);
                 }
                 ToolExecutionResult::success(json!({
                     "exit_code": result.exit_code,
                     "output": output,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
+                    "stdout": stdout,
+                    "stderr": stderr,
                 }))
             }
             Err(e) => ToolExecutionResult::tool_error(e),

@@ -169,6 +169,7 @@ impl Tool for BashTool {
         ToolHints::default()
             .with_long_running(true)
             .with_open_world(true)
+            .with_persist_output(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -265,12 +266,17 @@ impl Tool for BashTool {
         let _ = emit_task.await;
 
         match result {
-            Ok(Ok(output)) => ToolExecutionResult::success(json!({
-                "stdout": output.stdout,
-                "stderr": output.stderr,
-                "exit_code": output.exit_code,
-                "success": output.exit_code == 0
-            })),
+            Ok(Ok(output)) => {
+                use crate::tool_output_sanitizer::{EXEC_OUTPUT_BUDGET, sanitize_exec_output};
+                let stdout = sanitize_exec_output(&output.stdout, EXEC_OUTPUT_BUDGET);
+                let stderr = sanitize_exec_output(&output.stderr, 4096);
+                ToolExecutionResult::success(json!({
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "exit_code": output.exit_code,
+                    "success": output.exit_code == 0
+                }))
+            }
             Ok(Err(e)) => {
                 // Execution error (syntax error, resource limit, etc.)
                 ToolExecutionResult::tool_error(format!("Bash execution error: {}", e))
