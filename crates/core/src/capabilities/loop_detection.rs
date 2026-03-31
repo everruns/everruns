@@ -53,7 +53,8 @@ impl MessageFilterProvider for LoopDetectionFilter {
             .get("threshold")
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
-            .unwrap_or(DEFAULT_THRESHOLD);
+            .unwrap_or(DEFAULT_THRESHOLD)
+            .max(1); // Clamp to at least 1 to avoid indexing empty vec
 
         // Collect tool call signature hashes from recent agent messages (reverse order).
         let mut recent_hashes: Vec<u64> = Vec::new();
