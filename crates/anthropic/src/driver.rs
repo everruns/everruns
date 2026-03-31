@@ -353,12 +353,19 @@ impl LlmDriver for AnthropicLlmDriver {
 
         // Calculate max_tokens - use caller's limit, or model's max output from profile, or 16384 fallback.
         // Anthropic requires max_tokens (can't omit), so we look up the model's native limit.
+        let max_tokens_from_profile = config.max_tokens.is_none();
         let base_max_tokens = config.max_tokens.unwrap_or_else(|| {
             everruns_core::get_model_profile(
                 &everruns_core::LlmProviderType::Anthropic,
                 &config.model,
             )
-            .and_then(|p| p.limits.map(|l| l.output as u32))
+            .and_then(|p| {
+                p.limits.and_then(|l| {
+                    u32::try_from(l.output)
+                        .ok()
+                        .and_then(|v| if v > 0 { Some(v) } else { None })
+                })
+            })
             .unwrap_or(16_384)
         });
         let max_tokens = if let Some(ref thinking_config) = thinking {
@@ -473,10 +480,11 @@ impl LlmDriver for AnthropicLlmDriver {
             let error_text = response.text().await.unwrap_or_default();
             let error_msg = format!("Anthropic API error ({}): {}", status, error_text);
 
-            // Graceful fallback: if max_tokens exceeds model limit (400 error),
+            // Graceful fallback: if max_tokens derived from profile exceeds model limit (400 error),
             // retry once with a safe fallback value instead of failing immediately.
             if status == reqwest::StatusCode::BAD_REQUEST
                 && !max_tokens_fallback_attempted
+                && max_tokens_from_profile
                 && (error_text.contains("max_tokens")
                     || error_text.contains("maximum output tokens"))
             {
@@ -1923,5 +1931,33 @@ mod tests {
 
         let profile = info.to_discovered_profile();
         assert!(profile.attachment, "PDF-only should still be attachment");
+    }
+
+    #[test]
+    fn test_default_max_tokens_from_known_model() {
+        // Known Anthropic models should resolve max_tokens from profile
+        let profile = everruns_core::get_model_profile(
+            &everruns_core::LlmProviderType::Anthropic,
+            "claude-sonnet-4-5-20250514",
+        );
+        assert!(profile.is_some(), "claude-sonnet-4-5 should have a profile");
+        let limits = profile.unwrap().limits.expect("profile should have limits");
+        assert!(limits.output > 0, "output limit should be positive");
+        // Sonnet 4.5 should have a much higher limit than the old 4096 default
+        assert!(
+            limits.output > 4096,
+            "model output limit ({}) should exceed old hardcoded 4096",
+            limits.output
+        );
+    }
+
+    #[test]
+    fn test_default_max_tokens_unknown_model_falls_back() {
+        // Unknown model should return None (triggering the 16384 fallback)
+        let profile = everruns_core::get_model_profile(
+            &everruns_core::LlmProviderType::Anthropic,
+            "nonexistent-model-xyz",
+        );
+        assert!(profile.is_none(), "unknown model should not have a profile");
     }
 }

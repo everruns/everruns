@@ -276,7 +276,13 @@ impl LlmDriver for GeminiLlmDriver {
                     &everruns_core::LlmProviderType::Gemini,
                     &config.model,
                 )
-                .and_then(|p| p.limits.map(|l| l.output as u32))
+                .and_then(|p| {
+                    p.limits.and_then(|l| {
+                        u32::try_from(l.output)
+                            .ok()
+                            .and_then(|v| if v > 0 { Some(v) } else { None })
+                    })
+                })
                 .unwrap_or(8_192),
             );
         }
@@ -1201,5 +1207,27 @@ mod tests {
             reqwest::StatusCode::BAD_REQUEST,
             error
         ));
+    }
+
+    #[test]
+    fn test_default_max_tokens_from_known_model() {
+        // Known Gemini models should resolve max_tokens from profile
+        let profile = everruns_core::get_model_profile(
+            &everruns_core::LlmProviderType::Gemini,
+            "gemini-1.5-pro",
+        );
+        assert!(profile.is_some(), "gemini-1.5-pro should have a profile");
+        let limits = profile.unwrap().limits.expect("profile should have limits");
+        assert!(limits.output > 0, "output limit should be positive");
+    }
+
+    #[test]
+    fn test_default_max_tokens_unknown_model_falls_back() {
+        // Unknown model should return None (triggering the 8192 fallback)
+        let profile = everruns_core::get_model_profile(
+            &everruns_core::LlmProviderType::Gemini,
+            "nonexistent-model-xyz",
+        );
+        assert!(profile.is_none(), "unknown model should not have a profile");
     }
 }
