@@ -1151,22 +1151,28 @@ fn proto_file_stat_to_stat(proto: proto::FileStat) -> Result<FileStat> {
 // EventEmitter implementation
 // ============================================================================
 
+/// Whether the control plane has NATS-backed event delivery, meaning ephemeral
+/// events skip PG. When true, the worker can fire-and-forget for deltas.
+/// When false, all events go to PG — must use blocking gRPC for correct id/sequence.
+fn server_supports_ephemeral_skip() -> bool {
+    // Matches the server-side check: EventDelivery::Nats is active only when NATS_URL is set.
+    // Worker and server share the same environment in typical deployments.
+    std::env::var("NATS_URL").is_ok()
+}
+
 #[async_trait]
 impl EventEmitter for GrpcAdapter {
     async fn emit(&self, request: EventRequest) -> Result<Event> {
-        // Ephemeral events (deltas, LLM generation) are fire-and-forget:
-        // return a synthetic Event immediately without waiting for the gRPC
-        // response. The control plane routes these to EventDelivery only
-        // (no PG persistence), so we don't need the DB-assigned id/sequence.
-        // This avoids holding the gRPC client mutex during delta streaming.
-        if request.is_ephemeral() {
+        // Fire-and-forget for ephemeral events only when the server has NATS
+        // (ephemeral events skip PG). Without NATS, all events persist to PG
+        // and we need the server-assigned id/sequence — use blocking path.
+        if request.is_ephemeral() && server_supports_ephemeral_skip() {
             return self.emit_ephemeral(request).await;
         }
 
-        // Durable events: blocking gRPC round-trip (needs DB-assigned id + sequence)
+        // Blocking gRPC round-trip (needs server-assigned id + sequence)
         let mut client = self.client.inner.lock().await;
 
-        // Convert core EventRequest to proto EventRequest
         let proto_event_request = core_event_request_to_proto(&request)?;
 
         let grpc_request = proto::EmitEventRequest {
@@ -1178,7 +1184,6 @@ impl EventEmitter for GrpcAdapter {
             .await
             .map_err(grpc_status_to_error)?;
 
-        // Convert proto Event response back to core Event
         let proto_event = response
             .into_inner()
             .event
@@ -1191,37 +1196,54 @@ impl EventEmitter for GrpcAdapter {
 impl GrpcAdapter {
     /// Fire-and-forget emit for ephemeral events.
     /// Returns a synthetic Event immediately; the gRPC call runs in background.
+    /// Only used when the server has NATS (ephemeral events skip PG).
     async fn emit_ephemeral(&self, request: EventRequest) -> Result<Event> {
         use everruns_core::typed_id::EventId;
 
-        // Build the synthetic event to return immediately
-        let event = Event {
-            id: EventId::new(),
-            event_type: request.event_type.clone(),
-            ts: request.ts,
-            session_id: request.session_id,
-            context: request.context.clone(),
-            data: request.data.clone(),
-            metadata: request.metadata.clone(),
-            tags: request.tags.clone(),
-            sequence: None, // No PG sequence for ephemeral events
-        };
-
-        // Convert to proto for the background gRPC call
+        // Convert to proto while we still have &request
         let proto_event_request = core_event_request_to_proto(&request)?;
         let grpc_request = proto::EmitEventRequest {
             event: Some(proto_event_request),
         };
 
-        // Fire gRPC call in background — don't wait for response
+        // Destructure to avoid clones
+        let session_id = request.session_id;
+        let event_type = request.event_type;
+        let event = Event {
+            id: EventId::new(),
+            event_type: event_type.clone(),
+            ts: request.ts,
+            session_id,
+            context: request.context,
+            data: request.data,
+            metadata: request.metadata,
+            tags: request.tags,
+            sequence: None,
+        };
+
+        // Fire gRPC call in background with backpressure: if the client mutex
+        // is already held (previous emit still in flight), drop this event
+        // rather than accumulating unbounded background tasks.
         let client = self.client.clone();
         tokio::spawn(async move {
-            let mut inner = client.inner.lock().await;
-            if let Err(e) = inner.emit_event(grpc_request).await {
-                tracing::debug!(
-                    error = %e,
-                    "Background ephemeral event emit failed (non-fatal)"
-                );
+            match client.inner.try_lock() {
+                Ok(mut inner) => {
+                    if let Err(e) = inner.emit_event(grpc_request).await {
+                        tracing::debug!(
+                            error = %e,
+                            %session_id,
+                            event_type,
+                            "Background ephemeral event emit failed (non-fatal)"
+                        );
+                    }
+                }
+                Err(_) => {
+                    tracing::debug!(
+                        %session_id,
+                        event_type,
+                        "Dropping ephemeral event emit — client busy (backpressure)"
+                    );
+                }
             }
         });
 
