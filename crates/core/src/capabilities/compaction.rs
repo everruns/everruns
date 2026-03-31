@@ -78,7 +78,10 @@ impl Default for ObservationMaskingConfig {
 }
 
 fn default_keep_recent_tool_outputs() -> usize {
-    5
+    // Lowered from 5 to 2 (EVE-224). With EVE-221 capping exec output at 16 KiB,
+    // keeping 2 recent (~8K tokens) instead of 5 (~20K tokens) significantly reduces
+    // stale exec output accumulation. Older tool results are masked to one-line summaries.
+    2
 }
 
 /// Summarization settings.
@@ -968,7 +971,7 @@ mod tests {
         assert_eq!(config.strategy, CompactionStrategy::Auto);
         assert!(config.proactive);
         assert!((config.budget_percent - 0.85).abs() < f32::EPSILON);
-        assert_eq!(config.observation_masking.keep_recent_tool_outputs, 5);
+        assert_eq!(config.observation_masking.keep_recent_tool_outputs, 2);
         assert_eq!(
             config.observation_masking.summary_format,
             MaskingSummaryFormat::OneLine

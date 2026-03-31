@@ -120,7 +120,7 @@ Compaction is configured as a capability on agents and harnesses, following the 
         "proactive": true,
         "budget_percent": 0.85,
         "observation_masking": {
-          "keep_recent_tool_outputs": 5,
+          "keep_recent_tool_outputs": 2,
           "summary_format": "one_line"
         },
         "summarization": {
@@ -164,8 +164,8 @@ pub struct CompactionConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservationMaskingConfig {
     /// Number of recent tool outputs to keep verbatim.
-    #[serde(default = "default_keep_recent")]
-    pub keep_recent_tool_outputs: usize,  // default: 5
+    #[serde(default = "default_keep_recent_tool_outputs")]
+    pub keep_recent_tool_outputs: usize,  // default: 2
 
     /// Format for masked tool output summaries.
     #[serde(default)]
@@ -239,7 +239,7 @@ When the `compaction` capability is present with no config (or `{}`):
 | `strategy` | `auto` | Adapts to provider |
 | `proactive` | `true` | Don't wait for errors |
 | `budget_percent` | `0.85` | 15% headroom |
-| `keep_recent_tool_outputs` | `5` | Recent context stays verbatim |
+| `keep_recent_tool_outputs` | `2` | Recent context stays verbatim |
 | `summarization.model` | `null` (same model) | Simplest default |
 | `summarization.preserve` | `["decisions", "files_modified", "errors", "current_plan"]` | Key agent context |
 
