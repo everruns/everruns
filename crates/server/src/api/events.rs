@@ -282,12 +282,23 @@ pub async fn stream_sse(
     // Use realtime config for session events (fast updates for interactive UX)
     let config = SseStreamConfig::realtime();
     let connection_start = Instant::now();
+    let max_duration = config.jittered_max_connection_duration();
 
-    // Set up push notification channel: when pg_notify fires for this session,
-    // the waker triggers immediate poll instead of waiting for backoff timeout.
-    // Falls back to polling in DEV_MODE (no PostgreSQL).
+    // Subscribe to EventDelivery for real-time push (both ephemeral and durable events).
+    // Falls back to PG polling if subscription fails.
+    let subscription = event_service
+        .event_delivery()
+        .subscribe(session_id)
+        .await
+        .ok();
+
+    // If we have a subscription, use push-based delivery.
+    // Otherwise, fall back to legacy PG polling with pg_notify waker.
+    let use_push = subscription.is_some();
+
+    // Legacy PG polling waker (used only when EventDelivery subscription unavailable)
     let event_waker = Arc::new(tokio::sync::Notify::new());
-    if let Some(ref broadcaster) = state.event_broadcaster {
+    if let (false, Some(broadcaster)) = (use_push, &state.event_broadcaster) {
         let mut rx = broadcaster.subscribe();
         let waker = event_waker.clone();
         let target_session = session_id;
@@ -297,7 +308,7 @@ pub async fn stream_sse(
                     Ok(payload) if payload.session_id == target_session => {
                         waker.notify_one();
                     }
-                    Ok(_) => {} // Different session, ignore
+                    Ok(_) => {}
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         tracing::debug!(lagged = n, "Event notification receiver lagged, waking");
                         waker.notify_one();
@@ -308,13 +319,43 @@ pub async fn stream_sse(
         });
     }
 
+    // Shared subscription wrapped in Arc<Mutex> for use inside the stream
+    let subscription = Arc::new(tokio::sync::Mutex::new(subscription));
+
+    // Helper: convert Event to SSE format
+    fn event_to_sse(event: &Event, retry: Duration) -> Result<SseEvent, Infallible> {
+        let event_type = event.event_type.clone();
+        let event_id = event.id.to_string();
+        let json = serde_json::to_string(event).unwrap_or_else(|_| "{}".to_string());
+        Ok(SseEvent::default()
+            .event(&event_type)
+            .data(json)
+            .id(event_id)
+            .retry(retry))
+    }
+
+    // Helper: check if event passes type filters
+    fn passes_filter(event_type: &str, filter_types: &[String], exclude_types: &[String]) -> bool {
+        if !filter_types.is_empty() && !filter_types.iter().any(|t| t == event_type) {
+            return false;
+        }
+        if exclude_types.iter().any(|t| t == event_type) {
+            return false;
+        }
+        true
+    }
+
     // Stream state machine
     #[derive(Clone)]
     enum StreamPhase {
-        /// Initial phase - send connected event
+        /// Initial phase - send connected event, then replay missed durable events
         SendConnected,
-        /// Normal operation - poll for events
-        Polling,
+        /// Replay missed durable events from PG (one-time, only on reconnection)
+        ReplayFromPg,
+        /// Normal operation - receive from EventDelivery subscription
+        Streaming,
+        /// Fallback: poll PG (when EventDelivery subscription unavailable)
+        PollingFallback,
         /// Send disconnecting event then close
         SendDisconnecting,
         /// Stream has ended
@@ -330,10 +371,7 @@ pub async fn stream_sse(
         filter_types: Vec<String>,
         exclude_types: Vec<String>,
         connection_start: Instant,
-        /// Jittered max connection duration (computed once per connection to prevent
-        /// thundering herd when many SSE connections cycle simultaneously)
         max_duration: Duration,
-        /// Waker triggered by pg_notify when events arrive for this session
         event_waker: Arc<tokio::sync::Notify>,
     }
 
@@ -341,7 +379,7 @@ pub async fn stream_sse(
         phase: StreamPhase::SendConnected,
         last_id: initial_since_id,
         backoff_ms: config.min_backoff_ms,
-        max_duration: config.jittered_max_connection_duration(),
+        max_duration,
         config,
         filter_types,
         exclude_types,
@@ -349,24 +387,23 @@ pub async fn stream_sse(
         event_waker,
     };
 
-    // Create stream that replays events from database
-    // Uses since_id resolved to sequence for reliable ordering
-    // SSE format: event: <type>, data: <full core::Event JSON>, id: <event UUID>
-    // Features:
-    // - Exponential backoff (100ms → 500ms) when no new events
-    // - Connection cycling: graceful close after max_connection_duration with "disconnecting" event
-    // - Retry hints: SSE `retry:` field hints reconnection timing based on backoff
+    // SSE stream: push-based via EventDelivery subscription with PG catch-up on reconnect.
+    //
+    // Flow:
+    // 1. Send "connected" event
+    // 2. If since_id provided: replay missed durable events from PG (one-time query)
+    // 3. Subscribe to EventDelivery for real-time push (ephemeral + durable)
+    // 4. Connection cycling after max_duration
+    //
+    // Fallback: if EventDelivery subscription fails, use legacy PG polling loop.
     let stream = stream::unfold(initial_state, move |state| {
         let event_service = event_service.clone();
+        let subscription = subscription.clone();
         async move {
             match state.phase {
-                StreamPhase::Closed => {
-                    // Stream has ended
-                    None
-                }
+                StreamPhase::Closed => None,
 
                 StreamPhase::SendDisconnecting => {
-                    // Send disconnecting event and close
                     tracing::info!(
                         session_id = %session_id,
                         duration_secs = state.connection_start.elapsed().as_secs(),
@@ -390,96 +427,158 @@ pub async fn stream_sse(
                 }
 
                 StreamPhase::SendConnected => {
-                    // Send initial "connected" event
                     tracing::debug!(session_id = %session_id, "SSE: sending connected event");
                     let connected_event = Ok(SseEvent::default()
                         .event("connected")
                         .data(r#"{"status":"connected"}"#)
                         .retry(state.config.retry_hint(state.backoff_ms)));
 
+                    // If reconnecting (since_id set), replay from PG first.
+                    // Otherwise go straight to streaming.
+                    let next_phase = if state.last_id.is_some() {
+                        StreamPhase::ReplayFromPg
+                    } else if use_push {
+                        StreamPhase::Streaming
+                    } else {
+                        StreamPhase::PollingFallback
+                    };
+
                     let new_state = StreamState {
-                        phase: StreamPhase::Polling,
+                        phase: next_phase,
                         ..state
                     };
                     Some((stream::iter(vec![connected_event]), new_state))
                 }
 
-                StreamPhase::Polling => {
-                    // Check for connection cycling - graceful close after jittered max duration
-                    if state.connection_start.elapsed() > state.max_duration {
-                        let new_state = StreamState {
-                            phase: StreamPhase::SendDisconnecting,
-                            ..state
-                        };
-                        // Recurse immediately to send disconnecting event
-                        return Some((stream::iter(vec![]), new_state));
-                    }
-
-                    // Fetch events since last ID.
-                    // Forward queries are safety-capped at 10k rows in the repository layer;
-                    // any remaining events are picked up on the next poll cycle.
-                    tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: fetching events");
+                StreamPhase::ReplayFromPg => {
+                    // One-time PG query to catch up on missed durable events.
+                    // Ephemeral events (deltas) that were missed during disconnection
+                    // are gone — the completed event has the full content.
+                    tracing::debug!(session_id = %session_id, last_id = ?state.last_id, "SSE: replaying missed durable events from PG");
                     match event_service.list(session_id, None, state.last_id, &state.filter_types, &state.exclude_types, None, None).await {
-                        Ok(events) if !events.is_empty() => {
-                            // Get the last event ID for next iteration
-                            let new_last_id = Some(events.last().unwrap().id.uuid());
-                            let new_backoff = state.config.min_backoff_ms; // Reset backoff
-
-                            tracing::debug!(
-                                session_id = %session_id,
-                                last_id = ?state.last_id,
-                                new_last_id = ?new_last_id,
-                                event_count = events.len(),
-                                "SSE: fetched events"
-                            );
-
-                            // Convert events to SSE format with retry hint
-                            let retry_duration = state.config.retry_hint(new_backoff);
+                        Ok(events) => {
+                            let new_last_id = events.last().map(|e| e.id.uuid()).or(state.last_id);
+                            let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
                             let sse_events: Vec<Result<SseEvent, Infallible>> = events
-                                .into_iter()
-                                .map(|event| {
-                                    let event_type = event.event_type.clone();
-                                    let event_id = event.id.to_string();
-                                    let json = serde_json::to_string(&event)
-                                        .unwrap_or_else(|_| "{}".to_string());
-
-                                    Ok(SseEvent::default()
-                                        .event(&event_type)
-                                        .data(json)
-                                        .id(event_id)
-                                        .retry(retry_duration))
-                                })
+                                .iter()
+                                .map(|event| event_to_sse(event, retry_duration))
                                 .collect();
 
+                            if !sse_events.is_empty() {
+                                tracing::debug!(
+                                    session_id = %session_id,
+                                    count = sse_events.len(),
+                                    "SSE: replayed durable events from PG"
+                                );
+                            }
+
+                            let next_phase = if use_push {
+                                StreamPhase::Streaming
+                            } else {
+                                StreamPhase::PollingFallback
+                            };
+
                             let new_state = StreamState {
-                                phase: StreamPhase::Polling,
+                                phase: next_phase,
                                 last_id: new_last_id,
-                                backoff_ms: new_backoff,
+                                backoff_ms: state.config.min_backoff_ms,
                                 ..state
                             };
                             Some((stream::iter(sse_events), new_state))
                         }
-                        Ok(_) => {
-                            // No new events — wait for push notification or fallback timeout.
-                            // With pg_notify: waker fires in <5ms on event insert.
-                            // Without pg_notify (DEV_MODE): falls back to polling at backoff.
-                            let fallback = Duration::from_millis(state.backoff_ms);
-                            tokio::select! {
-                                _ = state.event_waker.notified() => {
-                                    // Notification received — poll immediately with reset backoff
+                        Err(e) => {
+                            tracing::error!("Failed to replay events from PG: {}", e);
+                            None
+                        }
+                    }
+                }
+
+                StreamPhase::Streaming => {
+                    // Push-based: wait for events from EventDelivery subscription.
+                    // No PG polling. Connection cycling still applies.
+                    if state.connection_start.elapsed() > state.max_duration {
+                        return Some((stream::iter(vec![]), StreamState {
+                            phase: StreamPhase::SendDisconnecting,
+                            ..state
+                        }));
+                    }
+
+                    let mut sub = subscription.lock().await;
+                    let recv_future = async {
+                        if let Some(ref mut s) = *sub {
+                            s.recv().await
+                        } else {
+                            // Subscription gone — should not happen in Streaming phase
+                            None
+                        }
+                    };
+
+                    // Wait for event or connection cycle timeout
+                    let cycle_remaining = state.max_duration.saturating_sub(state.connection_start.elapsed());
+                    tokio::select! {
+                        event = recv_future => {
+                            match event {
+                                Some(event) if event.session_id.uuid() == session_id && passes_filter(&event.event_type, &state.filter_types, &state.exclude_types) => {
+                                    let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
+                                    let sse_event = event_to_sse(&event, retry_duration);
+                                    Some((stream::iter(vec![sse_event]), state))
                                 }
-                                _ = tokio::time::sleep(fallback) => {
-                                    // Fallback timeout — increase backoff
+                                Some(_) => {
+                                    // Wrong session (partition collision) or filtered out — skip
+                                    Some((stream::iter(vec![]), state))
+                                }
+                                None => {
+                                    // Subscription closed — end stream
+                                    tracing::warn!(session_id = %session_id, "SSE: EventDelivery subscription closed");
+                                    None
                                 }
                             }
-
-                            // Increase backoff for next iteration (reset on event found above)
-                            let new_backoff = state.config.next_backoff(state.backoff_ms);
-                            let new_state = StreamState {
-                                backoff_ms: new_backoff,
+                        }
+                        _ = tokio::time::sleep(cycle_remaining) => {
+                            Some((stream::iter(vec![]), StreamState {
+                                phase: StreamPhase::SendDisconnecting,
                                 ..state
-                            };
-                            Some((stream::iter(vec![]), new_state))
+                            }))
+                        }
+                    }
+                }
+
+                StreamPhase::PollingFallback => {
+                    // Legacy PG polling loop (used when EventDelivery subscription unavailable).
+                    // Same behavior as the pre-EventDelivery implementation.
+                    if state.connection_start.elapsed() > state.max_duration {
+                        return Some((stream::iter(vec![]), StreamState {
+                            phase: StreamPhase::SendDisconnecting,
+                            ..state
+                        }));
+                    }
+
+                    match event_service.list(session_id, None, state.last_id, &state.filter_types, &state.exclude_types, None, None).await {
+                        Ok(events) if !events.is_empty() => {
+                            let new_last_id = Some(events.last().unwrap().id.uuid());
+                            let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
+                            let sse_events: Vec<Result<SseEvent, Infallible>> = events
+                                .iter()
+                                .map(|event| event_to_sse(event, retry_duration))
+                                .collect();
+
+                            Some((stream::iter(sse_events), StreamState {
+                                phase: StreamPhase::PollingFallback,
+                                last_id: new_last_id,
+                                backoff_ms: state.config.min_backoff_ms,
+                                ..state
+                            }))
+                        }
+                        Ok(_) => {
+                            let fallback = Duration::from_millis(state.backoff_ms);
+                            tokio::select! {
+                                _ = state.event_waker.notified() => {}
+                                _ = tokio::time::sleep(fallback) => {}
+                            }
+                            Some((stream::iter(vec![]), StreamState {
+                                backoff_ms: state.config.next_backoff(state.backoff_ms),
+                                ..state
+                            }))
                         }
                         Err(e) => {
                             tracing::error!("Failed to fetch events: {}", e);
