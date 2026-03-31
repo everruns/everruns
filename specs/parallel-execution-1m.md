@@ -485,16 +485,24 @@ Today, `EventService.emit()` stores every event — including every `output.mess
 - **Highest volume**: a 500-token response at ~100ms batching = ~50 delta events per turn. At 1M agents, that's ~50M delta events/sec peak.
 - **Latency-critical**: users expect <100ms token delivery. Kafka adds 2-5ms per message (batching, replication, consumer poll). Acceptable but unnecessary — why persist something nobody reads?
 
-**Tier 1: Ephemeral events — in-memory pub/sub, never stored**
+**Tier 1: Ephemeral events — pub/sub, never stored**
 
-Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`) go through an in-process broadcast channel (current deployment) or NATS core pub/sub (multi-instance). No Kafka. No PostgreSQL. No persistence at all.
+Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`) go through pub/sub — never persisted to any store. The pub/sub backend scales with deployment size:
+
+| Scale | Ephemeral pub/sub | Why |
+|---|---|---|
+| Single instance (dev) | In-process `broadcast::channel` | Zero deps, ~0ms |
+| Multi-instance, ≤50K agents | **Valkey pub/sub** (already deployed, `fred` crate) | Already in stack for rate limiting. Single Valkey handles ~200K msg/sec realistic delta load. Channel per session: `session:{id}:deltas` |
+| Multi-instance, 500K+ agents | **NATS core pub/sub** | Valkey sharded pub/sub maxes out. NATS handles 10M+ msg/sec natively across 3-node cluster. Subject per session: `deltas.session.{id}` |
+
+Valkey is the pragmatic default — it's already deployed (`VALKEY_URL`), the `fred` client is already a dependency, and adding `PUBLISH`/`SUBSCRIBE` for deltas is ~50 lines of code. NATS is only added when delta volume exceeds what Valkey can fan out.
 
 ```
-Worker LLM stream                     SSE client
-  ├─ token chunk                        │
-  ├─ token chunk    ──► NATS pub/sub ──►│ (~1ms latency)
-  ├─ token chunk        (fire & forget) │
-  └─ [completed]    ──► Kafka ──► PG    │ (durable)
+Worker LLM stream                              SSE client
+  ├─ token chunk                                 │
+  ├─ token chunk  ──► Valkey PUBLISH ──► SUBSCRIBE ──►│ (~0.2ms)
+  ├─ token chunk      (fire & forget)            │
+  └─ [completed]  ──► Kafka ──► PG               │ (durable)
 ```
 
 ```rust
@@ -506,6 +514,7 @@ pub async fn emit(&self, request: EventRequest) -> Result<Event> {
         // Ephemeral: broadcast only, no storage
         // Sequence assigned from in-memory counter (per session)
         let event = self.to_ephemeral_event(request);
+        // Valkey PUBLISH (multi-instance) or broadcast::channel (single instance)
         self.ephemeral_broadcaster.publish(&event);
         return Ok(event);
     }
@@ -534,7 +543,8 @@ impl EventRequest {
 **Why not Kafka for deltas:**
 - Kafka's minimum end-to-end latency is ~2-5ms (producer batch → broker → consumer poll). Acceptable for durable events. Wasteful for deltas that are consumed in real-time and thrown away.
 - At 50M delta events/sec, Kafka would need ~50 brokers just for ephemeral data that has zero replay value.
-- NATS core pub/sub is fire-and-forget with ~0.1ms latency. If a subscriber misses a delta, it doesn't matter — the `completed` event has the full content.
+- Valkey pub/sub is fire-and-forget with ~0.2ms latency, and it's already deployed. If a subscriber misses a delta, it doesn't matter — the `completed` event has the full content.
+- At extreme scale (500K+ agents), NATS replaces Valkey for deltas — same fire-and-forget semantics but 10x higher throughput ceiling.
 
 **Tier 2: Durable events — Kafka as primary store, PG as cold storage**
 
@@ -568,7 +578,7 @@ Worker completes    Kafka topic: events                 SSE stream subscribes
    - Ephemeral: NATS core pub/sub (or in-process `broadcast::channel` for single-instance)
    - Durable: Kafka consumer that pushes to SSE streams
 
-3. **SSE event streams** — subscribe to both channels. Ephemeral events arrive with ~0.1ms latency (NATS). Durable events arrive with ~2-5ms latency (Kafka). Client sees a unified ordered stream.
+3. **SSE event streams** — subscribe to both channels. Ephemeral events arrive with ~0.2ms latency (Valkey pub/sub). Durable events arrive with ~2-5ms latency (Kafka). Client sees a unified ordered stream.
 
 4. **REST `GET /v1/sessions/{id}/events`** — reads from PG only. Delta events are excluded (they were never stored). This is already supported: the API has `exclude_types` filtering, and clients can opt out of deltas with `?exclude=output.message.delta`.
 
