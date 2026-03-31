@@ -67,6 +67,28 @@ check_valkey_ready() {
   return 1
 }
 
+check_nats_ready() {
+  local port="${1:?port required}"
+
+  # Try NATS monitoring endpoint
+  if command -v curl &> /dev/null; then
+    curl -sf "http://localhost:${port}/healthz" >/dev/null 2>&1
+    return $?
+  fi
+
+  # Fallback: TCP port check
+  if command -v nc &> /dev/null; then
+    nc -z localhost "$port" >/dev/null 2>&1
+    return $?
+  fi
+
+  if (echo >"/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
+}
+
 signal_recorded_pids() {
   local signal="$1"
 
@@ -493,6 +515,23 @@ case "$cmd" in
       fi
     fi
 
+    # Start NATS for event delivery and task notifications (optional)
+    if [ -z "${NATS_URL:-}" ]; then
+      if check_nats_ready "$NATS_PORT" 2>/dev/null; then
+        export NATS_URL=${NATS_URL:-$NATS_URL_DEFAULT}
+        echo "   ✅ NATS ready (push-based event delivery + task notifications)"
+      else
+        echo "   ℹ️  Starting NATS..."
+        "$PROJECT_ROOT/scripts/lib/infra.sh" start >/dev/null 2>&1 || true
+        if check_nats_ready "$NATS_PORT" 2>/dev/null; then
+          export NATS_URL=${NATS_URL:-$NATS_URL_DEFAULT}
+          echo "   ✅ NATS started (push-based event delivery + task notifications)"
+        else
+          echo "   ℹ️  NATS not available — using PG NOTIFY + in-memory event delivery"
+        fi
+      fi
+    fi
+
     print_doppler_secret_hint
 
     # Configure LLM API keys
@@ -517,7 +556,7 @@ case "$cmd" in
     fi
 
     # Start API
-    export API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT VALKEY_PORT
+    export API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT VALKEY_PORT NATS_PORT
     export ADDR=${ADDR:-$API_ADDR_DEFAULT}
     export WORKER_GRPC_ADDR=${WORKER_GRPC_ADDR:-$WORKER_GRPC_ADDR_DEFAULT}
     export WORKER_GRPC_ADDRESS=${WORKER_GRPC_ADDRESS:-$WORKER_GRPC_ADDRESS_DEFAULT}
@@ -760,6 +799,23 @@ case "$cmd" in
           echo "   ✅ Valkey started (distributed rate limiting enabled)"
         else
           echo "   ℹ️  Valkey not available — using per-instance rate limiting"
+        fi
+      fi
+    fi
+
+    # Start NATS for event delivery and task notifications (optional)
+    if [ -z "${NATS_URL:-}" ]; then
+      if check_nats_ready "$NATS_PORT" 2>/dev/null; then
+        export NATS_URL=${NATS_URL:-$NATS_URL_DEFAULT}
+        echo "   ✅ NATS ready (push-based event delivery + task notifications)"
+      else
+        echo "   ℹ️  Starting NATS..."
+        "$PROJECT_ROOT/scripts/lib/infra.sh" start >/dev/null 2>&1 || true
+        if check_nats_ready "$NATS_PORT" 2>/dev/null; then
+          export NATS_URL=${NATS_URL:-$NATS_URL_DEFAULT}
+          echo "   ✅ NATS started (push-based event delivery + task notifications)"
+        else
+          echo "   ℹ️  NATS not available — using PG NOTIFY + in-memory event delivery"
         fi
       fi
     fi

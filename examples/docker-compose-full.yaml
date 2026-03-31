@@ -68,6 +68,23 @@ services:
     restart: unless-stopped
 
   # ==========================================================================
+  # NATS (event delivery + task notifications, optional)
+  # When present, enables push-based SSE delivery and NATS task notifications.
+  # Without NATS, the system falls back to PG NOTIFY + in-memory delivery.
+  # ==========================================================================
+  nats:
+    image: nats:2-alpine
+    command: ["--jetstream", "--store_dir", "/data"]
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "nats-server", "--help"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ==========================================================================
   # Server (Control Plane) - HTTP API + gRPC server
   # Note: Migrations are auto-applied on startup
   # ==========================================================================
@@ -76,6 +93,7 @@ services:
     environment:
       DATABASE_URL: postgres://everruns:everruns@postgres:5432/everruns
       VALKEY_URL: redis://valkey:6379
+      NATS_URL: nats://nats:4222
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
       DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
       DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
@@ -88,6 +106,8 @@ services:
       postgres:
         condition: service_healthy
       valkey:
+        condition: service_healthy
+      nats:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "/app/everruns-server", "--version"]
@@ -243,4 +263,5 @@ configs:
 volumes:
   postgres_data:
   valkey_data:
+  nats_data:
   victoriametrics_data:

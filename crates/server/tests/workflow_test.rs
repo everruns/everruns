@@ -5408,13 +5408,18 @@ mod durable_sse_tests {
     /// Create a test router with in-memory durable store
     fn create_test_app() -> Router {
         let store = Arc::new(InMemoryWorkflowEventStore::new());
-        let state = durable::AppState::new(Some(store), test_auth_state());
+        let state = durable::AppState::new(
+            Some(store),
+            test_auth_state(),
+            None,
+            "in_memory".to_string(),
+        );
         durable::routes(state)
     }
 
     /// Create a test router with no durable store (simulates 503)
     fn create_test_app_no_store() -> Router {
-        let state = durable::AppState::new(None, test_auth_state());
+        let state = durable::AppState::new(None, test_auth_state(), None, "in_memory".to_string());
         durable::routes(state)
     }
 

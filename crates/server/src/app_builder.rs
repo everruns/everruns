@@ -606,7 +606,12 @@ impl ServerAppBuilder {
                 })
             };
         // TM-DURABLE-010: All durable endpoints require admin role
-        let durable_state = api::durable::AppState::new(durable_store.clone(), auth_state.clone());
+        let durable_state = api::durable::AppState::new(
+            durable_store.clone(),
+            auth_state.clone(),
+            None, // task_broadcaster: PG trigger handles NOTIFY; NATS notify from gRPC service
+            event_delivery.backend_name().to_string(),
+        );
         durable_state.spawn_metrics_sampler();
 
         // Bridge durable MetricsCollector gauges to Prometheus
