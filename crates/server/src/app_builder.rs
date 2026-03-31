@@ -566,7 +566,7 @@ impl ServerAppBuilder {
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
-            api::session_storage::AppState::new(db.clone(), auth_state.clone());
+            api::session_storage::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
         let session_databases_state = api::session_databases::AppState::new(
             sqldb_store.clone(),
             db.clone(),

@@ -182,7 +182,15 @@ async fn main() -> anyhow::Result<()> {
             commands::capabilities::run(&client, output_format, &status).await
         }
         Commands::Sessions { command } => {
-            commands::sessions::run(command, &client, output_format, cli.quiet).await
+            commands::sessions::run(
+                command,
+                &client,
+                &api_url,
+                &api_key,
+                output_format,
+                cli.quiet,
+            )
+            .await
         }
         Commands::Files { command } => {
             commands::files::run(command, &api_url, &api_key, output_format, cli.quiet).await
@@ -258,12 +266,14 @@ mod tests {
                 agent,
                 title,
                 model,
+                secrets,
             } = command
             {
                 assert_eq!(harness, Some("harness_abc".to_string()));
                 assert_eq!(agent, Some("agt_abc".to_string()));
                 assert_eq!(title, Some("Test Session".to_string()));
                 assert_eq!(model, None);
+                assert!(secrets.is_empty());
             } else {
                 panic!("Expected Create command");
             }
@@ -276,8 +286,39 @@ mod tests {
     fn test_cli_parse_sessions_create_no_harness() {
         let cli = Cli::try_parse_from(["everruns", "sessions", "create"]).unwrap();
         if let Commands::Sessions { command } = cli.command {
-            if let commands::sessions::SessionsCommand::Create { harness, .. } = command {
+            if let commands::sessions::SessionsCommand::Create {
+                harness, secrets, ..
+            } = command
+            {
                 assert_eq!(harness, None); // org default
+                assert!(secrets.is_empty());
+            } else {
+                panic!("Expected Create command");
+            }
+        } else {
+            panic!("Expected Sessions command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_sessions_create_with_secrets() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "sessions",
+            "create",
+            "--agent",
+            "agt_abc",
+            "--secret",
+            "KEY1=value1",
+            "--secret",
+            "KEY2=value2",
+        ])
+        .unwrap();
+        if let Commands::Sessions { command } = cli.command {
+            if let commands::sessions::SessionsCommand::Create { secrets, .. } = command {
+                assert_eq!(secrets.len(), 2);
+                assert_eq!(secrets[0], "KEY1=value1");
+                assert_eq!(secrets[1], "KEY2=value2");
             } else {
                 panic!("Expected Create command");
             }

@@ -4,6 +4,7 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
+use crate::storage::encryption::EncryptionService;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -11,11 +12,14 @@ use axum::{
     routing::get,
 };
 use everruns_core::SessionId;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::{ApiResultExt, ListResponse, impl_auth_state, verify_session_ownership};
+use super::common::{
+    ApiResult, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state, verify_session_ownership,
+};
 
 /// Key-value entry info (key and timestamps, no value)
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -41,16 +45,39 @@ pub struct SecretInfo {
     pub updated_at: String,
 }
 
+/// Batch secret set request
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct BatchSetSecretsRequest {
+    /// Map of secret names to values
+    pub secrets: HashMap<String, String>,
+}
+
+/// Batch secret set response
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BatchSetSecretsResponse {
+    /// Number of secrets stored
+    pub count: usize,
+}
+
 /// App state for session storage routes
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
+    pub encryption: Option<Arc<EncryptionService>>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
+    pub fn new(
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
+        auth: AuthState,
+    ) -> Self {
+        Self {
+            db,
+            encryption,
+            auth,
+        }
     }
 }
 
@@ -62,7 +89,7 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/sessions/{session_id}/storage/keys", get(list_keys))
         .route(
             "/v1/sessions/{session_id}/storage/secrets",
-            get(list_secrets),
+            get(list_secrets).put(batch_set_secrets),
         )
         .with_state(state)
 }
@@ -158,6 +185,80 @@ pub async fn list_secrets(
     Ok(Json(ListResponse::new(items)))
 }
 
+/// PUT /v1/sessions/{session_id}/storage/secrets - Batch set secrets
+///
+/// Encrypts and stores multiple secrets in a single request.
+/// Existing secrets with the same name are overwritten.
+#[utoipa::path(
+    put,
+    path = "/v1/sessions/{session_id}/storage/secrets",
+    params(
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    request_body = BatchSetSecretsRequest,
+    responses(
+        (status = 200, description = "Secrets stored", body = BatchSetSecretsResponse),
+        (status = 400, description = "Bad request (encryption not configured or invalid input)"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "session-storage"
+)]
+pub async fn batch_set_secrets(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+    Json(body): Json<BatchSetSecretsRequest>,
+) -> ApiResult<BatchSetSecretsResponse> {
+    let session_id: SessionId = session_id.parse().map_err(|_| {
+        ErrorResponse::new("Invalid session ID").into_response(StatusCode::BAD_REQUEST)
+    })?;
+    verify_session_ownership(&state.db, org.org_id, session_id)
+        .await
+        .map_err(|status| ErrorResponse::new("Session not found").into_response(status))?;
+
+    let encryption = state.encryption.as_ref().ok_or_else(|| {
+        ErrorResponse::new(
+            "Encryption not configured. Set SECRETS_ENCRYPTION_KEY environment variable.",
+        )
+        .into_response(StatusCode::BAD_REQUEST)
+    })?;
+
+    if body.secrets.is_empty() {
+        return Ok(Json(BatchSetSecretsResponse { count: 0 }));
+    }
+
+    // Validate key lengths
+    for name in body.secrets.keys() {
+        if name.len() > 255 {
+            return Err(
+                ErrorResponse::new(format!("Secret name too long (max 255): {}", name))
+                    .into_response(StatusCode::BAD_REQUEST),
+            );
+        }
+    }
+
+    let count = body.secrets.len();
+    for (name, value) in &body.secrets {
+        let encrypted = encryption.encrypt_string(value).map_err(|e| {
+            tracing::error!("Encryption failed for secret '{}': {}", name, e);
+            ErrorResponse::internal_error()
+        })?;
+
+        let input = crate::storage::models::UpsertSessionSecret {
+            session_id,
+            name: name.clone(),
+            value_encrypted: encrypted,
+        };
+        state.db.upsert_session_secret(input).await.map_err(|e| {
+            tracing::error!("Failed to store secret '{}': {}", name, e);
+            ErrorResponse::internal_error()
+        })?;
+    }
+
+    Ok(Json(BatchSetSecretsResponse { count }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,5 +287,28 @@ mod tests {
         assert!(json.contains("api_key"));
         // Ensure no value field exists
         assert!(!json.contains("value"));
+    }
+
+    #[test]
+    fn test_batch_set_secrets_request_deserialization() {
+        let json = r#"{"secrets":{"KEY1":"value1","KEY2":"value2"}}"#;
+        let req: BatchSetSecretsRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.secrets.len(), 2);
+        assert_eq!(req.secrets["KEY1"], "value1");
+        assert_eq!(req.secrets["KEY2"], "value2");
+    }
+
+    #[test]
+    fn test_batch_set_secrets_response_serialization() {
+        let resp = BatchSetSecretsResponse { count: 3 };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"count\":3"));
+    }
+
+    #[test]
+    fn test_batch_set_secrets_request_empty() {
+        let json = r#"{"secrets":{}}"#;
+        let req: BatchSetSecretsRequest = serde_json::from_str(json).unwrap();
+        assert!(req.secrets.is_empty());
     }
 }
