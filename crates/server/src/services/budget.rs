@@ -213,7 +213,7 @@ impl BudgetService {
     }
 
     /// Compute the debit amount in the budget's currency.
-    fn compute_debit(
+    pub(crate) fn compute_debit(
         &self,
         currency: &str,
         total_tokens: i64,
@@ -264,7 +264,7 @@ impl BudgetService {
     }
 
     /// Evaluate budget rules and return the most restrictive action.
-    fn evaluate_rules(&self, budget: &BudgetRow) -> BudgetAction {
+    pub(crate) fn evaluate_rules(&self, budget: &BudgetRow) -> BudgetAction {
         // Rule 1: Hard stop at 0
         if budget.balance <= 0.0 {
             return BudgetAction::Stop {

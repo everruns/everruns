@@ -6,6 +6,8 @@ pub mod agent_identity;
 pub mod app;
 pub mod audit_log;
 pub mod budget;
+#[cfg(test)]
+mod budget_tests;
 pub mod capability;
 pub(crate) mod capability_validation;
 pub mod eval;
