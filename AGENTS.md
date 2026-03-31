@@ -139,9 +139,14 @@ Always make sure you are working on top of latest main from remote.
 
 ```bash
 just start-dev          # DEV MODE (in-memory, no external services)
-just start-all          # Full mode (PostgreSQL + Valkey as processes)
+just start-all          # Full mode (PostgreSQL + Valkey + NATS as processes)
 just --list             # All commands
 ```
+
+`start-all` automatically starts NATS and exports `NATS_URL` if `nats-server` is installed.
+When NATS is available, ephemeral events (deltas) skip PostgreSQL and task notifications
+use NATS pub/sub instead of PG NOTIFY. Without NATS, everything falls back to PG — zero
+behavioral change. See `docs/sre/environment-variables.md` for `NATS_URL` details.
 
 #### Worktrees
 

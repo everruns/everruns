@@ -148,6 +148,36 @@ VALKEY_URL=rediss://user:password@valkey.example.com:6380
 - Only used by control-plane (server); workers don't need this variable
 - Uses sliding-window counters via Lua scripts for atomic rate limit checks
 
+## NATS_URL
+
+Connection URL for NATS with JetStream, used for push-based event delivery and task notifications.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | Not set (uses PG NOTIFY for task notifications, in-memory broadcast for SSE event delivery) |
+
+**Example:**
+
+```bash
+# Local NATS
+NATS_URL=nats://localhost:4222
+
+# Cluster
+NATS_URL=nats://nats1:4222,nats://nats2:4222,nats://nats3:4222
+```
+
+**Notes:**
+- When not set, the system behaves exactly as before — all events persist to PG, SSE polls PG, task notifications use PG NOTIFY. Zero behavioral change.
+- When set, enables two features:
+  - **Ephemeral event delivery**: delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL and flow only through NATS JetStream. SSE streams subscribe to NATS instead of polling PG.
+  - **Task notifications**: `task.available.{activity_type}` subjects replace PG NOTIFY for push-based worker notification. Lower latency (~1ms vs ~30ms), supports multi-instance deployments.
+- NATS JetStream must be enabled on the server (`--jetstream` flag)
+- Fail-graceful: if NATS connection fails at startup, falls back to PG NOTIFY + in-memory delivery with a warning
+- Only used by control-plane (server); workers communicate via gRPC and don't need NATS access
+- Default port: 4222 (or `PORT_PREFIX22` with `PORT_PREFIX`)
+- `just start-all` automatically starts NATS and exports `NATS_URL` if `nats-server` is installed
+
 ## LLM Provider API Keys
 
 LLM provider API keys (OpenAI, Anthropic, Gemini) are primarily stored encrypted in the database and managed via the Settings > Providers UI.

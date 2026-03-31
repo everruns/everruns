@@ -38,6 +38,14 @@ impl EventDelivery {
         matches!(self, Self::Nats(_))
     }
 
+    /// Backend name for health/metrics reporting
+    pub fn backend_name(&self) -> &'static str {
+        match self {
+            Self::InMemory(_) => "in_memory",
+            Self::Nats(_) => "nats",
+        }
+    }
+
     /// Create from environment. Uses NATS if `NATS_URL` is set, otherwise in-memory.
     pub async fn from_env() -> Self {
         match std::env::var("NATS_URL") {

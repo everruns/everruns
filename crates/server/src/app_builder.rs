@@ -605,8 +605,22 @@ impl ServerAppBuilder {
                         as Arc<dyn WorkflowEventStore + Send + Sync>
                 })
             };
+        // Create TaskBroadcaster early so it can be shared between durable_state and gRPC service
+        let task_broadcaster = if !self.config.dev_mode {
+            crate::task_notifications::TaskBroadcaster::from_env(db.pool())
+                .await
+                .map(Arc::new)
+        } else {
+            None
+        };
+
         // TM-DURABLE-010: All durable endpoints require admin role
-        let durable_state = api::durable::AppState::new(durable_store.clone(), auth_state.clone());
+        let durable_state = api::durable::AppState::new(
+            durable_store.clone(),
+            auth_state.clone(),
+            task_broadcaster.clone(),
+            event_delivery.backend_name().to_string(),
+        );
         durable_state.spawn_metrics_sampler();
 
         // Bridge durable MetricsCollector gauges to Prometheus
@@ -902,9 +916,7 @@ impl ServerAppBuilder {
             let grpc_addr = self.config.grpc_addr.clone();
             let grpc_platform_definition = platform_definition.clone();
 
-            let task_broadcaster = crate::task_notifications::TaskBroadcaster::from_env(db.pool())
-                .await
-                .map(Arc::new);
+            let grpc_task_broadcaster = task_broadcaster.clone();
 
             tokio::spawn(async move {
                 let mut grpc_svc = grpc_service::WorkerServiceImpl::new(
@@ -914,7 +926,7 @@ impl ServerAppBuilder {
                     Some(grpc_runner),
                     grpc_platform_definition.as_ref().clone(),
                 );
-                if let Some(broadcaster) = task_broadcaster {
+                if let Some(broadcaster) = grpc_task_broadcaster {
                     grpc_svc.set_task_broadcaster(broadcaster);
                 }
                 // THREAT[TM-DURABLE-002]: gRPC unauthenticated access

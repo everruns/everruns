@@ -44,6 +44,10 @@ pub struct AppState {
     store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     metrics: MetricsCollector,
     auth: AuthState,
+    /// Task notification broadcaster for NATS publish on enqueue (optional)
+    task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>,
+    /// Event delivery backend name for health endpoint
+    event_delivery_backend: String,
 }
 
 impl_auth_state!(AppState);
@@ -52,11 +56,18 @@ impl AppState {
     /// Create new state with an optional workflow event store
     ///
     /// Collector holds 360 points = 1 hour at 10s intervals.
-    pub fn new(store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>, auth: AuthState) -> Self {
+    pub fn new(
+        store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+        auth: AuthState,
+        task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>,
+        event_delivery_backend: String,
+    ) -> Self {
         Self {
             store,
             metrics: MetricsCollector::new(360),
             auth,
+            task_broadcaster,
+            event_delivery_backend,
         }
     }
 
@@ -244,6 +255,36 @@ pub struct HealthResponse {
     pub failed_workflows: usize,
     pub started_workflows: usize,
     pub dlq_size: usize,
+    /// Event delivery backend: "nats" or "in_memory"
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub event_delivery: Option<String>,
+}
+
+// Allow tests to construct HealthResponse without specifying all fields
+impl Default for HealthResponse {
+    fn default() -> Self {
+        Self {
+            status: "unknown".to_string(),
+            total_workers: 0,
+            active_workers: 0,
+            workers_accepting: 0,
+            total_capacity: 0,
+            current_load: 0,
+            load_percentage: 0.0,
+            pending_tasks: 0,
+            claimed_tasks: 0,
+            completed_tasks: 0,
+            failed_tasks: 0,
+            started_tasks: 0,
+            running_workflows: 0,
+            pending_workflows: 0,
+            completed_workflows: 0,
+            failed_workflows: 0,
+            started_workflows: 0,
+            dlq_size: 0,
+            event_delivery: None,
+        }
+    }
 }
 
 impl From<SystemHealth> for HealthResponse {
@@ -281,7 +322,16 @@ impl From<SystemHealth> for HealthResponse {
             failed_workflows: h.failed_workflows,
             started_workflows: h.started_workflows,
             dlq_size: h.dlq_size,
+            event_delivery: None,
         }
+    }
+}
+
+impl HealthResponse {
+    /// Set the event delivery backend name
+    pub fn with_event_delivery(mut self, backend: String) -> Self {
+        self.event_delivery = Some(backend);
+        self
     }
 }
 
@@ -719,7 +769,9 @@ pub async fn get_health(
         )
     })?;
 
-    Ok(Json(HealthResponse::from(health)))
+    Ok(Json(
+        HealthResponse::from(health).with_event_delivery(state.event_delivery_backend.clone()),
+    ))
 }
 
 /// GET /v1/durable/metrics/timeseries - Get metrics time series
@@ -1224,10 +1276,11 @@ pub async fn enqueue_task(
         }
     }
 
+    let activity_type = body.activity_type;
     let task = everruns_durable::TaskDefinition {
         workflow_id: None,
         activity_id: Uuid::now_v7().to_string(),
-        activity_type: body.activity_type,
+        activity_type: activity_type.clone(),
         input: body.input,
         options,
     };
@@ -1241,6 +1294,11 @@ pub async fn enqueue_task(
             }),
         )
     })?;
+
+    // Notify NATS subscribers (no-op for PG backend)
+    if let Some(broadcaster) = &state.task_broadcaster {
+        broadcaster.notify_task_available(&activity_type).await;
+    }
 
     Ok((StatusCode::CREATED, Json(EnqueueTaskResponse { task_id })))
 }
@@ -2193,6 +2251,7 @@ mod tests {
                 failed_workflows: 0,
                 started_workflows: 11,
                 dlq_size: 0,
+                event_delivery: None,
             },
             workers: vec![],
             workflows: WorkflowsListResponse {
@@ -2366,7 +2425,7 @@ mod tests {
 
     #[test]
     fn test_app_state_get_store_none() {
-        let state = AppState::new(None, test_auth_state());
+        let state = AppState::new(None, test_auth_state(), None, "in_memory".to_string());
         let result = state.get_store();
         assert!(result.is_err());
     }
@@ -2812,6 +2871,7 @@ mod tests {
             failed_workflows: 0,
             started_workflows: 11,
             dlq_size: 0,
+            event_delivery: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -2946,6 +3006,7 @@ mod tests {
                 failed_workflows: 3,
                 started_workflows: 36,
                 dlq_size: 0,
+                event_delivery: None,
             },
             workers: vec![],
             workflows: WorkflowsListResponse {
@@ -3485,7 +3546,7 @@ mod tests {
             };
             let backend = Arc::new(MockAuthBackend { roles });
             let auth = AuthState::new(config, backend);
-            let state = AppState::new(None, auth);
+            let state = AppState::new(None, auth, None, "in_memory".to_string());
             routes(state)
         }
 

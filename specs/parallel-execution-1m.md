@@ -1016,6 +1016,102 @@ See `crates/server/src/nats_task_notifications.rs` and `crates/server/src/task_n
 **Impact**: Task notification delivery off PG NOTIFY. Lower latency (~1ms vs ~30ms),
 multi-instance support, no PG connection dedicated to LISTEN. Gated on `NATS_URL`.
 
+### Phase 3.5: NATS end-to-end operational readiness
+
+Phases 1-3 built the library-level NATS integration. Phase 3.5 makes it fully operational:
+infrastructure scripts, all notification paths wired, documentation, integration tests.
+
+#### A. Infrastructure: `start-all` starts NATS, exports `NATS_URL`
+
+**scripts/lib/services.sh** — `start-all` must:
+- Call `start_nats` from `infra.sh` (already implemented)
+- Export `NATS_URL=$NATS_URL_DEFAULT` alongside `VALKEY_URL` and `DATABASE_URL`
+- Server process receives `NATS_URL` → `EventDelivery::Nats` + `TaskBroadcaster::Nats`
+
+`start-dev` stays unchanged — no NATS, no `NATS_URL`, pure PG behavior.
+
+#### B. Wire task notifications in ALL enqueue paths
+
+**Currently wired (gRPC only):**
+- `grpc_service/worker_service_impl.rs` — `enqueue_durable_task()` ✓
+- `grpc_service/worker_service_impl.rs` — `fail_durable_task()` (retry) ✓
+
+**Missing — must add `notify_task_available()` calls:**
+- `crates/server/src/api/durable.rs` — REST `POST /v1/durable/tasks` standalone enqueue.
+  Add `TaskBroadcaster` to durable `AppState`, call after `store.enqueue_task()`.
+- `crates/durable/src/scheduler/mod.rs` — scheduled task triggers.
+  Scheduler enqueues tasks via `store.enqueue_task()`. PG trigger handles PG NOTIFY,
+  but NATS needs an explicit publish. Pass `TaskBroadcaster` to scheduler or publish
+  from the store wrapper.
+- `crates/durable/src/worker/pool.rs` — `reclaim_stale_tasks()` moves tasks back to pending.
+  PG trigger handles PG NOTIFY. For NATS, publish after reclaim returns reclaimed count > 0.
+
+#### C. Docker Compose: add NATS service
+
+**examples/docker-compose-full.yaml** — add NATS JetStream container:
+```yaml
+nats:
+  image: nats:2-alpine
+  command: ["--jetstream", "--store_dir", "/data"]
+  ports:
+    - "${NATS_PORT:-4222}:4222"
+  volumes:
+    - nats-data:/data
+  healthcheck:
+    test: ["CMD", "nats-server", "--help"]
+    interval: 5s
+    timeout: 3s
+    retries: 3
+```
+Server service env: `NATS_URL: nats://nats:4222`
+
+#### D. Environment variable documentation
+
+**docs/sre/environment-variables.md** — add NATS section:
+- `NATS_URL` — NATS connection URL (e.g., `nats://localhost:4222`). When set, enables
+  NATS JetStream for event delivery and task notifications. When unset, system uses
+  PostgreSQL NOTIFY and in-memory broadcast (zero behavioral change).
+- `NATS_PORT` — Port for local NATS server (default: 4222, or `PORT_PREFIX22` with prefix).
+
+#### E. Integration test: SSE push delivery with NATS
+
+Add a test in `crates/server/tests/` that:
+1. Starts with `NATS_URL` pointing to a test NATS server (or embedded)
+2. Creates a session, sends a message
+3. Subscribes to SSE stream
+4. Verifies `output.message.completed` arrives via push (not PG poll)
+5. Verifies ephemeral events (`output.message.delta`) are NOT in PG events table
+6. Verifies durable events ARE in PG events table
+
+If running a real `nats-server` in CI is complex, test with `EventDelivery::InMemory`
+as a proxy — the SSE `Streaming` phase uses the same `EventSubscription::recv()` API.
+
+#### F. Durable dashboard: event delivery indicator
+
+Add to the durable overview page (`apps/ui/src/app/(main)/durable/`):
+- Badge showing event delivery backend: "NATS JetStream" or "In-Memory (PG fallback)"
+- Expose via existing `/v1/durable/health` endpoint: add `event_delivery: "nats" | "in_memory"`
+  field to `SystemHealth` response.
+
+#### G. Update specs and AGENTS.md
+
+- `specs/architecture.md` — already has EventDelivery section ✓
+- `specs/parallel-execution-1m.md` — this section ✓
+- `AGENTS.md` — update Local Dev section: mention `start-all` starts NATS,
+  `NATS_URL` controls event delivery backend
+- `specs/events.md` or `specs/events-contract.md` — note ephemeral event classification
+  and that deltas skip PG when NATS is active
+
+#### Implementation order
+
+1. **services.sh + infra.sh** — export `NATS_URL` in `start-all` (~30 min)
+2. **Wire missing notification paths** — REST durable API, scheduler, reclaim (~2-3 hours)
+3. **Docker compose** — add NATS service (~30 min)
+4. **Env var docs** — document `NATS_URL`, `NATS_PORT` (~30 min)
+5. **Integration test** — SSE push delivery test (~2-3 hours)
+6. **Dashboard indicator** — health endpoint + UI badge (~1-2 hours)
+7. **Spec updates** — AGENTS.md, events specs (~30 min)
+
 ### Phase 4: Kafka for durable event cold storage (future consideration)
 
 At extreme scale (500K+ agents), synchronous PG INSERT for every durable event may bottleneck. Kafka/Redpanda would decouple the write path: durable events publish to Kafka, an async consumer backfills PG via batched COPY. SSE continues reading from NATS (unchanged). PG becomes cold storage for REST API and dashboards with 2-5s acceptable lag. Evaluate after Phase 3 based on measured PG write throughput.
