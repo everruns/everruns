@@ -229,7 +229,7 @@ impl TestServer {
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
-            api::session_storage::AppState::new(db.clone(), auth_state.clone());
+            api::session_storage::AppState::new(db.clone(), None, auth_state.clone());
         // Session SQL database store (in-memory for all test modes)
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(

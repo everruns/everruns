@@ -1,10 +1,11 @@
 // Session management commands
 
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Subcommand;
 use everruns_sdk::{CreateSessionRequest, Everruns};
 use futures::StreamExt;
+use std::collections::HashMap;
 
 #[derive(Subcommand)]
 pub enum SessionsCommand {
@@ -25,6 +26,10 @@ pub enum SessionsCommand {
         /// Model ID override (e.g. mod_xxx)
         #[arg(long)]
         model: Option<String>,
+
+        /// Session-scoped secret (repeatable, format: KEY=VALUE)
+        #[arg(long = "secret", value_name = "KEY=VALUE")]
+        secrets: Vec<String>,
     },
 
     /// List sessions
@@ -46,6 +51,8 @@ pub enum SessionsCommand {
 pub async fn run(
     command: SessionsCommand,
     client: &Everruns,
+    api_url: &str,
+    api_key: &str,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -55,22 +62,34 @@ pub async fn run(
             agent,
             title,
             model,
-        } => create(client, output, quiet, harness, agent, title, model).await,
+            secrets,
+        } => {
+            create(
+                client, api_url, api_key, output, quiet, harness, agent, title, model, secrets,
+            )
+            .await
+        }
         SessionsCommand::List => list(client, output).await,
         SessionsCommand::Get { session } => get(client, output, session).await,
         SessionsCommand::Watch { session } => watch(client, output, session).await,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create(
     client: &Everruns,
+    api_url: &str,
+    api_key: &str,
     output: OutputFormat,
     quiet: bool,
     harness_id: Option<String>,
     agent_id: Option<String>,
     title: Option<String>,
     model_id: Option<String>,
+    raw_secrets: Vec<String>,
 ) -> Result<()> {
+    let secrets = parse_secrets(&raw_secrets)?;
+
     let mut req = CreateSessionRequest::new();
     if let Some(h) = harness_id {
         req = req.harness_id(h);
@@ -87,6 +106,11 @@ async fn create(
 
     let session = client.sessions().create_with_options(req).await?;
 
+    // Store secrets after session creation
+    if !secrets.is_empty() {
+        store_secrets(api_url, api_key, &session.id, &secrets).await?;
+    }
+
     if output.is_text() {
         if quiet {
             println!("{}", session.id);
@@ -97,9 +121,62 @@ async fn create(
             }
             let status = format!("{:?}", session.status).to_lowercase();
             print_field("Status", &status);
+            if !secrets.is_empty() {
+                print_field("Secrets", &format!("{} injected", secrets.len()));
+            }
         }
     } else {
-        output.print_value(&session);
+        let mut json = serde_json::to_value(&session)?;
+        if !secrets.is_empty() {
+            json["secrets_count"] = serde_json::json!(secrets.len());
+        }
+        output.print_value(&json);
+    }
+
+    Ok(())
+}
+
+/// Parse "KEY=VALUE" strings into a HashMap.
+fn parse_secrets(raw: &[String]) -> Result<HashMap<String, String>> {
+    let mut map = HashMap::new();
+    for entry in raw {
+        let (key, value) = entry
+            .split_once('=')
+            .with_context(|| format!("Invalid secret format (expected KEY=VALUE): {}", entry))?;
+        if key.is_empty() {
+            anyhow::bail!("Secret key cannot be empty: {}", entry);
+        }
+        if map.contains_key(key) {
+            anyhow::bail!("Duplicate secret key: {}", key);
+        }
+        map.insert(key.to_string(), value.to_string());
+    }
+    Ok(map)
+}
+
+/// Store secrets via PUT /v1/sessions/:id/storage/secrets
+// TODO(everruns/sdk#67): Replace raw reqwest with native SDK client.sessions().set_secrets()
+async fn store_secrets(
+    api_url: &str,
+    api_key: &str,
+    session_id: &str,
+    secrets: &HashMap<String, String>,
+) -> Result<()> {
+    let resp = reqwest::Client::new()
+        .put(format!(
+            "{}/v1/sessions/{}/storage/secrets",
+            api_url, session_id
+        ))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&serde_json::json!({ "secrets": secrets }))
+        .send()
+        .await
+        .context("Failed to store secrets")?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Failed to store secrets: {} {}", status, body);
     }
 
     Ok(())
@@ -362,5 +439,61 @@ fn capitalize_first(s: &str) -> String {
     match chars.next() {
         None => String::new(),
         Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_secrets_valid() {
+        let raw = vec![
+            "KEY1=value1".to_string(),
+            "KEY2=value2".to_string(),
+            "KEY3=val=with=equals".to_string(),
+        ];
+        let secrets = parse_secrets(&raw).unwrap();
+        assert_eq!(secrets.len(), 3);
+        assert_eq!(secrets["KEY1"], "value1");
+        assert_eq!(secrets["KEY3"], "val=with=equals");
+    }
+
+    #[test]
+    fn test_parse_secrets_empty() {
+        let secrets = parse_secrets(&[]).unwrap();
+        assert!(secrets.is_empty());
+    }
+
+    #[test]
+    fn test_parse_secrets_missing_equals() {
+        let raw = vec!["NOEQUALS".to_string()];
+        assert!(parse_secrets(&raw).is_err());
+    }
+
+    #[test]
+    fn test_parse_secrets_empty_key() {
+        let raw = vec!["=value".to_string()];
+        assert!(parse_secrets(&raw).is_err());
+    }
+
+    #[test]
+    fn test_parse_secrets_empty_value_allowed() {
+        let raw = vec!["KEY=".to_string()];
+        let secrets = parse_secrets(&raw).unwrap();
+        assert_eq!(secrets["KEY"], "");
+    }
+
+    #[test]
+    fn test_parse_secrets_duplicate_key() {
+        let raw = vec!["KEY=value1".to_string(), "KEY=value2".to_string()];
+        let result = parse_secrets(&raw);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Duplicate secret key")
+        );
     }
 }
