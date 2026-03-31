@@ -25,12 +25,13 @@
 #      docker compose -f docker-compose-full.yaml up -d
 #
 #   4. Open UI at: http://localhost:9300
-#   5. VictoriaMetrics UI: http://localhost:8428/vmui
+#   5. VictoriaMetrics UI (default): http://localhost:8428/vmui
+#      If you override the port via VICTORIAMETRICS_PORT, use that port instead.
 #      Try query: everruns_http_request_duration_seconds_count
 #
 # Ports:
 #   - 9300: Web UI (Caddy)
-#   - 8428: VictoriaMetrics UI & API
+#   - 8428 (default): VictoriaMetrics UI & API (configurable via VICTORIAMETRICS_PORT)
 #
 # Note: Images are from ghcr.io/everruns - ensure you have access or build locally
 

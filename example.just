@@ -8,6 +8,7 @@ start tag="latest":
     source scripts/lib/common.sh
     apply_port_prefix_defaults
     : "${EXAMPLE_PROXY_PORT:=$PROXY_PORT}"
+    export VICTORIAMETRICS_PORT
     : "${EXAMPLE_COMPOSE_PROJECT_NAME:=${COMPOSE_PROJECT_NAME}-example}"
     # Check if local docker compose containers are running (not from example compose)
     # We check the com.docker.compose.project label to distinguish local vs example containers
