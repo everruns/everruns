@@ -345,7 +345,7 @@ impl Tool for DaytonaExecTool {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Timeout in milliseconds (optional, default: 120000)"
+                    "description": "Timeout in milliseconds (optional, default: 300000)"
                 }
             },
             "required": ["sandbox_id", "command"],

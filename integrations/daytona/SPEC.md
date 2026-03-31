@@ -117,7 +117,7 @@ Executes a shell command in a sandbox with real-time output streaming.
   - `sandbox_id`: string (required)
   - `command`: string (required) — shell command
   - `cwd`: string (optional) — working directory
-  - `timeout`: integer (optional) — timeout in ms (default: 120000)
+  - `timeout`: integer (optional) — timeout in ms (default: 300000)
 - **Returns**: `{ exit_code, output }`
 - **Streaming**: Emits `tool.output.delta` events with partial combined stdout/stderr output (emitted on stream `"stdout"`) as the command runs (polled every ~1s). The final tool result contains the complete combined output.
 
