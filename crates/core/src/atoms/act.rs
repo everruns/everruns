@@ -211,7 +211,7 @@ where
             org_id: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
-            final_post_tool_hooks: Vec::new(),
+            final_post_tool_hooks: Self::default_final_hooks(),
         }
     }
 
@@ -239,7 +239,7 @@ where
             org_id: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
-            final_post_tool_hooks: Vec::new(),
+            final_post_tool_hooks: Self::default_final_hooks(),
         }
     }
 
@@ -256,6 +256,12 @@ where
             Box::new(act_hooks::ConnectionSetupHook),
             Box::new(act_hooks::ClientSideToolHook),
         ]
+    }
+
+    /// Default final post-tool-exec hooks (infrastructure, always-on).
+    /// These run after all capability-contributed hooks and cannot be removed.
+    fn default_final_hooks() -> Vec<Arc<dyn act_hooks::PostToolExecHook>> {
+        vec![Arc::new(act_hooks::OutputHardLimitHook)]
     }
 
     /// Set the SQL database store on this atom

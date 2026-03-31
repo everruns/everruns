@@ -68,6 +68,108 @@ pub(super) async fn run_post_tool_exec_hooks(
 }
 
 // ============================================================================
+// OutputHardLimitHook (EVE-225)
+// ============================================================================
+
+/// Maximum tool result size in bytes before truncation (64 KiB).
+/// Large results consume context window, increase cost, and expand the
+/// prompt injection surface (TM-AGENT-012).
+const MAX_TOOL_RESULT_BYTES: usize = 64 * 1024;
+
+const TRUNCATION_SUFFIX: &str =
+    "\n\n[Output truncated — exceeded 64 KiB limit. Try quiet flags, pipes, or redirect to file.]";
+
+/// Infrastructure hook that enforces a hard 64 KiB ceiling on tool result text.
+///
+/// Always registered as a `final_post_tool_hook` in ActAtom — cannot be removed
+/// by capabilities. Runs after all capability-contributed hooks so that
+/// persistence hooks (EVE-222) can capture full output before truncation.
+///
+/// Head-truncation with UTF-8 safety: keeps the first N bytes (on a char
+/// boundary) and appends an LLM-actionable suffix.
+pub struct OutputHardLimitHook;
+
+impl OutputHardLimitHook {
+    /// Truncate `text` to `MAX_TOOL_RESULT_BYTES` with a UTF-8-safe cut.
+    fn truncate(text: String) -> String {
+        if text.len() <= MAX_TOOL_RESULT_BYTES {
+            return text;
+        }
+        let content_budget = MAX_TOOL_RESULT_BYTES.saturating_sub(TRUNCATION_SUFFIX.len());
+        let mut end = content_budget;
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let mut truncated = text[..end].to_string();
+        truncated.push_str(TRUNCATION_SUFFIX);
+        truncated
+    }
+}
+
+#[async_trait]
+impl PostToolExecHook for OutputHardLimitHook {
+    async fn after_exec(
+        &self,
+        tool_call: &ToolCall,
+        _tool_def: &ToolDefinition,
+        result: &mut ToolResult,
+        _context: &ToolContext,
+    ) {
+        // Truncate the result JSON value if it exceeds the limit.
+        if let Some(val) = result.result.take() {
+            match val {
+                serde_json::Value::String(s) => {
+                    let original_len = s.len();
+                    let truncated = Self::truncate(s);
+                    if truncated.len() < original_len {
+                        tracing::warn!(
+                            tool_name = %tool_call.name,
+                            tool_call_id = %tool_call.id,
+                            result_bytes = original_len,
+                            limit = MAX_TOOL_RESULT_BYTES,
+                            "Tool result exceeded hard limit, truncated"
+                        );
+                    }
+                    result.result = Some(serde_json::Value::String(truncated));
+                }
+                other => {
+                    // Non-string JSON: serialize, check size, convert to
+                    // truncated string if over limit.
+                    let serialized = serde_json::to_string(&other).unwrap_or_default();
+                    if serialized.len() > MAX_TOOL_RESULT_BYTES {
+                        tracing::warn!(
+                            tool_name = %tool_call.name,
+                            tool_call_id = %tool_call.id,
+                            result_bytes = serialized.len(),
+                            limit = MAX_TOOL_RESULT_BYTES,
+                            "Tool result exceeded hard limit, truncated"
+                        );
+                        let truncated = Self::truncate(serialized);
+                        result.result = Some(serde_json::Value::String(truncated));
+                    } else {
+                        result.result = Some(other);
+                    }
+                }
+            }
+        }
+
+        // Also cap error messages (unlikely to be huge, but defense in depth).
+        if let Some(err) = result.error.take() {
+            if err.len() > MAX_TOOL_RESULT_BYTES {
+                tracing::warn!(
+                    tool_name = %tool_call.name,
+                    tool_call_id = %tool_call.id,
+                    result_bytes = err.len(),
+                    limit = MAX_TOOL_RESULT_BYTES,
+                    "Tool error exceeded hard limit, truncated"
+                );
+            }
+            result.error = Some(Self::truncate(err));
+        }
+    }
+}
+
+// ============================================================================
 // PostActHook trait
 // ============================================================================
 
@@ -350,5 +452,186 @@ mod tests {
                 assert_eq!(tool_calls[0].name, "browser_click");
             }
         }
+    }
+
+    // ========================================================================
+    // OutputHardLimitHook tests (EVE-225)
+    // ========================================================================
+
+    use crate::traits::ToolContext;
+    use crate::typed_id::SessionId;
+
+    fn make_tool_call() -> ToolCall {
+        ToolCall {
+            id: "call_test".to_string(),
+            name: "test_tool".to_string(),
+            arguments: json!({}),
+        }
+    }
+
+    fn make_tool_def() -> ToolDefinition {
+        ToolDefinition::Builtin(crate::tool_types::BuiltinTool {
+            name: "test_tool".to_string(),
+            display_name: None,
+            description: "test".to_string(),
+            parameters: json!({}),
+            policy: crate::tool_types::ToolPolicy::Auto,
+            category: None,
+            deferrable: crate::tool_types::DeferrablePolicy::Never,
+            hints: Default::default(),
+        })
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_passthrough_small() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!("hello")),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+        assert_eq!(result.result, Some(json!("hello")));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_truncates_large_string() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        let big = "x".repeat(MAX_TOOL_RESULT_BYTES + 1000);
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!(big)),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let text = result.result.unwrap();
+        let s = text.as_str().unwrap();
+        assert!(s.len() <= MAX_TOOL_RESULT_BYTES);
+        assert!(s.ends_with(TRUNCATION_SUFFIX));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_at_exact_limit() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        let exact = "a".repeat(MAX_TOOL_RESULT_BYTES);
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!(exact)),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let text = result.result.unwrap();
+        let s = text.as_str().unwrap();
+        // Should NOT be truncated (equal to limit)
+        assert_eq!(s.len(), MAX_TOOL_RESULT_BYTES);
+        assert!(!s.contains("[Output truncated"));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_multibyte_boundary() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        let ch = "€"; // 3 bytes
+        let count = MAX_TOOL_RESULT_BYTES / ch.len() + 1;
+        let big = ch.repeat(count);
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!(big)),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let text = result.result.unwrap();
+        let s = text.as_str().unwrap();
+        assert!(s.len() <= MAX_TOOL_RESULT_BYTES);
+        assert!(s.contains("[Output truncated"));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_truncates_error() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        let big_err = "e".repeat(MAX_TOOL_RESULT_BYTES + 500);
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: None,
+            images: None,
+            error: Some(big_err),
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let err = result.error.unwrap();
+        assert!(err.len() <= MAX_TOOL_RESULT_BYTES);
+        assert!(err.ends_with(TRUNCATION_SUFFIX));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_non_string_json() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+        // Small JSON object — should pass through
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!({"key": "value", "num": 42})),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        // Should remain as-is (small non-string JSON)
+        assert_eq!(result.result, Some(json!({"key": "value", "num": 42})));
+    }
+
+    #[test]
+    fn test_truncate_helper_short() {
+        let s = "hello".to_string();
+        assert_eq!(OutputHardLimitHook::truncate(s.clone()), s);
+    }
+
+    #[test]
+    fn test_truncate_helper_over() {
+        let s = "a".repeat(MAX_TOOL_RESULT_BYTES + 100);
+        let t = OutputHardLimitHook::truncate(s);
+        assert!(t.len() <= MAX_TOOL_RESULT_BYTES);
+        assert!(t.ends_with(TRUNCATION_SUFFIX));
     }
 }

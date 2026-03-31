@@ -709,6 +709,9 @@ impl LlmMessage {
                     } else {
                         "{}".to_string()
                     };
+                    // Primary hard limit enforced by OutputHardLimitHook (EVE-225)
+                    // at tool execution time. This backstop catches tool results
+                    // that bypass ActAtom hooks (client-submitted, stored events).
                     let text = truncate_tool_result(text);
                     parts.push(LlmContentPart::Text { text });
                 }
@@ -937,22 +940,19 @@ impl DriverRegistry {
 }
 
 /// Maximum tool result size in bytes before truncation (64 KiB).
-/// Large results consume context window, increase cost, and expand the
-/// prompt injection surface (TM-AGENT-012).
+/// Defense-in-depth backstop for tool results that bypass ActAtom hooks
+/// (e.g. client-submitted or stored events). The primary hard limit is
+/// enforced by `OutputHardLimitHook` (EVE-225) at tool execution time.
 const MAX_TOOL_RESULT_BYTES: usize = 64 * 1024;
 
-const TRUNCATION_SUFFIX: &str = "\n\n[Output truncated — exceeded 64 KiB limit. Ask the tool for a smaller result or use pagination.]";
+const TRUNCATION_SUFFIX: &str =
+    "\n\n[Output truncated — exceeded 64 KiB limit. Try quiet flags, pipes, or redirect to file.]";
 
-/// Truncate a tool result string to `MAX_TOOL_RESULT_BYTES` (including the
-/// suffix), appending a warning so the LLM knows the output was cut short.
 fn truncate_tool_result(text: String) -> String {
     if text.len() <= MAX_TOOL_RESULT_BYTES {
         return text;
     }
-    // Reserve space for the suffix so the total stays within the budget.
     let content_budget = MAX_TOOL_RESULT_BYTES.saturating_sub(TRUNCATION_SUFFIX.len());
-    // Find the last char boundary at or before the budget to avoid splitting
-    // a multi-byte character.
     let mut end = content_budget;
     while end > 0 && !text.is_char_boundary(end) {
         end -= 1;
@@ -969,44 +969,6 @@ fn truncate_tool_result(text: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_truncate_tool_result_short() {
-        let short = "hello".to_string();
-        assert_eq!(truncate_tool_result(short.clone()), short);
-    }
-
-    #[test]
-    fn test_truncate_tool_result_at_limit() {
-        let exact = "a".repeat(MAX_TOOL_RESULT_BYTES);
-        assert_eq!(truncate_tool_result(exact.clone()), exact);
-    }
-
-    #[test]
-    fn test_truncate_tool_result_over_limit() {
-        let over = "a".repeat(MAX_TOOL_RESULT_BYTES + 100);
-        let result = truncate_tool_result(over);
-        // Total result must fit within MAX_TOOL_RESULT_BYTES
-        assert!(result.len() <= MAX_TOOL_RESULT_BYTES);
-        assert!(result.ends_with(TRUNCATION_SUFFIX));
-        // Prefix should be the original content
-        let prefix_len = result.len() - TRUNCATION_SUFFIX.len();
-        assert_eq!(&result[..prefix_len], "a".repeat(prefix_len));
-    }
-
-    #[test]
-    fn test_truncate_tool_result_multibyte_boundary() {
-        // Use a 3-byte char so MAX_TOOL_RESULT_BYTES doesn't land on a
-        // boundary, exercising the backup loop.
-        let ch = "€"; // 3 bytes in UTF-8
-        assert_eq!(ch.len(), 3);
-        let count = MAX_TOOL_RESULT_BYTES / ch.len() + 1;
-        let over = ch.repeat(count);
-        let result = truncate_tool_result(over);
-        // Must be valid UTF-8 and within budget
-        assert!(result.len() <= MAX_TOOL_RESULT_BYTES);
-        assert!(result.contains("[Output truncated"));
-    }
 
     #[test]
     fn test_llm_call_config_builder_from_runtime_agent() {
