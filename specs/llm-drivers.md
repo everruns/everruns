@@ -88,6 +88,21 @@ Provider crates register factories at startup. Drivers created on-demand from `P
    - `tools`: Tool definitions
    - `reasoning_effort`: Optional reasoning level (low, medium, high)
 
+### Default `max_tokens` Policy
+
+When `config.max_tokens` is `None`, drivers resolve the default from model profile metadata rather than hardcoding a value:
+
+1. Look up the model via `get_model_profile(provider_type, model_id)`
+2. Use `profile.limits.output` as the default `max_tokens`
+3. If no profile is found, fall back to a safe default (Anthropic: 16,384; Gemini: 8,192)
+4. OpenAI drivers omit `max_tokens` entirely (API decides)
+
+Anthropic requires `max_tokens` in every request (cannot be omitted), so the driver always resolves a value.
+
+**Stale profile fallback**: If the Anthropic API returns 400 because `max_tokens` exceeds the model's actual limit (e.g., stale profile data), the driver retries once with 16,384 and logs a warning to update the model profile. If the retry also fails, the error propagates normally.
+
+Agents can override `max_tokens` via agent config. Cost guardrails should be configurable per-agent or per-org, not baked into driver code.
+
 3. **LlmMessage Extended Fields**:
    - `thinking`: Optional thinking content from extended thinking models
    - `thinking_signature`: Opaque token for multi-turn thinking context (provider-specific)
