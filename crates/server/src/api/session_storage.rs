@@ -215,7 +215,12 @@ pub async fn batch_set_secrets(
     })?;
     verify_session_ownership(&state.db, org.org_id, session_id)
         .await
-        .map_err(|status| ErrorResponse::new("Session not found").into_response(status))?;
+        .map_err(|status| match status {
+            StatusCode::NOT_FOUND => {
+                ErrorResponse::new("Session not found").into_response(StatusCode::NOT_FOUND)
+            }
+            _ => ErrorResponse::internal_error(),
+        })?;
 
     let encryption = state.encryption.as_ref().ok_or_else(|| {
         ErrorResponse::new(
@@ -228,13 +233,15 @@ pub async fn batch_set_secrets(
         return Ok(Json(BatchSetSecretsResponse { count: 0 }));
     }
 
-    // Validate key lengths
+    // Validate secret names
     for name in body.secrets.keys() {
-        if name.len() > 255 {
-            return Err(
-                ErrorResponse::new(format!("Secret name too long (max 255): {}", name))
-                    .into_response(StatusCode::BAD_REQUEST),
-            );
+        let trimmed = name.trim();
+        if trimmed.is_empty() || trimmed.len() > 255 {
+            return Err(ErrorResponse::new(format!(
+                "Secret name must be between 1 and 255 non-whitespace characters: '{}'",
+                name
+            ))
+            .into_response(StatusCode::BAD_REQUEST));
         }
     }
 

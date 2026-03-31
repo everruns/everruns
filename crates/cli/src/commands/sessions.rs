@@ -146,6 +146,9 @@ fn parse_secrets(raw: &[String]) -> Result<HashMap<String, String>> {
         if key.is_empty() {
             anyhow::bail!("Secret key cannot be empty: {}", entry);
         }
+        if map.contains_key(key) {
+            anyhow::bail!("Duplicate secret key: {}", key);
+        }
         map.insert(key.to_string(), value.to_string());
     }
     Ok(map)
@@ -478,5 +481,18 @@ mod tests {
         let raw = vec!["KEY=".to_string()];
         let secrets = parse_secrets(&raw).unwrap();
         assert_eq!(secrets["KEY"], "");
+    }
+
+    #[test]
+    fn test_parse_secrets_duplicate_key() {
+        let raw = vec!["KEY=value1".to_string(), "KEY=value2".to_string()];
+        let result = parse_secrets(&raw);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Duplicate secret key")
+        );
     }
 }
