@@ -231,7 +231,11 @@ impl TestServer {
         );
         let agents_state =
             api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
-        let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
+        let session_files_state = api::session_files::AppState::new(
+            db.clone(),
+            event_service.clone(),
+            auth_state.clone(),
+        );
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), None, auth_state.clone());
