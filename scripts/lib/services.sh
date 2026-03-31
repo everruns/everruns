@@ -70,13 +70,8 @@ check_valkey_ready() {
 check_nats_ready() {
   local port="${1:?port required}"
 
-  # Try NATS monitoring endpoint
-  if command -v curl &> /dev/null; then
-    curl -sf "http://localhost:${port}/healthz" >/dev/null 2>&1
-    return $?
-  fi
-
-  # Fallback: TCP port check
+  # TCP port check only — the NATS client port does not serve HTTP.
+  # HTTP monitoring runs on a separate port (default 8222), not probed here.
   if command -v nc &> /dev/null; then
     nc -z localhost "$port" >/dev/null 2>&1
     return $?
@@ -518,13 +513,13 @@ case "$cmd" in
     # Start NATS for event delivery and task notifications (optional)
     if [ -z "${NATS_URL:-}" ]; then
       if check_nats_ready "$NATS_PORT" 2>/dev/null; then
-        export NATS_URL=${NATS_URL:-$NATS_URL_DEFAULT}
+        export NATS_URL="${NATS_URL:-$NATS_URL_DEFAULT}"
         echo "   ✅ NATS ready (push-based event delivery + task notifications)"
       else
         echo "   ℹ️  Starting NATS..."
         "$PROJECT_ROOT/scripts/lib/infra.sh" start >/dev/null 2>&1 || true
         if check_nats_ready "$NATS_PORT" 2>/dev/null; then
-          export NATS_URL=${NATS_URL:-$NATS_URL_DEFAULT}
+          export NATS_URL="${NATS_URL:-$NATS_URL_DEFAULT}"
           echo "   ✅ NATS started (push-based event delivery + task notifications)"
         else
           echo "   ℹ️  NATS not available — using PG NOTIFY + in-memory event delivery"
@@ -806,13 +801,13 @@ case "$cmd" in
     # Start NATS for event delivery and task notifications (optional)
     if [ -z "${NATS_URL:-}" ]; then
       if check_nats_ready "$NATS_PORT" 2>/dev/null; then
-        export NATS_URL=${NATS_URL:-$NATS_URL_DEFAULT}
+        export NATS_URL="${NATS_URL:-$NATS_URL_DEFAULT}"
         echo "   ✅ NATS ready (push-based event delivery + task notifications)"
       else
         echo "   ℹ️  Starting NATS..."
         "$PROJECT_ROOT/scripts/lib/infra.sh" start >/dev/null 2>&1 || true
         if check_nats_ready "$NATS_PORT" 2>/dev/null; then
-          export NATS_URL=${NATS_URL:-$NATS_URL_DEFAULT}
+          export NATS_URL="${NATS_URL:-$NATS_URL_DEFAULT}"
           echo "   ✅ NATS started (push-based event delivery + task notifications)"
         else
           echo "   ℹ️  NATS not available — using PG NOTIFY + in-memory event delivery"

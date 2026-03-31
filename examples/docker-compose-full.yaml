@@ -74,11 +74,11 @@ services:
   # ==========================================================================
   nats:
     image: nats:2-alpine
-    command: ["--jetstream", "--store_dir", "/data"]
+    command: ["--jetstream", "--store_dir", "/data", "-m", "8222"]
     volumes:
       - nats_data:/data
     healthcheck:
-      test: ["CMD", "nats-server", "--help"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
       interval: 5s
       timeout: 3s
       retries: 5

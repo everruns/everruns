@@ -106,7 +106,18 @@ impl NatsTaskNotificationBroadcaster {
 
     /// Publish a task notification to NATS (called when a task is enqueued)
     pub async fn notify_task_available(&self, activity_type: &str) {
-        let subject = format!("{NATS_TASK_SUBJECT_PREFIX}.{activity_type}");
+        // Sanitize activity_type: NATS subjects cannot contain spaces, *, >, or .
+        let sanitized: String = activity_type
+            .chars()
+            .map(|c| {
+                if matches!(c, ' ' | '*' | '>' | '.') {
+                    '_'
+                } else {
+                    c
+                }
+            })
+            .collect();
+        let subject = format!("{NATS_TASK_SUBJECT_PREFIX}.{sanitized}");
         if let Err(e) = self
             .nats_client
             .publish(subject, activity_type.as_bytes().to_vec().into())
