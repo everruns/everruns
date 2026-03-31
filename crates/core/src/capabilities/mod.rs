@@ -1355,6 +1355,7 @@ mod tests {
     fn expected_core_builtin_ids() -> BTreeSet<&'static str> {
         [
             "agent_instructions",
+            "budgeting",
             "noop",
             "current_time",
             "research",
