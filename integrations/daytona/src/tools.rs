@@ -73,7 +73,9 @@ impl Tool for DaytonaCreateSandboxTool {
     }
 
     fn description(&self) -> &str {
-        "Create a new Daytona cloud sandbox. Optionally upload files from session storage."
+        "Create a new Daytona cloud sandbox. Optionally upload files from session storage. \
+         Default size: small (1 vCPU, 1 GiB RAM, 3 GiB disk). \
+         Auto-stops after 5 minutes of inactivity."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -320,7 +322,9 @@ impl Tool for DaytonaExecTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command in a Daytona sandbox. Streams output in real time."
+        "Execute a shell command in a Daytona sandbox. Streams output in real time. \
+         Default timeout: 2 minutes. Working directory defaults to /home/daytona. \
+         For long builds (cargo, npm), pass a larger timeout explicitly."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -672,7 +676,8 @@ impl Tool for DaytonaDownloadWorkspaceTool {
     }
 
     fn description(&self) -> &str {
-        "Download the entire sandbox workspace to session file storage."
+        "Download the entire sandbox workspace to session file storage. \
+         Default sandbox path: /home/daytona. Default session path: /workspace."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -1040,9 +1045,10 @@ impl Tool for DaytonaGitCloneTool {
     }
 
     fn description(&self) -> &str {
-        "Clone a git repository into a Daytona sandbox. Automatically uses the user's \
-         connected GitHub credentials if available. For private repos, \
-         the user must have connected their GitHub account in Settings > Connections."
+        "Clone a git repository into a Daytona sandbox. \
+         Default clone path: /home/daytona/<owner>/<repo>. \
+         Automatically uses the user's connected GitHub credentials if available. \
+         For private repos, the user must have connected their GitHub account in Settings > Connections."
     }
 
     fn parameters_schema(&self) -> Value {
