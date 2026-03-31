@@ -59,8 +59,7 @@ impl std::str::FromStr for AuditDomain {
 /// Typed audit actions grouped by domain.
 ///
 /// Convention: `domain.resource.verb` string form (e.g. `management.member.invited`).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ManagementAction {
     // Organization
     OrgCreated,
@@ -142,8 +141,7 @@ impl fmt::Display for ManagementAction {
 }
 
 /// Agent-domain audit actions.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AgentAction {
     RunStarted,
     RunCompleted,
@@ -171,8 +169,7 @@ impl fmt::Display for AgentAction {
 }
 
 /// Unified action enum wrapping domain-specific actions.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AuditAction {
     Management(ManagementAction),
     Agent(AgentAction),
@@ -211,6 +208,93 @@ impl From<AgentAction> for AuditAction {
         Self::Agent(a)
     }
 }
+
+// Custom serde: serialize action enums as their `as_str()` dotted string form
+// (e.g. "management.member.invited") for consistency with DB storage.
+
+macro_rules! impl_action_serde {
+    ($ty:ty) => {
+        impl Serialize for $ty {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.serialize_str(self.as_str())
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $ty {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let s = String::deserialize(deserializer)?;
+                s.parse().map_err(serde::de::Error::custom)
+            }
+        }
+    };
+}
+
+impl std::str::FromStr for ManagementAction {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "management.org.created" => Ok(Self::OrgCreated),
+            "management.org.updated" => Ok(Self::OrgUpdated),
+            "management.org.deleted" => Ok(Self::OrgDeleted),
+            "management.member.invited" => Ok(Self::MemberInvited),
+            "management.member.removed" => Ok(Self::MemberRemoved),
+            "management.member.role_changed" => Ok(Self::MemberRoleChanged),
+            "management.api_key.created" => Ok(Self::ApiKeyCreated),
+            "management.api_key.revoked" => Ok(Self::ApiKeyRevoked),
+            "management.settings.updated" => Ok(Self::SettingsUpdated),
+            "management.agent.created" => Ok(Self::AgentCreated),
+            "management.agent.updated" => Ok(Self::AgentUpdated),
+            "management.agent.deleted" => Ok(Self::AgentDeleted),
+            "management.harness.created" => Ok(Self::HarnessCreated),
+            "management.harness.updated" => Ok(Self::HarnessUpdated),
+            "management.harness.deleted" => Ok(Self::HarnessDeleted),
+            "management.llm_provider.created" => Ok(Self::LlmProviderCreated),
+            "management.llm_provider.updated" => Ok(Self::LlmProviderUpdated),
+            "management.llm_provider.deleted" => Ok(Self::LlmProviderDeleted),
+            "management.mcp_server.created" => Ok(Self::McpServerCreated),
+            "management.mcp_server.updated" => Ok(Self::McpServerUpdated),
+            "management.mcp_server.deleted" => Ok(Self::McpServerDeleted),
+            "management.app.created" => Ok(Self::AppCreated),
+            "management.app.updated" => Ok(Self::AppUpdated),
+            "management.app.deleted" => Ok(Self::AppDeleted),
+            "management.skill.created" => Ok(Self::SkillCreated),
+            "management.skill.updated" => Ok(Self::SkillUpdated),
+            "management.skill.deleted" => Ok(Self::SkillDeleted),
+            other => Err(format!("unknown management action: {other}")),
+        }
+    }
+}
+
+impl std::str::FromStr for AgentAction {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "agent.run.started" => Ok(Self::RunStarted),
+            "agent.run.completed" => Ok(Self::RunCompleted),
+            "agent.run.failed" => Ok(Self::RunFailed),
+            "agent.tool.executed" => Ok(Self::ToolExecuted),
+            "agent.llm.request" => Ok(Self::LlmRequest),
+            other => Err(format!("unknown agent action: {other}")),
+        }
+    }
+}
+
+impl std::str::FromStr for AuditAction {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Ok(a) = s.parse::<ManagementAction>() {
+            return Ok(Self::Management(a));
+        }
+        if let Ok(a) = s.parse::<AgentAction>() {
+            return Ok(Self::Agent(a));
+        }
+        Err(format!("unknown audit action: {s}"))
+    }
+}
+
+impl_action_serde!(ManagementAction);
+impl_action_serde!(AgentAction);
+impl_action_serde!(AuditAction);
 
 // ============================================================================
 // Audit Target

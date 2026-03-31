@@ -98,7 +98,8 @@ pub fn policy(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// Emits an audit event after successful execution via fire-and-forget.
 /// The service struct must expose an `audit_logger()` method returning
-/// an `Arc<dyn AuditLogger>` (or similar cloneable type).
+/// a concrete, cloneable type that implements `AuditLogger` (e.g.
+/// `StorageAuditLogger`), not a `dyn AuditLogger` trait object.
 ///
 /// # Syntax
 ///
@@ -158,6 +159,7 @@ pub fn audit(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
+    let has_target = target_type_str.is_some();
     let target_type_lit = target_type_str.unwrap_or_default();
 
     // Find the &Caller parameter
@@ -192,22 +194,31 @@ pub fn audit(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Wrap the function body to emit audit on success
     let original_stmts = &func.block.stmts;
+
+    let target_code = if has_target {
+        quote! {
+            let __target_id = __audit_result.as_ref().ok()
+                .and_then(|r| everruns_core::audit::HasAuditTargetId::audit_target_id(r))
+                .unwrap_or_default();
+            __builder = __builder.target(#target_type_lit, __target_id);
+        }
+    } else {
+        quote! {}
+    };
+
     func.block = syn::parse_quote!({
         let __audit_result = (|| async {
             #(#original_stmts)*
         })().await;
 
         if __audit_result.is_ok() {
-            let __target_id = __audit_result.as_ref().ok()
-                .and_then(|r| everruns_core::audit::HasAuditTargetId::audit_target_id(r))
-                .unwrap_or_default();
-            let __event = everruns_core::AuditEvent::management(
+            let mut __builder = everruns_core::AuditEvent::management(
                 #action_expr,
                 #caller.org_id,
                 #caller.user_id,
-            )
-            .target(#target_type_lit, __target_id)
-            .build();
+            );
+            #target_code
+            let __event = __builder.build();
             self.audit_logger().emit(__event);
         }
 

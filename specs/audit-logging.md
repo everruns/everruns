@@ -30,12 +30,12 @@ See `crates/core/src/audit.rs` for full definitions.
 Type-safe builders prevent mixing domains:
 
 ```rust
-AuditEvent::management(action, caller)
-    .target("member", user_id)
+AuditEvent::management(ManagementAction::MemberInvited, org_id, Some(user_id))
+    .target("member", target_user_id)
     .detail("role", "admin")
     .build()
 
-AuditEvent::agent(action, caller)
+AuditEvent::agent(AgentAction::RunStarted, org_id, None)
     .target("session", session_id)
     .build()
 ```
@@ -45,7 +45,7 @@ AuditEvent::agent(action, caller)
 Cross-cutting audit logging via attribute macro on service methods. Emits an audit event after successful execution without polluting business logic.
 
 ```rust
-#[audit(Management, MemberInvited, target = "member")]
+#[audit(ManagementAction::MemberInvited, target_type = "member")]
 pub async fn invite_member(&self, caller: &Caller, req: InviteRequest) -> Result<Member> {
     // business logic only — audit event emitted automatically on success
 }
@@ -53,15 +53,16 @@ pub async fn invite_member(&self, caller: &Caller, req: InviteRequest) -> Result
 
 The macro:
 1. Finds `&Caller` parameter (same as `#[policy]`)
-2. Finds `&self` to access `self.audit_logger`
+2. Finds `&self` to access `self.audit_logger()` (must return a concrete cloneable `AuditLogger` type)
 3. Wraps the function body: executes original, on `Ok` emits audit event via fire-and-forget `tokio::spawn`
-4. The target ID is extracted from the `Ok` result if it implements `AuditTarget` trait, or from a named field
+4. When `target_type` is specified, the target ID is extracted from the `Ok` result via `HasAuditTargetId` trait
+5. When `target_type` is omitted, no target is recorded
 
 Composes with `#[policy]`: policy checks run first (injected at top), audit fires after success.
 
 ```rust
 #[policy(MEMBER_MANAGE)]
-#[audit(Management, MemberInvited, target = "member")]
+#[audit(ManagementAction::MemberInvited, target_type = "member")]
 pub async fn invite(&self, caller: &Caller, req: Req) -> Result<Member> { ... }
 ```
 

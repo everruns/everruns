@@ -34,8 +34,10 @@ impl AuditLogService {
     pub async fn list(
         &self,
         caller: &Caller,
-        query: AuditLogQuery<'_>,
+        mut query: AuditLogQuery<'_>,
     ) -> Result<Vec<AuditLogRow>> {
+        // THREAT[TM-TENANT]: Always use caller's org_id, never trust client-supplied value
+        query.org_id = caller.org_id;
         self.db.list_audit_logs(query).await
     }
 }
