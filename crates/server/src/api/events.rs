@@ -130,7 +130,11 @@ impl AppState {
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
-            event_service: Arc::new(EventService::with_listeners(db, listeners)),
+            event_service: Arc::new(EventService::with_listeners(
+                db,
+                crate::event_delivery::EventDelivery::in_memory(),
+                listeners,
+            )),
             sse_tracker,
             event_broadcaster: None,
             auth,

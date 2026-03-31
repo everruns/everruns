@@ -48,9 +48,13 @@ pub use direct_worker_adapters::DirectWorkerAdapters;
 pub mod task_notifications;
 pub use task_notifications::TaskNotificationBroadcaster;
 
-// Event notification broadcaster for push-based SSE delivery
+// Event notification broadcaster for push-based SSE delivery (legacy PG NOTIFY)
 pub mod event_notifications;
 pub use event_notifications::EventNotificationBroadcaster;
+
+// Event delivery abstraction (InMemory / NATS JetStream)
+pub mod event_delivery;
+pub use event_delivery::EventDelivery;
 
 // Notification broadcaster for push-based user inbox delivery
 pub mod notification_notifications;

@@ -2011,7 +2011,10 @@ mod tests {
     /// Build a DirectWorkerAdapters with in-memory backends for unit tests.
     fn test_adapters() -> DirectWorkerAdapters {
         let db = Arc::new(crate::storage::StorageBackend::in_memory());
-        let event_service = Arc::new(crate::services::EventService::new(db.clone()));
+        let event_service = Arc::new(crate::services::EventService::new(
+            db.clone(),
+            crate::event_delivery::EventDelivery::in_memory(),
+        ));
         let llm_resolver = Arc::new(crate::services::LlmResolverService::new(db.clone(), None));
         let mcp_server_service = Arc::new(crate::services::McpServerService::new(db.clone(), None));
         let cap_registry = CapabilityRegistry::new();
@@ -2328,7 +2331,10 @@ mod tests {
     fn test_adapters_with_encryption() -> DirectWorkerAdapters {
         let encryption = test_encryption();
         let db = Arc::new(crate::storage::StorageBackend::in_memory());
-        let event_service = Arc::new(crate::services::EventService::new(db.clone()));
+        let event_service = Arc::new(crate::services::EventService::new(
+            db.clone(),
+            crate::event_delivery::EventDelivery::in_memory(),
+        ));
         let llm_resolver = Arc::new(crate::services::LlmResolverService::new(db.clone(), None));
         let mcp_server_service = Arc::new(crate::services::McpServerService::new(
             db.clone(),

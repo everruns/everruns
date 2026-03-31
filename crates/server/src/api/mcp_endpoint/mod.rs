@@ -256,7 +256,10 @@ impl AppState {
                 runner.clone(),
                 notifications_enabled,
             )),
-            event_service: Arc::new(EventService::new(db.clone())),
+            event_service: Arc::new(EventService::new(
+                db.clone(),
+                crate::event_delivery::EventDelivery::in_memory(),
+            )),
             db,
             runner,
             auth,

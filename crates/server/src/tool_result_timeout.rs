@@ -63,7 +63,10 @@ async fn sweep_timed_out_sessions(
         "Found timed-out waiting_for_tool_results sessions"
     );
 
-    let event_service = EventService::new(db.clone());
+    let event_service = EventService::new(
+        db.clone(),
+        crate::event_delivery::EventDelivery::in_memory(),
+    );
 
     for (session_id, org_id) in timed_out {
         if let Err(e) = timeout_session(db, &event_service, runner, session_id, org_id).await {

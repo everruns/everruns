@@ -2057,6 +2057,25 @@ impl EventRequest {
         self
     }
 
+    /// Whether this event is ephemeral (high-frequency streaming data that
+    /// doesn't need durable storage). Ephemeral events are delivered via
+    /// pub/sub only — they skip PostgreSQL INSERT entirely.
+    ///
+    /// The authoritative content lives in the corresponding "completed" event
+    /// (e.g. `output.message.completed` has the full text), so missing a delta
+    /// on reconnect is acceptable.
+    pub fn is_ephemeral(&self) -> bool {
+        matches!(
+            self.event_type.as_str(),
+            OUTPUT_MESSAGE_DELTA
+                | OUTPUT_MESSAGE_STARTED
+                | REASON_THINKING_DELTA
+                | REASON_THINKING_STARTED
+                | TOOL_OUTPUT_DELTA
+                | LLM_GENERATION
+        )
+    }
+
     /// Convert to an Event with the given id and sequence
     pub fn into_event(self, id: EventId, sequence: i32) -> Event {
         Event {

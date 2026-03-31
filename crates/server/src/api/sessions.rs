@@ -187,6 +187,7 @@ impl AppState {
             runner,
             auth,
             &crate::platform::oss_platform_definition(),
+            crate::event_delivery::EventDelivery::in_memory(),
         )
     }
 
@@ -195,13 +196,14 @@ impl AppState {
         runner: Arc<dyn AgentRunner>,
         auth: AuthState,
         platform_definition: &PlatformDefinition,
+        event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::with_registry(
                 db.clone(),
                 platform_definition.capability_registry().clone(),
             )),
-            event_service: EventService::new(db.clone()),
+            event_service: EventService::new(db.clone(), event_delivery.clone()),
             db,
             runner,
             auth,

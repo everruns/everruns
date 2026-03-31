@@ -62,6 +62,7 @@ type BackgroundTaskFn =
 pub struct ServerContext {
     pub db: Arc<StorageBackend>,
     pub event_service: Arc<services::EventService>,
+    pub event_delivery: crate::event_delivery::EventDelivery,
     pub encryption: Option<Arc<EncryptionService>>,
     pub runner: Arc<dyn AgentRunner>,
     pub driver_registry: Arc<everruns_core::DriverRegistry>,
@@ -417,8 +418,18 @@ impl ServerAppBuilder {
         // Append custom event listeners
         event_listeners.extend(self.event_listeners);
 
+        // =====================================================================
+        // Event delivery (NATS JetStream / in-memory)
+        // =====================================================================
+        let event_delivery = if self.config.dev_mode {
+            crate::event_delivery::EventDelivery::in_memory()
+        } else {
+            crate::event_delivery::EventDelivery::from_env().await
+        };
+
         let event_service = Arc::new(services::EventService::with_listeners(
             db.clone(),
+            event_delivery.clone(),
             event_listeners,
         ));
 
@@ -465,6 +476,7 @@ impl ServerAppBuilder {
             runner.clone(),
             auth_state.clone(),
             platform_definition.as_ref(),
+            event_delivery.clone(),
         );
         let messages_state = api::messages::AppState::new(
             db.clone(),
@@ -869,6 +881,7 @@ impl ServerAppBuilder {
         let server_context = ServerContext {
             db: db.clone(),
             event_service: event_service.clone(),
+            event_delivery: event_delivery.clone(),
             encryption: encryption.clone(),
             runner: runner.clone(),
             driver_registry: driver_registry.clone(),
