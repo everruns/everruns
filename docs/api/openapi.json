@@ -11545,6 +11545,13 @@
             ],
             "description": "Tool interacts with external entities beyond the local system\n(network calls, third-party APIs, cloud services)."
           },
+          "persist_output": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Tool output should be persisted to session VFS before truncation.\nWhen set, the `tool_output_persistence` capability (EVE-222) writes the\nfull cleaned output to `/.exec-logs/{tool_call_id}.log` and injects a\n`full_output` path into the result so the LLM can retrieve it on demand."
+          },
           "readonly": {
             "type": [
               "boolean",
