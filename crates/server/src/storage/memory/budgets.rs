@@ -56,6 +56,7 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.truncate(200);
         Ok(result)
     }
 

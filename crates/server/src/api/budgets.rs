@@ -163,6 +163,15 @@ async fn create_budget(
     if !["session", "agent", "user", "org"].contains(&req.subject_type.as_str()) {
         return Err(err(StatusCode::BAD_REQUEST, "Invalid subject_type"));
     }
+    if req.limit <= 0.0 {
+        return Err(err(StatusCode::BAD_REQUEST, "Limit must be positive"));
+    }
+    if req.soft_limit.is_some_and(|s| s <= 0.0 || s > req.limit) {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "Soft limit must be between 0 and limit",
+        ));
+    }
     let input = CreateBudgetRow {
         org_id: org.org_id,
         subject_type: req.subject_type,
@@ -262,6 +271,9 @@ async fn top_up(
     Path(budget_id): Path<String>,
     Json(req): Json<TopUpRequest>,
 ) -> Result<Json<Budget>, ApiError> {
+    if req.amount <= 0.0 {
+        return Err(err(StatusCode::BAD_REQUEST, "Amount must be positive"));
+    }
     let id = parse_budget_id(&budget_id)?;
     let _budget = state
         .db

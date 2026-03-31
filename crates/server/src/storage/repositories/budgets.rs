@@ -70,6 +70,7 @@ impl Database {
               AND ($3::TEXT IS NULL OR subject_id = $3)
               AND status != 'disabled'
             ORDER BY created_at DESC
+            LIMIT 200
             "#,
         )
         .bind(org_id)
