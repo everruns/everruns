@@ -844,6 +844,14 @@ impl CollectedCapabilities {
         }
     }
 
+    /// Apply post-load transforms from all message filter providers.
+    /// Called after messages are loaded, filtered, and injected.
+    pub fn apply_post_load_filters(&self, messages: &mut Vec<crate::message::Message>) {
+        for (provider, config) in &self.message_filter_providers {
+            provider.post_load(messages, config);
+        }
+    }
+
     /// Check if any capabilities contribute message filters.
     pub fn has_message_filters(&self) -> bool {
         !self.message_filter_providers.is_empty()

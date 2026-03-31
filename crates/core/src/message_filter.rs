@@ -456,6 +456,13 @@ pub trait MessageFilterProvider: Send + Sync {
     /// * `config` - Per-agent capability configuration from the database
     fn apply_filters(&self, query: &mut MessageQuery, config: &serde_json::Value);
 
+    /// Post-load transform: inspect and optionally modify loaded messages.
+    /// Called after messages are loaded and query filters/injections applied.
+    /// Default is no-op.
+    fn post_load(&self, messages: &mut Vec<Message>, config: &serde_json::Value) {
+        let _ = (messages, config);
+    }
+
     /// Priority for filter application (lower = earlier).
     ///
     /// Filters from lower-priority providers are applied first.
