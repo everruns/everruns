@@ -17,7 +17,7 @@ export CARGO_INCREMENTAL=0
 
 All cloud secrets are in Doppler (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `LINEAR_API_KEY`).
 
-### GitHub Token — NEVER claim it is unavailable
+### GitHub Token
 
 **`GITHUB_TOKEN` is always available via Doppler.** If GitHub auth fails, do NOT tell the user the token expired. Instead, use Doppler: `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" <command>'`.
 
