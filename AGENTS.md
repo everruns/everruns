@@ -178,7 +178,7 @@ PORT_PREFIX=271 just start-all
 
 - `scripts/lib/services.sh`, `scripts/lib/infra.sh`, `scripts/lib/bench.sh`, `example.just`, and `local/Caddyfile` read `PORT_PREFIX`
 - Explicit `API_PORT`, `WORKER_GRPC_PORT`, `UI_PORT`, `PROXY_PORT`, `VALKEY_PORT`, and `DB_PORT` still override individual ports if needed
-- If `PORT_PREFIX` is unset, repo defaults are `9300` (proxy), `9301` (API), `9001` (worker gRPC), `9305` (UI), `6379` (Valkey), `9332` (Postgres)
+- If `PORT_PREFIX` is unset, repo defaults are `9300` (proxy), `9301` (API), `9001` (worker gRPC), `9305` (UI), `6379` (Valkey), `4222` (NATS), `9332` (Postgres)
 - UI-only worktree iteration:
 
 ```bash

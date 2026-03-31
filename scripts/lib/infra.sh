@@ -18,6 +18,10 @@ PG_LOGFILE="${PGDATA}/pg.log"
 VALKEY_DATA_DIR="${LOCAL_DATA_DIR}/valkey-${VALKEY_PORT}"
 VALKEY_PIDFILE="${VALKEY_DATA_DIR}/valkey.pid"
 VALKEY_LOGFILE="${VALKEY_DATA_DIR}/valkey.log"
+NATS_PORT="${NATS_PORT:-4222}"
+NATS_DATA_DIR="${LOCAL_DATA_DIR}/nats-${NATS_PORT}"
+NATS_PIDFILE="${NATS_DATA_DIR}/nats.pid"
+NATS_LOGFILE="${NATS_DATA_DIR}/nats.log"
 PG_USER="${PG_USER:-everruns}"
 PG_DB="${PG_DB:-everruns}"
 
@@ -197,6 +201,74 @@ stop_valkey() {
   fi
 }
 
+# --- NATS ---
+
+detect_nats_bin() {
+  if command -v nats-server &> /dev/null; then
+    NATS_SERVER="nats-server"
+    return 0
+  fi
+  echo "   ⚠️  nats-server not found. NATS will be skipped (event delivery falls back to in-memory)."
+  return 1
+}
+
+nats_is_running() {
+  if [ -f "$NATS_PIDFILE" ]; then
+    local pid
+    pid=$(cat "$NATS_PIDFILE" 2>/dev/null || true)
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+    return $?
+  fi
+  return 1
+}
+
+start_nats() {
+  if ! detect_nats_bin; then
+    return 1
+  fi
+
+  if nats_is_running; then
+    echo "   ✅ NATS already running (port ${NATS_PORT})"
+    return 0
+  fi
+
+  echo "   Starting NATS with JetStream on port ${NATS_PORT}..."
+  mkdir -p "$NATS_DATA_DIR"
+  $NATS_SERVER \
+    --port "$NATS_PORT" \
+    --jetstream \
+    --store_dir "$NATS_DATA_DIR/jetstream" \
+    --pid "$NATS_PIDFILE" \
+    --log "$NATS_LOGFILE" \
+    -D &
+
+  disown
+
+  for i in {1..10}; do
+    if nats_is_running; then
+      echo "   ✅ NATS started on localhost:${NATS_PORT}"
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "   ⚠️  NATS did not start (see $NATS_LOGFILE)"
+  return 1
+}
+
+stop_nats() {
+  if [ -f "$NATS_PIDFILE" ]; then
+    local pid
+    pid=$(cat "$NATS_PIDFILE" 2>/dev/null || true)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      sleep 1
+      echo "   ✅ NATS stopped"
+    fi
+    rm -f "$NATS_PIDFILE"
+  fi
+}
+
 # --- Commands ---
 
 case "$cmd" in
@@ -204,14 +276,17 @@ case "$cmd" in
     echo "🚀 Starting infrastructure services..."
     start_postgres
     start_valkey || true
+    start_nats || true
     echo ""
     echo "✅ Services started!"
     echo "   - Postgres: localhost:${DB_PORT}"
     echo "   - Valkey:   localhost:${VALKEY_PORT}"
+    echo "   - NATS:     localhost:${NATS_PORT}"
     ;;
 
   stop)
     echo "🛑 Stopping infrastructure services..."
+    stop_nats
     stop_valkey
     stop_postgres
     echo "✅ Services stopped!"
@@ -219,6 +294,7 @@ case "$cmd" in
 
   reset)
     echo "🔄 Resetting infrastructure services..."
+    stop_nats
     stop_valkey
     stop_postgres
     # Safety: only delete data dirs under the repo's .local/ directory
@@ -226,6 +302,8 @@ case "$cmd" in
       echo "   ⚠️  PGDATA ($PGDATA) is outside $LOCAL_DATA_DIR — skipping removal" ;; esac
     case "$VALKEY_DATA_DIR" in "$LOCAL_DATA_DIR"*) rm -rf "$VALKEY_DATA_DIR" ;; *)
       echo "   ⚠️  VALKEY_DATA_DIR ($VALKEY_DATA_DIR) is outside $LOCAL_DATA_DIR — skipping removal" ;; esac
+    case "$NATS_DATA_DIR" in "$LOCAL_DATA_DIR"*) rm -rf "$NATS_DATA_DIR" ;; *)
+      echo "   ⚠️  NATS_DATA_DIR ($NATS_DATA_DIR) is outside $LOCAL_DATA_DIR — skipping removal" ;; esac
     echo "✅ Services reset (data removed)!"
     ;;
 
@@ -235,6 +313,9 @@ case "$cmd" in
     echo ""
     echo "=== Valkey log ==="
     tail -50 "$VALKEY_LOGFILE" 2>/dev/null || echo "(no log)"
+    echo ""
+    echo "=== NATS log ==="
+    tail -50 "$NATS_LOGFILE" 2>/dev/null || echo "(no log)"
     ;;
 
   *)

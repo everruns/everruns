@@ -23,6 +23,7 @@ WORKER_GRPC_ADDR_DEFAULT="0.0.0.0:${WORKER_GRPC_PORT}"
 WORKER_GRPC_ADDRESS_DEFAULT="127.0.0.1:${WORKER_GRPC_PORT}"
 PROXY_URL_DEFAULT="http://localhost:${PROXY_PORT}"
 VALKEY_URL_DEFAULT="redis://localhost:${VALKEY_PORT}"
+NATS_URL_DEFAULT="nats://localhost:${NATS_PORT:-4222}"
 DB_URL_DEFAULT="postgres://everruns:everruns@localhost:${DB_PORT}/everruns"
 
 ensure_run_state_dir() {
