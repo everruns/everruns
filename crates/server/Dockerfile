@@ -57,7 +57,6 @@ EXPOSE 9000
 EXPOSE 9001
 
 ENV RUST_LOG=info
-ENV HOST=0.0.0.0
-ENV PORT=9000
+ENV ADDR=0.0.0.0:9000
 
 CMD ["/app/everruns-server"]
