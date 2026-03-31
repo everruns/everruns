@@ -47,6 +47,7 @@ start tag="latest":
     docker compose --project-name "$EXAMPLE_COMPOSE_PROJECT_NAME" -f docker-compose-full.yaml up --pull always -d
     echo "✅ Example full stack started!"
     echo "   - UI: http://localhost:${EXAMPLE_PROXY_PORT}"
+    echo "   - VictoriaMetrics: http://localhost:${VICTORIAMETRICS_PORT:-8428}/vmui"
 
 # Stop example docker-compose-full
 stop:
