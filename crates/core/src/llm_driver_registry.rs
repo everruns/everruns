@@ -709,8 +709,10 @@ impl LlmMessage {
                     } else {
                         "{}".to_string()
                     };
-                    // Hard limit enforced by OutputHardLimitHook (EVE-225) at
-                    // tool execution time — no secondary truncation needed here.
+                    // Primary hard limit enforced by OutputHardLimitHook (EVE-225)
+                    // at tool execution time. This backstop catches tool results
+                    // that bypass ActAtom hooks (client-submitted, stored events).
+                    let text = truncate_tool_result(text);
                     parts.push(LlmContentPart::Text { text });
                 }
             }
@@ -935,6 +937,29 @@ impl DriverRegistry {
     pub fn registered_providers(&self) -> Vec<ProviderType> {
         self.factories.keys().cloned().collect()
     }
+}
+
+/// Maximum tool result size in bytes before truncation (64 KiB).
+/// Defense-in-depth backstop for tool results that bypass ActAtom hooks
+/// (e.g. client-submitted or stored events). The primary hard limit is
+/// enforced by `OutputHardLimitHook` (EVE-225) at tool execution time.
+const MAX_TOOL_RESULT_BYTES: usize = 64 * 1024;
+
+const TRUNCATION_SUFFIX: &str =
+    "\n\n[Output truncated — exceeded 64 KiB limit. Try quiet flags, pipes, or redirect to file.]";
+
+fn truncate_tool_result(text: String) -> String {
+    if text.len() <= MAX_TOOL_RESULT_BYTES {
+        return text;
+    }
+    let content_budget = MAX_TOOL_RESULT_BYTES.saturating_sub(TRUNCATION_SUFFIX.len());
+    let mut end = content_budget;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut truncated = text[..end].to_string();
+    truncated.push_str(TRUNCATION_SUFFIX);
+    truncated
 }
 
 // ============================================================================
