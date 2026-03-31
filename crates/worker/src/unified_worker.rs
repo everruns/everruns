@@ -731,40 +731,11 @@ async fn execute_reason_activity<A: WorkerAdapters>(
 
     let result = atom.execute(reason_input).await?;
 
-    // If turn is complete (no tool calls or failure), emit turn-level events.
-    //
-    // IMPORTANT: session.idled is NOT emitted here. It is deferred to the
-    // scheduler (schedule_next_activity) which checks for pending steering
-    // signals before deciding whether to idle the session or continue the
-    // turn with another reason iteration. This prevents the idle→active
-    // status flicker when a queued user message triggers a continuation.
-    let turn_complete = !result.has_tool_calls || !result.success;
-    if turn_complete {
-        if !result.success {
-            // Failures are terminal — emit turn.failed + session.idled immediately
-            lifecycle
-                .turn_failed(
-                    turn_id,
-                    input_message_id,
-                    "An error occurred while processing your request.",
-                    Some("llm_error"),
-                )
-                .await;
-        } else {
-            // Success with no tool calls — emit only turn.completed.
-            // session.idled will be emitted by the scheduler after checking
-            // for pending steering signals.
-            lifecycle
-                .emit_turn_completed(
-                    turn_id,
-                    input_message_id,
-                    input.iteration,
-                    result.usage.clone(),
-                    None,
-                )
-                .await;
-        }
-    }
+    // Turn lifecycle events (turn.completed, turn.failed, session.idled) are NOT
+    // emitted here. They are deferred to the workflow scheduler which checks for
+    // pending steering signals before deciding whether the turn is truly done.
+    // This ensures turn.completed is emitted exactly once and prevents the
+    // idle→active flicker when steering continues the turn.
 
     Ok(serde_json::to_value(&result)?)
 }
@@ -915,27 +886,32 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
 
             // Check for pending user messages (steering signals) only when
             // the turn would otherwise complete (no tool calls, success).
-            let has_pending_user_messages =
-                if !reason_result.has_tool_calls && reason_result.success {
-                    let signals = store
-                        .consume_pending_signals(workflow_id)
-                        .await
-                        .unwrap_or_default();
-                    let count = signals
-                        .iter()
-                        .filter(|s| s.signal_type == everruns_durable::signal_types::USER_MESSAGE)
-                        .count();
-                    if count > 1 {
-                        info!(
-                            workflow_id = %workflow_id,
-                            queued_count = count,
-                            "Multiple user messages arrived during turn"
-                        );
+            let has_pending_user_messages = if !reason_result.has_tool_calls
+                && reason_result.success
+            {
+                let signals = match store.consume_pending_signals(workflow_id).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        warn!(workflow_id = %workflow_id, error = ?e,
+                                "Failed to consume steering signals; treating as no pending messages");
+                        Vec::new()
                     }
-                    count > 0
-                } else {
-                    false
                 };
+                let count = signals
+                    .iter()
+                    .filter(|s| s.signal_type == everruns_durable::signal_types::USER_MESSAGE)
+                    .count();
+                if count > 1 {
+                    info!(
+                        workflow_id = %workflow_id,
+                        queued_count = count,
+                        "Multiple user messages arrived during turn"
+                    );
+                }
+                count > 0
+            } else {
+                false
+            };
 
             if reason_result.has_tool_calls && reason_result.success {
                 let turn_id = input.turn_id.unwrap_or_default();
@@ -1025,23 +1001,39 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
                     "Steering: continuing turn with new reason iteration"
                 );
             } else {
-                // Turn truly complete. Emit session.idled and mark done.
+                // Turn truly complete. Emit turn event + session.idled + mark done.
                 let turn_id = input.turn_id.unwrap_or_default();
                 let lifecycle =
                     SessionLifecycle::new(adapters.clone(), input.org_id, input.session_id);
-                let usage = if reason_result.success {
-                    reason_result.usage.clone()
+
+                if reason_result.success {
+                    lifecycle
+                        .emit_turn_completed(
+                            turn_id,
+                            input.input_message_id,
+                            input.iteration,
+                            reason_result.usage.clone(),
+                            None,
+                        )
+                        .await;
+                    lifecycle
+                        .emit_session_idled(
+                            turn_id,
+                            input.input_message_id,
+                            Some(input.iteration),
+                            reason_result.usage.clone(),
+                        )
+                        .await;
                 } else {
-                    None
-                };
-                lifecycle
-                    .emit_session_idled(
-                        turn_id,
-                        input.input_message_id,
-                        Some(input.iteration),
-                        usage,
-                    )
-                    .await;
+                    lifecycle
+                        .turn_failed(
+                            turn_id,
+                            input.input_message_id,
+                            "An error occurred while processing your request.",
+                            Some("llm_error"),
+                        )
+                        .await;
+                }
 
                 record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
                 store

@@ -435,9 +435,13 @@ impl TurnStateMachine {
             self.phase = TurnPhase::PendingAct;
         } else if has_pending_user_messages {
             // No tool calls but user sent messages during this turn.
-            // Stay in PendingReason — next iteration re-loads messages from DB
-            // and the LLM sees the new user input naturally.
-            self.phase = TurnPhase::PendingReason;
+            // Enforce max_iterations before continuing — prevents unbounded
+            // reason loops from a steady stream of user messages.
+            if self.current_iteration >= self.max_iterations {
+                self.phase = TurnPhase::Completed;
+            } else {
+                self.phase = TurnPhase::PendingReason;
+            }
         } else {
             // No tool calls, no pending messages — turn is complete
             self.phase = TurnPhase::Completed;

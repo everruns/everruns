@@ -82,8 +82,8 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
     /// Turn completed successfully: emit turn.completed + session.idled, set session to "idle".
     ///
     /// Use this only when the turn is truly done and no steering signals are pending.
-    /// If steering signals may exist, use [`emit_turn_completed`] first, check signals,
-    /// then call [`emit_session_idled`] only if no signals were found.
+    /// If steering signals may exist, check signals first, then call
+    /// [`emit_turn_completed`] + [`emit_session_idled`] only if no signals were found.
     pub async fn turn_completed(
         &self,
         turn_id: TurnId,

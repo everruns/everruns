@@ -5,7 +5,8 @@
 use anyhow::Result;
 use everruns_core::atoms::AtomContext;
 use everruns_core::events::{
-    EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData,
+    EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData, TurnCompletedData,
+    TurnFailedData,
 };
 use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::{ExecId, MessageId, SessionId, TurnId};
@@ -1409,10 +1410,14 @@ impl DurableWorker {
                 let has_pending_user_messages = if !reason_result.has_tool_calls
                     && reason_result.success
                 {
-                    let signals = store
-                        .get_and_consume_signals(workflow_id)
-                        .await
-                        .unwrap_or_default();
+                    let signals = match store.get_and_consume_signals(workflow_id).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            warn!(workflow_id = %workflow_id, error = %e,
+                                "Failed to consume steering signals; treating as no pending messages");
+                            vec![]
+                        }
+                    };
                     let count = signals
                         .iter()
                         .filter(|s| s.signal_type == everruns_durable::signal_types::USER_MESSAGE)
@@ -1506,7 +1511,7 @@ impl DurableWorker {
                         "Steering: continuing turn with new reason iteration"
                     );
                 } else {
-                    // Turn truly complete. Emit session.idled and mark done.
+                    // Turn truly complete. Emit turn event + session.idled + mark done.
                     let turn_id = input.turn_id.unwrap_or_default();
                     let grpc_address = self.grpc_address.clone();
                     let org_id = input.org_id;
@@ -1514,14 +1519,54 @@ impl DurableWorker {
                     let input_message_id = input.input_message_id;
                     let iteration = input.iteration;
                     let usage = reason_result.usage.clone();
-                    let error = reason_result.error.clone();
 
                     store
-                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, error)
+                        .update_workflow_status(
+                            workflow_id,
+                            WorkflowStatus::Completed,
+                            None,
+                            reason_result.error.clone(),
+                        )
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
 
                     drop(store);
+
+                    // Emit turn.completed or turn.failed + session.idled via gRPC
+                    let grpc_client = GrpcClient::connect(&grpc_address).await;
+                    if let Ok(client) = grpc_client {
+                        let event_emitter = GrpcEventEmitter::new(client.clone());
+                        let ctx = EventContext::turn(turn_id, input_message_id);
+
+                        if reason_result.success {
+                            let _ = event_emitter
+                                .emit(EventRequest::new(
+                                    session_id,
+                                    ctx,
+                                    TurnCompletedData {
+                                        turn_id,
+                                        iterations: iteration,
+                                        duration_ms: None,
+                                        usage: usage.clone(),
+                                        input_content: None,
+                                    },
+                                ))
+                                .await;
+                        } else {
+                            let _ = event_emitter
+                                .emit(EventRequest::new(
+                                    session_id,
+                                    ctx,
+                                    TurnFailedData {
+                                        turn_id,
+                                        error: "An error occurred while processing your request."
+                                            .to_string(),
+                                        error_code: Some("llm_error".to_string()),
+                                    },
+                                ))
+                                .await;
+                        }
+                    }
 
                     emit_session_idled(
                         &grpc_address,
