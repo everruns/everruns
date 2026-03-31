@@ -20,7 +20,6 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  RUSTC_WRAPPER: sccache
   DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
 jobs:
@@ -35,13 +34,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.7
-
-      - name: Configure sccache S3 backend
-        if: env.DOPPLER_TOKEN != ''
-        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -66,12 +58,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.7
-
-      - name: Configure sccache S3 backend
-        run: ./.github/scripts/ci-sccache-env.sh >> "$GITHUB_ENV"
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2

@@ -62,8 +62,3 @@ Embedded in the server crate.
 | Braintrust | [`specs/braintrust-integration.md`](braintrust-integration.md) | LLM observability — sends agentic loop events to Braintrust project logs. |
 | OpenTelemetry | [`specs/otel-observability.md`](otel-observability.md) | Gen-AI semantic convention tracing for full agentic execution lifecycle. |
 
-## Build Infrastructure
-
-| Tool | Spec | Summary |
-|---|---|---|
-| sccache | [`specs/sccache.md`](sccache.md) | Shared S3 compile cache for Rust builds. |

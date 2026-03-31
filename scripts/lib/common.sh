@@ -17,13 +17,6 @@ if [ -f .env ]; then
   set +a
 fi
 
-# Auto-activate sccache if installed (optional compile cache, no-op if missing)
-if [ -z "${RUSTC_WRAPPER:-}" ] && [ -f "$SCRIPT_DIR/sccache.sh" ]; then
-  # shellcheck disable=SC1091
-  source "$SCRIPT_DIR/sccache.sh"
-  activate_sccache 2>/dev/null || true
-fi
-
 # Check if a command is available, exit with hint if not
 require_command() {
   local cmd="$1"
