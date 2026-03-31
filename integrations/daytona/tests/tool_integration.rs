@@ -754,11 +754,18 @@ async fn test_exec_session_with_cwd_prepended() {
         .mount(&mock_server)
         .await;
 
-    // Verify the command is prepended with cd
+    // Verify the command is prepended with shell-profile preamble + cd.
+    // The preamble sources common profile files before running the user command.
+    let expected_cmd = concat!(
+        "for __f in \"$HOME/.profile\" \"$HOME/.cargo/env\" \"$HOME/.nvm/nvm.sh\"; do ",
+        "[ -f \"$__f\" ] && . \"$__f\" >/dev/null 2>&1; ",
+        "done; unset __f; ",
+        "cd /workspace && ls -la",
+    );
     Mock::given(method("POST"))
         .and(path("/sb_cwd/process/session/everruns-exec/exec"))
         .and(wiremock::matchers::body_json(json!({
-            "command": "cd /workspace && ls -la",
+            "command": expected_cmd,
             "runAsync": true
         })))
         .respond_with(ResponseTemplate::new(202).set_body_json(json!({

@@ -5,6 +5,18 @@
 //! so commands always get proper shell interpretation (pipes, redirects,
 //! variable expansion, etc.). The old stateless `/process/execute` endpoint
 //! is NOT used — it doesn't support async execution or output streaming.
+//!
+//! Decision: Every command is prefixed with a shell-profile preamble that
+//! sources common non-interactive profile files (~/.profile, ~/.cargo/env,
+//! ~/.nvm/nvm.sh). `~/.bashrc` is intentionally not sourced because most
+//! distros guard it with an interactive-shell check that returns early in
+//! non-interactive exec contexts.
+//! Daytona sessions use a bare shell (no login flag), so tools installed
+//! mid-session (e.g. rustup writing ~/.cargo/env) aren't visible in PATH.
+//! Unlike E2B and Deno which spawn `bash -l -c` per command, Daytona's
+//! persistent session means even a login shell at creation time wouldn't
+//! pick up later installs. The preamble runs on every exec (~2ms overhead)
+//! and largely eliminates "command not found after install" bugs.
 
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -16,6 +28,26 @@ use crate::{EXEC_POLL_INTERVAL, SANDBOX_READY_MAX_WAIT, SANDBOX_READY_POLL_INTER
 /// Fixed session ID used for all command execution in a sandbox.
 /// One session per sandbox, created on first exec, reused thereafter.
 const EXEC_SESSION_ID: &str = "everruns-exec";
+
+/// Shell-profile preamble sourced before every command.
+///
+/// Daytona sessions use a bare (non-login) shell, so tools installed
+/// mid-session (rustup, nvm, etc.) write profile files that never get
+/// sourced. This preamble sources common profile files if they exist,
+/// making newly-installed tools available immediately.
+///
+/// Deliberately excludes `~/.bashrc` — most distros guard it with a
+/// `case $-` interactive-mode check that causes it to return early in
+/// non-interactive exec contexts. The files listed here are all designed
+/// for non-interactive sourcing (PATH/env exports only).
+///
+/// Profiles are sourced with stdout and stderr redirected to `/dev/null`
+/// to suppress any unexpected noise (motd, banners, etc.).
+const SHELL_PROFILE_PREAMBLE: &str = concat!(
+    "for __f in \"$HOME/.profile\" \"$HOME/.cargo/env\" \"$HOME/.nvm/nvm.sh\"; do ",
+    "[ -f \"$__f\" ] && . \"$__f\" >/dev/null 2>&1; ",
+    "done; unset __f; ",
+);
 
 // ============================================================================
 // DaytonaClient - HTTP client for Daytona APIs
@@ -412,8 +444,8 @@ impl DaytonaClient {
         self.ensure_session(sandbox_id).await?;
 
         let cmd = match cwd {
-            Some(c) => format!("cd {c} && {command}"),
-            None => command.to_string(),
+            Some(c) => format!("{SHELL_PROFILE_PREAMBLE}cd {c} && {command}"),
+            None => format!("{SHELL_PROFILE_PREAMBLE}{command}"),
         };
 
         let timeout = timeout_ms.unwrap_or(crate::EXEC_TIMEOUT_MS);
@@ -1451,6 +1483,116 @@ mod tests {
         );
         let result = client.ensure_session("sb_test").await;
         assert!(result.is_ok(), "409 should be treated as success");
+    }
+
+    #[tokio::test]
+    async fn test_exec_prepends_shell_profile_preamble() {
+        use wiremock::matchers::body_json;
+
+        let mock_server = MockServer::start().await;
+
+        // Session create
+        Mock::given(method("POST"))
+            .and(path("/sb_preamble/process/session"))
+            .respond_with(ResponseTemplate::new(201))
+            .mount(&mock_server)
+            .await;
+
+        // Exec — match the exact command body to verify preamble is prepended.
+        let expected_cmd = format!("{SHELL_PROFILE_PREAMBLE}echo hello");
+        Mock::given(method("POST"))
+            .and(path("/sb_preamble/process/session/everruns-exec/exec"))
+            .and(body_json(json!({
+                "command": expected_cmd,
+                "runAsync": true
+            })))
+            .respond_with(ResponseTemplate::new(202).set_body_json(json!({"cmdId": "cmd_p1"})))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        // Logs + status
+        Mock::given(method("GET"))
+            .and(path(
+                "/sb_preamble/process/session/everruns-exec/command/cmd_p1/logs",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes({
+                let mut b = vec![0x01, 0x01, 0x01];
+                b.extend_from_slice(b"hello\n");
+                b
+            }))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(
+                "/sb_preamble/process/session/everruns-exec/command/cmd_p1",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"exitCode": 0})))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client
+            .exec("sb_preamble", "echo hello", None, None, |_| {})
+            .await;
+        assert!(result.is_ok(), "exec failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_exec_preamble_with_cwd() {
+        use wiremock::matchers::body_json;
+
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/sb_cwd/process/session"))
+            .respond_with(ResponseTemplate::new(201))
+            .mount(&mock_server)
+            .await;
+
+        // With cwd, command should be: PREAMBLE + cd /tmp && ls
+        let expected_cmd = format!("{SHELL_PROFILE_PREAMBLE}cd /tmp && ls");
+        Mock::given(method("POST"))
+            .and(path("/sb_cwd/process/session/everruns-exec/exec"))
+            .and(body_json(json!({
+                "command": expected_cmd,
+                "runAsync": true
+            })))
+            .respond_with(ResponseTemplate::new(202).set_body_json(json!({"cmdId": "cmd_c1"})))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path(
+                "/sb_cwd/process/session/everruns-exec/command/cmd_c1/logs",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes({
+                let mut b = vec![0x01, 0x01, 0x01];
+                b.extend_from_slice(b"output\n");
+                b
+            }))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/sb_cwd/process/session/everruns-exec/command/cmd_c1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"exitCode": 0})))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let result = client
+            .exec("sb_cwd", "ls", Some("/tmp"), None, |_| {})
+            .await;
+        assert!(result.is_ok(), "exec with cwd failed: {:?}", result.err());
     }
 
     #[test]

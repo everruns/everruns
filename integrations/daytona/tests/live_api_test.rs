@@ -284,6 +284,106 @@ async fn test_live_exec_streaming_returns_output() {
     );
 }
 
+/// Shell profile sourcing: tools installed mid-session are visible in PATH.
+///
+/// Simulates the real-world scenario where an agent installs a tool (e.g. rustup)
+/// and the next command needs it in PATH. Without profile sourcing, every command
+/// after install would need a manual `. ~/.cargo/env &&` prefix.
+#[tokio::test]
+async fn test_live_shell_profile_sourcing() {
+    let api_key = require_api_key!();
+    let (client, guard) = create_test_sandbox(api_key, "profile-sourcing").await;
+    let id = &guard.sandbox_id;
+
+    // 1. Write a fake profile file that exports a custom PATH entry and variable.
+    //    This simulates what rustup/nvm do when installed.
+    //    mkdir -p ~/.cargo first — Daytona sandboxes don't have it by default.
+    let result = client
+        .exec(
+            id,
+            r#"mkdir -p /tmp/fake-tool ~/.cargo && printf '#!/bin/sh\necho fake-tool-output\n' > /tmp/fake-tool/my-tool && chmod +x /tmp/fake-tool/my-tool && printf 'export PATH="/tmp/fake-tool:$PATH"\nexport FAKE_TOOL_VERSION="1.0.0"\n' > ~/.cargo/env"#,
+            None,
+            None,
+            |_| {},
+        )
+        .await
+        .expect("setup fake tool failed");
+    assert_eq!(result.exit_code, 0, "setup failed: {}", result.result);
+
+    // 2. In a subsequent exec, the tool should be in PATH because the preamble
+    //    sources ~/.cargo/env before running the user command.
+    let result = client
+        .exec(id, "my-tool", None, None, |_| {})
+        .await
+        .expect("my-tool exec failed");
+    assert_eq!(
+        result.exit_code, 0,
+        "my-tool not found in PATH — profile sourcing broken. Output: {}",
+        result.result
+    );
+    assert!(
+        result.result.contains("fake-tool-output"),
+        "Expected fake-tool-output, got: {}",
+        result.result
+    );
+
+    // 3. Verify the env var exported by the profile is also available.
+    let result = client
+        .exec(id, "echo $FAKE_TOOL_VERSION", None, None, |_| {})
+        .await
+        .expect("env var check failed");
+    assert_eq!(result.exit_code, 0);
+    assert!(
+        result.result.contains("1.0.0"),
+        "Expected FAKE_TOOL_VERSION=1.0.0, got: {}",
+        result.result
+    );
+}
+
+/// Shell profile sourcing with .profile: env vars exported in .profile are available.
+#[tokio::test]
+async fn test_live_profile_sourcing() {
+    let api_key = require_api_key!();
+    let (client, guard) = create_test_sandbox(api_key, "profile-sourcing-dotprofile").await;
+    let id = &guard.sandbox_id;
+
+    // Write a .profile that exports a custom variable (backup any existing one).
+    let result = client
+        .exec(
+            id,
+            r#"[ -f ~/.profile ] && cp ~/.profile ~/.profile.bak; echo 'export FROM_PROFILE="yes"' >> ~/.profile"#,
+            None,
+            None,
+            |_| {},
+        )
+        .await
+        .expect("profile setup failed");
+    assert_eq!(result.exit_code, 0);
+
+    // Subsequent exec should have the variable available via preamble sourcing.
+    let result = client
+        .exec(id, "echo FROM_PROFILE=$FROM_PROFILE", None, None, |_| {})
+        .await
+        .expect("profile check exec failed");
+    assert_eq!(result.exit_code, 0);
+    assert!(
+        result.result.contains("FROM_PROFILE=yes"),
+        "Expected FROM_PROFILE=yes, got: {}",
+        result.result
+    );
+
+    // Restore .profile.
+    let _ = client
+        .exec(
+            id,
+            "[ -f ~/.profile.bak ] && mv ~/.profile.bak ~/.profile || true",
+            None,
+            None,
+            |_| {},
+        )
+        .await;
+}
+
 /// Stop and start a sandbox.
 #[tokio::test]
 async fn test_live_stop_and_start() {
