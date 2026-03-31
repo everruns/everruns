@@ -1652,3 +1652,73 @@ pub struct UpdateEvalCaseResultRow {
     pub output_tokens: Option<i64>,
     pub error_message: Option<String>,
 }
+
+// ============================================================================
+// Budget models
+// ============================================================================
+
+/// Budget row (maps to `budgets` table).
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct BudgetRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub subject_type: String,
+    pub subject_id: String,
+    pub currency: String,
+    pub limit: f64,
+    pub soft_limit: Option<f64>,
+    pub balance: f64,
+    pub period: Option<sqlx::types::JsonValue>,
+    pub metadata: Option<sqlx::types::JsonValue>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating a budget.
+#[derive(Debug, Clone)]
+pub struct CreateBudgetRow {
+    pub org_id: i64,
+    pub subject_type: String,
+    pub subject_id: String,
+    pub currency: String,
+    pub limit: f64,
+    pub soft_limit: Option<f64>,
+    pub period: Option<serde_json::Value>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Input for updating a budget.
+#[derive(Debug, Clone, Default)]
+pub struct UpdateBudgetRow {
+    pub limit: Option<f64>,
+    pub soft_limit: Option<Option<f64>>,
+    pub status: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Budget ledger entry row (maps to `budget_ledger` table).
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct BudgetLedgerRow {
+    pub id: Uuid,
+    pub budget_id: Uuid,
+    pub amount: f64,
+    pub meter_source: String,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<Uuid>,
+    pub session_id: Option<Uuid>,
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating a ledger entry.
+#[derive(Debug, Clone)]
+pub struct CreateBudgetLedgerRow {
+    pub budget_id: Uuid,
+    pub amount: f64,
+    pub meter_source: String,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<Uuid>,
+    pub session_id: Option<Uuid>,
+    pub description: Option<String>,
+}

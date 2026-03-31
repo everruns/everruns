@@ -74,6 +74,7 @@ pub use crate::capability_types::{
 
 mod agent_instructions;
 pub mod attach_skill;
+mod budgeting;
 pub mod compaction;
 mod current_time;
 mod fake_aws;
@@ -629,6 +630,7 @@ impl CapabilityRegistry {
         registry.register(VirtualBashCapability);
         registry.register(SessionScheduleCapability);
         registry.register(InfinityContextCapability);
+        registry.register(budgeting::BudgetingCapability);
         registry.register(CompactionCapability);
         registry.register(MemoryCapability);
 

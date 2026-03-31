@@ -58,6 +58,7 @@ impl From<&str> for SubagentStatus {
 /// - `started`: Session just created, no turn executed yet
 /// - `active`: A turn is currently running
 /// - `idle`: Turn completed, session waiting for next input
+/// - `paused`: Budget limit reached, waiting for user to increase limit or resume
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]
@@ -70,6 +71,8 @@ pub enum SessionStatus {
     Idle,
     /// Waiting for client to submit tool results.
     WaitingForToolResults,
+    /// Budget limit reached — session paused until user resumes or increases limit.
+    Paused,
 }
 
 impl std::fmt::Display for SessionStatus {
@@ -79,6 +82,7 @@ impl std::fmt::Display for SessionStatus {
             SessionStatus::Active => write!(f, "active"),
             SessionStatus::Idle => write!(f, "idle"),
             SessionStatus::WaitingForToolResults => write!(f, "waiting_for_tool_results"),
+            SessionStatus::Paused => write!(f, "paused"),
         }
     }
 }
@@ -89,6 +93,7 @@ impl From<&str> for SessionStatus {
             "active" => SessionStatus::Active,
             "idle" => SessionStatus::Idle,
             "waiting_for_tool_results" => SessionStatus::WaitingForToolResults,
+            "paused" => SessionStatus::Paused,
             // Handle legacy values during migration
             "running" => SessionStatus::Active,
             "pending" | "completed" | "failed" => SessionStatus::Idle,

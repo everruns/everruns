@@ -388,7 +388,10 @@ impl ServerAppBuilder {
         let otel_listener: Arc<dyn EventListener> = Arc::new(OtelEventListener::new());
         let usage_listener: Arc<dyn EventListener> =
             Arc::new(services::UsageTrackingListener::new(db.clone()));
-        let mut event_listeners: Vec<Arc<dyn EventListener>> = vec![otel_listener, usage_listener];
+        let budget_service = Arc::new(services::BudgetService::new(db.clone()));
+        let budget_listener: Arc<dyn EventListener> = budget_service.clone();
+        let mut event_listeners: Vec<Arc<dyn EventListener>> =
+            vec![otel_listener, usage_listener, budget_listener];
         let notification_service = if notifications_enabled {
             let service = Arc::new(services::NotificationService::new(db.clone()));
             let notification_listener: Arc<dyn EventListener> =
@@ -726,7 +729,12 @@ impl ServerAppBuilder {
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))
             .merge(api::slack_events::routes(slack_state))
-            .merge(api::feature_flags::routes(feature_flags_state));
+            .merge(api::feature_flags::routes(feature_flags_state))
+            .merge(api::budgets::routes(api::budgets::AppState::new(
+                db.clone(),
+                budget_service.clone(),
+                auth_state.clone(),
+            )));
 
         if let Some(notifications_state) = notifications_state {
             api_routes = api_routes.merge(api::notifications::routes(notifications_state));

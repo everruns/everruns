@@ -14,6 +14,7 @@ mod app_channels;
 mod apps;
 mod audit_logs;
 mod auth;
+mod budgets;
 mod evals;
 mod events;
 mod harnesses;
@@ -131,6 +132,9 @@ pub struct InMemoryDatabase {
     eval_cases: RwLock<HashMap<Uuid, EvalCaseRow>>,
     eval_runs: RwLock<HashMap<Uuid, EvalRunRow>>,
     eval_case_results: RwLock<HashMap<Uuid, EvalCaseResultRow>>,
+    // Budgets
+    budgets: RwLock<HashMap<Uuid, BudgetRow>>,
+    budget_ledger: RwLock<Vec<BudgetLedgerRow>>,
     // OAuth clients (MCP OAuth 2.1)
     oauth_clients: RwLock<HashMap<Uuid, OAuthClientRow>>,
     oauth_authorization_codes: RwLock<HashMap<Uuid, OAuthAuthorizationCodeRow>>,
@@ -197,6 +201,8 @@ impl Default for InMemoryDatabase {
             eval_cases: RwLock::new(HashMap::new()),
             eval_runs: RwLock::new(HashMap::new()),
             eval_case_results: RwLock::new(HashMap::new()),
+            budgets: RwLock::new(HashMap::new()),
+            budget_ledger: RwLock::new(Vec::new()),
             oauth_clients: RwLock::new(HashMap::new()),
             oauth_authorization_codes: RwLock::new(HashMap::new()),
             oauth_refresh_tokens: RwLock::new(HashMap::new()),
