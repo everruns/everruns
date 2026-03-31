@@ -975,14 +975,22 @@ This is a bigger first phase but eliminates more throwaway code. NATS becomes th
 
 **Impact**: Eliminates ~80% of PG event writes (deltas). Eliminates PG polling from SSE entirely. Horizontally scalable. Single delivery mechanism for all event types.
 
-### Phase 2: gRPC streaming for deltas — ~1 week
+### Phase 2: Fire-and-forget gRPC for ephemeral events — ~1 day ✅
 
-1. Add `StreamEphemeralEvents` bidirectional streaming RPC to proto
-2. Worker `GrpcEventEmitter` routes ephemeral events to stream, durable to unary RPC
-3. Control plane reads stream, publishes to NATS JetStream
-4. `EventEmitter` trait unchanged — transparent to `ReasonAtom`
+Worker's `GrpcEventEmitter` now routes by event type:
+- **Ephemeral events** (deltas, LLM generation): return synthetic Event immediately,
+  fire gRPC `EmitEvent` in a background tokio task. No mutex lock held during streaming.
+- **Durable events**: blocking gRPC round-trip (unchanged, needs DB-assigned id + sequence).
 
-**Impact**: Removes per-delta gRPC round-trip. Workers go from 10 blocking calls/sec to 1 stream per session.
+No proto changes needed. The existing `EmitEvent` unary RPC works for both paths — the
+difference is whether the worker waits for the response. Server-side `EventService.emit()`
+already routes ephemeral events to EventDelivery only (Phase 1).
+
+**Impact**: `ReasonAtom`'s delta emission loop no longer blocks on gRPC round-trips.
+Workers go from ~10 blocking calls/sec (100ms batch interval × mutex lock × network RTT)
+to fire-and-forget with ~0ms overhead per delta.
+
+See `crates/worker/src/grpc_adapters.rs` — `GrpcAdapter::emit_ephemeral()`.
 
 ### Phase 3: NATS JetStream for task queue — ~2-3 weeks
 
