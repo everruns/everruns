@@ -1376,6 +1376,7 @@ mod tests {
             "system_commands",
             "openui",
             "sample_data",
+            "tool_output_persistence",
             "fake_warehouse",
             "fake_aws",
             "fake_crm",
