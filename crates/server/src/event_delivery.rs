@@ -89,7 +89,7 @@ impl EventDelivery {
 /// Callers receive events via `recv()`.
 pub enum EventSubscription {
     InMemory(broadcast::Receiver<Event>),
-    Nats(async_nats::jetstream::consumer::pull::Stream),
+    Nats(Box<async_nats::jetstream::consumer::pull::Stream>),
 }
 
 impl EventSubscription {
@@ -145,6 +145,12 @@ const CHANNEL_CAPACITY: usize = 4096;
 /// Each session maps to a partition by hash. Subscribers filter by session_id.
 pub struct InMemoryEventDelivery {
     partitions: Vec<broadcast::Sender<Event>>,
+}
+
+impl Default for InMemoryEventDelivery {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InMemoryEventDelivery {
@@ -260,7 +266,7 @@ impl NatsEventDelivery {
             .await
             .context("Failed to get NATS message stream")?;
 
-        Ok(EventSubscription::Nats(messages))
+        Ok(EventSubscription::Nats(Box::new(messages)))
     }
 
     /// Shut down the NATS connection gracefully.
