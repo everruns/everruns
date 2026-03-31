@@ -349,6 +349,12 @@ async fn check_budget(
         .await
         .map_err(internal)?
         .ok_or_else(|| not_found("Budget"))?;
+    if budget.subject_type != "session" {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "Budget check only supported for session-scoped budgets via this endpoint",
+        ));
+    }
     let result = state
         .budget_service
         .check_budgets_for_session(org.org_id, &budget.subject_id, None)

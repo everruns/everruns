@@ -112,9 +112,8 @@ impl Tool for CheckBudgetTool {
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        // This is a placeholder. The worker's ToolExecutor intercepts this tool
-        // and calls BudgetService.check_budgets_for_session() to populate the
-        // real data. If we reach this code, no budgets are configured.
+        // This is a placeholder implementation. Real budget data requires
+        // worker-side tool interception, planned for a future iteration.
         ToolExecutionResult::success(serde_json::json!({
             "status": "no_budgets",
             "message": "No budgets are configured for this session. You can proceed without budget constraints."

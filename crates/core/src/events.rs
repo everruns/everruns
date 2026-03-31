@@ -1977,15 +1977,15 @@ impl_from_event_data! {
 }
 
 // Budget events reuse BudgetEventData for all four variants,
-// so we can't use the macro (it would conflict). Manual impls:
-impl From<(BudgetEventData, &str)> for EventData {
-    fn from((data, event_type): (BudgetEventData, &str)) -> Self {
+// so we can't use the macro (it would conflict). Named constructor instead.
+impl EventData {
+    pub fn budget_event(data: BudgetEventData, event_type: &str) -> Self {
         match event_type {
             BUDGET_WARNING => EventData::BudgetWarning(data),
             BUDGET_PAUSED => EventData::BudgetPaused(data),
             BUDGET_EXHAUSTED => EventData::BudgetExhausted(data),
             BUDGET_RESUMED => EventData::BudgetResumed(data),
-            _ => EventData::BudgetWarning(data),
+            _ => panic!("Unknown budget event type: {event_type}"),
         }
     }
 }

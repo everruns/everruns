@@ -37,7 +37,7 @@ impl BudgetService {
     pub fn row_to_budget(row: &BudgetRow) -> Budget {
         Budget {
             id: BudgetId::from_uuid(row.id),
-            organization_id: format!("org_{}", uuid::Uuid::from_u128(row.org_id as u128).simple()),
+            organization_id: everruns_core::org_public_id_from_internal(row.org_id),
             subject_type: BudgetSubjectType::from(row.subject_type.as_str()),
             subject_id: row.subject_id.clone(),
             currency: row.currency.clone(),
@@ -109,8 +109,10 @@ impl BudgetService {
                 session.org_id,
                 &session_public_id,
                 agent_public_id.as_deref(),
-                None, // user_id — not yet available in event context
-                None, // org_public_id — not yet needed
+                // TODO: user_id and org_public_id not yet available in event context;
+                // user/org-scoped budgets will require plumbing these through session/turn context
+                None,
+                None,
             )
             .await
         {
@@ -319,56 +321,72 @@ impl BudgetService {
         session_id: &str,
         agent_id: Option<&str>,
     ) -> BudgetCheckResult {
-        let budgets = match self
+        // Query session-scoped budgets
+        let mut all_matching = match self
             .db
-            .get_active_budgets_for_session(org_id, session_id, agent_id, None, None)
+            .list_budgets(org_id, Some("session"), Some(session_id))
             .await
         {
             Ok(b) => b,
             Err(e) => {
-                error!("Failed to check budgets: {}", e);
+                error!("Failed to check session budgets: {}", e);
                 return BudgetCheckResult::ok();
             }
         };
 
-        // Also check paused/exhausted budgets
-        let all_budgets = match self.db.list_budgets(org_id, None, None).await {
-            Ok(b) => b,
-            Err(_) => return BudgetCheckResult::ok(),
-        };
-
-        // Check for exhausted or paused budgets that match this session
-        for budget in &all_budgets {
-            let matches = (budget.subject_type == "session" && budget.subject_id == session_id)
-                || (budget.subject_type == "agent"
-                    && agent_id.is_some_and(|a| budget.subject_id == a));
-
-            if !matches {
-                continue;
+        // Query agent-scoped budgets if agent_id is provided
+        if let Some(aid) = agent_id {
+            match self.db.list_budgets(org_id, Some("agent"), Some(aid)).await {
+                Ok(b) => all_matching.extend(b),
+                Err(e) => error!("Failed to check agent budgets: {}", e),
             }
+        }
 
-            if budget.status == "exhausted" || budget.balance <= 0.0 {
-                return BudgetCheckResult {
-                    action: "stop".into(),
-                    message: Some(format!(
-                        "Budget exhausted ({} {})",
-                        budget.currency,
-                        BudgetId::from_uuid(budget.id)
-                    )),
-                    budget_id: Some(BudgetId::from_uuid(budget.id)),
-                    balance: Some(budget.balance),
-                    currency: Some(budget.currency.clone()),
+        // TODO: user_id and org_public_id not yet available in event context;
+        // user/org-scoped budgets will require plumbing these through session/turn context
+
+        // Evaluate ALL matching budgets and keep the most restrictive result.
+        // Priority: stop > pause > warn > continue
+        let mut most_restrictive = BudgetCheckResult::ok();
+        let mut most_restrictive_priority: u8 = 0; // 0=continue, 1=warn, 2=pause, 3=stop
+
+        for budget in &all_matching {
+            let (action_str, message, priority) =
+                if budget.status == "exhausted" || budget.balance <= 0.0 {
+                    (
+                        "stop",
+                        format!(
+                            "Budget exhausted ({} {})",
+                            budget.currency,
+                            BudgetId::from_uuid(budget.id)
+                        ),
+                        3u8,
+                    )
+                } else if budget.status == "paused" {
+                    (
+                        "pause",
+                        format!(
+                            "Budget paused ({} {})",
+                            budget.currency,
+                            BudgetId::from_uuid(budget.id)
+                        ),
+                        2u8,
+                    )
+                } else {
+                    // Active budget — evaluate rules
+                    match self.evaluate_rules(budget) {
+                        BudgetAction::Stop { message } => ("stop", message, 3u8),
+                        BudgetAction::Pause { message } => ("pause", message, 2u8),
+                        BudgetAction::Warn { message } => ("warn", message, 1u8),
+                        BudgetAction::Continue => continue,
+                    }
                 };
-            }
 
-            if budget.status == "paused" {
-                return BudgetCheckResult {
-                    action: "pause".into(),
-                    message: Some(format!(
-                        "Budget paused ({} {})",
-                        budget.currency,
-                        BudgetId::from_uuid(budget.id)
-                    )),
+            if priority > most_restrictive_priority {
+                most_restrictive_priority = priority;
+                most_restrictive = BudgetCheckResult {
+                    action: action_str.into(),
+                    message: Some(message),
                     budget_id: Some(BudgetId::from_uuid(budget.id)),
                     balance: Some(budget.balance),
                     currency: Some(budget.currency.clone()),
@@ -376,42 +394,7 @@ impl BudgetService {
             }
         }
 
-        // Check active budgets for warn
-        for budget in &budgets {
-            let action = self.evaluate_rules(budget);
-            match action {
-                BudgetAction::Stop { message } => {
-                    return BudgetCheckResult {
-                        action: "stop".into(),
-                        message: Some(message),
-                        budget_id: Some(BudgetId::from_uuid(budget.id)),
-                        balance: Some(budget.balance),
-                        currency: Some(budget.currency.clone()),
-                    };
-                }
-                BudgetAction::Pause { message } => {
-                    return BudgetCheckResult {
-                        action: "pause".into(),
-                        message: Some(message),
-                        budget_id: Some(BudgetId::from_uuid(budget.id)),
-                        balance: Some(budget.balance),
-                        currency: Some(budget.currency.clone()),
-                    };
-                }
-                BudgetAction::Warn { message } => {
-                    return BudgetCheckResult {
-                        action: "warn".into(),
-                        message: Some(message),
-                        budget_id: Some(BudgetId::from_uuid(budget.id)),
-                        balance: Some(budget.balance),
-                        currency: Some(budget.currency.clone()),
-                    };
-                }
-                BudgetAction::Continue => {}
-            }
-        }
-
-        BudgetCheckResult::ok()
+        most_restrictive
     }
 }
 
