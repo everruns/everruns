@@ -100,6 +100,7 @@ mod subagents;
 mod system_commands;
 mod test_math;
 mod test_weather;
+mod tool_output_persistence;
 mod virtual_bash;
 mod web_fetch;
 
@@ -436,6 +437,17 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Returns post-tool execution hooks provided by this capability.
+    ///
+    /// These hooks run after each individual tool completes execution.
+    /// They can persist output, inject metadata, or transform results.
+    /// Capability-contributed hooks run before infrastructure (final) hooks.
+    ///
+    /// By default, returns an empty vector (no hooks).
+    fn post_tool_exec_hooks(&self) -> Vec<Arc<dyn crate::atoms::PostToolExecHook>> {
+        vec![]
+    }
+
     /// Returns the risk level of this capability.
     ///
     /// TM-AGENT-005: High-risk capabilities (code execution, network access)
@@ -631,6 +643,9 @@ impl CapabilityRegistry {
 
         // System commands (/clear, /status, /compact, /model)
         registry.register(SystemCommandsCapability);
+
+        // Tool output persistence (EVE-222: persist exec output to VFS)
+        registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
 
         // OpenUI generative UI (all environments)
         registry.register(OpenUiCapability);
@@ -1361,6 +1376,7 @@ mod tests {
             "system_commands",
             "openui",
             "sample_data",
+            "tool_output_persistence",
             "fake_warehouse",
             "fake_aws",
             "fake_crm",

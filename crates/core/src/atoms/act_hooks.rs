@@ -6,15 +6,66 @@
 //
 // Decision: Hooks set `waiting_for_tool_results` on ActResult so workers
 // see a single generic flag — they never need to know WHY the act paused.
+//
+// PostToolExecHook (EVE-222): async hooks that run after each individual tool
+// execution. Unlike PostActHook (runs once after all tools), these run per-tool
+// and can mutate the result (e.g. persist output to VFS, inject metadata).
 
 use crate::events::{EventContext, EventRequest, ToolCallRequestedData};
-use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::traits::EventEmitter;
+use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use crate::traits::{EventEmitter, ToolContext};
+use async_trait::async_trait;
 use serde_json::json;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use super::AtomContext;
 use super::act::ActResult;
+
+// ============================================================================
+// PostToolExecHook trait (per-tool, async)
+// ============================================================================
+
+/// Hook that runs after each individual tool execution completes.
+///
+/// Unlike `PostActHook` (which runs once after all tools in a batch),
+/// `PostToolExecHook` runs per-tool and can:
+/// - Persist tool output to session VFS (EVE-222)
+/// - Inject metadata into the result (e.g. `full_output` path)
+/// - Enforce hard limits on result size (EVE-225)
+///
+/// Hooks are async because they may perform I/O (VFS writes).
+/// Capability-contributed hooks run first, then final (infrastructure) hooks.
+#[async_trait]
+pub trait PostToolExecHook: Send + Sync {
+    /// Called after a tool returns its result, before ActAtom emits events.
+    async fn after_exec(
+        &self,
+        tool_call: &ToolCall,
+        tool_def: &ToolDefinition,
+        result: &mut ToolResult,
+        context: &ToolContext,
+    );
+}
+
+/// Execute post-tool-exec hooks on a single tool result.
+///
+/// Runs capability-contributed hooks first, then final (infrastructure) hooks.
+pub(super) async fn run_post_tool_exec_hooks(
+    hooks: &[Arc<dyn PostToolExecHook>],
+    final_hooks: &[Arc<dyn PostToolExecHook>],
+    tool_call: &ToolCall,
+    tool_def: &ToolDefinition,
+    result: &mut ToolResult,
+    context: &ToolContext,
+) {
+    for hook in hooks {
+        hook.after_exec(tool_call, tool_def, result, context).await;
+    }
+    for hook in final_hooks {
+        hook.after_exec(tool_call, tool_def, result, context).await;
+    }
+}
 
 // ============================================================================
 // PostActHook trait
@@ -196,6 +247,7 @@ mod tests {
                 images: None,
                 error: None,
                 connection_required: connection_required.map(|s| s.to_string()),
+                raw_output: None,
             },
             success: true,
             status: "success".to_string(),

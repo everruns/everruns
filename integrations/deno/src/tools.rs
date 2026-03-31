@@ -281,14 +281,26 @@ impl Tool for DenoExecTool {
         }
 
         {
-            use everruns_core::tool_output_sanitizer::{EXEC_OUTPUT_BUDGET, sanitize_exec_output};
-            let stdout = sanitize_exec_output(&exec.stdout, EXEC_OUTPUT_BUDGET);
-            let stderr = sanitize_exec_output(&exec.stderr, 4096);
-            ToolExecutionResult::success(json!({
-                "exit_code": exec.exit_code,
-                "stdout": stdout,
-                "stderr": stderr,
-            }))
+            use everruns_core::tool_output_sanitizer::{
+                EXEC_OUTPUT_BUDGET, clean_exec_output, middle_truncate,
+            };
+            let clean_stdout = clean_exec_output(&exec.stdout);
+            let clean_stderr = clean_exec_output(&exec.stderr);
+            let stdout = middle_truncate(&clean_stdout, EXEC_OUTPUT_BUDGET);
+            let stderr = middle_truncate(&clean_stderr, 4096);
+            let mut raw = clean_stdout;
+            if !clean_stderr.is_empty() {
+                raw.push_str("\n--- stderr ---\n");
+                raw.push_str(&clean_stderr);
+            }
+            ToolExecutionResult::success_with_raw_output(
+                json!({
+                    "exit_code": exec.exit_code,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                }),
+                raw,
+            )
         }
     }
 

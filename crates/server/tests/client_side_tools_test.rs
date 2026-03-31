@@ -339,6 +339,7 @@ fn test_tool_call_and_result_correlation() {
         images: None,
         error: None,
         connection_required: None,
+        raw_output: None,
     };
 
     // IDs correlate

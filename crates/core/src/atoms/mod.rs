@@ -29,7 +29,9 @@ mod reason;
 
 // Re-export atoms and their types
 pub use act::{ActAtom, ActInput, ActResult, ToolCallResult};
-pub use act_hooks::{ClientSideToolHook, ConnectionSetupHook, PostActAction, PostActHook};
+pub use act_hooks::{
+    ClientSideToolHook, ConnectionSetupHook, PostActAction, PostActHook, PostToolExecHook,
+};
 pub use input::{InputAtom, InputAtomInput, InputAtomResult};
 pub use reason::{ReasonAtom, ReasonInput, ReasonResult};
 

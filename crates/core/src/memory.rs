@@ -511,6 +511,7 @@ impl ToolExecutor for MockToolExecutor {
             images: None,
             error: None,
             connection_required: None,
+            raw_output: None,
         })
     }
 }
@@ -547,6 +548,7 @@ impl ToolExecutor for EchoToolExecutor {
             images: None,
             error: None,
             connection_required: None,
+            raw_output: None,
         })
     }
 }
@@ -590,6 +592,7 @@ impl ToolExecutor for FailingToolExecutor {
             images: None,
             error: Some(self.error_message.clone()),
             connection_required: None,
+            raw_output: None,
         })
     }
 }

@@ -77,6 +77,17 @@ The pipeline:
 
 This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 
+### PostToolExecHook (per-tool hooks)
+
+`PostToolExecHook` is an async hook that runs after each individual tool execution, before ActAtom emits events. Capabilities contribute hooks via `Capability::post_tool_exec_hooks()`.
+
+Two hook slots run in sequence:
+1. **Capability hooks** (`post_tool_hooks`) — from active capabilities (e.g. `tool_output_persistence`)
+2. **Final hooks** (`final_post_tool_hooks`) — always-on infrastructure (e.g. EVE-225 hard limit)
+
+Current hooks:
+- **PersistOutputHook** (`tool_output_persistence` capability): When a tool declares `persist_output: true` in hints, writes full output to `/.exec-logs/{tool_call_id}.log` in session VFS and injects `full_output` path + `total_lines` into the result. See `crates/core/src/capabilities/tool_output_persistence.rs`.
+
 ### Tool Policies
 
 - `auto`: Execute immediately without approval

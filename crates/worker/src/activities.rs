@@ -449,7 +449,19 @@ pub async fn act_activity(
         .with_leased_resource_store(leased_resource_store)
         .with_schedule_store(schedule_store)
         .with_platform_store(platform_store)
-        .with_capability_registry(platform_definition.capability_registry().clone());
+        .with_capability_registry(platform_definition.capability_registry().clone())
+        // Collect post-tool hooks from all capabilities. Hooks self-gate on tool hints
+        // (e.g. persist_output), so this is safe even though it uses the full registry
+        // rather than only session-active capabilities. A future refinement could pass
+        // only hooks from the active capability set.
+        .with_post_tool_hooks(
+            platform_definition
+                .capability_registry()
+                .list()
+                .iter()
+                .flat_map(|c| c.post_tool_exec_hooks())
+                .collect(),
+        );
 
     atom.execute(input)
         .await
@@ -594,6 +606,7 @@ mod tests {
                     images: None,
                     error: None,
                     connection_required: None,
+                    raw_output: None,
                 },
                 success: true,
                 status: "success".to_string(),

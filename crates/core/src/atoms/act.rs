@@ -178,6 +178,12 @@ where
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
+    /// Post-tool-exec hooks (capability-contributed): run after each individual
+    /// tool execution. Capabilities register these via `post_tool_exec_hooks()`.
+    post_tool_hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
+    /// Final post-tool-exec hooks (infrastructure): run after capability hooks.
+    /// Always registered, cannot be removed by capabilities (EVE-225).
+    final_post_tool_hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
 }
 
 impl<T, E> ActAtom<T, E>
@@ -204,6 +210,8 @@ where
             memory_store: None,
             org_id: None,
             hooks: Self::default_hooks(),
+            post_tool_hooks: Vec::new(),
+            final_post_tool_hooks: Vec::new(),
         }
     }
 
@@ -230,6 +238,8 @@ where
             memory_store: None,
             org_id: None,
             hooks: Self::default_hooks(),
+            post_tool_hooks: Vec::new(),
+            final_post_tool_hooks: Vec::new(),
         }
     }
 
@@ -322,6 +332,17 @@ where
         registry: crate::capabilities::CapabilityRegistry,
     ) -> Self {
         self.capability_registry = Some(registry);
+        self
+    }
+
+    /// Add capability-contributed post-tool-exec hooks.
+    /// Callers should pass hooks from the *active* capabilities for this session,
+    /// not from the full platform registry.
+    pub fn with_post_tool_hooks(
+        mut self,
+        hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
+    ) -> Self {
+        self.post_tool_hooks.extend(hooks);
         self
     }
 
@@ -710,6 +731,7 @@ where
                     images: None,
                     error: Some(error_msg),
                     connection_required: None,
+                    raw_output: None,
                 },
                 success: false,
                 status: "error".to_string(),
@@ -768,7 +790,18 @@ where
             .await;
 
         match result {
-            Ok(tool_result) => {
+            Ok(mut tool_result) => {
+                // Run post-tool-exec hooks (capability then final/infrastructure)
+                act_hooks::run_post_tool_exec_hooks(
+                    &self.post_tool_hooks,
+                    &self.final_post_tool_hooks,
+                    &tool_call,
+                    tool_def,
+                    &mut tool_result,
+                    &tool_context,
+                )
+                .await;
+
                 let tool_duration_ms = tool_start.elapsed().as_millis() as u64;
                 let success = tool_result.error.is_none();
                 let status = if success { "success" } else { "error" };
@@ -909,6 +942,7 @@ where
                         images: None,
                         error: Some(error_msg),
                         connection_required: None,
+                        raw_output: None,
                     },
                     success: false,
                     status: "error".to_string(),
@@ -1120,6 +1154,7 @@ mod tests {
                     images: None,
                     error: None,
                     connection_required: Some("daytona".to_string()),
+                    raw_output: None,
                 },
                 success: false,
                 status: "success".to_string(),
