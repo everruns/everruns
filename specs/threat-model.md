@@ -610,7 +610,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-009 | Agent self-modification | Medium | Agents with `platform_management` capability can modify agents/sessions via tools; capability must be explicitly assigned; org-scoped | **OPEN** |
 | TM-AGENT-010 | Agent spawning agent chains | Medium | Agents with `platform_management` capability can create agents/sessions; capability must be explicitly assigned; no recursive depth limit | **OPEN** |
 | TM-AGENT-011 | Sensitive data in system prompt | Medium | PII must not be placed in system prompts; no encryption at rest for prompts | **OPEN** |
-| TM-AGENT-012 | Tool result size amplification | Medium | No size limit on tool results fed back to LLM; large results consume context and cost | **OPEN** |
+| TM-AGENT-012 | Tool result size amplification | Medium | 64 KiB hard limit on tool results via `OutputHardLimitHook` (EVE-225); always-on final hook in ActAtom | MITIGATED |
 | TM-AGENT-013 | Exfiltration via web_fetch | Medium | Agent with web_fetch capability can send session data to arbitrary URLs | **ACCEPTED** |
 | TM-AGENT-014 | Confused deputy — tool call with wrong session | Low | Tool context includes session_id; tools scoped to active session only | MITIGATED |
 | TM-AGENT-015 | Dangling tool calls cause LLM confusion | Low | Patched with synthetic "cancelled" results before LLM call; prevents API errors | MITIGATED |
@@ -922,7 +922,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-TENANT-008 | User listing cross-org | High | Add org filtering to GET /v1/users |
 | TM-DOS-008 | ReDoS via file grep endpoint | Medium | Add regex complexity limits and timeout |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
-| TM-AGENT-012 | Tool result size amplification | Medium | Cap tool result size fed back to LLM |
+| ~~TM-AGENT-012~~ | ~~Tool result size amplification~~ | ~~Medium~~ | Mitigated: 64 KiB hard limit via `OutputHardLimitHook` (EVE-225) |
 | TM-FS-008 | No session storage quota | Medium | Enforce per-session file size limits |
 | TM-TOOL-008 | Tool approval not enforced | Low | Implement HITL approval for requires_approval policy |
 | TM-TOOL-009 | No tool rate limiting | Medium | Per-agent tool execution rate limits |
