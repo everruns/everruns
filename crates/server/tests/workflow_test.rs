@@ -3986,9 +3986,9 @@ async fn test_agent_execution_multiple_tool_calls() {
 /// Test that streaming events are emitted during LLM generation.
 ///
 /// This test verifies that:
-/// 1. `output.message.started` event is emitted when LLM starts generating
-/// 2. `output.message.delta` events are emitted with delta and accumulated fields
-/// 3. `llm.generation` event includes time_to_first_token_ms
+/// 1. `output.message.started` event is emitted when LLM starts generating (durable, persisted)
+/// 2. `output.message.delta` events are ephemeral (may not appear in PG events list)
+/// 3. `llm.generation` events are ephemeral (may not appear in PG events list)
 ///
 /// Note: This test uses LlmSim which simulates streaming but does not produce
 /// extended thinking events (reason.thinking.delta, reason.thinking.completed).
@@ -4205,35 +4205,37 @@ async fn test_streaming_events_emitted() {
     );
 
     // Check for output.message.delta events
+    // Note: delta events are ephemeral (skip PG persistence, delivered via EventDelivery only).
+    // They may be absent from the PG events list — this is expected behavior.
     let delta_events: Vec<_> = events
         .iter()
         .filter(|e| e["type"] == "output.message.delta")
         .collect();
-    println!("Found {} output.message.delta events", delta_events.len());
-    assert!(
-        !delta_events.is_empty(),
-        "Expected at least one output.message.delta event"
+    println!(
+        "Found {} output.message.delta events (ephemeral — may be 0 in PG)",
+        delta_events.len()
     );
 
-    // Verify output.message.delta has required fields (turn_id, delta, accumulated)
-    let delta_event = &delta_events[0];
-    assert!(
-        delta_event["data"]["turn_id"].is_string(),
-        "output.message.delta should have turn_id"
-    );
-    assert!(
-        delta_event["data"]["delta"].is_string(),
-        "output.message.delta should have delta field"
-    );
-    assert!(
-        delta_event["data"]["accumulated"].is_string(),
-        "output.message.delta should have accumulated field"
-    );
-    println!(
-        "output.message.delta event: delta='{}', accumulated='{}'",
-        delta_event["data"]["delta"].as_str().unwrap_or(""),
-        delta_event["data"]["accumulated"].as_str().unwrap_or("")
-    );
+    // If deltas are present (e.g., EventDelivery::InMemory mode still persists), verify structure
+    if let Some(delta_event) = delta_events.first() {
+        assert!(
+            delta_event["data"]["turn_id"].is_string(),
+            "output.message.delta should have turn_id"
+        );
+        assert!(
+            delta_event["data"]["delta"].is_string(),
+            "output.message.delta should have delta field"
+        );
+        assert!(
+            delta_event["data"]["accumulated"].is_string(),
+            "output.message.delta should have accumulated field"
+        );
+        println!(
+            "output.message.delta event: delta='{}', accumulated='{}'",
+            delta_event["data"]["delta"].as_str().unwrap_or(""),
+            delta_event["data"]["accumulated"].as_str().unwrap_or("")
+        );
+    }
 
     // Check for output.message.completed event
     let completed_events: Vec<_> = events
@@ -4271,26 +4273,26 @@ async fn test_streaming_events_emitted() {
     );
 
     // Check for llm.generation event with time_to_first_token_ms
+    // Note: llm.generation is ephemeral (skip PG persistence). May be absent from PG events.
     let llm_events: Vec<_> = events
         .iter()
         .filter(|e| e["type"] == "llm.generation")
         .collect();
-    println!("Found {} llm.generation events", llm_events.len());
-    assert!(
-        !llm_events.is_empty(),
-        "Expected at least one llm.generation event"
+    println!(
+        "Found {} llm.generation events (ephemeral — may be 0 in PG)",
+        llm_events.len()
     );
 
-    let llm_event = &llm_events[0];
-    assert!(
-        llm_event["data"]["metadata"]["success"].as_bool() == Some(true),
-        "llm.generation should be successful"
-    );
-    // time_to_first_token_ms should be present when streaming events are emitted
-    if let Some(ttft) = llm_event["data"]["metadata"]["time_to_first_token_ms"].as_u64() {
-        println!("llm.generation time_to_first_token_ms: {}ms", ttft);
-    } else {
-        println!("llm.generation time_to_first_token_ms: not set (optional)");
+    if let Some(llm_event) = llm_events.first() {
+        assert!(
+            llm_event["data"]["metadata"]["success"].as_bool() == Some(true),
+            "llm.generation should be successful"
+        );
+        if let Some(ttft) = llm_event["data"]["metadata"]["time_to_first_token_ms"].as_u64() {
+            println!("llm.generation time_to_first_token_ms: {}ms", ttft);
+        } else {
+            println!("llm.generation time_to_first_token_ms: not set (optional)");
+        }
     }
 
     // Cleanup

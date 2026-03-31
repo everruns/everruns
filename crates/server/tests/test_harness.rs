@@ -173,7 +173,11 @@ impl TestServer {
         let driver_registry = Arc::new(platform_definition.driver_registry().clone());
 
         // Create event listeners (minimal for tests)
-        let event_service = Arc::new(services::EventService::with_listeners(db.clone(), vec![]));
+        let event_service = Arc::new(services::EventService::with_listeners(
+            db.clone(),
+            everruns_server::EventDelivery::in_memory(),
+            vec![],
+        ));
         let feature_flags = everruns_core::FeatureFlags::from_env(&grade);
 
         // Create module-specific states
@@ -182,6 +186,7 @@ impl TestServer {
             runner.clone(),
             auth_state.clone(),
             &platform_definition,
+            everruns_server::EventDelivery::in_memory(),
         );
         let messages_state = api::messages::AppState::new(
             db.clone(),
@@ -297,6 +302,7 @@ impl TestServer {
             runner.clone(),
             None, // No delivery dispatcher in tests
             feature_flags.notifications,
+            everruns_server::EventDelivery::in_memory(),
         );
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
@@ -305,6 +311,7 @@ impl TestServer {
             &platform_definition,
             feature_flags.notifications,
             api_base_url,
+            everruns_server::EventDelivery::in_memory(),
         );
 
         // Build API routes

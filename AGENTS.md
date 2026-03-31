@@ -67,6 +67,7 @@ Always make sure you are working on top of latest main from remote.
 
 - `specs/concepts.md` - Core entities, relationships, and concept diagram
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
+- `specs/parallel-execution-1m.md` - Scaling to 1M concurrent agents (partitioning, sharding, LLM routing)
 - `specs/embedding.md` - Embedding contract and `PlatformDefinition`
 - `specs/code-organization.md` - Naming conventions, type flow, testing, error handling
 - `specs/models.md` - Data models (Agent, Session, Message, etc.)
@@ -177,7 +178,7 @@ PORT_PREFIX=271 just start-all
 
 - `scripts/lib/services.sh`, `scripts/lib/infra.sh`, `scripts/lib/bench.sh`, `example.just`, and `local/Caddyfile` read `PORT_PREFIX`
 - Explicit `API_PORT`, `WORKER_GRPC_PORT`, `UI_PORT`, `PROXY_PORT`, `VALKEY_PORT`, and `DB_PORT` still override individual ports if needed
-- If `PORT_PREFIX` is unset, repo defaults are `9300` (proxy), `9301` (API), `9001` (worker gRPC), `9305` (UI), `6379` (Valkey), `9332` (Postgres)
+- If `PORT_PREFIX` is unset, repo defaults are `9300` (proxy), `9301` (API), `9001` (worker gRPC), `9305` (UI), `6379` (Valkey), `4222` (NATS), `9332` (Postgres)
 - UI-only worktree iteration:
 
 ```bash

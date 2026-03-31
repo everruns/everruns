@@ -245,6 +245,7 @@ impl AppState {
         platform_definition: &PlatformDefinition,
         notifications_enabled: bool,
         api_base_url: String,
+        event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::with_registry(
@@ -256,7 +257,7 @@ impl AppState {
                 runner.clone(),
                 notifications_enabled,
             )),
-            event_service: Arc::new(EventService::new(db.clone())),
+            event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             db,
             runner,
             auth,

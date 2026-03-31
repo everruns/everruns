@@ -43,7 +43,10 @@ pub struct DbMessageRetriever {
 
 impl DbMessageRetriever {
     pub fn new(db: Arc<StorageBackend>) -> Self {
-        let event_service = EventService::new(db.clone());
+        let event_service = EventService::new(
+            db.clone(),
+            crate::event_delivery::EventDelivery::in_memory(),
+        );
         Self { db, event_service }
     }
 

@@ -62,6 +62,7 @@ type BackgroundTaskFn =
 pub struct ServerContext {
     pub db: Arc<StorageBackend>,
     pub event_service: Arc<services::EventService>,
+    pub event_delivery: crate::event_delivery::EventDelivery,
     pub encryption: Option<Arc<EncryptionService>>,
     pub runner: Arc<dyn AgentRunner>,
     pub driver_registry: Arc<everruns_core::DriverRegistry>,
@@ -417,8 +418,18 @@ impl ServerAppBuilder {
         // Append custom event listeners
         event_listeners.extend(self.event_listeners);
 
+        // =====================================================================
+        // Event delivery (NATS JetStream / in-memory)
+        // =====================================================================
+        let event_delivery = if self.config.dev_mode {
+            crate::event_delivery::EventDelivery::in_memory()
+        } else {
+            crate::event_delivery::EventDelivery::from_env().await
+        };
+
         let event_service = Arc::new(services::EventService::with_listeners(
             db.clone(),
+            event_delivery.clone(),
             event_listeners,
         ));
 
@@ -465,6 +476,7 @@ impl ServerAppBuilder {
             runner.clone(),
             auth_state.clone(),
             platform_definition.as_ref(),
+            event_delivery.clone(),
         );
         let messages_state = api::messages::AppState::new(
             db.clone(),
@@ -472,8 +484,12 @@ impl ServerAppBuilder {
             auth_state.clone(),
             notifications_enabled,
         );
-        let tool_results_state =
-            api::tool_results::AppState::new(db.clone(), runner.clone(), auth_state.clone());
+        let tool_results_state = api::tool_results::AppState::new(
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
+            event_delivery.clone(),
+        );
         // Slack delivery dispatcher: event-driven message posting (replaces 120s polling).
         // Must be created before events_state takes ownership of event_broadcaster.
         let slack_dispatcher = if let Some(ref broadcaster) = event_broadcaster {
@@ -565,6 +581,7 @@ impl ServerAppBuilder {
             runner.clone(),
             slack_dispatcher.clone(),
             notifications_enabled,
+            event_delivery.clone(),
         );
         let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
@@ -651,6 +668,7 @@ impl ServerAppBuilder {
             platform_definition.as_ref(),
             notifications_enabled,
             mcp_api_base_url,
+            event_delivery.clone(),
         );
 
         let health_state = HealthState {
@@ -869,6 +887,7 @@ impl ServerAppBuilder {
         let server_context = ServerContext {
             db: db.clone(),
             event_service: event_service.clone(),
+            event_delivery: event_delivery.clone(),
             encryption: encryption.clone(),
             runner: runner.clone(),
             driver_registry: driver_registry.clone(),
@@ -1176,7 +1195,11 @@ impl ServerAppBuilder {
         }
 
         // -- Tool result timeout sweep (both prod and dev) --
-        crate::tool_result_timeout::spawn_tool_result_timeout_sweep(db.clone(), runner.clone());
+        crate::tool_result_timeout::spawn_tool_result_timeout_sweep(
+            db.clone(),
+            runner.clone(),
+            event_delivery.clone(),
+        );
 
         // -- Session schedule poller (both prod and dev) --
         crate::session_scheduler::spawn_session_scheduler(

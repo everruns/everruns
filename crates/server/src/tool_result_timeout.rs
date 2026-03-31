@@ -20,7 +20,11 @@ const SWEEP_INTERVAL_SECS: u64 = 30;
 
 /// Spawn a background task that periodically times out stale
 /// `waiting_for_tool_results` sessions.
-pub fn spawn_tool_result_timeout_sweep(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>) {
+pub fn spawn_tool_result_timeout_sweep(
+    db: Arc<StorageBackend>,
+    runner: Arc<dyn AgentRunner>,
+    event_delivery: crate::event_delivery::EventDelivery,
+) {
     let timeout_secs = std::env::var("TOOL_RESULT_TIMEOUT_SECS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -33,10 +37,14 @@ pub fn spawn_tool_result_timeout_sweep(db: Arc<StorageBackend>, runner: Arc<dyn 
             "Tool result timeout sweep started"
         );
 
+        let event_service = EventService::new(db.clone(), event_delivery);
+
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(SWEEP_INTERVAL_SECS)).await;
 
-            if let Err(e) = sweep_timed_out_sessions(&db, &runner, timeout_secs).await {
+            if let Err(e) =
+                sweep_timed_out_sessions(&db, &runner, &event_service, timeout_secs).await
+            {
                 tracing::warn!(error = %e, "Tool result timeout sweep error");
             }
         }
@@ -46,6 +54,7 @@ pub fn spawn_tool_result_timeout_sweep(db: Arc<StorageBackend>, runner: Arc<dyn 
 async fn sweep_timed_out_sessions(
     db: &Arc<StorageBackend>,
     runner: &Arc<dyn AgentRunner>,
+    event_service: &EventService,
     timeout_secs: u64,
 ) -> anyhow::Result<()> {
     let duration = chrono::Duration::try_seconds(timeout_secs.min(i64::MAX as u64) as i64)
@@ -63,10 +72,8 @@ async fn sweep_timed_out_sessions(
         "Found timed-out waiting_for_tool_results sessions"
     );
 
-    let event_service = EventService::new(db.clone());
-
     for (session_id, org_id) in timed_out {
-        if let Err(e) = timeout_session(db, &event_service, runner, session_id, org_id).await {
+        if let Err(e) = timeout_session(db, event_service, runner, session_id, org_id).await {
             tracing::warn!(
                 session_id = %session_id,
                 error = %e,

@@ -54,6 +54,7 @@ aes-gcm.workspace = true
 argon2.workspace = true
 governor.workspace = true
 fred.workspace = true
+async-nats.workspace = true
 parking_lot.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
