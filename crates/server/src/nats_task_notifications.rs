@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, mpsc};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::task_notifications::{TaskNotificationPayload, WorkerSubscription};
 
@@ -33,16 +33,25 @@ pub struct NatsTaskNotificationBroadcaster {
 
 impl NatsTaskNotificationBroadcaster {
     /// Connect to NATS and start listening for task notifications.
+    /// Verifies the initial subscription succeeds before returning.
     pub async fn new(nats_url: &str) -> Result<Self> {
         let client = async_nats::connect(nats_url)
             .await
             .context("Failed to connect to NATS for task notifications")?;
 
+        // Verify we can subscribe before returning Ok (fail fast on permissions/config errors)
+        let subject = format!("{NATS_TASK_SUBJECT_PREFIX}.>");
+        let test_sub = client
+            .subscribe(subject)
+            .await
+            .context("Failed initial NATS subscription for task notifications")?;
+        drop(test_sub);
+
         let (sender, _) = broadcast::channel(1024);
         let subscribers = Arc::new(RwLock::new(HashMap::new()));
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
-        // Start NATS subscription loop
+        // Start NATS subscription loop (with reconnection)
         let sender_clone = sender.clone();
         let client_clone = client.clone();
         tokio::spawn(async move {
@@ -118,6 +127,7 @@ impl NatsTaskNotificationBroadcaster {
     }
 
     /// Background loop: subscribe to task.available.> and broadcast to workers
+    /// Background loop with reconnection (mirrors PG NOTIFY listen_loop pattern).
     async fn listen_loop(
         client: async_nats::Client,
         sender: broadcast::Sender<TaskNotificationPayload>,
@@ -128,45 +138,56 @@ impl NatsTaskNotificationBroadcaster {
         info!("Starting NATS subscription for task notifications");
 
         let subject = format!("{NATS_TASK_SUBJECT_PREFIX}.>");
-        let mut subscription = match client.subscribe(subject.clone()).await {
-            Ok(sub) => sub,
-            Err(e) => {
-                error!(error = %e, "Failed to subscribe to NATS task notifications");
-                return;
-            }
-        };
-
-        info!(subject = %subject, "Listening for NATS task notifications");
-
         let prefix = format!("{NATS_TASK_SUBJECT_PREFIX}.");
 
+        // Outer retry loop — re-subscribe on connection loss (same pattern as PG NOTIFY)
         loop {
-            tokio::select! {
-                msg = subscription.next() => {
-                    match msg {
-                        Some(msg) => {
-                            let activity_type = msg.subject
-                                .strip_prefix(&prefix)
-                                .unwrap_or(&msg.subject)
-                                .to_string();
-
-                            debug!(activity_type = %activity_type, "NATS task notification received");
-
-                            let payload = TaskNotificationPayload {
-                                activity_type,
-                                pending_count: 0,
-                            };
-                            let _ = sender.send(payload);
-                        }
-                        None => {
-                            warn!("NATS subscription closed, restarting...");
-                            break;
+            let mut subscription = match client.subscribe(subject.clone()).await {
+                Ok(sub) => sub,
+                Err(e) => {
+                    warn!(error = %e, "Failed to subscribe to NATS task notifications, retrying in 5s");
+                    tokio::select! {
+                        _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => continue,
+                        _ = shutdown_rx.recv() => {
+                            info!("NATS task notification listener shutting down");
+                            return;
                         }
                     }
                 }
-                _ = shutdown_rx.recv() => {
-                    info!("NATS task notification listener shutting down");
-                    return;
+            };
+
+            info!(subject = %subject, "Listening for NATS task notifications");
+
+            // Inner message loop
+            loop {
+                tokio::select! {
+                    msg = subscription.next() => {
+                        match msg {
+                            Some(msg) => {
+                                let activity_type = msg.subject
+                                    .strip_prefix(&prefix)
+                                    .unwrap_or(&msg.subject)
+                                    .to_string();
+
+                                debug!(activity_type = %activity_type, "NATS task notification received");
+
+                                let payload = TaskNotificationPayload {
+                                    activity_type,
+                                    pending_count: 0,
+                                };
+                                let _ = sender.send(payload);
+                            }
+                            None => {
+                                warn!("NATS task subscription closed, re-subscribing in 1s...");
+                                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                                break; // Break inner loop → outer loop re-subscribes
+                            }
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        info!("NATS task notification listener shutting down");
+                        return;
+                    }
                 }
             }
         }

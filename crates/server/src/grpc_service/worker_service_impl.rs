@@ -1247,6 +1247,13 @@ impl WorkerService for WorkerServiceImpl {
             }
         })?;
 
+        // Notify NATS subscribers (no-op for PG backend — PG uses DB triggers)
+        if let Some(broadcaster) = &self.task_broadcaster {
+            broadcaster
+                .notify_task_available(&task_def.activity_type)
+                .await;
+        }
+
         // Record ActivityScheduled event
         let event = WorkflowEvent::ActivityScheduled {
             activity_id: task_def.activity_id,
@@ -1391,6 +1398,13 @@ impl WorkerService for WorkerServiceImpl {
 
         // Check if task will be retried
         let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
+
+        // Notify NATS when task goes back to pending for retry
+        if let (true, Some(broadcaster), Some(info)) =
+            (will_retry, &self.task_broadcaster, &task_info)
+        {
+            broadcaster.notify_task_available(&info.activity_type).await;
+        }
 
         // Record ActivityFailed event
         if let Some(info) = task_info {
