@@ -4874,6 +4874,51 @@
           "deleted"
         ]
       },
+      "BudgetEventData": {
+        "type": "object",
+        "description": "Data for budget lifecycle events (warning, paused, exhausted, resumed).",
+        "required": [
+          "budget_id",
+          "balance",
+          "limit",
+          "currency"
+        ],
+        "properties": {
+          "balance": {
+            "type": "number",
+            "format": "double",
+            "description": "Current remaining balance."
+          },
+          "budget_id": {
+            "type": "string",
+            "description": "Budget that triggered this event."
+          },
+          "currency": {
+            "type": "string",
+            "description": "Budget currency (e.g. \"usd\", \"tokens\")."
+          },
+          "limit": {
+            "type": "number",
+            "format": "double",
+            "description": "Budget limit."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable message."
+          },
+          "soft_limit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Soft limit threshold (present for warning/paused events)."
+          }
+        }
+      },
       "BuiltinTool": {
         "type": "object",
         "description": "Built-in tool configuration\n\nNote: The `kind` field has been removed. Tools are now identified\nsolely by their `name` field, and execution happens via the ToolRegistry\nwhich looks up tools by name.",
@@ -6297,6 +6342,18 @@
           },
           {
             "$ref": "#/components/schemas/ContextCompactedData"
+          },
+          {
+            "$ref": "#/components/schemas/BudgetEventData"
+          },
+          {
+            "$ref": "#/components/schemas/BudgetEventData"
+          },
+          {
+            "$ref": "#/components/schemas/BudgetEventData"
+          },
+          {
+            "$ref": "#/components/schemas/BudgetEventData"
           }
         ],
         "title": "EventData",
@@ -10828,12 +10885,13 @@
       },
       "SessionStatus": {
         "type": "string",
-        "description": "Session execution status.\n- `started`: Session just created, no turn executed yet\n- `active`: A turn is currently running\n- `idle`: Turn completed, session waiting for next input",
+        "description": "Session execution status.\n- `started`: Session just created, no turn executed yet\n- `active`: A turn is currently running\n- `idle`: Turn completed, session waiting for next input\n- `paused`: Budget limit reached, waiting for user to increase limit or resume",
         "enum": [
           "started",
           "active",
           "idle",
-          "waitingfortoolresults"
+          "waitingfortoolresults",
+          "paused"
         ]
       },
       "Skill": {
