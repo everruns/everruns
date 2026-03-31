@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 impl InMemoryDatabase {
-    // Audit Logs (TM-OBS-007)
+    // Audit Logs (TM-OBS-007, EVE-226)
 
     pub async fn create_audit_log(&self, input: CreateAuditLogRow) -> Result<AuditLogRow> {
         let row = AuditLogRow {
@@ -18,33 +18,36 @@ impl InMemoryDatabase {
             ip_address: input.ip_address,
             metadata: input.metadata,
             created_at: Self::now(),
+            domain: input.domain,
+            action: input.action,
+            target_type: input.target_type,
+            target_id: input.target_id,
         };
         self.audit_logs.write().push(row.clone());
         Ok(row)
     }
 
-    pub async fn list_audit_logs(
-        &self,
-        org_id: i64,
-        limit: i64,
-        before: Option<DateTime<Utc>>,
-        event_type_prefix: Option<&str>,
-        actor_id: Option<Uuid>,
-    ) -> Result<Vec<AuditLogRow>> {
+    pub async fn list_audit_logs(&self, query: AuditLogQuery<'_>) -> Result<Vec<AuditLogRow>> {
         let logs = self.audit_logs.read();
-        let before_ts = before.unwrap_or_else(|| Utc::now() + chrono::Duration::seconds(1));
+        let before_ts = query
+            .before
+            .unwrap_or_else(|| Utc::now() + chrono::Duration::seconds(1));
         let mut filtered: Vec<_> = logs
             .iter()
             .filter(|r| {
-                r.org_id == org_id
+                r.org_id == query.org_id
                     && r.created_at < before_ts
-                    && event_type_prefix.is_none_or(|p| r.event_type.starts_with(p))
-                    && actor_id.is_none_or(|a| r.actor_id == Some(a))
+                    && query
+                        .event_type_prefix
+                        .is_none_or(|p| r.event_type.starts_with(p))
+                    && query.actor_id.is_none_or(|a| r.actor_id == Some(a))
+                    && query.domain.is_none_or(|d| r.domain == d)
+                    && query.action.is_none_or(|a| r.action == a)
             })
             .cloned()
             .collect();
         filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        filtered.truncate(limit as usize);
+        filtered.truncate(query.limit as usize);
         Ok(filtered)
     }
 

@@ -4,6 +4,7 @@
 pub mod agent;
 pub mod agent_identity;
 pub mod app;
+pub mod audit_log;
 pub mod capability;
 pub(crate) mod capability_validation;
 pub mod eval;
@@ -27,6 +28,7 @@ pub mod usage_tracking;
 pub use agent::AgentService;
 pub use agent_identity::AgentIdentityService;
 pub use app::AppService;
+pub use audit_log::AuditLogService;
 pub use capability::CapabilityService;
 pub use eval::EvalService;
 pub use event::EventService;

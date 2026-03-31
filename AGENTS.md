@@ -106,6 +106,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/prometheus-metrics.md` - Prometheus `/metrics` endpoint and scrape configuration
 - `specs/evals.md` - User-facing behavioral evals for agents (cases, scorers, runs)
 - `specs/encryption.md` - Envelope encryption for sensitive data
+- `specs/audit-logging.md` - Audit logging (domains, AOP macro, trait, API)
 - `specs/session-filesystem.md` - Per-session virtual filesystem
 - `specs/cli.md` - CLI specification (commands, file sync, wire protocol)
 - `specs/usage-tracking.md` - LLM token usage tracking
