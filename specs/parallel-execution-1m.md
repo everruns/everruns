@@ -869,29 +869,13 @@ NATS is already deployed from Phase 1. Extend it for task distribution.
 
 **Impact**: Task distribution off PG. No row locking, no index bloat. NATS cluster already running.
 
-### Phase 4: Kafka for durable event cold storage — ~2-3 weeks
+### Phase 4: Kafka for durable event cold storage (future consideration)
 
-At high scale, PG INSERT for every durable event still bottlenecks. Move durable event writes to Kafka with async PG backfill.
+At extreme scale (500K+ agents), synchronous PG INSERT for every durable event may bottleneck. Kafka/Redpanda would decouple the write path: durable events publish to Kafka, an async consumer backfills PG via batched COPY. SSE continues reading from NATS (unchanged). PG becomes cold storage for REST API and dashboards with 2-5s acceptable lag. Evaluate after Phase 3 based on measured PG write throughput.
 
-1. Kafka/Redpanda cluster deployment
-2. `EventService.emit()` publishes durable events to Kafka (in addition to NATS for real-time)
-3. Kafka consumer backfills PG events table (batched COPY)
-4. Remove synchronous `db.create_event()` from emit hot path
-5. SSE still reads from NATS (unchanged). PG is cold storage only.
-6. REST API reads from PG (historical queries, acceptable 2-5s lag)
+### Phase 5: Horizontal sharding (future consideration)
 
-**Impact**: Durable event writes fully off PG hot path. PG receives async batched writes only.
-
-### Phase 5: Horizontal sharding — ~4-6 weeks
-
-1. PG table partitioning by org_id (hash, 32 partitions)
-2. Worker partition affinity in `DurableWorkerConfig`
-3. Multi-instance control plane with org-based routing
-4. Shard-local SSE (load balancer routes by org, NATS subjects namespaced by shard)
-5. LLM request router with key pooling and priority queuing
-6. Lightweight session creation (`lite` mode)
-
-**Impact**: Linear horizontal scale. 4 shards = 1M agents.
+For 1M+ concurrent agents, shard the control plane and PostgreSQL by org_id. Multiple CP instances each own a partition range, routed by load balancer. Includes PG hash partitioning (32 partitions), worker partition affinity, shard-local NATS subjects, and an LLM request router with key pooling. Evaluate after Phase 3 based on measured single-instance ceiling.
 
 ## Key Design Decisions
 
@@ -915,7 +899,7 @@ At high scale, PG INSERT for every durable event still bottlenecks. Move durable
 
 6. **PostgreSQL as cold storage, not hot path** — At 1M, PG serves reads (session history, agent config, dashboards) and receives async bulk writes (batched events from Kafka consumer). It never sits in the hot path of task dispatch or real-time event delivery.
 
-## Data Flow at 1M (Revised)
+## Data Flow (After Phase 3)
 
 ```
                          ┌──────────────────────────┐
@@ -923,56 +907,50 @@ At high scale, PG INSERT for every durable event still bottlenecks. Move durable
                          └────────────▲─────────────┘
                                       │
 ┌─────────────────────────────────────┼─────────────────────────────────────┐
-│                              Workers (1000+)                               │
+│                              Workers                                       │
 │                                     │                                      │
 │  ┌──────────────────────────────────┼──────────────────────────────────┐  │
-│  │  1. Claim task from NATS JetStream (consumer group, partitioned)   │  │
+│  │  1. Claim task from NATS JetStream (consumer group)                │  │
 │  │  2. Execute: Input → Reason (LLM) → Act (tools)                    │  │
-│  │  3. Publish events to Kafka topic (session events)                 │  │
+│  │  3. gRPC EmitEvent / StreamEphemeral → Control Plane               │  │
 │  │  4. ACK task in NATS                                                │  │
-│  │  5. Publish task notifications to NATS (if spawned child tasks)    │  │
 │  └──────────────────────────────────┼──────────────────────────────────┘  │
-│                                     │                                      │
+│                                     │ gRPC only                            │
 └─────────────────────────────────────┼─────────────────────────────────────┘
                                       │
-          ┌───────────────────────────┼───────────────────────────┐
-          │                           │                           │
-   ┌──────▼──────┐           ┌────────▼────────┐         ┌───────▼───────┐
-   │ NATS         │           │ Kafka/Redpanda  │         │ PostgreSQL    │
-   │ JetStream    │           │                 │         │ (sharded)     │
-   │              │           │ • events topic  │         │               │
-   │ • task queue │           │   (by session)  │         │ • sessions    │
-   │   (by type   │           │ • async PG      │         │ • agents      │
-   │    + org)    │           │   writer        │─batch──▶│ • events      │
-   │ • pub/sub    │──push────▶│ • SSE fan-out   │         │   (cold)      │
-   │   (notifs)   │           │                 │         │ • workflows   │
-   └──────────────┘           └─────────────────┘         │ • orgs        │
-                                      │                   └───────────────┘
-                                      │ push
                                ┌──────▼──────┐
                                │ Control     │
-                               │ Plane (×4)  │
+                               │ Plane       │
                                │             │
                                │ • REST API  │
                                │ • SSE out   │
-                               │ • gRPC      │
-                               └─────────────┘
+                               │ • gRPC in   │
+                               └──┬───────┬──┘
+                                  │       │
+                    ┌─────────────▼─┐   ┌─▼─────────────┐
+                    │ NATS JetStream │   │ PostgreSQL     │
+                    │                │   │                │
+                    │ • SSE delivery │   │ • sessions     │
+                    │   (all events) │   │ • agents       │
+                    │ • task queue   │   │ • durable      │
+                    │ • notifications│   │   events (cold)│
+                    └────────────────┘   │ • workflows    │
+                                         │ • orgs         │
+                                         └────────────────┘
 ```
 
-**Hot path** (task dispatch + event delivery): NATS + Kafka only. No PostgreSQL in the loop.
+**Hot path** (task dispatch + event delivery): NATS only. No PostgreSQL in the loop.
 
-**Warm path** (session state reads during execution): PostgreSQL via gRPC, with connection pooling. Workers read session config, write workflow state updates.
+**Warm path** (session state, workflow state): PostgreSQL via gRPC. Durable event writes still go to PG synchronously (until Phase 4).
 
-**Cold path** (dashboards, history, search): PostgreSQL read replicas. Kafka consumer backfills events asynchronously.
+**Cold path** (dashboards, history, REST API): PostgreSQL.
 
 ## Risks
 
 | Risk | Mitigation |
 |------|-----------|
-| Cross-shard operations (admin queries, global search) | Aggregation API that fans out to all shards |
-| Shard hotspots (one org with 500K agents) | Sub-org sharding key (org_id + session_id hash) |
-| NATS as new SPOF | 3-node cluster, fallback to PostgreSQL polling |
-| Kafka consumer lag (events delayed to PG) | Monitor consumer lag, alert at >10s. Acceptable for cold storage — SSE reads from Kafka directly |
-| Operational complexity (3 stateful systems) | NATS + Kafka only deployed at Tier 2/3. Single-org stays on PG-only |
-| Migration complexity (partitioning existing tables) | pg_partman for online partition creation, backfill in background |
-| LLM cost at 1M scale | Tiered models (fast/cheap for simple tasks, expensive for complex), aggressive caching of common prompts |
+| NATS as new SPOF | 3-node cluster, fallback to PostgreSQL polling when `NATS_URL` not set |
+| NATS JetStream storage growth | Per-session retention limits (1 hour or 10K messages), ephemeral events expire quickly |
+| SSE reconnection gap | Durable events replayed from PG on reconnect. Missed ephemeral deltas acceptable (completed event has full text) |
+| Operational complexity (PG + NATS) | NATS only deployed when needed. Dev mode stays PG-only |
+| LLM cost at scale | Tiered models (fast/cheap for simple tasks, expensive for complex), aggressive caching of common prompts |
