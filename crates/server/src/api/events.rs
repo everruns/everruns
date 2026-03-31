@@ -127,14 +127,11 @@ impl AppState {
         listeners: Vec<Arc<dyn EventListener>>,
         auth: AuthState,
         sse_tracker: Arc<SseConnectionTracker>,
+        event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
-            event_service: Arc::new(EventService::with_listeners(
-                db,
-                crate::event_delivery::EventDelivery::in_memory(),
-                listeners,
-            )),
+            event_service: Arc::new(EventService::with_listeners(db, event_delivery, listeners)),
             sse_tracker,
             event_broadcaster: None,
             auth,
@@ -323,15 +320,21 @@ pub async fn stream_sse(
     let subscription = Arc::new(tokio::sync::Mutex::new(subscription));
 
     // Helper: convert Event to SSE format
+    // Only set SSE `id:` for durable events (those with a PG sequence), so that
+    // reconnect cursors (`since_id`) always refer to an event that exists in PostgreSQL.
+    // Ephemeral events (no sequence) get no `id:` field — the client's last-event-id
+    // stays pointing to the most recent durable event.
     fn event_to_sse(event: &Event, retry: Duration) -> Result<SseEvent, Infallible> {
         let event_type = event.event_type.clone();
-        let event_id = event.id.to_string();
         let json = serde_json::to_string(event).unwrap_or_else(|_| "{}".to_string());
-        Ok(SseEvent::default()
+        let mut sse = SseEvent::default()
             .event(&event_type)
             .data(json)
-            .id(event_id)
-            .retry(retry))
+            .retry(retry);
+        if event.sequence.is_some() {
+            sse = sse.id(event.id.to_string());
+        }
+        Ok(sse)
     }
 
     // Helper: check if event passes type filters

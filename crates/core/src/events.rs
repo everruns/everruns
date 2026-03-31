@@ -2067,12 +2067,7 @@ impl EventRequest {
     pub fn is_ephemeral(&self) -> bool {
         matches!(
             self.event_type.as_str(),
-            OUTPUT_MESSAGE_DELTA
-                | OUTPUT_MESSAGE_STARTED
-                | REASON_THINKING_DELTA
-                | REASON_THINKING_STARTED
-                | TOOL_OUTPUT_DELTA
-                | LLM_GENERATION
+            OUTPUT_MESSAGE_DELTA | REASON_THINKING_DELTA | TOOL_OUTPUT_DELTA | LLM_GENERATION
         )
     }
 

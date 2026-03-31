@@ -69,13 +69,15 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>, auth: AuthState) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        runner: Arc<dyn AgentRunner>,
+        auth: AuthState,
+        event_delivery: crate::event_delivery::EventDelivery,
+    ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
-            event_service: EventService::new(
-                db.clone(),
-                crate::event_delivery::EventDelivery::in_memory(),
-            ),
+            event_service: EventService::new(db.clone(), event_delivery),
             db,
             runner,
             auth,

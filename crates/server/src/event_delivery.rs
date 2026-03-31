@@ -106,30 +106,33 @@ impl EventSubscription {
                     Err(broadcast::error::RecvError::Closed) => return None,
                 }
             },
-            Self::Nats(stream) => {
+            Self::Nats(stream) => loop {
                 use futures::StreamExt;
                 match stream.next().await {
                     Some(Ok(msg)) => {
                         let event: Event = match serde_json::from_slice(&msg.payload) {
                             Ok(e) => e,
                             Err(e) => {
-                                warn!(error = %e, "Failed to deserialize NATS event");
-                                return None;
+                                // Ack the bad message so it's not redelivered, then continue
+                                warn!(error = %e, "Failed to deserialize NATS event, skipping");
+                                if let Err(ack_err) = msg.ack().await {
+                                    warn!(error = %ack_err, "Failed to ack malformed NATS message");
+                                }
+                                continue;
                             }
                         };
-                        // Ack the message so JetStream doesn't redeliver
                         if let Err(e) = msg.ack().await {
                             warn!(error = %e, "Failed to ack NATS message");
                         }
-                        Some(event)
+                        return Some(event);
                     }
                     Some(Err(e)) => {
                         warn!(error = %e, "NATS subscription error");
-                        None
+                        return None;
                     }
-                    None => None,
+                    None => return None,
                 }
-            }
+            },
         }
     }
 }

@@ -302,6 +302,7 @@ impl TestServer {
             runner.clone(),
             None, // No delivery dispatcher in tests
             feature_flags.notifications,
+            everruns_server::EventDelivery::in_memory(),
         );
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
@@ -310,6 +311,7 @@ impl TestServer {
             &platform_definition,
             feature_flags.notifications,
             api_base_url,
+            everruns_server::EventDelivery::in_memory(),
         );
 
         // Build API routes

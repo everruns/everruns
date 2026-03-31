@@ -207,6 +207,7 @@ impl SlackState {
         runner: Arc<dyn AgentRunner>,
         delivery_dispatcher: Option<Arc<SlackDeliveryDispatcher>>,
         notifications_enabled: bool,
+        event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             app_service: Arc::new(AppService::new(db.clone(), encryption)),
@@ -216,10 +217,7 @@ impl SlackState {
                 runner,
                 notifications_enabled,
             )),
-            event_service: Arc::new(EventService::new(
-                db.clone(),
-                crate::event_delivery::EventDelivery::in_memory(),
-            )),
+            event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             db,
             user_name_cache: Arc::new(RwLock::new(HashMap::new())),
             delivery_dispatcher,
@@ -2784,7 +2782,14 @@ mod tests {
         // When fetch returns empty, inject_thread_context should succeed as no-op
         let db = Arc::new(StorageBackend::in_memory());
         let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
-        let state = SlackState::new(db, None, runner, None, false);
+        let state = SlackState::new(
+            db,
+            None,
+            runner,
+            None,
+            false,
+            crate::event_delivery::EventDelivery::in_memory(),
+        );
         let session_id = setup_test_session(&state.db).await;
 
         // inject with no network (fetch will fail gracefully → empty replies → Ok)
