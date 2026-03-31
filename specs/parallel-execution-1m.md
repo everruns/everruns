@@ -739,72 +739,155 @@ The Kafka → PG consumer batches durable events (COPY protocol). The Kafka → 
 
 The original phases (Tier 1/2/3) map to infrastructure layers. These revised phases are ordered by **impact per effort** and build on each other without throwaway code.
 
-### Phase 1: Ephemeral delta events via Valkey — ~1-2 weeks
+### SSE Architecture: NATS for real-time, PG for replay
 
-**Problem with naive approach**: If we just skip `db.create_event()` for deltas, SSE streams stop seeing them entirely. SSE works by polling `event_service.list()` from PostgreSQL (`crates/server/src/api/events.rs:418`). The `EventNotificationBroadcaster` doesn't carry event data — it's just a "wake up and poll PG" signal. Deltas must still reach SSE clients, just not through PG.
+The current SSE stream has a fundamental problem: it **polls PostgreSQL in a loop** (`event_service.list(session_id, since_id)` every 100-500ms). PG NOTIFY is just a waker ("poll now"), not a delivery mechanism. This means:
 
-**Approach — use Valkey pub/sub for deltas from day 1:**
+1. Every SSE connection holds a tokio task that queries PG repeatedly
+2. At 10K SSE connections × 2-10 polls/sec = 20-100K queries/sec just for SSE
+3. All events (including deltas) must be persisted before SSE can see them
 
-Even for a single control plane instance, use Valkey (already deployed) as the delta channel. This makes Phase 1 horizontally scalable from the start and avoids building an in-process-only path that gets thrown away later.
+**Replace with: NATS for all real-time SSE delivery, PG for reconnection replay only.**
+
+NATS JetStream (not core pub/sub) is the right fit because it gives **both** real-time push delivery **and** replay from a position — which solves the SSE `since_id` reconnection problem that pure fire-and-forget pub/sub can't handle.
 
 ```
-EventService.emit():
-  ├─ is_ephemeral? → Valkey PUBLISH session:{id}:deltas (skip PG)
-  └─ is_durable?   → db.create_event() (PG INSERT, unchanged)
+                    Normal operation (connected)     Reconnection (since_id)
+                    ────────────────────────────     ───────────────────────
 
-SSE stream (two sources, merged):
-  ├─ Valkey SUBSCRIBE session:{id}:deltas → ephemeral events (real-time)
-  └─ Poll event_service.list() from PG   → durable events (existing path)
+EventService.emit()                                  Client reconnects with since_id
+  │                                                    │
+  ├─ All events ──► NATS JetStream                     ├─ Durable events: PG query
+  │                 stream: events.{session_id}        │   SELECT * FROM events
+  │                 │                                  │   WHERE session_id = $1
+  │                 │ (real-time push)                 │   AND sequence > $2
+  │                 ▼                                  │
+  │                 SSE client                          ├─ Ephemeral events: missed
+  │                                                    │   (acceptable — completed
+  │                                                    │    event has full text)
+  ├─ Durable ────► PG INSERT (for replay/REST)         │
+  │                                                    └─► Resume NATS subscription
+  └─ Ephemeral ──► NATS only (no PG)
 ```
+
+**How the SSE stream changes:**
+
+```
+Current (poll PG):
+  loop {
+    events = event_service.list(session_id, since_id)  // PG query
+    if events.empty() {
+      select! {
+        pg_notify.notified() => {}  // wake up early
+        sleep(backoff) => {}        // fallback
+      }
+    }
+    send_sse(events)
+  }
+
+Proposed (subscribe NATS):
+  // On connect: replay missed durable events from PG (if since_id provided)
+  if since_id.is_some() {
+    missed = event_service.list(session_id, since_id)  // PG query, ONE TIME
+    send_sse(missed)
+  }
+
+  // Then: subscribe to NATS stream for real-time push
+  let consumer = nats.subscribe("events.{session_id}").await;
+  loop {
+    select! {
+      event = consumer.next() => send_sse(event)  // push, no polling
+      _ = cycle_timer => send_disconnecting()
+    }
+  }
+```
+
+**Key differences:**
+
+| Aspect | Current (PG poll) | Proposed (NATS + PG) |
+|---|---|---|
+| Delivery | Poll PG every 100-500ms | NATS push, ~1ms |
+| PG load per SSE connection | 2-10 queries/sec continuous | 0-1 query on connect (replay) |
+| Delta delivery | PG INSERT + PG query | NATS only, no PG |
+| Reconnection (`since_id`) | PG query (same as normal) | PG query (one-time catch-up), then NATS |
+| Cross-instance | PG NOTIFY waker (works) | NATS subscription (native) |
+| DB connections consumed | 1 per SSE stream (pool contention) | 0 during normal streaming |
+
+**Why NATS JetStream, not NATS core pub/sub:**
+
+NATS core pub/sub is fire-and-forget — if the SSE connection drops for 2 seconds, events during that window are lost. NATS JetStream retains messages and supports consumer replay from a sequence position. This maps directly to SSE's `since_id` reconnection:
+
+- NATS JetStream stream: `events.{session_id}`, retention per session (e.g., 1 hour or 10K messages)
+- On SSE connect: create ephemeral JetStream consumer, deliver from "last received" position
+- On SSE reconnect: consumer replays from where it left off (NATS handles this)
+- Ephemeral events (deltas) are in JetStream briefly (~minutes) then expire. Long-term replay (hours/days) falls back to PG for durable events only
+
+**What about Valkey?** Valkey stays for rate limiting (its current job). Delta pub/sub moves to NATS JetStream since we need JetStream anyway for replay semantics. No point running two pub/sub systems.
+
+**Dev mode fallback:** When `NATS_URL` is not set (dev mode, `just start-dev`), all events go to PG as today. The SSE stream falls back to the current poll loop. Zero regression.
+
+### Phase 1: NATS JetStream for SSE delivery — ~2-3 weeks
+
+This is a bigger first phase but eliminates more throwaway code. NATS becomes the single real-time delivery layer for all events.
 
 **Steps:**
 
-1. Add `is_ephemeral()` to `EventRequest` — classify 5 event types (`output.message.delta`, `output.message.started`, `reason.thinking.delta`, `reason.thinking.started`, `tool.output.delta`)
-2. `EventService.emit()` — ephemeral events go to Valkey `PUBLISH`, return synthetic Event (no PG id/sequence)
-3. SSE stream — spawn Valkey `SUBSCRIBE` task per session alongside existing PG poll. On message: deserialize, push to SSE client directly
-4. Fallback: if `VALKEY_URL` not set (dev mode), all events go to PG as today. Zero regression for `just start-dev`
-5. Load test: validate delta throughput and SSE latency
+1. Deploy NATS with JetStream enabled (single node for dev, 3-node for prod)
+2. Add `async-nats` crate dependency to `crates/server`
+3. Add `is_ephemeral()` to `EventRequest` — classify delta event types
+4. `EventService.emit()`:
+   - All events → publish to NATS JetStream stream `events.{session_id}`
+   - Durable events → also `db.create_event()` (PG INSERT, unchanged)
+   - Ephemeral events → NATS only, skip PG
+5. Rewrite SSE stream (`crates/server/src/api/events.rs`):
+   - On connect with `since_id`: one-time PG query for missed durable events, then subscribe to NATS
+   - On connect without `since_id`: subscribe to NATS directly
+   - Replace poll loop with NATS consumer `next()` — no backoff, no PG polling
+6. Remove `EventNotificationBroadcaster` (PG NOTIFY listener) — no longer needed
+7. Dev mode: if `NATS_URL` not set, fall back to current PG poll (zero regression)
+8. Load test: validate delta throughput, SSE latency, reconnection replay
 
-**Why Valkey from day 1**: An in-process `broadcast::channel` only works single-instance. Starting with Valkey (~50 lines of `fred` pub/sub) works at any number of control plane instances. No throwaway code.
-
-**Impact**: Eliminates ~80% of PG event writes. Horizontally scalable from the start.
+**Impact**: Eliminates ~80% of PG event writes (deltas). Eliminates PG polling from SSE entirely. Horizontally scalable. Single delivery mechanism for all event types.
 
 ### Phase 2: gRPC streaming for deltas — ~1 week
 
 1. Add `StreamEphemeralEvents` bidirectional streaming RPC to proto
 2. Worker `GrpcEventEmitter` routes ephemeral events to stream, durable to unary RPC
-3. Control plane reads stream, publishes to Valkey
+3. Control plane reads stream, publishes to NATS JetStream
 4. `EventEmitter` trait unchanged — transparent to `ReasonAtom`
 
 **Impact**: Removes per-delta gRPC round-trip. Workers go from 10 blocking calls/sec to 1 stream per session.
 
-### Phase 3: Kafka for durable events — ~2-3 weeks
+### Phase 3: NATS JetStream for task queue — ~2-3 weeks
+
+NATS is already deployed from Phase 1. Extend it for task distribution.
+
+1. Task enqueue publishes to NATS JetStream (instead of PG `INSERT INTO durable_task_queue`)
+2. Workers subscribe to NATS consumer groups (instead of gRPC task claiming via PG)
+3. PG `durable_task_queue` kept for persistence/recovery, backfilled from NATS
+4. Replace PG `NOTIFY` for task notifications with NATS pub/sub
+
+**Impact**: Task distribution off PG. No row locking, no index bloat. NATS cluster already running.
+
+### Phase 4: Kafka for durable event cold storage — ~2-3 weeks
+
+At high scale, PG INSERT for every durable event still bottlenecks. Move durable event writes to Kafka with async PG backfill.
 
 1. Kafka/Redpanda cluster deployment
-2. `EventService.emit()` publishes durable events to Kafka topic (partitioned by session_id)
+2. `EventService.emit()` publishes durable events to Kafka (in addition to NATS for real-time)
 3. Kafka consumer backfills PG events table (batched COPY)
-4. SSE durable events read from Kafka partition (not PG poll)
-5. Sequence numbers from Kafka offsets (remove `allocate_event_sequence()` PG lock)
+4. Remove synchronous `db.create_event()` from emit hot path
+5. SSE still reads from NATS (unchanged). PG is cold storage only.
+6. REST API reads from PG (historical queries, acceptable 2-5s lag)
 
-**Impact**: Durable event writes off the PG hot path. PG becomes cold storage.
-
-### Phase 4: NATS JetStream for task queue — ~2-3 weeks
-
-1. NATS cluster deployment
-2. Task enqueue publishes to NATS JetStream (instead of PG `INSERT INTO durable_task_queue`)
-3. Workers subscribe to NATS consumer groups (instead of gRPC task claiming)
-4. PG `durable_task_queue` kept for persistence/recovery, backfilled from NATS
-5. Replace PG `NOTIFY` for task notifications with NATS pub/sub
-6. At this scale, delta pub/sub can migrate from Valkey to NATS (NATS is already deployed, consolidate)
-
-**Impact**: Task distribution off PG. No row locking, no index bloat.
+**Impact**: Durable event writes fully off PG hot path. PG receives async batched writes only.
 
 ### Phase 5: Horizontal sharding — ~4-6 weeks
 
 1. PG table partitioning by org_id (hash, 32 partitions)
 2. Worker partition affinity in `DurableWorkerConfig`
 3. Multi-instance control plane with org-based routing
-4. Shard-local SSE (load balancer routes by org)
+4. Shard-local SSE (load balancer routes by org, NATS subjects namespaced by shard)
 5. LLM request router with key pooling and priority queuing
 6. Lightweight session creation (`lite` mode)
 
