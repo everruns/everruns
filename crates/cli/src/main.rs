@@ -68,6 +68,12 @@ pub enum Commands {
         command: commands::agents::AgentsCommand,
     },
 
+    /// Manage provider connections (API keys)
+    Connections {
+        #[command(subcommand)]
+        command: commands::connections::ConnectionsCommand,
+    },
+
     /// Manage capabilities
     Capabilities {
         #[command(subcommand)]
@@ -174,6 +180,9 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
+        Commands::Connections { command } => {
+            commands::connections::run(command, &api_url, &api_key, output_format, cli.quiet).await
+        }
         Commands::Capabilities { command } => {
             let status = match &command {
                 Some(CapabilitiesCommand::List { status }) => status.clone(),
@@ -182,7 +191,15 @@ async fn main() -> anyhow::Result<()> {
             commands::capabilities::run(&client, output_format, &status).await
         }
         Commands::Sessions { command } => {
-            commands::sessions::run(command, &client, output_format, cli.quiet).await
+            commands::sessions::run(
+                command,
+                &client,
+                &api_url,
+                &api_key,
+                output_format,
+                cli.quiet,
+            )
+            .await
         }
         Commands::Files { command } => {
             commands::files::run(command, &api_url, &api_key, output_format, cli.quiet).await
@@ -204,7 +221,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
-        // Already handled above
+        // Already handled above (no auth required)
         Commands::Login { .. } | Commands::Logout | Commands::Status | Commands::Orgs { .. } => {
             unreachable!()
         }
@@ -258,12 +275,14 @@ mod tests {
                 agent,
                 title,
                 model,
+                secrets,
             } = command
             {
                 assert_eq!(harness, Some("harness_abc".to_string()));
                 assert_eq!(agent, Some("agt_abc".to_string()));
                 assert_eq!(title, Some("Test Session".to_string()));
                 assert_eq!(model, None);
+                assert!(secrets.is_empty());
             } else {
                 panic!("Expected Create command");
             }
@@ -276,13 +295,92 @@ mod tests {
     fn test_cli_parse_sessions_create_no_harness() {
         let cli = Cli::try_parse_from(["everruns", "sessions", "create"]).unwrap();
         if let Commands::Sessions { command } = cli.command {
-            if let commands::sessions::SessionsCommand::Create { harness, .. } = command {
+            if let commands::sessions::SessionsCommand::Create {
+                harness, secrets, ..
+            } = command
+            {
                 assert_eq!(harness, None); // org default
+                assert!(secrets.is_empty());
             } else {
                 panic!("Expected Create command");
             }
         } else {
             panic!("Expected Sessions command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_sessions_create_with_secrets() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "sessions",
+            "create",
+            "--agent",
+            "agt_abc",
+            "--secret",
+            "KEY1=value1",
+            "--secret",
+            "KEY2=value2",
+        ])
+        .unwrap();
+        if let Commands::Sessions { command } = cli.command {
+            if let commands::sessions::SessionsCommand::Create { secrets, .. } = command {
+                assert_eq!(secrets.len(), 2);
+                assert_eq!(secrets[0], "KEY1=value1");
+                assert_eq!(secrets[1], "KEY2=value2");
+            } else {
+                panic!("Expected Create command");
+            }
+        } else {
+            panic!("Expected Sessions command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_connections_set() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "connections",
+            "set",
+            "daytona",
+            "--api-key",
+            "test_key_123",
+        ])
+        .unwrap();
+        if let Commands::Connections { command } = cli.command {
+            if let commands::connections::ConnectionsCommand::Set { provider, api_key } = command {
+                assert_eq!(provider, "daytona");
+                assert_eq!(api_key, "test_key_123");
+            } else {
+                panic!("Expected Set command");
+            }
+        } else {
+            panic!("Expected Connections command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_connections_list() {
+        let cli = Cli::try_parse_from(["everruns", "connections", "list"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Connections {
+                command: commands::connections::ConnectionsCommand::List
+            }
+        ));
+    }
+
+    #[test]
+    fn test_cli_parse_connections_remove() {
+        let cli = Cli::try_parse_from(["everruns", "connections", "remove", "daytona"]).unwrap();
+        if let Commands::Connections { command } = cli.command {
+            if let commands::connections::ConnectionsCommand::Remove { provider } = command {
+                assert_eq!(provider, "daytona");
+            } else {
+                panic!("Expected Remove command");
+            }
+        } else {
+            panic!("Expected Connections command");
         }
     }
 

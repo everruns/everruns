@@ -1,6 +1,7 @@
 pub mod agents;
 pub mod capabilities;
 pub mod chat;
+pub mod connections;
 pub mod files;
 pub mod login;
 pub mod logout;
