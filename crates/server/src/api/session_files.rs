@@ -21,6 +21,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
+use everruns_core::events::{EventContext, EventRequest, FileWrittenData};
 use everruns_core::typed_id::SessionId;
 use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
 
@@ -136,14 +137,20 @@ pub enum GetResponse {
 pub struct AppState {
     pub file_service: Arc<SessionFileService>,
     pub db: Arc<StorageBackend>,
+    pub event_service: Arc<crate::services::EventService>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        event_service: Arc<crate::services::EventService>,
+        auth: AuthState,
+    ) -> Self {
         Self {
             file_service: Arc::new(SessionFileService::new(db.clone())),
             db,
+            event_service,
             auth,
         }
     }
@@ -392,6 +399,7 @@ pub async fn create_path(
     verify_session_ownership(&state.db, org.org_id, session_id)
         .await
         .map_err(|s| (s, "Session not found".to_string()))?;
+    let typed_session_id = session_id;
     let session_id = session_id.uuid();
     let normalized = normalize_path(&path);
 
@@ -468,6 +476,22 @@ pub async fn create_path(
                     )
                 }
             })?;
+
+        // Emit file.written event
+        let event = EventRequest::new(
+            typed_session_id,
+            EventContext::empty(),
+            FileWrittenData {
+                path: file.path.clone(),
+                operation: "create".into(),
+                size_bytes: file.size_bytes,
+                created: true,
+            },
+        );
+        if let Err(e) = state.event_service.emit(event).await {
+            tracing::warn!(error = %e, path = %file.path, "Failed to emit file.written event");
+        }
+
         Ok((StatusCode::CREATED, Json(file)))
     }
 }
@@ -504,6 +528,7 @@ pub async fn update_path(
     verify_session_ownership(&state.db, org.org_id, session_id)
         .await
         .map_err(|s| (s, "Session not found".to_string()))?;
+    let typed_session_id = session_id;
     let session_id = session_id.uuid();
     let normalized = normalize_path(&path);
 
@@ -538,6 +563,21 @@ pub async fn update_path(
             }
         })?
         .ok_or((StatusCode::NOT_FOUND, "File not found".to_string()))?;
+
+    // Emit file.written event
+    let event = EventRequest::new(
+        typed_session_id,
+        EventContext::empty(),
+        FileWrittenData {
+            path: file.path.clone(),
+            operation: "update".into(),
+            size_bytes: file.size_bytes,
+            created: false,
+        },
+    );
+    if let Err(e) = state.event_service.emit(event).await {
+        tracing::warn!(error = %e, path = %file.path, "Failed to emit file.written event");
+    }
 
     Ok(Json(file))
 }
