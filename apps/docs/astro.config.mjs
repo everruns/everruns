@@ -29,6 +29,9 @@ export default defineConfig({
   },
   integrations: [
     starlight({
+      expressiveCode: {
+        themes: ["github-light", "github-dark"],
+      },
       title: "Everruns",
       description:
         "Documentation for Everruns, a durable agentic harness engine for AI agents. Guides for deploying, configuring, and building agent applications with the API.",
