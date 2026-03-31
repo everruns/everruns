@@ -826,6 +826,132 @@ NATS core pub/sub is fire-and-forget — if the SSE connection drops for 2 secon
 
 **Dev mode fallback:** When `NATS_URL` is not set (dev mode, `just start-dev`), all events go to PG as today. The SSE stream falls back to the current poll loop. Zero regression.
 
+### Event Delivery Abstraction
+
+The event delivery layer follows the same pattern as `StorageBackend` (enum dispatch, `Postgres`/`InMemory` variants). This answers three deployment questions:
+
+#### 1. Dev mode: single binary, no NATS required
+
+Dev mode (`just start-dev`) runs in-memory with no external services. The event delivery backend has an `InMemory` variant that uses in-process `broadcast::channel` — same as the current `EventNotificationBroadcaster` but carrying actual event data instead of just wake signals.
+
+```rust
+/// Event delivery backend — same dispatch pattern as StorageBackend
+pub enum EventDelivery {
+    /// Production: NATS JetStream for real-time push + replay
+    Nats(NatsEventDelivery),
+    /// Dev mode: in-process broadcast channels, zero external deps
+    InMemory(InMemoryEventDelivery),
+}
+
+impl EventDelivery {
+    pub async fn from_env() -> Self {
+        match std::env::var("NATS_URL") {
+            Ok(url) => Self::Nats(NatsEventDelivery::connect(&url).await),
+            Err(_) => {
+                tracing::info!(
+                    "NATS_URL not set — using in-memory event delivery. \
+                     Set NATS_URL for multi-instance SSE and ephemeral delta support."
+                );
+                Self::InMemory(InMemoryEventDelivery::new())
+            }
+        }
+    }
+
+    pub async fn publish(&self, session_id: Uuid, event: &Event) { ... }
+    pub async fn subscribe(&self, session_id: Uuid) -> EventSubscription { ... }
+}
+
+/// In-memory: partitioned broadcast channels (same process only)
+pub struct InMemoryEventDelivery {
+    channels: [broadcast::Sender<Event>; 16],  // partitioned by session_id
+}
+
+/// NATS: JetStream streams with per-session subjects
+pub struct NatsEventDelivery {
+    client: async_nats::Client,
+    jetstream: async_nats::jetstream::Context,
+}
+```
+
+**Result**: `just start-dev` works exactly as today. Single binary, no NATS, no Docker. The in-memory variant carries event data through broadcast channels — SSE subscribes to the channel instead of polling PG. Same real-time behavior, just in-process.
+
+#### 2. No-Docker environments: NATS as a single binary
+
+NATS server is a single static binary (~20MB), same deployment model as PostgreSQL and Valkey. Add to `scripts/lib/infra.sh` alongside existing `start_postgres` and `start_valkey`:
+
+```bash
+# scripts/lib/infra.sh
+
+NATS_PORT="${NATS_PORT:-4222}"
+NATS_DATA_DIR="${LOCAL_DATA_DIR}/nats-${NATS_PORT}"
+NATS_PIDFILE="${NATS_DATA_DIR}/nats.pid"
+NATS_LOGFILE="${NATS_DATA_DIR}/nats.log"
+
+detect_nats_bin() {
+  if command -v nats-server &> /dev/null; then
+    NATS_SERVER="nats-server"
+    return 0
+  fi
+  echo "⚠️  nats-server not found. NATS will be skipped (SSE falls back to PG polling)."
+  return 1
+}
+
+start_nats() {
+  if ! detect_nats_bin; then return 1; fi
+  if nats_is_running; then
+    echo "   ✅ NATS already running (port ${NATS_PORT})"
+    return 0
+  fi
+
+  echo "   Starting NATS with JetStream on port ${NATS_PORT}..."
+  mkdir -p "$NATS_DATA_DIR"
+  $NATS_SERVER \
+    --port "$NATS_PORT" \
+    --jetstream \
+    --store_dir "$NATS_DATA_DIR/jetstream" \
+    --pid "$NATS_PIDFILE" \
+    --log "$NATS_LOGFILE" \
+    --daemon &
+
+  # Wait for ready
+  for i in {1..10}; do
+    if nats-server --help >/dev/null 2>&1 && \
+       curl -s "http://localhost:${NATS_PORT}/healthz" | grep -q ok; then
+      echo "   ✅ NATS started on localhost:${NATS_PORT}"
+      export NATS_URL="nats://localhost:${NATS_PORT}"
+      return 0
+    fi
+    sleep 1
+  done
+}
+```
+
+`just start-all` starts PG + Valkey + NATS. `just start-dev` skips all three (in-memory). Same pattern, same developer experience. NATS installation is one line: `brew install nats-server` or `apt install nats-server` or download from https://nats.io/download/.
+
+#### 3. Cloud-native pub/sub abstraction (future, not required)
+
+The `EventDelivery` enum can be extended with cloud-native variants without changing any calling code:
+
+```rust
+pub enum EventDelivery {
+    Nats(NatsEventDelivery),
+    InMemory(InMemoryEventDelivery),
+    // Future cloud-native variants:
+    // GcpPubSub(GcpPubSubEventDelivery),    // Google Cloud Pub/Sub
+    // AwsSns(AwsSnsEventDelivery),            // AWS SNS/SQS
+    // AzureServiceBus(AzureEventDelivery),    // Azure Service Bus
+}
+```
+
+The trait surface is minimal — `publish(session_id, event)` and `subscribe(session_id) -> Stream<Event>`. Any pub/sub system that supports:
+- Per-topic/subject publishing
+- Per-subscription message delivery
+- Short-term message retention (for reconnection replay)
+
+...can implement this. GCP Pub/Sub, AWS SNS+SQS, Azure Service Bus all qualify. The only NATS-specific feature we rely on is JetStream's replay-from-position for SSE reconnection. Cloud equivalents: GCP Pub/Sub `seek()`, SQS with message deduplication, etc.
+
+Not needed now — NATS is the right default for self-hosted and cloud deployments. But the abstraction doesn't lock us in.
+
 ### Phase 1: NATS JetStream for SSE delivery — ~2-3 weeks
 
 This is a bigger first phase but eliminates more throwaway code. NATS becomes the single real-time delivery layer for all events.
