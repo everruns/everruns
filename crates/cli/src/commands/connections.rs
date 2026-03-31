@@ -2,6 +2,7 @@
 //
 // Uses raw reqwest for HTTP calls since the SDK doesn't expose
 // connections endpoints yet.
+// TODO(everruns/sdk#66): Replace raw reqwest with native SDK client.connections() methods
 
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
