@@ -351,8 +351,16 @@ impl LlmDriver for AnthropicLlmDriver {
             "AnthropicDriver: building request with thinking config"
         );
 
-        // Calculate max_tokens - respect caller's limit, only increase when thinking requires it
-        let base_max_tokens = config.max_tokens.unwrap_or(4096);
+        // Calculate max_tokens - use caller's limit, or model's max output from profile, or 16384 fallback.
+        // Anthropic requires max_tokens (can't omit), so we look up the model's native limit.
+        let base_max_tokens = config.max_tokens.unwrap_or_else(|| {
+            everruns_core::get_model_profile(
+                &everruns_core::LlmProviderType::Anthropic,
+                &config.model,
+            )
+            .and_then(|p| p.limits.map(|l| l.output as u32))
+            .unwrap_or(16_384)
+        });
         let max_tokens = if let Some(ref thinking_config) = thinking {
             // max_tokens must be > thinking.budget_tokens per Anthropic requirements
             // Only increase if the caller's limit is too low for the thinking budget
@@ -365,7 +373,7 @@ impl LlmDriver for AnthropicLlmDriver {
         // Check if we need interleaved thinking beta header BEFORE moving values
         let needs_interleaved_thinking = thinking.is_some() && tools.is_some();
 
-        let request = AnthropicRequest {
+        let mut request = AnthropicRequest {
             model: config.model.clone(),
             messages: anthropic_messages,
             max_tokens,
@@ -379,6 +387,7 @@ impl LlmDriver for AnthropicLlmDriver {
         // Retry loop for rate limit (429) and transient errors
         let mut retry_metadata = RetryMetadata::default();
         let mut last_error: Option<String> = None;
+        let mut max_tokens_fallback_attempted = false;
 
         let response = loop {
             // Build request with headers (must rebuild each iteration)
@@ -463,6 +472,27 @@ impl LlmDriver for AnthropicLlmDriver {
             // Non-retryable error or max retries exceeded
             let error_text = response.text().await.unwrap_or_default();
             let error_msg = format!("Anthropic API error ({}): {}", status, error_text);
+
+            // Graceful fallback: if max_tokens exceeds model limit (400 error),
+            // retry once with a safe fallback value instead of failing immediately.
+            if status == reqwest::StatusCode::BAD_REQUEST
+                && !max_tokens_fallback_attempted
+                && (error_text.contains("max_tokens")
+                    || error_text.contains("maximum output tokens"))
+            {
+                const FALLBACK_MAX_TOKENS: u32 = 16_384;
+                tracing::warn!(
+                    attempted = request.max_tokens,
+                    fallback = FALLBACK_MAX_TOKENS,
+                    model = %config.model,
+                    "max_tokens exceeds model limit, retrying with fallback. \
+                     Update model profile for {}.",
+                    config.model,
+                );
+                request.max_tokens = FALLBACK_MAX_TOKENS;
+                max_tokens_fallback_attempted = true;
+                continue;
+            }
 
             // Check if this is a model-not-found error (404 with not_found_error)
             if is_anthropic_model_not_found(status, &error_text) {

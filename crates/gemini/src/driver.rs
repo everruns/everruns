@@ -269,9 +269,16 @@ impl LlmDriver for GeminiLlmDriver {
             max_output_tokens: config.max_tokens,
         };
 
-        // If no max_tokens specified, default to 8192
+        // If no max_tokens specified, use model's max output from profile, or 8192 fallback
         if generation_config.max_output_tokens.is_none() {
-            generation_config.max_output_tokens = Some(8192);
+            generation_config.max_output_tokens = Some(
+                everruns_core::get_model_profile(
+                    &everruns_core::LlmProviderType::Gemini,
+                    &config.model,
+                )
+                .and_then(|p| p.limits.map(|l| l.output as u32))
+                .unwrap_or(8_192),
+            );
         }
 
         let request = GeminiRequest {
