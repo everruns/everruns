@@ -15,7 +15,6 @@ use crate::grpc_service;
 use crate::openapi::ApiDoc;
 use crate::server::{ServerConfig, build_router_with_prefix};
 use crate::storage::{EncryptionService, StorageBackend};
-use crate::task_notifications::TaskNotificationBroadcaster;
 use crate::{api, seed, services};
 
 use anyhow::{Context, Result};
@@ -903,16 +902,9 @@ impl ServerAppBuilder {
             let grpc_addr = self.config.grpc_addr.clone();
             let grpc_platform_definition = platform_definition.clone();
 
-            let task_broadcaster = if let Some(pool) = db.pool() {
-                let broadcaster = TaskNotificationBroadcaster::new(pool.clone()).await;
-                tracing::info!(
-                    "Task notification broadcaster initialized for push-based notifications"
-                );
-                Some(Arc::new(broadcaster))
-            } else {
-                tracing::warn!("Task notification broadcaster not available (no PostgreSQL pool)");
-                None
-            };
+            let task_broadcaster = crate::task_notifications::TaskBroadcaster::from_env(db.pool())
+                .await
+                .map(Arc::new);
 
             tokio::spawn(async move {
                 let mut grpc_svc = grpc_service::WorkerServiceImpl::new(

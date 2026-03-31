@@ -46,7 +46,10 @@ pub use direct_worker_adapters::DirectWorkerAdapters;
 
 // Task notification broadcaster for push-based notifications
 pub mod task_notifications;
-pub use task_notifications::TaskNotificationBroadcaster;
+pub use task_notifications::{TaskBroadcaster, TaskNotificationBroadcaster};
+
+// NATS-backed task notification broadcaster
+pub mod nats_task_notifications;
 
 // Event notification broadcaster for push-based SSE delivery (legacy PG NOTIFY)
 pub mod event_notifications;
