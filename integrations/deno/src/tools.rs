@@ -236,6 +236,7 @@ impl Tool for DenoExecTool {
             .with_open_world(true)
             .with_requires_secrets(true)
             .with_long_running(true)
+            .with_persist_output(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -279,29 +280,16 @@ impl Tool for DenoExecTool {
             return error;
         }
 
-        let output = if exec.stderr.is_empty() {
-            exec.stdout.clone()
-        } else if exec.stdout.is_empty() {
-            exec.stderr.clone()
-        } else {
-            format!(
-                "{}{}{}",
-                exec.stdout,
-                if exec.stdout.ends_with('\n') {
-                    ""
-                } else {
-                    "\n"
-                },
-                exec.stderr
-            )
-        };
-
-        ToolExecutionResult::success(json!({
-            "exit_code": exec.exit_code,
-            "stdout": exec.stdout,
-            "stderr": exec.stderr,
-            "output": output,
-        }))
+        {
+            use everruns_core::tool_output_sanitizer::{EXEC_OUTPUT_BUDGET, sanitize_exec_output};
+            let stdout = sanitize_exec_output(&exec.stdout, EXEC_OUTPUT_BUDGET);
+            let stderr = sanitize_exec_output(&exec.stderr, 4096);
+            ToolExecutionResult::success(json!({
+                "exit_code": exec.exit_code,
+                "stdout": stdout,
+                "stderr": stderr,
+            }))
+        }
     }
 
     fn requires_context(&self) -> bool {

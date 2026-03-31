@@ -354,6 +354,7 @@ impl Tool for DaytonaExecTool {
             .with_open_world(true)
             .with_requires_secrets(true)
             .with_long_running(true)
+            .with_persist_output(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -439,10 +440,16 @@ impl Tool for DaytonaExecTool {
                 if let Err(e) = touch_sandbox_lease(context, &state, None).await {
                     return e;
                 }
-                ToolExecutionResult::success(json!({
-                    "exit_code": result.exit_code,
-                    "output": result.result
-                }))
+                {
+                    use everruns_core::tool_output_sanitizer::{
+                        EXEC_OUTPUT_BUDGET, sanitize_exec_output,
+                    };
+                    let output = sanitize_exec_output(&result.result, EXEC_OUTPUT_BUDGET);
+                    ToolExecutionResult::success(json!({
+                        "exit_code": result.exit_code,
+                        "output": output
+                    }))
+                }
             }
             Err(e) => ToolExecutionResult::tool_error(e),
         }

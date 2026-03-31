@@ -27,6 +27,14 @@ The sync-to-async bridge uses `std::thread::scope` with a dedicated thread and i
 
 See `crates/core/src/capabilities/virtual_bash.rs` for the full implementation.
 
+## Output Sanitization
+
+`BashTool` sanitizes stdout/stderr before returning results to the LLM. This is the tool's responsibility — it calls `sanitize_exec_output()` from `crates/core/src/tool_output_sanitizer.rs`.
+
+Pipeline: strip ANSI escape codes → collapse `\r`-overwritten lines → middle-truncate at 16 KiB (20% head / 80% tail). Stderr gets a smaller 4 KiB budget.
+
+This reduces token waste from verbose build output (`cargo build`, `npm install`) by 40-60%. The EVE-225 hard limit (64 KiB) acts as a safety net for any tool that skips sanitization.
+
 ## Benefits
 
 1. **Live file visibility** - Files written by other tools during bash execution are immediately visible

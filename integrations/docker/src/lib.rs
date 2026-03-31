@@ -336,6 +336,7 @@ impl Tool for DockerExecTool {
         ToolHints::default()
             .with_open_world(true)
             .with_long_running(true)
+            .with_persist_output(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -398,9 +399,13 @@ impl Tool for DockerExecTool {
             }
         };
 
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let exit_code = output.status.code().unwrap_or(-1);
+        let stdout_raw = String::from_utf8_lossy(&output.stdout);
+        let stderr_raw = String::from_utf8_lossy(&output.stderr);
+
+        use everruns_core::tool_output_sanitizer::{EXEC_OUTPUT_BUDGET, sanitize_exec_output};
+        let stdout = sanitize_exec_output(&stdout_raw, EXEC_OUTPUT_BUDGET);
+        let stderr = sanitize_exec_output(&stderr_raw, 4096);
 
         ToolExecutionResult::success(json!({
             "stdout": stdout,

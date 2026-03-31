@@ -57,6 +57,7 @@ Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convent
 | `open_world` | Interacts with external entities (network, APIs) | Assume closed-world |
 | `requires_secrets` | Needs API keys or credentials | Assume no secrets needed |
 | `long_running` | May take significant time (> ~5s typical) | Assume fast |
+| `persist_output` | Tool requests full output be persisted to VFS before truncation when supported | Assume no persistence |
 
 **Design rules:**
 - Hints are informational — they do not enforce policy. Use `ToolPolicy` for execution gating.
@@ -64,6 +65,17 @@ Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convent
 - MCP server tools inherit hints from MCP `annotations` when available.
 - External toolkit libraries expose hints via the `Tool::hints()` method in the toolkit library contract.
 - `destructive` is a subset of non-readonly — a tool can write without being destructive.
+
+### Exec Tool Output Sanitization
+
+Exec tools (bash, daytona_exec, e2b_exec, deno_exec, sprites_exec, docker_exec) sanitize their output before returning results. Each tool calls `sanitize_exec_output()` from `crates/core/src/tool_output_sanitizer.rs`.
+
+The pipeline:
+1. **Strip ANSI** — remove SGR, CSI, OSC escape sequences
+2. **Collapse CR lines** — `\r`-overwritten lines (progress bars) reduced to final content
+3. **Middle-truncate** — 20% head / 80% tail split at 16 KiB budget (errors cluster at the end)
+
+This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 
 ### Tool Policies
 

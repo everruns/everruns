@@ -252,6 +252,7 @@ impl Tool for E2BExecTool {
             .with_open_world(true)
             .with_requires_secrets(true)
             .with_long_running(true)
+            .with_persist_output(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -300,14 +301,19 @@ impl Tool for E2BExecTool {
             return err;
         }
 
-        ToolExecutionResult::success(json!({
-            "sandbox_id": sandbox_id,
-            "cwd": cwd.unwrap_or(E2B_DEFAULT_WORKSPACE_PATH),
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "exit_code": result.exit_code,
-            "error": result.error,
-        }))
+        {
+            use everruns_core::tool_output_sanitizer::{EXEC_OUTPUT_BUDGET, sanitize_exec_output};
+            let stdout = sanitize_exec_output(&result.stdout, EXEC_OUTPUT_BUDGET);
+            let stderr = sanitize_exec_output(&result.stderr, 4096);
+            ToolExecutionResult::success(json!({
+                "sandbox_id": sandbox_id,
+                "cwd": cwd.unwrap_or(E2B_DEFAULT_WORKSPACE_PATH),
+                "stdout": stdout,
+                "stderr": stderr,
+                "exit_code": result.exit_code,
+                "error": result.error,
+            }))
+        }
     }
 
     fn requires_context(&self) -> bool {

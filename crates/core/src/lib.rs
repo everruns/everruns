@@ -90,6 +90,7 @@ pub mod openresponses_types;
 pub mod platform_definition;
 pub mod platform_store;
 pub mod runtime_agent;
+pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod traits;
 
