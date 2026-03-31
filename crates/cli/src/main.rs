@@ -68,6 +68,12 @@ pub enum Commands {
         command: commands::agents::AgentsCommand,
     },
 
+    /// Manage provider connections (API keys)
+    Connections {
+        #[command(subcommand)]
+        command: commands::connections::ConnectionsCommand,
+    },
+
     /// Manage capabilities
     Capabilities {
         #[command(subcommand)]
@@ -174,6 +180,9 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
+        Commands::Connections { command } => {
+            commands::connections::run(command, &api_url, &api_key, output_format, cli.quiet).await
+        }
         Commands::Capabilities { command } => {
             let status = match &command {
                 Some(CapabilitiesCommand::List { status }) => status.clone(),
@@ -206,7 +215,7 @@ async fn main() -> anyhow::Result<()> {
         }
         // Already handled above
         Commands::Login { .. } | Commands::Logout | Commands::Status | Commands::Orgs { .. } => {
-            unreachable!()
+            unreachable!();
         }
     }
 }
@@ -599,5 +608,53 @@ mod tests {
     fn test_cli_parse_profile() {
         let cli = Cli::try_parse_from(["everruns", "--profile", "staging", "status"]).unwrap();
         assert_eq!(cli.profile, "staging");
+    }
+
+    #[test]
+    fn test_cli_parse_connections_set() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "connections",
+            "set",
+            "daytona",
+            "--api-key",
+            "test_key_123",
+        ])
+        .unwrap();
+        if let Commands::Connections { command } = cli.command {
+            if let commands::connections::ConnectionsCommand::Set { provider, api_key } = command {
+                assert_eq!(provider, "daytona");
+                assert_eq!(api_key, "test_key_123");
+            } else {
+                panic!("Expected Set command");
+            }
+        } else {
+            panic!("Expected Connections command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_connections_list() {
+        let cli = Cli::try_parse_from(["everruns", "connections", "list"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Connections {
+                command: commands::connections::ConnectionsCommand::List
+            }
+        ));
+    }
+
+    #[test]
+    fn test_cli_parse_connections_remove() {
+        let cli = Cli::try_parse_from(["everruns", "connections", "remove", "daytona"]).unwrap();
+        if let Commands::Connections { command } = cli.command {
+            if let commands::connections::ConnectionsCommand::Remove { provider } = command {
+                assert_eq!(provider, "daytona");
+            } else {
+                panic!("Expected Remove command");
+            }
+        } else {
+            panic!("Expected Connections command");
+        }
     }
 }
