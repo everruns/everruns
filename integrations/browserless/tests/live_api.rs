@@ -24,7 +24,7 @@ fn api_token() -> String {
 async fn live_screenshot() {
     let client = BrowserlessClient::new(api_token());
     let bytes = client
-        .screenshot("https://example.com", true, None, None, None)
+        .screenshot("https://example.com", true, None, None, None, &[])
         .await
         .expect("Screenshot should succeed");
 
@@ -37,7 +37,7 @@ async fn live_screenshot() {
 async fn live_content() {
     let client = BrowserlessClient::new(api_token());
     let html = client
-        .content("https://example.com", None, None, false)
+        .content("https://example.com", None, None, false, &[])
         .await
         .expect("Content should succeed");
 
@@ -227,10 +227,10 @@ async fn live_no_resources_leaked_rest() {
     let client = BrowserlessClient::new(api_token());
 
     let r1 = client
-        .content("https://example.com", None, None, false)
+        .content("https://example.com", None, None, false, &[])
         .await;
     let r2 = client
-        .content("https://example.com", None, None, false)
+        .content("https://example.com", None, None, false, &[])
         .await;
 
     assert!(r1.is_ok());

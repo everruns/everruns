@@ -22,7 +22,8 @@ use tracing::debug;
 use crate::client::BrowserlessClient;
 use crate::session_tools::{keep_session_alive, try_get_cdp_session};
 use crate::state::{
-    extract_secret_refs, get_api_token, required_str, resolve_step_secrets, substitute_step_secrets,
+    build_cookie_extraction_code, build_cookie_injection_code, extract_secret_refs, get_api_token,
+    load_cookies, required_str, resolve_step_secrets, save_cookies, substitute_step_secrets,
 };
 use crate::validation::{validate_browserless_url, validate_interaction_steps};
 
@@ -182,6 +183,7 @@ impl Tool for BrowserlessScreenshotTool {
         let selector = arguments.get("selector").and_then(|v| v.as_str());
         let wait_for_selector = arguments.get("wait_for_selector").and_then(|v| v.as_str());
         let wait_for_timeout = arguments.get("wait_for_timeout").and_then(|v| v.as_u64());
+        let stored_cookies = load_cookies(context).await;
 
         let client = BrowserlessClient::new(api_token);
         match client
@@ -191,6 +193,7 @@ impl Tool for BrowserlessScreenshotTool {
                 selector,
                 wait_for_selector,
                 wait_for_timeout,
+                &stored_cookies,
             )
             .await
         {
@@ -329,9 +332,16 @@ impl Tool for BrowserlessContentTool {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
+        let stored_cookies = load_cookies(context).await;
         let client = BrowserlessClient::new(api_token);
         match client
-            .content(url, wait_for_selector, wait_for_timeout, best_attempt)
+            .content(
+                url,
+                wait_for_selector,
+                wait_for_timeout,
+                best_attempt,
+                &stored_cookies,
+            )
             .await
         {
             Ok(html) => {
@@ -447,9 +457,16 @@ impl Tool for BrowserlessScrapeTool {
         let wait_for_selector = arguments.get("wait_for_selector").and_then(|v| v.as_str());
         let wait_for_timeout = arguments.get("wait_for_timeout").and_then(|v| v.as_u64());
 
+        let stored_cookies = load_cookies(context).await;
         let client = BrowserlessClient::new(api_token);
         match client
-            .scrape(url, &elements, wait_for_selector, wait_for_timeout)
+            .scrape(
+                url,
+                &elements,
+                wait_for_selector,
+                wait_for_timeout,
+                &stored_cookies,
+            )
             .await
         {
             Ok(data) => ToolExecutionResult::Success(json!({
@@ -473,14 +490,18 @@ pub struct BrowserlessInteractTool;
 
 /// Build Puppeteer function code from a list of interaction steps.
 /// Each step is executed sequentially in a fresh browser session.
+/// If `cookies` is non-empty, they are injected before navigation.
+/// Cookies are always extracted after steps for persistence.
 fn build_interaction_code(
     url: &str,
     steps: &[Value],
     want_screenshot: bool,
     want_content: bool,
+    cookies: &[Value],
 ) -> String {
     let mut code = String::new();
     code.push_str("export default async ({ page }) => {\n");
+    code.push_str(&build_cookie_injection_code(cookies));
     code.push_str(&format!(
         "  await page.goto({}, {{ waitUntil: 'networkidle2', timeout: 30000 }});\n",
         serde_json::to_string(url).unwrap_or_else(|_| format!("\"{}\"", url))
@@ -598,8 +619,11 @@ fn build_interaction_code(
         code.push_str("  const content = await page.content();\n");
     }
 
+    // Extract cookies for persistence
+    code.push_str(build_cookie_extraction_code());
+
     // Build return object with whichever fields were requested
-    let mut fields = vec!["title", "url"];
+    let mut fields = vec!["title", "url", "__cookies"];
     if want_screenshot {
         fields.push("screenshot");
     }
@@ -924,7 +948,9 @@ impl Tool for BrowserlessInteractTool {
             Err(e) => return e,
         };
 
-        let code = build_interaction_code(url, &steps, want_screenshot, want_content);
+        let stored_cookies = load_cookies(context).await;
+        let code =
+            build_interaction_code(url, &steps, want_screenshot, want_content, &stored_cookies);
         debug!("Generated interaction code ({} bytes)", code.len());
 
         let client = BrowserlessClient::new(api_token);
@@ -932,7 +958,19 @@ impl Tool for BrowserlessInteractTool {
             Ok(result) => {
                 if let Some(data_str) = result.get("data").and_then(|v| v.as_str()) {
                     match serde_json::from_str::<Value>(data_str) {
-                        Ok(data) => ToolExecutionResult::Success(data),
+                        Ok(mut data) => {
+                            // Extract and persist cookies, then remove from response
+                            if let Some(cookies) = data.get("__cookies").and_then(|v| v.as_array())
+                                && !cookies.is_empty()
+                                && let Err(e) = save_cookies(context, cookies).await
+                            {
+                                debug!("Failed to persist cookies: {e}");
+                            }
+                            if let Some(obj) = data.as_object_mut() {
+                                obj.remove("__cookies");
+                            }
+                            ToolExecutionResult::Success(data)
+                        }
                         Err(_) => ToolExecutionResult::Success(json!({
                             "result": data_str
                         })),
@@ -1051,8 +1089,10 @@ impl Tool for BrowserlessNavigateTool {
         let wait_for_selector = arguments.get("wait_for_selector").and_then(|v| v.as_str());
         let wait_for_timeout = arguments.get("wait_for_timeout").and_then(|v| v.as_u64());
 
+        let stored_cookies = load_cookies(context).await;
         let mut code = String::new();
         code.push_str("export default async ({ page }) => {\n");
+        code.push_str(&build_cookie_injection_code(&stored_cookies));
         code.push_str(&format!(
             "  const response = await page.goto({}, {{ waitUntil: 'networkidle2', timeout: 30000 }});\n",
             serde_json::to_string(url).unwrap_or_else(|_| format!("\"{}\"", url))
@@ -1241,7 +1281,7 @@ mod tests {
             "action": "click",
             "selector": "#submit-btn"
         })];
-        let code = build_interaction_code("https://example.com", &steps, false, true);
+        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
         assert!(code.contains("page.goto"));
         assert!(code.contains("page.click"));
         assert!(code.contains("#submit-btn"));
@@ -1255,7 +1295,7 @@ mod tests {
             "selector": "#username",
             "value": "admin"
         })];
-        let code = build_interaction_code("https://example.com", &steps, false, true);
+        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
         assert!(code.contains("page.type"));
         assert!(code.contains("#username"));
         assert!(code.contains("admin"));
@@ -1267,7 +1307,7 @@ mod tests {
             "action": "keyboard",
             "key": "Enter"
         })];
-        let code = build_interaction_code("https://example.com", &steps, false, true);
+        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
         assert!(code.contains("page.keyboard.press"));
         assert!(code.contains("Enter"));
     }
@@ -1279,7 +1319,7 @@ mod tests {
             "x": 100.0,
             "y": 200.0
         })];
-        let code = build_interaction_code("https://example.com", &steps, false, true);
+        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
         assert!(code.contains("page.mouse.move(100, 200)"));
     }
 
@@ -1289,7 +1329,7 @@ mod tests {
             "action": "touch",
             "selector": ".menu-item"
         })];
-        let code = build_interaction_code("https://example.com", &steps, false, true);
+        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
         assert!(code.contains("page.tap"));
     }
 
@@ -1299,7 +1339,7 @@ mod tests {
             "action": "scroll",
             "value": 1000
         })];
-        let code = build_interaction_code("https://example.com", &steps, false, true);
+        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
         assert!(code.contains("window.scrollBy(0, 1000)"));
     }
 
@@ -1309,7 +1349,7 @@ mod tests {
             "action": "click",
             "selector": "button"
         })];
-        let code = build_interaction_code("https://example.com", &steps, true, false);
+        let code = build_interaction_code("https://example.com", &steps, true, false, &[]);
         assert!(code.contains("page.screenshot"));
         assert!(!code.contains("page.content()"));
     }
@@ -1320,7 +1360,7 @@ mod tests {
             "action": "navigate",
             "value": "https://other.com/page"
         })];
-        let code = build_interaction_code("https://example.com", &steps, false, true);
+        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
         // Should have two page.goto calls: initial + navigate step
         assert!(code.contains("https://other.com/page"));
     }
@@ -1331,7 +1371,7 @@ mod tests {
             "action": "wait",
             "wait_ms": 2000
         })];
-        let code = build_interaction_code("https://example.com", &steps, false, true);
+        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
         assert!(code.contains("setTimeout(r, 2000)"));
     }
 
@@ -1342,7 +1382,7 @@ mod tests {
             "selector": ".loaded",
             "wait_ms": 5000
         })];
-        let code = build_interaction_code("https://example.com", &steps, false, true);
+        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
         assert!(code.contains("waitForSelector"));
         assert!(code.contains(".loaded"));
         assert!(code.contains("5000"));
@@ -1355,7 +1395,7 @@ mod tests {
             "x": 50.0,
             "y": 75.0
         })];
-        let code = build_interaction_code("https://example.com", &steps, false, true);
+        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
         assert!(code.contains("page.mouse.click(50, 75)"));
     }
 
@@ -1369,7 +1409,7 @@ mod tests {
             json!({"action": "click", "selector": "#submit"}),
             json!({"action": "wait", "wait_ms": 2000}),
         ];
-        let code = build_interaction_code("https://example.com/home", &steps, true, false);
+        let code = build_interaction_code("https://example.com/home", &steps, true, false, &[]);
         assert!(code.contains("#login-link"));
         assert!(code.contains("#username"));
         assert!(code.contains("#password"));
@@ -1378,9 +1418,47 @@ mod tests {
     }
 
     #[test]
+    fn test_build_interaction_code_injects_cookies() {
+        let cookies = vec![json!({
+            "name": "session_id",
+            "value": "abc123",
+            "domain": "example.com"
+        })];
+        let steps = vec![json!({"action": "click", "selector": "#btn"})];
+        let code = build_interaction_code("https://example.com", &steps, false, true, &cookies);
+        assert!(
+            code.contains("setCookie"),
+            "should inject cookies via setCookie: {code}"
+        );
+        assert!(
+            code.contains("session_id"),
+            "should contain cookie name: {code}"
+        );
+        assert!(
+            code.contains("__cookies"),
+            "should extract cookies for persistence: {code}"
+        );
+    }
+
+    #[test]
+    fn test_build_interaction_code_no_cookies_no_injection() {
+        let steps = vec![json!({"action": "click", "selector": "#btn"})];
+        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
+        assert!(
+            !code.contains("setCookie"),
+            "should not inject cookies when none provided"
+        );
+        // Should still extract cookies for persistence
+        assert!(
+            code.contains("__cookies"),
+            "should still extract cookies: {code}"
+        );
+    }
+
+    #[test]
     fn test_build_interaction_code_both_screenshot_and_content() {
         let steps = vec![json!({"action": "click", "selector": "#btn"})];
-        let code = build_interaction_code("https://example.com", &steps, true, true);
+        let code = build_interaction_code("https://example.com", &steps, true, true, &[]);
         assert!(
             code.contains("page.screenshot"),
             "should include screenshot capture"

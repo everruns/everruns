@@ -46,6 +46,7 @@ impl BrowserlessClient {
         selector: Option<&str>,
         wait_for_selector: Option<&str>,
         wait_for_timeout: Option<u64>,
+        cookies: &[Value],
     ) -> Result<Vec<u8>, String> {
         let mut body = json!({
             "url": url,
@@ -63,6 +64,9 @@ impl BrowserlessClient {
         }
         if let Some(timeout) = wait_for_timeout {
             body["waitForTimeout"] = json!(timeout);
+        }
+        if !cookies.is_empty() {
+            body["cookies"] = json!(cookies);
         }
 
         debug!("Browserless screenshot: {url}");
@@ -96,6 +100,7 @@ impl BrowserlessClient {
         wait_for_selector: Option<&str>,
         wait_for_timeout: Option<u64>,
         best_attempt: bool,
+        cookies: &[Value],
     ) -> Result<String, String> {
         let mut body = json!({ "url": url });
 
@@ -107,6 +112,9 @@ impl BrowserlessClient {
         }
         if best_attempt {
             body["bestAttempt"] = json!(true);
+        }
+        if !cookies.is_empty() {
+            body["cookies"] = json!(cookies);
         }
 
         debug!("Browserless content: {url}");
@@ -141,6 +149,7 @@ impl BrowserlessClient {
         elements: &[Value],
         wait_for_selector: Option<&str>,
         wait_for_timeout: Option<u64>,
+        cookies: &[Value],
     ) -> Result<Value, String> {
         let mut body = json!({
             "url": url,
@@ -152,6 +161,9 @@ impl BrowserlessClient {
         }
         if let Some(timeout) = wait_for_timeout {
             body["waitForTimeout"] = json!(timeout);
+        }
+        if !cookies.is_empty() {
+            body["cookies"] = json!(cookies);
         }
 
         debug!("Browserless scrape: {url}");
@@ -238,7 +250,7 @@ mod tests {
 
         let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
         let result = client
-            .screenshot("https://example.com", true, None, None, None)
+            .screenshot("https://example.com", true, None, None, None, &[])
             .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), b"PNG_BYTES");
@@ -257,7 +269,7 @@ mod tests {
 
         let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
         let result = client
-            .content("https://example.com", None, None, false)
+            .content("https://example.com", None, None, false, &[])
             .await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("Hello"));
@@ -277,7 +289,7 @@ mod tests {
         let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
         let elements = vec![json!({"selector": "h1"})];
         let result = client
-            .scrape("https://example.com", &elements, None, None)
+            .scrape("https://example.com", &elements, None, None, &[])
             .await;
         assert!(result.is_ok());
     }
@@ -315,7 +327,7 @@ mod tests {
 
         let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
         let result = client
-            .screenshot("https://example.com", false, None, None, None)
+            .screenshot("https://example.com", false, None, None, None, &[])
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("400"));
@@ -332,7 +344,7 @@ mod tests {
 
         let client = BrowserlessClient::with_base_url("bad_token".to_string(), mock_server.uri());
         let result = client
-            .content("https://example.com", None, None, false)
+            .content("https://example.com", None, None, false, &[])
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("401"));
@@ -348,7 +360,9 @@ mod tests {
             .await;
 
         let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-        let result = client.scrape("https://example.com", &[], None, None).await;
+        let result = client
+            .scrape("https://example.com", &[], None, None, &[])
+            .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("500"));
     }
@@ -402,6 +416,7 @@ mod tests {
                 Some("#main"),
                 Some("h1"),
                 Some(5000),
+                &[],
             )
             .await;
         assert!(result.is_ok());
@@ -418,7 +433,7 @@ mod tests {
 
         let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
         let result = client
-            .content("https://example.com", Some("body"), Some(3000), true)
+            .content("https://example.com", Some("body"), Some(3000), true, &[])
             .await;
         assert!(result.is_ok());
     }
@@ -433,7 +448,9 @@ mod tests {
             .await;
 
         let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
-        let result = client.scrape("https://example.com", &[], None, None).await;
+        let result = client
+            .scrape("https://example.com", &[], None, None, &[])
+            .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid JSON"));
     }
