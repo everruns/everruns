@@ -63,7 +63,7 @@ Browserless registers as a `ConnectionProviderPlugin` (API-key type). Users conf
 
 ### REST Endpoints
 
-Base URL: `https://production-sfo.browserless.io`
+Base URL: `https://production-sfo.browserless.io` (configurable via `BROWSERLESS_API_BASE` env var)
 
 Auth: `?token=<api_token>` query parameter on all requests.
 
@@ -76,7 +76,7 @@ Auth: `?token=<api_token>` query parameter on all requests.
 
 ### CDP (WebSocket) Protocol
 
-Base URL: `wss://production-sfo.browserless.io`
+Base URL: `wss://production-sfo.browserless.io` (configurable via `BROWSERLESS_WS_BASE` env var)
 
 New browser sessions connect to `/chromium` path (Browserless v2 requirement).
 Reconnect endpoints use the path returned by `Browserless.reconnect`.

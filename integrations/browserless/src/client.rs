@@ -20,7 +20,7 @@ pub struct BrowserlessClient {
 
 impl BrowserlessClient {
     pub fn new(api_token: String) -> Self {
-        Self::with_base_url(api_token, crate::BROWSERLESS_API_BASE.to_string())
+        Self::with_base_url(api_token, crate::browserless_api_base())
     }
 
     pub fn with_base_url(api_token: String, api_base: String) -> Self {

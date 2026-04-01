@@ -58,12 +58,24 @@ inventory::submit! {
 // Constants
 // ============================================================================
 
-const BROWSERLESS_API_BASE: &str = "https://production-sfo.browserless.io";
-const BROWSERLESS_WS_BASE: &str = "wss://production-sfo.browserless.io";
+const DEFAULT_API_BASE: &str = "https://production-sfo.browserless.io";
+const DEFAULT_WS_BASE: &str = "wss://production-sfo.browserless.io";
 
 /// Path for new CDP browser sessions. Browserless v2 requires `/chromium` —
 /// the root path returns 400 Bad Request for WebSocket upgrades.
 const BROWSERLESS_CDP_PATH: &str = "/chromium";
+
+/// REST API base URL. Reads `BROWSERLESS_API_BASE` env var with fallback
+/// to the default production SFO endpoint.
+pub fn browserless_api_base() -> String {
+    std::env::var("BROWSERLESS_API_BASE").unwrap_or_else(|_| DEFAULT_API_BASE.to_string())
+}
+
+/// WebSocket base URL. Reads `BROWSERLESS_WS_BASE` env var with fallback
+/// to the default production SFO endpoint.
+pub fn browserless_ws_base() -> String {
+    std::env::var("BROWSERLESS_WS_BASE").unwrap_or_else(|_| DEFAULT_WS_BASE.to_string())
+}
 
 // ============================================================================
 // BrowserlessCapability
@@ -211,7 +223,7 @@ mod tests {
     fn test_cdp_path_is_set() {
         assert_eq!(BROWSERLESS_CDP_PATH, "/chromium");
         // New CDP sessions must connect to /chromium — root path returns 400
-        let full_url = format!("{}{}", BROWSERLESS_WS_BASE, BROWSERLESS_CDP_PATH);
+        let full_url = format!("{}{}", DEFAULT_WS_BASE, BROWSERLESS_CDP_PATH);
         assert_eq!(full_url, "wss://production-sfo.browserless.io/chromium");
     }
 
