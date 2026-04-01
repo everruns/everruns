@@ -408,7 +408,7 @@ mod tests {
         assert!(cap.system_prompt_addition().is_none());
         // Preview shows full features for UI
         let preview = cap.system_prompt_preview().unwrap();
-        assert!(preview.contains("FetchKit"));
+        assert!(preview.contains("web_fetch"));
     }
 
     #[test]

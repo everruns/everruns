@@ -1814,7 +1814,7 @@ mod tests {
                 .system_prompt
                 .contains(&base_runtime_agent.system_prompt)
         );
-        assert!(applied.runtime_agent.system_prompt.contains("FetchKit"));
+        assert!(applied.runtime_agent.system_prompt.contains("web_fetch"));
         assert!(applied.tool_registry.has("web_fetch"));
         assert_eq!(applied.tool_registry.len(), 1);
     }
