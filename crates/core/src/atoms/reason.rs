@@ -1993,7 +1993,7 @@ mod tests {
         // Test that serde uses the default_max_iterations function
         let json = r#"{"success":true,"text":"","has_tool_calls":false}"#;
         let result: ReasonResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.max_iterations, 100);
+        assert_eq!(result.max_iterations, 500);
     }
 
     #[test]
