@@ -206,7 +206,7 @@ pub struct ReasonResult {
 }
 
 fn default_max_iterations() -> usize {
-    100
+    500
 }
 
 // ============================================================================
@@ -683,6 +683,14 @@ impl ReasonAtom {
                 && !session_prompt.is_empty()
             {
                 builder = builder.prepend_system_prompt(session_prompt);
+            }
+
+            // Resolve max_iterations: session > agent > default (500)
+            let resolved_max_iterations = session
+                .max_iterations
+                .or_else(|| agent.as_ref().and_then(|a| a.max_iterations));
+            if let Some(max_iter) = resolved_max_iterations {
+                builder = builder.max_iterations(max_iter);
             }
 
             builder.build()

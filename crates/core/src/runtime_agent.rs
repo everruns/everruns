@@ -52,8 +52,11 @@ pub struct RuntimeAgent {
     pub tool_search: Option<ToolSearchConfig>,
 }
 
-fn default_max_iterations() -> usize {
-    100
+/// Default maximum iterations per turn (500).
+///
+/// Resolution priority: session override > agent config > this default.
+pub fn default_max_iterations() -> usize {
+    500
 }
 
 impl RuntimeAgent {
@@ -504,6 +507,7 @@ mod tests {
             system_prompt: "Agent prompt.".to_string(),
             capabilities: vec![AgentCapabilityConfig::new("current_time")],
             initial_files: vec![],
+            max_iterations: None,
             tools: vec![],
             status: AgentStatus::Active,
             default_model_id: None,
@@ -639,6 +643,7 @@ mod tests {
             system_prompt: "Agent with client tools.".to_string(),
             capabilities: vec![],
             initial_files: vec![],
+            max_iterations: None,
             tools: vec![client_tool],
             status: AgentStatus::Active,
             default_model_id: None,
@@ -691,6 +696,7 @@ mod tests {
             system_prompt: "Agent with mixed tools.".to_string(),
             capabilities: vec![AgentCapabilityConfig::new("current_time")],
             initial_files: vec![],
+            max_iterations: None,
             tools: vec![client_tool],
             status: AgentStatus::Active,
             default_model_id: None,
@@ -740,6 +746,7 @@ mod tests {
             system_prompt: "Agent prompt.".to_string(),
             capabilities: vec![AgentCapabilityConfig::new("current_time")],
             initial_files: vec![],
+            max_iterations: None,
             tools: vec![],
             status: AgentStatus::Active,
             default_model_id: None,

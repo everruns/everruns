@@ -236,6 +236,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 system_prompt: r.system_prompt,
                 initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
                 hints: r.hints.and_then(|v| serde_json::from_value(v).ok()),
+                max_iterations: r.max_iterations.map(|v| v as usize),
                 status: match r.status.as_str() {
                     "started" => SessionStatus::Started,
                     "active" => SessionStatus::Active,
@@ -1076,6 +1077,7 @@ impl DirectWorkerAdapters {
                 .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
                 .collect(),
             initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
+            max_iterations: r.max_iterations.map(|v| v as usize),
             tools: vec![],
             status: match r.status.as_str() {
                 "active" => AgentStatus::Active,
@@ -1325,6 +1327,7 @@ impl DirectPlatformStore {
             tags: row.tags,
             capabilities,
             initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+            max_iterations: row.max_iterations.map(|v| v as usize),
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
             status: AgentStatus::from(row.status.as_str()),
             created_at: row.created_at,
@@ -1356,6 +1359,7 @@ impl DirectPlatformStore {
             system_prompt: row.system_prompt,
             initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
             hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
+            max_iterations: row.max_iterations.map(|v| v as usize),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -1619,6 +1623,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             tags: vec!["managed".to_string()],
             initial_files: serde_json::json!([]),
             tools: serde_json::Value::Array(vec![]),
+            max_iterations: None,
         };
         let row = self
             .db
@@ -1758,6 +1763,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: blueprint_id.map(|s| s.to_string()),
             blueprint_config: blueprint_config.cloned(),
         };
@@ -2242,6 +2248,7 @@ mod tests {
             tags: vec![],
             initial_files: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
+            max_iterations: None,
         };
         let row = db
             .create_agent(everruns_core::DEFAULT_ORG_ID, create)
@@ -2776,6 +2783,7 @@ mod tests {
                 system_prompt: None,
                 initial_files: serde_json::Value::Array(vec![]),
                 hints: None,
+                max_iterations: None,
                 blueprint_id: None,
                 blueprint_config: None,
             })

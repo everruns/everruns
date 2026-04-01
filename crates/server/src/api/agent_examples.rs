@@ -196,6 +196,7 @@ pub async fn use_example(
         capabilities,
         initial_files: vec![],
         tools: vec![],
+        max_iterations: None,
     };
 
     let caller = Caller::from(&org);

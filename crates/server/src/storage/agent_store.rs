@@ -69,6 +69,7 @@ impl AgentStore for DbAgentStore {
                     tags: row.tags,
                     capabilities,
                     initial_files: from_json(row.initial_files),
+                    max_iterations: row.max_iterations.map(|v| v as usize),
                     tools: from_json(row.tools),
                     status: AgentStatus::from(row.status.as_str()),
                     created_at: row.created_at,

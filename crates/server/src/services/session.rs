@@ -169,6 +169,7 @@ impl SessionService {
             system_prompt: req.system_prompt.clone(),
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             hints: hints_json,
+            max_iterations: req.max_iterations.map(|v| v as i32),
             blueprint_id: None,
             blueprint_config: None,
         };
@@ -231,6 +232,7 @@ impl SessionService {
             system_prompt: req.system_prompt.clone(),
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             hints: None,
+            max_iterations: req.max_iterations.map(|v| v as i32),
             blueprint_id: Some(blueprint_id),
             blueprint_config,
         };
@@ -627,6 +629,7 @@ impl SessionService {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         };
@@ -798,6 +801,7 @@ impl SessionService {
             system_prompt: row.system_prompt,
             initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
             hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
+            max_iterations: row.max_iterations.map(|v| v as usize),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -867,6 +871,7 @@ mod tests {
             system_prompt: None,
             initial_files: vec![],
             hints: None,
+            max_iterations: None,
         }
     }
 
@@ -983,6 +988,7 @@ mod tests {
                         },
                     ],
                     tools: vec![],
+                    max_iterations: None,
                 },
             )
             .await
@@ -1150,6 +1156,7 @@ mod tests {
                     capabilities: vec![],
                     initial_files: vec![],
                     tools: vec![],
+                    max_iterations: None,
                 },
             )
             .await
@@ -1334,6 +1341,7 @@ mod tests {
                     capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
                     initial_files: vec![],
                     tools: vec![],
+                    max_iterations: None,
                 },
             )
             .await
@@ -1357,6 +1365,7 @@ mod tests {
                 system_prompt: None,
                 initial_files: serde_json::Value::Array(vec![]),
                 hints: None,
+                max_iterations: None,
                 blueprint_id: None,
                 blueprint_config: None,
             })
@@ -1427,6 +1436,7 @@ mod tests {
                     capabilities: vec![AgentCapabilityConfig::new("sample_data")],
                     initial_files: vec![],
                     tools: vec![],
+                    max_iterations: None,
                 },
             )
             .await
@@ -1447,6 +1457,7 @@ mod tests {
                 system_prompt: None,
                 initial_files: serde_json::Value::Array(vec![]),
                 hints: None,
+                max_iterations: None,
                 blueprint_id: None,
                 blueprint_config: None,
             })

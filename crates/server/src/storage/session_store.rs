@@ -94,6 +94,7 @@ impl SessionStore for DbSessionStore {
                     system_prompt: row.system_prompt,
                     initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
                     hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
+                    max_iterations: row.max_iterations.map(|v| v as usize),
                     status: SessionStatus::from(row.status.as_str()),
                     created_at: row.created_at,
                     updated_at: row.updated_at,

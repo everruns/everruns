@@ -627,6 +627,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
             .map(everruns_core::AgentCapabilityConfig::new)
             .collect(),
         initial_files: vec![],
+        max_iterations: None,
         tools: vec![],
         status,
         created_at: proto_timestamp_or_now(proto_agent.created_at.as_ref()),
@@ -803,6 +804,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
                 }
             }
         }),
+        max_iterations: None,
         status,
         created_at,
         updated_at,

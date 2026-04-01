@@ -26,6 +26,7 @@ async fn test_create_and_get_agent() {
                 tags: vec!["test".to_string()],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -54,6 +55,7 @@ async fn test_create_and_list_sessions() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -74,6 +76,7 @@ async fn test_create_and_list_sessions() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -106,6 +109,7 @@ async fn test_session_updated_at() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -127,6 +131,7 @@ async fn test_session_updated_at() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -175,6 +180,7 @@ async fn test_events_sequence() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -195,6 +201,7 @@ async fn test_events_sequence() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -240,6 +247,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -260,6 +268,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -720,6 +729,7 @@ async fn test_list_events_empty_session_with_limit() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -740,6 +750,7 @@ async fn test_list_events_empty_session_with_limit() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -770,6 +781,7 @@ async fn test_sessions_pagination() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -791,6 +803,7 @@ async fn test_sessions_pagination() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -860,6 +873,7 @@ async fn test_sessions_pagination_ordering() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -881,6 +895,7 @@ async fn test_sessions_pagination_ordering() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -1346,6 +1361,7 @@ async fn create_test_agent(
             tags: vec![],
             initial_files: serde_json::json!([]),
             tools: serde_json::json!([]),
+            max_iterations: None,
         },
     )
     .await
@@ -1600,6 +1616,7 @@ async fn test_search_sessions_by_title() {
         system_prompt: None,
         initial_files: serde_json::Value::Array(vec![]),
         hints: None,
+        max_iterations: None,
         blueprint_id: None,
         blueprint_config: None,
     })
@@ -1620,6 +1637,7 @@ async fn test_search_sessions_by_title() {
         system_prompt: None,
         initial_files: serde_json::Value::Array(vec![]),
         hints: None,
+        max_iterations: None,
         blueprint_id: None,
         blueprint_config: None,
     })
@@ -1656,6 +1674,7 @@ async fn test_search_sessions_with_agent_filter() {
         system_prompt: None,
         initial_files: serde_json::Value::Array(vec![]),
         hints: None,
+        max_iterations: None,
         blueprint_id: None,
         blueprint_config: None,
     })
@@ -1676,6 +1695,7 @@ async fn test_search_sessions_with_agent_filter() {
         system_prompt: None,
         initial_files: serde_json::Value::Array(vec![]),
         hints: None,
+        max_iterations: None,
         blueprint_id: None,
         blueprint_config: None,
     })
@@ -1865,6 +1885,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -1885,6 +1906,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -2042,6 +2064,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -2062,6 +2085,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -2082,6 +2106,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -2154,6 +2179,7 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
             system_prompt: Some("You are a session-level override".to_string()),
             initial_files: initial_files.clone(),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -2198,6 +2224,7 @@ async fn test_session_system_prompt_defaults_to_none() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })

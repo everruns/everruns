@@ -336,6 +336,9 @@ pub struct AgentRow {
     /// Client-side tools (JSONB in DB)
     #[sqlx(default)]
     pub tools: serde_json::Value,
+    /// Maximum iterations per turn
+    #[sqlx(default)]
+    pub max_iterations: Option<i32>,
     /// Cumulative input tokens across all sessions
     #[sqlx(default)]
     pub total_input_tokens: i64,
@@ -362,6 +365,8 @@ pub struct CreateAgentRow {
     pub initial_files: serde_json::Value,
     /// Client-side tools (JSONB in DB)
     pub tools: serde_json::Value,
+    /// Maximum iterations per turn
+    pub max_iterations: Option<i32>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -374,6 +379,8 @@ pub struct UpdateAgent {
     pub status: Option<String>,
     pub initial_files: Option<serde_json::Value>,
     pub tools: Option<serde_json::Value>,
+    /// None = don't change, Some(None) = set to NULL, Some(Some(v)) = set to v
+    pub max_iterations: Option<Option<i32>>,
 }
 
 // ============================================
@@ -477,6 +484,9 @@ pub struct SessionRow {
     /// Session-level client hints (JSONB in DB, nullable)
     #[sqlx(default)]
     pub hints: Option<serde_json::Value>,
+    /// Maximum iterations per turn
+    #[sqlx(default)]
+    pub max_iterations: Option<i32>,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -530,6 +540,8 @@ pub struct CreateSessionRow {
     pub initial_files: serde_json::Value,
     /// Session-level client hints (JSONB in DB)
     pub hints: Option<serde_json::Value>,
+    /// Maximum iterations per turn
+    pub max_iterations: Option<i32>,
     /// Blueprint ID for blueprint-backed sessions.
     pub blueprint_id: Option<String>,
     /// Validated blueprint config (JSONB in DB).

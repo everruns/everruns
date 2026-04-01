@@ -2894,6 +2894,7 @@ impl WorkerService for WorkerServiceImpl {
             capabilities,
             initial_files: vec![],
             tools: vec![],
+            max_iterations: None,
         };
 
         let internal_caller = everruns_core::Caller::internal(req.org_id);
@@ -2933,6 +2934,7 @@ impl WorkerService for WorkerServiceImpl {
             capabilities: None,
             initial_files: None,
             tools: None,
+            max_iterations: None,
             status: None,
         };
 
@@ -3044,6 +3046,7 @@ impl WorkerService for WorkerServiceImpl {
             system_prompt: None,
             initial_files: vec![],
             hints: None,
+            max_iterations: None,
         };
 
         let session = if let Some(blueprint_id) = req.blueprint_id {

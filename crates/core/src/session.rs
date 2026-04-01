@@ -166,6 +166,9 @@ pub struct Session {
     /// Examples: `{"setup_connection": true, "rich_media": true}`
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hints: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Maximum number of LLM iterations per turn for this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_iterations: Option<usize>,
     /// Current execution status of the session.
     pub status: SessionStatus,
     /// Timestamp when the session was created.
