@@ -137,15 +137,41 @@ case "$cmd" in
           fi
           ;;
         Linux)
-          if command -v apt-get &> /dev/null; then
-            # NATS provides official .deb packages via their apt repo
-            if curl -fsSL https://get-nats.io/install.sh | sh -s -- -y nats-server 2>/dev/null; then
-              echo "  ✅ nats-server installed via get-nats.io"
+          # Download pre-built nats-server binary (pinned version, no curl|sh)
+          local nats_version="2.11.3"
+          local arch
+          arch=$(uname -m)
+          case "$arch" in
+            x86_64)  arch="amd64" ;;
+            aarch64) arch="arm64" ;;
+            *)       arch="" ;;
+          esac
+          if [ -n "$arch" ] && command -v curl &> /dev/null; then
+            local nats_url="https://github.com/nats-io/nats-server/releases/download/v${nats_version}/nats-server-v${nats_version}-linux-${arch}.tar.gz"
+            local tmp_dir
+            tmp_dir=$(mktemp -d)
+            if curl -fsSL "$nats_url" -o "$tmp_dir/nats.tar.gz" 2>/dev/null; then
+              tar -xzf "$tmp_dir/nats.tar.gz" -C "$tmp_dir" 2>/dev/null
+              local nats_bin
+              nats_bin=$(find "$tmp_dir" -name nats-server -type f | head -1)
+              if [ -n "$nats_bin" ]; then
+                mkdir -p "$HOME/.local/bin"
+                cp "$nats_bin" "$HOME/.local/bin/nats-server"
+                chmod +x "$HOME/.local/bin/nats-server"
+                echo "  ✅ nats-server v${nats_version} installed to ~/.local/bin/"
+                # Ensure ~/.local/bin is in PATH
+                if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
+                  echo "  ℹ️  Add ~/.local/bin to PATH: export PATH=\"\$HOME/.local/bin:\$PATH\""
+                fi
+              else
+                echo "  ⚠️  Could not extract nats-server (optional — PG NOTIFY + in-memory delivery will be used)"
+              fi
             else
-              echo "  ⚠️  Could not install nats-server (optional — PG NOTIFY + in-memory delivery will be used)"
+              echo "  ⚠️  Could not download nats-server (optional — PG NOTIFY + in-memory delivery will be used)"
             fi
+            rm -rf "$tmp_dir"
           else
-            echo "  ⚠️  apt-get not found. Install nats-server manually (optional)."
+            echo "  ⚠️  curl not found or unsupported arch ($arch). Install nats-server manually (optional)."
           fi
           ;;
         *)
