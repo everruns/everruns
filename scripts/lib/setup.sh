@@ -214,7 +214,7 @@ case "$cmd" in
     echo "  📦 Installing UI dependencies..."
     cd "$PROJECT_ROOT/apps/ui"
     npm install
-    npm rebuild
+    npm rebuild --ignore-scripts=false
     echo "  🎭 Installing Playwright browsers..."
     npx playwright install chromium || echo "  ⚠️  Playwright browser install failed (may work in CI)"
     cd "$PROJECT_ROOT"
@@ -225,7 +225,7 @@ case "$cmd" in
     echo "  📦 Installing docs dependencies..."
     cd "$PROJECT_ROOT/apps/docs"
     npm install
-    npm rebuild
+    npm rebuild --ignore-scripts=false
     cd "$PROJECT_ROOT"
 
     echo ""

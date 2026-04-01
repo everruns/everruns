@@ -768,7 +768,10 @@ jobs:
           cache-dependency-path: apps/ui/package-lock.json
 
       - name: Install dependencies
-        run: npm ci && npm rebuild
+        run: npm ci
+
+      - name: Rebuild native dependencies
+        run: npm rebuild --ignore-scripts=false
 
       - name: Cache Next.js build
         uses: actions/cache@v4
@@ -812,7 +815,10 @@ jobs:
           cache-dependency-path: apps/docs/package-lock.json
 
       - name: Install dependencies
-        run: npm ci && npm rebuild
+        run: npm ci
+
+      - name: Rebuild native dependencies
+        run: npm rebuild --ignore-scripts=false
 
       - name: Astro check
         run: npm run check
