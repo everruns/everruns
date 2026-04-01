@@ -17,8 +17,8 @@ use tracing::{debug, warn};
 
 use crate::cdp::{CdpSession, DEFAULT_RECONNECT_TIMEOUT_MS};
 use crate::state::{
-    BrowserSessionState, browser_session_external_id, delete_browser_session, get_api_token,
-    get_browser_session, save_browser_session,
+    BrowserSessionState, browser_session_external_id, delete_browser_session, delete_cookies,
+    get_api_token, get_browser_session, save_browser_session,
 };
 use crate::validation::validate_browserless_url;
 
@@ -390,10 +390,12 @@ impl Tool for BrowserlessCloseBrowserTool {
         if let Err(e) = release_browser_session_lease(context, &session_state).await {
             return e;
         }
+        // Clear persisted cookies when browser session is closed
+        delete_cookies(context).await;
 
         ToolExecutionResult::Success(json!({
             "status": "closed",
-            "message": "Browser session closed. Resources have been released."
+            "message": "Browser session closed. Resources and cookies have been released."
         }))
     }
 

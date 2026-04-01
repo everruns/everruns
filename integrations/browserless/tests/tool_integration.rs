@@ -78,7 +78,7 @@ async fn test_screenshot_client_flow() {
 
     let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
     let bytes = client
-        .screenshot("https://example.com", true, None, None, None)
+        .screenshot("https://example.com", true, None, None, None, &[])
         .await
         .unwrap();
     assert!(!bytes.is_empty());
@@ -98,7 +98,7 @@ async fn test_content_client_flow() {
 
     let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
     let html = client
-        .content("https://example.com", None, None, false)
+        .content("https://example.com", None, None, false, &[])
         .await
         .unwrap();
     assert!(html.contains("Hello World"));
@@ -131,6 +131,7 @@ async fn test_scrape_client_flow() {
             &[json!({"selector": "h1"})],
             None,
             None,
+            &[],
         )
         .await
         .unwrap();
@@ -290,7 +291,7 @@ async fn test_client_401_unauthorized() {
 
     let client = BrowserlessClient::with_base_url("bad_token".to_string(), mock_server.uri());
     let result = client
-        .screenshot("https://example.com", false, None, None, None)
+        .screenshot("https://example.com", false, None, None, None, &[])
         .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("401"));
@@ -307,7 +308,7 @@ async fn test_client_500_server_error() {
 
     let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
     let result = client
-        .content("https://example.com", None, None, false)
+        .content("https://example.com", None, None, false, &[])
         .await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("500"));
@@ -331,7 +332,7 @@ async fn test_client_sends_token_in_query() {
     let client =
         BrowserlessClient::with_base_url("secret_token_123".to_string(), mock_server.uri());
     let result = client
-        .content("https://example.com", None, None, false)
+        .content("https://example.com", None, None, false, &[])
         .await;
     assert!(result.is_ok());
 }
@@ -356,11 +357,11 @@ async fn test_no_resources_left_behind() {
     let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
 
     let r1 = client
-        .content("https://example.com/page1", None, None, false)
+        .content("https://example.com/page1", None, None, false, &[])
         .await
         .unwrap();
     let r2 = client
-        .content("https://example.com/page2", None, None, false)
+        .content("https://example.com/page2", None, None, false, &[])
         .await
         .unwrap();
 

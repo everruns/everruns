@@ -307,6 +307,85 @@ pub fn substitute_step_secrets(
 }
 
 // ============================================================================
+// Cookie Persistence (REST-mode)
+// ============================================================================
+
+/// Session secret key for persisted browser cookies.
+/// Uses namespaced prefix to avoid collisions with user-set secrets.
+const COOKIES_SECRET_KEY: &str = "browserless_internal:cookies";
+
+/// Save cookies to session storage as an encrypted secret.
+/// Cookies are a JSON array of Puppeteer cookie objects.
+pub async fn save_cookies(context: &ToolContext, cookies: &[Value]) -> Result<(), String> {
+    let storage = match context.storage_store.as_ref() {
+        Some(s) => s,
+        None => return Ok(()), // silently skip if no storage
+    };
+    let json_str =
+        serde_json::to_string(cookies).map_err(|e| format!("Failed to serialize cookies: {e}"))?;
+    storage
+        .set_secret(context.session_id, COOKIES_SECRET_KEY, &json_str)
+        .await
+        .map_err(|e| format!("Failed to save cookies: {e}"))?;
+    debug!("Saved {} cookies to session storage", cookies.len());
+    Ok(())
+}
+
+/// Load stored cookies from session storage. Returns empty vec if none stored.
+pub async fn load_cookies(context: &ToolContext) -> Vec<Value> {
+    let storage = match context.storage_store.as_ref() {
+        Some(s) => s,
+        None => return Vec::new(),
+    };
+    match storage
+        .get_secret(context.session_id, COOKIES_SECRET_KEY)
+        .await
+    {
+        Ok(Some(json_str)) => match serde_json::from_str::<Vec<Value>>(&json_str) {
+            Ok(cookies) => {
+                debug!("Loaded {} stored cookies", cookies.len());
+                cookies
+            }
+            Err(e) => {
+                debug!("Failed to parse stored cookies: {e}; deleting corrupted entry");
+                let _ = storage
+                    .delete_secret(context.session_id, COOKIES_SECRET_KEY)
+                    .await;
+                Vec::new()
+            }
+        },
+        _ => Vec::new(),
+    }
+}
+
+/// Delete stored cookies from session storage.
+pub async fn delete_cookies(context: &ToolContext) {
+    let storage = match context.storage_store.as_ref() {
+        Some(s) => s,
+        None => return,
+    };
+    let _ = storage
+        .delete_secret(context.session_id, COOKIES_SECRET_KEY)
+        .await;
+    debug!("Deleted stored cookies");
+}
+
+/// Generate Puppeteer code to inject stored cookies before navigation.
+/// Returns empty string if no cookies are available.
+pub fn build_cookie_injection_code(cookies: &[Value]) -> String {
+    if cookies.is_empty() {
+        return String::new();
+    }
+    let cookies_json = serde_json::to_string(cookies).unwrap_or_else(|_| "[]".to_string());
+    format!("  await page.setCookie(...{cookies_json});\n")
+}
+
+/// Generate Puppeteer code to extract cookies after page interactions.
+pub fn build_cookie_extraction_code() -> &'static str {
+    "  const __cookies = await page.cookies();\n"
+}
+
+// ============================================================================
 // Parameter Helpers
 // ============================================================================
 
@@ -527,5 +606,33 @@ mod tests {
         let resolved = std::collections::HashMap::new();
         let result = substitute_step_secrets(&steps, &resolved);
         assert_eq!(result, steps);
+    }
+
+    // ====================================================================
+    // Cookie persistence tests
+    // ====================================================================
+
+    #[test]
+    fn test_build_cookie_injection_code_empty() {
+        assert_eq!(build_cookie_injection_code(&[]), "");
+    }
+
+    #[test]
+    fn test_build_cookie_injection_code_with_cookies() {
+        let cookies = vec![serde_json::json!({
+            "name": "sid",
+            "value": "abc",
+            "domain": "example.com"
+        })];
+        let code = build_cookie_injection_code(&cookies);
+        assert!(code.contains("setCookie"), "should use page.setCookie");
+        assert!(code.contains("sid"), "should include cookie name");
+    }
+
+    #[test]
+    fn test_build_cookie_extraction_code() {
+        let code = build_cookie_extraction_code();
+        assert!(code.contains("page.cookies()"));
+        assert!(code.contains("__cookies"));
     }
 }
