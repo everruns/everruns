@@ -2617,10 +2617,7 @@ mod tests {
 
         let collected = collect_message_filters_only(&configs, &registry);
 
-        let mut messages = vec![
-            Message::user("first"),
-            Message::user("second"),
-        ];
+        let mut messages = vec![Message::user("first"), Message::user("second")];
         collected.apply_post_load_filters(&mut messages);
 
         // post_load reversed the messages
