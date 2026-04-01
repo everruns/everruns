@@ -209,7 +209,7 @@ impl Tool for BrowserlessOpenBrowserTool {
 
         let ws_url = format!(
             "{}{}?token={}",
-            crate::BROWSERLESS_WS_BASE,
+            crate::browserless_ws_base(),
             crate::BROWSERLESS_CDP_PATH,
             api_token
         );

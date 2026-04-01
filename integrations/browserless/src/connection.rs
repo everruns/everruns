@@ -13,8 +13,6 @@ use everruns_core::connection_provider::{
 };
 use tracing::warn;
 
-use crate::BROWSERLESS_API_BASE;
-
 pub struct BrowserlessConnectionProvider;
 
 #[async_trait]
@@ -59,8 +57,9 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
 
     async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String> {
         let client = reqwest::Client::new();
+        let api_base = crate::browserless_api_base();
         let response = client
-            .get(format!("{BROWSERLESS_API_BASE}/active?token={credential}"))
+            .get(format!("{api_base}/active?token={credential}"))
             .send()
             .await
             .map_err(|e| format!("Failed to reach Browserless API: {e}"))?;
@@ -86,7 +85,7 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
         // This catches tokens that work for REST but not for CDP sessions.
         let cdp_probe = client
             .get(format!(
-                "{BROWSERLESS_API_BASE}{}?token={credential}",
+                "{api_base}{}?token={credential}",
                 crate::BROWSERLESS_CDP_PATH
             ))
             .send()
