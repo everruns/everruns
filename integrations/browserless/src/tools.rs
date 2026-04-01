@@ -473,7 +473,12 @@ pub struct BrowserlessInteractTool;
 
 /// Build Puppeteer function code from a list of interaction steps.
 /// Each step is executed sequentially in a fresh browser session.
-fn build_interaction_code(url: &str, steps: &[Value], return_screenshot: bool) -> String {
+fn build_interaction_code(
+    url: &str,
+    steps: &[Value],
+    want_screenshot: bool,
+    want_content: bool,
+) -> String {
     let mut code = String::new();
     code.push_str("export default async ({ page }) => {\n");
     code.push_str(&format!(
@@ -584,19 +589,27 @@ fn build_interaction_code(url: &str, steps: &[Value], return_screenshot: bool) -
     code.push_str("  const title = await page.title();\n");
     code.push_str("  const url = page.url();\n");
 
-    if return_screenshot {
+    if want_screenshot {
         code.push_str(
             "  const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });\n",
         );
-        code.push_str(
-            "  return { data: JSON.stringify({ title, url, screenshot }), type: 'application/json' };\n",
-        );
-    } else {
-        code.push_str("  const content = await page.content();\n");
-        code.push_str(
-            "  return { data: JSON.stringify({ title, url, content }), type: 'application/json' };\n",
-        );
     }
+    if want_content {
+        code.push_str("  const content = await page.content();\n");
+    }
+
+    // Build return object with whichever fields were requested
+    let mut fields = vec!["title", "url"];
+    if want_screenshot {
+        fields.push("screenshot");
+    }
+    if want_content {
+        fields.push("content");
+    }
+    code.push_str(&format!(
+        "  return {{ data: JSON.stringify({{ {} }}), type: 'application/json' }};\n",
+        fields.join(", ")
+    ));
 
     code.push_str("};\n");
     code
@@ -669,7 +682,11 @@ impl Tool for BrowserlessInteractTool {
                 },
                 "return_screenshot": {
                     "type": "boolean",
-                    "description": "If true, return a base64 screenshot after all steps. If false, return DOM content. (default: false)"
+                    "description": "If true, return a base64 screenshot after all steps. (default: false)"
+                },
+                "return_content": {
+                    "type": "boolean",
+                    "description": "If true, return DOM content after all steps. When both return_screenshot and return_content are true, both are included in the response. If neither is true, returns DOM content by default. (default: false)"
                 }
             },
             "required": ["url", "steps"],
@@ -747,6 +764,15 @@ impl Tool for BrowserlessInteractTool {
             .get("return_screenshot")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let return_content = arguments
+            .get("return_content")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        // If neither flag is set, default to returning content
+        let (want_screenshot, want_content) = match (return_screenshot, return_content) {
+            (false, false) => (false, true),
+            other => other,
+        };
 
         // Try CDP session first
         if let Some(mut session) = try_get_cdp_session(context).await {
@@ -855,14 +881,16 @@ impl Tool for BrowserlessInteractTool {
             // Capture result
             let title = session.get_title().await.unwrap_or_default();
             let final_url = session.get_url().await.unwrap_or_default();
-            let result = if return_screenshot {
+            let mut result = json!({
+                "title": title,
+                "url": final_url,
+                "session": "cdp"
+            });
+            if want_screenshot {
                 match session.screenshot(true).await {
-                    Ok(b64) => json!({
-                        "title": title,
-                        "url": final_url,
-                        "screenshot": b64,
-                        "session": "cdp"
-                    }),
+                    Ok(b64) => {
+                        result["screenshot"] = json!(b64);
+                    }
                     Err(e) => {
                         keep_session_alive(context, &mut session).await;
                         session.disconnect().await;
@@ -871,21 +899,19 @@ impl Tool for BrowserlessInteractTool {
                         ));
                     }
                 }
-            } else {
+            }
+            if want_content {
                 match session.get_content().await {
-                    Ok(content) => json!({
-                        "title": title,
-                        "url": final_url,
-                        "content": content,
-                        "session": "cdp"
-                    }),
+                    Ok(content) => {
+                        result["content"] = json!(content);
+                    }
                     Err(e) => {
                         keep_session_alive(context, &mut session).await;
                         session.disconnect().await;
                         return ToolExecutionResult::tool_error(format!("CDP content failed: {e}"));
                     }
                 }
-            };
+            }
 
             keep_session_alive(context, &mut session).await;
             session.disconnect().await;
@@ -898,7 +924,7 @@ impl Tool for BrowserlessInteractTool {
             Err(e) => return e,
         };
 
-        let code = build_interaction_code(url, &steps, return_screenshot);
+        let code = build_interaction_code(url, &steps, want_screenshot, want_content);
         debug!("Generated interaction code ({} bytes)", code.len());
 
         let client = BrowserlessClient::new(api_token);
@@ -1215,7 +1241,7 @@ mod tests {
             "action": "click",
             "selector": "#submit-btn"
         })];
-        let code = build_interaction_code("https://example.com", &steps, false);
+        let code = build_interaction_code("https://example.com", &steps, false, true);
         assert!(code.contains("page.goto"));
         assert!(code.contains("page.click"));
         assert!(code.contains("#submit-btn"));
@@ -1229,7 +1255,7 @@ mod tests {
             "selector": "#username",
             "value": "admin"
         })];
-        let code = build_interaction_code("https://example.com", &steps, false);
+        let code = build_interaction_code("https://example.com", &steps, false, true);
         assert!(code.contains("page.type"));
         assert!(code.contains("#username"));
         assert!(code.contains("admin"));
@@ -1241,7 +1267,7 @@ mod tests {
             "action": "keyboard",
             "key": "Enter"
         })];
-        let code = build_interaction_code("https://example.com", &steps, false);
+        let code = build_interaction_code("https://example.com", &steps, false, true);
         assert!(code.contains("page.keyboard.press"));
         assert!(code.contains("Enter"));
     }
@@ -1253,7 +1279,7 @@ mod tests {
             "x": 100.0,
             "y": 200.0
         })];
-        let code = build_interaction_code("https://example.com", &steps, false);
+        let code = build_interaction_code("https://example.com", &steps, false, true);
         assert!(code.contains("page.mouse.move(100, 200)"));
     }
 
@@ -1263,7 +1289,7 @@ mod tests {
             "action": "touch",
             "selector": ".menu-item"
         })];
-        let code = build_interaction_code("https://example.com", &steps, false);
+        let code = build_interaction_code("https://example.com", &steps, false, true);
         assert!(code.contains("page.tap"));
     }
 
@@ -1273,7 +1299,7 @@ mod tests {
             "action": "scroll",
             "value": 1000
         })];
-        let code = build_interaction_code("https://example.com", &steps, false);
+        let code = build_interaction_code("https://example.com", &steps, false, true);
         assert!(code.contains("window.scrollBy(0, 1000)"));
     }
 
@@ -1283,7 +1309,7 @@ mod tests {
             "action": "click",
             "selector": "button"
         })];
-        let code = build_interaction_code("https://example.com", &steps, true);
+        let code = build_interaction_code("https://example.com", &steps, true, false);
         assert!(code.contains("page.screenshot"));
         assert!(!code.contains("page.content()"));
     }
@@ -1294,7 +1320,7 @@ mod tests {
             "action": "navigate",
             "value": "https://other.com/page"
         })];
-        let code = build_interaction_code("https://example.com", &steps, false);
+        let code = build_interaction_code("https://example.com", &steps, false, true);
         // Should have two page.goto calls: initial + navigate step
         assert!(code.contains("https://other.com/page"));
     }
@@ -1305,7 +1331,7 @@ mod tests {
             "action": "wait",
             "wait_ms": 2000
         })];
-        let code = build_interaction_code("https://example.com", &steps, false);
+        let code = build_interaction_code("https://example.com", &steps, false, true);
         assert!(code.contains("setTimeout(r, 2000)"));
     }
 
@@ -1316,7 +1342,7 @@ mod tests {
             "selector": ".loaded",
             "wait_ms": 5000
         })];
-        let code = build_interaction_code("https://example.com", &steps, false);
+        let code = build_interaction_code("https://example.com", &steps, false, true);
         assert!(code.contains("waitForSelector"));
         assert!(code.contains(".loaded"));
         assert!(code.contains("5000"));
@@ -1329,7 +1355,7 @@ mod tests {
             "x": 50.0,
             "y": 75.0
         })];
-        let code = build_interaction_code("https://example.com", &steps, false);
+        let code = build_interaction_code("https://example.com", &steps, false, true);
         assert!(code.contains("page.mouse.click(50, 75)"));
     }
 
@@ -1343,12 +1369,30 @@ mod tests {
             json!({"action": "click", "selector": "#submit"}),
             json!({"action": "wait", "wait_ms": 2000}),
         ];
-        let code = build_interaction_code("https://example.com/home", &steps, true);
+        let code = build_interaction_code("https://example.com/home", &steps, true, false);
         assert!(code.contains("#login-link"));
         assert!(code.contains("#username"));
         assert!(code.contains("#password"));
         assert!(code.contains("#submit"));
         assert!(code.contains("page.screenshot"));
+    }
+
+    #[test]
+    fn test_build_interaction_code_both_screenshot_and_content() {
+        let steps = vec![json!({"action": "click", "selector": "#btn"})];
+        let code = build_interaction_code("https://example.com", &steps, true, true);
+        assert!(
+            code.contains("page.screenshot"),
+            "should include screenshot capture"
+        );
+        assert!(
+            code.contains("page.content()"),
+            "should include content capture"
+        );
+        assert!(
+            code.contains("screenshot") && code.contains("content"),
+            "return object should include both fields"
+        );
     }
 
     #[tokio::test]

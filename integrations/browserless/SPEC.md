@@ -146,8 +146,8 @@ Extract structured data using CSS selectors. REST-only (no CDP equivalent).
 
 Multi-step browser interactions.
 
-- **Parameters**: `url` (required), `steps` (required), `return_screenshot` (optional, default false)
-- **Returns**: `{ title, url, screenshot? | content? }`
+- **Parameters**: `url` (required), `steps` (required), `return_screenshot` (optional, default false), `return_content` (optional, default false)
+- **Returns**: `{ title, url, screenshot?, content? }` — when both flags are true, both fields are included. If neither is set, returns content by default.
 - **Session-aware**: Uses CDP session (click, type, keyboard, mouse, touch via CDP commands) if active, generates Puppeteer code for REST `/function` otherwise.
 
 **Supported step actions**: See `src/tools.rs:build_interaction_code()` for REST and `execute_with_context()` for CDP.
