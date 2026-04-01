@@ -54,6 +54,7 @@ async fn live_scrape() {
             &[serde_json::json!({"selector": "h1"})],
             None,
             None,
+            &[],
         )
         .await
         .expect("Scrape should succeed");
