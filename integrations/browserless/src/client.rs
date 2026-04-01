@@ -454,4 +454,78 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid JSON"));
     }
+
+    #[tokio::test]
+    async fn test_client_screenshot_with_cookies() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/screenshot"))
+            .and(wiremock::matchers::body_json(json!({
+                "url": "https://example.com",
+                "options": {"fullPage": true, "type": "png"},
+                "cookies": [{"name": "sid", "value": "abc", "domain": "example.com"}]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"PNG".to_vec()))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let cookies = vec![json!({"name": "sid", "value": "abc", "domain": "example.com"})];
+        let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
+        let result = client
+            .screenshot("https://example.com", true, None, None, None, &cookies)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_content_with_cookies() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/content"))
+            .and(wiremock::matchers::body_json(json!({
+                "url": "https://example.com",
+                "cookies": [{"name": "sid", "value": "abc", "domain": "example.com"}]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_string("<html></html>"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let cookies = vec![json!({"name": "sid", "value": "abc", "domain": "example.com"})];
+        let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
+        let result = client
+            .content("https://example.com", None, None, false, &cookies)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_scrape_with_cookies() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/scrape"))
+            .and(wiremock::matchers::body_json(json!({
+                "url": "https://example.com",
+                "elements": [{"selector": "h1"}],
+                "cookies": [{"name": "sid", "value": "abc", "domain": "example.com"}]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": []})))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let cookies = vec![json!({"name": "sid", "value": "abc", "domain": "example.com"})];
+        let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
+        let result = client
+            .scrape(
+                "https://example.com",
+                &[json!({"selector": "h1"})],
+                None,
+                None,
+                &cookies,
+            )
+            .await;
+        assert!(result.is_ok());
+    }
 }

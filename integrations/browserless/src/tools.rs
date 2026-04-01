@@ -959,9 +959,8 @@ impl Tool for BrowserlessInteractTool {
                 if let Some(data_str) = result.get("data").and_then(|v| v.as_str()) {
                     match serde_json::from_str::<Value>(data_str) {
                         Ok(mut data) => {
-                            // Extract and persist cookies, then remove from response
+                            // Extract and persist cookies (even empty — clears stale state)
                             if let Some(cookies) = data.get("__cookies").and_then(|v| v.as_array())
-                                && !cookies.is_empty()
                                 && let Err(e) = save_cookies(context, cookies).await
                             {
                                 debug!("Failed to persist cookies: {e}");
@@ -1435,8 +1434,8 @@ mod tests {
             "should contain cookie name: {code}"
         );
         assert!(
-            code.contains("__cookies"),
-            "should extract cookies for persistence: {code}"
+            code.contains("page.cookies()"),
+            "should extract cookies via page.cookies(): {code}"
         );
     }
 
@@ -1450,7 +1449,7 @@ mod tests {
         );
         // Should still extract cookies for persistence
         assert!(
-            code.contains("__cookies"),
+            code.contains("const __cookies = await page.cookies()"),
             "should still extract cookies: {code}"
         );
     }

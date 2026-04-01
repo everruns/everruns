@@ -311,7 +311,8 @@ pub fn substitute_step_secrets(
 // ============================================================================
 
 /// Session secret key for persisted browser cookies.
-const COOKIES_SECRET_KEY: &str = "browserless_cookies";
+/// Uses namespaced prefix to avoid collisions with user-set secrets.
+const COOKIES_SECRET_KEY: &str = "browserless_internal:cookies";
 
 /// Save cookies to session storage as an encrypted secret.
 /// Cookies are a JSON array of Puppeteer cookie objects.
@@ -346,7 +347,10 @@ pub async fn load_cookies(context: &ToolContext) -> Vec<Value> {
                 cookies
             }
             Err(e) => {
-                debug!("Failed to parse stored cookies: {e}");
+                debug!("Failed to parse stored cookies: {e}; deleting corrupted entry");
+                let _ = storage
+                    .delete_secret(context.session_id, COOKIES_SECRET_KEY)
+                    .await;
                 Vec::new()
             }
         },
