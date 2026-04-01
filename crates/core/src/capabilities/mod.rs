@@ -865,6 +865,69 @@ impl CollectedCapabilities {
     }
 }
 
+/// Lightweight result containing only message filter providers.
+///
+/// Used when callers only need message filtering (e.g., message loading in
+/// ReasonAtom) without paying the cost of system prompt contribution or tool
+/// collection. This avoids unnecessary filesystem reads (AGENTS.md) and tool
+/// instantiation on the message-filter-only path.
+pub struct CollectedMessageFilters {
+    /// Message filter providers with their configs (in priority order)
+    pub message_filter_providers: Vec<(Arc<dyn MessageFilterProvider>, serde_json::Value)>,
+}
+
+// Note: apply_message_filters/apply_post_load_filters mirror the same methods
+// on CollectedCapabilities. The duplication is intentional — extracting a trait
+// would add indirection for 3 lines of loop body, and the two structs serve
+// different purposes (lightweight vs full collection).
+
+impl CollectedMessageFilters {
+    /// Apply all collected message filter providers to a query.
+    pub fn apply_message_filters(&self, query: &mut crate::message_filter::MessageQuery) {
+        for (provider, config) in &self.message_filter_providers {
+            provider.apply_filters(query, config);
+        }
+    }
+
+    /// Apply post-load transforms from all message filter providers.
+    pub fn apply_post_load_filters(&self, messages: &mut Vec<crate::message::Message>) {
+        for (provider, config) in &self.message_filter_providers {
+            provider.post_load(messages, config);
+        }
+    }
+}
+
+/// Collect only message filter providers from capabilities, skipping system
+/// prompt contributions, tools, mounts, and other expensive work.
+///
+/// This is a fast path for callers that only need message filtering (e.g.,
+/// the message-loading step in ReasonAtom before RuntimeAgent is built).
+pub fn collect_message_filters_only(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+) -> CollectedMessageFilters {
+    let mut message_filter_providers: Vec<(Arc<dyn MessageFilterProvider>, serde_json::Value)> =
+        Vec::new();
+
+    for cap_config in capability_configs {
+        let cap_id = cap_config.capability_ref.as_str();
+        if let Some(capability) = registry.get(cap_id) {
+            if capability.status() != CapabilityStatus::Available {
+                continue;
+            }
+            if let Some(provider) = capability.message_filter_provider() {
+                message_filter_providers.push((provider, cap_config.config.clone()));
+            }
+        }
+    }
+
+    message_filter_providers.sort_by_key(|(p, _)| p.priority());
+
+    CollectedMessageFilters {
+        message_filter_providers,
+    }
+}
+
 // ============================================================================
 // Dependency Resolution
 // ============================================================================
@@ -2385,6 +2448,181 @@ mod tests {
         assert_eq!(collected.message_filter_providers.len(), 1);
         let (_, stored_config) = &collected.message_filter_providers[0];
         assert_eq!(*stored_config, test_config);
+    }
+
+    // =========================================================================
+    // collect_message_filters_only tests
+    // =========================================================================
+
+    #[test]
+    fn test_collect_message_filters_only_collects_filters() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(FilterTestCapability { priority: 0 });
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("filter_test"),
+            config: serde_json::json!({ "search": "test_query" }),
+        }];
+
+        let collected = collect_message_filters_only(&configs, &registry);
+
+        let session_id: SessionId = Uuid::now_v7().into();
+        let mut query = MessageQuery::new(session_id);
+        collected.apply_message_filters(&mut query);
+
+        assert_eq!(query.filters.len(), 1);
+        assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "test_query"));
+    }
+
+    #[test]
+    fn test_collect_message_filters_only_skips_unknown_capabilities() {
+        let registry = CapabilityRegistry::new();
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("nonexistent"),
+            config: serde_json::json!({}),
+        }];
+
+        let collected = collect_message_filters_only(&configs, &registry);
+        assert!(collected.message_filter_providers.is_empty());
+    }
+
+    #[test]
+    fn test_collect_message_filters_only_preserves_priority_order() {
+        struct PriorityFilterCap {
+            id: &'static str,
+            search_term: &'static str,
+            priority: i32,
+        }
+
+        struct PriorityFilterProvider {
+            search_term: &'static str,
+            priority: i32,
+        }
+
+        impl Capability for PriorityFilterCap {
+            fn id(&self) -> &str {
+                self.id
+            }
+            fn name(&self) -> &str {
+                self.id
+            }
+            fn description(&self) -> &str {
+                "priority test"
+            }
+            fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
+                Some(Arc::new(PriorityFilterProvider {
+                    search_term: self.search_term,
+                    priority: self.priority,
+                }))
+            }
+        }
+
+        impl MessageFilterProvider for PriorityFilterProvider {
+            fn apply_filters(&self, query: &mut MessageQuery, _config: &serde_json::Value) {
+                query
+                    .filters
+                    .push(MessageFilter::Search(self.search_term.to_string()));
+            }
+            fn priority(&self) -> i32 {
+                self.priority
+            }
+        }
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(PriorityFilterCap {
+            id: "gamma",
+            search_term: "gamma",
+            priority: 10,
+        });
+        registry.register(PriorityFilterCap {
+            id: "alpha",
+            search_term: "alpha",
+            priority: 5,
+        });
+        registry.register(PriorityFilterCap {
+            id: "beta",
+            search_term: "beta",
+            priority: 1,
+        });
+
+        let configs = vec![
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("gamma"),
+                config: serde_json::json!({}),
+            },
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("alpha"),
+                config: serde_json::json!({}),
+            },
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("beta"),
+                config: serde_json::json!({}),
+            },
+        ];
+
+        let collected = collect_message_filters_only(&configs, &registry);
+
+        let session_id: SessionId = Uuid::now_v7().into();
+        let mut query = MessageQuery::new(session_id);
+        collected.apply_message_filters(&mut query);
+
+        // Filters should be applied in priority order: beta (1), alpha (5), gamma (10)
+        assert_eq!(query.filters.len(), 3);
+        assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "beta"));
+        assert!(matches!(&query.filters[1], MessageFilter::Search(s) if s == "alpha"));
+        assert!(matches!(&query.filters[2], MessageFilter::Search(s) if s == "gamma"));
+    }
+
+    #[test]
+    fn test_collect_message_filters_only_post_load_invoked() {
+        use crate::message::Message;
+
+        struct PostLoadCap;
+        struct PostLoadProvider;
+
+        impl Capability for PostLoadCap {
+            fn id(&self) -> &str {
+                "post_load_test"
+            }
+            fn name(&self) -> &str {
+                "PostLoad Test"
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+            fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
+                Some(Arc::new(PostLoadProvider))
+            }
+        }
+
+        impl MessageFilterProvider for PostLoadProvider {
+            fn apply_filters(&self, _query: &mut MessageQuery, _config: &serde_json::Value) {}
+            fn priority(&self) -> i32 {
+                0
+            }
+            fn post_load(&self, messages: &mut Vec<Message>, _config: &serde_json::Value) {
+                // Reverse messages to prove post_load was called
+                messages.reverse();
+            }
+        }
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(PostLoadCap);
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("post_load_test"),
+            config: serde_json::json!({}),
+        }];
+
+        let collected = collect_message_filters_only(&configs, &registry);
+
+        let mut messages = vec![Message::user("first"), Message::user("second")];
+        collected.apply_post_load_filters(&mut messages);
+
+        // post_load reversed the messages
+        assert_eq!(messages[0].text(), Some("second"));
+        assert_eq!(messages[1].text(), Some("first"));
     }
 
     // =========================================================================
