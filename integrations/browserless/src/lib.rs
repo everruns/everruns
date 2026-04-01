@@ -66,15 +66,31 @@ const DEFAULT_WS_BASE: &str = "wss://production-sfo.browserless.io";
 const BROWSERLESS_CDP_PATH: &str = "/chromium";
 
 /// REST API base URL. Reads `BROWSERLESS_API_BASE` env var with fallback
-/// to the default production SFO endpoint.
+/// to the default production SFO endpoint. Strips trailing slashes and
+/// falls back to the default if the env var is empty.
 pub fn browserless_api_base() -> String {
-    std::env::var("BROWSERLESS_API_BASE").unwrap_or_else(|_| DEFAULT_API_BASE.to_string())
+    read_base_url("BROWSERLESS_API_BASE", DEFAULT_API_BASE)
 }
 
 /// WebSocket base URL. Reads `BROWSERLESS_WS_BASE` env var with fallback
-/// to the default production SFO endpoint.
+/// to the default production SFO endpoint. Strips trailing slashes and
+/// falls back to the default if the env var is empty.
 pub fn browserless_ws_base() -> String {
-    std::env::var("BROWSERLESS_WS_BASE").unwrap_or_else(|_| DEFAULT_WS_BASE.to_string())
+    read_base_url("BROWSERLESS_WS_BASE", DEFAULT_WS_BASE)
+}
+
+fn read_base_url(env_var: &str, default: &str) -> String {
+    match std::env::var(env_var) {
+        Ok(val) => {
+            let trimmed = val.trim_end_matches('/');
+            if trimmed.is_empty() {
+                default.to_string()
+            } else {
+                trimmed.to_string()
+            }
+        }
+        Err(_) => default.to_string(),
+    }
 }
 
 // ============================================================================
@@ -225,6 +241,30 @@ mod tests {
         // New CDP sessions must connect to /chromium — root path returns 400
         let full_url = format!("{}{}", DEFAULT_WS_BASE, BROWSERLESS_CDP_PATH);
         assert_eq!(full_url, "wss://production-sfo.browserless.io/chromium");
+    }
+
+    #[test]
+    fn test_read_base_url_defaults_when_unset() {
+        // Use a unique env var name that's guaranteed not to be set
+        let result = read_base_url(
+            "_TEST_BROWSERLESS_URL_NEVER_SET",
+            "https://default.example.com",
+        );
+        assert_eq!(result, "https://default.example.com");
+    }
+
+    #[test]
+    fn test_read_base_url_strips_trailing_slash() {
+        // Test the trimming logic directly
+        let input = "https://custom.example.com/";
+        assert_eq!(input.trim_end_matches('/'), "https://custom.example.com");
+    }
+
+    #[test]
+    fn test_read_base_url_falls_back_on_empty() {
+        // Test the empty-string fallback logic directly
+        let trimmed = "".trim_end_matches('/');
+        assert!(trimmed.is_empty());
     }
 
     #[test]

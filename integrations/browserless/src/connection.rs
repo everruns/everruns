@@ -57,11 +57,9 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
 
     async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String> {
         let client = reqwest::Client::new();
+        let api_base = crate::browserless_api_base();
         let response = client
-            .get(format!(
-                "{}/active?token={credential}",
-                crate::browserless_api_base()
-            ))
+            .get(format!("{api_base}/active?token={credential}"))
             .send()
             .await
             .map_err(|e| format!("Failed to reach Browserless API: {e}"))?;
@@ -87,8 +85,7 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
         // This catches tokens that work for REST but not for CDP sessions.
         let cdp_probe = client
             .get(format!(
-                "{}{}?token={credential}",
-                crate::browserless_api_base(),
+                "{api_base}{}?token={credential}",
                 crate::BROWSERLESS_CDP_PATH
             ))
             .send()
