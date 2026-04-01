@@ -91,6 +91,9 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(value_type = Option<Object>)]
     pub hints: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Maximum number of LLM iterations per turn for this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_iterations: Option<usize>,
 }
 
 /// Response from cancel turn endpoint

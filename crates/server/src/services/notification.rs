@@ -274,6 +274,7 @@ mod tests {
                 system_prompt: None,
                 initial_files: serde_json::Value::Array(vec![]),
                 hints: None,
+                max_iterations: None,
                 blueprint_id: None,
                 blueprint_config: None,
             })

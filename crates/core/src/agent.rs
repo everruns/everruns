@@ -92,6 +92,9 @@ pub struct Agent {
     /// Starter files copied into each new session for this agent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub initial_files: Vec<InitialFile>,
+    /// Maximum number of LLM iterations per turn for this agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_iterations: Option<usize>,
     /// Client-side tools registered for this agent.
     /// These tools are executed by the client, not the server.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -171,6 +174,7 @@ mod tests {
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],
+            max_iterations: None,
             tools: vec![],
             status: AgentStatus::Active,
             created_at: Utc::now(),

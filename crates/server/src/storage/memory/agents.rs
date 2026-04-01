@@ -26,6 +26,7 @@ impl InMemoryDatabase {
             tags: input.tags,
             initial_files: input.initial_files,
             tools: input.tools,
+            max_iterations: input.max_iterations,
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
@@ -89,6 +90,7 @@ impl InMemoryDatabase {
             tags: input.tags,
             initial_files: input.initial_files,
             tools: input.tools,
+            max_iterations: input.max_iterations,
             status: "active".to_string(),
             created_at: now,
             updated_at: now,
@@ -254,6 +256,7 @@ impl InMemoryDatabase {
             agent.tags = input.tags;
             agent.initial_files = input.initial_files;
             agent.tools = input.tools;
+            agent.max_iterations = input.max_iterations;
             agent.status = "active".to_string();
             agent.updated_at = Self::now();
             Ok((agent.clone(), false))
@@ -271,6 +274,7 @@ impl InMemoryDatabase {
                 tags: input.tags,
                 initial_files: input.initial_files,
                 tools: input.tools,
+                max_iterations: input.max_iterations,
                 status: "active".to_string(),
                 created_at: now,
                 updated_at: now,

@@ -65,6 +65,7 @@ async fn test_agent_crud() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -141,6 +142,7 @@ async fn test_agent_upsert_initial_files() {
                     {"path": "/AGENTS.md", "content": "old", "encoding": "utf-8", "is_readonly": false}
                 ]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -164,6 +166,7 @@ async fn test_agent_upsert_initial_files() {
                     {"path": "/AGENTS.md", "content": "new", "encoding": "utf-8", "is_readonly": false}
                 ]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -199,6 +202,7 @@ async fn test_agent_get_by_name() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -237,6 +241,7 @@ async fn test_session_crud() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -258,6 +263,7 @@ async fn test_session_crud() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -337,6 +343,7 @@ async fn test_event_crud() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -357,6 +364,7 @@ async fn test_event_crud() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -417,6 +425,7 @@ async fn test_event_exclude_types() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -437,6 +446,7 @@ async fn test_event_exclude_types() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -505,6 +515,7 @@ async fn test_event_filter_types() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -525,6 +536,7 @@ async fn test_event_filter_types() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -795,6 +807,7 @@ async fn test_session_file_crud() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -815,6 +828,7 @@ async fn test_session_file_crud() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -976,6 +990,7 @@ async fn test_agent_capabilities() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -1242,6 +1257,7 @@ async fn test_session_usage_tracking() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -1262,6 +1278,7 @@ async fn test_session_usage_tracking() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })
@@ -1328,6 +1345,7 @@ async fn test_session_previews() {
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                max_iterations: None,
             },
         )
         .await
@@ -1348,6 +1366,7 @@ async fn test_session_previews() {
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
         })

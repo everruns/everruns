@@ -15,9 +15,9 @@ impl Database {
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
+            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, max_iterations, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -30,6 +30,7 @@ impl Database {
         .bind(&input.tags)
         .bind(&input.initial_files)
         .bind(&input.tools)
+        .bind(input.max_iterations)
         .fetch_one(&self.pool)
         .await?;
 
@@ -46,8 +47,8 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (id, org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
+            INSERT INTO agents (id, org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, max_iterations, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
@@ -55,6 +56,7 @@ impl Database {
                 tags = EXCLUDED.tags,
                 initial_files = EXCLUDED.initial_files,
                 tools = EXCLUDED.tools,
+                max_iterations = EXCLUDED.max_iterations,
                 updated_at = NOW()
             WHERE
                 agents.name IS DISTINCT FROM EXCLUDED.name
@@ -63,7 +65,8 @@ impl Database {
                 OR agents.tags IS DISTINCT FROM EXCLUDED.tags
                 OR agents.initial_files IS DISTINCT FROM EXCLUDED.initial_files
                 OR agents.tools IS DISTINCT FROM EXCLUDED.tools
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
+                OR agents.max_iterations IS DISTINCT FROM EXCLUDED.max_iterations
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -77,6 +80,7 @@ impl Database {
         .bind(&input.tags)
         .bind(&input.initial_files)
         .bind(&input.tools)
+        .bind(input.max_iterations)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -86,7 +90,7 @@ impl Database {
     pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, max_iterations,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND id = $2
@@ -107,7 +111,7 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, max_iterations,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND public_id = $2
@@ -151,7 +155,7 @@ impl Database {
         let limit_idx = param_idx + 1;
         let offset_idx = param_idx + 2;
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
+            r#"SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, max_iterations,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM agents
                 WHERE org_id = $1{status_sql}{search_sql}
@@ -174,7 +178,7 @@ impl Database {
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
+            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, max_iterations,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND name = $2 AND status = 'active'
@@ -206,9 +210,10 @@ impl Database {
                 status = COALESCE($8, status),
                 initial_files = COALESCE($9, initial_files),
                 tools = COALESCE($10, tools),
+                max_iterations = CASE WHEN $11 THEN $12 ELSE max_iterations END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -222,6 +227,8 @@ impl Database {
         .bind(&input.status)
         .bind(&input.initial_files)
         .bind(&input.tools)
+        .bind(input.max_iterations.is_some())
+        .bind(input.max_iterations.flatten())
         .fetch_optional(&self.pool)
         .await?;
 
@@ -273,8 +280,8 @@ impl Database {
             WITH existing AS (
                 SELECT id FROM agents WHERE org_id = $1 AND public_id = $2
             )
-            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, max_iterations, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active')
             ON CONFLICT (org_id, public_id) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
@@ -283,9 +290,10 @@ impl Database {
                 tags = EXCLUDED.tags,
                 initial_files = EXCLUDED.initial_files,
                 tools = EXCLUDED.tools,
+                max_iterations = EXCLUDED.max_iterations,
                 status = 'active',
                 updated_at = NOW()
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools,
+            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -298,6 +306,7 @@ impl Database {
         .bind(&input.tags)
         .bind(&input.initial_files)
         .bind(&input.tools)
+        .bind(input.max_iterations)
         .fetch_one(&self.pool)
         .await?;
 

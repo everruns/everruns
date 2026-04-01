@@ -683,7 +683,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
             tool_calls: vec![],
             has_tool_calls: false,
             tool_definitions: vec![],
-            max_iterations: 100,
+            max_iterations: everruns_core::runtime_agent::default_max_iterations(),
             error: Some("dependency_unavailable".to_string()),
             usage: None,
             response_id: None,

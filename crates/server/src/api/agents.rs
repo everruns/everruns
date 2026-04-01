@@ -70,6 +70,9 @@ pub struct CreateAgentRequest {
     /// These tools are sent to the LLM but executed by the client, not the server.
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
+    /// Maximum number of LLM iterations per turn for this agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_iterations: Option<usize>,
 }
 
 /// Request to update an agent. Only provided fields will be updated.
@@ -110,6 +113,9 @@ pub struct UpdateAgentRequest {
     /// Replaces existing tools if provided.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<ToolDefinition>>,
+    /// Maximum number of LLM iterations per turn for this agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_iterations: Option<usize>,
 }
 
 /// Request to preview the final agent shape with capabilities applied
@@ -790,6 +796,7 @@ pub async fn import_agent(
             .collect(),
         initial_files: agent_file.initial_files,
         tools: vec![],
+        max_iterations: None,
     };
 
     // TM-AGENT-005: High-risk capabilities require admin role

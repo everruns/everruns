@@ -4784,6 +4784,14 @@
             },
             "description": "Starter files copied into each new session for this agent."
           },
+          "max_iterations": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum number of LLM iterations per turn for this agent.",
+            "minimum": 0
+          },
           "name": {
             "type": "string",
             "description": "Display name of the agent."
@@ -5563,6 +5571,14 @@
             },
             "description": "Starter files copied into each new session for this agent."
           },
+          "max_iterations": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum number of LLM iterations per turn for this agent.",
+            "minimum": 0
+          },
           "name": {
             "type": "string",
             "description": "The name of the agent. Used for display purposes.",
@@ -5986,6 +6002,14 @@
             ],
             "description": "Session locale (BCP 47, e.g. `uk-UA`).",
             "example": "uk-UA"
+          },
+          "max_iterations": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum number of LLM iterations per turn for this session.",
+            "minimum": 0
           },
           "model_id": {
             "type": [
@@ -7255,6 +7279,14 @@
                     "$ref": "#/components/schemas/InitialFile"
                   },
                   "description": "Starter files copied into each new session for this agent."
+                },
+                "max_iterations": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "description": "Maximum number of LLM iterations per turn for this agent.",
+                  "minimum": 0
                 },
                 "name": {
                   "type": "string",
@@ -9615,6 +9647,14 @@
                   },
                   "description": "Starter files copied into each new session for this agent."
                 },
+                "max_iterations": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "description": "Maximum number of LLM iterations per turn for this agent.",
+                  "minimum": 0
+                },
                 "name": {
                   "type": "string",
                   "description": "Display name of the agent."
@@ -9808,6 +9848,14 @@
                     "null"
                   ],
                   "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`)."
+                },
+                "max_iterations": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "description": "Maximum number of LLM iterations per turn for this session.",
+                  "minimum": 0
                 },
                 "model_id": {
                   "type": [
@@ -10653,6 +10701,14 @@
               "null"
             ],
             "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`)."
+          },
+          "max_iterations": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum number of LLM iterations per turn for this session.",
+            "minimum": 0
           },
           "model_id": {
             "type": [
@@ -11973,6 +12029,14 @@
               "$ref": "#/components/schemas/InitialFile"
             },
             "description": "Starter files copied into each new session for this agent."
+          },
+          "max_iterations": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum number of LLM iterations per turn for this agent.",
+            "minimum": 0
           },
           "name": {
             "type": [
