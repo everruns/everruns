@@ -1377,6 +1377,24 @@ mod tests {
         assert!(code.contains("page.screenshot"));
     }
 
+    #[test]
+    fn test_build_interaction_code_both_screenshot_and_content() {
+        let steps = vec![json!({"action": "click", "selector": "#btn"})];
+        let code = build_interaction_code("https://example.com", &steps, true, true);
+        assert!(
+            code.contains("page.screenshot"),
+            "should include screenshot capture"
+        );
+        assert!(
+            code.contains("page.content()"),
+            "should include content capture"
+        );
+        assert!(
+            code.contains("screenshot") && code.contains("content"),
+            "return object should include both fields"
+        );
+    }
+
     #[tokio::test]
     async fn test_screenshot_tool_no_context_error() {
         let tool = BrowserlessScreenshotTool;
