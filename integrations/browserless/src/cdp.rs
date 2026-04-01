@@ -78,7 +78,7 @@ impl CdpSession {
                 })?
                 .map_err(|e| {
                     debug!("CDP WebSocket connection error for {redacted}: {e}");
-                    format!("CDP WebSocket connection failed: {e}")
+                    e
                 })?;
 
         let (sink, source) = ws_stream.split();
@@ -559,7 +559,8 @@ fn map_ws_connect_error(e: tokio_tungstenite::tungstenite::Error) -> String {
             return format!(
                 "CDP/WebSocket sessions returned HTTP {status} and are not available \
                  with your Browserless token. Use REST-mode tools \
-                 (browserless_navigate, browserless_interact, browserless_screenshot) instead."
+                 (browserless_navigate, browserless_screenshot, browserless_content, \
+                 browserless_scrape, browserless_interact) instead."
             );
         }
     }
