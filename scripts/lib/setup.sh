@@ -120,6 +120,40 @@ case "$cmd" in
       esac
     fi
 
+    # NATS (optional — used for push-based event delivery and task notifications)
+    echo ""
+    echo "📡 NATS:"
+    if command -v nats-server &> /dev/null; then
+      echo "  ✅ nats-server already installed"
+    else
+      echo "  Installing NATS server..."
+      case "$(uname -s)" in
+        Darwin)
+          if command -v brew &> /dev/null; then
+            brew install nats-server
+            echo "  ✅ Installed via Homebrew"
+          else
+            echo "  ⚠️  Homebrew not found. Install nats-server manually (optional)."
+          fi
+          ;;
+        Linux)
+          if command -v apt-get &> /dev/null; then
+            # NATS provides official .deb packages via their apt repo
+            if curl -fsSL https://get-nats.io/install.sh | sh -s -- -y nats-server 2>/dev/null; then
+              echo "  ✅ nats-server installed via get-nats.io"
+            else
+              echo "  ⚠️  Could not install nats-server (optional — PG NOTIFY + in-memory delivery will be used)"
+            fi
+          else
+            echo "  ⚠️  apt-get not found. Install nats-server manually (optional)."
+          fi
+          ;;
+        *)
+          echo "  ⚠️  Unsupported OS for auto-install. Install nats-server manually (optional)."
+          ;;
+      esac
+    fi
+
     # Rust tools
     echo "📦 Rust tools:"
     if ! command -v sqlx &> /dev/null; then
