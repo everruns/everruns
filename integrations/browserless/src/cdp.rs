@@ -548,6 +548,24 @@ impl CdpSession {
 // Helpers
 // ============================================================================
 
+/// Map a tungstenite connection error to a user-friendly string.
+/// Detects 401/403 HTTP responses and returns a specific message telling the
+/// agent to use REST-mode tools instead of retrying CDP.
+fn map_ws_connect_error(e: tokio_tungstenite::tungstenite::Error) -> String {
+    use tokio_tungstenite::tungstenite::Error as WsError;
+    if let WsError::Http(ref resp) = e {
+        let status = resp.status().as_u16();
+        if status == 401 || status == 403 {
+            return format!(
+                "CDP/WebSocket sessions returned HTTP {status} and are not available \
+                 with your Browserless token. Use REST-mode tools \
+                 (browserless_navigate, browserless_interact, browserless_screenshot) instead."
+            );
+        }
+    }
+    format!("CDP WebSocket connection failed: {e}")
+}
+
 /// Connect to a WebSocket endpoint, routing through an HTTP CONNECT proxy if
 /// `HTTPS_PROXY` / `HTTP_PROXY` is set. Falls back to direct connection otherwise.
 async fn connect_with_proxy(
@@ -575,12 +593,12 @@ async fn connect_with_proxy(
         let stream = connect_via_http_proxy(&proxy, &host, port).await?;
         return client_async_tls_with_config(request, stream, None, Some(connector))
             .await
-            .map_err(|e| format!("CDP WebSocket connection failed: {e}"));
+            .map_err(map_ws_connect_error);
     }
 
     connect_async_tls_with_config(ws_url, None, false, Some(connector))
         .await
-        .map_err(|e| format!("CDP WebSocket connection failed: {e}"))
+        .map_err(map_ws_connect_error)
 }
 
 /// Read `HTTPS_PROXY` / `https_proxy` / `HTTP_PROXY` / `http_proxy` env var.
@@ -800,6 +818,83 @@ mod tests {
         assert!(result.is_err(), "root path should be rejected");
         let err = result.err().expect("should be Err");
         assert!(err.contains("400"), "error should mention 400: {err}");
+
+        server.await.ok();
+    }
+
+    #[test]
+    fn test_map_ws_connect_error_403_returns_rest_mode_hint() {
+        use tokio_tungstenite::tungstenite::http;
+
+        let resp = http::Response::builder()
+            .status(403)
+            .body(None)
+            .unwrap();
+        let err = tokio_tungstenite::tungstenite::Error::Http(resp);
+        let msg = map_ws_connect_error(err);
+        assert!(
+            msg.contains("REST-mode tools"),
+            "403 error should suggest REST-mode tools: {msg}"
+        );
+        assert!(msg.contains("403"), "should mention status code: {msg}");
+    }
+
+    #[test]
+    fn test_map_ws_connect_error_401_returns_rest_mode_hint() {
+        use tokio_tungstenite::tungstenite::http;
+
+        let resp = http::Response::builder()
+            .status(401)
+            .body(None)
+            .unwrap();
+        let err = tokio_tungstenite::tungstenite::Error::Http(resp);
+        let msg = map_ws_connect_error(err);
+        assert!(
+            msg.contains("REST-mode tools"),
+            "401 error should suggest REST-mode tools: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_map_ws_connect_error_other_preserves_message() {
+        let err =
+            tokio_tungstenite::tungstenite::Error::Io(std::io::Error::other("connection refused"));
+        let msg = map_ws_connect_error(err);
+        assert!(
+            msg.starts_with("CDP WebSocket connection failed:"),
+            "non-HTTP error should use generic format: {msg}"
+        );
+    }
+
+    /// CdpSession::connect against a server returning 403 should produce the
+    /// REST-mode hint, not a generic error.
+    #[tokio::test]
+    async fn test_connect_403_returns_rest_mode_hint() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            let mut buf = vec![0u8; 4096];
+            let _ = stream.read(&mut buf).await.expect("read");
+            stream
+                .write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+                .await
+                .expect("write 403");
+            stream.shutdown().await.ok();
+        });
+
+        let result = CdpSession::connect(&format!("ws://{addr}/chromium?token=test")).await;
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(
+            err.contains("REST-mode tools"),
+            "403 should suggest REST-mode: {err}"
+        );
 
         server.await.ok();
     }
