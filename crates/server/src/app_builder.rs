@@ -582,7 +582,11 @@ impl ServerAppBuilder {
             notifications_enabled,
             event_delivery.clone(),
         );
-        let session_files_state = api::session_files::AppState::new(db.clone(), auth_state.clone());
+        let session_files_state = api::session_files::AppState::new(
+            db.clone(),
+            event_service.clone(),
+            auth_state.clone(),
+        );
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), encryption.clone(), auth_state.clone());

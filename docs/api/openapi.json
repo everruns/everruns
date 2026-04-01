@@ -6344,6 +6344,9 @@
             "$ref": "#/components/schemas/ContextCompactedData"
           },
           {
+            "$ref": "#/components/schemas/FileWrittenData"
+          },
+          {
             "$ref": "#/components/schemas/BudgetEventData"
           },
           {
@@ -6497,6 +6500,35 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "FileWrittenData": {
+        "type": "object",
+        "description": "Data for file.written events emitted when files are written to the session filesystem.",
+        "required": [
+          "path",
+          "operation",
+          "size_bytes",
+          "created"
+        ],
+        "properties": {
+          "created": {
+            "type": "boolean",
+            "description": "Whether this is a new file (true) or an update to an existing file (false)."
+          },
+          "operation": {
+            "type": "string",
+            "description": "Operation type (see `FILE_OP_*` constants)."
+          },
+          "path": {
+            "type": "string",
+            "description": "File path within the session filesystem (normalized, e.g. \"/reports/summary.md\")."
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "File size in bytes after write."
           }
         }
       },

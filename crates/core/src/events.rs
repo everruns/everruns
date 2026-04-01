@@ -83,6 +83,9 @@ pub const SUBAGENT_CANCELLED: &str = "subagent.cancelled";
 pub const CONTEXT_COMPACTING: &str = "context.compacting";
 pub const CONTEXT_COMPACTED: &str = "context.compacted";
 
+// File events
+pub const FILE_WRITTEN: &str = "file.written";
+
 // Budget events
 pub const BUDGET_WARNING: &str = "budget.warning";
 pub const BUDGET_PAUSED: &str = "budget.paused";
@@ -128,6 +131,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     BUDGET_PAUSED,
     BUDGET_EXHAUSTED,
     BUDGET_RESUMED,
+    FILE_WRITTEN,
 ];
 
 // ============================================================================
@@ -1611,6 +1615,28 @@ pub struct ContextCompactedData {
 }
 
 // ============================================================================
+// File event data
+// ============================================================================
+
+/// Data for file.written events emitted when files are written to the session filesystem.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct FileWrittenData {
+    /// File path within the session filesystem (normalized, e.g. "/reports/summary.md").
+    pub path: String,
+    /// Operation type (see `FILE_OP_*` constants).
+    pub operation: String,
+    /// File size in bytes after write.
+    pub size_bytes: i64,
+    /// Whether this is a new file (true) or an update to an existing file (false).
+    pub created: bool,
+}
+
+/// File operation constants for `FileWrittenData.operation`.
+pub const FILE_OP_CREATE: &str = "create";
+pub const FILE_OP_UPDATE: &str = "update";
+
+// ============================================================================
 // Budget event data
 // ============================================================================
 
@@ -1673,6 +1699,7 @@ pub struct BudgetEventData {
 /// - `subagent.completed` → SubagentEventData
 /// - `subagent.failed` → SubagentEventData
 /// - `subagent.cancelled` → SubagentEventData
+/// - `file.written` → FileWrittenData
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -1742,6 +1769,9 @@ pub enum EventData {
     ContextCompacting(ContextCompactingData),
     ContextCompacted(ContextCompactedData),
 
+    // File events
+    FileWritten(FileWrittenData),
+
     // Budget events
     BudgetWarning(BudgetEventData),
     BudgetPaused(BudgetEventData),
@@ -1795,6 +1825,7 @@ impl EventData {
             EventData::SubagentCancelled(_) => SUBAGENT_CANCELLED,
             EventData::ContextCompacting(_) => CONTEXT_COMPACTING,
             EventData::ContextCompacted(_) => CONTEXT_COMPACTED,
+            EventData::FileWritten(_) => FILE_WRITTEN,
             EventData::BudgetWarning(_) => BUDGET_WARNING,
             EventData::BudgetPaused(_) => BUDGET_PAUSED,
             EventData::BudgetExhausted(_) => BUDGET_EXHAUSTED,
@@ -1902,6 +1933,9 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::ContextCompacting),
             CONTEXT_COMPACTED => serde_json::from_value::<ContextCompactedData>(data.clone())
                 .map(EventData::ContextCompacted),
+            FILE_WRITTEN => {
+                serde_json::from_value::<FileWrittenData>(data.clone()).map(EventData::FileWritten)
+            }
             BUDGET_WARNING => serde_json::from_value::<BudgetEventData>(data.clone())
                 .map(EventData::BudgetWarning),
             BUDGET_PAUSED => {
@@ -1974,6 +2008,7 @@ impl_from_event_data! {
     SessionIdledData => SessionIdled,
     ContextCompactingData => ContextCompacting,
     ContextCompactedData => ContextCompacted,
+    FileWrittenData => FileWritten,
 }
 
 // Budget events reuse BudgetEventData for all four variants,
