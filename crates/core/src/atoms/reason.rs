@@ -564,15 +564,10 @@ impl ReasonAtom {
 
         // 3. Load messages with capability message filters applied.
         //
-        // Collect message filter providers from all capability layers
-        // (harness → agent → session) so that post_load hooks (e.g. loop
-        // detection) can inspect and modify messages after loading.
-        let prompt_ctx_for_filters = crate::capabilities::SystemPromptContext {
-            session_id,
-            locale: None,
-            file_store: self.file_store.clone(),
-        };
-
+        // Collect only message filter providers from all capability layers
+        // (harness → agent → session). This uses the lightweight path that
+        // skips system prompt contributions and tool collection — those are
+        // expensive (e.g., AGENTS.md filesystem read) and not needed here.
         let mut all_capability_configs: Vec<crate::AgentCapabilityConfig> =
             harness.capabilities.clone();
         if let Some(ref agent) = agent {
@@ -580,17 +575,15 @@ impl ReasonAtom {
         }
         all_capability_configs.extend(session.capabilities.iter().cloned());
 
-        let collected_caps = crate::capabilities::collect_capabilities_with_configs(
+        let collected_filters = crate::capabilities::collect_message_filters_only(
             &all_capability_configs,
             &self.capability_registry,
-            &prompt_ctx_for_filters,
-        )
-        .await;
+        );
 
         let mut query = crate::message_filter::MessageQuery::new(session_id);
-        collected_caps.apply_message_filters(&mut query);
+        collected_filters.apply_message_filters(&mut query);
         let mut messages = self.message_retriever.load_filtered(query).await?;
-        collected_caps.apply_post_load_filters(&mut messages);
+        collected_filters.apply_post_load_filters(&mut messages);
 
         if messages.is_empty() {
             return Err(AgentLoopError::NoMessages);
