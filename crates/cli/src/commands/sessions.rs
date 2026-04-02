@@ -51,8 +51,6 @@ pub enum SessionsCommand {
 pub async fn run(
     command: SessionsCommand,
     client: &Everruns,
-    api_url: &str,
-    api_key: &str,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -63,12 +61,7 @@ pub async fn run(
             title,
             model,
             secrets,
-        } => {
-            create(
-                client, api_url, api_key, output, quiet, harness, agent, title, model, secrets,
-            )
-            .await
-        }
+        } => create(client, output, quiet, harness, agent, title, model, secrets).await,
         SessionsCommand::List => list(client, output).await,
         SessionsCommand::Get { session } => get(client, output, session).await,
         SessionsCommand::Watch { session } => watch(client, output, session).await,
@@ -78,8 +71,6 @@ pub async fn run(
 #[allow(clippy::too_many_arguments)]
 async fn create(
     client: &Everruns,
-    api_url: &str,
-    api_key: &str,
     output: OutputFormat,
     quiet: bool,
     harness_id: Option<String>,
@@ -108,7 +99,17 @@ async fn create(
 
     // Store secrets after session creation
     if !secrets.is_empty() {
-        store_secrets(api_url, api_key, &session.id, &secrets).await?;
+        client
+            .sessions()
+            .set_secrets(&session.id, &secrets)
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to store {} secrets for session {}",
+                    secrets.len(),
+                    session.id
+                )
+            })?;
     }
 
     if output.is_text() {
@@ -152,34 +153,6 @@ fn parse_secrets(raw: &[String]) -> Result<HashMap<String, String>> {
         map.insert(key.to_string(), value.to_string());
     }
     Ok(map)
-}
-
-/// Store secrets via PUT /v1/sessions/:id/storage/secrets
-// TODO(everruns/sdk#67): Replace raw reqwest with native SDK client.sessions().set_secrets()
-async fn store_secrets(
-    api_url: &str,
-    api_key: &str,
-    session_id: &str,
-    secrets: &HashMap<String, String>,
-) -> Result<()> {
-    let resp = reqwest::Client::new()
-        .put(format!(
-            "{}/v1/sessions/{}/storage/secrets",
-            api_url, session_id
-        ))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .json(&serde_json::json!({ "secrets": secrets }))
-        .send()
-        .await
-        .context("Failed to store secrets")?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Failed to store secrets: {} {}", status, body);
-    }
-
-    Ok(())
 }
 
 async fn list(client: &Everruns, output: OutputFormat) -> Result<()> {
