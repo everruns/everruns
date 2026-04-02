@@ -103,7 +103,13 @@ async fn create(
             .sessions()
             .set_secrets(&session.id, &secrets)
             .await
-            .context("Failed to store secrets")?;
+            .with_context(|| {
+                format!(
+                    "Failed to store {} secrets for session {}",
+                    secrets.len(),
+                    session.id
+                )
+            })?;
     }
 
     if output.is_text() {
