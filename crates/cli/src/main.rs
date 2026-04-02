@@ -181,7 +181,15 @@ async fn main() -> anyhow::Result<()> {
             .await
         }
         Commands::Connections { command } => {
-            commands::connections::run(command, &api_url, &api_key, output_format, cli.quiet).await
+            commands::connections::run(
+                command,
+                &client,
+                &api_url,
+                &api_key,
+                output_format,
+                cli.quiet,
+            )
+            .await
         }
         Commands::Capabilities { command } => {
             let status = match &command {

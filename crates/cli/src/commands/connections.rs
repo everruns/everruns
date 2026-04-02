@@ -1,12 +1,17 @@
 // Connection management commands
 //
-// Uses raw reqwest for HTTP calls since the SDK doesn't expose
-// connections endpoints yet.
-// TODO(everruns/sdk#66): Replace raw reqwest with native SDK client.connections() methods
+// `remove` uses the SDK's `client.connections().remove()`.
+// `set` and `list` still use raw reqwest because the SDK's `Connection`
+// model lacks `connection_type`, `provider_username`, `scopes`, and uses
+// `created_at`/`updated_at` instead of the server's `connected_at`.
+// The SDK's `list()` also expects `ListResponse<Connection>` but the
+// server returns a plain `Vec<ConnectionResponse>`.
+// TODO(everruns/sdk#66): Fix SDK Connection model to match server, then migrate set/list
 
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
 use clap::Subcommand;
+use everruns_sdk::Everruns;
 use serde::{Deserialize, Serialize};
 
 #[derive(Subcommand)]
@@ -46,6 +51,7 @@ struct CreateApiKeyRequest {
 
 pub async fn run(
     command: ConnectionsCommand,
+    client: &Everruns,
     api_url: &str,
     api_key: &str,
     output: OutputFormat,
@@ -67,9 +73,7 @@ pub async fn run(
             .await
         }
         ConnectionsCommand::List => list(api_url, api_key, output).await,
-        ConnectionsCommand::Remove { provider } => {
-            remove(api_url, api_key, output, quiet, &provider).await
-        }
+        ConnectionsCommand::Remove { provider } => remove(client, output, quiet, &provider).await,
     }
 }
 
@@ -197,30 +201,16 @@ async fn list(api_url: &str, api_key: &str, output: OutputFormat) -> Result<()> 
 }
 
 async fn remove(
-    api_url: &str,
-    api_key: &str,
+    client: &Everruns,
     output: OutputFormat,
     quiet: bool,
     provider: &str,
 ) -> Result<()> {
-    let resp = http_client()
-        .delete(connection_url(
-            api_url,
-            &format!("/v1/user/connections/{}", provider),
-        ))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
+    client
+        .connections()
+        .remove(provider)
         .await
-        .context("Failed to connect to server")?;
-
-    let status = resp.status();
-    if status == reqwest::StatusCode::NOT_FOUND {
-        anyhow::bail!("Connection not found: {}", provider);
-    }
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Failed to remove connection: {} {}", status, body);
-    }
+        .with_context(|| format!("Failed to remove connection for {}", provider))?;
 
     if output.is_text() {
         if !quiet {
