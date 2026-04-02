@@ -149,18 +149,10 @@ impl AgentService {
 
     #[policy(AGENT_VIEW)]
     pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<Agent>> {
-        let row = self
-            .db
-            .get_agent(caller.org_id, AgentId::from_uuid(id))
-            .await?;
-        match row {
-            Some(row) if row.status != "deleted" => {
-                let capabilities = self.get_capabilities(id).await?;
-                Ok(Some(Self::row_to_agent(row, capabilities)))
-            }
-            None => Ok(None),
-            Some(_) => Ok(None),
-        }
+        // Look up by public_id — the UUID comes from a public AgentId,
+        // which may differ from the internal UUID for imported agents.
+        let public_id = AgentId::from_uuid(id).to_string();
+        self.get_by_public_id(caller, &public_id).await
     }
 
     #[policy(AGENT_VIEW)]
