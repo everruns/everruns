@@ -206,11 +206,17 @@ async fn remove(
     quiet: bool,
     provider: &str,
 ) -> Result<()> {
-    client
-        .connections()
-        .remove(provider)
-        .await
-        .with_context(|| format!("Failed to remove connection for {}", provider))?;
+    if let Err(e) = client.connections().remove(provider).await {
+        match &e {
+            everruns_sdk::Error::Api { status: 404, .. } => {
+                anyhow::bail!("Connection not found: {}", provider);
+            }
+            _ => {
+                return Err(e)
+                    .with_context(|| format!("Failed to remove connection for {}", provider));
+            }
+        }
+    }
 
     if output.is_text() {
         if !quiet {
