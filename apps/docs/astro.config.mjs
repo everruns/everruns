@@ -31,21 +31,6 @@ export default defineConfig({
     starlight({
       expressiveCode: {
         themes: ["github-light", "github-dark"],
-        styleOverrides: {
-          // Lock code block backgrounds so themes can't override via specificity.
-          // Light: clean white; Dark: deep neutral to match page bg.
-          codeBackground: ({ theme }) =>
-            theme.type === "dark" ? "#141414" : "#fafafa",
-          borderColor: "var(--sl-color-hairline)",
-          frames: {
-            editorBackground: ({ theme }) =>
-              theme.type === "dark" ? "#141414" : "#fafafa",
-            terminalBackground: ({ theme }) =>
-              theme.type === "dark" ? "#141414" : "#fafafa",
-            terminalTitlebarBackground: ({ theme }) =>
-              theme.type === "dark" ? "#1a1a1a" : "#f0f0f0",
-          },
-        },
       },
       title: "Everruns",
       description:

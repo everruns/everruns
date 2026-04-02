@@ -110,14 +110,34 @@
   text-decoration-thickness: 2px;
 }
 
-/* Code block styling */
-.expressive-code pre {
+/* Code block styling
+   ─────────────────
+   WHY these overrides exist and why they must stay here:
+   1. Expressive Code's generated CSS (in @layer starlight.components) sets
+      --ec-codeBg to the github-light/dark theme defaults (#f6f7f9 / #23262f).
+   2. The starlight-openapi plugin injects an UNLAYERED rule:
+        div.expressive-code .frame pre { background-color: var(--sl-color-gray-5) }
+      which beats the layered EC styles and paints every code block gray.
+   3. expressiveCode.styleOverrides callbacks don't reliably override
+      Starlight's own variable mappings (--sl-color-gray-6/7).
+
+   The only durable fix is unlayered CSS with higher specificity than the
+   OpenAPI plugin's `div.expressive-code .frame pre` selector. Our custom.css
+   loads BEFORE Route@astro (OpenAPI), so same-specificity rules lose by
+   source order. We must use strictly higher specificity. */
+
+/* Higher specificity than OpenAPI's `div.expressive-code .frame pre` (0,1,3).
+   Adding :root bumps us to (0,1,4) which wins regardless of load order. */
+:root div.expressive-code .frame pre,
+:root div.expressive-code pre {
+  background-color: #fafafa;
   border: 1px solid var(--sl-color-hairline);
 }
 
-/* Code block backgrounds are now set via expressiveCode.styleOverrides
-   in astro.config.mjs to avoid CSS specificity wars with theme styles.
-   Do NOT re-add --ec-codeBg / --ec-frm-* overrides here. */
+:root[data-theme="dark"] div.expressive-code .frame pre,
+:root[data-theme="dark"] div.expressive-code pre {
+  background-color: #141414;
+}
 
 /* Hide the empty terminal title bar when there is no title text.
    Expressive Code injects a non-breaking space via :empty::before,
