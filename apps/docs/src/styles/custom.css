@@ -115,23 +115,9 @@
   border: 1px solid var(--sl-color-hairline);
 }
 
-/* Light-mode code block overrides:
-   - White background for readable contrast against page bg
-   - Hide the empty terminal title bar (dots row stays via header ::before) */
-:root,
-:root[data-theme="light"] {
-  --ec-codeBg: #ffffff;
-  --ec-frm-trmBg: #ffffff;
-  --ec-frm-trmTtbBg: #f5f5f5;
-  --ec-frm-edBg: #ffffff;
-}
-
-:root[data-theme="dark"] {
-  --ec-codeBg: #161b22;
-  --ec-frm-trmBg: #161b22;
-  --ec-frm-trmTtbBg: #1c2129;
-  --ec-frm-edBg: #161b22;
-}
+/* Code block backgrounds are now set via expressiveCode.styleOverrides
+   in astro.config.mjs to avoid CSS specificity wars with theme styles.
+   Do NOT re-add --ec-codeBg / --ec-frm-* overrides here. */
 
 /* Hide the empty terminal title bar when there is no title text.
    Expressive Code injects a non-breaking space via :empty::before,
