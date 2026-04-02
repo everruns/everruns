@@ -158,8 +158,25 @@ impl AgentService {
                 let capabilities = self.get_capabilities(id).await?;
                 Ok(Some(Self::row_to_agent(row, capabilities)))
             }
-            None => Ok(None),
             Some(_) => Ok(None),
+            None => {
+                // Fallback: the UUID might be from a public AgentId (happens when
+                // an agent was imported with a custom id that differs from the
+                // internal UUID). Try looking up by public_id.
+                let public_id = format!("agent_{}", id.simple());
+                let row = self
+                    .db
+                    .get_agent_by_public_id(caller.org_id, &public_id)
+                    .await?;
+                match row {
+                    Some(row) if row.status != "deleted" => {
+                        let capabilities =
+                            self.get_capabilities(row.id.uuid()).await?;
+                        Ok(Some(Self::row_to_agent(row, capabilities)))
+                    }
+                    _ => Ok(None),
+                }
+            }
         }
     }
 

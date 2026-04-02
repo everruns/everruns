@@ -1052,7 +1052,7 @@ impl DirectWorkerAdapters {
         capability_rows: Vec<AgentCapabilityRow>,
     ) -> Result<Option<Agent>> {
         let agent_id_typed = AgentId::from_uuid(agent_id);
-        let row = self
+        let mut row = self
             .db
             .get_agent(org_id, agent_id_typed)
             .await
@@ -1060,6 +1060,20 @@ impl DirectWorkerAdapters {
                 tracing::error!("Failed to get agent: {}", e);
                 store_error("Failed to get agent")
             })?;
+
+        // Fallback: try public_id lookup when internal UUID doesn't match
+        // (happens with imported agents that have custom public IDs)
+        if row.is_none() {
+            let public_id = format!("agent_{}", agent_id.simple());
+            row = self
+                .db
+                .get_agent_by_public_id(org_id, &public_id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to get agent by public_id: {}", e);
+                    store_error("Failed to get agent by public_id")
+                })?;
+        }
 
         Ok(row.map(|r| Agent {
             public_id: r
@@ -1580,11 +1594,21 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     }
 
     async fn get_agent_by_id(&self, id: AgentId) -> everruns_core::error::Result<Option<Agent>> {
-        let row = self
+        let mut row = self
             .db
             .get_agent(self.org_id, id)
             .await
             .map_err(|e| store_error(format!("Failed to get agent: {e}")))?;
+
+        // Fallback: try public_id lookup when internal UUID doesn't match
+        if row.is_none() {
+            let public_id = format!("agent_{}", id.uuid().simple());
+            row = self
+                .db
+                .get_agent_by_public_id(self.org_id, &public_id)
+                .await
+                .map_err(|e| store_error(format!("Failed to get agent by public_id: {e}")))?;
+        }
 
         match row {
             Some(row) => {
