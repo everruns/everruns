@@ -59,7 +59,7 @@ similar = "2"
 url = "2"
 
 # Web fetching
-fetchkit = "0.2.0"
+fetchkit = { version = "0.2.0", features = ["bot-auth"] }
 
 # Virtual bash interpreter
 bashkit = { git = "https://github.com/everruns/bashkit", tag = "v0.1.14" }

@@ -3,6 +3,7 @@
 //! Design decisions:
 //! - All metadata (description, schema, llmtxt) comes from fetchkit::ToolBuilder
 //! - File download (`save_to_file`) auto-enabled when `session_file_system` is a sibling
+//! - Bot-auth (Ed25519 request signing per RFC 9421) enabled via capability config
 //! - Binary content accepted for file downloads, rejected for inline responses
 //! - See specs/fetchkit.md for design details
 
@@ -14,7 +15,7 @@ use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use base64::Engine as _;
 use fetchkit::file_saver::{FileSaveError, FileSaver, SaveResult};
-use fetchkit::{FetchError, FetchRequest};
+use fetchkit::{BotAuthConfig, FetchError, FetchRequest};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -90,8 +91,8 @@ impl Capability for WebFetchCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        // Default: no file download
-        vec![Box::new(WebFetchTool::new(false))]
+        // Default: no file download, no bot-auth
+        vec![Box::new(WebFetchTool::new(false, None))]
     }
 
     fn tools_with_config(&self, config: &serde_json::Value) -> Vec<Box<dyn Tool>> {
@@ -99,8 +100,42 @@ impl Capability for WebFetchCapability {
             .get("enable_file_download")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        vec![Box::new(WebFetchTool::new(enable_file_download))]
+        let bot_auth = parse_bot_auth_config(config);
+        vec![Box::new(WebFetchTool::new(enable_file_download, bot_auth))]
     }
+}
+
+// ============================================================================
+// Bot-auth config parsing
+// ============================================================================
+
+/// Parse bot-auth config from capability config JSON.
+///
+/// Expected shape: `{"bot_auth": {"signing_key_seed": "<base64url>", "agent_fqdn": "...", "validity_secs": 300}}`
+/// - `signing_key_seed` (required): base64url-encoded 32-byte Ed25519 seed
+/// - `agent_fqdn` (optional): FQDN for the Signature-Agent header
+/// - `validity_secs` (optional): signature validity window, default 300
+fn parse_bot_auth_config(config: &serde_json::Value) -> Option<BotAuthConfig> {
+    let bot_auth = config.get("bot_auth")?;
+    let seed = bot_auth.get("signing_key_seed")?.as_str()?;
+
+    let mut auth_config = match BotAuthConfig::from_base64_seed(seed) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to parse bot-auth signing key seed");
+            return None;
+        }
+    };
+
+    if let Some(fqdn) = bot_auth.get("agent_fqdn").and_then(|v| v.as_str()) {
+        auth_config = auth_config.with_agent_fqdn(fqdn);
+    }
+
+    if let Some(secs) = bot_auth.get("validity_secs").and_then(|v| v.as_u64()) {
+        auth_config = auth_config.with_validity_secs(secs);
+    }
+
+    Some(auth_config)
 }
 
 // ============================================================================
@@ -159,11 +194,13 @@ pub struct WebFetchTool {
 }
 
 impl WebFetchTool {
-    /// Create a new WebFetchTool with file download support controlled by `enable_save_to_file`.
-    pub fn new(enable_save_to_file: bool) -> Self {
-        let fetchkit_tool = fetchkit::Tool::builder()
-            .enable_save_to_file(enable_save_to_file)
-            .build();
+    /// Create a new WebFetchTool with file download and optional bot-auth signing.
+    pub fn new(enable_save_to_file: bool, bot_auth: Option<BotAuthConfig>) -> Self {
+        let mut builder = fetchkit::Tool::builder().enable_save_to_file(enable_save_to_file);
+        if let Some(config) = bot_auth {
+            builder = builder.bot_auth(config);
+        }
+        let fetchkit_tool = builder.build();
         let description = fetchkit_tool.description().to_string();
         Self {
             fetchkit_tool,
@@ -174,7 +211,7 @@ impl WebFetchTool {
 
 impl Default for WebFetchTool {
     fn default() -> Self {
-        Self::new(false)
+        Self::new(false, None)
     }
 }
 
@@ -380,6 +417,37 @@ mod tests {
             fetchkit_tool,
             description,
         }
+    }
+
+    #[test]
+    fn test_parse_bot_auth_config_valid() {
+        let config = serde_json::json!({
+            "bot_auth": {
+                "signing_key_seed": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE",
+                "agent_fqdn": "bot.example.com",
+                "validity_secs": 600
+            }
+        });
+        let result = super::parse_bot_auth_config(&config);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_parse_bot_auth_config_missing() {
+        let config = serde_json::json!({"enable_file_download": true});
+        let result = super::parse_bot_auth_config(&config);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_bot_auth_config_missing_seed() {
+        let config = serde_json::json!({
+            "bot_auth": {
+                "agent_fqdn": "bot.example.com"
+            }
+        });
+        let result = super::parse_bot_auth_config(&config);
+        assert!(result.is_none());
     }
 
     #[test]
@@ -1476,7 +1544,7 @@ mod tests {
     #[test]
     fn test_web_fetch_tool_schema_save_to_file_gated_by_config() {
         // Default (no file download): save_to_file NOT in schema
-        let tool = WebFetchTool::new(false);
+        let tool = WebFetchTool::new(false, None);
         let schema = tool.parameters_schema();
         assert!(
             !schema["properties"]["save_to_file"].is_object(),
@@ -1484,7 +1552,7 @@ mod tests {
         );
 
         // With file download enabled: save_to_file in schema
-        let tool = WebFetchTool::new(true);
+        let tool = WebFetchTool::new(true, None);
         let schema = tool.parameters_schema();
         assert!(
             schema["properties"]["save_to_file"].is_object(),

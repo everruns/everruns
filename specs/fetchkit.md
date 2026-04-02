@@ -26,6 +26,37 @@ Key decisions:
 
 `WebFetchCapability` implements `tools_with_config` and `system_prompt_contribution_with_config` on the `Capability` trait. These methods read the per-capability config JSON during capability collection, enabling file download when `enable_file_download: true` is set. Generic and Chat harnesses set this config alongside `session_file_system`.
 
+## Bot-auth (request signing)
+
+fetchkit supports Ed25519 request signing per RFC 9421 (HTTP Message Signatures), gated behind the `bot-auth` cargo feature. When enabled, every outbound HTTP request is signed with `Signature`, `Signature-Input`, and optionally `Signature-Agent` headers.
+
+### Integration
+
+- `bot-auth` feature enabled on the fetchkit dependency in `crates/core/Cargo.toml`
+- `BotAuthConfig` passed to `fetchkit::Tool::builder().bot_auth(config)` when configured
+- Config parsed from per-capability config: `{"bot_auth": {"signing_key_seed": "...", "agent_fqdn": "...", "validity_secs": 300}}`
+- Signing failures are non-blocking: requests proceed without signature headers, warning logged
+
+### Capability config
+
+```json
+{
+  "bot_auth": {
+    "signing_key_seed": "<base64url-encoded 32-byte Ed25519 seed>",
+    "agent_fqdn": "bot.example.com",
+    "validity_secs": 300
+  }
+}
+```
+
+- `signing_key_seed` (required): base64url-encoded 32-byte Ed25519 seed. Store encrypted via envelope encryption.
+- `agent_fqdn` (optional): FQDN for the `Signature-Agent` header, enabling bot identity discovery.
+- `validity_secs` (optional): signature validity window in seconds, default 300.
+
+### Key identity
+
+Public key identity is a JWK Thumbprint (RFC 7638) of the Ed25519 public key, available via `BotAuthConfig::keyid()`. This can be shared with target servers for signature verification.
+
 ## Future: archive extraction (`FilesSaver`)
 
 Planned: `FilesSaver` trait (extends `FileSaver`) with `save_and_extract()` for zip/tar.gz/tar. Separate trait, consumer opt-in. Not yet in fetchkit.
