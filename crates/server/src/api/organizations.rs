@@ -3,17 +3,18 @@
 // Note: Organization routes are NOT org-scoped (they are at the root level)
 // because they manage organizations themselves.
 
+use crate::auth::audit;
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin, OrgContext};
 use crate::storage::{StorageBackend, models::UpdateOrganizationSettings};
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     routing::get,
 };
 use everruns_core::{
-    BuiltInHarnessDefinition, DEFAULT_ORG_ID, OrgRole, Organization, generate_org_public_id,
-    validate_org_public_id,
+    AuditEvent, BuiltInHarnessDefinition, DEFAULT_ORG_ID, ManagementAction, OrgRole, Organization,
+    generate_org_public_id, validate_org_public_id,
 };
 use everruns_durable::UpdateField;
 
@@ -190,6 +191,7 @@ pub async fn list_organizations(
 pub async fn create_organization(
     State(state): State<AppState>,
     user: AuthUser,
+    headers: HeaderMap,
     Json(req): Json<CreateOrganizationRequest>,
 ) -> Result<(StatusCode, Json<OrganizationResponse>), (StatusCode, Json<ErrorResponse>)> {
     use crate::storage::models::CreateOrganizationRow;
@@ -267,7 +269,18 @@ pub async fn create_organization(
     // on demand via POST /v1/agent-examples/{slug}/use. No automatic seeding —
     // this prevents duplicate agents when users adopt from the examples gallery.
 
-    let response = build_organization_response(&state.db, row.org_id, row).await?;
+    let org_id = row.org_id;
+    let org_public_id = row.public_id.clone();
+    let response = build_organization_response(&state.db, org_id, row).await?;
+
+    let mut builder = AuditEvent::management(ManagementAction::OrgCreated, org_id, Some(user.id))
+        .target("org", &org_public_id)
+        .detail("name", response.name.clone());
+    if let Some(ip) = audit::client_ip(&headers) {
+        builder = builder.ip(ip);
+    }
+    audit::emit_event(state.db.clone(), builder.build());
+
     Ok((StatusCode::CREATED, Json(response)))
 }
 
@@ -337,6 +350,7 @@ pub async fn get_organization(
 pub async fn update_organization(
     State(state): State<AppState>,
     user: AuthUser,
+    headers: HeaderMap,
     Path(org_public_id): Path<String>,
     Json(req): Json<UpdateOrganizationRequest>,
 ) -> ApiResult<OrganizationResponse> {
@@ -461,9 +475,17 @@ pub async fn update_organization(
             .log_internal_error_json("update organization settings")?;
     }
 
-    Ok(Json(
-        build_organization_response(&state.db, row.org_id, row).await?,
-    ))
+    let response = build_organization_response(&state.db, row.org_id, row).await?;
+
+    let mut builder =
+        AuditEvent::management(ManagementAction::OrgUpdated, org_row.org_id, Some(user.id))
+            .target("org", &org_public_id);
+    if let Some(ip) = audit::client_ip(&headers) {
+        builder = builder.ip(ip);
+    }
+    audit::emit_event(state.db.clone(), builder.build());
+
+    Ok(Json(response))
 }
 
 /// Check membership by querying the DB (avoids stale auth context).
@@ -571,6 +593,7 @@ pub async fn add_member(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
     user: AuthUser,
+    headers: HeaderMap,
     Json(req): Json<AddMemberRequest>,
 ) -> Result<(StatusCode, Json<MemberResponse>), (StatusCode, Json<ErrorResponse>)> {
     // Parse and validate role
@@ -648,7 +671,14 @@ pub async fn add_member(
         .await
         .log_internal_error_json("add organization member")?;
 
-    let _ = user; // Silence unused warning
+    let mut builder =
+        AuditEvent::management(ManagementAction::MemberInvited, org.org_id, Some(user.id))
+            .target("member", target_user_id.to_string())
+            .detail("role", member_row.role.clone());
+    if let Some(ip) = audit::client_ip(&headers) {
+        builder = builder.ip(ip);
+    }
+    audit::emit_event(state.db.clone(), builder.build());
 
     Ok((
         StatusCode::CREATED,
@@ -667,6 +697,8 @@ pub async fn add_member(
 pub async fn update_member_role(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
+    user: AuthUser,
+    headers: HeaderMap,
     Path((_org_public_id, user_id_str)): Path<(String, String)>,
     Json(req): Json<UpdateMemberRoleRequest>,
 ) -> ApiResult<MemberResponse> {
@@ -739,6 +771,19 @@ pub async fn update_member_role(
             )
         })?;
 
+    let mut builder = AuditEvent::management(
+        ManagementAction::MemberRoleChanged,
+        org.org_id,
+        Some(user.id),
+    )
+    .target("member", target_user_id.to_string())
+    .detail("old_role", current_role.as_str())
+    .detail("new_role", updated.role.clone());
+    if let Some(ip) = audit::client_ip(&headers) {
+        builder = builder.ip(ip);
+    }
+    audit::emit_event(state.db.clone(), builder.build());
+
     Ok(Json(MemberResponse {
         user_id: target_user_id.to_string(),
         email: current.email,
@@ -754,6 +799,7 @@ pub async fn remove_member(
     State(state): State<AppState>,
     org: OrgContext,
     user: AuthUser,
+    headers: HeaderMap,
     Path((_org_public_id, user_id_str)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let target_user_id: uuid::Uuid = user_id_str.parse().map_err(|_| {
@@ -807,6 +853,15 @@ pub async fn remove_member(
         .log_internal_error_json("remove organization member")?;
 
     if removed {
+        let mut builder =
+            AuditEvent::management(ManagementAction::MemberRemoved, org.org_id, Some(user.id))
+                .target("member", target_user_id.to_string())
+                .detail("removed_role", member.role.clone());
+        if let Some(ip) = audit::client_ip(&headers) {
+            builder = builder.ip(ip);
+        }
+        audit::emit_event(state.db.clone(), builder.build());
+
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err((
