@@ -151,7 +151,7 @@ impl AgentService {
     pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<Agent>> {
         // Look up by public_id — the UUID comes from a public AgentId,
         // which may differ from the internal UUID for imported agents.
-        let public_id = format!("agent_{}", id.simple());
+        let public_id = AgentId::from_uuid(id).to_string();
         self.get_by_public_id(caller, &public_id).await
     }
 
