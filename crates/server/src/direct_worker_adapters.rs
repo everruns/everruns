@@ -2283,10 +2283,16 @@ mod tests {
     // ---- helpers ----
 
     /// Seed a minimal agent into the in-memory store and return its UUID.
+    /// Seed a test agent, returning the internal UUID.
+    ///
+    /// Uses `create_agent_with_id` so public_id matches the internal UUID,
+    /// consistent with normal agent creation via the API.
     async fn seed_agent(db: &StorageBackend) -> Uuid {
         use crate::storage::models::CreateAgentRow;
+        let id = AgentId::new();
+        let public_id = format!("agent_{}", id.uuid().simple());
         let create = CreateAgentRow {
-            public_id: AgentId::new().to_string(),
+            public_id,
             name: "test-agent".to_string(),
             description: None,
             system_prompt: String::new(),
@@ -2296,11 +2302,11 @@ mod tests {
             tools: serde_json::Value::Array(vec![]),
             max_iterations: None,
         };
-        let row = db
-            .create_agent(everruns_core::DEFAULT_ORG_ID, create)
+        db.create_agent_with_id(everruns_core::DEFAULT_ORG_ID, id, create)
             .await
-            .expect("seed agent");
-        row.id.uuid()
+            .expect("seed agent")
+            .expect("seed agent should create");
+        id.uuid()
     }
 
     // =========================================================================
