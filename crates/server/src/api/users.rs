@@ -12,7 +12,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
-use everruns_core::{AuditEvent, DEFAULT_ORG_ID, ManagementAction, validate_org_public_id};
+use everruns_core::{AuditEvent, ManagementAction, validate_org_public_id};
 
 use super::common::{ListResponse, impl_auth_state};
 use serde::{Deserialize, Serialize};
@@ -221,6 +221,7 @@ pub async fn list_users(
 pub async fn update_profile(
     State(state): State<UsersState>,
     auth: AuthUser,
+    org: ResolvedOrg,
     headers: HeaderMap,
     Json(req): Json<UpdateProfileRequest>,
 ) -> Result<Json<ProfileResponse>, StatusCode> {
@@ -244,13 +245,8 @@ pub async fn update_profile(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let org_id = auth
-        .organizations
-        .first()
-        .map(|o| o.org_id)
-        .unwrap_or(DEFAULT_ORG_ID);
     let mut builder =
-        AuditEvent::management(ManagementAction::SettingsUpdated, org_id, Some(auth.id))
+        AuditEvent::management(ManagementAction::SettingsUpdated, org.org_id, Some(auth.id))
             .target("user", auth.id.to_string())
             .detail("action", "profile_updated");
     if let Some(ip) = audit::client_ip(&headers) {
