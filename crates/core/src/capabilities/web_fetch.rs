@@ -154,7 +154,7 @@ impl FileSaver for SessionFileSaver {
 /// the session filesystem (SessionFileStore) via the SessionFileSaver adapter.
 pub struct WebFetchTool {
     fetchkit_tool: fetchkit::Tool,
-    /// Cached description from ToolBuilder (Tool trait returns &str, fetchkit returns String)
+    /// Cached description from ToolBuilder (owned copy of fetchkit's &str for our Tool trait)
     description: String,
 }
 
@@ -164,7 +164,7 @@ impl WebFetchTool {
         let fetchkit_tool = fetchkit::Tool::builder()
             .enable_save_to_file(enable_save_to_file)
             .build();
-        let description = fetchkit_tool.description();
+        let description = fetchkit_tool.description().to_string();
         Self {
             fetchkit_tool,
             description,
@@ -230,6 +230,9 @@ impl WebFetchTool {
             as_markdown: if as_markdown { Some(true) } else { None },
             as_text: if as_text { Some(true) } else { None },
             save_to_file,
+            content_focus: None,
+            if_none_match: None,
+            if_modified_since: None,
         })
     }
 
@@ -372,7 +375,7 @@ mod tests {
             .enable_save_to_file(true)
             .block_private_ips(false)
             .build();
-        let description = fetchkit_tool.description();
+        let description = fetchkit_tool.description().to_string();
         WebFetchTool {
             fetchkit_tool,
             description,
@@ -405,7 +408,7 @@ mod tests {
         assert!(cap.system_prompt_addition().is_none());
         // Preview shows full features for UI
         let preview = cap.system_prompt_preview().unwrap();
-        assert!(preview.contains("FetchKit"));
+        assert!(preview.contains("web_fetch"));
     }
 
     #[test]
