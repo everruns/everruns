@@ -770,6 +770,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Rebuild native dependencies
+        run: npm rebuild --ignore-scripts=false
+
       - name: Cache Next.js build
         uses: actions/cache@v4
         with:
@@ -813,6 +816,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Rebuild native dependencies
+        run: npm rebuild --ignore-scripts=false
 
       - name: Astro check
         run: npm run check

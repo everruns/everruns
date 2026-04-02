@@ -24,6 +24,7 @@ case "$cmd" in
     echo "📦 Installing docs dependencies..."
     cd "$DOCS_DIR"
     npm install
+    npm rebuild --ignore-scripts=false
     echo "✅ Docs dependencies installed!"
     ;;
 

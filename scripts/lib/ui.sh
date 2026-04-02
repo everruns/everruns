@@ -48,6 +48,7 @@ case "$cmd" in
     echo "📦 Installing UI dependencies..."
     cd "$UI_DIR"
     npm install
+    npm rebuild --ignore-scripts=false
     echo "✅ UI dependencies installed!"
     ;;
 
