@@ -61,18 +61,14 @@ pub async fn run(
             title,
             model,
             secrets,
-        } => {
-            create(
-                client, output, quiet, harness, agent, title, model, secrets,
-            )
-            .await
-        }
+        } => create(client, output, quiet, harness, agent, title, model, secrets).await,
         SessionsCommand::List => list(client, output).await,
         SessionsCommand::Get { session } => get(client, output, session).await,
         SessionsCommand::Watch { session } => watch(client, output, session).await,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create(
     client: &Everruns,
     output: OutputFormat,
