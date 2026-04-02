@@ -2188,4 +2188,28 @@ impl StorageBackend {
     pub async fn set_budget_status(&self, id: Uuid, status: &str) -> Result<Option<BudgetRow>> {
         dispatch!(self, set_budget_status, id, status)
     }
+
+    // ============================================
+    // HTTP Signing Keys
+    // ============================================
+
+    pub async fn upsert_http_signing_key(
+        &self,
+        org_id: i64,
+        input: UpsertHttpSigningKey,
+    ) -> Result<HttpSigningKeyRow> {
+        dispatch!(self, upsert_http_signing_key, org_id, input)
+    }
+
+    pub async fn list_http_signing_keys(&self, org_id: i64) -> Result<Vec<HttpSigningKeyRow>> {
+        dispatch!(self, list_http_signing_keys, org_id)
+    }
+
+    pub async fn delete_http_signing_key(&self, org_id: i64, key_id: &str) -> Result<bool> {
+        dispatch!(self, delete_http_signing_key, org_id, key_id)
+    }
+
+    pub async fn list_all_http_signing_keys(&self) -> Result<Vec<HttpSigningKeyRow>> {
+        dispatch!(self, list_all_http_signing_keys)
+    }
 }

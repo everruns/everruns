@@ -1574,6 +1574,7 @@ dependencies = [
  "base64",
  "bashkit",
  "chrono",
+ "ed25519-dalek",
  "eventsource-stream",
  "everruns-anthropic",
  "everruns-config",

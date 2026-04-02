@@ -53,9 +53,25 @@ fetchkit supports Ed25519 request signing per RFC 9421 (HTTP Message Signatures)
 - `agent_fqdn` (optional): FQDN for the `Signature-Agent` header, enabling bot identity discovery.
 - `validity_secs` (optional): signature validity window in seconds, default 300.
 
-### Key identity
+### Key identity and discovery
 
-Public key identity is a JWK Thumbprint (RFC 7638) of the Ed25519 public key, available via `BotAuthConfig::keyid()`. This can be shared with target servers for signature verification.
+Public key identity is a JWK Thumbprint (RFC 7638) of the Ed25519 public key, available via `BotAuthConfig::keyid()` and `derive_bot_auth_public_key()`.
+
+Target servers discover public keys via the well-known endpoint (draft-meunier-http-message-signatures-directory):
+
+```
+GET /.well-known/http-message-signatures-directory
+```
+
+Returns a JWKS (RFC 7517) with all active Ed25519 public keys. The `Signature-Agent` FQDN in outbound requests tells target servers where to look up keys.
+
+### Server-side components
+
+- **Migration**: `013_http_signing_keys.sql` — `http_signing_keys` table (org_id, key_id, public_key JWK, label, expires_at)
+- **Endpoint**: `GET /.well-known/http-message-signatures-directory` — public, no auth, returns JWKS
+- **Key derivation**: `derive_bot_auth_public_key(seed) -> BotAuthPublicKey` — derives Ed25519 JWK + key_id from seed
+- **Storage**: `upsert_http_signing_key` / `list_http_signing_keys` / `delete_http_signing_key` — CRUD for key directory
+- See `crates/server/src/api/http_signing_keys.rs`, `crates/core/src/capabilities/web_fetch.rs`
 
 ## Future: archive extraction (`FilesSaver`)
 

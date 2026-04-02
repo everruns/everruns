@@ -696,6 +696,8 @@ impl ServerAppBuilder {
             flags: feature_flags.clone(),
         };
 
+        let http_signing_keys_state = api::http_signing_keys::AppState { db: db.clone() };
+
         if !self.config.api_prefix.is_empty() {
             tracing::info!(
                 prefix = %self.config.api_prefix,
@@ -817,6 +819,7 @@ impl ServerAppBuilder {
                 "/api-doc/openapi.json",
                 get(|| async { Json(ApiDoc::openapi()) }),
             )
+            .merge(api::http_signing_keys::routes(http_signing_keys_state))
             .merge(build_router_with_prefix(
                 api_routes,
                 &self.config.api_prefix,

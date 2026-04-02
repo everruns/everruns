@@ -12,6 +12,7 @@ mod budgets;
 mod evals;
 mod events;
 mod harnesses;
+mod http_signing_keys;
 mod llm;
 mod mcp_servers;
 mod notifications;

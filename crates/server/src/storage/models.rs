@@ -1734,3 +1734,28 @@ pub struct CreateBudgetLedgerRow {
     pub session_id: Option<Uuid>,
     pub description: Option<String>,
 }
+
+// ============================================================================
+// HTTP Message Signing Keys
+// ============================================================================
+
+/// Row from http_signing_keys table — Ed25519 public key for bot-auth discovery.
+#[derive(Debug, Clone, FromRow)]
+pub struct HttpSigningKeyRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub key_id: String,
+    pub public_key: serde_json::Value,
+    pub label: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// Input for upserting an HTTP signing key.
+#[derive(Debug, Clone)]
+pub struct UpsertHttpSigningKey {
+    pub key_id: String,
+    pub public_key: serde_json::Value,
+    pub label: Option<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+}

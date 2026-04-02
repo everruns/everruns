@@ -19,6 +19,63 @@ use fetchkit::{BotAuthConfig, FetchError, FetchRequest};
 use serde_json::Value;
 use std::sync::Arc;
 
+/// Ed25519 public key JWK derived from a signing key seed.
+///
+/// Used to register the public key in the HTTP message signatures directory
+/// so target servers can verify request signatures.
+#[derive(Debug, Clone)]
+pub struct BotAuthPublicKey {
+    /// JWK Thumbprint (RFC 7638) — matches `BotAuthConfig::keyid()`
+    pub key_id: String,
+    /// Full JWK object: `{"kty":"OKP","crv":"Ed25519","x":"<base64url>"}`
+    pub jwk: serde_json::Value,
+}
+
+/// Derive the Ed25519 public key JWK and key ID from a base64url-encoded seed.
+///
+/// Returns `None` if the seed is invalid. The key_id is the JWK Thumbprint
+/// (base64url-encoded SHA-256 of the canonical JWK representation), matching
+/// the keyid that fetchkit's `BotAuthConfig` puts in `Signature-Input`.
+pub fn derive_bot_auth_public_key(base64_seed: &str) -> Option<BotAuthPublicKey> {
+    use base64::Engine as _;
+    use ed25519_dalek::SigningKey;
+    use sha2::{Digest, Sha256};
+
+    // Decode seed (base64url, no padding)
+    let seed_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(base64_seed)
+        .ok()?;
+    if seed_bytes.len() != 32 {
+        return None;
+    }
+    let mut seed = [0u8; 32];
+    seed.copy_from_slice(&seed_bytes);
+
+    // Derive public key
+    let signing_key = SigningKey::from_bytes(&seed);
+    let public_key = signing_key.verifying_key();
+    let public_key_b64 =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(public_key.as_bytes());
+
+    // Build canonical JWK (RFC 7638 member ordering for OKP: crv, kty, x)
+    let canonical_jwk = format!(
+        r#"{{"crv":"Ed25519","kty":"OKP","x":"{}"}}"#,
+        public_key_b64
+    );
+
+    // JWK Thumbprint = base64url(SHA-256(canonical_jwk))
+    let thumbprint = Sha256::digest(canonical_jwk.as_bytes());
+    let key_id = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(thumbprint);
+
+    let jwk = serde_json::json!({
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": public_key_b64,
+    });
+
+    Some(BotAuthPublicKey { key_id, jwk })
+}
+
 /// WebFetch capability — fetches web content, optionally saves to session filesystem.
 ///
 /// File download is enabled via per-capability config: `{"enable_file_download": true}`.
@@ -448,6 +505,28 @@ mod tests {
         });
         let result = super::parse_bot_auth_config(&config);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_derive_bot_auth_public_key() {
+        // 32 bytes of 'A' (0x41), base64url-encoded
+        let seed = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE";
+        let pk = super::derive_bot_auth_public_key(seed).unwrap();
+
+        // JWK has correct structure
+        assert_eq!(pk.jwk["kty"], "OKP");
+        assert_eq!(pk.jwk["crv"], "Ed25519");
+        assert!(pk.jwk["x"].is_string());
+
+        // key_id matches fetchkit's BotAuthConfig::keyid()
+        let fetchkit_config = fetchkit::BotAuthConfig::from_base64_seed(seed).unwrap();
+        assert_eq!(pk.key_id, fetchkit_config.keyid());
+    }
+
+    #[test]
+    fn test_derive_bot_auth_public_key_invalid_seed() {
+        assert!(super::derive_bot_auth_public_key("tooshort").is_none());
+        assert!(super::derive_bot_auth_public_key("!!!invalid!!!").is_none());
     }
 
     #[test]
