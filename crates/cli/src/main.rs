@@ -191,15 +191,7 @@ async fn main() -> anyhow::Result<()> {
             commands::capabilities::run(&client, output_format, &status).await
         }
         Commands::Sessions { command } => {
-            commands::sessions::run(
-                command,
-                &client,
-                &api_url,
-                &api_key,
-                output_format,
-                cli.quiet,
-            )
-            .await
+            commands::sessions::run(command, &client, output_format, cli.quiet).await
         }
         Commands::Files { command } => {
             commands::files::run(command, &api_url, &api_key, output_format, cli.quiet).await
