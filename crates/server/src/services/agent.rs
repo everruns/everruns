@@ -149,35 +149,10 @@ impl AgentService {
 
     #[policy(AGENT_VIEW)]
     pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<Agent>> {
-        let row = self
-            .db
-            .get_agent(caller.org_id, AgentId::from_uuid(id))
-            .await?;
-        match row {
-            Some(row) if row.status != "deleted" => {
-                let capabilities = self.get_capabilities(id).await?;
-                Ok(Some(Self::row_to_agent(row, capabilities)))
-            }
-            Some(_) => Ok(None),
-            None => {
-                // Fallback: the UUID might be from a public AgentId (happens when
-                // an agent was imported with a custom id that differs from the
-                // internal UUID). Try looking up by public_id.
-                let public_id = format!("agent_{}", id.simple());
-                let row = self
-                    .db
-                    .get_agent_by_public_id(caller.org_id, &public_id)
-                    .await?;
-                match row {
-                    Some(row) if row.status != "deleted" => {
-                        let capabilities =
-                            self.get_capabilities(row.id.uuid()).await?;
-                        Ok(Some(Self::row_to_agent(row, capabilities)))
-                    }
-                    _ => Ok(None),
-                }
-            }
-        }
+        // Look up by public_id — the UUID comes from a public AgentId,
+        // which may differ from the internal UUID for imported agents.
+        let public_id = format!("agent_{}", id.simple());
+        self.get_by_public_id(caller, &public_id).await
     }
 
     #[policy(AGENT_VIEW)]

@@ -192,13 +192,28 @@ impl WorkerAdapters for DirectWorkerAdapters {
     }
 
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
-        let capabilities = self
+        // Look up by public_id, then fetch capabilities using internal id from the row.
+        let public_id = format!("agent_{}", agent_id.simple());
+        let row = self
             .db
-            .get_agent_capabilities(agent_id)
+            .get_agent_by_public_id(org_id, &public_id)
             .await
-            .unwrap_or_default();
-        self.get_agent_with_capabilities(org_id, agent_id, capabilities)
-            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get agent: {}", e);
+                store_error("Failed to get agent")
+            })?;
+        match row {
+            Some(r) => {
+                let capabilities = self
+                    .db
+                    .get_agent_capabilities(r.id.uuid())
+                    .await
+                    .unwrap_or_default();
+                self.get_agent_with_capabilities(org_id, agent_id, capabilities)
+                    .await
+            }
+            None => Ok(None),
+        }
     }
 
     // =========================================================================
@@ -788,24 +803,38 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await?
             .ok_or_else(|| store_error("Session not found"))?;
 
-        // Load agent capabilities once, reuse for get_agent + build_mcp_tool_definitions
+        // Load agent by public_id, then fetch capabilities using the internal UUID
         let (agent, mcp_tool_definitions) = if let Some(agent_id) = session.agent_id {
-            let capability_rows = self
+            let public_id = agent_id.to_string();
+            let agent_row = self
                 .db
-                .get_agent_capabilities(agent_id.uuid())
+                .get_agent_by_public_id(org_id, &public_id)
                 .await
-                .unwrap_or_default();
+                .map_err(|e| {
+                    tracing::error!("Failed to get agent: {}", e);
+                    store_error("Failed to get agent")
+                })?;
 
-            let agent = self
-                .get_agent_with_capabilities(org_id, agent_id.uuid(), capability_rows.clone())
-                .await?;
+            if let Some(ref row) = agent_row {
+                let capability_rows = self
+                    .db
+                    .get_agent_capabilities(row.id.uuid())
+                    .await
+                    .unwrap_or_default();
 
-            let mcp_tools = self
-                .build_mcp_tool_definitions_with_capabilities(org_id, &capability_rows)
-                .await
-                .unwrap_or_default();
+                let agent = self
+                    .get_agent_with_capabilities(org_id, agent_id.uuid(), capability_rows.clone())
+                    .await?;
 
-            (agent, mcp_tools)
+                let mcp_tools = self
+                    .build_mcp_tool_definitions_with_capabilities(org_id, &capability_rows)
+                    .await
+                    .unwrap_or_default();
+
+                (agent, mcp_tools)
+            } else {
+                (None, vec![])
+            }
         } else {
             (None, vec![])
         };
@@ -956,10 +985,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .is_some())
     }
 
-    async fn build_tool_registry(&self, _org_id: i64, agent_id: Uuid) -> Result<ToolRegistry> {
+    async fn build_tool_registry(&self, org_id: i64, agent_id: Uuid) -> Result<ToolRegistry> {
+        // agent_id is a public UUID — resolve to internal UUID for capability lookup
+        let public_id = format!("agent_{}", agent_id.simple());
+        let internal_id = self
+            .db
+            .get_agent_by_public_id(org_id, &public_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to resolve agent: {}", e);
+                store_error("Failed to resolve agent")
+            })?
+            .map(|r| r.id.uuid())
+            .unwrap_or(agent_id); // fall back to input UUID for backwards compat
+
         let capability_rows = self
             .db
-            .get_agent_capabilities(agent_id)
+            .get_agent_capabilities(internal_id)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get agent capabilities: {}", e);
@@ -1051,29 +1093,17 @@ impl DirectWorkerAdapters {
         agent_id: Uuid,
         capability_rows: Vec<AgentCapabilityRow>,
     ) -> Result<Option<Agent>> {
-        let agent_id_typed = AgentId::from_uuid(agent_id);
-        let mut row = self
+        // Look up by public_id — the UUID comes from a public AgentId,
+        // which may differ from the internal UUID for imported agents.
+        let public_id = format!("agent_{}", agent_id.simple());
+        let row = self
             .db
-            .get_agent(org_id, agent_id_typed)
+            .get_agent_by_public_id(org_id, &public_id)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to get agent: {}", e);
+                tracing::error!("Failed to get agent by public_id: {}", e);
                 store_error("Failed to get agent")
             })?;
-
-        // Fallback: try public_id lookup when internal UUID doesn't match
-        // (happens with imported agents that have custom public IDs)
-        if row.is_none() {
-            let public_id = format!("agent_{}", agent_id.simple());
-            row = self
-                .db
-                .get_agent_by_public_id(org_id, &public_id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to get agent by public_id: {}", e);
-                    store_error("Failed to get agent by public_id")
-                })?;
-        }
 
         Ok(row.map(|r| Agent {
             public_id: r
@@ -1594,21 +1624,13 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     }
 
     async fn get_agent_by_id(&self, id: AgentId) -> everruns_core::error::Result<Option<Agent>> {
-        let mut row = self
+        // AgentId is always a public ID — look up by public_id column.
+        let public_id = id.to_string();
+        let row = self
             .db
-            .get_agent(self.org_id, id)
+            .get_agent_by_public_id(self.org_id, &public_id)
             .await
             .map_err(|e| store_error(format!("Failed to get agent: {e}")))?;
-
-        // Fallback: try public_id lookup when internal UUID doesn't match
-        if row.is_none() {
-            let public_id = format!("agent_{}", id.uuid().simple());
-            row = self
-                .db
-                .get_agent_by_public_id(self.org_id, &public_id)
-                .await
-                .map_err(|e| store_error(format!("Failed to get agent by public_id: {e}")))?;
-        }
 
         match row {
             Some(row) => {
@@ -1764,7 +1786,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         {
             let agent = self
                 .db
-                .get_agent(self.org_id, agent_id)
+                .get_agent_by_public_id(self.org_id, &agent_id.to_string())
                 .await
                 .map_err(|e| store_error(format!("Failed to get agent: {e}")))?
                 .ok_or_else(|| store_error("Agent not found"))?;
