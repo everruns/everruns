@@ -154,7 +154,7 @@ impl FileSaver for SessionFileSaver {
 /// the session filesystem (SessionFileStore) via the SessionFileSaver adapter.
 pub struct WebFetchTool {
     fetchkit_tool: fetchkit::Tool,
-    /// Cached description from ToolBuilder (Tool trait returns &str, fetchkit returns String)
+    /// Cached description from ToolBuilder (owned copy of fetchkit's &str for our Tool trait)
     description: String,
 }
 
