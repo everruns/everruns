@@ -630,7 +630,7 @@ impl CapabilityRegistry {
         registry.register(TestMathCapability);
         registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
-        registry.register(WebFetchCapability);
+        registry.register(WebFetchCapability::from_env());
         registry.register(VirtualBashCapability);
         registry.register(SessionScheduleCapability);
         registry.register(InfinityContextCapability);

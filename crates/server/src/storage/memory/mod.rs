@@ -18,7 +18,6 @@ mod budgets;
 mod evals;
 mod events;
 mod harnesses;
-mod http_signing_keys;
 mod llm;
 mod mcp_servers;
 mod notifications;
@@ -140,8 +139,6 @@ pub struct InMemoryDatabase {
     oauth_clients: RwLock<HashMap<Uuid, OAuthClientRow>>,
     oauth_authorization_codes: RwLock<HashMap<Uuid, OAuthAuthorizationCodeRow>>,
     oauth_refresh_tokens: RwLock<HashMap<Uuid, OAuthRefreshTokenRow>>,
-    // HTTP Message Signing keys (bot-auth discovery)
-    http_signing_keys: RwLock<HashMap<Uuid, HttpSigningKeyRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -209,7 +206,6 @@ impl Default for InMemoryDatabase {
             oauth_clients: RwLock::new(HashMap::new()),
             oauth_authorization_codes: RwLock::new(HashMap::new()),
             oauth_refresh_tokens: RwLock::new(HashMap::new()),
-            http_signing_keys: RwLock::new(HashMap::new()),
         }
     }
 }

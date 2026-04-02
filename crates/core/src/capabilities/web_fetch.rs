@@ -3,7 +3,7 @@
 //! Design decisions:
 //! - All metadata (description, schema, llmtxt) comes from fetchkit::ToolBuilder
 //! - File download (`save_to_file`) auto-enabled when `session_file_system` is a sibling
-//! - Bot-auth (Ed25519 request signing per RFC 9421) enabled via capability config
+//! - Bot-auth (Ed25519 request signing per RFC 9421) enabled via server-wide env vars
 //! - Binary content accepted for file downloads, rejected for inline responses
 //! - See specs/fetchkit.md for design details
 
@@ -79,9 +79,58 @@ pub fn derive_bot_auth_public_key(base64_seed: &str) -> Option<BotAuthPublicKey>
 /// WebFetch capability — fetches web content, optionally saves to session filesystem.
 ///
 /// File download is enabled via per-capability config: `{"enable_file_download": true}`.
+/// Bot-auth signing is server-wide: set `BOT_AUTH_SIGNING_KEY_SEED` env var.
 /// Description, schema, and system prompt all come from fetchkit's ToolBuilder,
 /// adapting to whether file download is on.
-pub struct WebFetchCapability;
+pub struct WebFetchCapability {
+    /// Server-wide bot-auth config (from env vars). When set, all outbound
+    /// HTTP requests are signed with Ed25519 per RFC 9421.
+    bot_auth: Option<BotAuthConfig>,
+}
+
+impl WebFetchCapability {
+    /// Create with optional server-wide bot-auth signing config.
+    pub fn new(bot_auth: Option<BotAuthConfig>) -> Self {
+        Self { bot_auth }
+    }
+
+    /// Create from environment variables.
+    ///
+    /// - `BOT_AUTH_SIGNING_KEY_SEED`: base64url-encoded 32-byte Ed25519 seed (required to enable)
+    /// - `BOT_AUTH_AGENT_FQDN`: FQDN for Signature-Agent header (optional)
+    /// - `BOT_AUTH_VALIDITY_SECS`: signature validity in seconds (optional, default 300)
+    pub fn from_env() -> Self {
+        Self {
+            bot_auth: bot_auth_config_from_env(),
+        }
+    }
+}
+
+/// Read bot-auth config from environment variables.
+fn bot_auth_config_from_env() -> Option<BotAuthConfig> {
+    let seed = std::env::var("BOT_AUTH_SIGNING_KEY_SEED").ok()?;
+
+    let mut config = match BotAuthConfig::from_base64_seed(&seed) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "invalid BOT_AUTH_SIGNING_KEY_SEED, bot-auth disabled");
+            return None;
+        }
+    };
+
+    if let Ok(fqdn) = std::env::var("BOT_AUTH_AGENT_FQDN") {
+        config = config.with_agent_fqdn(&fqdn);
+    }
+
+    if let Ok(secs) = std::env::var("BOT_AUTH_VALIDITY_SECS")
+        && let Ok(secs) = secs.parse::<u64>()
+    {
+        config = config.with_validity_secs(secs);
+    }
+
+    tracing::info!("bot-auth request signing enabled");
+    Some(config)
+}
 
 #[async_trait]
 impl Capability for WebFetchCapability {
@@ -148,8 +197,7 @@ impl Capability for WebFetchCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        // Default: no file download, no bot-auth
-        vec![Box::new(WebFetchTool::new(false, None))]
+        vec![Box::new(WebFetchTool::new(false, self.bot_auth.clone()))]
     }
 
     fn tools_with_config(&self, config: &serde_json::Value) -> Vec<Box<dyn Tool>> {
@@ -157,42 +205,11 @@ impl Capability for WebFetchCapability {
             .get("enable_file_download")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let bot_auth = parse_bot_auth_config(config);
-        vec![Box::new(WebFetchTool::new(enable_file_download, bot_auth))]
+        vec![Box::new(WebFetchTool::new(
+            enable_file_download,
+            self.bot_auth.clone(),
+        ))]
     }
-}
-
-// ============================================================================
-// Bot-auth config parsing
-// ============================================================================
-
-/// Parse bot-auth config from capability config JSON.
-///
-/// Expected shape: `{"bot_auth": {"signing_key_seed": "<base64url>", "agent_fqdn": "...", "validity_secs": 300}}`
-/// - `signing_key_seed` (required): base64url-encoded 32-byte Ed25519 seed
-/// - `agent_fqdn` (optional): FQDN for the Signature-Agent header
-/// - `validity_secs` (optional): signature validity window, default 300
-fn parse_bot_auth_config(config: &serde_json::Value) -> Option<BotAuthConfig> {
-    let bot_auth = config.get("bot_auth")?;
-    let seed = bot_auth.get("signing_key_seed")?.as_str()?;
-
-    let mut auth_config = match BotAuthConfig::from_base64_seed(seed) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!(error = %e, "failed to parse bot-auth signing key seed");
-            return None;
-        }
-    };
-
-    if let Some(fqdn) = bot_auth.get("agent_fqdn").and_then(|v| v.as_str()) {
-        auth_config = auth_config.with_agent_fqdn(fqdn);
-    }
-
-    if let Some(secs) = bot_auth.get("validity_secs").and_then(|v| v.as_u64()) {
-        auth_config = auth_config.with_validity_secs(secs);
-    }
-
-    Some(auth_config)
 }
 
 // ============================================================================
@@ -477,37 +494,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_bot_auth_config_valid() {
-        let config = serde_json::json!({
-            "bot_auth": {
-                "signing_key_seed": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE",
-                "agent_fqdn": "bot.example.com",
-                "validity_secs": 600
-            }
-        });
-        let result = super::parse_bot_auth_config(&config);
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_parse_bot_auth_config_missing() {
-        let config = serde_json::json!({"enable_file_download": true});
-        let result = super::parse_bot_auth_config(&config);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_parse_bot_auth_config_missing_seed() {
-        let config = serde_json::json!({
-            "bot_auth": {
-                "agent_fqdn": "bot.example.com"
-            }
-        });
-        let result = super::parse_bot_auth_config(&config);
-        assert!(result.is_none());
-    }
-
-    #[test]
     fn test_derive_bot_auth_public_key() {
         // 32 bytes of 'A' (0x41), base64url-encoded
         let seed = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE";
@@ -544,7 +530,7 @@ mod tests {
 
     #[test]
     fn test_web_fetch_capability_metadata() {
-        let cap = WebFetchCapability;
+        let cap = WebFetchCapability::new(None);
 
         assert_eq!(cap.id(), "web_fetch");
         assert_eq!(cap.name(), "Web Fetch");
@@ -560,7 +546,7 @@ mod tests {
 
     #[test]
     fn test_web_fetch_capability_has_tool() {
-        let cap = WebFetchCapability;
+        let cap = WebFetchCapability::new(None);
         let tools = cap.tools();
 
         assert_eq!(tools.len(), 1);
@@ -1647,7 +1633,7 @@ mod tests {
 
     #[test]
     fn test_web_fetch_tools_with_config_enables_file_download() {
-        let cap = WebFetchCapability;
+        let cap = WebFetchCapability::new(None);
 
         // Without config: no save_to_file in schema
         let tools = cap.tools_with_config(&serde_json::json!({}));
@@ -1664,7 +1650,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_web_fetch_system_prompt_adapts_to_config() {
-        let cap = WebFetchCapability;
+        let cap = WebFetchCapability::new(None);
         let ctx = super::super::SystemPromptContext::without_file_store(SessionId::new());
 
         // Without file download: no save_to_file mention in prompt

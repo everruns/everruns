@@ -696,7 +696,7 @@ impl ServerAppBuilder {
             flags: feature_flags.clone(),
         };
 
-        let http_signing_keys_state = api::http_signing_keys::AppState { db: db.clone() };
+        let http_signing_keys_state = api::http_signing_keys::AppState::from_env();
 
         if !self.config.api_prefix.is_empty() {
             tracing::info!(

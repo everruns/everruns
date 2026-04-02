@@ -2,20 +2,32 @@
 //
 // Decision: /.well-known/http-message-signatures-directory is public (no auth).
 //   Target servers need to discover bot public keys without credentials.
-// Decision: Serves all non-expired keys as a JWKS (RFC 7517 Section 5).
+// Decision: Public key derived at startup from BOT_AUTH_SIGNING_KEY_SEED env var.
+//   No DB needed — server-wide config, single key.
 // Decision: Content-Type is application/json (widely supported; the draft
-//   media type application/http-message-signatures-directory+json is not
-//   yet registered).
+//   media type is not yet IANA-registered).
 // See: draft-meunier-http-message-signatures-directory-05
 
-use crate::storage::StorageBackend;
 use axum::{Json, Router, extract::State, routing::get};
+use everruns_core::capabilities::{BotAuthPublicKey, derive_bot_auth_public_key};
 use serde::Serialize;
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: Arc<StorageBackend>,
+    /// Pre-computed JWKS from BOT_AUTH_SIGNING_KEY_SEED. Empty when bot-auth is disabled.
+    pub keys: Vec<BotAuthPublicKey>,
+}
+
+impl AppState {
+    /// Build from environment. Returns state with empty keys if bot-auth is not configured.
+    pub fn from_env() -> Self {
+        let keys = std::env::var("BOT_AUTH_SIGNING_KEY_SEED")
+            .ok()
+            .and_then(|seed| derive_bot_auth_public_key(&seed))
+            .into_iter()
+            .collect();
+        Self { keys }
+    }
 }
 
 pub fn routes(state: AppState) -> Router {
@@ -32,19 +44,13 @@ struct JwksResponse {
 }
 
 async fn signatures_directory(State(state): State<AppState>) -> Json<JwksResponse> {
-    let keys = state
-        .db
-        .list_all_http_signing_keys()
-        .await
-        .unwrap_or_default();
-
-    let jwks: Vec<serde_json::Value> = keys
-        .into_iter()
+    let jwks: Vec<serde_json::Value> = state
+        .keys
+        .iter()
         .map(|k| {
-            let mut jwk = k.public_key;
-            // Ensure kid is set from the key_id (JWK thumbprint)
+            let mut jwk = k.jwk.clone();
             if let Some(obj) = jwk.as_object_mut() {
-                obj.entry("kid").or_insert_with(|| k.key_id.into());
+                obj.entry("kid").or_insert_with(|| k.key_id.clone().into());
             }
             jwk
         })
