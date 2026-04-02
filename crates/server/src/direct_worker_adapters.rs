@@ -802,17 +802,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await?
             .ok_or_else(|| store_error("Session not found"))?;
 
-        // Load agent by public_id, then fetch capabilities using the internal UUID
+        // session.agent_id from get_session() is the internal UUID (raw DB FK).
+        // Use get_agent() which queries by internal id.
         let (agent, mcp_tool_definitions) = if let Some(agent_id) = session.agent_id {
-            let public_id = agent_id.to_string();
-            let agent_row = self
-                .db
-                .get_agent_by_public_id(org_id, &public_id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to get agent: {}", e);
-                    store_error("Failed to get agent")
-                })?;
+            let agent_row = self.db.get_agent(org_id, agent_id).await.map_err(|e| {
+                tracing::error!("Failed to get agent: {}", e);
+                store_error("Failed to get agent")
+            })?;
 
             if let Some(row) = agent_row {
                 let capability_rows = self
