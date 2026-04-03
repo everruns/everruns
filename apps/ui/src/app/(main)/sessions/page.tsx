@@ -29,6 +29,7 @@ import { AgentFilterMenu } from "@/components/agent/agent-filter-menu";
 import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-select";
 import { Label } from "@/components/ui/label";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { exportSessionJsonl } from "@/lib/api/sessions";
 import type { LlmModelWithProvider, Agent } from "@/lib/api/types";
 import { getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
@@ -132,6 +133,12 @@ export default function SessionsPage() {
     }
   };
 
+  const handleExport = (sessionId: string) => {
+    exportSessionJsonl(sessionId).catch((err) => {
+      console.error("Failed to export session:", err);
+    });
+  };
+
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
@@ -185,6 +192,7 @@ export default function SessionsPage() {
                     agentStatus={session.agent_id ? (agent?.status ?? "deleted") : undefined}
                     model={session.model_id ? modelMap.get(session.model_id) : undefined}
                     onTogglePin={handleTogglePin}
+                    onExport={handleExport}
                   />
                 );
               })}

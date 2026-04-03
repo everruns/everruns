@@ -14,12 +14,13 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
-    routing::post,
+    response::IntoResponse,
+    routing::{get, post},
 };
 use chrono::{DateTime, Utc};
 use everruns_core::typed_id::{MessageId, SessionId};
 
-use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
@@ -187,6 +188,10 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/sessions/{session_id}/messages",
             post(create_message).get(list_messages),
+        )
+        .route(
+            "/v1/sessions/{session_id}/export",
+            get(export_session_jsonl),
         )
         .with_state(state)
 }
@@ -363,6 +368,94 @@ pub async fn list_messages(
         })?;
 
     Ok(Json(ListResponse::new(messages)))
+}
+
+/// Export session messages as a JSONL file
+///
+/// Returns all materialized messages (user, agent) as newline-delimited JSON.
+/// Delta events are excluded. Each line is a complete JSON object representing one message.
+/// The response includes `Content-Disposition: attachment` for browser download.
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/{session_id}/export",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    responses(
+        (status = 200, description = "JSONL file with one message per line", content_type = "application/x-ndjson"),
+        (status = 400, description = "Invalid ID format"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn export_session_jsonl(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
+
+    // Verify session exists and caller has access (returns 403 for denied callers)
+    let _session = state
+        .session_service
+        .get(&Caller::from(&org), session_id.uuid(), None)
+        .await
+        .map_policy_or_internal("export session")?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Session not found".to_string(),
+                }),
+            )
+        })?;
+
+    let messages = state
+        .message_service
+        .list(session_id.uuid())
+        .await
+        .map_policy_or_internal("list messages for export")?;
+
+    // Build JSONL: one JSON object per line
+    let mut body = String::new();
+    for msg in &messages {
+        let line = serde_json::to_string(msg).map_err(|e| {
+            tracing::error!("Failed to serialize message for export: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?;
+        body.push_str(&line);
+        body.push('\n');
+    }
+
+    let filename = format!("{}.jsonl", session_id);
+    Ok((
+        StatusCode::OK,
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "application/x-ndjson".to_string(),
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", filename),
+            ),
+        ],
+        body,
+    ))
 }
 
 // ============================================

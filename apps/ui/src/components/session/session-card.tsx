@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Info, MessageSquare, Loader2, Zap, Pin, PinOff, CalendarClock } from "lucide-react";
+import {
+  Info,
+  MessageSquare,
+  Loader2,
+  Zap,
+  Pin,
+  PinOff,
+  CalendarClock,
+  Download,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -34,6 +43,8 @@ export interface SessionCardProps {
   onDelete?: (sessionId: string, sessionTitle: string) => void;
   /** Callback to toggle pin state */
   onTogglePin?: (sessionId: string, pinned: boolean) => void;
+  /** Callback to export session as JSONL */
+  onExport?: (sessionId: string) => void;
 }
 
 /**
@@ -133,6 +144,7 @@ export function SessionCard({
   model,
   summary,
   onTogglePin,
+  onExport,
 }: SessionCardProps) {
   const statusInfo = getStatusInfo(session.status);
   const displayTitle = session.title || `Session ${shortenId(session.id)}`;
@@ -212,6 +224,25 @@ export function SessionCard({
             <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
             {model.display_name}
           </Badge>
+        )}
+        {onExport && (
+          <Tooltip>
+            <TooltipTrigger
+              className={cn(
+                "p-0.5 rounded transition-colors flex-shrink-0",
+                "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
+              )}
+              aria-label="Export session as JSONL"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onExport(session.id);
+              }}
+            >
+              <Download className="w-3.5 h-3.5" />
+            </TooltipTrigger>
+            <TooltipContent>Export JSONL</TooltipContent>
+          </Tooltip>
         )}
         {onTogglePin && (
           <Tooltip>

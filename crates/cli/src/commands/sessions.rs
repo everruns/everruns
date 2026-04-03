@@ -46,11 +46,23 @@ pub enum SessionsCommand {
         /// Session ID (e.g. ses_xxx)
         session: String,
     },
+
+    /// Export session messages as JSONL
+    Export {
+        /// Session ID (e.g. session_xxx)
+        session: String,
+
+        /// Output file path (defaults to stdout)
+        #[arg(long, short)]
+        output: Option<String>,
+    },
 }
 
 pub async fn run(
     command: SessionsCommand,
     client: &Everruns,
+    api_url: &str,
+    api_key: &str,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -65,6 +77,10 @@ pub async fn run(
         SessionsCommand::List => list(client, output).await,
         SessionsCommand::Get { session } => get(client, output, session).await,
         SessionsCommand::Watch { session } => watch(client, output, session).await,
+        SessionsCommand::Export {
+            session,
+            output: file_path,
+        } => export(api_url, api_key, output, quiet, session, file_path).await,
     }
 }
 
@@ -405,6 +421,45 @@ fn truncate_str(s: &str, max: usize) -> String {
         let truncated: String = s.chars().take(max).collect();
         format!("{truncated}...")
     }
+}
+
+// TODO: Replace direct HTTP with everruns-sdk once export is supported.
+// Tracking issue: https://github.com/everruns/everruns/issues/1180
+async fn export(
+    api_url: &str,
+    api_key: &str,
+    output: OutputFormat,
+    quiet: bool,
+    session_id: String,
+    file_path: Option<String>,
+) -> Result<()> {
+    let http = reqwest::Client::new();
+    let resp = http
+        .get(format!("{}/v1/sessions/{}/export", api_url, session_id))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+        .context("Failed to request session export")?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Export failed ({}): {}", status, body);
+    }
+
+    let body = resp.text().await.context("Failed to read export body")?;
+
+    if let Some(path) = file_path {
+        std::fs::write(&path, &body).with_context(|| format!("Failed to write to {}", path))?;
+        if output.is_text() && !quiet {
+            let line_count = body.lines().count();
+            eprintln!("Exported {} messages to {}", line_count, path);
+        }
+    } else {
+        print!("{}", body);
+    }
+
+    Ok(())
 }
 
 fn capitalize_first(s: &str) -> String {
