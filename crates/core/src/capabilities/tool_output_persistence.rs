@@ -2,16 +2,20 @@
 //
 // Persists full exec tool output to session VFS before truncation,
 // enabling lossless retrieval via read_file/grep. The LLM gets a
-// truncated summary with file paths to the full output.
+// truncated summary with `full_output` path and `output_files`
+// array pointing to the persisted files.
 //
 // Design decisions:
 // - Implemented as PostToolExecHook, not baked into each tool — VFS
 //   persistence is a cross-cutting concern the tool shouldn't know about
 // - Reads `persist_output` hint from ToolDefinition to decide what to persist
-// - Writes stdout to /.outputs/{tool_call_id}.stdout, stderr to /.outputs/{tool_call_id}.stderr (EVE-245)
+// - Writes stdout to /.outputs/{safe_id}.stdout, stderr to
+//   /.outputs/{safe_id}.stderr when stderr is persisted (session-scoped)
 // - Injects `output_files` array into result for agent to read selectively
 // - Graceful degradation: skip silently if file_store is unavailable
 // - Runs before FinalPostToolExecHook (EVE-225 hard limit)
+// - EVE-245: annotates truncated stdout with file reference so agent knows
+//   it can read_file the full output with offset/limit
 
 use std::sync::Arc;
 
@@ -20,8 +24,95 @@ use serde_json::json;
 
 use super::{Capability, CapabilityStatus};
 use crate::atoms::PostToolExecHook;
+use crate::tool_output_sanitizer::EXEC_OUTPUT_BUDGET;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::ToolContext;
+use crate::traits::{SessionFileStore, ToolContext};
+use crate::typed_id::SessionId;
+
+/// Result of persisting large exec output to session VFS.
+pub struct PersistResult {
+    /// Path to the persisted stdout file in session VFS form
+    /// (e.g. `/.outputs/{safe_id}.stdout`).
+    pub stdout_path: Option<String>,
+    /// Path to the persisted stderr file in session VFS form, if non-empty
+    /// stderr was persisted.
+    pub stderr_path: Option<String>,
+    /// Total line count of the persisted stdout.
+    pub stdout_total_lines: usize,
+}
+
+/// Persist large exec output to session VFS when it exceeds the budget.
+///
+/// Writes stdout to `/.outputs/{safe_id}.stdout` and stderr to
+/// `/.outputs/{safe_id}.stderr` (if non-empty). Returns paths and metadata.
+///
+/// This is the shared helper that any sandbox tool or hook can call.
+pub async fn persist_large_output(
+    file_store: &Arc<dyn SessionFileStore>,
+    session_id: SessionId,
+    tool_call_id: &str,
+    stdout: &str,
+    stderr: &str,
+) -> Option<PersistResult> {
+    // Only persist if stdout exceeds its budget or stderr exceeds 4096 bytes
+    if stdout.len() <= EXEC_OUTPUT_BUDGET && stderr.len() <= 4096 {
+        return None;
+    }
+
+    let safe_id: String = tool_call_id
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    if safe_id.is_empty() {
+        return None;
+    }
+
+    let mut result = PersistResult {
+        stdout_path: None,
+        stderr_path: None,
+        stdout_total_lines: 0,
+    };
+
+    // Persist stdout
+    if stdout.len() > EXEC_OUTPUT_BUDGET {
+        let path = format!("/.outputs/{safe_id}.stdout");
+        result.stdout_total_lines = stdout.lines().count();
+        if file_store
+            .write_file(session_id, &path, stdout, "utf-8")
+            .await
+            .is_ok()
+        {
+            result.stdout_path = Some(path);
+        }
+    }
+
+    // Persist stderr separately if large
+    if stderr.len() > 4096 {
+        let path = format!("/.outputs/{safe_id}.stderr");
+        if file_store
+            .write_file(session_id, &path, stderr, "utf-8")
+            .await
+            .is_ok()
+        {
+            result.stderr_path = Some(path);
+        }
+    }
+
+    // Only return Some if at least one file was persisted
+    if result.stdout_path.is_some() || result.stderr_path.is_some() {
+        Some(result)
+    } else {
+        None
+    }
+}
+
+/// Build the annotated truncated stdout string with file reference.
+pub fn annotate_truncated_output(truncated: &str, file_path: &str, full_size: usize) -> String {
+    let size_kb = full_size / 1024;
+    format!(
+        "{truncated}\n\n[full output saved to /workspace{file_path} ({size_kb} KiB) — use read_file with offset/limit]"
+    )
+}
 
 /// Capability that persists full tool output to session VFS.
 pub struct ToolOutputPersistenceCapability;
@@ -88,62 +179,49 @@ impl PostToolExecHook for PersistOutputHook {
             return;
         };
 
-        // Sanitize tool_call.id for path safety — use only alphanumeric, dash, underscore
-        let safe_id: String = tool_call
-            .id
-            .chars()
-            .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
-            .collect();
-        if safe_id.is_empty() {
-            return;
-        }
+        // Split into stdout/stderr for the shared helper
+        let (stdout, stderr) = split_output_streams(&output_text);
 
-        // Split into stdout and stderr for separate persistence (EVE-245)
-        let (stdout_text, stderr_text) = split_output_streams(&output_text);
-        let total_lines = stdout_text.lines().count();
-
-        let stdout_path = format!("/.outputs/{safe_id}.stdout");
-        if let Err(e) = file_store
-            .write_file(context.session_id, &stdout_path, stdout_text, "utf-8")
-            .await
+        if let Some(persist_result) = persist_large_output(
+            file_store,
+            context.session_id,
+            &tool_call.id,
+            stdout,
+            stderr,
+        )
+        .await
         {
-            tracing::warn!(
-                tool_name = %tool_call.name,
-                tool_call_id = %tool_call.id,
-                error = %e,
-                "PersistOutputHook: failed to write stdout output"
-            );
-            return;
-        }
-
-        let mut output_files = vec![stdout_path.clone()];
-
-        // Persist stderr separately if non-empty
-        if !stderr_text.is_empty() {
-            let stderr_path = format!("/.outputs/{safe_id}.stderr");
-            if let Err(e) = file_store
-                .write_file(context.session_id, &stderr_path, stderr_text, "utf-8")
-                .await
+            // Enrich result JSON with file references
+            if let Some(ref mut json_val) = result.result
+                && let Some(obj) = json_val.as_object_mut()
             {
-                tracing::warn!(
-                    tool_name = %tool_call.name,
-                    tool_call_id = %tool_call.id,
-                    error = %e,
-                    "PersistOutputHook: failed to write stderr output"
-                );
-                // Continue — stdout was persisted successfully
-            } else {
-                output_files.push(stderr_path);
-            }
-        }
+                let mut output_files = Vec::new();
 
-        // Enrich result JSON with file references (EVE-245)
-        if let Some(ref mut json_val) = result.result
-            && let Some(obj) = json_val.as_object_mut()
-        {
-            obj.insert("full_output".to_string(), json!(stdout_path));
-            obj.insert("total_lines".to_string(), json!(total_lines));
-            obj.insert("output_files".to_string(), json!(output_files));
+                if let Some(ref path) = persist_result.stdout_path {
+                    // Annotate the truncated stdout with file reference
+                    if let Some(current_stdout) = obj.get("stdout").and_then(|v| v.as_str()) {
+                        let annotated =
+                            annotate_truncated_output(current_stdout, path, stdout.len());
+                        obj.insert("stdout".to_string(), json!(annotated));
+                    }
+                    output_files.push(format!("/workspace{path}"));
+                    // full_output points to the stdout file only; stderr (if persisted)
+                    // is available via the output_files array
+                    obj.insert("full_output".to_string(), json!(path));
+                    obj.insert(
+                        "total_lines".to_string(),
+                        json!(persist_result.stdout_total_lines),
+                    );
+                }
+
+                if let Some(ref path) = persist_result.stderr_path {
+                    output_files.push(format!("/workspace{path}"));
+                }
+
+                if !output_files.is_empty() {
+                    obj.insert("output_files".to_string(), json!(output_files));
+                }
+            }
         }
     }
 }
@@ -280,5 +358,22 @@ mod tests {
         let (stdout, stderr) = split_output_streams("");
         assert!(stdout.is_empty());
         assert!(stderr.is_empty());
+    }
+
+    #[test]
+    fn test_annotate_truncated_output() {
+        let annotated =
+            annotate_truncated_output("truncated text...", "/.outputs/abc.stdout", 50 * 1024);
+        assert!(annotated.contains("truncated text..."));
+        assert!(annotated.contains("/workspace/.outputs/abc.stdout"));
+        assert!(annotated.contains("50 KiB"));
+        assert!(annotated.contains("read_file"));
+    }
+
+    #[test]
+    fn test_annotate_truncated_output_small() {
+        let annotated = annotate_truncated_output("short", "/.outputs/x.stdout", 1024);
+        assert!(annotated.contains("1 KiB"));
+        assert!(annotated.contains("read_file with offset/limit"));
     }
 }
