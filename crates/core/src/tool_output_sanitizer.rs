@@ -173,28 +173,32 @@ pub const READ_FILE_HARD_BYTE_CAP: usize = 50 * 1024;
 ///
 /// Applies offset/limit pagination. Returns (formatted_content, total_lines, truncated).
 /// Line numbers are 1-based in output regardless of offset.
+/// Single-pass: counts total lines while only formatting the requested window.
 pub fn format_lines(content: &str, offset: usize, limit: usize) -> (String, usize, bool) {
-    let lines: Vec<&str> = content.lines().collect();
-    let total_lines = lines.len();
-
-    // Clamp offset to total
-    let start = offset.min(total_lines);
-    let end = (start + limit).min(total_lines);
-    let truncated = end < total_lines;
-
-    let selected = &lines[start..end];
-
+    let window_end = offset.saturating_add(limit);
+    let mut total_lines = 0;
     let mut result = String::new();
-    for (i, line) in selected.iter().enumerate() {
-        if i > 0 {
+
+    for (idx, line) in content.lines().enumerate() {
+        total_lines = idx + 1;
+
+        if idx < offset || idx >= window_end {
+            continue;
+        }
+
+        if !result.is_empty() {
             result.push('\n');
         }
+
         // 1-based line numbers
-        let line_num = start + i + 1;
+        let line_num = idx + 1;
         result.push_str(&line_num.to_string());
         result.push('|');
         result.push_str(line);
     }
+
+    let end = offset.saturating_add(limit).min(total_lines);
+    let truncated = end < total_lines;
 
     // Apply hard byte cap
     if result.len() > READ_FILE_HARD_BYTE_CAP {
@@ -499,6 +503,22 @@ mod tests {
         assert_eq!(content, "");
         assert_eq!(total, 0);
         assert!(!truncated);
+    }
+
+    #[test]
+    fn test_format_lines_hard_byte_cap() {
+        // Create content that exceeds 50 KB when formatted
+        let big_line = "x".repeat(1000);
+        let content = (0..100)
+            .map(|_| big_line.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (formatted, total, truncated) = format_lines(&content, 0, 100);
+        assert_eq!(total, 100);
+        assert!(truncated);
+        assert!(formatted.len() <= READ_FILE_HARD_BYTE_CAP);
+        // Must be valid UTF-8 (would panic on access if not)
+        assert!(formatted.is_char_boundary(formatted.len()));
     }
 
     #[test]

@@ -415,12 +415,14 @@ impl Tool for ReadFileTool {
                 "offset": {
                     "type": "integer",
                     "description": "Starting line number (0-indexed). Default: 0",
-                    "default": 0
+                    "default": 0,
+                    "minimum": 0
                 },
                 "limit": {
                     "type": "integer",
                     "description": "Max lines to return. Default: 2000",
-                    "default": 2000
+                    "default": 2000,
+                    "minimum": 1
                 }
             },
             "required": ["path"],
@@ -517,15 +519,26 @@ impl Tool for ReadFileTool {
                     Err(e) => return ToolExecutionResult::internal_error(e),
                 };
 
+                // Non-image binary files: return raw base64 without line formatting
+                if file.encoding == "base64" {
+                    return ToolExecutionResult::success(json!({
+                        "path": display_path,
+                        "content": file.content.as_deref().unwrap_or(""),
+                        "encoding": "base64",
+                        "size_bytes": file.size_bytes,
+                        "content_hash": content_hash
+                    }));
+                }
+
                 let raw_content = file.content.as_deref().unwrap_or("");
                 let (formatted, total_lines, truncated) = format_lines(raw_content, offset, limit);
 
-                let start_line = if total_lines == 0 || offset >= total_lines {
-                    0
+                let shown_count = total_lines.saturating_sub(offset).min(limit);
+                let (start_line, end_line) = if shown_count == 0 {
+                    (0, 0)
                 } else {
-                    offset + 1
+                    (offset + 1, offset + shown_count)
                 };
-                let end_line = (offset + limit).min(total_lines);
 
                 ToolExecutionResult::success(json!({
                     "path": display_path,
