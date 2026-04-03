@@ -520,7 +520,11 @@ impl Tool for ReadFileTool {
                 let raw_content = file.content.as_deref().unwrap_or("");
                 let (formatted, total_lines, truncated) = format_lines(raw_content, offset, limit);
 
-                let start_line = offset.min(total_lines) + 1;
+                let start_line = if total_lines == 0 || offset >= total_lines {
+                    0
+                } else {
+                    offset + 1
+                };
                 let end_line = (offset + limit).min(total_lines);
 
                 ToolExecutionResult::success(json!({
