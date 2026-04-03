@@ -73,16 +73,18 @@ static TOOL_SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
 /// Delegating to bashkit avoids schema drift when bashkit adds/changes parameters.
 static TOOL_INPUT_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
     let mut schema = BASHKIT_TOOL.input_schema();
-    // Add everruns-specific working_dir param (sets initial cwd for the Bash builder)
+    // Add everruns-specific working_dir param only if bashkit does not already define it.
     if let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut()) {
-        props.insert(
-            "working_dir".to_string(),
-            json!({
-                "type": "string",
-                "default": "/workspace",
-                "description": "Working directory for command execution (default: '/workspace')"
-            }),
-        );
+        if !props.contains_key("working_dir") {
+            props.insert(
+                "working_dir".to_string(),
+                json!({
+                    "type": "string",
+                    "default": "/workspace",
+                    "description": "Working directory for command execution"
+                }),
+            );
+        }
     }
     schema
 });
