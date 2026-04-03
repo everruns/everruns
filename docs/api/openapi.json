@@ -3047,6 +3047,47 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/export": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Export session messages as a JSONL file",
+        "description": "Returns all materialized messages (user, agent) as newline-delimited JSON.\nDelta events are excluded. Each line is a complete JSON object representing one message.\nThe response includes `Content-Disposition: attachment` for browser download.",
+        "operationId": "export_session_jsonl",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JSONL file with one message per line",
+            "content": {
+              "application/x-ndjson": {}
+            }
+          },
+          "400": {
+            "description": "Invalid ID format"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/fs": {
       "get": {
         "tags": [
