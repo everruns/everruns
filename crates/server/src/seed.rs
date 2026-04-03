@@ -2206,7 +2206,7 @@ mod tests {
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(cap_ids.len(), 10);
+        assert_eq!(cap_ids.len(), 11);
         assert!(cap_ids.contains(&"session_file_system"));
         assert!(cap_ids.contains(&"virtual_bash"));
         assert!(cap_ids.contains(&"web_fetch"));
@@ -2216,6 +2216,7 @@ mod tests {
         assert!(cap_ids.contains(&"skills"));
         assert!(cap_ids.contains(&"infinity_context"));
         assert!(cap_ids.contains(&"openai_tool_search"));
+        assert!(cap_ids.contains(&"budgeting"));
         assert!(cap_ids.contains(&"compaction"));
         // Verify compaction default config
         let compaction_cap = generic
