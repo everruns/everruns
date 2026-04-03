@@ -302,12 +302,16 @@ fn parse_currency_amount(s: &str) -> Result<(String, f64)> {
 
 /// Build budget specs from `--budget-limit` and `--budget-soft-limit` flags.
 fn parse_budget_limits(limits: &[String], soft_limits: &[String]) -> Result<Vec<BudgetSpec>> {
-    // Parse hard limits
+    // Parse hard limits, rejecting duplicate currencies
+    let mut seen_currencies = std::collections::HashSet::new();
     let mut specs: Vec<BudgetSpec> = Vec::new();
     for entry in limits {
         let (currency, limit) = parse_currency_amount(entry)?;
         if limit <= 0.0 {
             anyhow::bail!("Budget limit must be positive: {entry}");
+        }
+        if !seen_currencies.insert(currency.clone()) {
+            anyhow::bail!("Duplicate --budget-limit for currency '{currency}'");
         }
         specs.push(BudgetSpec {
             limit,
@@ -325,9 +329,9 @@ fn parse_budget_limits(limits: &[String], soft_limits: &[String]) -> Result<Vec<
         let matching = specs.iter_mut().find(|s| s.currency == currency);
         match matching {
             Some(spec) => {
-                if soft >= spec.limit {
+                if soft > spec.limit {
                     anyhow::bail!(
-                        "Soft limit ({soft}) must be less than limit ({}) for currency '{currency}'",
+                        "Soft limit ({soft}) must be at most limit ({}) for currency '{currency}'",
                         spec.limit
                     );
                 }
@@ -778,6 +782,17 @@ mod tests {
     #[test]
     fn test_parse_budget_limits_soft_exceeds_limit_fails() {
         assert!(parse_budget_limits(&["usd:10".into()], &["usd:15".into()]).is_err());
+    }
+
+    #[test]
+    fn test_parse_budget_limits_soft_equals_limit_ok() {
+        let specs = parse_budget_limits(&["usd:10".into()], &["usd:10".into()]).unwrap();
+        assert!((specs[0].soft_limit.unwrap() - 10.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_parse_budget_limits_duplicate_currency_fails() {
+        assert!(parse_budget_limits(&["usd:10".into(), "usd:5".into()], &[]).is_err());
     }
 
     #[test]

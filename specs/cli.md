@@ -63,7 +63,7 @@ Agent CRUD. Create from YAML/JSON/Markdown files or CLI flags.
 
 Session management.
 
-- `create --harness <id> [--agent <id>] [--title <t>] [--model <m>] [--budget-limit <[currency:]limit>] [--budget-soft-limit <[currency:]limit>]`
+- `create [--harness <id>] [--agent <id>] [--title <t>] [--model <m>] [--budget-limit <[currency:]limit>] [--budget-soft-limit <[currency:]limit>]`
   - `--budget-limit` is repeatable. Format: `[CURRENCY:]LIMIT`. Currency defaults to `usd`. Multiple limits stack (most restrictive wins). Examples:
     - `--budget-limit 10` — $10 USD hard limit
     - `--budget-limit usd:10 --budget-soft-limit usd:8` — $10 hard, $8 soft pause

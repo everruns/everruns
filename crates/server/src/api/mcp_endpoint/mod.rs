@@ -486,8 +486,10 @@ async fn tool_agent_run(
             .and_then(|v| v.as_str())
             .unwrap_or("usd");
         let budget_soft_limit = args.get("budget_soft_limit").and_then(|v| v.as_f64());
-        if budget_soft_limit.is_some_and(|s| s <= 0.0 || s >= budget_limit) {
-            return Err("budget_soft_limit must be between 0 and budget_limit".to_string());
+        if budget_soft_limit.is_some_and(|s| s <= 0.0 || s > budget_limit) {
+            return Err(
+                "budget_soft_limit must be greater than 0 and at most budget_limit".to_string(),
+            );
         }
 
         let input = crate::storage::models::CreateBudgetRow {

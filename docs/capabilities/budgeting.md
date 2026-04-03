@@ -7,7 +7,7 @@ description: Budget-aware agent behavior. Agents receive information about activ
 |---|---|
 | **ID** | `budgeting` |
 | **Category** | Cost Control |
-| **Features** | `budget_awareness` |
+| **Features** | `budgeting` |
 | **Included in** | Generic harness (default) |
 | **Dependencies** | None |
 
@@ -17,22 +17,13 @@ Makes an agent aware of its budget constraints. The agent receives budget inform
 
 ### `check_budget`
 
-Query the remaining budget balance for the current session.
+Query the budget status for the current session.
 
-Returns all active budgets in the session's hierarchy (session, agent, user, organization) with their current balance, limit, and status.
+> **Note:** The current implementation returns a placeholder response indicating whether budgets are configured. Full budget data (balance, limit, status per budget) requires worker-side tool interception, which is planned for a future iteration. In the meantime, use the REST API (`GET /v1/sessions/{id}/budget-check`) for detailed budget status.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | *(none)* | | | No parameters required |
-
-**Response includes:**
-
-| Field | Description |
-|---|---|
-| `currency` | Budget currency (usd, tokens, credits) |
-| `limit` | Hard spending cap |
-| `balance` | Remaining balance |
-| `status` | `active`, `paused`, or `exhausted` |
 
 ## Behavior
 

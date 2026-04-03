@@ -73,9 +73,10 @@ Multiple budgets can apply to the same session. The **most restrictive** budget 
 
 - A **$10 USD session budget** caps dollar cost
 - A **2M token budget** caps total token usage regardless of model pricing
-- A **user-level $50/month budget** caps the user across all their sessions
 
-Budgets cascade through the hierarchy: session → agent → user → organization. A session's effective budgets include all levels.
+Budget stacking is currently enforced for **session** and **agent** scopes — a session's effective budgets include its own plus its agent's, and the most restrictive wins.
+
+User- and organization-scoped budgets can be created via the API, but cascading enforcement for user/org scopes is not yet wired into the session budget check. This is planned for a future iteration.
 
 ## CLI Usage
 

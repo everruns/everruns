@@ -531,6 +531,16 @@ pub static CATALOG: &[Operation] = &[
                 typ: "number",
                 description: "Optional soft limit (pauses before hard stop)",
             },
+            Param {
+                name: "period",
+                typ: "string",
+                description: "Optional period as JSON (e.g. {\"type\":\"calendar\",\"unit\":\"month\"})",
+            },
+            Param {
+                name: "metadata",
+                typ: "string",
+                description: "Optional metadata as JSON",
+            },
         ],
     },
     Operation {
@@ -590,6 +600,11 @@ pub static CATALOG: &[Operation] = &[
                 name: "status",
                 typ: "string",
                 description: "New status: active, disabled (optional)",
+            },
+            Param {
+                name: "metadata",
+                typ: "string",
+                description: "Optional metadata as JSON",
             },
         ],
     },
@@ -658,7 +673,7 @@ pub static CATALOG: &[Operation] = &[
         method: "GET",
         path: "/v1/sessions/{session_id}/budget-check",
         category: "budgets",
-        description: "Check all budgets for a session (including hierarchy: agent, user, org).",
+        description: "Check all budgets for a session (currently includes session and agent scopes).",
         params: &[Param {
             name: "session_id",
             typ: "path",
