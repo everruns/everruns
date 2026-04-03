@@ -360,14 +360,13 @@ impl Capability for FileSystemCapability {
         Some("File Operations")
     }
 
-    fn system_prompt_addition(&self) -> Option<&'static str> {
+    fn system_prompt_addition(&self) -> Option<&str> {
         use crate::tool_output_sanitizer::READ_ECONOMY_HINT;
-        // Concatenated at compile time via const — single static str
         const BASE: &str = "Session workspace root: `/workspace`. All file paths must start with `/workspace`. Directories are created automatically when writing files.";
-        // Use concat! not possible with const &str, so use a static with lazy init
+        // Build the full prompt lazily on first use by appending the shared read-economy hint.
         static PROMPT: std::sync::LazyLock<String> =
             std::sync::LazyLock::new(|| format!("{}{}", BASE, READ_ECONOMY_HINT));
-        Some(&PROMPT)
+        Some(PROMPT.as_str())
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
