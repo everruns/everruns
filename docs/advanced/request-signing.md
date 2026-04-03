@@ -118,6 +118,105 @@ Target servers that support web-bot-auth can:
 
 Servers that don't support it simply ignore the extra headers.
 
+## Verifying Signatures (Server Side)
+
+If you operate a server that receives requests from Everruns agents, here's how to verify them.
+
+### Verification steps
+
+1. **Check the tag** — parse `Signature-Input` and confirm `tag="web-bot-auth"`. Ignore signatures with other tags.
+2. **Check timestamps** — reject if `created` is in the future or `expires` is in the past. A 5-minute clock skew tolerance is reasonable.
+3. **Fetch the public key** — extract the `Signature-Agent` FQDN and fetch `https://<fqdn>/.well-known/http-message-signatures-directory`. Find the key matching the `keyid` from `Signature-Input`. Cache the JWKS (keys rotate infrequently).
+4. **Reconstruct the signature base** — build the canonical representation per [RFC 9421 Section 2.5](https://www.rfc-editor.org/rfc/rfc9421#section-2.5) using the covered components listed in `Signature-Input`.
+5. **Verify** — use Ed25519 to verify the signature against the reconstructed base and the fetched public key.
+
+### Python example
+
+```python
+import base64
+import hashlib
+import time
+import httpx
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+def verify_bot_auth(request) -> bool:
+    """Verify a web-bot-auth signature on an incoming request."""
+
+    # 1. Parse Signature-Input header
+    sig_input = request.headers.get("signature-input", "")
+    if 'tag="web-bot-auth"' not in sig_input:
+        return False  # not a bot-auth signature
+
+    # Extract parameters from sig_input
+    # sig=("@authority" "signature-agent");created=...;expires=...;keyid="...";...
+    params = parse_signature_params(sig_input)
+
+    # 2. Check timestamps
+    now = int(time.time())
+    if params["created"] > now + 300 or params["expires"] < now:
+        return False  # expired or future-dated
+
+    # 3. Fetch public key from Signature-Agent FQDN
+    agent_fqdn = request.headers.get("signature-agent", "")
+    jwks_url = f"https://{agent_fqdn}/.well-known/http-message-signatures-directory"
+    jwks = httpx.get(jwks_url).json()
+    key_data = next(k for k in jwks["keys"] if k.get("kid") == params["keyid"])
+    public_key_bytes = base64.urlsafe_b64decode(key_data["x"] + "==")
+    public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
+
+    # 4. Reconstruct signature base (RFC 9421 Section 2.5)
+    #    Covered components are listed in parentheses in Signature-Input
+    sig_base = build_signature_base(request, params)
+
+    # 5. Verify
+    signature = base64.b64decode(
+        request.headers["signature"].split(":")[1]  # sig=:base64:
+    )
+    try:
+        public_key.verify(signature, sig_base.encode())
+        return True
+    except Exception:
+        return False
+```
+
+### Node.js example
+
+```javascript
+import { createPublicKey, verify } from "node:crypto";
+
+async function verifyBotAuth(request) {
+  const sigInput = request.headers["signature-input"] || "";
+  if (!sigInput.includes('tag="web-bot-auth"')) return false;
+
+  const params = parseSignatureParams(sigInput);
+
+  // Check timestamps (5-minute tolerance)
+  const now = Math.floor(Date.now() / 1000);
+  if (params.created > now + 300 || params.expires < now) return false;
+
+  // Fetch public key
+  const fqdn = request.headers["signature-agent"];
+  const res = await fetch(
+    `https://${fqdn}/.well-known/http-message-signatures-directory`
+  );
+  const jwks = await res.json();
+  const jwk = jwks.keys.find((k) => k.kid === params.keyid);
+
+  const key = createPublicKey({ key: jwk, format: "jwk" });
+
+  // Reconstruct signature base and verify
+  const sigBase = buildSignatureBase(request, params);
+  const signature = Buffer.from(
+    request.headers["signature"].split(":")[1],
+    "base64"
+  );
+
+  return verify(null, Buffer.from(sigBase), key, signature);
+}
+```
+
+> **Note:** The `parseSignatureParams` and `buildSignatureBase` helpers follow the structured fields parsing rules from [RFC 8941](https://www.rfc-editor.org/rfc/rfc8941) and the signature base construction from [RFC 9421 Section 2.5](https://www.rfc-editor.org/rfc/rfc9421#section-2.5). Libraries like [httpbis-message-signatures](https://pypi.org/project/httpbis-message-signatures/) (Python) and [@httpbis/message-signatures](https://www.npmjs.com/package/@httpbis/message-signatures) (Node.js) handle both.
+
 ## Configuration
 
 Request signing is configured via environment variables. Set them before starting the server.
@@ -154,9 +253,18 @@ Then start the server. All `web_fetch` requests will be signed, and the public k
 curl -s http://localhost:9301/.well-known/http-message-signatures-directory | jq .
 ```
 
+## Standards
+
+| Standard | Role |
+|----------|------|
+| [RFC 9421 — HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421) | Core signing mechanism — how to sign and verify HTTP requests |
+| [RFC 8941 — Structured Field Values](https://www.rfc-editor.org/rfc/rfc8941) | Encoding format for `Signature` and `Signature-Input` headers |
+| [RFC 7638 — JWK Thumbprint](https://www.rfc-editor.org/rfc/rfc7638) | How the `keyid` is computed from the public key |
+| [RFC 7517 — JSON Web Key (JWK)](https://www.rfc-editor.org/rfc/rfc7517) | Format of the keys in the JWKS response |
+| [RFC 8037 — Ed25519 in JOSE](https://www.rfc-editor.org/rfc/rfc8037) | Ed25519 key representation in JWK format |
+| [draft-meunier-web-bot-auth-architecture](https://datatracker.ietf.org/doc/html/draft-meunier-web-bot-auth-architecture) | Bot-specific profile of RFC 9421 (algorithm, tag, covered components) |
+| [draft-meunier-http-message-signatures-directory](https://datatracker.ietf.org/doc/html/draft-meunier-http-message-signatures-directory) | Well-known endpoint for public key discovery |
+
 ## See Also
 
-- [Web Fetch](/capabilities/web-fetch/) — The capability that uses request signing
-- [RFC 9421 — HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421)
-- [draft-meunier-web-bot-auth-architecture](https://datatracker.ietf.org/doc/html/draft-meunier-web-bot-auth-architecture)
 - [fetchkit](https://github.com/everruns/fetchkit) — The library implementing the signing client
