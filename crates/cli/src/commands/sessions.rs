@@ -233,6 +233,8 @@ async fn create(
 }
 
 /// Create a budget for a session via the budgets API.
+// TODO(sdk): Replace with client.budgets().create() when SDK adds budget support.
+// Tracked: everruns/sdk#72, EVE-247
 async fn create_budget(
     api_url: &str,
     api_key: &str,

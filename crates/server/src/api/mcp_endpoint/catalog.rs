@@ -498,6 +498,173 @@ pub static CATALOG: &[Operation] = &[
             description: "Session ID",
         }],
     },
+    // ── Budgets ─────────────────────────────────────────────────────────
+    Operation {
+        name: "create_budget",
+        method: "POST",
+        path: "/v1/budgets",
+        category: "budgets",
+        description: "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
+        params: &[
+            Param {
+                name: "subject_type",
+                typ: "string",
+                description: "Subject type: session, agent, user, or org",
+            },
+            Param {
+                name: "subject_id",
+                typ: "string",
+                description: "Subject ID (e.g. session ID, agent ID)",
+            },
+            Param {
+                name: "currency",
+                typ: "string",
+                description: "Budget currency: usd, tokens, credits, or custom",
+            },
+            Param {
+                name: "limit",
+                typ: "number",
+                description: "Hard spending limit",
+            },
+            Param {
+                name: "soft_limit",
+                typ: "number",
+                description: "Optional soft limit (pauses before hard stop)",
+            },
+        ],
+    },
+    Operation {
+        name: "list_budgets",
+        method: "GET",
+        path: "/v1/budgets",
+        category: "budgets",
+        description: "List budgets. Filter by subject_type and subject_id.",
+        params: &[
+            Param {
+                name: "subject_type",
+                typ: "query",
+                description: "Filter by subject type (optional)",
+            },
+            Param {
+                name: "subject_id",
+                typ: "query",
+                description: "Filter by subject ID (optional)",
+            },
+        ],
+    },
+    Operation {
+        name: "get_budget",
+        method: "GET",
+        path: "/v1/budgets/{budget_id}",
+        category: "budgets",
+        description: "Get a budget with current balance.",
+        params: &[Param {
+            name: "budget_id",
+            typ: "path",
+            description: "Budget ID",
+        }],
+    },
+    Operation {
+        name: "update_budget",
+        method: "PATCH",
+        path: "/v1/budgets/{budget_id}",
+        category: "budgets",
+        description: "Update a budget's limit, soft_limit, or status.",
+        params: &[
+            Param {
+                name: "budget_id",
+                typ: "path",
+                description: "Budget ID",
+            },
+            Param {
+                name: "limit",
+                typ: "number",
+                description: "New hard limit (optional)",
+            },
+            Param {
+                name: "soft_limit",
+                typ: "number",
+                description: "New soft limit (optional)",
+            },
+            Param {
+                name: "status",
+                typ: "string",
+                description: "New status: active, disabled (optional)",
+            },
+        ],
+    },
+    Operation {
+        name: "delete_budget",
+        method: "DELETE",
+        path: "/v1/budgets/{budget_id}",
+        category: "budgets",
+        description: "Soft-delete a budget (sets status to disabled).",
+        params: &[Param {
+            name: "budget_id",
+            typ: "path",
+            description: "Budget ID",
+        }],
+    },
+    Operation {
+        name: "top_up_budget",
+        method: "POST",
+        path: "/v1/budgets/{budget_id}/top-up",
+        category: "budgets",
+        description: "Add credits to a budget. Reactivates exhausted/paused budgets if balance becomes positive.",
+        params: &[
+            Param {
+                name: "budget_id",
+                typ: "path",
+                description: "Budget ID",
+            },
+            Param {
+                name: "amount",
+                typ: "number",
+                description: "Amount to add",
+            },
+            Param {
+                name: "description",
+                typ: "string",
+                description: "Optional description for the top-up",
+            },
+        ],
+    },
+    Operation {
+        name: "check_budget",
+        method: "GET",
+        path: "/v1/budgets/{budget_id}/check",
+        category: "budgets",
+        description: "Check budget status and remaining balance.",
+        params: &[Param {
+            name: "budget_id",
+            typ: "path",
+            description: "Budget ID",
+        }],
+    },
+    Operation {
+        name: "list_session_budgets",
+        method: "GET",
+        path: "/v1/sessions/{session_id}/budgets",
+        category: "budgets",
+        description: "List all budgets for a session.",
+        params: &[Param {
+            name: "session_id",
+            typ: "path",
+            description: "Session ID",
+        }],
+    },
+    Operation {
+        name: "check_session_budgets",
+        method: "GET",
+        path: "/v1/sessions/{session_id}/budget-check",
+        category: "budgets",
+        description: "Check all budgets for a session (including hierarchy: agent, user, org).",
+        params: &[Param {
+            name: "session_id",
+            typ: "path",
+            description: "Session ID",
+        }],
+    },
     // ── Messages ────────────────────────────────────────────────────────
     Operation {
         name: "create_message",
