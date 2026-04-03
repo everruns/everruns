@@ -1,11 +1,6 @@
 // Session, Schedule, and Leased Resource types
 
-import type {
-  InitialFile,
-  NetworkAccessList,
-  ToolDefinition,
-  TokenUsage,
-} from "./common-types";
+import type { InitialFile, NetworkAccessList, ToolDefinition, TokenUsage } from "./common-types";
 
 // ============================================
 // Session types (M2)
