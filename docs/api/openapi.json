@@ -12150,7 +12150,7 @@
               },
               {
                 "$ref": "#/components/schemas/NetworkAccessList",
-                "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nSet to `null` to clear. Merged with harness and session layers."
+                "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nSend `{}` (empty object) to clear restrictions. Omit to leave unchanged."
               }
             ]
           },
