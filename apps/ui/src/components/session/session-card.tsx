@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Info, MessageSquare, Loader2, Zap, Pin, PinOff, CalendarClock, Download } from "lucide-react";
+import {
+  Info,
+  MessageSquare,
+  Loader2,
+  Zap,
+  Pin,
+  PinOff,
+  CalendarClock,
+  Download,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
