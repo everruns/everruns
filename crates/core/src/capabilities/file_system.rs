@@ -411,6 +411,16 @@ impl Tool for ReadFileTool {
                 "path": {
                     "type": "string",
                     "description": "Absolute path to the file (e.g., '/workspace/docs/readme.txt')"
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Starting line number (0-indexed). Default: 0",
+                    "default": 0
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max lines to return. Default: 2000",
+                    "default": 2000
                 }
             },
             "required": ["path"],
@@ -435,10 +445,21 @@ impl Tool for ReadFileTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
+        use crate::tool_output_sanitizer::{READ_FILE_DEFAULT_LIMIT, format_lines};
+
         let path = match arguments.get("path").and_then(|v| v.as_str()) {
             Some(p) => p,
             None => return ToolExecutionResult::tool_error("Missing required parameter: path"),
         };
+
+        let offset = arguments
+            .get("offset")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        let limit = arguments
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(READ_FILE_DEFAULT_LIMIT as u64) as usize;
 
         let file_store = match &context.file_store {
             Some(store) => store,
@@ -495,10 +516,22 @@ impl Tool for ReadFileTool {
                     Ok(hash) => hash,
                     Err(e) => return ToolExecutionResult::internal_error(e),
                 };
+
+                let raw_content = file.content.as_deref().unwrap_or("");
+                let (formatted, total_lines, truncated) = format_lines(raw_content, offset, limit);
+
+                let start_line = offset.min(total_lines) + 1;
+                let end_line = (offset + limit).min(total_lines);
+
                 ToolExecutionResult::success(json!({
                     "path": display_path,
-                    "content": file.content,
-                    "encoding": file.encoding,
+                    "content": formatted,
+                    "total_lines": total_lines,
+                    "lines_shown": {
+                        "start": start_line,
+                        "end": end_line
+                    },
+                    "truncated": truncated,
                     "size_bytes": file.size_bytes,
                     "content_hash": content_hash
                 }))
@@ -1826,12 +1859,62 @@ mod tests {
         let value = expect_success(result);
 
         assert_eq!(value["path"], "/workspace/notes.txt");
-        assert_eq!(value["encoding"], "text");
-        assert_eq!(value["content"], "hello world");
+        assert_eq!(value["content"], "1|hello world");
+        assert_eq!(value["total_lines"], 1);
+        assert_eq!(value["truncated"], false);
         assert_eq!(
             value["content_hash"].as_str().unwrap(),
             file_content_hash("hello world", "text").unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn test_read_file_offset_limit() {
+        let store = Arc::new(MockFileStore::default());
+        let content = (1..=100)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        store.add_text_file("/big.txt", &content);
+        let context = make_context(store);
+
+        // Read lines 10-14 (0-indexed offset=9, limit=5)
+        let result = ReadFileTool
+            .execute_with_context(
+                json!({"path": "/workspace/big.txt", "offset": 9, "limit": 5}),
+                &context,
+            )
+            .await;
+        let value = expect_success(result);
+
+        assert_eq!(value["total_lines"], 100);
+        assert_eq!(value["truncated"], true);
+        assert_eq!(value["lines_shown"]["start"], 10);
+        assert_eq!(value["lines_shown"]["end"], 14);
+        let content_str = value["content"].as_str().unwrap();
+        assert!(content_str.starts_with("10|line 10"));
+        assert!(content_str.ends_with("14|line 14"));
+    }
+
+    #[tokio::test]
+    async fn test_read_file_default_limit_truncates() {
+        let store = Arc::new(MockFileStore::default());
+        let content = (1..=2500)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        store.add_text_file("/huge.txt", &content);
+        let context = make_context(store);
+
+        let result = ReadFileTool
+            .execute_with_context(json!({"path": "/workspace/huge.txt"}), &context)
+            .await;
+        let value = expect_success(result);
+
+        assert_eq!(value["total_lines"], 2500);
+        assert_eq!(value["truncated"], true);
+        assert_eq!(value["lines_shown"]["start"], 1);
+        assert_eq!(value["lines_shown"]["end"], 2000);
     }
 
     #[tokio::test]
