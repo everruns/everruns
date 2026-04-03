@@ -202,7 +202,7 @@ Subscribe to budget events via SSE to react in real time:
 
 ## Agent Awareness
 
-Enable the `budgeting` capability on an agent to make it budget-aware:
+The `budgeting` capability is included in the **Generic harness** by default. Any session using the Generic harness automatically gets budget-aware behavior:
 
 - The agent's system prompt includes a "Budget Awareness" section with guidelines for efficient output when budget is constrained
 - The agent gets a `check_budget` tool to query remaining balance before expensive operations

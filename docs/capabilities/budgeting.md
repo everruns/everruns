@@ -8,6 +8,7 @@ description: Budget-aware agent behavior. Agents receive information about activ
 | **ID** | `budgeting` |
 | **Category** | Cost Control |
 | **Features** | `budget_awareness` |
+| **Included in** | Generic harness (default) |
 | **Dependencies** | None |
 
 Makes an agent aware of its budget constraints. The agent receives budget information in its system prompt and can proactively check remaining balance before expensive operations.
