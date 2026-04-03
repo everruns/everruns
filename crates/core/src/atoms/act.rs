@@ -648,6 +648,7 @@ where
     /// Note: OTel instrumentation is handled via event listeners.
     /// tool.started/completed events are emitted, and OtelEventListener
     /// creates gen-ai spans from those events.
+    #[allow(clippy::too_many_arguments)]
     async fn execute_single_tool(
         &self,
         context: &AtomContext,

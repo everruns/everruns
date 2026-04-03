@@ -431,13 +431,13 @@ impl Tool for WebFetchTool {
         };
 
         // THREAT[TM-AGENT-018]: Enforce network access list
-        if let Some(ref acl) = context.network_access {
-            if !acl.is_url_allowed(&request.url) {
-                return ToolExecutionResult::tool_error(format!(
-                    "URL blocked by network access policy: {}",
-                    request.url
-                ));
-            }
+        if let Some(ref acl) = context.network_access
+            && !acl.is_url_allowed(&request.url)
+        {
+            return ToolExecutionResult::tool_error(format!(
+                "URL blocked by network access policy: {}",
+                request.url
+            ));
         }
 
         // If no save_to_file, use the simple path (no saver needed)
