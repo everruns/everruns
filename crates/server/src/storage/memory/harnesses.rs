@@ -159,6 +159,9 @@ impl InMemoryDatabase {
             if let Some(initial_files) = input.initial_files {
                 harness.initial_files = initial_files;
             }
+            if let Some(network_access) = input.network_access {
+                harness.network_access = network_access;
+            }
             if let Some(status) = input.status {
                 harness.status = status;
             }
