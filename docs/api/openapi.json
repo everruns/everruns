@@ -5978,7 +5978,7 @@
               "string",
               "null"
             ],
-            "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the org base harness is used. New orgs default that to Base.",
+            "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the org default harness is used. New orgs default that to Generic.",
             "example": "harness_01933b5a00007000800000000000001"
           },
           "hints": {

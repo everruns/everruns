@@ -38,7 +38,7 @@ use utoipa::{IntoParams, ToSchema};
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
     /// ID of the harness for this session (format: harness_{32-hex}).
-    /// If omitted, the org base harness is used. New orgs default that to Base.
+    /// If omitted, the org default harness is used. New orgs default that to Generic.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: Option<HarnessId>,
@@ -178,7 +178,7 @@ pub struct AppState {
     pub event_service: EventService,
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
-    pub fallback_base_harness_name: Option<String>,
+    pub fallback_default_harness_name: Option<String>,
     pub chat_harness_name: Option<String>,
     pub chat_session_title: Option<String>,
 }
@@ -210,8 +210,8 @@ impl AppState {
             db,
             runner,
             auth,
-            fallback_base_harness_name: platform_definition
-                .harness_for_role(BuiltInHarnessRole::Base)
+            fallback_default_harness_name: platform_definition
+                .harness_for_role(BuiltInHarnessRole::Default)
                 .map(|h| h.name.clone()),
             chat_harness_name: platform_definition
                 .harness_for_role(BuiltInHarnessRole::Chat)
@@ -305,7 +305,7 @@ pub async fn create_session(
         &state.db,
         org.org_id,
         req.harness_id,
-        state.fallback_base_harness_name.as_deref(),
+        state.fallback_default_harness_name.as_deref(),
     )
     .await
     .log_internal_error_json("resolve session harness fallback")?;
@@ -378,19 +378,19 @@ async fn resolve_session_harness_id(
     db: &StorageBackend,
     org_id: i64,
     requested_harness_id: Option<HarnessId>,
-    fallback_base_harness_name: Option<&str>,
+    fallback_default_harness_name: Option<&str>,
 ) -> anyhow::Result<HarnessId> {
     if let Some(harness_id) = requested_harness_id {
         return Ok(harness_id);
     }
 
     let settings = db.get_organization_settings(org_id).await?;
-    if let Some(harness_id) = settings.and_then(|row| row.base_harness_id) {
+    if let Some(harness_id) = settings.and_then(|row| row.default_harness_id) {
         return Ok(harness_id);
     }
 
-    let fallback_name = fallback_base_harness_name.context(
-        "Session creation requires a base harness but no base harness role is configured",
+    let fallback_name = fallback_default_harness_name.context(
+        "Session creation requires a default harness but no default harness role is configured",
     )?;
     let harnesses = db
         .list_harnesses(org_id, Some(fallback_name), false)
@@ -400,7 +400,7 @@ async fn resolve_session_harness_id(
         .find(|h| h.is_built_in && h.name == fallback_name)
         .map(|h| h.id)
         .context(format!(
-            "Built-in base harness '{fallback_name}' is not provisioned for org {org_id}"
+            "Built-in default harness '{fallback_name}' is not provisioned for org {org_id}"
         ))
 }
 
@@ -1041,18 +1041,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resolve_session_harness_id_defaults_to_base() {
+    async fn test_resolve_session_harness_id_defaults_to_generic() {
         let db = StorageBackend::in_memory();
         let row = db
             .create_harness(
                 42,
                 CreateHarnessRow {
-                    name: "Base".to_string(),
-                    description: Some("Base".to_string()),
+                    name: "Generic".to_string(),
+                    description: Some("Generic".to_string()),
                     system_prompt: "You are helpful.".to_string(),
                     parent_harness_id: None,
                     default_model_id: None,
-                    tags: vec!["base".to_string()],
+                    tags: vec!["generic".to_string()],
                     initial_files: serde_json::json!([]),
                     is_built_in: true,
                 },
@@ -1060,30 +1060,30 @@ mod tests {
             .await
             .unwrap();
 
-        let harness_id = resolve_session_harness_id(&db, 42, None, Some("Base"))
+        let harness_id = resolve_session_harness_id(&db, 42, None, Some("Generic"))
             .await
             .unwrap();
         assert_eq!(harness_id, row.id);
     }
 
     #[tokio::test]
-    async fn test_resolve_session_harness_id_uses_org_base_harness() {
+    async fn test_resolve_session_harness_id_uses_org_default_harness() {
         let db = StorageBackend::in_memory();
-        let base_harness_id: HarnessId = TEST_HARNESS_ID.parse().unwrap();
+        let default_harness_id: HarnessId = TEST_HARNESS_ID.parse().unwrap();
 
         db.patch_organization_settings(
             42,
             UpdateOrganizationSettings {
-                base_harness_id: UpdateField::Set(base_harness_id),
+                default_harness_id: UpdateField::Set(default_harness_id),
                 ..Default::default()
             },
         )
         .await
         .unwrap();
 
-        let harness_id = resolve_session_harness_id(&db, 42, None, Some("Base"))
+        let harness_id = resolve_session_harness_id(&db, 42, None, Some("Generic"))
             .await
             .unwrap();
-        assert_eq!(harness_id, base_harness_id);
+        assert_eq!(harness_id, default_harness_id);
     }
 }
