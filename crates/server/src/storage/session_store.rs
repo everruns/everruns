@@ -93,6 +93,9 @@ impl SessionStore for DbSessionStore {
                     tools: serde_json::from_value(row.tools).unwrap_or_default(),
                     system_prompt: row.system_prompt,
                     initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+                    network_access: row
+                        .network_access
+                        .and_then(|v| serde_json::from_value(v).ok()),
                     hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
                     max_iterations: row.max_iterations.map(|v| v as usize),
                     status: SessionStatus::from(row.status.as_str()),

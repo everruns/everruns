@@ -336,6 +336,9 @@ pub struct AgentRow {
     /// Client-side tools (JSONB in DB)
     #[sqlx(default)]
     pub tools: serde_json::Value,
+    /// Network access list (JSONB in DB, nullable)
+    #[sqlx(default)]
+    pub network_access: Option<serde_json::Value>,
     /// Maximum iterations per turn
     #[sqlx(default)]
     pub max_iterations: Option<i32>,
@@ -365,6 +368,8 @@ pub struct CreateAgentRow {
     pub initial_files: serde_json::Value,
     /// Client-side tools (JSONB in DB)
     pub tools: serde_json::Value,
+    /// Network access list (JSONB in DB)
+    pub network_access: Option<serde_json::Value>,
     /// Maximum iterations per turn
     pub max_iterations: Option<i32>,
 }
@@ -379,6 +384,7 @@ pub struct UpdateAgent {
     pub status: Option<String>,
     pub initial_files: Option<serde_json::Value>,
     pub tools: Option<serde_json::Value>,
+    pub network_access: Option<Option<serde_json::Value>>,
     /// None = don't change, Some(None) = set to NULL, Some(Some(v)) = set to v
     pub max_iterations: Option<Option<i32>>,
 }
@@ -400,6 +406,9 @@ pub struct HarnessRow {
     /// Starter files copied into new sessions (JSONB in DB)
     #[sqlx(default)]
     pub initial_files: serde_json::Value,
+    /// Network access list (JSONB in DB, nullable)
+    #[sqlx(default)]
+    pub network_access: Option<serde_json::Value>,
     pub is_built_in: bool,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -418,6 +427,8 @@ pub struct CreateHarnessRow {
     pub tags: Vec<String>,
     /// Starter files copied into new sessions (JSONB in DB)
     pub initial_files: serde_json::Value,
+    /// Network access list (JSONB in DB)
+    pub network_access: Option<serde_json::Value>,
     pub is_built_in: bool,
 }
 
@@ -430,6 +441,7 @@ pub struct UpdateHarness {
     pub default_model_id: Option<ModelId>,
     pub tags: Option<Vec<String>>,
     pub initial_files: Option<serde_json::Value>,
+    pub network_access: Option<Option<serde_json::Value>>,
     pub status: Option<String>,
 }
 
@@ -484,6 +496,9 @@ pub struct SessionRow {
     /// Session-level client hints (JSONB in DB, nullable)
     #[sqlx(default)]
     pub hints: Option<serde_json::Value>,
+    /// Network access list (JSONB in DB, nullable)
+    #[sqlx(default)]
+    pub network_access: Option<serde_json::Value>,
     /// Maximum iterations per turn
     #[sqlx(default)]
     pub max_iterations: Option<i32>,
@@ -540,6 +555,8 @@ pub struct CreateSessionRow {
     pub initial_files: serde_json::Value,
     /// Session-level client hints (JSONB in DB)
     pub hints: Option<serde_json::Value>,
+    /// Network access list (JSONB in DB)
+    pub network_access: Option<serde_json::Value>,
     /// Maximum iterations per turn
     pub max_iterations: Option<i32>,
     /// Blueprint ID for blueprint-backed sessions.

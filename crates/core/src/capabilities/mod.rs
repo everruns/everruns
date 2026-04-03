@@ -1405,6 +1405,7 @@ pub async fn apply_capabilities(
         temperature: base_runtime_agent.temperature,
         max_tokens: base_runtime_agent.max_tokens,
         tool_search: collected.tool_search,
+        network_access: base_runtime_agent.network_access,
     };
 
     AppliedCapabilities {

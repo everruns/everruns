@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
+use crate::network_access::NetworkAccessList;
 use crate::session_file::InitialFile;
 use crate::tool_types::ToolDefinition;
 use crate::typed_id::{AgentId, ModelId};
@@ -92,6 +93,10 @@ pub struct Agent {
     /// Starter files copied into each new session for this agent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub initial_files: Vec<InitialFile>,
+    /// Network access list controlling which hosts/URLs agent sessions can reach.
+    /// Merged with harness and session layers (allowed: intersect, blocked: union).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_iterations: Option<usize>,
@@ -174,6 +179,7 @@ mod tests {
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],
+            network_access: None,
             max_iterations: None,
             tools: vec![],
             status: AgentStatus::Active,

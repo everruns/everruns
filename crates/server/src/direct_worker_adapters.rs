@@ -249,6 +249,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 tools: vec![],
                 system_prompt: r.system_prompt,
                 initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
+                network_access: r
+                    .network_access
+                    .and_then(|v| serde_json::from_value(v).ok()),
                 hints: r.hints.and_then(|v| serde_json::from_value(v).ok()),
                 max_iterations: r.max_iterations.map(|v| v as usize),
                 status: match r.status.as_str() {
@@ -1051,6 +1054,9 @@ impl DirectWorkerAdapters {
                 tags: row.tags,
                 capabilities,
                 initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+                network_access: row
+                    .network_access
+                    .and_then(|v| serde_json::from_value(v).ok()),
                 is_built_in: row.is_built_in,
                 status: match row.status.as_str() {
                     "active" => HarnessStatus::Active,
@@ -1097,6 +1103,9 @@ impl DirectWorkerAdapters {
                 .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
                 .collect(),
             initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
+            network_access: r
+                .network_access
+                .and_then(|v| serde_json::from_value(v).ok()),
             max_iterations: r.max_iterations.map(|v| v as usize),
             tools: vec![],
             status: match r.status.as_str() {
@@ -1320,6 +1329,9 @@ impl DirectPlatformStore {
             tags: row.tags,
             capabilities,
             initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+            network_access: row
+                .network_access
+                .and_then(|v| serde_json::from_value(v).ok()),
             is_built_in: row.is_built_in,
             status: HarnessStatus::from(row.status.as_str()),
             created_at: row.created_at,
@@ -1347,6 +1359,9 @@ impl DirectPlatformStore {
             tags: row.tags,
             capabilities,
             initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+            network_access: row
+                .network_access
+                .and_then(|v| serde_json::from_value(v).ok()),
             max_iterations: row.max_iterations.map(|v| v as usize),
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
             status: AgentStatus::from(row.status.as_str()),
@@ -1378,6 +1393,9 @@ impl DirectPlatformStore {
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
             system_prompt: row.system_prompt,
             initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+            network_access: row
+                .network_access
+                .and_then(|v| serde_json::from_value(v).ok()),
             hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
             max_iterations: row.max_iterations.map(|v| v as usize),
             status: SessionStatus::from(row.status.as_str()),
@@ -1473,6 +1491,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             tags: vec!["managed".to_string()],
             initial_files: serde_json::json!([]),
             is_built_in: false,
+            network_access: None,
         };
         let row = self
             .db
@@ -1646,6 +1665,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             initial_files: serde_json::json!([]),
             tools: serde_json::Value::Array(vec![]),
             max_iterations: None,
+            network_access: None,
         };
         let row = self
             .db
@@ -1788,6 +1808,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             max_iterations: None,
             blueprint_id: blueprint_id.map(|s| s.to_string()),
             blueprint_config: blueprint_config.cloned(),
+            network_access: None,
         };
         let row = self
             .db
@@ -2272,6 +2293,7 @@ mod tests {
             initial_files: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
             max_iterations: None,
+            network_access: None,
         };
         db.create_agent_with_id(everruns_core::DEFAULT_ORG_ID, id, create)
             .await
@@ -2809,6 +2831,7 @@ mod tests {
                 max_iterations: None,
                 blueprint_id: None,
                 blueprint_config: None,
+                network_access: None,
             })
             .await
             .expect("create session");

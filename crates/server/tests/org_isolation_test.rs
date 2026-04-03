@@ -941,6 +941,7 @@ async fn create_session_in_org(backend: &StorageBackend, org_id: i64) -> everrun
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
+            network_access: None,
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,

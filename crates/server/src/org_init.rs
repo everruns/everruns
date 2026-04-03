@@ -71,6 +71,7 @@ pub async fn initialize_org_harnesses_with_definitions(
             tags: harness.tags.clone(),
             initial_files: serde_json::json!([]),
             is_built_in: true,
+            network_access: None,
         };
 
         if is_default_org && let Some(seed_id) = harness.seed_id {

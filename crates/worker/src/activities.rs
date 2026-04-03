@@ -241,6 +241,7 @@ pub async fn reason_activity(
             usage: None,
             response_id: None,
             locale: None,
+            network_access: None,
         });
     }
 
@@ -562,6 +563,7 @@ mod tests {
             })],
             locale: None,
             blueprint_id: None,
+            network_access: None,
         };
 
         let json = serde_json::to_string(&input).unwrap();
@@ -583,6 +585,7 @@ mod tests {
             usage: None,
             response_id: None,
             locale: None,
+            network_access: None,
         };
 
         let json = serde_json::to_string(&result).unwrap();

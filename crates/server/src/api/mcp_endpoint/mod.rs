@@ -448,6 +448,7 @@ async fn tool_agent_run(
         system_prompt: None,
         initial_files: vec![],
         hints: None,
+        network_access: None,
         max_iterations: None,
     };
 

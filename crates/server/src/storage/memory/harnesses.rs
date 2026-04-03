@@ -25,6 +25,7 @@ impl InMemoryDatabase {
             default_model_id: input.default_model_id,
             tags: input.tags,
             initial_files: input.initial_files,
+            network_access: input.network_access,
             is_built_in: input.is_built_in,
             status: "active".to_string(),
             created_at: now,
@@ -82,6 +83,7 @@ impl InMemoryDatabase {
             default_model_id: input.default_model_id,
             tags: input.tags,
             initial_files: input.initial_files,
+            network_access: input.network_access,
             is_built_in: input.is_built_in,
             status: "active".to_string(),
             created_at: now,
@@ -156,6 +158,9 @@ impl InMemoryDatabase {
             }
             if let Some(initial_files) = input.initial_files {
                 harness.initial_files = initial_files;
+            }
+            if let Some(network_access) = input.network_access {
+                harness.network_access = network_access;
             }
             if let Some(status) = input.status {
                 harness.status = status;

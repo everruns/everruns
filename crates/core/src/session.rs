@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
+use crate::network_access::NetworkAccessList;
 use crate::tool_types::ToolDefinition;
 use crate::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId, SessionId};
 
@@ -166,6 +167,10 @@ pub struct Session {
     /// Examples: `{"setup_connection": true, "rich_media": true}`
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hints: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Network access list controlling which hosts/URLs this session can reach.
+    /// Merged with harness and agent layers (allowed: intersect, blocked: union).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_iterations: Option<usize>,

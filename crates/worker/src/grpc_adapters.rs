@@ -627,6 +627,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
             .map(everruns_core::AgentCapabilityConfig::new)
             .collect(),
         initial_files: vec![],
+        network_access: None,
         max_iterations: None,
         tools: vec![],
         status,
@@ -701,6 +702,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
             .map(everruns_core::AgentCapabilityConfig::new)
             .collect(),
         initial_files: vec![],
+        network_access: None,
         is_built_in: proto_harness.is_built_in,
         status,
         created_at: proto_timestamp_or_now(proto_harness.created_at.as_ref()),
@@ -804,6 +806,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
                 }
             }
         }),
+        network_access: None,
         max_iterations: None,
         status,
         created_at,

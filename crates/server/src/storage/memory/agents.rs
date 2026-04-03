@@ -26,6 +26,7 @@ impl InMemoryDatabase {
             tags: input.tags,
             initial_files: input.initial_files,
             tools: input.tools,
+            network_access: input.network_access,
             max_iterations: input.max_iterations,
             status: "active".to_string(),
             created_at: now,
@@ -90,6 +91,7 @@ impl InMemoryDatabase {
             tags: input.tags,
             initial_files: input.initial_files,
             tools: input.tools,
+            network_access: input.network_access,
             max_iterations: input.max_iterations,
             status: "active".to_string(),
             created_at: now,
@@ -201,6 +203,12 @@ impl InMemoryDatabase {
             if let Some(tools) = input.tools {
                 agent.tools = tools;
             }
+            if let Some(network_access) = input.network_access {
+                agent.network_access = network_access;
+            }
+            if let Some(max_iterations) = input.max_iterations {
+                agent.max_iterations = max_iterations;
+            }
             agent.updated_at = Self::now();
             return Ok(Some(agent.clone()));
         }
@@ -274,6 +282,7 @@ impl InMemoryDatabase {
                 tags: input.tags,
                 initial_files: input.initial_files,
                 tools: input.tools,
+                network_access: input.network_access,
                 max_iterations: input.max_iterations,
                 status: "active".to_string(),
                 created_at: now,
