@@ -14,7 +14,8 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
-    routing::post,
+    response::IntoResponse,
+    routing::{get, post},
 };
 use chrono::{DateTime, Utc};
 use everruns_core::typed_id::{MessageId, SessionId};
@@ -187,6 +188,10 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/sessions/{session_id}/messages",
             post(create_message).get(list_messages),
+        )
+        .route(
+            "/v1/sessions/{session_id}/export",
+            get(export_session_jsonl),
         )
         .with_state(state)
 }
@@ -363,6 +368,98 @@ pub async fn list_messages(
         })?;
 
     Ok(Json(ListResponse::new(messages)))
+}
+
+/// GET /v1/sessions/{session_id}/export - Export session messages as JSONL
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/{session_id}/export",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    responses(
+        (status = 200, description = "JSONL file with one message per line", content_type = "application/x-ndjson"),
+        (status = 400, description = "Invalid ID format"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "messages"
+)]
+pub async fn export_session_jsonl(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let session_id: SessionId = session_id.parse().map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid session ID: {}", e),
+            }),
+        )
+    })?;
+
+    // Verify session exists and caller has access
+    let _session = state
+        .session_service
+        .get(&Caller::from(&org), session_id.uuid(), None)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get session: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Session not found".to_string(),
+                }),
+            )
+        })?;
+
+    let messages = state
+        .message_service
+        .list(session_id.uuid())
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list messages for export: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Internal server error".to_string(),
+                }),
+            )
+        })?;
+
+    // Build JSONL: one JSON object per line
+    let mut body = String::new();
+    for msg in &messages {
+        if let Ok(line) = serde_json::to_string(msg) {
+            body.push_str(&line);
+            body.push('\n');
+        }
+    }
+
+    let filename = format!("{}.jsonl", session_id);
+    Ok((
+        StatusCode::OK,
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "application/x-ndjson".to_string(),
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", filename),
+            ),
+        ],
+        body,
+    ))
 }
 
 // ============================================

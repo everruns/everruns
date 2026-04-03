@@ -49,6 +49,7 @@ use utoipa::OpenApi;
         api::sessions::cancel_turn,
         api::messages::create_message,
         api::messages::list_messages,
+        api::messages::export_session_jsonl,
         api::events::stream_sse,
         api::events::list_events,
         api::llm_providers::create_provider,

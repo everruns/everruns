@@ -104,6 +104,29 @@ export async function unpinSession(sessionId: string): Promise<void> {
 }
 
 // ============================================
+// Session Export
+// ============================================
+
+/** Export session messages as JSONL file and trigger browser download */
+export async function exportSessionJsonl(sessionId: string): Promise<void> {
+  const response = await fetch(`/api/v1/sessions/${sessionId}/export`, {
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error(`Export failed: ${response.status} ${response.statusText}`);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${sessionId}.jsonl`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ============================================
 // Client-Side Tool Results
 // ============================================
 
