@@ -589,6 +589,95 @@ toolkit crate (standalone)       everruns-core             other consumers
 └── Output types
 ```
 
+### 9. Request signing for HTTP-capable kits
+
+Any toolkit that makes outbound HTTP requests **must** support request signing per [RFC 9421 (HTTP Message Signatures)](https://www.rfc-editor.org/rfc/rfc9421) using the [Web Bot Authentication Architecture](https://datatracker.ietf.org/doc/html/draft-meunier-web-bot-auth-architecture) profile. This lets target servers verify bot identity cryptographically.
+
+Reference implementation: fetchkit's `bot-auth` feature. See `specs/fetchkit.md` and `docs/advanced/request-signing.md`.
+
+#### Contract
+
+1. **Feature-gated** — signing support lives behind a cargo feature (e.g. `bot-auth`). When the feature is disabled, no crypto dependencies are compiled in and no signing code runs.
+
+2. **`BotAuthConfig` on `ToolBuilder`** — the builder accepts an optional signing config:
+
+   ```rust
+   impl ToolBuilder {
+       /// Enable request signing. When set, all outbound HTTP requests
+       /// are signed with Ed25519 per RFC 9421 / web-bot-auth profile.
+       /// When None, requests are sent unsigned.
+       fn bot_auth(self, config: BotAuthConfig) -> Self;
+   }
+   ```
+
+3. **`BotAuthConfig` shape** — kit defines its own config struct matching this shape:
+
+   ```rust
+   pub struct BotAuthConfig {
+       /// Ed25519 signing key (32-byte seed, base64url-encoded).
+       pub signing_key_seed: String,
+       /// Optional FQDN for the `Signature-Agent` header.
+       /// Tells target servers where to discover the public key.
+       pub agent_fqdn: Option<String>,
+       /// Signature validity window in seconds. Default: 300.
+       pub validity_secs: Option<u64>,
+   }
+   ```
+
+4. **Signing behavior** — when `BotAuthConfig` is present:
+   - Every outbound HTTP request gets `Signature` and `Signature-Input` headers
+   - If `agent_fqdn` is set, a `Signature-Agent` header is added
+   - Covered components: `@authority` at minimum
+   - Algorithm: Ed25519 (`alg="ed25519"`)
+   - Key identity: JWK Thumbprint (RFC 7638) as `keyid`
+   - Tag: `"web-bot-auth"`
+   - Nonce: random per request
+   - Timestamps: `created` (now) and `expires` (now + validity_secs)
+
+5. **Non-blocking** — signing failures (clock errors, key issues) **must not** block the request. The kit logs a warning and sends the request unsigned. This preserves tool availability.
+
+6. **Public key derivation** — kits that accept a seed must expose a function to derive the public key identity, so the consumer can serve it at the well-known endpoint:
+
+   ```rust
+   /// Derive the Ed25519 public key and JWK Thumbprint from a base64url seed.
+   pub fn derive_bot_auth_public_key(seed: &str) -> Result<BotAuthPublicKey, Error>;
+
+   pub struct BotAuthPublicKey {
+       /// JWK Thumbprint (RFC 7638) — used as `keyid` in signatures.
+       pub key_id: String,
+       /// Full JWK object (OKP/Ed25519) for inclusion in JWKS responses.
+       pub jwk: serde_json::Value,
+   }
+   ```
+
+7. **No everruns dependency** — the signing implementation lives entirely in the kit crate. The consumer (everruns) reads env vars (`BOT_AUTH_SIGNING_KEY_SEED`, `BOT_AUTH_AGENT_FQDN`, `BOT_AUTH_VALIDITY_SECS`), constructs `BotAuthConfig`, and passes it to the builder. The consumer also serves the well-known key directory endpoint using the derived public key.
+
+#### Consumer wiring
+
+```rust
+// crates/core/src/capabilities/xxx.rs
+fn tool_from_config(config: &Value) -> mykit::Tool {
+    let mut builder = mykit::ToolBuilder::new();
+
+    // Wire bot-auth from env if available
+    if let Ok(seed) = std::env::var("BOT_AUTH_SIGNING_KEY_SEED") {
+        builder = builder.bot_auth(mykit::BotAuthConfig {
+            signing_key_seed: seed,
+            agent_fqdn: std::env::var("BOT_AUTH_AGENT_FQDN").ok(),
+            validity_secs: std::env::var("BOT_AUTH_VALIDITY_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok()),
+        });
+    }
+
+    builder.build()
+}
+```
+
+#### Kits without HTTP
+
+Toolkits that never make outbound HTTP requests (e.g. bashkit) do not need to implement this section. The requirement applies only when the kit's tools issue HTTP calls as part of execution.
+
 ## Consumer integration pattern
 
 With this contract, every capability wrapper follows the same structure:
