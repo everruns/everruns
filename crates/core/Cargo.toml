@@ -59,7 +59,10 @@ similar = "2"
 url = "2"
 
 # Web fetching
-fetchkit = "0.2.0"
+fetchkit = { version = "0.2.0", features = ["bot-auth"] }
+
+# Ed25519 key derivation (bot-auth public key registration)
+ed25519-dalek = { version = "2", features = ["rand_core"] }
 
 # Virtual bash interpreter
 bashkit = { git = "https://github.com/everruns/bashkit", tag = "v0.1.14" }

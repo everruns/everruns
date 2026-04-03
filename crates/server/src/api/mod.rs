@@ -18,6 +18,7 @@ pub mod evals;
 pub mod events;
 pub mod feature_flags;
 pub mod harnesses;
+pub mod http_signing_keys;
 pub mod images;
 pub mod internal_images;
 pub mod llm_models;

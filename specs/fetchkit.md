@@ -26,6 +26,46 @@ Key decisions:
 
 `WebFetchCapability` implements `tools_with_config` and `system_prompt_contribution_with_config` on the `Capability` trait. These methods read the per-capability config JSON during capability collection, enabling file download when `enable_file_download: true` is set. Generic and Chat harnesses set this config alongside `session_file_system`.
 
+## Bot-auth (request signing)
+
+fetchkit supports Ed25519 request signing per RFC 9421 (HTTP Message Signatures), gated behind the `bot-auth` cargo feature. When enabled, every outbound HTTP request is signed with `Signature`, `Signature-Input`, and optionally `Signature-Agent` headers.
+
+### Configuration
+
+Server-wide via environment variables:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `BOT_AUTH_SIGNING_KEY_SEED` | yes (to enable) | base64url-encoded 32-byte Ed25519 seed |
+| `BOT_AUTH_AGENT_FQDN` | no | FQDN for `Signature-Agent` header (key discovery) |
+| `BOT_AUTH_VALIDITY_SECS` | no | signature validity window, default 300 |
+
+When `BOT_AUTH_SIGNING_KEY_SEED` is set, all `web_fetch` HTTP requests are signed. When unset, signing is disabled (no crypto dependencies loaded at runtime).
+
+Generate a seed: `python3 -c "import os, base64; print(base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode())"`
+
+### Integration
+
+- `bot-auth` feature enabled on the fetchkit dependency in `crates/core/Cargo.toml`
+- `WebFetchCapability::from_env()` reads env vars and passes `BotAuthConfig` to all `WebFetchTool` instances
+- Signing failures are non-blocking: requests proceed without signature headers, warning logged
+
+### Key discovery
+
+Public key identity is a JWK Thumbprint (RFC 7638), available via `derive_bot_auth_public_key()`.
+
+Target servers discover public keys via the well-known endpoint (draft-meunier-http-message-signatures-directory):
+
+```
+GET /.well-known/http-message-signatures-directory
+```
+
+Returns a JWKS (RFC 7517) with the server's Ed25519 public key. The `Signature-Agent` FQDN in outbound requests tells target servers where to look up the key.
+
+- **Endpoint**: public, no auth, derived from `BOT_AUTH_SIGNING_KEY_SEED` at startup
+- **Key derivation**: `derive_bot_auth_public_key(seed) -> BotAuthPublicKey`
+- See `crates/server/src/api/http_signing_keys.rs`, `crates/core/src/capabilities/web_fetch.rs`
+
 ## Future: archive extraction (`FilesSaver`)
 
 Planned: `FilesSaver` trait (extends `FileSaver`) with `save_and_extract()` for zip/tar.gz/tar. Separate trait, consumer opt-in. Not yet in fetchkit.

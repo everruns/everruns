@@ -191,7 +191,9 @@ pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapabilit
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
 pub use virtual_bash::{BashTool, VirtualBashCapability};
-pub use web_fetch::{WebFetchCapability, WebFetchTool};
+pub use web_fetch::{
+    BotAuthPublicKey, WebFetchCapability, WebFetchTool, derive_bot_auth_public_key,
+};
 
 // ============================================================================
 // System Prompt Context
@@ -628,7 +630,7 @@ impl CapabilityRegistry {
         registry.register(TestMathCapability);
         registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
-        registry.register(WebFetchCapability);
+        registry.register(WebFetchCapability::from_env());
         registry.register(VirtualBashCapability);
         registry.register(SessionScheduleCapability);
         registry.register(InfinityContextCapability);
