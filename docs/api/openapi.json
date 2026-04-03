@@ -4796,6 +4796,17 @@
             "type": "string",
             "description": "Display name of the agent."
           },
+          "network_access": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NetworkAccessList",
+                "description": "Network access list controlling which hosts/URLs agent sessions can reach.\nMerged with harness and session layers (allowed: intersect, blocked: union)."
+              }
+            ]
+          },
           "status": {
             "$ref": "#/components/schemas/AgentStatus",
             "description": "Current lifecycle status of the agent."
@@ -5584,6 +5595,17 @@
             "description": "The name of the agent. Used for display purposes.",
             "example": "Customer Support Agent"
           },
+          "network_access": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NetworkAccessList",
+                "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nIf set, merged with harness and session layers (allowed: intersect, blocked: union)."
+              }
+            ]
+          },
           "system_prompt": {
             "type": "string",
             "description": "The system prompt that defines the agent's behavior and capabilities.\nThis is sent as the first message in every conversation.",
@@ -6018,6 +6040,17 @@
             ],
             "description": "The ID of the LLM model to use for this session.\nOverrides the agent's default model if specified.",
             "example": "model_01933b5a00007000800000000000001"
+          },
+          "network_access": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NetworkAccessList",
+                "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union)."
+              }
+            ]
           },
           "system_prompt": {
             "type": [
@@ -7291,6 +7324,17 @@
                 "name": {
                   "type": "string",
                   "description": "Display name of the agent."
+                },
+                "network_access": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/NetworkAccessList",
+                      "description": "Network access list controlling which hosts/URLs agent sessions can reach.\nMerged with harness and session layers (allowed: intersect, blocked: union)."
+                    }
+                  ]
                 },
                 "status": {
                   "$ref": "#/components/schemas/AgentStatus",
@@ -9428,6 +9472,26 @@
           }
         }
       },
+      "NetworkAccessList": {
+        "type": "object",
+        "description": "Network access list controlling which hosts/URLs an agent session can reach.\n\n- `allowed`: if non-empty, only URLs matching these patterns are permitted.\n- `blocked`: URLs matching these patterns are always denied (takes precedence over allowed).\n\nPattern format:\n- `example.com` — exact domain match (any port, any path)\n- `*.example.com` — domain and all subdomains\n- `https://example.com/api/` — exact URL prefix (scheme + host + path)",
+        "properties": {
+          "allowed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowed host patterns. If non-empty, only matching URLs are permitted.\nAn empty list means \"no restriction from this layer\" (inherit parent)."
+          },
+          "blocked": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Blocked host patterns. Always denied, even if matched by `allowed`."
+          }
+        }
+      },
       "OrganizationResponse": {
         "type": "object",
         "description": "Response for organization operations",
@@ -9659,6 +9723,17 @@
                   "type": "string",
                   "description": "Display name of the agent."
                 },
+                "network_access": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/NetworkAccessList",
+                      "description": "Network access list controlling which hosts/URLs agent sessions can reach.\nMerged with harness and session layers (allowed: intersect, blocked: union)."
+                    }
+                  ]
+                },
                 "status": {
                   "$ref": "#/components/schemas/AgentStatus",
                   "description": "Current lifecycle status of the agent."
@@ -9864,6 +9939,17 @@
                   ],
                   "description": "LLM model ID to use for this session (format: model_{32-hex}).\nOverrides the agent's default model if set.",
                   "example": "model_01933b5a00007000800000000000001"
+                },
+                "network_access": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/NetworkAccessList",
+                      "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union)."
+                    }
+                  ]
                 },
                 "organization_id": {
                   "type": "string",
@@ -10717,6 +10803,17 @@
             ],
             "description": "LLM model ID to use for this session (format: model_{32-hex}).\nOverrides the agent's default model if set.",
             "example": "model_01933b5a00007000800000000000001"
+          },
+          "network_access": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NetworkAccessList",
+                "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union)."
+              }
+            ]
           },
           "organization_id": {
             "type": "string",
@@ -12045,6 +12142,17 @@
             ],
             "description": "The name of the agent. Used for display purposes.",
             "example": "Updated Support Agent"
+          },
+          "network_access": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NetworkAccessList",
+                "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nSet to `null` to clear. Merged with harness and session layers."
+              }
+            ]
           },
           "status": {
             "oneOf": [
