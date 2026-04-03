@@ -118,7 +118,7 @@ pub struct UpdateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<ToolDefinition>>,
     /// Network access list controlling which hosts/URLs this agent's sessions can reach.
-    /// Set to `null` to clear. Merged with harness and session layers.
+    /// Send `{}` (empty object) to clear restrictions. Omit to leave unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this agent.

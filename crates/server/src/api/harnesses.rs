@@ -88,7 +88,7 @@ pub struct UpdateHarnessRequest {
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub initial_files: Option<Vec<InitialFile>>,
-    /// Network access list. Set to `null` to clear.
+    /// Network access list. Send `{}` (empty object) to clear. Omit to leave unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -56,7 +56,7 @@ impl NetworkAccessList {
         }
     }
 
-    /// Returns true if this list imposes no restrictions.
+    /// Returns true if this list imposes no restrictions (no patterns set).
     pub fn is_empty(&self) -> bool {
         self.allowed.is_empty() && self.blocked.is_empty()
     }
@@ -64,6 +64,10 @@ impl NetworkAccessList {
     /// Check whether a URL is permitted by this access list.
     ///
     /// Returns `true` if the URL is allowed, `false` if blocked.
+    ///
+    /// - `blocked` always takes precedence.
+    /// - Empty `allowed` list = no restriction (all URLs allowed).
+    /// - Non-empty `allowed` list = only matching URLs allowed.
     pub fn is_url_allowed(&self, url: &str) -> bool {
         // Blocked always takes precedence
         if !self.blocked.is_empty() && matches_any_pattern(url, &self.blocked) {
@@ -103,7 +107,7 @@ pub fn merge_network_access(
             }
 
             // Allowed: intersection semantics
-            let allowed = if child.allowed.is_empty() {
+            let mut allowed = if child.allowed.is_empty() {
                 // Child doesn't restrict further — inherit parent
                 parent.allowed.clone()
             } else if parent.allowed.is_empty() {
@@ -123,6 +127,13 @@ pub fn merge_network_access(
                     .cloned()
                     .collect()
             };
+
+            // If both parent and child had non-empty allowed lists but intersection
+            // is empty, nothing should be accessible. We use a sentinel pattern that
+            // can never match a real URL so `is_url_allowed` returns false for everything.
+            if allowed.is_empty() && !parent.allowed.is_empty() && !child.allowed.is_empty() {
+                allowed = vec!["<none>".to_string()];
+            }
 
             let result = NetworkAccessList { allowed, blocked };
             if result.is_empty() {
@@ -157,7 +168,11 @@ fn matches_any_pattern(url: &str, patterns: &[String]) -> bool {
 /// Check if a single pattern matches a URL.
 fn pattern_matches_url(pattern: &str, parsed: &url::Url, host: &str) -> bool {
     // URL prefix pattern (starts with http:// or https://)
+    // Parse the pattern to normalize scheme+host (url::Url lowercases these).
     if pattern.starts_with("http://") || pattern.starts_with("https://") {
+        if let Ok(pattern_url) = url::Url::parse(pattern) {
+            return parsed.as_str().starts_with(pattern_url.as_str());
+        }
         return parsed.as_str().starts_with(pattern);
     }
 
@@ -292,6 +307,19 @@ mod tests {
         // api.example.com is subset of *.example.com → kept
         // other.com is not subset of either parent → dropped
         assert_eq!(result.allowed, vec!["api.example.com".to_string()]);
+    }
+
+    #[test]
+    fn test_merge_empty_intersection_blocks_all() {
+        // If parent allows only A and child allows only B (disjoint),
+        // intersection is empty → must block everything, not return None (open).
+        let parent = NetworkAccessList::allow_only(["parent.com"]);
+        let child = NetworkAccessList::allow_only(["child.com"]);
+        let result = merge_network_access(Some(&parent), Some(&child)).unwrap();
+        // Result has a sentinel pattern that never matches real URLs
+        assert!(!result.is_url_allowed("https://parent.com"));
+        assert!(!result.is_url_allowed("https://child.com"));
+        assert!(!result.is_url_allowed("https://anything.com"));
     }
 
     #[test]
