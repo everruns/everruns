@@ -370,7 +370,11 @@ pub async fn list_messages(
     Ok(Json(ListResponse::new(messages)))
 }
 
-/// GET /v1/sessions/{session_id}/export - Export session messages as JSONL
+/// Export session messages as a JSONL file
+///
+/// Returns all materialized messages (user, agent, tool results) as newline-delimited JSON.
+/// Delta events are excluded. Each line is a complete JSON object representing one message.
+/// The response includes `Content-Disposition: attachment` for browser download.
 #[utoipa::path(
     get,
     path = "/v1/sessions/{session_id}/export",
@@ -383,7 +387,7 @@ pub async fn list_messages(
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "messages"
+    tag = "sessions"
 )]
 pub async fn export_session_jsonl(
     org: ResolvedOrg,
