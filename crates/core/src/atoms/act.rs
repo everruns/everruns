@@ -75,6 +75,9 @@ pub struct ActInput {
     /// loads tools from the blueprint instead of from agent/harness capabilities.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blueprint_id: Option<String>,
+    /// Merged network access list (harness ∩ agent ∩ session) for URL filtering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<crate::network_access::NetworkAccessList>,
 }
 
 /// Result of a single tool call execution
@@ -175,6 +178,8 @@ where
     memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
     /// Optional org ID for org-scoped operations.
     org_id: Option<crate::typed_id::OrgId>,
+    /// Merged network access list for URL filtering in tools.
+    network_access: Option<crate::network_access::NetworkAccessList>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -209,6 +214,7 @@ where
             capability_registry: None,
             memory_store: None,
             org_id: None,
+            network_access: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
@@ -237,6 +243,7 @@ where
             capability_registry: None,
             memory_store: None,
             org_id: None,
+            network_access: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
@@ -366,6 +373,15 @@ where
         self.org_id = Some(org_id);
         self
     }
+
+    /// Set the merged network access list for URL filtering in tools.
+    pub fn with_network_access(
+        mut self,
+        network_access: Option<crate::network_access::NetworkAccessList>,
+    ) -> Self {
+        self.network_access = network_access;
+        self
+    }
 }
 
 #[async_trait]
@@ -387,6 +403,7 @@ where
             tool_calls,
             tool_definitions,
             locale,
+            network_access,
             .. // agent_id/org_id not needed here, just passed through workflow
         } = input;
 
@@ -529,6 +546,7 @@ where
                     &trace_id,
                     &act_span_id,
                     locale.as_deref(),
+                    network_access.as_ref(),
                 )
             })
             .collect();
@@ -638,6 +656,7 @@ where
         trace_id: &str,
         act_span_id: &str,
         locale: Option<&str>,
+        network_access: Option<&crate::network_access::NetworkAccessList>,
     ) -> ToolCallResult {
         tracing::debug!(
             session_id = %context.session_id,
@@ -785,6 +804,10 @@ where
             tool_context.memory_store = Some(store.clone());
         }
         tool_context.org_id = self.org_id;
+        // Input network_access (per-session, merged from harness+agent+session) takes precedence
+        tool_context.network_access = network_access
+            .cloned()
+            .or_else(|| self.network_access.clone());
         // Provide event emitter + context so tools can emit tool.progress events
         tool_context.event_emitter = Some(self.event_emitter.clone() as Arc<dyn EventEmitter>);
         tool_context.event_context = Some(event_context.clone());
@@ -987,6 +1010,7 @@ mod tests {
             tool_definitions: vec![],
             locale: None,
             blueprint_id: None,
+            network_access: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1017,6 +1041,7 @@ mod tests {
             tool_definitions: vec![],
             locale: None,
             blueprint_id: None,
+            network_access: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1084,6 +1109,7 @@ mod tests {
             tool_definitions: vec![manage_harnesses_tool_def()],
             locale: None,
             blueprint_id: None,
+            network_access: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1129,6 +1155,7 @@ mod tests {
             tool_definitions: vec![manage_harnesses_tool_def()],
             locale: None,
             blueprint_id: None,
+            network_access: None,
         };
 
         let result = atom.execute(input).await.unwrap();

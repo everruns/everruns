@@ -23,6 +23,21 @@ export interface InitialFile {
 }
 
 // ============================================
+// Network access list (used by agents, harnesses, sessions)
+// ============================================
+
+/**
+ * Controls which hosts/URLs an agent session can reach.
+ * Merged across layers: allowed=intersect, blocked=union.
+ */
+export interface NetworkAccessList {
+  /** Allowed host patterns (e.g. "example.com", "*.github.com", "https://api.example.com/v1/") */
+  allowed?: string[];
+  /** Blocked host patterns. Always denied, even if matched by allowed. */
+  blocked?: string[];
+}
+
+// ============================================
 // Tool types
 // ============================================
 

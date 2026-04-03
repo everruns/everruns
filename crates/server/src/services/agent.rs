@@ -96,6 +96,10 @@ impl AgentService {
                 tags: req.tags.clone(),
                 initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
                 tools: serde_json::to_value(&req.tools).unwrap_or_default(),
+                network_access: req
+                    .network_access
+                    .as_ref()
+                    .map(|na| serde_json::to_value(na).unwrap()),
                 max_iterations: req.max_iterations.map(|v| v as i32),
             };
             let row = self.db.create_agent(caller.org_id, input).await?;
@@ -113,6 +117,10 @@ impl AgentService {
                 tags: req.tags.clone(),
                 initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
                 tools: serde_json::to_value(&req.tools).unwrap_or_default(),
+                network_access: req
+                    .network_access
+                    .as_ref()
+                    .map(|na| serde_json::to_value(na).unwrap()),
                 max_iterations: req.max_iterations.map(|v| v as i32),
             };
             let row = self
@@ -259,6 +267,9 @@ impl AgentService {
                 .tools
                 .map(|t| serde_json::to_value(&t).unwrap_or_default()),
             max_iterations: req.max_iterations.map(|v| Some(v as i32)),
+            network_access: req
+                .network_access
+                .map(|na| Some(serde_json::to_value(na).unwrap())),
         };
         let row = self
             .db
@@ -313,6 +324,7 @@ impl AgentService {
             capabilities: source.capabilities,
             initial_files: source.initial_files,
             tools: source.tools,
+            network_access: None,
             max_iterations: source.max_iterations,
         };
 
@@ -378,6 +390,7 @@ impl AgentService {
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             max_iterations: req.max_iterations.map(|v| v as i32),
+            network_access: None,
         };
         let (row, was_created) = self.db.upsert_agent(caller.org_id, input).await?;
         let agent_id_uuid = row.id.uuid();
@@ -472,6 +485,9 @@ impl AgentService {
             capabilities,
             initial_files: serde_json::from_value::<Vec<InitialFile>>(row.initial_files)
                 .unwrap_or_default(),
+            network_access: row
+                .network_access
+                .and_then(|v| serde_json::from_value(v).ok()),
             max_iterations: row.max_iterations.map(|v| v as usize),
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
             status: AgentStatus::from(row.status.as_str()),
@@ -503,6 +519,7 @@ mod tests {
             capabilities: vec![],
             initial_files: vec![],
             tools: vec![],
+            network_access: None,
             max_iterations: None,
         }
     }
@@ -520,6 +537,7 @@ mod tests {
             initial_files: None,
             status: None,
             tools: None,
+            network_access: None,
             max_iterations: None,
         }
     }

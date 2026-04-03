@@ -688,6 +688,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
             usage: None,
             response_id: None,
             locale: None,
+            network_access: None,
         })?);
     }
 
@@ -930,6 +931,7 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
                     tool_definitions: reason_result.tool_definitions,
                     locale: reason_result.locale,
                     blueprint_id: None,
+                    network_access: reason_result.network_access,
                 };
                 let mut act_input_json = serde_json::to_value(&act_input)?;
                 if let Some(rid) = &response_id {

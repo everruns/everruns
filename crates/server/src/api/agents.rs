@@ -70,6 +70,10 @@ pub struct CreateAgentRequest {
     /// These tools are sent to the LLM but executed by the client, not the server.
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
+    /// Network access list controlling which hosts/URLs this agent's sessions can reach.
+    /// If set, merged with harness and session layers (allowed: intersect, blocked: union).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_iterations: Option<usize>,
@@ -113,6 +117,10 @@ pub struct UpdateAgentRequest {
     /// Replaces existing tools if provided.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<ToolDefinition>>,
+    /// Network access list controlling which hosts/URLs this agent's sessions can reach.
+    /// Set to `null` to clear. Merged with harness and session layers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_iterations: Option<usize>,
@@ -796,6 +804,7 @@ pub async fn import_agent(
             .collect(),
         initial_files: agent_file.initial_files,
         tools: vec![],
+        network_access: None,
         max_iterations: None,
     };
 

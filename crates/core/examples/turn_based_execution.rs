@@ -328,6 +328,7 @@ async fn main() -> anyhow::Result<()> {
                 tool_definitions: reason_result.tool_definitions.clone(),
                 locale: reason_result.locale.clone(),
                 blueprint_id: None,
+                network_access: None,
             })
             .await?;
 

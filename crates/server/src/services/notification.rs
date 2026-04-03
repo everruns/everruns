@@ -277,6 +277,7 @@ mod tests {
                 max_iterations: None,
                 blueprint_id: None,
                 blueprint_config: None,
+                network_access: None,
             })
             .await
             .unwrap();

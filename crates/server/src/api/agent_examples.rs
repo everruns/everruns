@@ -196,6 +196,7 @@ pub async fn use_example(
         capabilities,
         initial_files: vec![],
         tools: vec![],
+        network_access: None,
         max_iterations: None,
     };
 

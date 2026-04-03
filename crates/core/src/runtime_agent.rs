@@ -50,6 +50,11 @@ pub struct RuntimeAgent {
     /// Tool search config (set by openai_tool_search capability)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_search: Option<ToolSearchConfig>,
+
+    /// Merged network access list (harness ∩ agent ∩ session).
+    /// Used by tools (web_fetch) to enforce URL access policy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<crate::network_access::NetworkAccessList>,
 }
 
 /// Default maximum iterations per turn (500).
@@ -70,6 +75,7 @@ impl RuntimeAgent {
             temperature: None,
             max_tokens: None,
             tool_search: None,
+            network_access: None,
         }
     }
 }
@@ -84,6 +90,7 @@ impl Default for RuntimeAgent {
             temperature: None,
             max_tokens: None,
             tool_search: None,
+            network_access: None,
         }
     }
 }
@@ -276,6 +283,15 @@ impl RuntimeAgentBuilder {
     /// Set maximum iterations
     pub fn max_iterations(mut self, max: usize) -> Self {
         self.runtime_agent.max_iterations = max;
+        self
+    }
+
+    /// Set the merged network access list.
+    pub fn network_access(
+        mut self,
+        network_access: Option<crate::network_access::NetworkAccessList>,
+    ) -> Self {
+        self.runtime_agent.network_access = network_access;
         self
     }
 
@@ -507,6 +523,7 @@ mod tests {
             system_prompt: "Agent prompt.".to_string(),
             capabilities: vec![AgentCapabilityConfig::new("current_time")],
             initial_files: vec![],
+            network_access: None,
             max_iterations: None,
             tools: vec![],
             status: AgentStatus::Active,
@@ -643,6 +660,7 @@ mod tests {
             system_prompt: "Agent with client tools.".to_string(),
             capabilities: vec![],
             initial_files: vec![],
+            network_access: None,
             max_iterations: None,
             tools: vec![client_tool],
             status: AgentStatus::Active,
@@ -696,6 +714,7 @@ mod tests {
             system_prompt: "Agent with mixed tools.".to_string(),
             capabilities: vec![AgentCapabilityConfig::new("current_time")],
             initial_files: vec![],
+            network_access: None,
             max_iterations: None,
             tools: vec![client_tool],
             status: AgentStatus::Active,
@@ -746,6 +765,7 @@ mod tests {
             system_prompt: "Agent prompt.".to_string(),
             capabilities: vec![AgentCapabilityConfig::new("current_time")],
             initial_files: vec![],
+            network_access: None,
             max_iterations: None,
             tools: vec![],
             status: AgentStatus::Active,

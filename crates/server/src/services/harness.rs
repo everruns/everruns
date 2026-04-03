@@ -92,6 +92,10 @@ impl HarnessService {
             default_model_id,
             tags: req.tags,
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
+            network_access: req
+                .network_access
+                .as_ref()
+                .map(|na| serde_json::to_value(na).unwrap()),
             is_built_in: false,
         };
         let row = self.db.create_harness(caller.org_id, input).await?;
@@ -224,6 +228,9 @@ impl HarnessService {
             initial_files: req
                 .initial_files
                 .map(|files| serde_json::to_value(&files).unwrap_or_default()),
+            network_access: req
+                .network_access
+                .map(|na| Some(serde_json::to_value(na).unwrap())),
             status: req.status.map(|s| s.to_string()),
         };
         let row = self
@@ -275,6 +282,7 @@ impl HarnessService {
             tags: source.tags,
             capabilities: source.capabilities,
             initial_files: source.initial_files,
+            network_access: None,
         };
 
         let harness = self.create(caller, req).await?;
@@ -417,6 +425,9 @@ impl HarnessService {
             capabilities,
             initial_files: serde_json::from_value::<Vec<InitialFile>>(row.initial_files)
                 .unwrap_or_default(),
+            network_access: row
+                .network_access
+                .and_then(|v| serde_json::from_value(v).ok()),
             is_built_in: row.is_built_in,
             status: HarnessStatus::from(row.status.as_str()),
             created_at: row.created_at,
@@ -498,6 +509,7 @@ pub(crate) fn merge_preview_layer(
         tags: vec![],
         capabilities: capabilities.to_vec(),
         initial_files: vec![],
+        network_access: None,
         is_built_in: false,
         status: HarnessStatus::Active,
         created_at: chrono::Utc::now(),
@@ -554,6 +566,7 @@ mod tests {
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],
+            network_access: None,
         }
     }
 
@@ -569,6 +582,7 @@ mod tests {
             tags: None,
             capabilities: None,
             initial_files: None,
+            network_access: None,
             status: None,
         }
     }
@@ -692,6 +706,7 @@ mod tests {
                         encoding: "text".to_string(),
                         is_readonly: true,
                     }],
+                    network_access: None,
                 },
             )
             .await
@@ -714,6 +729,7 @@ mod tests {
                         encoding: "text".to_string(),
                         is_readonly: false,
                     }],
+                    network_access: None,
                 },
             )
             .await
@@ -760,6 +776,7 @@ mod tests {
                     tags: vec![],
                     capabilities: vec![],
                     initial_files: vec![],
+                    network_access: None,
                 },
             )
             .await

@@ -575,6 +575,7 @@ async fn process_slack_message(
                     system_prompt: None,
                     initial_files: vec![],
                     hints: None,
+                    network_access: None,
                     max_iterations: None,
                 };
                 let internal_caller = Caller::internal(org_id);
@@ -2254,6 +2255,7 @@ mod tests {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            network_access: None,
         };
         let session = db.create_session(row).await.unwrap();
         session.id

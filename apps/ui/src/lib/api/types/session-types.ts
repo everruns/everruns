@@ -1,6 +1,11 @@
 // Session, Schedule, and Leased Resource types
 
-import type { InitialFile, ToolDefinition, TokenUsage } from "./common-types";
+import type {
+  InitialFile,
+  NetworkAccessList,
+  ToolDefinition,
+  TokenUsage,
+} from "./common-types";
 
 // ============================================
 // Session types (M2)
@@ -49,6 +54,8 @@ export interface Session {
   initial_files?: InitialFile[];
   /** Session-level client hints (defaults for every turn) */
   hints?: Record<string, unknown>;
+  /** Network access list for URL filtering */
+  network_access?: NetworkAccessList | null;
 }
 
 /** Session counts grouped by status */
@@ -80,6 +87,8 @@ export interface CreateSessionRequest {
    * these key-by-key (shallow merge).
    */
   hints?: Record<string, unknown>;
+  /** Network access list for URL filtering */
+  network_access?: NetworkAccessList;
 }
 
 export interface UpdateSessionRequest {

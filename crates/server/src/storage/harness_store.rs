@@ -87,6 +87,9 @@ impl HarnessStore for DbHarnessStore {
                 tags: row.tags,
                 capabilities,
                 initial_files: from_json(row.initial_files),
+                network_access: row
+                    .network_access
+                    .and_then(|v| serde_json::from_value(v).ok()),
                 is_built_in: row.is_built_in,
                 status: HarnessStatus::from(row.status.as_str()),
                 created_at: row.created_at,

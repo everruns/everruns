@@ -2741,6 +2741,7 @@ impl WorkerService for WorkerServiceImpl {
             tags: vec![],
             capabilities,
             initial_files: vec![],
+            network_access: None,
         };
 
         let internal_caller = everruns_core::Caller::internal(req.org_id);
@@ -2780,6 +2781,7 @@ impl WorkerService for WorkerServiceImpl {
             tags: None,
             capabilities: None,
             initial_files: None,
+            network_access: None,
             status: None,
         };
 
@@ -2838,6 +2840,7 @@ impl WorkerService for WorkerServiceImpl {
                 tags: None,
                 capabilities: None,
                 initial_files: None,
+                network_access: None,
                 status: None,
             };
             self.harness_service
@@ -2894,6 +2897,7 @@ impl WorkerService for WorkerServiceImpl {
             capabilities,
             initial_files: vec![],
             tools: vec![],
+            network_access: None,
             max_iterations: None,
         };
 
@@ -2934,6 +2938,7 @@ impl WorkerService for WorkerServiceImpl {
             capabilities: None,
             initial_files: None,
             tools: None,
+            network_access: None,
             max_iterations: None,
             status: None,
         };
@@ -3046,6 +3051,7 @@ impl WorkerService for WorkerServiceImpl {
             system_prompt: None,
             initial_files: vec![],
             hints: None,
+            network_access: None,
             max_iterations: None,
         };
 

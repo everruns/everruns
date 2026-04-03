@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::capability_types::AgentCapabilityConfig;
+use crate::network_access::{self, NetworkAccessList};
 use crate::session_file::InitialFile;
 use crate::typed_id::{HarnessId, ModelId};
 
@@ -84,6 +85,10 @@ pub struct Harness {
     /// Starter files copied into each new session for this harness.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub initial_files: Vec<InitialFile>,
+    /// Network access list controlling which hosts/URLs sessions can reach.
+    /// Merged with agent and session layers (allowed: intersect, blocked: union).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<NetworkAccessList>,
     /// Whether this harness is built-in (system-managed, readonly).
     /// Built-in harnesses are provisioned during org initialization and
     /// cannot be modified or deleted via the API. Users can copy them.
@@ -111,6 +116,7 @@ pub struct Harness {
 /// - `default_model_id`: child wins, then parent fallback
 /// - `capabilities`: parent baseline, child overrides by capability id
 /// - `initial_files`: parent baseline, child overrides by normalized path
+/// - `network_access`: allowed intersects, blocked unions (child can only narrow)
 pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
     Harness {
         id: child.id,
@@ -122,6 +128,10 @@ pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
         tags: child.tags.clone(),
         capabilities: merge_capabilities(&parent.capabilities, &child.capabilities),
         initial_files: merge_initial_files(&parent.initial_files, &child.initial_files),
+        network_access: network_access::merge_network_access(
+            parent.network_access.as_ref(),
+            child.network_access.as_ref(),
+        ),
         is_built_in: child.is_built_in,
         status: child.status.clone(),
         created_at: child.created_at,
@@ -215,6 +225,7 @@ mod tests {
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],
+            network_access: None,
             is_built_in: false,
             status: HarnessStatus::Active,
             created_at: Utc::now(),

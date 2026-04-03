@@ -31,6 +31,7 @@ impl InMemoryDatabase {
             system_prompt: input.system_prompt,
             initial_files: input.initial_files,
             hints: input.hints,
+            network_access: input.network_access,
             max_iterations: input.max_iterations,
             status: "pending".to_string(), // Default status for new sessions
             created_at: now,

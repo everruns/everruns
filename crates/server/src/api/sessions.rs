@@ -91,6 +91,10 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(value_type = Option<Object>)]
     pub hints: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Network access list controlling which hosts/URLs this session can reach.
+    /// Merged with harness and agent layers (allowed: intersect, blocked: union).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_iterations: Option<usize>,
@@ -1055,6 +1059,7 @@ mod tests {
                     tags: vec!["generic".to_string()],
                     initial_files: serde_json::json!([]),
                     is_built_in: true,
+                    network_access: None,
                 },
             )
             .await

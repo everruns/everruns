@@ -203,6 +203,9 @@ pub struct ReasonResult {
     /// Resolved locale used for this turn's prompt and backend-authored strings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
+    /// Merged network access list for URL filtering in tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<crate::network_access::NetworkAccessList>,
 }
 
 fn default_max_iterations() -> usize {
@@ -512,6 +515,7 @@ impl Atom for ReasonAtom {
                     usage: None,
                     response_id: None,
                     locale: None,
+                    network_access: None,
                 }
             }
         };
@@ -692,6 +696,17 @@ impl ReasonAtom {
             if let Some(max_iter) = resolved_max_iterations {
                 builder = builder.max_iterations(max_iter);
             }
+
+            // Merge network_access: harness ∩ agent ∩ session (each layer narrows)
+            let merged_network_access = {
+                use crate::network_access::merge_network_access;
+                let effective = merge_network_access(
+                    harness.network_access.as_ref(),
+                    agent.as_ref().and_then(|a| a.network_access.as_ref()),
+                );
+                merge_network_access(effective.as_ref(), session.network_access.as_ref())
+            };
+            builder = builder.network_access(merged_network_access);
 
             builder.build()
         };
@@ -1833,6 +1848,7 @@ impl ReasonAtom {
             usage,
             response_id,
             locale: resolved_locale,
+            network_access: runtime_agent.network_access.clone(),
         })
     }
 

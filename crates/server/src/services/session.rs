@@ -169,6 +169,10 @@ impl SessionService {
             system_prompt: req.system_prompt.clone(),
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             hints: hints_json,
+            network_access: req
+                .network_access
+                .as_ref()
+                .map(|na| serde_json::to_value(na).unwrap()),
             max_iterations: req.max_iterations.map(|v| v as i32),
             blueprint_id: None,
             blueprint_config: None,
@@ -232,6 +236,10 @@ impl SessionService {
             system_prompt: req.system_prompt.clone(),
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             hints: None,
+            network_access: req
+                .network_access
+                .as_ref()
+                .map(|na| serde_json::to_value(na).unwrap()),
             max_iterations: req.max_iterations.map(|v| v as i32),
             blueprint_id: Some(blueprint_id),
             blueprint_config,
@@ -632,6 +640,7 @@ impl SessionService {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            network_access: None,
         };
         let row = self.db.create_session(input).await?;
         let session_id = row.id.uuid();
@@ -800,6 +809,9 @@ impl SessionService {
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
             system_prompt: row.system_prompt,
             initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+            network_access: row
+                .network_access
+                .and_then(|v| serde_json::from_value(v).ok()),
             hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
             max_iterations: row.max_iterations.map(|v| v as usize),
             status: SessionStatus::from(row.status.as_str()),
@@ -871,6 +883,7 @@ mod tests {
             system_prompt: None,
             initial_files: vec![],
             hints: None,
+            network_access: None,
             max_iterations: None,
         }
     }
@@ -956,6 +969,7 @@ mod tests {
                             is_readonly: true,
                         },
                     ],
+                    network_access: None,
                 },
             )
             .await
@@ -988,6 +1002,7 @@ mod tests {
                         },
                     ],
                     tools: vec![],
+                    network_access: None,
                     max_iterations: None,
                 },
             )
@@ -1063,6 +1078,7 @@ mod tests {
                             is_readonly: true,
                         },
                     ],
+                    network_access: None,
                 },
             )
             .await
@@ -1085,6 +1101,7 @@ mod tests {
                         encoding: "text".to_string(),
                         is_readonly: true,
                     }],
+                    network_access: None,
                 },
             )
             .await
@@ -1137,6 +1154,7 @@ mod tests {
                     tags: vec![],
                     capabilities: vec![],
                     initial_files: vec![],
+                    network_access: None,
                 },
             )
             .await
@@ -1156,6 +1174,7 @@ mod tests {
                     capabilities: vec![],
                     initial_files: vec![],
                     tools: vec![],
+                    network_access: None,
                     max_iterations: None,
                 },
             )
@@ -1194,6 +1213,7 @@ mod tests {
                     tags: vec![],
                     capabilities: vec![],
                     initial_files: vec![],
+                    network_access: None,
                 },
             )
             .await
@@ -1240,6 +1260,7 @@ mod tests {
                     tags: vec![],
                     capabilities: vec![],
                     initial_files: vec![],
+                    network_access: None,
                 },
             )
             .await
@@ -1281,6 +1302,7 @@ mod tests {
                     tags: vec![],
                     capabilities: vec![],
                     initial_files: vec![],
+                    network_access: None,
                 },
             )
             .await
@@ -1322,6 +1344,7 @@ mod tests {
                     tags: vec![],
                     capabilities: vec![AgentCapabilityConfig::new("sample_data")],
                     initial_files: vec![],
+                    network_access: None,
                 },
             )
             .await
@@ -1341,6 +1364,7 @@ mod tests {
                     capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
                     initial_files: vec![],
                     tools: vec![],
+                    network_access: None,
                     max_iterations: None,
                 },
             )
@@ -1368,6 +1392,7 @@ mod tests {
                 max_iterations: None,
                 blueprint_id: None,
                 blueprint_config: None,
+                network_access: None,
             })
             .await
             .unwrap();
@@ -1417,6 +1442,7 @@ mod tests {
                     tags: vec![],
                     capabilities: vec![AgentCapabilityConfig::new("sample_data")],
                     initial_files: vec![],
+                    network_access: None,
                 },
             )
             .await
@@ -1436,6 +1462,7 @@ mod tests {
                     capabilities: vec![AgentCapabilityConfig::new("sample_data")],
                     initial_files: vec![],
                     tools: vec![],
+                    network_access: None,
                     max_iterations: None,
                 },
             )
@@ -1460,6 +1487,7 @@ mod tests {
                 max_iterations: None,
                 blueprint_id: None,
                 blueprint_config: None,
+                network_access: None,
             })
             .await
             .unwrap();

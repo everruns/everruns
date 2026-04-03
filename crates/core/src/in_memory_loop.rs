@@ -337,6 +337,7 @@ impl InMemoryAgenticLoopBuilder {
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],
+            network_access: None,
             is_built_in: false,
             status: crate::harness::HarnessStatus::Active,
             created_at: now,
@@ -358,6 +359,7 @@ impl InMemoryAgenticLoopBuilder {
             tags: vec![],
             capabilities: agent_capability_configs,
             initial_files: vec![],
+            network_access: None,
             max_iterations: None,
             tools: vec![],
             status: AgentStatus::Active,
@@ -388,6 +390,7 @@ impl InMemoryAgenticLoopBuilder {
             system_prompt: None,
             initial_files: vec![],
             hints: None,
+            network_access: None,
             max_iterations: None,
             status: SessionStatus::Started,
             created_at: now,
@@ -681,6 +684,7 @@ impl InMemoryAgenticLoop {
                             tool_definitions: reason_result.tool_definitions,
                             locale: reason_result.locale,
                             blueprint_id: None,
+                            network_access: reason_result.network_access,
                         })
                         .await?;
                     state_machine.on_act_completed();

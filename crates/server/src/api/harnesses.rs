@@ -61,6 +61,9 @@ pub struct CreateHarnessRequest {
     /// Starter files copied into each new session for this harness.
     #[serde(default)]
     pub initial_files: Vec<InitialFile>,
+    /// Network access list controlling which hosts/URLs sessions can reach.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
 }
 
 /// Request to update a harness. Only provided fields will be updated.
@@ -85,6 +88,9 @@ pub struct UpdateHarnessRequest {
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub initial_files: Option<Vec<InitialFile>>,
+    /// Network access list. Set to `null` to clear.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<HarnessStatus>,
 }

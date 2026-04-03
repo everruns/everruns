@@ -538,6 +538,10 @@ pub struct ToolContext {
 
     /// Optional org ID for org-scoped operations (memory stores, etc.).
     pub org_id: Option<crate::typed_id::OrgId>,
+
+    /// Merged network access list (harness ∩ agent ∩ session).
+    /// When set, tools that make HTTP requests must check URLs against this list.
+    pub network_access: Option<crate::network_access::NetworkAccessList>,
 }
 
 impl ToolContext {
@@ -562,6 +566,7 @@ impl ToolContext {
             capability_registry: None,
             memory_store: None,
             org_id: None,
+            network_access: None,
         }
     }
 
@@ -586,6 +591,7 @@ impl ToolContext {
             capability_registry: None,
             memory_store: None,
             org_id: None,
+            network_access: None,
         }
     }
 
@@ -613,6 +619,7 @@ impl ToolContext {
             capability_registry: None,
             memory_store: None,
             org_id: None,
+            network_access: None,
         }
     }
 
@@ -641,6 +648,7 @@ impl ToolContext {
             capability_registry: None,
             memory_store: None,
             org_id: None,
+            network_access: None,
         }
     }
 
@@ -716,6 +724,15 @@ impl ToolContext {
     /// Set org ID for org-scoped operations.
     pub fn with_org_id(mut self, org_id: crate::typed_id::OrgId) -> Self {
         self.org_id = Some(org_id);
+        self
+    }
+
+    /// Set the merged network access list for URL filtering.
+    pub fn with_network_access(
+        mut self,
+        network_access: Option<crate::network_access::NetworkAccessList>,
+    ) -> Self {
+        self.network_access = network_access;
         self
     }
 

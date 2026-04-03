@@ -3,6 +3,7 @@
 import type {
   AgentCapabilityConfig,
   InitialFile,
+  NetworkAccessList,
   ToolDefinition,
   TokenUsage,
 } from "./common-types";
@@ -25,6 +26,8 @@ export interface Agent {
   initial_files: InitialFile[];
   /** Tool definitions (including client-side tools), defaults to [] */
   tools?: ToolDefinition[];
+  /** Network access list for URL filtering */
+  network_access?: NetworkAccessList | null;
   status: AgentStatus;
   created_at: string;
   updated_at: string;
@@ -45,6 +48,8 @@ export interface CreateAgentRequest {
   initial_files?: InitialFile[];
   /** Tool definitions (including client-side tools) */
   tools?: ToolDefinition[];
+  /** Network access list for URL filtering */
+  network_access?: NetworkAccessList;
 }
 
 export interface UpdateAgentRequest {
@@ -59,6 +64,8 @@ export interface UpdateAgentRequest {
   status?: AgentStatus;
   /** Tool definitions (including client-side tools) */
   tools?: ToolDefinition[];
+  /** Network access list for URL filtering */
+  network_access?: NetworkAccessList | null;
 }
 
 /** Read-only agent example defined in code, adoptable as a real Agent */
@@ -106,6 +113,8 @@ export interface Harness {
   /** Capabilities with per-harness configuration */
   capabilities: AgentCapabilityConfig[];
   initial_files: InitialFile[];
+  /** Network access list for URL filtering */
+  network_access?: NetworkAccessList | null;
   /** Whether this harness is built-in (system-managed, readonly) */
   is_built_in: boolean;
   status: HarnessStatus;
@@ -125,6 +134,8 @@ export interface CreateHarnessRequest {
   /** Capabilities with per-harness configuration */
   capabilities?: AgentCapabilityConfig[];
   initial_files?: InitialFile[];
+  /** Network access list for URL filtering */
+  network_access?: NetworkAccessList;
 }
 
 export interface UpdateHarnessRequest {
@@ -137,6 +148,8 @@ export interface UpdateHarnessRequest {
   /** Capabilities with per-harness configuration */
   capabilities?: AgentCapabilityConfig[];
   initial_files?: InitialFile[];
+  /** Network access list for URL filtering */
+  network_access?: NetworkAccessList | null;
   status?: HarnessStatus;
 }
 
