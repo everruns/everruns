@@ -20,7 +20,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use everruns_core::typed_id::{MessageId, SessionId};
 
-use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
@@ -372,7 +372,7 @@ pub async fn list_messages(
 
 /// Export session messages as a JSONL file
 ///
-/// Returns all materialized messages (user, agent, tool results) as newline-delimited JSON.
+/// Returns all materialized messages (user, agent) as newline-delimited JSON.
 /// Delta events are excluded. Each line is a complete JSON object representing one message.
 /// The response includes `Content-Disposition: attachment` for browser download.
 #[utoipa::path(
@@ -384,6 +384,7 @@ pub async fn list_messages(
     responses(
         (status = 200, description = "JSONL file with one message per line", content_type = "application/x-ndjson"),
         (status = 400, description = "Invalid ID format"),
+        (status = 403, description = "Forbidden"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -403,20 +404,12 @@ pub async fn export_session_jsonl(
         )
     })?;
 
-    // Verify session exists and caller has access
+    // Verify session exists and caller has access (returns 403 for denied callers)
     let _session = state
         .session_service
         .get(&Caller::from(&org), session_id.uuid(), None)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to get session: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?
+        .map_policy_or_internal("export session")?
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
@@ -430,8 +423,13 @@ pub async fn export_session_jsonl(
         .message_service
         .list(session_id.uuid())
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to list messages for export: {}", e);
+        .map_policy_or_internal("list messages for export")?;
+
+    // Build JSONL: one JSON object per line
+    let mut body = String::new();
+    for msg in &messages {
+        let line = serde_json::to_string(msg).map_err(|e| {
+            tracing::error!("Failed to serialize message for export: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
@@ -439,14 +437,8 @@ pub async fn export_session_jsonl(
                 }),
             )
         })?;
-
-    // Build JSONL: one JSON object per line
-    let mut body = String::new();
-    for msg in &messages {
-        if let Ok(line) = serde_json::to_string(msg) {
-            body.push_str(&line);
-            body.push('\n');
-        }
+        body.push_str(&line);
+        body.push('\n');
     }
 
     let filename = format!("{}.jsonl", session_id);

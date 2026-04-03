@@ -10,7 +10,8 @@ GET /v1/sessions/{session_id}/export
 
 Returns `application/x-ndjson` with `Content-Disposition: attachment` header.
 
-Each line is a JSON object representing one message (user, agent, or tool_result).
+Each line is a JSON object representing one message (user or agent).
+Tool results are embedded as `tool_result` content parts within agent messages.
 Delta events are excluded — only materialized messages are exported.
 
 ### JSONL line schema
@@ -31,7 +32,7 @@ Fields `controls`, `metadata`, `external_actor` are included when present.
 ### Response headers
 
 - `Content-Type: application/x-ndjson`
-- `Content-Disposition: attachment; filename="session_{id}.jsonl"`
+- `Content-Disposition: attachment; filename="{session_id}.jsonl"`
 
 ### Errors
 
