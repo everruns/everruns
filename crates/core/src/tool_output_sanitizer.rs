@@ -163,6 +163,53 @@ pub fn clean_exec_output(text: &str) -> String {
     collapse_cr_lines(&cleaned)
 }
 
+/// Default line limit for read_file (industry standard: 2000 lines).
+pub const READ_FILE_DEFAULT_LIMIT: usize = 2000;
+
+/// Hard byte cap for read_file (50 KB safety net for pathological cases like minified files).
+pub const READ_FILE_HARD_BYTE_CAP: usize = 50 * 1024;
+
+/// Format file content with compact line numbers: `N|content`.
+///
+/// Applies offset/limit pagination. Returns (formatted_content, total_lines, truncated).
+/// Line numbers are 1-based in output regardless of offset.
+/// Single-pass: counts total lines while only formatting the requested window.
+pub fn format_lines(content: &str, offset: usize, limit: usize) -> (String, usize, bool) {
+    let window_end = offset.saturating_add(limit);
+    let mut total_lines = 0;
+    let mut result = String::new();
+
+    for (idx, line) in content.lines().enumerate() {
+        total_lines = idx + 1;
+
+        if idx < offset || idx >= window_end {
+            continue;
+        }
+
+        if !result.is_empty() {
+            result.push('\n');
+        }
+
+        // 1-based line numbers
+        let line_num = idx + 1;
+        result.push_str(&line_num.to_string());
+        result.push('|');
+        result.push_str(line);
+    }
+
+    let end = offset.saturating_add(limit).min(total_lines);
+    let truncated = end < total_lines;
+
+    // Apply hard byte cap
+    if result.len() > READ_FILE_HARD_BYTE_CAP {
+        let cut = utf8_floor(&result, READ_FILE_HARD_BYTE_CAP);
+        result.truncate(cut);
+        return (result, total_lines, true);
+    }
+
+    (result, total_lines, truncated)
+}
+
 /// Full sanitization pipeline: strip ANSI → collapse CR → middle-truncate.
 pub fn sanitize_exec_output(text: &str, max_bytes: usize) -> String {
     let cleaned = clean_exec_output(text);
@@ -412,5 +459,73 @@ mod tests {
     #[test]
     fn test_utf8_ceil_beyond_len() {
         assert_eq!(utf8_ceil("abc", 100), 3);
+    }
+
+    // ====================================================================
+    // format_lines
+    // ====================================================================
+
+    #[test]
+    fn test_format_lines_basic() {
+        let (content, total, truncated) = format_lines("alpha\nbeta\ngamma", 0, 2000);
+        assert_eq!(content, "1|alpha\n2|beta\n3|gamma");
+        assert_eq!(total, 3);
+        assert!(!truncated);
+    }
+
+    #[test]
+    fn test_format_lines_with_offset() {
+        let (content, total, truncated) = format_lines("a\nb\nc\nd\ne", 2, 2);
+        assert_eq!(content, "3|c\n4|d");
+        assert_eq!(total, 5);
+        assert!(truncated);
+    }
+
+    #[test]
+    fn test_format_lines_offset_beyond_end() {
+        let (content, total, truncated) = format_lines("a\nb", 10, 5);
+        assert_eq!(content, "");
+        assert_eq!(total, 2);
+        assert!(!truncated);
+    }
+
+    #[test]
+    fn test_format_lines_limit_clips() {
+        let (content, total, truncated) = format_lines("a\nb\nc\nd\ne", 0, 3);
+        assert_eq!(content, "1|a\n2|b\n3|c");
+        assert_eq!(total, 5);
+        assert!(truncated);
+    }
+
+    #[test]
+    fn test_format_lines_empty_content() {
+        let (content, total, truncated) = format_lines("", 0, 2000);
+        assert_eq!(content, "");
+        assert_eq!(total, 0);
+        assert!(!truncated);
+    }
+
+    #[test]
+    fn test_format_lines_hard_byte_cap() {
+        // Create content that exceeds 50 KB when formatted
+        let big_line = "x".repeat(1000);
+        let content = (0..100)
+            .map(|_| big_line.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (formatted, total, truncated) = format_lines(&content, 0, 100);
+        assert_eq!(total, 100);
+        assert!(truncated);
+        assert!(formatted.len() <= READ_FILE_HARD_BYTE_CAP);
+        // Must be valid UTF-8 (would panic on access if not)
+        assert!(formatted.is_char_boundary(formatted.len()));
+    }
+
+    #[test]
+    fn test_format_lines_single_line() {
+        let (content, total, truncated) = format_lines("hello", 0, 2000);
+        assert_eq!(content, "1|hello");
+        assert_eq!(total, 1);
+        assert!(!truncated);
     }
 }
