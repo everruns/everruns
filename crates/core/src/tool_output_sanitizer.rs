@@ -28,6 +28,17 @@ For build/install commands, prefer quiet flags or pipe through tail:\n\
 - `apt-get install -qq -y`\n\
 Save verbose output to a file and inspect selectively: `cmd > /tmp/out.log 2>&1 && tail -100 /tmp/out.log`";
 
+/// System prompt hint for file reading economy (EVE-244).
+/// Appended to the FileSystem capability's `system_prompt_addition()` to guide
+/// the LLM toward efficient file reading with offset/limit pagination.
+pub const READ_ECONOMY_HINT: &str = "\n\n**File reading economy:** `read_file` returns at most 2000 lines by default.\n\
+Use `offset` and `limit` to read specific sections of large files.\n\
+- Use `grep_files` to find relevant lines before reading\n\
+- Use `list_directory` for file structure\n\
+- Don't read entire large files when you only need a specific section\n\
+- When a read is truncated, check `total_lines` to see how much remains\n\
+- For files you've already read, use offset to continue from where you left off";
+
 /// Strip ANSI escape sequences from text.
 ///
 /// Removes SGR sequences (`\x1b[...m`), CSI sequences (`\x1b[...X`),
