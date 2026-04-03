@@ -30,6 +30,20 @@ pub enum SessionsCommand {
         /// Session-scoped secret (repeatable, format: KEY=VALUE)
         #[arg(long = "secret", value_name = "KEY=VALUE")]
         secrets: Vec<String>,
+
+        /// Budget limit (repeatable). Format: [CURRENCY:]LIMIT.
+        /// Currency defaults to usd. Examples:
+        ///   --budget-limit 10             ($10 USD)
+        ///   --budget-limit usd:10         ($10 USD, explicit)
+        ///   --budget-limit tokens:2000000 (2M token limit)
+        /// Multiple limits stack — most restrictive wins.
+        #[arg(long = "budget-limit", value_name = "[CURRENCY:]LIMIT")]
+        budget_limits: Vec<String>,
+
+        /// Budget soft limit — pauses before hard stop. Same format as --budget-limit.
+        /// Must pair with a --budget-limit of the same currency.
+        #[arg(long = "budget-soft-limit", value_name = "[CURRENCY:]LIMIT")]
+        budget_soft_limits: Vec<String>,
     },
 
     /// List sessions
@@ -73,7 +87,25 @@ pub async fn run(
             title,
             model,
             secrets,
-        } => create(client, output, quiet, harness, agent, title, model, secrets).await,
+            budget_limits,
+            budget_soft_limits,
+        } => {
+            create(
+                client,
+                api_url,
+                api_key,
+                output,
+                quiet,
+                harness,
+                agent,
+                title,
+                model,
+                secrets,
+                budget_limits,
+                budget_soft_limits,
+            )
+            .await
+        }
         SessionsCommand::List => list(client, output).await,
         SessionsCommand::Get { session } => get(client, output, session).await,
         SessionsCommand::Watch { session } => watch(client, output, session).await,
@@ -87,6 +119,8 @@ pub async fn run(
 #[allow(clippy::too_many_arguments)]
 async fn create(
     client: &Everruns,
+    api_url: &str,
+    api_key: &str,
     output: OutputFormat,
     quiet: bool,
     harness_id: Option<String>,
@@ -94,8 +128,11 @@ async fn create(
     title: Option<String>,
     model_id: Option<String>,
     raw_secrets: Vec<String>,
+    raw_budget_limits: Vec<String>,
+    raw_budget_soft_limits: Vec<String>,
 ) -> Result<()> {
     let secrets = parse_secrets(&raw_secrets)?;
+    let budget_specs = parse_budget_limits(&raw_budget_limits, &raw_budget_soft_limits)?;
 
     let mut req = CreateSessionRequest::new();
     if let Some(h) = harness_id {
@@ -128,6 +165,22 @@ async fn create(
             })?;
     }
 
+    // Create budgets after session creation
+    let mut created_budgets = Vec::new();
+    for spec in &budget_specs {
+        let budget = create_budget(
+            api_url,
+            api_key,
+            &session.id,
+            &spec.currency,
+            spec.limit,
+            spec.soft_limit,
+        )
+        .await
+        .with_context(|| format!("Session {} created but budget creation failed", session.id))?;
+        created_budgets.push(budget);
+    }
+
     if output.is_text() {
         if quiet {
             println!("{}", session.id);
@@ -141,16 +194,161 @@ async fn create(
             if !secrets.is_empty() {
                 print_field("Secrets", &format!("{} injected", secrets.len()));
             }
+            for budget in &created_budgets {
+                let budget_id = budget
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                let currency = budget
+                    .get("currency")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("usd");
+                let limit = budget.get("limit").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let soft = budget.get("soft_limit").and_then(|v| v.as_f64());
+                let label = format_budget_amount(limit, currency);
+                let detail = match soft {
+                    Some(s) => format!(
+                        "{}, soft {} ({})",
+                        label,
+                        format_budget_amount(s, currency),
+                        budget_id
+                    ),
+                    None => format!("{} ({})", label, budget_id),
+                };
+                print_field("Budget", &detail);
+            }
         }
     } else {
         let mut json = serde_json::to_value(&session)?;
         if !secrets.is_empty() {
             json["secrets_count"] = serde_json::json!(secrets.len());
         }
+        if !created_budgets.is_empty() {
+            json["budgets"] = serde_json::json!(created_budgets);
+        }
         output.print_value(&json);
     }
 
     Ok(())
+}
+
+/// Create a budget for a session via the budgets API.
+async fn create_budget(
+    api_url: &str,
+    api_key: &str,
+    session_id: &str,
+    currency: &str,
+    limit: f64,
+    soft_limit: Option<f64>,
+) -> Result<serde_json::Value> {
+    let url = format!("{}/v1/budgets", api_url.trim_end_matches('/'));
+    let mut body = serde_json::json!({
+        "subject_type": "session",
+        "subject_id": session_id,
+        "currency": currency,
+        "limit": limit,
+    });
+    if let Some(soft) = soft_limit {
+        body["soft_limit"] = serde_json::json!(soft);
+    }
+
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .await
+        .context("Failed to create budget")?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Budget creation failed ({}): {}", status, text);
+    }
+
+    resp.json::<serde_json::Value>()
+        .await
+        .context("Failed to parse budget response")
+}
+
+/// Parsed budget specification from `--budget-limit` and `--budget-soft-limit`.
+struct BudgetSpec {
+    limit: f64,
+    currency: String,
+    soft_limit: Option<f64>,
+}
+
+/// Parse a `[CURRENCY:]LIMIT` string into (currency, amount).
+fn parse_currency_amount(s: &str) -> Result<(String, f64)> {
+    if let Some((left, right)) = s.split_once(':') {
+        // currency:amount
+        let amount: f64 = right
+            .parse()
+            .with_context(|| format!("Invalid amount (expected number): {right}"))?;
+        if left.is_empty() {
+            anyhow::bail!("Currency cannot be empty in: {s}");
+        }
+        Ok((left.to_string(), amount))
+    } else {
+        // Just a number — default to usd
+        let amount: f64 = s
+            .parse()
+            .with_context(|| format!("Invalid budget value (expected [CURRENCY:]LIMIT): {s}"))?;
+        Ok(("usd".to_string(), amount))
+    }
+}
+
+/// Build budget specs from `--budget-limit` and `--budget-soft-limit` flags.
+fn parse_budget_limits(limits: &[String], soft_limits: &[String]) -> Result<Vec<BudgetSpec>> {
+    // Parse hard limits
+    let mut specs: Vec<BudgetSpec> = Vec::new();
+    for entry in limits {
+        let (currency, limit) = parse_currency_amount(entry)?;
+        if limit <= 0.0 {
+            anyhow::bail!("Budget limit must be positive: {entry}");
+        }
+        specs.push(BudgetSpec {
+            limit,
+            currency,
+            soft_limit: None,
+        });
+    }
+
+    // Parse and attach soft limits by currency
+    for entry in soft_limits {
+        let (currency, soft) = parse_currency_amount(entry)?;
+        if soft <= 0.0 {
+            anyhow::bail!("Budget soft limit must be positive: {entry}");
+        }
+        let matching = specs.iter_mut().find(|s| s.currency == currency);
+        match matching {
+            Some(spec) => {
+                if soft >= spec.limit {
+                    anyhow::bail!(
+                        "Soft limit ({soft}) must be less than limit ({}) for currency '{currency}'",
+                        spec.limit
+                    );
+                }
+                spec.soft_limit = Some(soft);
+            }
+            None => {
+                anyhow::bail!(
+                    "--budget-soft-limit {entry} has no matching --budget-limit for currency '{currency}'"
+                );
+            }
+        }
+    }
+
+    Ok(specs)
+}
+
+fn format_budget_amount(amount: f64, currency: &str) -> String {
+    match currency {
+        "usd" => format!("${:.2}", amount),
+        "tokens" => format!("{} tokens", amount),
+        "credits" => format!("{} credits", amount),
+        other => format!("{} {}", amount, other),
+    }
 }
 
 /// Parse "KEY=VALUE" strings into a HashMap.
@@ -523,5 +721,78 @@ mod tests {
                 .to_string()
                 .contains("Duplicate secret key")
         );
+    }
+
+    #[test]
+    fn test_parse_budget_limits_usd_default() {
+        let specs = parse_budget_limits(&["10".into()], &[]).unwrap();
+        assert_eq!(specs.len(), 1);
+        assert!((specs[0].limit - 10.0).abs() < f64::EPSILON);
+        assert_eq!(specs[0].currency, "usd");
+        assert!(specs[0].soft_limit.is_none());
+    }
+
+    #[test]
+    fn test_parse_budget_limits_explicit_currency() {
+        let specs = parse_budget_limits(&["tokens:2000000".into()], &[]).unwrap();
+        assert_eq!(specs[0].currency, "tokens");
+        assert!((specs[0].limit - 2_000_000.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_parse_budget_limits_with_soft_limit() {
+        let specs = parse_budget_limits(&["usd:10".into()], &["usd:8".into()]).unwrap();
+        assert!((specs[0].limit - 10.0).abs() < f64::EPSILON);
+        assert_eq!(specs[0].currency, "usd");
+        assert!((specs[0].soft_limit.unwrap() - 8.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_parse_budget_limits_soft_default_currency() {
+        let specs = parse_budget_limits(&["10".into()], &["8".into()]).unwrap();
+        assert_eq!(specs[0].currency, "usd");
+        assert!((specs[0].soft_limit.unwrap() - 8.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_parse_budget_limits_multiple() {
+        let specs = parse_budget_limits(&["usd:10".into(), "tokens:5000000".into()], &[]).unwrap();
+        assert_eq!(specs.len(), 2);
+        assert_eq!(specs[0].currency, "usd");
+        assert_eq!(specs[1].currency, "tokens");
+    }
+
+    #[test]
+    fn test_parse_budget_limits_empty() {
+        let specs = parse_budget_limits(&[], &[]).unwrap();
+        assert!(specs.is_empty());
+    }
+
+    #[test]
+    fn test_parse_budget_limits_zero_fails() {
+        assert!(parse_budget_limits(&["0".into()], &[]).is_err());
+    }
+
+    #[test]
+    fn test_parse_budget_limits_soft_exceeds_limit_fails() {
+        assert!(parse_budget_limits(&["usd:10".into()], &["usd:15".into()]).is_err());
+    }
+
+    #[test]
+    fn test_parse_budget_limits_soft_no_matching_limit_fails() {
+        assert!(parse_budget_limits(&["usd:10".into()], &["tokens:5000".into()]).is_err());
+    }
+
+    #[test]
+    fn test_parse_budget_limits_non_numeric_fails() {
+        assert!(parse_budget_limits(&["abc".into()], &[]).is_err());
+    }
+
+    #[test]
+    fn test_format_budget_amount() {
+        assert_eq!(format_budget_amount(10.0, "usd"), "$10.00");
+        assert_eq!(format_budget_amount(2000000.0, "tokens"), "2000000 tokens");
+        assert_eq!(format_budget_amount(50.0, "credits"), "50 credits");
+        assert_eq!(format_budget_amount(100.0, "gems"), "100 gems");
     }
 }

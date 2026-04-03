@@ -63,7 +63,12 @@ Agent CRUD. Create from YAML/JSON/Markdown files or CLI flags.
 
 Session management.
 
-- `create --harness <id> [--agent <id>] [--title <t>] [--model <m>]`
+- `create --harness <id> [--agent <id>] [--title <t>] [--model <m>] [--budget-limit <[currency:]limit>] [--budget-soft-limit <[currency:]limit>]`
+  - `--budget-limit` is repeatable. Format: `[CURRENCY:]LIMIT`. Currency defaults to `usd`. Multiple limits stack (most restrictive wins). Examples:
+    - `--budget-limit 10` — $10 USD hard limit
+    - `--budget-limit usd:10 --budget-soft-limit usd:8` — $10 hard, $8 soft pause
+    - `--budget-limit tokens:2000000` — 2M token limit
+    - `--budget-limit usd:10 --budget-limit tokens:2000000` — both limits, whichever hits first
 - `list`
 - `get <id>`
 - `watch <id>` — stream session events in real time via SSE (like `kubectl logs -f`). Text mode: status/lifecycle events go to stderr, assistant message content goes to stdout (pipeable). JSON mode: each event as a JSON object to stdout. Exits cleanly on Ctrl+C.
