@@ -74,17 +74,17 @@ static TOOL_SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
 static TOOL_INPUT_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
     let mut schema = BASHKIT_TOOL.input_schema();
     // Add everruns-specific working_dir param only if bashkit does not already define it.
-    if let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut()) {
-        if !props.contains_key("working_dir") {
-            props.insert(
-                "working_dir".to_string(),
-                json!({
-                    "type": "string",
-                    "default": "/workspace",
-                    "description": "Working directory for command execution"
-                }),
-            );
-        }
+    if let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut())
+        && !props.contains_key("working_dir")
+    {
+        props.insert(
+            "working_dir".to_string(),
+            json!({
+                "type": "string",
+                "default": "/workspace",
+                "description": "Working directory for command execution"
+            }),
+        );
     }
     schema
 });
