@@ -1290,6 +1290,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_bash_lang_env_default() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Default locale (None) should set LANG to en-US
+        let result = tool
+            .execute_with_context(json!({"commands": "echo $LANG"}), &context)
+            .await;
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "en-US\n");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_lang_env_from_context_locale() {
+        let (mut context, _) = create_context_with_mock_store();
+        context.locale = Some("uk-UA".to_string());
+        let tool = BashTool;
+
+        let result = tool
+            .execute_with_context(json!({"commands": "echo $LANG"}), &context)
+            .await;
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "uk-UA\n");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
     async fn test_bash_write_and_read_file() {
         let (context, _) = create_context_with_mock_store();
         let tool = BashTool;
