@@ -221,10 +221,227 @@ pub fn format_lines(content: &str, offset: usize, limit: usize) -> (String, usiz
     (result, total_lines, truncated)
 }
 
-/// Full sanitization pipeline: strip ANSI → collapse CR → middle-truncate.
+/// Full sanitization pipeline: strip ANSI → collapse CR → priority-aware truncate.
 pub fn sanitize_exec_output(text: &str, max_bytes: usize) -> String {
     let cleaned = clean_exec_output(text);
-    middle_truncate(&cleaned, max_bytes)
+    priority_aware_truncate(&cleaned, max_bytes)
+}
+
+// ============================================================================
+// Priority-aware truncation (EVE-246)
+// ============================================================================
+
+/// Context lines to include around each error region.
+const ERROR_CONTEXT_LINES: usize = 5;
+
+/// Error pattern markers that indicate important diagnostic output.
+const ERROR_PATTERNS: &[&str] = &[
+    "error:",
+    "Error:",
+    "ERROR",
+    "FAILED",
+    "FAIL",
+    "failed",
+    "panic",
+    "panicked at",
+    "assert",
+    "assertion failed",
+    "Traceback (most recent call last)",
+    "at Object.<anonymous>",
+    "at Module._compile",
+    "--- stderr ---",
+];
+
+/// Patterns that must appear at the start of a line.
+const LINE_START_PATTERNS: &[&str] = &["E "];
+
+/// A region of text identified as error-significant.
+#[derive(Debug, Clone)]
+struct ErrorRegion {
+    /// Start line index (inclusive).
+    start: usize,
+    /// End line index (exclusive).
+    end: usize,
+}
+
+/// Scan output lines for error-significant regions, returning merged regions
+/// with ±ERROR_CONTEXT_LINES of surrounding context.
+fn find_error_regions(lines: &[&str]) -> Vec<ErrorRegion> {
+    let mut hit_lines: Vec<usize> = Vec::new();
+
+    for (idx, line) in lines.iter().enumerate() {
+        let is_error = ERROR_PATTERNS.iter().any(|p| line.contains(p))
+            || LINE_START_PATTERNS.iter().any(|p| line.starts_with(p));
+        if is_error {
+            hit_lines.push(idx);
+        }
+    }
+
+    if hit_lines.is_empty() {
+        return Vec::new();
+    }
+
+    // Expand each hit to ±context and merge overlapping regions.
+    let total = lines.len();
+    let mut regions: Vec<ErrorRegion> = Vec::new();
+
+    for &hit in &hit_lines {
+        let start = hit.saturating_sub(ERROR_CONTEXT_LINES);
+        let end = (hit + ERROR_CONTEXT_LINES + 1).min(total);
+
+        if let Some(last) = regions.last_mut()
+            && start <= last.end
+        {
+            // Merge with previous region.
+            last.end = end;
+            continue;
+        }
+        regions.push(ErrorRegion { start, end });
+    }
+
+    regions
+}
+
+/// Truncate output preserving error-significant regions.
+///
+/// If no error patterns are found, falls back to `middle_truncate` (zero regression).
+/// When errors are found: allocates budget to error regions first, then fills
+/// remaining budget with head/tail of the full output.
+pub fn priority_aware_truncate(text: &str, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text.to_string();
+    }
+
+    let lines: Vec<&str> = text.lines().collect();
+    let regions = find_error_regions(&lines);
+
+    if regions.is_empty() {
+        return middle_truncate(text, max_bytes);
+    }
+
+    // Assemble error region text.
+    let mut sections: Vec<String> = Vec::new();
+    let mut error_bytes: usize = 0;
+
+    for region in &regions {
+        let region_text: String = lines[region.start..region.end].join("\n");
+        error_bytes += region_text.len() + 40; // overhead for markers
+        sections.push(region_text);
+    }
+
+    // If error regions alone exceed the budget, show as many as fit.
+    let marker_overhead = 80; // for omission markers
+    let available_for_context = max_bytes.saturating_sub(marker_overhead);
+
+    if error_bytes >= available_for_context {
+        // Just show error regions truncated to budget.
+        let mut result = String::new();
+        let mut remaining = available_for_context;
+
+        for (i, section) in sections.iter().enumerate() {
+            let marker = if i == 0 && regions[i].start > 0 {
+                format!("[... {} lines above ...]\n", regions[i].start)
+            } else if i > 0 {
+                let gap = regions[i].start - regions[i - 1].end;
+                format!("\n[... {} lines omitted ...]\n", gap)
+            } else {
+                String::new()
+            };
+
+            if marker.len() >= remaining {
+                break;
+            }
+            remaining -= marker.len();
+            result.push_str(&marker);
+
+            let take = section.len().min(remaining);
+            let safe_take = utf8_floor(section, take);
+            result.push_str(&section[..safe_take]);
+            remaining = remaining.saturating_sub(safe_take);
+
+            if remaining == 0 {
+                break;
+            }
+        }
+
+        let lines_after = lines
+            .len()
+            .saturating_sub(regions.last().map_or(0, |r| r.end));
+        if lines_after > 0 {
+            let trailer = format!("\n[... {} lines below ...]", lines_after);
+            if trailer.len() <= remaining {
+                result.push_str(&trailer);
+            }
+        }
+
+        return result;
+    }
+
+    // Error regions fit. Fill remaining budget with head/tail.
+    let context_budget = available_for_context - error_bytes;
+    let head_budget = context_budget / 5; // 20% head
+    let tail_budget = context_budget - head_budget; // 80% tail
+
+    let mut result = String::new();
+
+    // Head section (lines before first error region).
+    let first_region_start = regions[0].start;
+    if first_region_start > 0 {
+        let head_text: String = lines[..first_region_start].join("\n");
+        if head_text.len() <= head_budget {
+            result.push_str(&head_text);
+            result.push('\n');
+        } else {
+            let safe = utf8_floor(&head_text, head_budget);
+            result.push_str(&head_text[..safe]);
+            let omitted_head_lines = lines[..first_region_start]
+                .iter()
+                .skip_while(|_| {
+                    // Count how many lines fit in safe bytes
+                    false
+                })
+                .count();
+            result.push_str(&format!(
+                "\n[... {} lines omitted ...]\n",
+                omitted_head_lines
+            ));
+        }
+    }
+
+    // Error regions with gap markers between them.
+    for (i, (region, section)) in regions.iter().zip(sections.iter()).enumerate() {
+        if i > 0 {
+            let gap = region.start - regions[i - 1].end;
+            if gap > 0 {
+                result.push_str(&format!("\n[... {} lines omitted ...]\n", gap));
+            }
+        }
+        result.push_str(section);
+    }
+
+    // Tail section (lines after last error region).
+    let last_region_end = regions.last().map_or(0, |r| r.end);
+    if last_region_end < lines.len() {
+        let tail_text: String = lines[last_region_end..].join("\n");
+        if tail_text.len() <= tail_budget {
+            result.push('\n');
+            result.push_str(&tail_text);
+        } else {
+            let tail_start_byte = tail_text.len().saturating_sub(tail_budget);
+            let safe = utf8_ceil(&tail_text, tail_start_byte);
+            let omitted_lines = tail_text[..safe].matches('\n').count();
+            result.push_str(&format!("\n[... {} lines omitted ...]\n", omitted_lines));
+            result.push_str(&tail_text[safe..]);
+        }
+    }
+
+    // Safety: ensure total doesn't exceed budget.
+    if result.len() > max_bytes {
+        let safe = utf8_floor(&result, max_bytes);
+        result.truncate(safe);
+    }
+
+    result
 }
 
 /// Find the largest byte index ≤ `pos` that is a valid UTF-8 char boundary.
@@ -538,5 +755,193 @@ mod tests {
         assert_eq!(content, "1|hello");
         assert_eq!(total, 1);
         assert!(!truncated);
+    }
+
+    // ====================================================================
+    // priority_aware_truncate (EVE-246)
+    // ====================================================================
+
+    #[test]
+    fn test_priority_truncate_no_errors_falls_back_to_middle() {
+        // No error patterns → same as middle_truncate.
+        let text = "a\n".repeat(5000);
+        let result = priority_aware_truncate(&text, 500);
+        let expected = middle_truncate(&text, 500);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_priority_truncate_under_budget_unchanged() {
+        let text = "short output with error: something failed";
+        assert_eq!(priority_aware_truncate(text, 1024), text);
+    }
+
+    #[test]
+    fn test_priority_truncate_preserves_error_in_middle() {
+        // Build output where the error is in the middle, which middle_truncate would lose.
+        let mut lines: Vec<String> = Vec::new();
+        for i in 0..100 {
+            lines.push(format!("Compiling dep-{}", i));
+        }
+        lines.push("error: mismatched types".to_string());
+        lines.push("  --> src/main.rs:42:5".to_string());
+        for i in 0..100 {
+            lines.push(format!("post-error output line {}", i));
+        }
+        let text = lines.join("\n");
+        let result = priority_aware_truncate(&text, 1000);
+
+        assert!(
+            result.contains("error: mismatched types"),
+            "error line must be preserved, got: {}",
+            result
+        );
+        assert!(
+            result.contains("src/main.rs:42:5"),
+            "error context must be preserved"
+        );
+    }
+
+    #[test]
+    fn test_priority_truncate_preserves_python_traceback() {
+        let mut lines: Vec<String> = Vec::new();
+        for i in 0..50 {
+            lines.push(format!("installing dep {}", i));
+        }
+        lines.push("Traceback (most recent call last):".to_string());
+        lines.push("  File \"test.py\", line 10, in <module>".to_string());
+        lines.push("    raise ValueError(\"bad\")".to_string());
+        lines.push("ValueError: bad".to_string());
+        for i in 0..50 {
+            lines.push(format!("cleanup line {}", i));
+        }
+        let text = lines.join("\n");
+        let result = priority_aware_truncate(&text, 800);
+
+        assert!(
+            result.contains("Traceback (most recent call last)"),
+            "Python traceback must be preserved"
+        );
+    }
+
+    #[test]
+    fn test_priority_truncate_preserves_panic() {
+        let mut lines: Vec<String> = Vec::new();
+        for _ in 0..80 {
+            lines.push("noise line".to_string());
+        }
+        lines.push("thread 'main' panicked at 'index out of bounds'".to_string());
+        for _ in 0..80 {
+            lines.push("more noise".to_string());
+        }
+        let text = lines.join("\n");
+        let result = priority_aware_truncate(&text, 600);
+
+        assert!(
+            result.contains("panicked at"),
+            "panic message must be preserved"
+        );
+    }
+
+    #[test]
+    fn test_priority_truncate_pytest_e_lines() {
+        let mut lines: Vec<String> = Vec::new();
+        for _ in 0..50 {
+            lines.push("collecting tests...".to_string());
+        }
+        lines.push("E AssertionError: expected 1, got 2".to_string());
+        for _ in 0..50 {
+            lines.push("test summary".to_string());
+        }
+        let text = lines.join("\n");
+        let result = priority_aware_truncate(&text, 600);
+
+        assert!(
+            result.contains("E AssertionError"),
+            "pytest E line must be preserved"
+        );
+    }
+
+    #[test]
+    fn test_priority_truncate_multiple_error_regions() {
+        let mut lines: Vec<String> = Vec::new();
+        for _ in 0..30 {
+            lines.push("compiling...".to_string());
+        }
+        lines.push("error: first error".to_string());
+        for _ in 0..30 {
+            lines.push("more compiling...".to_string());
+        }
+        lines.push("error: second error".to_string());
+        for _ in 0..30 {
+            lines.push("finishing...".to_string());
+        }
+        let text = lines.join("\n");
+        let result = priority_aware_truncate(&text, 1000);
+
+        assert!(result.contains("error: first error"));
+        assert!(result.contains("error: second error"));
+    }
+
+    #[test]
+    fn test_priority_truncate_omission_markers() {
+        let mut lines: Vec<String> = Vec::new();
+        for _ in 0..100 {
+            lines.push("x".repeat(20));
+        }
+        lines.push("FAILED test case".to_string());
+        for _ in 0..100 {
+            lines.push("y".repeat(20));
+        }
+        let text = lines.join("\n");
+        let result = priority_aware_truncate(&text, 800);
+
+        assert!(
+            result.contains("lines omitted")
+                || result.contains("lines above")
+                || result.contains("lines below"),
+            "must include omission markers"
+        );
+    }
+
+    #[test]
+    fn test_priority_truncate_respects_budget() {
+        let mut lines: Vec<String> = Vec::new();
+        for i in 0..500 {
+            lines.push(format!("line {} {}", i, "x".repeat(50)));
+        }
+        lines.push("error: something broke".to_string());
+        for i in 0..500 {
+            lines.push(format!("line {} {}", i + 500, "y".repeat(50)));
+        }
+        let text = lines.join("\n");
+        let budget = 2000;
+        let result = priority_aware_truncate(&text, budget);
+
+        assert!(
+            result.len() <= budget,
+            "result ({} bytes) must not exceed budget ({})",
+            result.len(),
+            budget
+        );
+    }
+
+    #[test]
+    fn test_find_error_regions_empty() {
+        let lines: Vec<&str> = vec!["hello", "world", "ok"];
+        assert!(find_error_regions(&lines).is_empty());
+    }
+
+    #[test]
+    fn test_find_error_regions_merges_nearby() {
+        let mut lines: Vec<&str> = vec!["ok"; 5];
+        lines.push("error: first");
+        lines.extend(std::iter::repeat_n("ok", 3));
+        lines.push("error: second"); // within context window of first
+        lines.extend(std::iter::repeat_n("ok", 20));
+
+        let regions = find_error_regions(&lines);
+        // Should merge into one region since they're within 2*ERROR_CONTEXT_LINES+1 of each other
+        assert_eq!(regions.len(), 1, "nearby errors should merge");
     }
 }
