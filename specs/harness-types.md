@@ -53,6 +53,7 @@ The recommended default harness. Bundles the core capabilities needed for genera
 | `openai_tool_search` | OpenAI Tool Search | Defers tool schema loading on supported OpenAI models | |
 | `budgeting` | Budgeting | Budget-aware behavior: system prompt hints and `check_budget` tool | |
 | `compaction` | Context Compaction | Auto-compacts context at 85% budget via cascading strategies | `{"strategy": "auto", "proactive": true, "budget_percent": 0.85}` |
+| `tool_output_persistence` | Tool Output Persistence | Persists full exec tool output to `/.exec-logs/` before truncation; injects `full_output` path into result | |
 
 **Use cases:**
 - Default harness for most agents
