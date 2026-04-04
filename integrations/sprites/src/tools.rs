@@ -216,7 +216,8 @@ impl Tool for SpritesExecTool {
                 "timeout": {
                     "type": "integer",
                     "description": "Timeout in milliseconds (optional, default: 120000)"
-                }
+                },
+                "output": everruns_core::tool_output_sanitizer::output_verbosity_schema()
             },
             "required": ["sprite_name", "command"],
             "additionalProperties": false
@@ -250,6 +251,10 @@ impl Tool for SpritesExecTool {
             Ok(s) => s,
             Err(e) => return e,
         };
+        let output_mode = arguments
+            .get("output")
+            .and_then(|v| v.as_str())
+            .unwrap_or("concise");
         let timeout = arguments
             .get("timeout")
             .and_then(|v| v.as_u64())
@@ -274,12 +279,18 @@ impl Tool for SpritesExecTool {
                     return e;
                 }
                 use everruns_core::tool_output_sanitizer::{
-                    EXEC_OUTPUT_BUDGET, clean_exec_output, priority_aware_truncate,
+                    clean_exec_output, output_verbosity_budget, priority_aware_truncate,
                 };
                 let clean_stdout = clean_exec_output(&result.stdout);
                 let clean_stderr = clean_exec_output(&result.stderr);
-                let stdout = priority_aware_truncate(&clean_stdout, EXEC_OUTPUT_BUDGET);
-                let stderr = priority_aware_truncate(&clean_stderr, 4096);
+                let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
+                    (
+                        priority_aware_truncate(&clean_stdout, budget),
+                        priority_aware_truncate(&clean_stderr, budget.min(4096)),
+                    )
+                } else {
+                    (clean_stdout.clone(), clean_stderr.clone())
+                };
                 let mut raw = clean_stdout;
                 if !clean_stderr.is_empty() {
                     raw.push_str("\n--- stderr ---\n");

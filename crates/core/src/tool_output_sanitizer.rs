@@ -14,19 +14,52 @@
 // - EVE-222: persist_output hint drives VFS persistence via PostToolExecHook
 // - EVE-223: EXEC_OUTPUT_HINT constant for system prompt additions
 
-/// Default output budget for exec tools (16 KiB).
+/// Legacy output budget constant (16 KiB). Kept for backward compatibility
+/// with any code not yet migrated to `output_verbosity_budget()`.
+/// New code should use the verbosity modes instead (default: `concise` = 2 KiB).
 pub const EXEC_OUTPUT_BUDGET: usize = 16 * 1024;
 
-/// System prompt hint for exec tool capabilities (EVE-223).
+/// Output verbosity budgets (EVE-236).
+/// Each exec tool accepts an `output` parameter controlling how much output
+/// is returned to the LLM. The full log is always available via
+/// `tool_output_persistence` (read with `read_file`).
+pub const SILENT_BUDGET: usize = 200;
+pub const CONCISE_BUDGET: usize = 2 * 1024;
+pub const NORMAL_BUDGET: usize = 8 * 1024;
+pub const VERBOSE_BUDGET: usize = 16 * 1024;
+
+/// Resolve output verbosity mode string to byte budget.
+/// Returns `None` for "full" (no truncation).
+pub fn output_verbosity_budget(mode: &str) -> Option<usize> {
+    match mode {
+        "silent" => Some(SILENT_BUDGET),
+        "concise" => Some(CONCISE_BUDGET),
+        "normal" => Some(NORMAL_BUDGET),
+        "verbose" => Some(VERBOSE_BUDGET),
+        "full" => None,
+        _ => Some(CONCISE_BUDGET), // unknown → default
+    }
+}
+
+/// JSON schema fragment for the `output` parameter, suitable for insertion
+/// into a tool's `properties` object.
+pub fn output_verbosity_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "string",
+        "enum": ["silent", "concise", "normal", "verbose", "full"],
+        "default": "concise",
+        "description": "Output verbosity: silent (~200B, truncated to exit code + minimal output), concise (~2KiB, default), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). Full logs always available via read_file on /.exec-logs/."
+    })
+}
+
+/// System prompt hint for exec tool capabilities (EVE-223, EVE-236).
 /// Appended to each sandbox capability's `system_prompt_addition()` to guide
 /// the LLM toward less verbose command usage.
-pub const EXEC_OUTPUT_HINT: &str = "\n\n**Output economy:** Command output is truncated to ~16 KiB (keeping first 20% + last 80%). \
-For build/install commands, prefer quiet flags or pipe through tail:\n\
-- `cargo build -q`, `cargo test -- --quiet`\n\
-- `npm install --silent`, `npm test 2>&1 | tail -50`\n\
-- `pip install -q`, `make -s`\n\
-- `apt-get install -qq -y`\n\
-Save verbose output to a file and inspect selectively: `cmd > /tmp/out.log 2>&1 && tail -100 /tmp/out.log`";
+pub const EXEC_OUTPUT_HINT: &str = "\n\n**Output economy:** Command output is truncated based on the `output` parameter (default: `concise` ~2 KiB). \
+Use `verbose` or `full` when debugging failures. Full logs are always persisted to `/.exec-logs/` and readable with `read_file`.\n\
+Available modes: `silent` (~200B), `concise` (~2KiB), `normal` (~8KiB), `verbose` (~16KiB), `full` (unlimited).\n\
+For build/install commands, the default `concise` is usually sufficient — check exit code first.\n\
+If you need more detail, re-run with `output: \"verbose\"` or read the full log from `/.exec-logs/`.";
 
 /// System prompt hint for file reading economy (EVE-244).
 /// Appended to the FileSystem capability's `system_prompt_addition()` to guide
