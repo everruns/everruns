@@ -69,6 +69,26 @@ static TOOL_SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     prompt
 });
 
+/// Input schema from bashkit library, extended with everruns-specific `working_dir`.
+/// Delegating to bashkit avoids schema drift when bashkit adds/changes parameters.
+static TOOL_INPUT_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
+    let mut schema = BASHKIT_TOOL.input_schema();
+    // Add everruns-specific working_dir param only if bashkit does not already define it.
+    if let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut())
+        && !props.contains_key("working_dir")
+    {
+        props.insert(
+            "working_dir".to_string(),
+            json!({
+                "type": "string",
+                "default": "/workspace",
+                "description": "Working directory for command execution"
+            }),
+        );
+    }
+    schema
+});
+
 /// Virtual Bash capability - execute bash commands in a sandboxed environment
 pub struct VirtualBashCapability;
 
@@ -145,27 +165,7 @@ impl Tool for BashTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The bash command to execute"
-                },
-                "working_dir": {
-                    "type": "string",
-                    "default": "/workspace",
-                    "description": "Working directory for command execution (default: '/workspace')"
-                },
-                "timeout_ms": {
-                    "type": "integer",
-                    "default": 30000,
-                    "description": "Execution timeout in milliseconds (default: 30000, max: 60000)"
-                }
-            },
-            "required": ["command"],
-            "additionalProperties": false
-        })
+        TOOL_INPUT_SCHEMA.clone()
     }
 
     fn hints(&self) -> ToolHints {
@@ -186,9 +186,11 @@ impl Tool for BashTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let command = match arguments.get("command").and_then(|v| v.as_str()) {
+        let command = match arguments.get("commands").and_then(|v| v.as_str()) {
             Some(c) => c,
-            None => return ToolExecutionResult::tool_error("Missing required parameter: command"),
+            None => {
+                return ToolExecutionResult::tool_error("Missing required parameter: commands");
+            }
         };
 
         let working_dir = arguments
@@ -1111,7 +1113,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_without_context() {
         let tool = BashTool;
-        let result = tool.execute(json!({"command": "echo hello"})).await;
+        let result = tool.execute(json!({"commands": "echo hello"})).await;
 
         if let ToolExecutionResult::ToolError(msg) = result {
             assert!(msg.contains("requires context"));
@@ -1140,7 +1142,7 @@ mod tests {
         let context = ToolContext::new(SessionId::new());
 
         let result = tool
-            .execute_with_context(json!({"command": "echo hello"}), &context)
+            .execute_with_context(json!({"commands": "echo hello"}), &context)
             .await;
 
         if let ToolExecutionResult::ToolError(msg) = result {
@@ -1168,7 +1170,7 @@ mod tests {
         let tool = BashTool;
 
         let result = tool
-            .execute_with_context(json!({"command": "echo hello world"}), &context)
+            .execute_with_context(json!({"commands": "echo hello world"}), &context)
             .await;
 
         if let ToolExecutionResult::Success(output) = result {
@@ -1186,7 +1188,7 @@ mod tests {
         let tool = BashTool;
 
         let result = tool
-            .execute_with_context(json!({"command": "pwd"}), &context)
+            .execute_with_context(json!({"commands": "pwd"}), &context)
             .await;
 
         if let ToolExecutionResult::Success(output) = result {
@@ -1204,7 +1206,7 @@ mod tests {
 
         // Test HOME
         let result = tool
-            .execute_with_context(json!({"command": "echo $HOME"}), &context)
+            .execute_with_context(json!({"commands": "echo $HOME"}), &context)
             .await;
         if let ToolExecutionResult::Success(output) = result {
             assert_eq!(output["stdout"], "/home/agent\n");
@@ -1214,7 +1216,7 @@ mod tests {
 
         // Test WORKSPACE
         let result = tool
-            .execute_with_context(json!({"command": "echo $WORKSPACE"}), &context)
+            .execute_with_context(json!({"commands": "echo $WORKSPACE"}), &context)
             .await;
         if let ToolExecutionResult::Success(output) = result {
             assert_eq!(output["stdout"], "/workspace\n");
@@ -1224,7 +1226,7 @@ mod tests {
 
         // Test USER (set by bashkit from username)
         let result = tool
-            .execute_with_context(json!({"command": "echo $USER"}), &context)
+            .execute_with_context(json!({"commands": "echo $USER"}), &context)
             .await;
         if let ToolExecutionResult::Success(output) = result {
             assert_eq!(output["stdout"], "everruns\n");
@@ -1241,7 +1243,7 @@ mod tests {
         // Write a file
         let result = tool
             .execute_with_context(
-                json!({"command": "echo 'test content' > /workspace/test.txt"}),
+                json!({"commands": "echo 'test content' > /workspace/test.txt"}),
                 &context,
             )
             .await;
@@ -1249,7 +1251,7 @@ mod tests {
 
         // Read it back
         let result = tool
-            .execute_with_context(json!({"command": "cat /workspace/test.txt"}), &context)
+            .execute_with_context(json!({"commands": "cat /workspace/test.txt"}), &context)
             .await;
         if let ToolExecutionResult::Success(output) = result {
             assert_eq!(output["stdout"], "test content\n");
@@ -1264,7 +1266,7 @@ mod tests {
         let tool = BashTool;
 
         let result = tool
-            .execute_with_context(json!({"command": "echo hello | cat"}), &context)
+            .execute_with_context(json!({"commands": "echo hello | cat"}), &context)
             .await;
 
         if let ToolExecutionResult::Success(output) = result {
@@ -1281,7 +1283,7 @@ mod tests {
         let tool = BashTool;
 
         let result = tool
-            .execute_with_context(json!({"command": "echo $((2 + 3 * 4))"}), &context)
+            .execute_with_context(json!({"commands": "echo $((2 + 3 * 4))"}), &context)
             .await;
 
         if let ToolExecutionResult::Success(output) = result {
@@ -1297,7 +1299,7 @@ mod tests {
         let tool = BashTool;
 
         let result = tool
-            .execute_with_context(json!({"command": "echo $(echo nested)"}), &context)
+            .execute_with_context(json!({"commands": "echo $(echo nested)"}), &context)
             .await;
 
         if let ToolExecutionResult::Success(output) = result {
@@ -1318,7 +1320,7 @@ mod tests {
 
         // Try to write to /tmp (outside workspace)
         let result = tool
-            .execute_with_context(json!({"command": "echo 'hack' > /tmp/evil.txt"}), &context)
+            .execute_with_context(json!({"commands": "echo 'hack' > /tmp/evil.txt"}), &context)
             .await;
 
         // This should fail because /tmp is outside /workspace
@@ -1332,7 +1334,7 @@ mod tests {
             // If bashkit doesn't error, the write should silently fail
             // Let's verify by trying to read it
             let read_result = tool
-                .execute_with_context(json!({"command": "cat /tmp/evil.txt"}), &context)
+                .execute_with_context(json!({"commands": "cat /tmp/evil.txt"}), &context)
                 .await;
             // Should not find the file
             assert!(
@@ -1365,7 +1367,7 @@ mod tests {
 
         // Try to read from /etc (outside workspace)
         let result = tool
-            .execute_with_context(json!({"command": "cat /etc/passwd"}), &context)
+            .execute_with_context(json!({"commands": "cat /etc/passwd"}), &context)
             .await;
 
         // Should fail - either as tool error or with non-zero exit code
@@ -1395,7 +1397,7 @@ mod tests {
 
         // Try to create directory in /tmp
         let result = tool
-            .execute_with_context(json!({"command": "mkdir /tmp/evil_dir"}), &context)
+            .execute_with_context(json!({"commands": "mkdir /tmp/evil_dir"}), &context)
             .await;
 
         // Should fail
@@ -1434,7 +1436,7 @@ mod tests {
 
         // First create the directory
         let result = tool
-            .execute_with_context(json!({"command": "mkdir -p /workspace/mydir"}), &context)
+            .execute_with_context(json!({"commands": "mkdir -p /workspace/mydir"}), &context)
             .await;
         assert!(matches!(result, ToolExecutionResult::Success(_)));
 
@@ -1442,7 +1444,7 @@ mod tests {
         let result = tool
             .execute_with_context(
                 json!({
-                    "command": "pwd",
+                    "commands": "pwd",
                     "working_dir": "/workspace/mydir"
                 }),
                 &context,
@@ -1466,7 +1468,7 @@ mod tests {
         let tool = BashTool;
 
         let result = tool
-            .execute_with_context(json!({"command": "false"}), &context)
+            .execute_with_context(json!({"commands": "false"}), &context)
             .await;
 
         if let ToolExecutionResult::Success(output) = result {
@@ -1483,7 +1485,7 @@ mod tests {
         let tool = BashTool;
 
         let result = tool
-            .execute_with_context(json!({"command": "true"}), &context)
+            .execute_with_context(json!({"commands": "true"}), &context)
             .await;
 
         if let ToolExecutionResult::Success(output) = result {
@@ -1770,7 +1772,7 @@ mod tests {
         let large_script = "echo ".to_string() + &"x".repeat(1_100_000);
 
         let result = tool
-            .execute_with_context(json!({"command": large_script}), &context)
+            .execute_with_context(json!({"commands": large_script}), &context)
             .await;
 
         // Should fail due to input size limit
@@ -1801,7 +1803,7 @@ mod tests {
         let command = "i=0; while [ $i -lt 100 ]; do i=$((i + 1)); done; echo $i";
 
         let result = tool
-            .execute_with_context(json!({"command": command}), &context)
+            .execute_with_context(json!({"commands": command}), &context)
             .await;
 
         // Should succeed within limits
@@ -1827,7 +1829,7 @@ mod tests {
         "#;
 
         let result = tool
-            .execute_with_context(json!({"command": command}), &context)
+            .execute_with_context(json!({"commands": command}), &context)
             .await;
 
         // Should succeed
@@ -1853,7 +1855,7 @@ mod tests {
         let command = "echo $((1 + 2 * 3))";
 
         let result = tool
-            .execute_with_context(json!({"command": command}), &context)
+            .execute_with_context(json!({"commands": command}), &context)
             .await;
 
         // Should succeed
@@ -1874,7 +1876,7 @@ mod tests {
         let command = "for i in $(seq 1 100); do true; done; echo done";
 
         let result = tool
-            .execute_with_context(json!({"command": command}), &context)
+            .execute_with_context(json!({"commands": command}), &context)
             .await;
 
         // Should succeed within limits
@@ -1898,7 +1900,7 @@ mod tests {
         // Create a script file
         let result = tool
             .execute_with_context(
-                json!({"command": "cat > /workspace/test.sh << 'EOF'\n#!/bin/bash\necho hello\nEOF"}),
+                json!({"commands": "cat > /workspace/test.sh << 'EOF'\n#!/bin/bash\necho hello\nEOF"}),
                 &context,
             )
             .await;
@@ -1910,7 +1912,7 @@ mod tests {
 
         // Execute by absolute path
         let result = tool
-            .execute_with_context(json!({"command": "/workspace/test.sh"}), &context)
+            .execute_with_context(json!({"commands": "/workspace/test.sh"}), &context)
             .await;
 
         if let ToolExecutionResult::Success(output) = result {
@@ -1929,7 +1931,7 @@ mod tests {
         // Create a script that uses arguments
         let result = tool
             .execute_with_context(
-                json!({"command": "cat > /workspace/greet.sh << 'EOF'\n#!/bin/bash\necho \"Hello, $1! You are $2.\"\nEOF"}),
+                json!({"commands": "cat > /workspace/greet.sh << 'EOF'\n#!/bin/bash\necho \"Hello, $1! You are $2.\"\nEOF"}),
                 &context,
             )
             .await;
@@ -1938,7 +1940,7 @@ mod tests {
         // Execute with arguments
         let result = tool
             .execute_with_context(
-                json!({"command": "/workspace/greet.sh world awesome"}),
+                json!({"commands": "/workspace/greet.sh world awesome"}),
                 &context,
             )
             .await;
@@ -1959,7 +1961,7 @@ mod tests {
         // Create a script without shebang
         let result = tool
             .execute_with_context(
-                json!({"command": "cat > /workspace/simple.sh << 'EOF'\necho simple\nEOF"}),
+                json!({"commands": "cat > /workspace/simple.sh << 'EOF'\necho simple\nEOF"}),
                 &context,
             )
             .await;
@@ -1967,7 +1969,7 @@ mod tests {
 
         // Execute - should still work
         let result = tool
-            .execute_with_context(json!({"command": "/workspace/simple.sh"}), &context)
+            .execute_with_context(json!({"commands": "/workspace/simple.sh"}), &context)
             .await;
 
         if let ToolExecutionResult::Success(output) = result {
@@ -1985,7 +1987,7 @@ mod tests {
 
         // Try to execute a script that doesn't exist
         let result = tool
-            .execute_with_context(json!({"command": "/workspace/nonexistent.sh"}), &context)
+            .execute_with_context(json!({"commands": "/workspace/nonexistent.sh"}), &context)
             .await;
 
         if let ToolExecutionResult::Success(output) = result {
@@ -2012,7 +2014,7 @@ mod tests {
         // Create nested directory structure and script
         let setup = tool
             .execute_with_context(
-                json!({"command": "mkdir -p /workspace/.agents/skills/nav/scripts && cat > /workspace/.agents/skills/nav/scripts/nav.sh << 'EOF'\n#!/bin/bash\necho \"navigating $1\"\nEOF"}),
+                json!({"commands": "mkdir -p /workspace/.agents/skills/nav/scripts && cat > /workspace/.agents/skills/nav/scripts/nav.sh << 'EOF'\n#!/bin/bash\necho \"navigating $1\"\nEOF"}),
                 &context,
             )
             .await;
@@ -2021,7 +2023,7 @@ mod tests {
         // Execute by absolute path (the exact scenario from the bug report)
         let result = tool
             .execute_with_context(
-                json!({"command": "/workspace/.agents/skills/nav/scripts/nav.sh dist"}),
+                json!({"commands": "/workspace/.agents/skills/nav/scripts/nav.sh dist"}),
                 &context,
             )
             .await;
@@ -2042,7 +2044,7 @@ mod tests {
         // Write a file and check that test -x reports it as executable
         let result = tool
             .execute_with_context(
-                json!({"command": "echo 'echo hi' > /workspace/check.sh && test -x /workspace/check.sh && echo 'executable' || echo 'not executable'"}),
+                json!({"commands": "echo 'echo hi' > /workspace/check.sh && test -x /workspace/check.sh && echo 'executable' || echo 'not executable'"}),
                 &context,
             )
             .await;
@@ -2070,7 +2072,7 @@ mod tests {
         // Create a script that exits with a specific code
         let result = tool
             .execute_with_context(
-                json!({"command": "cat > /workspace/fail.sh << 'EOF'\n#!/bin/bash\necho failing\nexit 42\nEOF"}),
+                json!({"commands": "cat > /workspace/fail.sh << 'EOF'\n#!/bin/bash\necho failing\nexit 42\nEOF"}),
                 &context,
             )
             .await;
@@ -2079,7 +2081,7 @@ mod tests {
         // Execute and check exit code propagation
         let result = tool
             .execute_with_context(
-                json!({"command": "/workspace/fail.sh; echo \"code: $?\""}),
+                json!({"commands": "/workspace/fail.sh; echo \"code: $?\""}),
                 &context,
             )
             .await;
@@ -2109,7 +2111,7 @@ mod tests {
         // Write a file
         let result = tool
             .execute_with_context(
-                json!({"command": "echo 'first' > /workspace/overwrite.txt"}),
+                json!({"commands": "echo 'first' > /workspace/overwrite.txt"}),
                 &context,
             )
             .await;
@@ -2118,7 +2120,7 @@ mod tests {
         // Overwrite with new content
         let result = tool
             .execute_with_context(
-                json!({"command": "echo 'second' > /workspace/overwrite.txt"}),
+                json!({"commands": "echo 'second' > /workspace/overwrite.txt"}),
                 &context,
             )
             .await;
@@ -2130,7 +2132,10 @@ mod tests {
 
         // Read back — should have new content
         let result = tool
-            .execute_with_context(json!({"command": "cat /workspace/overwrite.txt"}), &context)
+            .execute_with_context(
+                json!({"commands": "cat /workspace/overwrite.txt"}),
+                &context,
+            )
             .await;
         if let ToolExecutionResult::Success(output) = result {
             assert_eq!(output["stdout"], "second\n");
@@ -2147,7 +2152,7 @@ mod tests {
         // Create file
         let result = tool
             .execute_with_context(
-                json!({"command": "echo 'line1' > /workspace/append.txt"}),
+                json!({"commands": "echo 'line1' > /workspace/append.txt"}),
                 &context,
             )
             .await;
@@ -2156,7 +2161,7 @@ mod tests {
         // Append
         let result = tool
             .execute_with_context(
-                json!({"command": "echo 'line2' >> /workspace/append.txt"}),
+                json!({"commands": "echo 'line2' >> /workspace/append.txt"}),
                 &context,
             )
             .await;
@@ -2168,7 +2173,7 @@ mod tests {
 
         // Verify combined content
         let result = tool
-            .execute_with_context(json!({"command": "cat /workspace/append.txt"}), &context)
+            .execute_with_context(json!({"commands": "cat /workspace/append.txt"}), &context)
             .await;
         if let ToolExecutionResult::Success(output) = result {
             assert_eq!(output["stdout"], "line1\nline2\n");
@@ -2237,7 +2242,7 @@ mod tests {
         // Write to a nested path — parent dirs should be auto-created
         let result = tool
             .execute_with_context(
-                json!({"command": "echo 'deep' > /workspace/a/b/c/deep.txt"}),
+                json!({"commands": "echo 'deep' > /workspace/a/b/c/deep.txt"}),
                 &context,
             )
             .await;
@@ -2250,7 +2255,7 @@ mod tests {
         // Read back
         let result = tool
             .execute_with_context(
-                json!({"command": "cat /workspace/a/b/c/deep.txt"}),
+                json!({"commands": "cat /workspace/a/b/c/deep.txt"}),
                 &context,
             )
             .await;
@@ -2336,16 +2341,15 @@ mod tests {
 
         // Verify required fields
         assert_eq!(schema["type"], "object");
-        assert!(schema["properties"]["command"].is_object());
-        assert_eq!(schema["properties"]["command"]["type"], "string");
+        assert!(schema["properties"]["commands"].is_object());
 
         // Verify optional fields
         assert!(schema["properties"]["working_dir"].is_object());
         assert!(schema["properties"]["timeout_ms"].is_object());
 
-        // Verify "command" is required
+        // Verify "commands" is required
         let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("command")));
+        assert!(required.contains(&json!("commands")));
     }
 
     #[test]
@@ -2461,14 +2465,14 @@ mod tests {
 
         // Create files
         tool.execute_with_context(
-            json!({"command": "mkdir -p /workspace/src && echo 'fn main() { println!(\"hello\"); }' > /workspace/src/main.rs && echo 'fn test() {}' > /workspace/src/test.rs"}),
+            json!({"commands": "mkdir -p /workspace/src && echo 'fn main() { println!(\"hello\"); }' > /workspace/src/main.rs && echo 'fn test() {}' > /workspace/src/test.rs"}),
             &context,
         )
         .await;
 
         // Run grep -r which should use indexed search via SearchCapable
         let result = tool
-            .execute_with_context(json!({"command": "grep -r 'fn' /workspace/src"}), &context)
+            .execute_with_context(json!({"commands": "grep -r 'fn' /workspace/src"}), &context)
             .await;
 
         if let ToolExecutionResult::Success(output) = result {
@@ -2482,5 +2486,38 @@ mod tests {
         } else {
             panic!("Expected success result, got: {:?}", result);
         }
+    }
+
+    #[test]
+    fn test_parameters_schema_delegates_to_bashkit() {
+        let tool = BashTool;
+        let schema = tool.parameters_schema();
+        let bashkit_schema = BASHKIT_TOOL.input_schema();
+
+        // All bashkit properties must be present in our schema
+        let bashkit_props = bashkit_schema["properties"].as_object().unwrap();
+        let our_props = schema["properties"].as_object().unwrap();
+        for key in bashkit_props.keys() {
+            assert!(
+                our_props.contains_key(key),
+                "bashkit property '{key}' missing from parameters_schema"
+            );
+        }
+
+        // Required fields from bashkit must be preserved
+        let bashkit_required = bashkit_schema["required"].as_array().unwrap();
+        let our_required = schema["required"].as_array().unwrap();
+        for req in bashkit_required {
+            assert!(
+                our_required.contains(req),
+                "bashkit required field {req} missing from parameters_schema"
+            );
+        }
+
+        // Everruns extension: working_dir must be present
+        assert!(
+            our_props.contains_key("working_dir"),
+            "working_dir must be in parameters_schema"
+        );
     }
 }
