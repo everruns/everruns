@@ -284,6 +284,8 @@ mod tests {
                 title,
                 model,
                 secrets,
+                budget_limits,
+                budget_soft_limits,
             } = command
             {
                 assert_eq!(harness, Some("harness_abc".to_string()));
@@ -291,6 +293,8 @@ mod tests {
                 assert_eq!(title, Some("Test Session".to_string()));
                 assert_eq!(model, None);
                 assert!(secrets.is_empty());
+                assert!(budget_limits.is_empty());
+                assert!(budget_soft_limits.is_empty());
             } else {
                 panic!("Expected Create command");
             }

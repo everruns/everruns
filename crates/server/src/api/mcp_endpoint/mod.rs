@@ -16,7 +16,7 @@ use crate::services::{EventService, MessageService, SessionService};
 use crate::storage::StorageBackend;
 use axum::{Json, Router, extract::State, routing::post};
 use bashkit::{ScriptedTool, Tool as ScriptedToolTrait};
-use everruns_core::typed_id::{AgentId, EventId, HarnessId, SessionId};
+use everruns_core::typed_id::{AgentId, BudgetId, EventId, HarnessId, SessionId};
 use everruns_core::{Caller, PlatformDefinition};
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
@@ -124,6 +124,18 @@ fn tool_definitions() -> Value {
                     "model_id": {
                         "type": "string",
                         "description": "Optional model override (format: model_{32-hex})."
+                    },
+                    "budget_limit": {
+                        "type": "number",
+                        "description": "Optional budget limit. Creates a session budget that stops the agent at this amount. Currency defaults to 'usd'."
+                    },
+                    "budget_currency": {
+                        "type": "string",
+                        "description": "Budget currency (default: 'usd'). Options: usd, tokens, credits, or custom."
+                    },
+                    "budget_soft_limit": {
+                        "type": "number",
+                        "description": "Optional soft limit — pauses the session at this amount before the hard stop. Must be less than budget_limit."
                     }
                 },
                 "required": ["message"]
@@ -464,6 +476,42 @@ async fn tool_agent_run(
         .await
         .map_err(|e| format!("Failed to create session: {e}"))?;
 
+    // Create budget if budget_limit is specified
+    let budget_id = if let Some(budget_limit) = args.get("budget_limit").and_then(|v| v.as_f64()) {
+        if budget_limit <= 0.0 {
+            return Err("budget_limit must be positive".to_string());
+        }
+        let budget_currency = args
+            .get("budget_currency")
+            .and_then(|v| v.as_str())
+            .unwrap_or("usd");
+        let budget_soft_limit = args.get("budget_soft_limit").and_then(|v| v.as_f64());
+        if budget_soft_limit.is_some_and(|s| s <= 0.0 || s > budget_limit) {
+            return Err(
+                "budget_soft_limit must be greater than 0 and at most budget_limit".to_string(),
+            );
+        }
+
+        let input = crate::storage::models::CreateBudgetRow {
+            org_id: org.org_id,
+            subject_type: "session".to_string(),
+            subject_id: session.id.to_string(),
+            currency: budget_currency.to_string(),
+            limit: budget_limit,
+            soft_limit: budget_soft_limit,
+            period: None,
+            metadata: None,
+        };
+        let row = state
+            .db
+            .create_budget(input)
+            .await
+            .map_err(|e| format!("Session created but budget creation failed: {e}"))?;
+        Some(BudgetId::from_uuid(row.id).to_string())
+    } else {
+        None
+    };
+
     // Send first message
     let msg_req = CreateMessageRequest {
         message: InputMessage {
@@ -492,13 +540,17 @@ async fn tool_agent_run(
         .await
         .map_err(|e| format!("Failed to send message: {e}"))?;
 
-    Ok(serde_json::to_string_pretty(&json!({
+    let mut result = json!({
         "session_id": session.id.to_string(),
         "message_id": message.id.to_string(),
         "status": session.status.to_string(),
         "hint": "Use session_get_status to poll for the agent's response, or connect to SSE at /v1/sessions/{session_id}/sse"
-    }))
-    .unwrap())
+    });
+    if let Some(bid) = budget_id {
+        result["budget_id"] = json!(bid);
+    }
+
+    Ok(serde_json::to_string_pretty(&result).unwrap())
 }
 
 // ============================================================================
