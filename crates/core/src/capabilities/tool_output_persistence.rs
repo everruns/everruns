@@ -1,14 +1,15 @@
-// Tool Output Persistence Capability (EVE-222)
+// Tool Output Persistence Capability (EVE-222, EVE-245)
 //
 // Persists full exec tool output to session VFS before truncation,
 // enabling lossless retrieval via read_file/grep. The LLM gets a
-// truncated summary with a `full_output` path to the full log.
+// truncated summary with file paths to the full output.
 //
 // Design decisions:
 // - Implemented as PostToolExecHook, not baked into each tool — VFS
 //   persistence is a cross-cutting concern the tool shouldn't know about
 // - Reads `persist_output` hint from ToolDefinition to decide what to persist
-// - Writes to /.exec-logs/{tool_call_id}.log (dot-prefixed, session-scoped)
+// - Writes stdout to /.outputs/{tool_call_id}.stdout, stderr to .stderr (EVE-245)
+// - Injects `output_files` array into result for agent to read selectively
 // - Graceful degradation: skip silently if file_store is unavailable
 // - Runs before FinalPostToolExecHook (EVE-225 hard limit)
 
@@ -97,29 +98,69 @@ impl PostToolExecHook for PersistOutputHook {
             return;
         }
 
-        let path = format!("/.exec-logs/{safe_id}.log");
-        let total_lines = output_text.lines().count();
+        // Split into stdout and stderr for separate persistence (EVE-245)
+        let (stdout_text, stderr_text) = split_output_streams(&output_text);
+        let total_lines = stdout_text.lines().count();
 
+        let stdout_path = format!("/.outputs/{safe_id}.stdout");
         if let Err(e) = file_store
-            .write_file(context.session_id, &path, &output_text, "utf-8")
+            .write_file(context.session_id, &stdout_path, &stdout_text, "utf-8")
             .await
         {
             tracing::warn!(
                 tool_name = %tool_call.name,
                 tool_call_id = %tool_call.id,
                 error = %e,
-                "PersistOutputHook: failed to write exec log"
+                "PersistOutputHook: failed to write stdout output"
             );
             return;
         }
 
-        // Enrich result JSON with file reference
+        let mut output_files = vec![stdout_path.clone()];
+
+        // Persist stderr separately if non-empty
+        if !stderr_text.is_empty() {
+            let stderr_path = format!("/.outputs/{safe_id}.stderr");
+            if let Err(e) = file_store
+                .write_file(context.session_id, &stderr_path, &stderr_text, "utf-8")
+                .await
+            {
+                tracing::warn!(
+                    tool_name = %tool_call.name,
+                    tool_call_id = %tool_call.id,
+                    error = %e,
+                    "PersistOutputHook: failed to write stderr output"
+                );
+                // Continue — stdout was persisted successfully
+            } else {
+                output_files.push(stderr_path);
+            }
+        }
+
+        // Enrich result JSON with file references (EVE-245)
         if let Some(ref mut json_val) = result.result
             && let Some(obj) = json_val.as_object_mut()
         {
-            obj.insert("full_output".to_string(), json!(path));
+            obj.insert("full_output".to_string(), json!(stdout_path));
             obj.insert("total_lines".to_string(), json!(total_lines));
+            obj.insert("output_files".to_string(), json!(output_files));
         }
+    }
+}
+
+/// Split combined output text into stdout and stderr streams.
+///
+/// The raw output from exec tools uses `\n--- stderr ---\n` as a separator
+/// (see `virtual_bash.rs` and other sandbox tools). If no separator is found,
+/// the entire text is treated as stdout.
+fn split_output_streams(text: &str) -> (String, String) {
+    const STDERR_SEPARATOR: &str = "\n--- stderr ---\n";
+    if let Some(pos) = text.find(STDERR_SEPARATOR) {
+        let stdout = text[..pos].to_string();
+        let stderr = text[pos + STDERR_SEPARATOR.len()..].to_string();
+        (stdout, stderr)
+    } else {
+        (text.to_string(), String::new())
     }
 }
 
@@ -215,5 +256,28 @@ mod tests {
         assert_eq!(cap.id(), "tool_output_persistence");
         assert!(!cap.post_tool_exec_hooks().is_empty());
         assert!(cap.dependencies().contains(&"session_file_system"));
+    }
+
+    #[test]
+    fn test_split_output_streams_both() {
+        let text = "hello world\n--- stderr ---\nwarning: unused";
+        let (stdout, stderr) = split_output_streams(text);
+        assert_eq!(stdout, "hello world");
+        assert_eq!(stderr, "warning: unused");
+    }
+
+    #[test]
+    fn test_split_output_streams_stdout_only() {
+        let text = "hello world\nline two";
+        let (stdout, stderr) = split_output_streams(text);
+        assert_eq!(stdout, "hello world\nline two");
+        assert!(stderr.is_empty());
+    }
+
+    #[test]
+    fn test_split_output_streams_empty() {
+        let (stdout, stderr) = split_output_streams("");
+        assert!(stdout.is_empty());
+        assert!(stderr.is_empty());
     }
 }

@@ -247,9 +247,9 @@ pub struct ToolHints {
     pub long_running: Option<bool>,
 
     /// Tool output should be persisted to session VFS before truncation.
-    /// When set, the `tool_output_persistence` capability (EVE-222) writes the
-    /// full cleaned output to `/.exec-logs/{tool_call_id}.log` and injects a
-    /// `full_output` path into the result so the LLM can retrieve it on demand.
+    /// When set, the `tool_output_persistence` capability (EVE-222, EVE-245) writes
+    /// stdout to `/.outputs/{tool_call_id}.stdout` and stderr to `.stderr`, injecting
+    /// `full_output`, `total_lines`, and `output_files` into the result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist_output: Option<bool>,
 }
