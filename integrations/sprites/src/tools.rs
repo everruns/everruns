@@ -274,12 +274,12 @@ impl Tool for SpritesExecTool {
                     return e;
                 }
                 use everruns_core::tool_output_sanitizer::{
-                    EXEC_OUTPUT_BUDGET, clean_exec_output, middle_truncate,
+                    EXEC_OUTPUT_BUDGET, clean_exec_output, priority_aware_truncate,
                 };
                 let clean_stdout = clean_exec_output(&result.stdout);
                 let clean_stderr = clean_exec_output(&result.stderr);
-                let stdout = middle_truncate(&clean_stdout, EXEC_OUTPUT_BUDGET);
-                let stderr = middle_truncate(&clean_stderr, 4096);
+                let stdout = priority_aware_truncate(&clean_stdout, EXEC_OUTPUT_BUDGET);
+                let stderr = priority_aware_truncate(&clean_stderr, 4096);
                 let mut raw = clean_stdout;
                 if !clean_stderr.is_empty() {
                     raw.push_str("\n--- stderr ---\n");

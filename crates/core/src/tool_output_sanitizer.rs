@@ -329,9 +329,12 @@ pub fn priority_aware_truncate(text: &str, max_bytes: usize) -> String {
         sections.push(region_text);
     }
 
-    // If error regions alone exceed the budget, show as many as fit.
-    let marker_overhead = 80; // for omission markers
-    let available_for_context = max_bytes.saturating_sub(marker_overhead);
+    // For very small budgets, fall back to middle_truncate which handles this.
+    let marker_overhead = 80;
+    if max_bytes < marker_overhead {
+        return middle_truncate(text, max_bytes);
+    }
+    let available_for_context = max_bytes - marker_overhead;
 
     if error_bytes >= available_for_context {
         // Just show error regions truncated to budget.
@@ -384,27 +387,34 @@ pub fn priority_aware_truncate(text: &str, max_bytes: usize) -> String {
 
     let mut result = String::new();
 
-    // Head section (lines before first error region).
+    // Head section: accumulate lines up to head_budget without joining all lines.
     let first_region_start = regions[0].start;
     if first_region_start > 0 {
-        let head_text: String = lines[..first_region_start].join("\n");
-        if head_text.len() <= head_budget {
-            result.push_str(&head_text);
-            result.push('\n');
+        let mut head_used = 0usize;
+        let mut head_lines_kept = 0usize;
+
+        for line in &lines[..first_region_start] {
+            let needed = if head_lines_kept > 0 {
+                1 + line.len()
+            } else {
+                line.len()
+            };
+            if head_used + needed > head_budget {
+                break;
+            }
+            if head_lines_kept > 0 {
+                result.push('\n');
+            }
+            result.push_str(line);
+            head_used += needed;
+            head_lines_kept += 1;
+        }
+
+        let omitted = first_region_start - head_lines_kept;
+        if omitted > 0 {
+            result.push_str(&format!("\n[... {} lines omitted ...]\n", omitted));
         } else {
-            let safe = utf8_floor(&head_text, head_budget);
-            result.push_str(&head_text[..safe]);
-            let omitted_head_lines = lines[..first_region_start]
-                .iter()
-                .skip_while(|_| {
-                    // Count how many lines fit in safe bytes
-                    false
-                })
-                .count();
-            result.push_str(&format!(
-                "\n[... {} lines omitted ...]\n",
-                omitted_head_lines
-            ));
+            result.push('\n');
         }
     }
 
@@ -419,19 +429,44 @@ pub fn priority_aware_truncate(text: &str, max_bytes: usize) -> String {
         result.push_str(section);
     }
 
-    // Tail section (lines after last error region).
+    // Tail section: accumulate lines from end up to tail_budget.
     let last_region_end = regions.last().map_or(0, |r| r.end);
-    if last_region_end < lines.len() {
-        let tail_text: String = lines[last_region_end..].join("\n");
-        if tail_text.len() <= tail_budget {
+    let tail_lines = &lines[last_region_end..];
+    if !tail_lines.is_empty() {
+        // Calculate total tail size to check if it fits entirely.
+        let tail_total: usize =
+            tail_lines.iter().map(|l| l.len()).sum::<usize>() + tail_lines.len().saturating_sub(1);
+
+        if tail_total <= tail_budget {
             result.push('\n');
-            result.push_str(&tail_text);
+            for (i, line) in tail_lines.iter().enumerate() {
+                if i > 0 {
+                    result.push('\n');
+                }
+                result.push_str(line);
+            }
         } else {
-            let tail_start_byte = tail_text.len().saturating_sub(tail_budget);
-            let safe = utf8_ceil(&tail_text, tail_start_byte);
-            let omitted_lines = tail_text[..safe].matches('\n').count();
-            result.push_str(&format!("\n[... {} lines omitted ...]\n", omitted_lines));
-            result.push_str(&tail_text[safe..]);
+            // Take lines from the end until budget is exhausted.
+            let mut tail_used = 0usize;
+            let mut tail_start_idx = tail_lines.len();
+
+            for i in (0..tail_lines.len()).rev() {
+                let needed = tail_lines[i].len() + if i < tail_lines.len() - 1 { 1 } else { 0 };
+                if tail_used + needed > tail_budget {
+                    break;
+                }
+                tail_used += needed;
+                tail_start_idx = i;
+            }
+
+            let omitted = tail_start_idx;
+            result.push_str(&format!("\n[... {} lines omitted ...]\n", omitted));
+            for (i, line) in tail_lines[tail_start_idx..].iter().enumerate() {
+                if i > 0 {
+                    result.push('\n');
+                }
+                result.push_str(line);
+            }
         }
     }
 

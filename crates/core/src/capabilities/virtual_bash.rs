@@ -273,12 +273,12 @@ impl Tool for BashTool {
         match result {
             Ok(Ok(output)) => {
                 use crate::tool_output_sanitizer::{
-                    EXEC_OUTPUT_BUDGET, clean_exec_output, middle_truncate,
+                    EXEC_OUTPUT_BUDGET, clean_exec_output, priority_aware_truncate,
                 };
                 let clean_stdout = clean_exec_output(&output.stdout);
                 let clean_stderr = clean_exec_output(&output.stderr);
-                let stdout = middle_truncate(&clean_stdout, EXEC_OUTPUT_BUDGET);
-                let stderr = middle_truncate(&clean_stderr, 4096);
+                let stdout = priority_aware_truncate(&clean_stdout, EXEC_OUTPUT_BUDGET);
+                let stderr = priority_aware_truncate(&clean_stderr, 4096);
                 // Build raw output for persistence hook (cleaned but not truncated)
                 let mut raw = clean_stdout;
                 if !clean_stderr.is_empty() {
