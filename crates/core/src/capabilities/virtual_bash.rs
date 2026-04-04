@@ -344,12 +344,14 @@ impl Tool for BashTool {
                     ))
                 } else {
                     use crate::tool_output_sanitizer::{
-                        VERBOSE_BUDGET, clean_exec_output, output_verbosity_budget,
-                        priority_aware_truncate,
+                        clean_exec_output, output_verbosity_budget, priority_aware_truncate,
                     };
                     let clean = clean_exec_output(&partial);
-                    let budget = output_verbosity_budget(output_mode).unwrap_or(VERBOSE_BUDGET);
-                    let truncated = priority_aware_truncate(&clean, budget);
+                    let truncated = if let Some(budget) = output_verbosity_budget(output_mode) {
+                        priority_aware_truncate(&clean, budget)
+                    } else {
+                        clean.clone()
+                    };
                     ToolExecutionResult::tool_error(format!(
                         "Command timed out after {}ms. Partial output:\n{}",
                         timeout_ms, truncated

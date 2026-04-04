@@ -81,13 +81,13 @@ All exec tools accept an `output` parameter controlling how much output is retur
 
 | Mode | Budget | When to use |
 |------|--------|-------------|
-| `silent` | ~200 B | Exit code + line count only — fire-and-forget commands |
+| `silent` | ~200 B | Minimal truncated output — fire-and-forget commands |
 | `concise` | ~2 KiB | Tail ~30 lines — builds, installs, known-good commands (**default**) |
 | `normal` | ~8 KiB | General use, debugging |
 | `verbose` | ~16 KiB | Test failures, error investigation |
 | `full` | unlimited | Raw output, no truncation — when the LLM needs every line |
 
-Default is `concise`. Full logs are always persisted to `/.exec-logs/` via `tool_output_persistence` and readable with `read_file`. See `crates/core/src/tool_output_sanitizer.rs` for budget constants and `output_verbosity_budget()`.
+Default is `concise`. Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Full logs (both streams) are always persisted to `/.exec-logs/` via `tool_output_persistence` and readable with `read_file`. See `crates/core/src/tool_output_sanitizer.rs` for budget constants and `output_verbosity_budget()`.
 
 This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 

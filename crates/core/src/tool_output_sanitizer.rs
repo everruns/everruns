@@ -14,7 +14,9 @@
 // - EVE-222: persist_output hint drives VFS persistence via PostToolExecHook
 // - EVE-223: EXEC_OUTPUT_HINT constant for system prompt additions
 
-/// Default output budget for exec tools (16 KiB).
+/// Legacy output budget constant (16 KiB). Kept for backward compatibility
+/// with any code not yet migrated to `output_verbosity_budget()`.
+/// New code should use the verbosity modes instead (default: `concise` = 2 KiB).
 pub const EXEC_OUTPUT_BUDGET: usize = 16 * 1024;
 
 /// Output verbosity budgets (EVE-236).
@@ -46,7 +48,7 @@ pub fn output_verbosity_schema() -> serde_json::Value {
         "type": "string",
         "enum": ["silent", "concise", "normal", "verbose", "full"],
         "default": "concise",
-        "description": "Output verbosity: silent (~200B, exit code only), concise (~2KiB, default), normal (~8KiB), verbose (~16KiB), full (unlimited). Full logs always available via read_file on /.exec-logs/."
+        "description": "Output verbosity: silent (~200B, truncated to exit code + minimal output), concise (~2KiB, default), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). Full logs always available via read_file on /.exec-logs/."
     })
 }
 
