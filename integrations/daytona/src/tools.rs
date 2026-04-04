@@ -446,10 +446,10 @@ impl Tool for DaytonaExecTool {
                 }
                 {
                     use everruns_core::tool_output_sanitizer::{
-                        EXEC_OUTPUT_BUDGET, clean_exec_output, middle_truncate,
+                        EXEC_OUTPUT_BUDGET, clean_exec_output, priority_aware_truncate,
                     };
                     let clean_output = clean_exec_output(&result.result);
-                    let output = middle_truncate(&clean_output, EXEC_OUTPUT_BUDGET);
+                    let output = priority_aware_truncate(&clean_output, EXEC_OUTPUT_BUDGET);
                     let raw = clean_output;
                     ToolExecutionResult::success_with_raw_output(
                         json!({
