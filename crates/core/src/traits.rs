@@ -542,6 +542,11 @@ pub struct ToolContext {
     /// Merged network access list (harness ∩ agent ∩ session).
     /// When set, tools that make HTTP requests must check URLs against this list.
     pub network_access: Option<crate::network_access::NetworkAccessList>,
+
+    /// Resolved locale for localized tool behavior (BCP 47, e.g. `uk-UA`).
+    /// When set, tools that support localization use this to produce
+    /// locale-appropriate descriptions, error messages, and prompts.
+    pub locale: Option<String>,
 }
 
 impl ToolContext {
@@ -567,6 +572,7 @@ impl ToolContext {
             memory_store: None,
             org_id: None,
             network_access: None,
+            locale: None,
         }
     }
 
@@ -592,6 +598,7 @@ impl ToolContext {
             memory_store: None,
             org_id: None,
             network_access: None,
+            locale: None,
         }
     }
 
@@ -620,6 +627,7 @@ impl ToolContext {
             memory_store: None,
             org_id: None,
             network_access: None,
+            locale: None,
         }
     }
 
@@ -649,6 +657,7 @@ impl ToolContext {
             memory_store: None,
             org_id: None,
             network_access: None,
+            locale: None,
         }
     }
 

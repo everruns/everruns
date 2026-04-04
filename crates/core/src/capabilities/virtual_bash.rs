@@ -219,6 +219,9 @@ impl Tool for BashTool {
             file_store,
         ));
 
+        // Resolve locale from context (defaults to en-US).
+        let locale = context.locale.as_deref().unwrap_or("en-US");
+
         // Configure bash with resource limits (uses shared execution_limits)
         let mut bash = Bash::builder()
             .fs(session_fs)
@@ -229,6 +232,7 @@ impl Tool for BashTool {
             .env("SHELL", "/bin/bash")
             .env("PATH", "/usr/local/bin:/usr/bin:/bin")
             .env("WORKSPACE", "/workspace")
+            .env("LANG", locale)
             .limits(execution_limits())
             .build();
 
