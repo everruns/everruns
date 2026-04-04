@@ -8,7 +8,7 @@
 // - Implemented as PostToolExecHook, not baked into each tool — VFS
 //   persistence is a cross-cutting concern the tool shouldn't know about
 // - Reads `persist_output` hint from ToolDefinition to decide what to persist
-// - Writes stdout to /.outputs/{tool_call_id}.stdout, stderr to .stderr (EVE-245)
+// - Writes stdout to /.outputs/{tool_call_id}.stdout, stderr to /.outputs/{tool_call_id}.stderr (EVE-245)
 // - Injects `output_files` array into result for agent to read selectively
 // - Graceful degradation: skip silently if file_store is unavailable
 // - Runs before FinalPostToolExecHook (EVE-225 hard limit)
@@ -104,7 +104,7 @@ impl PostToolExecHook for PersistOutputHook {
 
         let stdout_path = format!("/.outputs/{safe_id}.stdout");
         if let Err(e) = file_store
-            .write_file(context.session_id, &stdout_path, &stdout_text, "utf-8")
+            .write_file(context.session_id, &stdout_path, stdout_text, "utf-8")
             .await
         {
             tracing::warn!(
@@ -122,7 +122,7 @@ impl PostToolExecHook for PersistOutputHook {
         if !stderr_text.is_empty() {
             let stderr_path = format!("/.outputs/{safe_id}.stderr");
             if let Err(e) = file_store
-                .write_file(context.session_id, &stderr_path, &stderr_text, "utf-8")
+                .write_file(context.session_id, &stderr_path, stderr_text, "utf-8")
                 .await
             {
                 tracing::warn!(
@@ -151,16 +151,17 @@ impl PostToolExecHook for PersistOutputHook {
 /// Split combined output text into stdout and stderr streams.
 ///
 /// The raw output from exec tools uses `\n--- stderr ---\n` as a separator
-/// (see `virtual_bash.rs` and other sandbox tools). If no separator is found,
-/// the entire text is treated as stdout.
-fn split_output_streams(text: &str) -> (String, String) {
+/// (see `virtual_bash.rs` and other sandbox tools). Uses `rfind` to split at
+/// the *last* occurrence, since the separator is injected by our tools and
+/// shouldn't appear more than once — but if stdout happens to contain the
+/// marker text, taking the last match minimizes corruption.
+/// If no separator is found, the entire text is treated as stdout.
+fn split_output_streams(text: &str) -> (&str, &str) {
     const STDERR_SEPARATOR: &str = "\n--- stderr ---\n";
-    if let Some(pos) = text.find(STDERR_SEPARATOR) {
-        let stdout = text[..pos].to_string();
-        let stderr = text[pos + STDERR_SEPARATOR.len()..].to_string();
-        (stdout, stderr)
+    if let Some(pos) = text.rfind(STDERR_SEPARATOR) {
+        (&text[..pos], &text[pos + STDERR_SEPARATOR.len()..])
     } else {
-        (text.to_string(), String::new())
+        (text, "")
     }
 }
 

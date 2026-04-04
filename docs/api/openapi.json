@@ -11834,7 +11834,7 @@
               "boolean",
               "null"
             ],
-            "description": "Tool output should be persisted to session VFS before truncation.\nWhen set, the `tool_output_persistence` capability (EVE-222, EVE-245) writes\nstdout to `/.outputs/{tool_call_id}.stdout` and stderr to `.stderr`, injecting\n`full_output`, `total_lines`, and `output_files` into the result."
+            "description": "Tool output should be persisted to session VFS before truncation.\nWhen set, the `tool_output_persistence` capability (EVE-222, EVE-245) writes\nstdout to `/.outputs/{tool_call_id}.stdout` and stderr to\n`/.outputs/{tool_call_id}.stderr`, injecting `full_output`, `total_lines`,\nand `output_files` into the result."
           },
           "readonly": {
             "type": [

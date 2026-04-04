@@ -48,7 +48,7 @@ pub fn output_verbosity_schema() -> serde_json::Value {
         "type": "string",
         "enum": ["silent", "concise", "normal", "verbose", "full"],
         "default": "concise",
-        "description": "Output verbosity: silent (~200B, truncated to exit code + minimal output), concise (~2KiB, default), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). Full logs always available via read_file on /.outputs/."
+        "description": "Output verbosity: silent (~200B, truncated to exit code + minimal output), concise (~2KiB, default), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). Full output always persisted to /.outputs/{tool_call_id}.stdout (and .stderr) — use read_file to retrieve."
     })
 }
 
@@ -56,10 +56,10 @@ pub fn output_verbosity_schema() -> serde_json::Value {
 /// Appended to each sandbox capability's `system_prompt_addition()` to guide
 /// the LLM toward less verbose command usage.
 pub const EXEC_OUTPUT_HINT: &str = "\n\n**Output economy:** Command output is truncated based on the `output` parameter (default: `concise` ~2 KiB). \
-Use `verbose` or `full` when debugging failures. Full logs are always persisted to `/.outputs/` and readable with `read_file`.\n\
+Use `verbose` or `full` when debugging failures. Full output is always persisted — stdout to `/.outputs/{tool_call_id}.stdout`, stderr to `/.outputs/{tool_call_id}.stderr` — and readable with `read_file`.\n\
 Available modes: `silent` (~200B), `concise` (~2KiB), `normal` (~8KiB), `verbose` (~16KiB), `full` (unlimited).\n\
 For build/install commands, the default `concise` is usually sufficient — check exit code first.\n\
-If you need more detail, re-run with `output: \"verbose\"` or read the full log from `/.outputs/`.";
+If you need more detail, re-run with `output: \"verbose\"` or read the persisted output files via `read_file`.";
 
 /// System prompt hint for file reading economy (EVE-244).
 /// Appended to the FileSystem capability's `system_prompt_addition()` to guide
