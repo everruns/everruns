@@ -86,7 +86,7 @@ Two hook slots run in sequence:
 2. **Final hooks** (`final_post_tool_hooks`) — always-on infrastructure (e.g. EVE-225 hard limit)
 
 Current hooks:
-- **PersistOutputHook** (`tool_output_persistence` capability): When a tool declares `persist_output: true` in hints, writes full output to `/.exec-logs/{tool_call_id}.log` in session VFS and injects `full_output` path + `total_lines` into the result. See `crates/core/src/capabilities/tool_output_persistence.rs`.
+- **PersistOutputHook** (`tool_output_persistence` capability, included in Generic harness): When a tool declares `persist_output: true` in hints, writes full output to `/.exec-logs/{tool_call_id}.log` in session VFS and injects `full_output` path + `total_lines` into the result. See `crates/core/src/capabilities/tool_output_persistence.rs`.
 
 Current final hooks (always-on, cannot be removed):
 - **OutputHardLimitHook** (EVE-225): Enforces a 64 KiB hard ceiling on serialized tool result text. Head-truncation with UTF-8 safety; appends an LLM-actionable suffix. Logs `tracing::warn!` with tool_name, tool_call_id, result_bytes, limit when truncating. Fires regardless of which capabilities are active. See `crates/core/src/atoms/act_hooks.rs`.
