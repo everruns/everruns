@@ -23,7 +23,8 @@ use async_trait::async_trait;
 use bashkit::{
     Bash, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem, FileSystemExt, FileType,
     Metadata, OutputCallback, SearchCapabilities, SearchCapable, SearchMatch as BashkitSearchMatch,
-    SearchProvider, SearchQuery, SearchResults, Tool as BashkitToolTrait,
+    SearchProvider, SearchQuery, SearchResults, Tool as BashkitToolTrait, TraceEventKind,
+    TraceMode,
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -245,6 +246,7 @@ impl Tool for BashTool {
             .env("WORKSPACE", "/workspace")
             .env("LANG", locale)
             .limits(execution_limits())
+            .trace_mode(TraceMode::Redacted)
             .build();
 
         // Stream output via tool.output.delta events for live UI/CLI rendering.
@@ -286,11 +288,13 @@ impl Tool for BashTool {
         // Execute with timeout. On timeout, signal cancellation via the token
         // so bashkit aborts at the next command boundary and we can collect
         // partial output instead of discarding everything.
+        let exec_start = std::time::Instant::now();
         let result = tokio::time::timeout(
             std::time::Duration::from_millis(timeout_ms),
             bash.exec_streaming(command, output_callback),
         )
         .await;
+        let exec_duration = exec_start.elapsed();
 
         // Wait for all buffered chunks to be emitted (sender dropped when exec completes)
         let _ = emit_task.await;
@@ -300,6 +304,36 @@ impl Tool for BashTool {
                 use crate::tool_output_sanitizer::{
                     clean_exec_output, output_verbosity_budget, priority_aware_truncate,
                 };
+
+                // Extract metadata from trace events (EVE-240)
+                let commands_executed = output
+                    .events
+                    .iter()
+                    .filter(|e| e.kind == TraceEventKind::CommandExit)
+                    .count();
+                let fs_reads = output
+                    .events
+                    .iter()
+                    .filter(|e| e.kind == TraceEventKind::FileAccess)
+                    .count();
+                let fs_writes = output
+                    .events
+                    .iter()
+                    .filter(|e| e.kind == TraceEventKind::FileMutation)
+                    .count();
+
+                tracing::info!(
+                    tool = "bash",
+                    duration_ms = exec_duration.as_millis() as u64,
+                    exit_code = output.exit_code,
+                    commands_executed,
+                    fs_reads,
+                    fs_writes,
+                    stdout_bytes = output.stdout.len(),
+                    stderr_bytes = output.stderr.len(),
+                    "bashkit execution completed"
+                );
+
                 let clean_stdout = clean_exec_output(&output.stdout);
                 let clean_stderr = clean_exec_output(&output.stderr);
                 let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
