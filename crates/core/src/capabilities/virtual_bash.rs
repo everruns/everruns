@@ -235,12 +235,17 @@ impl Tool for BashTool {
         // Stream output via tool.output.delta events for live UI/CLI rendering.
         // bashkit's exec_streaming calls OutputCallback with (stdout_chunk, stderr_chunk)
         // after each command completes. We bridge to async emit via a channel.
+        // A bounded channel collects partial output for cancellation recovery
+        // without allowing unbounded memory growth.
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
+        let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
 
         let output_callback: OutputCallback =
             Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
                 // Best-effort: if receiver dropped, we just ignore
                 let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+                // Bounded: drop if full rather than growing without bound.
+                let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
             });
 
         // Spawn a task that reads chunks from the channel and emits events
@@ -260,7 +265,12 @@ impl Tool for BashTool {
             }
         });
 
-        // Execute with timeout using streaming callback
+        // Grab the cancellation token so we can signal graceful abort on timeout.
+        let cancel_token = bash.cancellation_token();
+
+        // Execute with timeout. On timeout, signal cancellation via the token
+        // so bashkit aborts at the next command boundary and we can collect
+        // partial output instead of discarding everything.
         let result = tokio::time::timeout(
             std::time::Duration::from_millis(timeout_ms),
             bash.exec_streaming(command, output_callback),
@@ -300,8 +310,28 @@ impl Tool for BashTool {
                 ToolExecutionResult::tool_error(format!("Bash execution error: {}", e))
             }
             Err(_) => {
-                // Timeout
-                ToolExecutionResult::tool_error(format!("Command timed out after {}ms", timeout_ms))
+                // Timeout — signal cancellation for the in-flight execution so any
+                // underlying bashkit work stops promptly, then collect whatever
+                // partial output the streaming callback captured.
+                cancel_token.store(true, std::sync::atomic::Ordering::Relaxed);
+
+                let partial = collect_partial_output(partial_rx);
+                if partial.is_empty() {
+                    ToolExecutionResult::tool_error(format!(
+                        "Command timed out after {}ms",
+                        timeout_ms
+                    ))
+                } else {
+                    use crate::tool_output_sanitizer::{
+                        EXEC_OUTPUT_BUDGET, clean_exec_output, priority_aware_truncate,
+                    };
+                    let clean = clean_exec_output(&partial);
+                    let truncated = priority_aware_truncate(&clean, EXEC_OUTPUT_BUDGET);
+                    ToolExecutionResult::tool_error(format!(
+                        "Command timed out after {}ms. Partial output:\n{}",
+                        timeout_ms, truncated
+                    ))
+                }
             }
         }
     }
@@ -309,6 +339,26 @@ impl Tool for BashTool {
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+/// Drain all buffered chunks from the partial output channel into a single string.
+/// Keeps stdout and stderr separated with the same delimiter convention used elsewhere.
+fn collect_partial_output(mut rx: tokio::sync::mpsc::Receiver<(String, String)>) -> String {
+    let mut stdout_buf = String::new();
+    let mut stderr_buf = String::new();
+    while let Ok((stdout, stderr)) = rx.try_recv() {
+        stdout_buf.push_str(&stdout);
+        stderr_buf.push_str(&stderr);
+    }
+    let mut partial = stdout_buf;
+    if !stderr_buf.is_empty() {
+        if !partial.is_empty() && !partial.ends_with('\n') {
+            partial.push('\n');
+        }
+        partial.push_str("--- stderr ---\n");
+        partial.push_str(&stderr_buf);
+    }
+    partial
 }
 
 // ============================================================================
