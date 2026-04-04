@@ -73,7 +73,21 @@ Exec tools (bash, daytona_exec, e2b_exec, deno_exec, sprites_exec, docker_exec) 
 The pipeline:
 1. **Strip ANSI** — remove SGR, CSI, OSC escape sequences
 2. **Collapse CR lines** — `\r`-overwritten lines (progress bars) reduced to final content
-3. **Middle-truncate** — 20% head / 80% tail split at 16 KiB budget (errors cluster at the end)
+3. **Truncate** — priority-aware truncation at the budget determined by the `output` verbosity parameter
+
+### Output Verbosity (EVE-236)
+
+All exec tools accept an `output` parameter controlling how much output is returned to the LLM:
+
+| Mode | Budget | When to use |
+|------|--------|-------------|
+| `silent` | ~200 B | Exit code + line count only — fire-and-forget commands |
+| `concise` | ~2 KiB | Tail ~30 lines — builds, installs, known-good commands (**default**) |
+| `normal` | ~8 KiB | General use, debugging |
+| `verbose` | ~16 KiB | Test failures, error investigation |
+| `full` | unlimited | Raw output, no truncation — when the LLM needs every line |
+
+Default is `concise`. Full logs are always persisted to `/.exec-logs/` via `tool_output_persistence` and readable with `read_file`. See `crates/core/src/tool_output_sanitizer.rs` for budget constants and `output_verbosity_budget()`.
 
 This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 

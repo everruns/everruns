@@ -346,7 +346,8 @@ impl Tool for DaytonaExecTool {
                 "timeout": {
                     "type": "integer",
                     "description": "Timeout in milliseconds (optional, default: 300000)"
-                }
+                },
+                "output": everruns_core::tool_output_sanitizer::output_verbosity_schema()
             },
             "required": ["sandbox_id", "command"],
             "additionalProperties": false
@@ -381,6 +382,10 @@ impl Tool for DaytonaExecTool {
             Err(e) => return e,
         };
         let cwd = arguments.get("cwd").and_then(|v| v.as_str());
+        let output_mode = arguments
+            .get("output")
+            .and_then(|v| v.as_str())
+            .unwrap_or("concise");
         let timeout = arguments
             .get("timeout")
             .and_then(|v| v.as_u64())
@@ -446,10 +451,14 @@ impl Tool for DaytonaExecTool {
                 }
                 {
                     use everruns_core::tool_output_sanitizer::{
-                        EXEC_OUTPUT_BUDGET, clean_exec_output, priority_aware_truncate,
+                        clean_exec_output, output_verbosity_budget, priority_aware_truncate,
                     };
                     let clean_output = clean_exec_output(&result.result);
-                    let output = priority_aware_truncate(&clean_output, EXEC_OUTPUT_BUDGET);
+                    let output = if let Some(budget) = output_verbosity_budget(output_mode) {
+                        priority_aware_truncate(&clean_output, budget)
+                    } else {
+                        clean_output.clone()
+                    };
                     let raw = clean_output;
                     ToolExecutionResult::success_with_raw_output(
                         json!({

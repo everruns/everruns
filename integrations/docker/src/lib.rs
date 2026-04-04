@@ -332,7 +332,8 @@ impl Tool for DockerExecTool {
                         "image": { "type": "string" },
                         "working_dir": { "type": "string" }
                     }
-                }
+                },
+                "output": everruns_core::tool_output_sanitizer::output_verbosity_schema()
             },
             "required": ["command"],
             "additionalProperties": false
@@ -371,6 +372,10 @@ impl Tool for DockerExecTool {
             .get("working_dir")
             .and_then(|v| v.as_str())
             .map(String::from);
+        let output_mode = arguments
+            .get("output")
+            .and_then(|v| v.as_str())
+            .unwrap_or("concise");
 
         let name = container_name(&context.session_id);
 
@@ -411,12 +416,18 @@ impl Tool for DockerExecTool {
         let stderr_raw = String::from_utf8_lossy(&output.stderr);
 
         use everruns_core::tool_output_sanitizer::{
-            EXEC_OUTPUT_BUDGET, clean_exec_output, priority_aware_truncate,
+            clean_exec_output, output_verbosity_budget, priority_aware_truncate,
         };
         let clean_stdout = clean_exec_output(&stdout_raw);
         let clean_stderr = clean_exec_output(&stderr_raw);
-        let stdout = priority_aware_truncate(&clean_stdout, EXEC_OUTPUT_BUDGET);
-        let stderr = priority_aware_truncate(&clean_stderr, 4096);
+        let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
+            (
+                priority_aware_truncate(&clean_stdout, budget),
+                priority_aware_truncate(&clean_stderr, budget.min(4096)),
+            )
+        } else {
+            (clean_stdout.clone(), clean_stderr.clone())
+        };
         let mut raw = clean_stdout;
         if !clean_stderr.is_empty() {
             raw.push_str("\n--- stderr ---\n");

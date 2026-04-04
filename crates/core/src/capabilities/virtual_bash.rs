@@ -74,17 +74,23 @@ static TOOL_SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
 static TOOL_INPUT_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
     let mut schema = BASHKIT_TOOL.input_schema();
     // Add everruns-specific working_dir param only if bashkit does not already define it.
-    if let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut())
-        && !props.contains_key("working_dir")
-    {
-        props.insert(
-            "working_dir".to_string(),
-            json!({
-                "type": "string",
-                "default": "/workspace",
-                "description": "Working directory for command execution"
-            }),
-        );
+    if let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut()) {
+        if !props.contains_key("working_dir") {
+            props.insert(
+                "working_dir".to_string(),
+                json!({
+                    "type": "string",
+                    "default": "/workspace",
+                    "description": "Working directory for command execution"
+                }),
+            );
+        }
+        if !props.contains_key("output") {
+            props.insert(
+                "output".to_string(),
+                crate::tool_output_sanitizer::output_verbosity_schema(),
+            );
+        }
     }
     schema
 });
@@ -204,6 +210,11 @@ impl Tool for BashTool {
             .unwrap_or(30000)
             .min(60000);
 
+        let output_mode = arguments
+            .get("output")
+            .and_then(|v| v.as_str())
+            .unwrap_or("concise");
+
         let file_store = match &context.file_store {
             Some(store) => store.clone(),
             None => {
@@ -287,12 +298,18 @@ impl Tool for BashTool {
         match result {
             Ok(Ok(output)) => {
                 use crate::tool_output_sanitizer::{
-                    EXEC_OUTPUT_BUDGET, clean_exec_output, priority_aware_truncate,
+                    clean_exec_output, output_verbosity_budget, priority_aware_truncate,
                 };
                 let clean_stdout = clean_exec_output(&output.stdout);
                 let clean_stderr = clean_exec_output(&output.stderr);
-                let stdout = priority_aware_truncate(&clean_stdout, EXEC_OUTPUT_BUDGET);
-                let stderr = priority_aware_truncate(&clean_stderr, 4096);
+                let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
+                    (
+                        priority_aware_truncate(&clean_stdout, budget),
+                        priority_aware_truncate(&clean_stderr, budget.min(4096)),
+                    )
+                } else {
+                    (clean_stdout.clone(), clean_stderr.clone())
+                };
                 // Build raw output for persistence hook (cleaned but not truncated)
                 let mut raw = clean_stdout;
                 if !clean_stderr.is_empty() {
@@ -327,10 +344,12 @@ impl Tool for BashTool {
                     ))
                 } else {
                     use crate::tool_output_sanitizer::{
-                        EXEC_OUTPUT_BUDGET, clean_exec_output, priority_aware_truncate,
+                        VERBOSE_BUDGET, clean_exec_output, output_verbosity_budget,
+                        priority_aware_truncate,
                     };
                     let clean = clean_exec_output(&partial);
-                    let truncated = priority_aware_truncate(&clean, EXEC_OUTPUT_BUDGET);
+                    let budget = output_verbosity_budget(output_mode).unwrap_or(VERBOSE_BUDGET);
+                    let truncated = priority_aware_truncate(&clean, budget);
                     ToolExecutionResult::tool_error(format!(
                         "Command timed out after {}ms. Partial output:\n{}",
                         timeout_ms, truncated
