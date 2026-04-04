@@ -219,6 +219,9 @@ impl Tool for BashTool {
             file_store,
         ));
 
+        // Resolve locale from context (defaults to en-US).
+        let locale = context.locale.as_deref().unwrap_or("en-US");
+
         // Configure bash with resource limits (uses shared execution_limits)
         let mut bash = Bash::builder()
             .fs(session_fs)
@@ -229,6 +232,7 @@ impl Tool for BashTool {
             .env("SHELL", "/bin/bash")
             .env("PATH", "/usr/local/bin:/usr/bin:/bin")
             .env("WORKSPACE", "/workspace")
+            .env("LANG", locale)
             .limits(execution_limits())
             .build();
 
@@ -1280,6 +1284,38 @@ mod tests {
             .await;
         if let ToolExecutionResult::Success(output) = result {
             assert_eq!(output["stdout"], "everruns\n");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_lang_env_default() {
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        // Default locale (None) should set LANG to en-US
+        let result = tool
+            .execute_with_context(json!({"commands": "echo $LANG"}), &context)
+            .await;
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "en-US\n");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_lang_env_from_context_locale() {
+        let (mut context, _) = create_context_with_mock_store();
+        context.locale = Some("uk-UA".to_string());
+        let tool = BashTool;
+
+        let result = tool
+            .execute_with_context(json!({"commands": "echo $LANG"}), &context)
+            .await;
+        if let ToolExecutionResult::Success(output) = result {
+            assert_eq!(output["stdout"], "uk-UA\n");
         } else {
             panic!("Expected success");
         }
