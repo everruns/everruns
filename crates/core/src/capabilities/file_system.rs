@@ -44,6 +44,93 @@ fn image_media_type(path: &str) -> Option<&'static str> {
 const WORKSPACE_PREFIX: &str = "/workspace";
 const MAX_EDIT_DIFF_CHARS: usize = 16_000;
 
+// ============================================================================
+// Content-type detection (EVE-249)
+// ============================================================================
+
+/// Content type categories for read_file default behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ContentType {
+    /// Source code, markdown, config — standard 2000-line default
+    Text,
+    /// Log files — tail-biased (last 500 lines)
+    Log,
+    /// CSV/TSV data — 100-line default with header prepend
+    Csv,
+    /// Known binary formats — metadata only (no inline content)
+    Binary,
+    /// Minified files — first 500 chars only
+    Minified,
+}
+
+/// Read mode for content-type-aware defaults.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadMode {
+    /// Read from the beginning (standard)
+    FromOffset,
+    /// Read from the end (tail-biased for logs)
+    FromEnd,
+    /// Return metadata only, no content
+    MetadataOnly,
+}
+
+/// Detect content type from file extension.
+fn content_type_from_extension(path: &str) -> ContentType {
+    let lower = path.to_lowercase();
+
+    // Check minified first (.min.js, .min.css) before generic .js/.css
+    if lower.ends_with(".min.js") || lower.ends_with(".min.css") {
+        return ContentType::Minified;
+    }
+
+    // Log files
+    if lower.ends_with(".log") || lower.ends_with(".out") {
+        return ContentType::Log;
+    }
+
+    // CSV/TSV data files
+    if lower.ends_with(".csv") || lower.ends_with(".tsv") {
+        return ContentType::Csv;
+    }
+
+    // Binary formats (images already handled separately via image_media_type)
+    const BINARY_EXTENSIONS: &[&str] = &[
+        ".wasm", ".zip", ".tar", ".gz", ".bz2", ".xz", ".zst", ".7z", ".rar", ".exe", ".dll",
+        ".so", ".dylib", ".bin", ".dat", ".o", ".a", ".pyc", ".class", ".woff", ".woff2", ".ttf",
+        ".otf", ".eot", ".ico", ".bmp", ".tiff", ".tif", ".psd", ".mp3", ".mp4", ".avi", ".mov",
+        ".flv", ".wmv", ".pdf",
+    ];
+    if BINARY_EXTENSIONS.iter().any(|ext| lower.ends_with(ext)) {
+        return ContentType::Binary;
+    }
+
+    ContentType::Text
+}
+
+/// Resolve effective limit and read mode based on content type.
+/// Returns (limit, read_mode). Explicit user values always win.
+fn effective_read_defaults(
+    path: &str,
+    explicit_offset: bool,
+    explicit_limit: bool,
+) -> (usize, ReadMode) {
+    if explicit_limit && explicit_offset {
+        // User provided both — don't override anything
+        return (0, ReadMode::FromOffset); // limit is already set by caller
+    }
+    match content_type_from_extension(path) {
+        ContentType::Log if !explicit_offset => (500, ReadMode::FromEnd),
+        ContentType::Log => (500, ReadMode::FromOffset),
+        ContentType::Csv => (100, ReadMode::FromOffset),
+        ContentType::Binary => (0, ReadMode::MetadataOnly),
+        ContentType::Minified => (20, ReadMode::FromOffset), // ~20 lines, capped by byte limit
+        ContentType::Text => (
+            crate::tool_output_sanitizer::READ_FILE_DEFAULT_LIMIT,
+            ReadMode::FromOffset,
+        ),
+    }
+}
+
 /// Normalize a file path by stripping the /workspace prefix.
 /// This ensures both file_system and virtual_bash capabilities use the same
 /// path format in the session file store.
@@ -423,7 +510,7 @@ impl Tool for ReadFileTool {
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Max lines to return. Default: 2000",
+                    "description": "Max lines to return. Default varies by file type: 2000 (source/text), 500 (logs, tail-biased), 100 (CSV/TSV with header). Explicit value always wins.",
                     "default": 2000,
                     "minimum": 1
                 }
@@ -457,11 +544,14 @@ impl Tool for ReadFileTool {
             None => return ToolExecutionResult::tool_error("Missing required parameter: path"),
         };
 
-        let offset = arguments
+        let explicit_offset = arguments.get("offset").and_then(|v| v.as_u64()).is_some();
+        let explicit_limit = arguments.get("limit").and_then(|v| v.as_u64()).is_some();
+
+        let mut offset = arguments
             .get("offset")
             .and_then(|v| v.as_u64())
             .unwrap_or(0) as usize;
-        let limit = arguments
+        let mut limit = arguments
             .get("limit")
             .and_then(|v| v.as_u64())
             .unwrap_or(READ_FILE_DEFAULT_LIMIT as u64) as usize;
@@ -534,7 +624,46 @@ impl Tool for ReadFileTool {
                 }
 
                 let raw_content = file.content.as_deref().unwrap_or("");
+
+                // Apply content-type-aware defaults (EVE-249)
+                let (ct_limit, read_mode) =
+                    effective_read_defaults(&normalized_path, explicit_offset, explicit_limit);
+                let content_type = content_type_from_extension(&normalized_path);
+
+                // Metadata-only for known binary extensions
+                if read_mode == ReadMode::MetadataOnly {
+                    return ToolExecutionResult::success(json!({
+                        "path": display_path,
+                        "content_type": "binary",
+                        "size_bytes": file.size_bytes,
+                        "content_hash": content_hash,
+                        "note": "Binary file — use a different tool or download to inspect."
+                    }));
+                }
+
+                // Apply content-type defaults when user didn't specify
+                if !explicit_limit {
+                    limit = ct_limit;
+                }
+
+                // Tail-biased reading for log files
+                if read_mode == ReadMode::FromEnd && !explicit_offset {
+                    let total = raw_content.lines().count();
+                    offset = total.saturating_sub(limit);
+                }
+
                 let (formatted, total_lines, truncated) = format_lines(raw_content, offset, limit);
+
+                // CSV: prepend header row when reading from an offset past line 0
+                let formatted = if content_type == ContentType::Csv && offset > 0 {
+                    if let Some(header) = raw_content.lines().next() {
+                        format!("1|{header}\n{formatted}")
+                    } else {
+                        formatted
+                    }
+                } else {
+                    formatted
+                };
 
                 let shown_count = total_lines.saturating_sub(offset).min(limit);
                 let (start_line, end_line) = if shown_count == 0 {
@@ -543,7 +672,7 @@ impl Tool for ReadFileTool {
                     (offset + 1, offset + shown_count)
                 };
 
-                ToolExecutionResult::success(json!({
+                let mut result = json!({
                     "path": display_path,
                     "content": formatted,
                     "total_lines": total_lines,
@@ -554,7 +683,25 @@ impl Tool for ReadFileTool {
                     "truncated": truncated,
                     "size_bytes": file.size_bytes,
                     "content_hash": content_hash
-                }))
+                });
+
+                // Add content_type and read_mode metadata (EVE-249)
+                if content_type != ContentType::Text {
+                    let ct_label = match content_type {
+                        ContentType::Log => "log",
+                        ContentType::Csv => "csv",
+                        ContentType::Minified => "minified",
+                        _ => "text",
+                    };
+                    if let Some(obj) = result.as_object_mut() {
+                        obj.insert("content_type".to_string(), json!(ct_label));
+                        if read_mode == ReadMode::FromEnd {
+                            obj.insert("read_mode".to_string(), json!("tail"));
+                        }
+                    }
+                }
+
+                ToolExecutionResult::success(result)
             }
             Ok(None) => {
                 ToolExecutionResult::tool_error(format!("File not found: {}", display_path))
@@ -2362,5 +2509,98 @@ mod tests {
         assert_eq!(image_media_type("/workspace/readme.txt"), None);
         assert_eq!(image_media_type("/workspace/data.json"), None);
         assert_eq!(image_media_type("/workspace/script.py"), None);
+    }
+
+    // EVE-249: Content-type detection tests
+    #[test]
+    fn test_content_type_log_files() {
+        assert_eq!(content_type_from_extension("/app.log"), ContentType::Log);
+        assert_eq!(content_type_from_extension("/build.out"), ContentType::Log);
+        assert_eq!(content_type_from_extension("/debug.LOG"), ContentType::Log);
+    }
+
+    #[test]
+    fn test_content_type_csv_files() {
+        assert_eq!(content_type_from_extension("/data.csv"), ContentType::Csv);
+        assert_eq!(content_type_from_extension("/export.tsv"), ContentType::Csv);
+        assert_eq!(content_type_from_extension("/data.CSV"), ContentType::Csv);
+    }
+
+    #[test]
+    fn test_content_type_binary_files() {
+        assert_eq!(
+            content_type_from_extension("/app.wasm"),
+            ContentType::Binary
+        );
+        assert_eq!(content_type_from_extension("/lib.so"), ContentType::Binary);
+        assert_eq!(
+            content_type_from_extension("/archive.zip"),
+            ContentType::Binary
+        );
+        assert_eq!(
+            content_type_from_extension("/font.woff2"),
+            ContentType::Binary
+        );
+    }
+
+    #[test]
+    fn test_content_type_minified_files() {
+        assert_eq!(
+            content_type_from_extension("/bundle.min.js"),
+            ContentType::Minified
+        );
+        assert_eq!(
+            content_type_from_extension("/styles.min.css"),
+            ContentType::Minified
+        );
+    }
+
+    #[test]
+    fn test_content_type_text_files() {
+        assert_eq!(content_type_from_extension("/main.rs"), ContentType::Text);
+        assert_eq!(content_type_from_extension("/index.ts"), ContentType::Text);
+        assert_eq!(content_type_from_extension("/README.md"), ContentType::Text);
+        assert_eq!(
+            content_type_from_extension("/config.json"),
+            ContentType::Text
+        );
+    }
+
+    #[test]
+    fn test_content_type_minified_before_generic_js() {
+        // .min.js should be Minified, not Text
+        assert_eq!(
+            content_type_from_extension("/bundle.min.js"),
+            ContentType::Minified
+        );
+        // Plain .js should be Text
+        assert_eq!(content_type_from_extension("/app.js"), ContentType::Text);
+    }
+
+    #[test]
+    fn test_effective_read_defaults_explicit_wins() {
+        // When user provides both offset and limit, don't override
+        let (_, mode) = effective_read_defaults("/app.log", true, true);
+        assert_eq!(mode, ReadMode::FromOffset);
+    }
+
+    #[test]
+    fn test_effective_read_defaults_log_tail() {
+        let (limit, mode) = effective_read_defaults("/app.log", false, false);
+        assert_eq!(limit, 500);
+        assert_eq!(mode, ReadMode::FromEnd);
+    }
+
+    #[test]
+    fn test_effective_read_defaults_csv() {
+        let (limit, mode) = effective_read_defaults("/data.csv", false, false);
+        assert_eq!(limit, 100);
+        assert_eq!(mode, ReadMode::FromOffset);
+    }
+
+    #[test]
+    fn test_effective_read_defaults_binary() {
+        let (_, mode) = effective_read_defaults("/app.wasm", false, false);
+        assert_eq!(mode, ReadMode::MetadataOnly);
     }
 }
