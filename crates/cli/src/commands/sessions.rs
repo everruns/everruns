@@ -3,7 +3,7 @@
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use everruns_sdk::{CreateSessionRequest, Everruns};
+use everruns_sdk::{CreateBudgetRequest, CreateSessionRequest, Everruns};
 use futures::StreamExt;
 use std::collections::HashMap;
 
@@ -92,8 +92,6 @@ pub async fn run(
         } => {
             create(
                 client,
-                api_url,
-                api_key,
                 output,
                 quiet,
                 harness,
@@ -119,8 +117,6 @@ pub async fn run(
 #[allow(clippy::too_many_arguments)]
 async fn create(
     client: &Everruns,
-    api_url: &str,
-    api_key: &str,
     output: OutputFormat,
     quiet: bool,
     harness_id: Option<String>,
@@ -168,17 +164,14 @@ async fn create(
     // Create budgets after session creation
     let mut created_budgets = Vec::new();
     for spec in &budget_specs {
-        let budget = create_budget(
-            api_url,
-            api_key,
-            &session.id,
-            &spec.currency,
-            spec.limit,
-            spec.soft_limit,
-        )
-        .await
-        .with_context(|| format!("Session {} created but budget creation failed", session.id))?;
-        created_budgets.push(budget);
+        let mut req = CreateBudgetRequest::new("session", &session.id, &spec.currency, spec.limit);
+        if let Some(soft) = spec.soft_limit {
+            req = req.soft_limit(soft);
+        }
+        let budget = client.budgets().create(req).await.with_context(|| {
+            format!("Session {} created but budget creation failed", session.id)
+        })?;
+        created_budgets.push(serde_json::to_value(&budget)?);
     }
 
     if output.is_text() {
@@ -230,47 +223,6 @@ async fn create(
     }
 
     Ok(())
-}
-
-/// Create a budget for a session via the budgets API.
-// TODO(sdk): Replace with client.budgets().create() when SDK adds budget support.
-// Tracked: everruns/sdk#72, EVE-247
-async fn create_budget(
-    api_url: &str,
-    api_key: &str,
-    session_id: &str,
-    currency: &str,
-    limit: f64,
-    soft_limit: Option<f64>,
-) -> Result<serde_json::Value> {
-    let url = format!("{}/v1/budgets", api_url.trim_end_matches('/'));
-    let mut body = serde_json::json!({
-        "subject_type": "session",
-        "subject_id": session_id,
-        "currency": currency,
-        "limit": limit,
-    });
-    if let Some(soft) = soft_limit {
-        body["soft_limit"] = serde_json::json!(soft);
-    }
-
-    let resp = reqwest::Client::new()
-        .post(&url)
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .await
-        .context("Failed to create budget")?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Budget creation failed ({}): {}", status, text);
-    }
-
-    resp.json::<serde_json::Value>()
-        .await
-        .context("Failed to parse budget response")
 }
 
 /// Parsed budget specification from `--budget-limit` and `--budget-soft-limit`.
