@@ -45,7 +45,10 @@ pub fn generate_outline(content: &str, path: &str) -> Vec<OutlineItem> {
         None => return vec![],
     };
 
-    let lang_id = language_id(path);
+    let lang_id = match language_id(path) {
+        Some(id) => id,
+        None => return vec![],
+    };
     extract_outline(tree.root_node(), content, lang_id)
 }
 
@@ -120,24 +123,24 @@ enum LangId {
 }
 
 #[cfg(feature = "tree-sitter-outlines")]
-fn language_id(path: &str) -> LangId {
+fn language_id(path: &str) -> Option<LangId> {
     let lower = path.to_lowercase();
     if lower.ends_with(".rs") {
-        LangId::Rust
+        Some(LangId::Rust)
     } else if lower.ends_with(".tsx") {
-        LangId::Tsx
-    } else if lower.ends_with(".ts") {
-        LangId::TypeScript
+        Some(LangId::Tsx)
+    } else if lower.ends_with(".ts") || lower.ends_with(".mts") {
+        Some(LangId::TypeScript)
     } else if lower.ends_with(".jsx")
         || lower.ends_with(".js")
         || lower.ends_with(".mjs")
         || lower.ends_with(".cjs")
     {
-        LangId::JavaScript
+        Some(LangId::JavaScript)
     } else if lower.ends_with(".py") {
-        LangId::Python
+        Some(LangId::Python)
     } else {
-        LangId::Rust // fallback, won't match
+        None
     }
 }
 
@@ -445,7 +448,15 @@ fn extract_ts_item(node: tree_sitter::Node, source: &str, items: &mut Vec<Outlin
                     let name = find_child_by_kind(child, "identifier")
                         .map(|n| node_text(n, source).to_string())
                         .unwrap_or_default();
-                    let sig = ts_fn_signature(value, source);
+                    let raw_sig = ts_fn_signature(value, source);
+                    // Prepend variable name if signature is just params (arrow fn)
+                    let sig = if !name.is_empty()
+                        && (raw_sig.starts_with('(') || raw_sig.starts_with("async ("))
+                    {
+                        format!("const {name} = {raw_sig}")
+                    } else {
+                        raw_sig
+                    };
                     items.push(OutlineItem {
                         kind: "function",
                         name,
