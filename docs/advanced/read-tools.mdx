@@ -1,0 +1,188 @@
+---
+title: Read Tools & Context Economy
+description: How Everruns read-category tools minimize context consumption while maximizing agent situational awareness — parameters, pagination, content-type defaults, and exec output retrieval
+sidebar:
+  order: 15
+---
+
+Agents spend most of their context window on tool results. A single `cat` of a large file can consume thousands of tokens that crowd out reasoning space. Everruns read-category tools are designed to **minimize context consumption while maximizing agent situational awareness**.
+
+Three tools form the read category:
+
+| Tool | Purpose |
+|------|---------|
+| `read_file` | Read file content with offset/limit pagination and line numbers |
+| `grep_files` | Search file contents by regex — returns matching lines with paths and line numbers |
+| `list_directory` | List files and directories with metadata (size, type) |
+
+Together they implement a **search → locate → read** workflow: `grep_files` finds where something is, `read_file` reads the relevant section, and `list_directory` provides structural context.
+
+## read_file
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | string | *(required)* | Absolute file path (e.g., `/workspace/src/main.rs`) |
+| `offset` | integer | 0 | Starting line number (0-indexed) |
+| `limit` | integer | 2000 | Maximum lines to return |
+
+### Response
+
+```json
+{
+  "path": "/workspace/src/main.rs",
+  "content": "1|use std::io;\n2|use serde::Serialize;\n3|\n4|fn main() {\n...",
+  "total_lines": 450,
+  "lines_shown": { "start": 1, "end": 450 },
+  "truncated": false,
+  "content_type": "source",
+  "read_mode": "offset",
+  "size_bytes": 12480,
+  "content_hash": "sha256:a1b2c3..."
+}
+```
+
+Key response fields:
+
+- **`content`** — Line-numbered output in compact `N|content` format. The `N|` prefix uses minimal bytes while giving agents precise line references for edits.
+- **`total_lines`** — Total lines in the file. Use this to know if more content exists beyond the current window.
+- **`lines_shown`** — 1-based start/end of the returned window.
+- **`truncated`** — `true` if more content exists beyond the returned window.
+- **`content_type`** — Detected content type (e.g., `log`, `csv`, `minified`, `source`). Reflects the heuristic applied.
+- **`read_mode`** — `tail` when reading log files from the end; `offset` otherwise.
+- **`content_hash`** — SHA-256 hash of the file content, used by `edit_file` for compare-and-set safety.
+
+### Content-Type Defaults
+
+When the agent doesn't specify `offset` or `limit`, `read_file` adjusts defaults based on file extension:
+
+| Content Type | Extensions | Default Limit | Read Mode | Rationale |
+|-------------|-----------|---------------|-----------|-----------|
+| Source code | `.rs`, `.ts`, `.js`, `.py`, etc. | 2000 lines | From offset | Standard — agent usually needs context around a region |
+| Log files | `.log`, `.out` | 500 lines | **From end (tail)** | Errors cluster at the end — recent output matters most |
+| CSV/TSV data | `.csv`, `.tsv` | 100 lines | From offset | Schema + sample rows; header always included |
+| Config | `.json`, `.yaml`, `.yml`, `.toml` | 2000 lines | From offset | Usually need full structure |
+| Minified | `.min.js`, `.min.css` | 20 lines | From offset | Single-line files would blow token budgets |
+| Text | `.md`, `.txt`, `.rst` | 2000 lines | From offset | Standard |
+
+**Explicit parameters override only the defaults they control.** An explicit `limit` overrides the content-type default limit. An explicit `offset` does **not** change the default limit by itself; it only controls where reading starts, and for log files it disables the default tail-biased read mode in favor of reading from that offset. If both `offset` and `limit` are provided, both behaviors are explicitly controlled.
+
+:::note
+For CSV files, the header row (line 1) is always included in the response, even when reading with an offset. This ensures the agent always has column names for context.
+:::
+
+### Image and Binary Handling
+
+- **Images** (`.png`, `.jpg`, `.gif`, `.webp`) are returned as **native image content blocks**, not text. The agent sees the image directly.
+- **Binary files** (base64-encoded) are returned with `"encoding": "base64"` and no line formatting.
+- A **hard byte cap** (50 KB) acts as a safety net for pathological files like minified bundles.
+
+## Pagination
+
+For files larger than the default window, page through with `offset` and `limit`:
+
+```json
+// First read — gets lines 1-2000
+{ "path": "/workspace/big_file.rs" }
+
+// Response shows total_lines: 5000, truncated: true
+// Continue reading:
+{ "path": "/workspace/big_file.rs", "offset": 2000, "limit": 2000 }
+
+// Gets lines 2001-4000. Continue until truncated: false.
+```
+
+The 2000-line default covers most source files entirely in a single read. For the rare cases where files are larger, the `total_lines` field tells the agent exactly how much remains.
+
+## Context Economy Best Practices
+
+The system prompt guides agents toward efficient reading patterns:
+
+1. **Search before read** — Use `grep_files` to find relevant lines, then `read_file` with a targeted `offset` around the match. This avoids reading thousands of irrelevant lines.
+
+2. **Don't re-read** — Files already in conversation context don't need to be read again. The agent should reference prior reads.
+
+3. **Check `total_lines`** — When a read is truncated, the agent knows how much remains and can decide whether to continue or search within the unread portion.
+
+4. **Use offset to continue** — After a truncated read, use `offset` to pick up where the previous read left off.
+
+## Exec Output as Readable Files
+
+When sandbox tools (`bash`, `daytona_exec`, `e2b_exec`, etc.) produce output, the inline result is truncated based on the `output` verbosity parameter (default: `concise` ~2 KiB). But the **full output is always persisted** to the session filesystem.
+
+### How It Works
+
+The `tool_output_persistence` capability (included in the Generic harness) writes full output before truncation:
+
+- **stdout** → `/.outputs/{tool_call_id}.stdout`
+- **stderr** → `/.outputs/{tool_call_id}.stderr`
+
+The truncated inline result includes metadata pointing to the persisted files:
+
+```json
+{
+  "stdout": "[truncated to 2 KiB — full output saved]",
+  "stderr": "",
+  "exit_code": 0,
+  "success": true,
+  "full_output": "/.outputs/call_abc123.stdout",
+  "total_lines": 8450,
+  "output_files": [
+    "/.outputs/call_abc123.stdout",
+    "/.outputs/call_abc123.stderr"
+  ]
+}
+```
+
+The agent can then `read_file` the persisted output selectively:
+
+```json
+// Read last 100 lines of build output
+{ "path": "/.outputs/call_abc123.stdout", "offset": 8350, "limit": 100 }
+```
+
+### Priority-Aware Truncation
+
+When output is truncated, the system preserves error-relevant content. Lines matching error patterns (`error`, `Error`, `FAILED`, `panicked`, stack traces) are prioritized over noise like `Compiling...` or `Downloading...`. This means the inline 2 KiB concise output is more likely to contain the diagnostically useful parts.
+
+### Output Verbosity Modes
+
+All exec tools accept an `output` parameter:
+
+| Mode | Budget | Use case |
+|------|--------|----------|
+| `silent` | ~200 B | Fire-and-forget commands |
+| `concise` | ~2 KiB | Builds, installs (**default**) |
+| `normal` | ~8 KiB | General debugging |
+| `verbose` | ~16 KiB | Test failures, error investigation |
+| `full` | unlimited | When the agent needs every line |
+
+## Content Hash and Edit Safety
+
+Every `read_file` response includes a `content_hash` (SHA-256). The `edit_file` tool requires this hash via its `expected_hash` parameter — if the file has changed since the read, the edit is rejected.
+
+This **compare-and-set** mechanism prevents stale edits in long conversations where the agent may have read a file many turns ago and the file has since been modified (by another tool call or external process).
+
+```json
+// read_file returns content_hash
+{ "content_hash": "sha256:a1b2c3..." }
+
+// edit_file uses it as expected_hash — rejected if file changed
+{
+  "path": "/workspace/src/main.rs",
+  "expected_hash": "sha256:a1b2c3...",
+  "old_text": "fn main() {",
+  "new_text": "fn main() -> Result<()> {"
+}
+```
+
+:::tip
+If an edit is rejected due to a stale hash, the agent should re-read the file to get the current content and hash, then retry the edit.
+:::
+
+## Structural Outlines
+
+:::note[Coming Soon]
+Tree-sitter structural outlines for unread file portions are planned (EVE-248). When implemented, `read_file` will include function/class/method signatures for the parts of the file outside the requested window, giving the agent structural context without reading the full file.
+:::
