@@ -672,6 +672,24 @@ impl Tool for ReadFileTool {
                     (offset + 1, offset + shown_count)
                 };
 
+                // Generate structural outline for unread portions (EVE-248)
+                let formatted = if truncated && start_line > 0 {
+                    let outline_items =
+                        crate::outline::generate_outline(raw_content, &normalized_path);
+                    if let Some(outline_text) = crate::outline::format_outline(
+                        &outline_items,
+                        start_line,
+                        end_line,
+                        total_lines,
+                    ) {
+                        format!("{formatted}{outline_text}")
+                    } else {
+                        formatted
+                    }
+                } else {
+                    formatted
+                };
+
                 let mut result = json!({
                     "path": display_path,
                     "content": formatted,
