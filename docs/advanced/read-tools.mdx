@@ -183,6 +183,39 @@ If an edit is rejected due to a stale hash, the agent should re-read the file to
 
 ## Structural Outlines
 
-:::note[Coming Soon]
-Tree-sitter structural outlines for unread file portions are planned (EVE-248). When implemented, `read_file` will include function/class/method signatures for the parts of the file outside the requested window, giving the agent structural context without reading the full file.
-:::
+When `read_file` returns a truncated result, the response includes a **structural outline** of the unread portions — function/class/method signatures without bodies. The agent can orient itself in any file with a single partial read.
+
+```
+1|use std::collections::HashMap;
+2|use serde::Serialize;
+... (lines read normally) ...
+100|    let result = process(&input);
+
+--- Outline of lines 101-500 (not shown) ---
+// L105: fn process(input: &Input) -> Result<Output> { ... }
+// L180: fn validate(output: &Output) -> bool { ... }
+// L220: struct Config { ... }
+// L235: impl Config { ... }
+  // L236: fn load(path: &str) -> Result<Self> { ... }
+  // L270: fn merge(&mut self, other: &Config) { ... }
+// L310: #[cfg(test)] mod tests { ... }
+```
+
+### Supported Languages
+
+| Language | Extensions |
+|----------|-----------|
+| Rust | `.rs` |
+| TypeScript | `.ts`, `.tsx`, `.mts` |
+| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` |
+| Python | `.py` |
+
+### What Gets Outlined
+
+- **Functions/methods** — name, parameters, return type
+- **Structs/classes/enums** — name
+- **Impl blocks / trait implementations** — with nested methods
+- **Modules** — including `#[cfg(test)]` detection
+- **Interfaces and type aliases** (TypeScript)
+
+For unsupported languages, no outline is generated — the response still works, just without structural context for unread portions.

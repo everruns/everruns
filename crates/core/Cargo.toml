@@ -67,6 +67,12 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 # Virtual bash interpreter
 bashkit = { git = "https://github.com/everruns/bashkit", tag = "v0.1.14" }
 
+# Tree-sitter for structural outlines (EVE-248)
+tree-sitter = { version = "0.24", optional = true }
+tree-sitter-rust = { version = "0.23", optional = true }
+tree-sitter-typescript = { version = "0.23", optional = true }
+tree-sitter-python = { version = "0.23", optional = true }
+
 # TLS crypto provider (must be installed before any rustls usage)
 rustls.workspace = true
 
@@ -97,6 +103,7 @@ everruns-openui = { path = "../openui" }
 default = ["llm-tests"]
 openapi = ["utoipa"]
 sqlx = ["dep:sqlx"]
+tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
 llm-tests = []  # LLM integration tests (requires API keys)
 
 [dev-dependencies]
