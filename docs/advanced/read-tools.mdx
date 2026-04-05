@@ -34,8 +34,8 @@ Together they implement a **search → locate → read** workflow: `grep_files` 
   "path": "/workspace/src/main.rs",
   "content": "1|use std::io;\n2|use serde::Serialize;\n3|\n4|fn main() {\n...",
   "total_lines": 450,
-  "lines_shown": { "start": 1, "end": 200 },
-  "truncated": true,
+  "lines_shown": { "start": 1, "end": 450 },
+  "truncated": false,
   "content_type": "source",
   "read_mode": "offset",
   "size_bytes": 12480,
@@ -49,8 +49,8 @@ Key response fields:
 - **`total_lines`** — Total lines in the file. Use this to know if more content exists beyond the current window.
 - **`lines_shown`** — 1-based start/end of the returned window.
 - **`truncated`** — `true` if more content exists beyond the returned window.
-- **`content_type`** — Detected content type (`source`, `log`, `csv`, `config`, `text`, `minified`). See [Content-Type Defaults](#content-type-defaults).
-- **`read_mode`** — `offset` (read from start/offset) or `tail` (read from end, for log files).
+- **`content_type`** — Detected content type (e.g., `log`, `csv`, `minified`, `source`). Reflects the heuristic applied.
+- **`read_mode`** — `tail` when reading log files from the end; `offset` otherwise.
 - **`content_hash`** — SHA-256 hash of the file content, used by `edit_file` for compare-and-set safety.
 
 ### Content-Type Defaults
@@ -66,7 +66,7 @@ When the agent doesn't specify `offset` or `limit`, `read_file` adjusts defaults
 | Minified | `.min.js`, `.min.css` | 20 lines | From offset | Single-line files would blow token budgets |
 | Text | `.md`, `.txt`, `.rst` | 2000 lines | From offset | Standard |
 
-**Explicit parameters always win.** If the agent passes `offset` or `limit`, content-type defaults are bypassed entirely.
+**Explicit parameters override only the defaults they control.** An explicit `limit` overrides the content-type default limit. An explicit `offset` does **not** change the default limit by itself; it only controls where reading starts, and for log files it disables the default tail-biased read mode in favor of reading from that offset. If both `offset` and `limit` are provided, both behaviors are explicitly controlled.
 
 :::note
 For CSV files, the header row (line 1) is always included in the response, even when reading with an offset. This ensures the agent always has column names for context.
@@ -109,7 +109,7 @@ The system prompt guides agents toward efficient reading patterns:
 
 ## Exec Output as Readable Files
 
-When sandbox tools (`bash`, `daytona_exec`, `e2b_exec`, etc.) produce output, the inline result is truncated based on the [`output` verbosity parameter](/specs/tool-execution#output-verbosity) (default: `concise` ~2 KiB). But the **full output is always persisted** to the session filesystem.
+When sandbox tools (`bash`, `daytona_exec`, `e2b_exec`, etc.) produce output, the inline result is truncated based on the `output` verbosity parameter (default: `concise` ~2 KiB). But the **full output is always persisted** to the session filesystem.
 
 ### How It Works
 
@@ -160,7 +160,7 @@ All exec tools accept an `output` parameter:
 
 ## Content Hash and Edit Safety
 
-Every `read_file` response includes a `content_hash` (SHA-256). The `edit_file` tool requires this hash as a parameter — if the file has changed since the read, the edit is rejected.
+Every `read_file` response includes a `content_hash` (SHA-256). The `edit_file` tool requires this hash via its `expected_hash` parameter — if the file has changed since the read, the edit is rejected.
 
 This **compare-and-set** mechanism prevents stale edits in long conversations where the agent may have read a file many turns ago and the file has since been modified (by another tool call or external process).
 
@@ -168,10 +168,10 @@ This **compare-and-set** mechanism prevents stale edits in long conversations wh
 // read_file returns content_hash
 { "content_hash": "sha256:a1b2c3..." }
 
-// edit_file requires it — rejected if file changed
+// edit_file uses it as expected_hash — rejected if file changed
 {
   "path": "/workspace/src/main.rs",
-  "content_hash": "sha256:a1b2c3...",
+  "expected_hash": "sha256:a1b2c3...",
   "old_text": "fn main() {",
   "new_text": "fn main() -> Result<()> {"
 }
