@@ -1164,8 +1164,8 @@ async fn test_organization_settings_harness_roundtrip() {
         .list_harnesses(org.org_id, None, false)
         .await
         .expect("Failed to list harnesses");
-    let generic_id = harnesses.iter().find(|h| h.name == "Generic").unwrap().id;
-    let base_id = harnesses.iter().find(|h| h.name == "Base").unwrap().id;
+    let generic_id = harnesses.iter().find(|h| h.name == "generic").unwrap().id;
+    let base_id = harnesses.iter().find(|h| h.name == "base").unwrap().id;
 
     backend
         .patch_organization_settings(

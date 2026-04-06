@@ -222,7 +222,7 @@ impl AppState {
                 .map(|h| h.name.clone()),
             chat_session_title: platform_definition
                 .harness_for_role(BuiltInHarnessRole::Chat)
-                .map(|h| h.name.clone()),
+                .map(|h| h.display_name.clone()),
         }
     }
 }

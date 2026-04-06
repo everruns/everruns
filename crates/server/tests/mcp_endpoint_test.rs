@@ -623,11 +623,11 @@ async fn test_mcp_execute_list_harnesses() {
         .filter_map(|h| h["name"].as_str())
         .collect();
     assert!(
-        names.iter().any(|n| n.contains("Base")),
+        names.contains(&"base"),
         "Should have Base harness"
     );
     assert!(
-        names.iter().any(|n| n.contains("Generic")),
+        names.contains(&"generic"),
         "Should have Generic harness"
     );
 }
