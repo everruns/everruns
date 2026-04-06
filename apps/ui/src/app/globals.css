@@ -245,17 +245,19 @@
 @keyframes loading-wave {
   0%,
   100% {
-    height: 4px;
+    transform: scaleY(0.286);
     opacity: 0.3;
   }
   50% {
-    height: 14px;
+    transform: scaleY(1);
     opacity: 1;
   }
 }
 
 .loading-wave-bar {
   display: block;
+  height: 14px;
+  transform-origin: bottom;
   background: hsl(var(--primary));
   animation: loading-wave 1.2s ease-in-out infinite;
 }
@@ -264,7 +266,7 @@
   background: hsl(var(--accent));
 }
 
-/* Combo wave bar — per-bar brand gradient (navy → gold light, slate → gold dark) */
+/* Combo wave bar — per-bar brand color ramp (navy → gold light, slate → gold dark) */
 .loading-wave-bar-0 {
   background: hsl(220 62% 13%);
 }

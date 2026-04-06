@@ -5,7 +5,7 @@
  *
  * Shows an animated equalizer-style wave bar while the agent is generating.
  * Uses brand colors: navy → gold in light mode, slate → gold in dark mode.
- * Relies on the `loading-wave-bar` keyframes in globals.css.
+ * Relies on the `loading-wave` keyframes in globals.css.
  */
 
 import { cn } from "@/lib/utils";
