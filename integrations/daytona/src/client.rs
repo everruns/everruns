@@ -29,6 +29,12 @@ use crate::{EXEC_POLL_INTERVAL, SANDBOX_READY_MAX_WAIT, SANDBOX_READY_POLL_INTER
 /// One session per sandbox, created on first exec, reused thereafter.
 const EXEC_SESSION_ID: &str = "everruns-exec";
 
+/// Separate session used exclusively for heartbeat probes.
+/// Using a dedicated session avoids false positives: the exec session's shell
+/// is blocked while a foreground command runs and cannot respond to a heartbeat,
+/// but a separate shell in the same sandbox can. See EVE-255.
+const HEARTBEAT_SESSION_ID: &str = "everruns-heartbeat";
+
 /// Shell-profile preamble sourced before every command.
 ///
 /// Daytona sessions use a bare (non-login) shell, so tools installed
@@ -392,16 +398,36 @@ impl DaytonaClient {
         }
     }
 
-    /// Probe session health by running a trivial command and checking if
-    /// it completes within a few seconds. Returns `true` if the session
-    /// shell is responsive, `false` if the heartbeat stalls (dead shell).
+    /// Probe sandbox health by running a trivial command in a **separate**
+    /// heartbeat session. Returns `true` if the sandbox shell environment
+    /// is functional, `false` if the probe stalls (sandbox is dead).
+    ///
+    /// We intentionally avoid probing the exec session because its shell is
+    /// blocked by the foreground command and cannot respond — leading to
+    /// false "dead session" detection for long-running commands that produce
+    /// no stdout. See EVE-255.
     async fn session_heartbeat(&self, sandbox_id: &str) -> bool {
-        // Fire a heartbeat command.
+        // Ensure the heartbeat session exists (idempotent).
+        let create_url = format!("{}/{sandbox_id}/process/session", self.toolbox_base);
+        let create_resp = self
+            .http
+            .post(&create_url)
+            .bearer_auth(&self.api_key)
+            .header("Content-Type", "application/json")
+            .json(&json!({"sessionId": HEARTBEAT_SESSION_ID}))
+            .send()
+            .await;
+        match create_resp {
+            Ok(r) if r.status().is_success() || r.status().as_u16() == 409 => {}
+            _ => return false,
+        }
+
+        // Fire a heartbeat command in the dedicated session.
         let resp = self
             .toolbox_request(
                 reqwest::Method::POST,
                 sandbox_id,
-                &format!("/process/session/{EXEC_SESSION_ID}/exec"),
+                &format!("/process/session/{HEARTBEAT_SESSION_ID}/exec"),
                 Some(json!({
                     "command": "true",
                     "runAsync": true
@@ -417,7 +443,7 @@ impl DaytonaClient {
             Err(_) => return false,
         };
 
-        let status_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}");
+        let status_path = format!("/process/session/{HEARTBEAT_SESSION_ID}/command/{cmd_id}");
 
         // Poll for up to SESSION_HEARTBEAT_TIMEOUT.
         let deadline =
@@ -931,8 +957,7 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        // 2. All exec calls → 202 with unique cmdId (both the real command
-        //    and the heartbeat probe). Use a counter to generate unique IDs.
+        // 2. Exec calls to the main session → 202 with unique cmdId.
         let counter = exec_call_count.clone();
         Mock::given(method("POST"))
             .and(path("/sb_dead/process/session/everruns-exec/exec"))
@@ -940,6 +965,22 @@ mod tests {
                 let n = counter.fetch_add(1, Ordering::SeqCst);
                 ResponseTemplate::new(202).set_body_json(json!({
                     "cmdId": format!("cmd_{n}")
+                }))
+            })
+            .mount(&mock_server)
+            .await;
+
+        // 2b. Heartbeat session exec calls → 202 with unique cmdId.
+        //     The heartbeat uses a separate session (everruns-heartbeat).
+        //     In a dead-sandbox scenario, this session also can't complete.
+        let hb_counter = std::sync::Arc::new(AtomicU32::new(100));
+        let hb_counter_clone = hb_counter.clone();
+        Mock::given(method("POST"))
+            .and(path("/sb_dead/process/session/everruns-heartbeat/exec"))
+            .respond_with(move |_: &wiremock::Request| {
+                let n = hb_counter_clone.fetch_add(1, Ordering::SeqCst);
+                ResponseTemplate::new(202).set_body_json(json!({
+                    "cmdId": format!("hb_{n}")
                 }))
             })
             .mount(&mock_server)
@@ -965,6 +1006,22 @@ mod tests {
                 ResponseTemplate::new(200).set_body_json(json!({
                     "id": cmd_id,
                     "command": "exit 1"
+                }))
+            })
+            .mount(&mock_server)
+            .await;
+
+        // 4b. Heartbeat command status → 200 with no exitCode (sandbox is dead)
+        Mock::given(method("GET"))
+            .and(wiremock::matchers::path_regex(
+                r"/sb_dead/process/session/everruns-heartbeat/command/hb_\d+$",
+            ))
+            .respond_with(|req: &wiremock::Request| {
+                let path = req.url.path();
+                let cmd_id = path.rsplit('/').next().unwrap_or("unknown");
+                ResponseTemplate::new(200).set_body_json(json!({
+                    "id": cmd_id,
+                    "command": "true"
                 }))
             })
             .mount(&mock_server)
@@ -998,12 +1055,18 @@ mod tests {
             "Error should mention session termination, got: {err}"
         );
 
-        // Verify the heartbeat was attempted (at least 2 exec calls: the
-        // original command + the heartbeat probe).
+        // Verify the heartbeat was attempted on the dedicated heartbeat session
+        // (separate from the exec session). exec_call_count only tracks the
+        // exec session; hb_counter tracks the heartbeat session.
+        assert_eq!(
+            exec_call_count.load(Ordering::SeqCst),
+            1,
+            "Expected exactly 1 exec call (the original command)"
+        );
         assert!(
-            exec_call_count.load(Ordering::SeqCst) >= 2,
-            "Expected at least 2 exec calls (command + heartbeat), got {}",
-            exec_call_count.load(Ordering::SeqCst)
+            hb_counter.load(Ordering::SeqCst) > 100,
+            "Expected at least 1 heartbeat probe on the heartbeat session, got {}",
+            hb_counter.load(Ordering::SeqCst) - 100
         );
     }
 
