@@ -10,6 +10,7 @@ import {
   FileText,
   Gauge,
   FileCode,
+  Sparkles,
 } from "lucide-react";
 
 // Check if we're in development mode
@@ -52,6 +53,12 @@ const devPages = [
     description: "LLM model selection component with favorite models support",
     href: "/dev/model-picker",
     icon: Star,
+  },
+  {
+    title: "Thinking Animations",
+    description: "Combo wave bar thinking indicator with brand gradient",
+    href: "/dev/thinking-animations",
+    icon: Sparkles,
   },
   {
     title: "File Previews",
