@@ -31,9 +31,13 @@ use everruns_internal_protocol::proto::{
     self,
     AddMessageRequest,
     AddMessageResponse,
+    BudgetSummaryProto,
     // Session schedule operations
     CancelSessionScheduleRequest,
     CancelSessionScheduleResponse,
+    // Budget operations
+    CheckBudgetsForSessionRequest,
+    CheckBudgetsForSessionResponse,
     CheckCircuitBreakerRequest,
     CheckCircuitBreakerResponse,
     CircuitBreakerState as ProtoCircuitBreakerState,
@@ -351,6 +355,8 @@ pub struct WorkerServiceImpl {
     api_base_url: Option<String>,
     /// Signing secret for presigned URLs (WORKER_GRPC_AUTH_TOKEN)
     presign_secret: Option<String>,
+    /// Budget service for check_budget tool
+    budget_service: Arc<crate::services::BudgetService>,
 }
 
 impl WorkerServiceImpl {
@@ -422,6 +428,8 @@ impl WorkerServiceImpl {
             .ok()
             .filter(|s| !s.is_empty());
 
+        let budget_service = Arc::new(crate::services::BudgetService::new(db.clone()));
+
         Self {
             event_service,
             agent_service,
@@ -440,6 +448,7 @@ impl WorkerServiceImpl {
             connection_resolver,
             api_base_url,
             presign_secret,
+            budget_service,
         }
     }
 

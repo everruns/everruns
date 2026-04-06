@@ -21,10 +21,10 @@ use everruns_core::{Message, PlatformDefinition};
 use std::sync::Arc;
 
 use crate::grpc_adapters::{
-    GrpcAgentStore, GrpcClient, GrpcConnectionResolver, GrpcEventEmitter, GrpcHarnessStore,
-    GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore, GrpcMessageRetriever,
-    GrpcPlatformStore, GrpcScheduleStore, GrpcSessionFileStore, GrpcSessionMutator,
-    GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
+    GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcConnectionResolver, GrpcEventEmitter,
+    GrpcHarnessStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore,
+    GrpcMessageRetriever, GrpcPlatformStore, GrpcScheduleStore, GrpcSessionFileStore,
+    GrpcSessionMutator, GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
 };
 
 // Re-export atom types for activity callers
@@ -438,7 +438,9 @@ pub async fn act_activity(
     let schedule_store: Arc<dyn everruns_core::traits::SessionScheduleStore> =
         Arc::new(GrpcScheduleStore::new(grpc_client.clone(), org_id));
     let platform_store: Arc<dyn everruns_core::platform_store::PlatformStore> =
-        Arc::new(GrpcPlatformStore::new(grpc_client, org_id));
+        Arc::new(GrpcPlatformStore::new(grpc_client.clone(), org_id));
+    let budget_checker: Arc<dyn everruns_core::traits::BudgetChecker> =
+        Arc::new(GrpcBudgetChecker::new(grpc_client, org_id));
 
     let atom = ActAtom::with_file_store(tool_executor, event_emitter, file_store)
         .with_storage_store(storage_store)
@@ -450,6 +452,7 @@ pub async fn act_activity(
         .with_leased_resource_store(leased_resource_store)
         .with_schedule_store(schedule_store)
         .with_platform_store(platform_store)
+        .with_budget_checker(budget_checker)
         .with_capability_registry(platform_definition.capability_registry().clone())
         // Collect post-tool hooks from all capabilities. Hooks self-gate on tool hints
         // (e.g. persist_output), so this is safe even though it uses the full registry

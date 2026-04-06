@@ -3334,6 +3334,102 @@ impl WorkerService for WorkerServiceImpl {
 
         Ok(Response::new(PlatformGetBaseUrlResponse { base_url }))
     }
+
+    // =========================================================================
+    // Budget Operations
+    // =========================================================================
+
+    async fn check_budgets_for_session(
+        &self,
+        request: Request<CheckBudgetsForSessionRequest>,
+    ) -> Result<Response<CheckBudgetsForSessionResponse>, Status> {
+        let req = request.into_inner();
+
+        // Get the full budget rows for detailed response
+        let session_budgets = self
+            .db
+            .list_budgets(req.org_id, Some("session"), Some(&req.session_id))
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list session budgets: {}", e);
+                Status::internal("Failed to list session budgets")
+            })?;
+
+        let mut all_budgets = session_budgets;
+        if let Some(ref agent_id) = req.agent_id
+            && let Ok(agent_budgets) = self
+                .db
+                .list_budgets(req.org_id, Some("agent"), Some(agent_id))
+                .await
+        {
+            all_budgets.extend(agent_budgets);
+        }
+
+        if all_budgets.is_empty() {
+            return Ok(Response::new(CheckBudgetsForSessionResponse {
+                status: "no_budgets".into(),
+                budgets: vec![],
+                hint: Some(
+                    "No budgets are configured for this session. You can proceed without budget constraints.".into(),
+                ),
+            }));
+        }
+
+        // Also run the action check to determine overall status
+        let check_result = self
+            .budget_service
+            .check_budgets_for_session(req.org_id, &req.session_id, req.agent_id.as_deref())
+            .await;
+
+        let summaries: Vec<BudgetSummaryProto> = all_budgets
+            .iter()
+            .map(|b| {
+                let pct = if b.limit > 0.0 {
+                    (b.balance / b.limit * 100.0).clamp(0.0, 100.0)
+                } else {
+                    100.0
+                };
+                BudgetSummaryProto {
+                    currency: b.currency.clone(),
+                    limit: b.limit,
+                    balance: b.balance,
+                    soft_limit: b.soft_limit,
+                    percent_remaining: (pct * 10.0).round() / 10.0,
+                    status: b.status.clone(),
+                }
+            })
+            .collect();
+
+        let overall_status = match check_result.action.as_str() {
+            "stop" => "exhausted",
+            "pause" => "paused",
+            "warn" => "warning",
+            _ => "active",
+        };
+
+        let hint = if overall_status == "active" {
+            let min_pct = summaries
+                .iter()
+                .map(|s| s.percent_remaining)
+                .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                .unwrap_or(100.0);
+            if min_pct < 50.0 {
+                Some(format!(
+                    "{min_pct}% of budget remaining. Consider prioritizing task completion."
+                ))
+            } else {
+                Some(format!("{min_pct}% of budget remaining."))
+            }
+        } else {
+            check_result.message.clone()
+        };
+
+        Ok(Response::new(CheckBudgetsForSessionResponse {
+            status: overall_status.into(),
+            budgets: summaries,
+            hint,
+        }))
+    }
 }
 
 // Helper functions for status conversion

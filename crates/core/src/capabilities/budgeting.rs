@@ -13,6 +13,7 @@
 use super::{Capability, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
+use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -112,12 +113,37 @@ impl Tool for CheckBudgetTool {
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        // This is a placeholder implementation. Real budget data requires
-        // worker-side tool interception, planned for a future iteration.
+        // Fallback when no context is available (shouldn't happen in practice).
         ToolExecutionResult::success(serde_json::json!({
             "status": "no_budgets",
             "message": "No budgets are configured for this session. You can proceed without budget constraints."
         }))
+    }
+
+    async fn execute_with_context(
+        &self,
+        _arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let Some(ref checker) = context.budget_checker else {
+            // No budget checker wired — return the no_budgets fallback.
+            return self.execute(_arguments).await;
+        };
+
+        let session_id = context.session_id.to_string();
+
+        match checker.check_budgets(&session_id).await
+        {
+            Ok(response) => ToolExecutionResult::success(
+                serde_json::to_value(&response).unwrap_or_else(|_| {
+                    serde_json::json!({"status": "error", "message": "Failed to serialize budget data"})
+                }),
+            ),
+            Err(e) => ToolExecutionResult::success(serde_json::json!({
+                "status": "error",
+                "message": format!("Failed to check budgets: {e}")
+            })),
+        }
     }
 }
 
@@ -161,9 +187,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_budget_tool_no_budgets() {
+    async fn test_check_budget_tool_no_budgets_fallback() {
         let tool = CheckBudgetTool;
+        // Without context, falls back to no_budgets
         let result = tool.execute(serde_json::json!({})).await;
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("status").unwrap().as_str().unwrap(), "no_budgets");
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_check_budget_tool_with_context_no_checker() {
+        use crate::typed_id::SessionId;
+        let tool = CheckBudgetTool;
+        // With context but no budget_checker, also falls back
+        let context = ToolContext::new(SessionId::new());
+        let result = tool
+            .execute_with_context(serde_json::json!({}), &context)
+            .await;
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value.get("status").unwrap().as_str().unwrap(), "no_budgets");
         } else {
