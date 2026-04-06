@@ -2,8 +2,8 @@
 //!
 //! Decision: Embed a curated subset of the Daytona OpenAPI spec as a const string.
 //! This covers the Management API and Toolbox API endpoints that agents can call
-//! via `daytona_api_call`. The spec is mounted into the session filesystem at
-//! `/daytona/openapi.yaml` when API calling is enabled.
+//! via `daytona_api_call`. The spec is always mounted into the session filesystem
+//! at `/daytona/openapi.yaml` (regardless of `enable_api_calling` config).
 
 /// Curated Daytona OpenAPI spec covering Management and Toolbox APIs.
 ///
@@ -29,8 +29,8 @@ info:
 servers:
   - url: https://app.daytona.io/api
     description: Management API
-  - url: https://proxy.app.daytona.io/toolbox
-    description: Toolbox API (prefix sandbox_id in path)
+  - url: https://proxy.app.daytona.io
+    description: Toolbox API (paths include /toolbox/{sandbox_id}/...)
 
 paths:
   # ── Management API ────────────────────────────────────────────
@@ -245,6 +245,7 @@ paths:
     get:
       operationId: downloadFile
       summary: Download a file from the sandbox
+      description: Returns raw binary content. Not available via daytona_api_call (JSON-only responses) �� use daytona_read_file instead.
       parameters:
         - name: sandboxId
           in: path

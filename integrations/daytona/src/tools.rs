@@ -1650,8 +1650,7 @@ impl Tool for DaytonaApiCallTool {
                     "description": "API path. Management API: /sandbox, /sandbox/{id}, etc. Toolbox API: /toolbox/{sandbox_id}/files, /toolbox/{sandbox_id}/process/execute, etc."
                 },
                 "body": {
-                    "type": "object",
-                    "description": "JSON request body (optional, for POST/PUT/PATCH)"
+                    "description": "JSON request body (optional, for POST/PUT/PATCH). Usually an object, but arrays are also accepted for endpoints that require them."
                 }
             },
             "required": ["method", "path"],
@@ -1692,6 +1691,17 @@ impl Tool for DaytonaApiCallTool {
         let path = match required_str(&arguments, "path") {
             Ok(p) => p.to_string(),
             Err(e) => return e,
+        };
+
+        // Normalize path: ensure leading /, strip trailing /, strip query string
+        let path = {
+            let p = path.split('?').next().unwrap_or(&path);
+            let p = p.trim_end_matches('/');
+            if p.starts_with('/') {
+                p.to_string()
+            } else {
+                format!("/{p}")
+            }
         };
 
         let method = match method_str.as_str() {
@@ -1766,20 +1776,25 @@ impl DaytonaApiCallTool {
     ///
     /// Merges with any user-provided labels (user labels take precedence for
     /// non-everruns keys; everruns.* keys are always set to prevent tampering).
-    async fn inject_labels(context: &ToolContext, mut body: Value) -> Value {
+    async fn inject_labels(context: &ToolContext, body: Value) -> Value {
         let labels = Self::build_labels(context).await;
-        if let Some(obj) = body.as_object_mut() {
-            let existing = obj
-                .entry("labels")
-                .or_insert_with(|| json!({}))
-                .as_object_mut();
-            if let Some(existing_labels) = existing {
-                for (k, v) in labels {
-                    existing_labels.insert(k, v);
-                }
-            }
+
+        let mut obj = match body {
+            Value::Object(map) => map,
+            _ => serde_json::Map::new(),
+        };
+
+        let mut existing_labels = match obj.remove("labels") {
+            Some(Value::Object(map)) => map,
+            _ => serde_json::Map::new(),
+        };
+
+        for (k, v) in labels {
+            existing_labels.insert(k, v);
         }
-        body
+
+        obj.insert("labels".to_string(), Value::Object(existing_labels));
+        Value::Object(obj)
     }
 
     /// Best-effort resource tracking for sandbox lifecycle operations via raw API.

@@ -215,7 +215,7 @@ Call any Daytona REST API endpoint directly. Enabled via capability config `enab
 - **Headers**: Authentication (`Bearer <api_key>`) and `Content-Type` headers are injected automatically — callers do NOT specify headers.
 - **Routing**: Paths starting with `/toolbox/{sandbox_id}/...` route to the Toolbox API proxy; all other paths route to the Management API.
 - **Resource tracking**: `POST /sandbox` requests get `everruns.*` ownership labels auto-injected into the body (same labels as `daytona_create_sandbox`). Responses register sandbox state and leased-resource lease. `DELETE /sandbox/{id}` releases state and lease. Other endpoints do not track resources.
-- **OpenAPI spec**: When enabled, the Daytona OpenAPI spec is mounted at `/daytona/openapi.yaml` in the session filesystem. The tool description references this path so agents can read it to discover endpoints.
+- **OpenAPI spec**: The Daytona OpenAPI spec is always mounted at `/daytona/openapi.yaml` in the session filesystem (regardless of `enable_api_calling`). The tool description references this path so agents can read it to discover endpoints.
 
 **Opt-in mechanism:** The `daytona_api_call` tool is only included when the capability config JSON has `enable_api_calling: true`. This is set per-agent in the harness capability configuration. When enabled, the system prompt also adds a section about direct API access.
 
