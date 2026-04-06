@@ -500,7 +500,10 @@ impl DaytonaClient {
 
         loop {
             if std::time::Instant::now() >= deadline {
-                return Err(format!("Command timed out after {timeout}ms"));
+                return Err(format!(
+                    "Command timed out after {timeout}ms. \
+                     Increase the timeout parameter or break the command into smaller steps."
+                ));
             }
 
             tokio::time::sleep(EXEC_POLL_INTERVAL).await;
@@ -574,15 +577,18 @@ impl DaytonaClient {
                          resetting session"
                     );
                     return match self.reset_session(sandbox_id).await {
-                        Ok(()) => Err("Session terminated by command (the command likely ran \
-                             `exit` which killed the shell)"
+                        Ok(()) => Err("Session shell terminated unexpectedly. Common causes: \
+                             the command ran `exit`, a subshell crashed, or the process \
+                             was OOM-killed. The session has been automatically reset — \
+                             your next command will work. To avoid this, do not use \
+                             `exit` in commands and avoid excessive memory usage."
                             .to_string()),
                         Err(e) => {
                             debug!("Failed to reset session {EXEC_SESSION_ID}: {e}");
                             Err(format!(
-                                "Session terminated by command (the command likely \
-                                 ran `exit` which killed the shell); additionally, \
-                                 failed to reset session: {e}"
+                                "Session shell terminated unexpectedly. Common causes: \
+                                 the command ran `exit`, a subshell crashed, or the process \
+                                 was OOM-killed. Additionally, failed to reset session: {e}"
                             ))
                         }
                     };
@@ -952,7 +958,7 @@ mod tests {
         assert!(result.is_err(), "Should detect dead session");
         let err = result.unwrap_err();
         assert!(
-            err.contains("Session terminated"),
+            err.contains("Session shell terminated unexpectedly"),
             "Error should mention session termination, got: {err}"
         );
 

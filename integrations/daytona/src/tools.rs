@@ -38,6 +38,32 @@ fn snapshot_for_size(size: &str) -> Result<&'static str, String> {
     }
 }
 
+/// Return a diagnostic hint for signal-based or notable exit codes.
+///
+/// Exit codes 128+N indicate the process was killed by signal N.
+/// Common cases: 137 = SIGKILL (often OOM), 141 = SIGPIPE (pipe closed early),
+/// 139 = SIGSEGV, 143 = SIGTERM. Providing these hints lets agents adapt
+/// their retry strategy instead of blindly retrying. See EVE-252.
+fn exit_code_hint(exit_code: i32) -> Option<&'static str> {
+    match exit_code {
+        0 => None,
+        137 => Some(
+            "Process was killed (SIGKILL). This usually means the process ran out of memory (OOM). Reduce memory usage or request a larger sandbox.",
+        ),
+        139 => Some("Process crashed with a segmentation fault (SIGSEGV)."),
+        141 => Some(
+            "Broken pipe (SIGPIPE). A downstream command (e.g. head, sed, tail) closed the pipe before the upstream command finished writing. This is usually harmless — check if the partial output is sufficient.",
+        ),
+        143 => Some(
+            "Process was terminated (SIGTERM). It may have been stopped by the system or another process.",
+        ),
+        126 => Some("Command found but not executable. Check file permissions."),
+        127 => Some("Command not found. Check that the tool is installed and in PATH."),
+        _ if exit_code > 128 && exit_code <= 192 => Some("Process was killed by a signal."),
+        _ => None,
+    }
+}
+
 /// Parse an optional integer resource parameter, validating type and range.
 fn parse_resource_param(
     arguments: &Value,
@@ -460,13 +486,16 @@ impl Tool for DaytonaExecTool {
                         clean_output.clone()
                     };
                     let raw = clean_output;
-                    ToolExecutionResult::success_with_raw_output(
-                        json!({
-                            "exit_code": result.exit_code,
-                            "output": output
-                        }),
-                        raw,
-                    )
+                    let mut response = json!({
+                        "exit_code": result.exit_code,
+                        "output": output
+                    });
+                    // Add diagnostic hint for signal-based exit codes so agents
+                    // can adapt their retry strategy. See EVE-252.
+                    if let Some(hint) = exit_code_hint(result.exit_code) {
+                        response["hint"] = json!(hint);
+                    }
+                    ToolExecutionResult::success_with_raw_output(response, raw)
                 }
             }
             Err(e) => ToolExecutionResult::tool_error(e),
@@ -2471,5 +2500,21 @@ mod tests {
             ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
         let token = get_github_token(&context).await;
         assert_eq!(token, Some("fallback".to_string()));
+    }
+
+    #[test]
+    fn test_exit_code_hint_signals() {
+        assert!(exit_code_hint(0).is_none());
+        assert!(exit_code_hint(1).is_none());
+        assert!(exit_code_hint(137).unwrap().contains("SIGKILL"));
+        assert!(exit_code_hint(139).unwrap().contains("SIGSEGV"));
+        assert!(exit_code_hint(141).unwrap().contains("SIGPIPE"));
+        assert!(exit_code_hint(143).unwrap().contains("SIGTERM"));
+        assert!(exit_code_hint(126).unwrap().contains("not executable"));
+        assert!(exit_code_hint(127).unwrap().contains("not found"));
+        // Generic signal range
+        assert!(exit_code_hint(130).unwrap().contains("signal"));
+        // Outside signal range
+        assert!(exit_code_hint(200).is_none());
     }
 }
