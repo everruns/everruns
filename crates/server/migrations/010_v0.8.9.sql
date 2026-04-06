@@ -1,4 +1,8 @@
 -- v0.8.9: squashed migrations 010–014
+-- BREAKING CHANGE: Requires fresh database (drop existing _sqlx_migrations table)
+-- This file replaces individual migrations 010_audit_domains through
+-- 014_harness_addressable_name. It is NOT idempotent and cannot be re-run
+-- against a database that already has those migrations applied.
 
 ----------------------------------------------------------------------
 -- 010: Audit log domains (EVE-226)
