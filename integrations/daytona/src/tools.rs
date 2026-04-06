@@ -1605,6 +1605,178 @@ async fn get_github_token(context: &ToolContext) -> Option<String> {
 }
 
 // ============================================================================
+// DaytonaApiCallTool (opt-in via capability config: enable_api_calling)
+// ============================================================================
+
+/// Session filesystem path where the Daytona OpenAPI spec is mounted.
+pub const DAYTONA_OPENAPI_MOUNT_PATH: &str = "/daytona/openapi.yaml";
+
+pub struct DaytonaApiCallTool;
+
+#[async_trait]
+impl Tool for DaytonaApiCallTool {
+    fn name(&self) -> &str {
+        "daytona_api_call"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Daytona API Call")
+    }
+
+    fn description(&self) -> &str {
+        "Call any Daytona REST API endpoint directly. \
+         Routes automatically: paths starting with /toolbox/{sandbox_id}/... go to the \
+         Toolbox API; all other paths go to the Management API. \
+         Authentication headers are injected automatically — do NOT specify headers. \
+         The full Daytona OpenAPI spec is available at /daytona/openapi.yaml in the \
+         session filesystem — read it to discover available endpoints, parameters, \
+         and schemas. \
+         For sandbox lifecycle (create/exec/files), prefer the dedicated daytona_* tools \
+         which handle state tracking and streaming. Use this tool for endpoints not \
+         covered by dedicated tools (e.g. labels, ports, git status, search, replace)."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "method": {
+                    "type": "string",
+                    "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+                    "description": "HTTP method"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "API path. Management API: /sandbox, /sandbox/{id}, etc. Toolbox API: /toolbox/{sandbox_id}/files, /toolbox/{sandbox_id}/process/execute, etc."
+                },
+                "body": {
+                    "type": "object",
+                    "description": "JSON request body (optional, for POST/PUT/PATCH)"
+                }
+            },
+            "required": ["method", "path"],
+            "additionalProperties": false
+        })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_open_world(true)
+            .with_requires_secrets(true)
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "daytona_api_call requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let api_key = match get_api_key(context).await {
+            Ok(k) => k,
+            Err(e) => return e,
+        };
+
+        let method_str = match required_str(&arguments, "method") {
+            Ok(m) => m.to_string(),
+            Err(e) => return e,
+        };
+        let path = match required_str(&arguments, "path") {
+            Ok(p) => p.to_string(),
+            Err(e) => return e,
+        };
+
+        let method = match method_str.as_str() {
+            "GET" => reqwest::Method::GET,
+            "POST" => reqwest::Method::POST,
+            "PUT" => reqwest::Method::PUT,
+            "PATCH" => reqwest::Method::PATCH,
+            "DELETE" => reqwest::Method::DELETE,
+            _ => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Unsupported method: {method_str}. Use GET, POST, PUT, PATCH, or DELETE."
+                ));
+            }
+        };
+
+        let body = arguments
+            .get("body")
+            .and_then(|v| if v.is_null() { None } else { Some(v.clone()) });
+
+        let client = DaytonaClient::new(api_key);
+        match client.api_call(method, &path, body).await {
+            Ok(response) => {
+                // Track sandbox resources created/deleted via raw API calls
+                self.track_resources(context, &method_str, &path, &response)
+                    .await;
+                ToolExecutionResult::success(response)
+            }
+            Err(e) => ToolExecutionResult::tool_error(e),
+        }
+    }
+}
+
+impl DaytonaApiCallTool {
+    /// Best-effort resource tracking for sandbox lifecycle operations via raw API.
+    ///
+    /// When the agent creates or deletes sandboxes through `daytona_api_call` instead
+    /// of the dedicated tools, we still want leased-resource tracking to work.
+    async fn track_resources(
+        &self,
+        context: &ToolContext,
+        method: &str,
+        path: &str,
+        response: &Value,
+    ) {
+        // POST /sandbox → new sandbox created, register lease
+        if method == "POST"
+            && path == "/sandbox"
+            && let Some(sandbox_id) = response.get("id").and_then(|v| v.as_str())
+        {
+            let display_name = response
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let state = SandboxState {
+                sandbox_id: sandbox_id.to_string(),
+                workspace_path: crate::DAYTONA_WORKSPACE_PATH.to_string(),
+                started_at: chrono::Utc::now().to_rfc3339(),
+            };
+            if let Err(e) = save_sandbox_state(context, &state).await {
+                warn!("Failed to save sandbox state from api_call: {e:?}");
+            }
+            if let Err(e) = touch_sandbox_lease(context, &state, display_name).await {
+                warn!("Failed to register sandbox lease from api_call: {e:?}");
+            }
+            debug!(sandbox_id, "Tracked sandbox created via daytona_api_call");
+        }
+
+        // DELETE /sandbox/{id} → sandbox deleted, release lease
+        if method == "DELETE"
+            && let Some(sandbox_id) = path
+                .strip_prefix("/sandbox/")
+                .filter(|rest| !rest.contains('/'))
+        {
+            if let Err(e) = delete_sandbox_state(context, sandbox_id).await {
+                warn!("Failed to delete sandbox state from api_call: {e:?}");
+            }
+            if let Err(e) = release_sandbox_lease(context, sandbox_id).await {
+                warn!("Failed to release sandbox lease from api_call: {e:?}");
+            }
+            debug!(sandbox_id, "Tracked sandbox deletion via daytona_api_call");
+        }
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -2516,5 +2688,114 @@ mod tests {
         assert!(exit_code_hint(130).unwrap().contains("signal"));
         // Outside signal range
         assert!(exit_code_hint(200).is_none());
+    }
+
+    // ========================================================================
+    // DaytonaApiCallTool tests
+    // ========================================================================
+
+    #[test]
+    fn test_api_call_tool_name() {
+        let tool = DaytonaApiCallTool;
+        assert_eq!(tool.name(), "daytona_api_call");
+        assert!(tool.name().starts_with("daytona_"));
+    }
+
+    #[test]
+    fn test_api_call_tool_schema() {
+        let tool = DaytonaApiCallTool;
+        let schema = tool.parameters_schema();
+        let required = schema["required"].as_array().unwrap();
+        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(required_strs.contains(&"method"));
+        assert!(required_strs.contains(&"path"));
+        assert!(!required_strs.contains(&"body"));
+        assert_eq!(schema["additionalProperties"], json!(false));
+
+        // method must have enum constraint
+        let method_enum = schema["properties"]["method"]["enum"].as_array().unwrap();
+        let methods: Vec<&str> = method_enum.iter().map(|v| v.as_str().unwrap()).collect();
+        assert!(methods.contains(&"GET"));
+        assert!(methods.contains(&"POST"));
+        assert!(methods.contains(&"DELETE"));
+    }
+
+    #[test]
+    fn test_api_call_tool_description_references_spec() {
+        let tool = DaytonaApiCallTool;
+        assert!(tool.description().contains("/daytona/openapi.yaml"));
+    }
+
+    #[test]
+    fn test_api_call_tool_hints() {
+        let tool = DaytonaApiCallTool;
+        let hints = tool.hints();
+        assert_eq!(hints.open_world, Some(true));
+        assert_eq!(hints.requires_secrets, Some(true));
+    }
+
+    #[tokio::test]
+    async fn test_api_call_without_context() {
+        let tool = DaytonaApiCallTool;
+        let result = tool
+            .execute(json!({"method": "GET", "path": "/sandbox"}))
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_api_call_missing_method() {
+        let tool = DaytonaApiCallTool;
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        let resolver = Arc::new(ProviderAwareResolver::daytona_only("test_key"));
+        let context =
+            ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
+        let result = tool
+            .execute_with_context(json!({"path": "/sandbox"}), &context)
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("Missing required parameter"))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_api_call_missing_path() {
+        let tool = DaytonaApiCallTool;
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        let resolver = Arc::new(ProviderAwareResolver::daytona_only("test_key"));
+        let context =
+            ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
+        let result = tool
+            .execute_with_context(json!({"method": "GET"}), &context)
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("Missing required parameter"))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_api_call_no_api_key() {
+        let tool = DaytonaApiCallTool;
+        let session_id = SessionId::new();
+        let store = Arc::new(MockStorageStore::new());
+        let context = ToolContext::with_storage_store(session_id, store);
+        let result = tool
+            .execute_with_context(json!({"method": "GET", "path": "/sandbox"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::ConnectionRequired { provider } => {
+                assert_eq!(provider, "daytona");
+            }
+            _ => panic!("Expected ConnectionRequired for missing API key, got: {result:?}"),
+        }
+    }
+
+    #[test]
+    fn test_openapi_mount_path_constant() {
+        assert_eq!(DAYTONA_OPENAPI_MOUNT_PATH, "/daytona/openapi.yaml");
     }
 }

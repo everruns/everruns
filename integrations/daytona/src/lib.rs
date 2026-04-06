@@ -12,11 +12,15 @@
 
 pub mod client;
 pub mod connection;
+pub mod openapi_spec;
 pub mod state;
 mod tools;
 
 use everruns_core::LEASED_RESOURCES_FEATURE;
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
+use everruns_core::capabilities::{
+    Capability, CapabilityStatus, IntegrationPlugin, MountDirectoryBuilder, MountPoint, RiskLevel,
+    SystemPromptContext,
+};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
@@ -25,9 +29,10 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use tools::{
-    DaytonaCreateSandboxTool, DaytonaDownloadWorkspaceTool, DaytonaExecTool, DaytonaGitCloneTool,
-    DaytonaGitCredentialsTool, DaytonaListSandboxesTool, DaytonaListSnapshotsTool,
-    DaytonaManageSandboxTool, DaytonaReadFileTool, DaytonaWriteFileTool,
+    DaytonaApiCallTool, DaytonaCreateSandboxTool, DaytonaDownloadWorkspaceTool, DaytonaExecTool,
+    DaytonaGitCloneTool, DaytonaGitCredentialsTool, DaytonaListSandboxesTool,
+    DaytonaListSnapshotsTool, DaytonaManageSandboxTool, DaytonaReadFileTool, DaytonaWriteFileTool,
+    DAYTONA_OPENAPI_MOUNT_PATH,
 };
 
 // ============================================================================
@@ -111,8 +116,20 @@ fetch, rebase, etc.) — they authenticate automatically. Call again to refresh 
     prompt
 });
 
+/// Check if API calling is enabled in capability config.
+///
+/// When `enable_api_calling` is `true`, the `daytona_api_call` tool is added
+/// and the OpenAPI spec mount path is referenced in the system prompt.
+fn is_api_calling_enabled(config: &serde_json::Value) -> bool {
+    config
+        .get("enable_api_calling")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
 pub struct DaytonaCapability;
 
+#[async_trait::async_trait]
 impl Capability for DaytonaCapability {
     fn id(&self) -> &str {
         "daytona"
@@ -167,6 +184,54 @@ impl Capability for DaytonaCapability {
         ]
     }
 
+    fn tools_with_config(&self, config: &serde_json::Value) -> Vec<Box<dyn Tool>> {
+        let mut tools = self.tools();
+        if is_api_calling_enabled(config) {
+            tools.push(Box::new(DaytonaApiCallTool));
+        }
+        tools
+    }
+
+    fn mounts(&self) -> Vec<MountPoint> {
+        // OpenAPI spec is always mounted so it's available if API calling is enabled.
+        // The tool itself is only added when config has enable_api_calling: true.
+        let daytona_dir = MountDirectoryBuilder::new()
+            .file("openapi.yaml", openapi_spec::DAYTONA_OPENAPI_SPEC)
+            .build();
+        vec![MountPoint::readonly("/daytona", daytona_dir, self.id())]
+    }
+
+    async fn system_prompt_contribution_with_config(
+        &self,
+        _ctx: &SystemPromptContext,
+        config: &serde_json::Value,
+    ) -> Option<String> {
+        let base = self.system_prompt_addition()?;
+        if is_api_calling_enabled(config) {
+            let api_calling_addition = format!(
+                "\n\n### Direct API Access\n\n\
+                 Direct Daytona API calling is enabled. Use `daytona_api_call` to call any \
+                 Daytona REST API endpoint not covered by the dedicated tools.\n\
+                 The full OpenAPI spec is mounted at `{DAYTONA_OPENAPI_MOUNT_PATH}` — \
+                 read it to discover endpoints, parameters, and schemas.\n\
+                 Resources created via `daytona_api_call` (e.g. POST /sandbox) are \
+                 automatically tracked for cleanup."
+            );
+            Some(format!(
+                "<capability id=\"{}\">\n{}{}\n</capability>",
+                self.id(),
+                base,
+                api_calling_addition
+            ))
+        } else {
+            Some(format!(
+                "<capability id=\"{}\">\n{}\n</capability>",
+                self.id(),
+                base
+            ))
+        }
+    }
+
     fn dependencies(&self) -> Vec<&'static str> {
         vec!["session_storage"]
     }
@@ -184,6 +249,7 @@ impl Capability for DaytonaCapability {
 mod tests {
     use super::*;
     use everruns_core::capabilities::CapabilityStatus;
+    use serde_json::json;
 
     #[test]
     fn test_capability_metadata() {
@@ -242,5 +308,94 @@ mod tests {
     fn test_capability_dependencies() {
         let cap = DaytonaCapability;
         assert_eq!(cap.dependencies(), vec!["session_storage"]);
+    }
+
+    // --- API calling opt-in tests ---
+
+    #[test]
+    fn test_is_api_calling_enabled_default_false() {
+        assert!(!is_api_calling_enabled(&json!({})));
+        assert!(!is_api_calling_enabled(&json!(null)));
+        assert!(!is_api_calling_enabled(
+            &json!({"enable_api_calling": false})
+        ));
+    }
+
+    #[test]
+    fn test_is_api_calling_enabled_true() {
+        assert!(is_api_calling_enabled(&json!({"enable_api_calling": true})));
+    }
+
+    #[test]
+    fn test_tools_with_config_default_no_api_call() {
+        let cap = DaytonaCapability;
+        let tools = cap.tools_with_config(&json!({}));
+        assert_eq!(tools.len(), 10);
+        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        assert!(!names.contains(&"daytona_api_call"));
+    }
+
+    #[test]
+    fn test_tools_with_config_api_calling_enabled() {
+        let cap = DaytonaCapability;
+        let tools = cap.tools_with_config(&json!({"enable_api_calling": true}));
+        assert_eq!(tools.len(), 11);
+        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        assert!(names.contains(&"daytona_api_call"));
+    }
+
+    #[test]
+    fn test_api_call_tool_requires_context() {
+        let cap = DaytonaCapability;
+        let tools = cap.tools_with_config(&json!({"enable_api_calling": true}));
+        let api_tool = tools
+            .iter()
+            .find(|t| t.name() == "daytona_api_call")
+            .unwrap();
+        assert!(api_tool.requires_context());
+    }
+
+    #[test]
+    fn test_mounts_include_openapi_spec() {
+        let cap = DaytonaCapability;
+        let mounts = cap.mounts();
+        assert_eq!(mounts.len(), 1);
+        assert_eq!(mounts[0].path, "/daytona");
+        assert!(mounts[0].is_readonly());
+    }
+
+    #[test]
+    fn test_openapi_spec_is_valid_yaml() {
+        let spec = openapi_spec::DAYTONA_OPENAPI_SPEC;
+        assert!(spec.contains("openapi: 3.0.3"));
+        assert!(spec.contains("/sandbox"));
+        assert!(spec.contains("/toolbox/"));
+    }
+
+    #[tokio::test]
+    async fn test_system_prompt_with_api_calling_enabled() {
+        let cap = DaytonaCapability;
+        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let prompt = cap
+            .system_prompt_contribution_with_config(&ctx, &json!({"enable_api_calling": true}))
+            .await
+            .unwrap();
+        assert!(prompt.contains("daytona_api_call"));
+        assert!(prompt.contains(DAYTONA_OPENAPI_MOUNT_PATH));
+        assert!(prompt.contains("Direct API Access"));
+    }
+
+    #[tokio::test]
+    async fn test_system_prompt_without_api_calling() {
+        let cap = DaytonaCapability;
+        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let prompt = cap
+            .system_prompt_contribution_with_config(&ctx, &json!({}))
+            .await
+            .unwrap();
+        assert!(!prompt.contains("daytona_api_call"));
+        assert!(!prompt.contains("Direct API Access"));
+        // Still has the base prompt
+        assert!(prompt.contains("Daytona"));
     }
 }

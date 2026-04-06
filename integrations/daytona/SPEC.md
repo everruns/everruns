@@ -203,6 +203,22 @@ Configure git credentials in a sandbox so that all git operations (push, pull, f
 
 **Design:** Avoids per-verb tools (git_push, git_fetch, etc.). Instead, configures standard git credential store once, then agent uses `daytona_exec` for all git operations naturally. Token in `/tmp` — lost on sandbox stop, same trust boundary as sandbox exec access.
 
+### daytona_api_call (opt-in)
+
+Call any Daytona REST API endpoint directly. Enabled via capability config `enable_api_calling: true`.
+
+- **Parameters**:
+  - `method`: string (required) — `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`
+  - `path`: string (required) — API path. Management API: `/sandbox`, `/sandbox/{id}`, etc. Toolbox API: `/toolbox/{sandbox_id}/files`, `/toolbox/{sandbox_id}/process/execute`, etc.
+  - `body`: object (optional) — JSON request body for POST/PUT/PATCH
+- **Returns**: Raw JSON response from the Daytona API
+- **Headers**: Authentication (`Bearer <api_key>`) and `Content-Type` headers are injected automatically — callers do NOT specify headers.
+- **Routing**: Paths starting with `/toolbox/{sandbox_id}/...` route to the Toolbox API proxy; all other paths route to the Management API.
+- **Resource tracking**: `POST /sandbox` responses automatically register sandbox state and leased-resource lease. `DELETE /sandbox/{id}` automatically releases state and lease. Other endpoints do not track resources.
+- **OpenAPI spec**: When enabled, the Daytona OpenAPI spec is mounted at `/daytona/openapi.yaml` in the session filesystem. The tool description references this path so agents can read it to discover endpoints.
+
+**Opt-in mechanism:** The `daytona_api_call` tool is only included when the capability config JSON has `enable_api_calling: true`. This is set per-agent in the harness capability configuration. When enabled, the system prompt also adds a section about direct API access.
+
 ## Security
 
 - **API Key**: Stored in user connections (Settings > Connections > Daytona), encrypted at rest (TM-DAYTONA-004)
@@ -287,6 +303,16 @@ Git credentials for push/pull/fetch are configured by writing a `git credential 
 
 **Future improvement: API-proxied credential helper.** Instead of writing a token file, configure git in the sandbox to call back to an Everruns API endpoint (e.g. `GET /api/sessions/{id}/git-credential`) that mints a fresh token on each request. Benefits: no token on disk, always fresh (no expiry), multi-provider (GitHub/GitLab) via query param, per-session ACLs. Deferred because the credential store approach is simpler, works now, and the sandbox is already an isolated trust boundary.
 
+### Opt-in direct API calling
+
+The `daytona_api_call` tool is opt-in via capability config (`enable_api_calling: true`) rather than always-on. This keeps the default tool surface small and focused (dedicated tools handle 95% of use cases). Direct API access is a power-user escape hatch for endpoints not covered by dedicated tools (labels, ports, search, replace, git status).
+
+**Why capability config (not a separate capability):** API calling reuses the same Daytona API key, client, and resource tracking. A separate capability would duplicate connection resolution and state management. `tools_with_config` is the established pattern (see `WebFetchCapability`).
+
+**OpenAPI spec mount:** The spec is always mounted at `/daytona/openapi.yaml` (regardless of config) to avoid needing a `mounts_with_config` mechanism that doesn't exist yet. The spec file is inert documentation — mounting it has zero cost when the tool isn't enabled.
+
+**No header control:** The tool does not accept a `headers` parameter. Authentication and content-type are controlled internally to prevent credential leakage or header injection.
+
 ## Crate Structure
 
 `integrations/daytona/` → `everruns-integrations-daytona`
@@ -300,8 +326,9 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 | `src/lib.rs` | Plugin registration, constants, `DaytonaCapability` impl |
 | `src/client.rs` | `DaytonaClient` HTTP client (management + toolbox APIs), URL encoding |
 | `src/connection.rs` | `DaytonaConnectionProvider` — API-key connection plugin |
+| `src/openapi_spec.rs` | Embedded Daytona OpenAPI spec (YAML) for session filesystem mount |
 | `src/state.rs` | API types (`SandboxInfo`, `ExecResult`, `SandboxState`), session state helpers |
-| `src/tools.rs` | 10 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
+| `src/tools.rs` | 11 tool implementations (`DaytonaCreateSandboxTool`, `DaytonaApiCallTool`, etc.) |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration |
 | `tests/tool_integration.rs` | Integration tests: tool execution + wiremock Daytona API |
 | `tests/live_api_test.rs` | Live API integration tests (feature-gated: `daytona-live-tests`) |
