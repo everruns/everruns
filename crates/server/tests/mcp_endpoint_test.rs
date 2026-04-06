@@ -622,14 +622,8 @@ async fn test_mcp_execute_list_harnesses() {
         .iter()
         .filter_map(|h| h["name"].as_str())
         .collect();
-    assert!(
-        names.contains(&"base"),
-        "Should have Base harness"
-    );
-    assert!(
-        names.contains(&"generic"),
-        "Should have Generic harness"
-    );
+    assert!(names.contains(&"base"), "Should have Base harness");
+    assert!(names.contains(&"generic"), "Should have Generic harness");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
