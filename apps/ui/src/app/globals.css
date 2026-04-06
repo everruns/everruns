@@ -238,3 +238,61 @@
   background: linear-gradient(90deg, transparent, hsl(var(--accent) / 0.14), transparent);
   animation: tool-progress-sheen 1.8s ease-in-out infinite;
 }
+
+/* -----------------------------------------------------------------------
+   Thinking indicator — combo wave bar animation
+   ----------------------------------------------------------------------- */
+@keyframes loading-wave {
+  0%,
+  100% {
+    height: 4px;
+    opacity: 0.3;
+  }
+  50% {
+    height: 14px;
+    opacity: 1;
+  }
+}
+
+.loading-wave-bar {
+  display: block;
+  background: hsl(var(--primary));
+  animation: loading-wave 1.2s ease-in-out infinite;
+}
+
+.dark .loading-wave-bar {
+  background: hsl(var(--accent));
+}
+
+/* Combo wave bar — per-bar brand gradient (navy → gold light, slate → gold dark) */
+.loading-wave-bar-0 {
+  background: hsl(220 62% 13%);
+}
+.loading-wave-bar-1 {
+  background: hsl(176 61.5% 23%);
+}
+.loading-wave-bar-2 {
+  background: hsl(132 61% 33%);
+}
+.loading-wave-bar-3 {
+  background: hsl(88 60.5% 43%);
+}
+.loading-wave-bar-4 {
+  background: hsl(44 60% 53%);
+}
+
+.dark .loading-wave-bar-0 {
+  background: hsl(220 30% 50%);
+}
+.dark .loading-wave-bar-1 {
+  background: hsl(190 40% 50%);
+}
+.dark .loading-wave-bar-2 {
+  background: hsl(140 45% 50%);
+}
+.dark .loading-wave-bar-3 {
+  background: hsl(80 50% 52%);
+}
+.dark .loading-wave-bar-4 {
+  background: hsl(44 60% 53%);
+}
