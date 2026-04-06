@@ -449,6 +449,7 @@ async fn tool_agent_run(
     // Create session
     let session_req = CreateSessionRequest {
         harness_id: Some(harness_id),
+        harness_name: None,
         agent_id,
         agent_identity_id: None,
         title,

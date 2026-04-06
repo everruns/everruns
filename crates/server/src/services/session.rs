@@ -872,6 +872,7 @@ mod tests {
     ) -> CreateSessionRequest {
         CreateSessionRequest {
             harness_id: Some(harness_id),
+            harness_name: None,
             agent_id,
             agent_identity_id: None,
             title: Some("Test Session".to_string()),

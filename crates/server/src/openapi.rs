@@ -100,6 +100,15 @@ use utoipa::OpenApi;
         api::schedules::list_schedule_executions,
         api::schedules::get_execution,
         api::schedules::get_schedule_stats,
+        // Harnesses
+        api::harnesses::create_harness,
+        api::harnesses::list_harnesses,
+        api::harnesses::get_harness,
+        api::harnesses::update_harness,
+        api::harnesses::delete_harness,
+        api::harnesses::copy_harness,
+        api::harnesses::preview_harness,
+        api::harnesses::harness_config,
         // Agents - additional
         api::agents::preview_agent,
         api::agents::upsert_agent,
@@ -172,6 +181,13 @@ use utoipa::OpenApi;
             api::llm_models::UpdateLlmModelRequest,
             CapabilityInfo,
             ListResponse<CapabilityInfo>,
+            // Harness types
+            everruns_core::Harness, everruns_core::HarnessStatus, everruns_core::ResourceConfigResponse,
+            api::harnesses::CreateHarnessRequest,
+            api::harnesses::UpdateHarnessRequest,
+            api::harnesses::PreviewHarnessRequest,
+            api::harnesses::HarnessPreviewResponse,
+            ListResponse<everruns_core::Harness>,
             api::users::User,
             api::users::ListUsersQuery,
             ListResponse<api::users::User>,
@@ -243,6 +259,7 @@ use utoipa::OpenApi;
         (name = "images", description = "Image upload and management endpoints"),
         (name = "session-databases", description = "Session-scoped SQL database endpoints"),
         (name = "session-storage", description = "Session key-value storage endpoints"),
+        (name = "harnesses", description = "Harness management endpoints"),
         (name = "skills", description = "Skills registry endpoints"),
     ),
     info(

@@ -11,7 +11,7 @@ use std::collections::HashMap;
 pub enum SessionsCommand {
     /// Create a new session
     Create {
-        /// Harness ID (e.g. harness_xxx). Omit to use org default.
+        /// Harness ID or name (e.g. harness_xxx or "generic"). Omit to use org default.
         #[arg(long, short = 'H')]
         harness: Option<String>,
 
@@ -92,6 +92,8 @@ pub async fn run(
         } => {
             create(
                 client,
+                api_url,
+                api_key,
                 output,
                 quiet,
                 harness,
@@ -117,9 +119,11 @@ pub async fn run(
 #[allow(clippy::too_many_arguments)]
 async fn create(
     client: &Everruns,
+    api_url: &str,
+    api_key: &str,
     output: OutputFormat,
     quiet: bool,
-    harness_id: Option<String>,
+    harness: Option<String>,
     agent_id: Option<String>,
     title: Option<String>,
     model_id: Option<String>,
@@ -129,6 +133,17 @@ async fn create(
 ) -> Result<()> {
     let secrets = parse_secrets(&raw_secrets)?;
     let budget_specs = parse_budget_limits(&raw_budget_limits, &raw_budget_soft_limits)?;
+
+    // Resolve harness: if the value looks like a prefixed ID, use it directly.
+    // Otherwise treat it as an addressable name and look it up via the API.
+    let harness_id = match harness {
+        Some(h) if h.starts_with("harness_") => Some(h),
+        Some(name) => {
+            let resolved = resolve_harness_name(api_url, api_key, &name).await?;
+            Some(resolved)
+        }
+        None => None,
+    };
 
     let mut req = CreateSessionRequest::new();
     if let Some(h) = harness_id {
@@ -616,6 +631,30 @@ async fn export(
     }
 
     Ok(())
+}
+
+/// Resolve a harness name to its ID via the GET /v1/harnesses/{name} endpoint.
+async fn resolve_harness_name(api_url: &str, api_key: &str, name: &str) -> Result<String> {
+    let http = reqwest::Client::new();
+    let resp = http
+        .get(format!("{}/v1/harnesses/{}", api_url, name))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+        .context("Failed to resolve harness name")?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Harness '{name}' not found ({status}): {body}");
+    }
+
+    let harness: serde_json::Value = resp.json().await.context("Invalid harness response")?;
+    harness
+        .get("id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .context(format!("Harness '{name}' response missing id field"))
 }
 
 fn capitalize_first(s: &str) -> String {

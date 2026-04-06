@@ -271,11 +271,14 @@ pub async fn list_harnesses(
 }
 
 /// GET /v1/harnesses/{harness_id}
+///
+/// Accepts either a harness ID (e.g. `harness_01933b5a...`) or an addressable
+/// name (e.g. `generic`). Names are resolved within the caller's org.
 #[utoipa::path(
     get,
     path = "/v1/harnesses/{harness_id}",
     params(
-        ("harness_id" = String, Path, description = "Harness ID (prefixed)")
+        ("harness_id" = String, Path, description = "Harness ID (prefixed) or addressable name")
     ),
     responses(
         (status = 200, description = "Harness found", body = Harness),
@@ -289,23 +292,26 @@ pub async fn list_harnesses(
 pub async fn get_harness(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path(harness_id): Path<String>,
+    Path(harness_id_or_name): Path<String>,
 ) -> ApiResult<Harness> {
-    let harness_id: HarnessId = harness_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid harness ID: {}", e),
-            }),
-        )
-    })?;
-
     let caller = Caller::from(&org);
+
+    // Try parsing as a prefixed ID first; fall back to name lookup.
+    if let Ok(harness_id) = harness_id_or_name.parse::<HarnessId>() {
+        let harness = state
+            .service
+            .get(&caller, harness_id.uuid())
+            .await
+            .map_policy_or_internal("get harness")?
+            .ok_or_not_found_json("Harness")?;
+        return Ok(Json(harness));
+    }
+
     let harness = state
         .service
-        .get(&caller, harness_id.uuid())
+        .get_by_name(&caller, &harness_id_or_name)
         .await
-        .map_policy_or_internal("get harness")?
+        .map_policy_or_internal("get harness by name")?
         .ok_or_not_found_json("Harness")?;
 
     Ok(Json(harness))
