@@ -439,8 +439,10 @@ pub async fn act_activity(
         Arc::new(GrpcScheduleStore::new(grpc_client.clone(), org_id));
     let platform_store: Arc<dyn everruns_core::platform_store::PlatformStore> =
         Arc::new(GrpcPlatformStore::new(grpc_client.clone(), org_id));
-    let budget_checker: Arc<dyn everruns_core::traits::BudgetChecker> =
-        Arc::new(GrpcBudgetChecker::new(grpc_client, org_id));
+    let budget_checker: Arc<dyn everruns_core::traits::BudgetChecker> = Arc::new(
+        GrpcBudgetChecker::new(grpc_client, org_id)
+            .with_agent_id(input.agent_id.map(|id| id.to_string())),
+    );
 
     let atom = ActAtom::with_file_store(tool_executor, event_emitter, file_store)
         .with_storage_store(storage_store)

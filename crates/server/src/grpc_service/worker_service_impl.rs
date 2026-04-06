@@ -3356,13 +3356,17 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         let mut all_budgets = session_budgets;
-        if let Some(ref agent_id) = req.agent_id
-            && let Ok(agent_budgets) = self
+        if let Some(ref agent_id) = req.agent_id {
+            match self
                 .db
                 .list_budgets(req.org_id, Some("agent"), Some(agent_id))
                 .await
-        {
-            all_budgets.extend(agent_budgets);
+            {
+                Ok(agent_budgets) => all_budgets.extend(agent_budgets),
+                Err(e) => {
+                    tracing::error!("Failed to list agent budgets for {agent_id}: {e}");
+                }
+            }
         }
 
         if all_budgets.is_empty() {

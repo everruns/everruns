@@ -376,15 +376,26 @@ pub type GrpcImageResolver = GrpcOrgAdapter;
 pub type GrpcSessionMutator = GrpcOrgAdapter;
 pub type GrpcScheduleStore = GrpcOrgAdapter;
 pub type GrpcPlatformStore = GrpcOrgAdapter;
-/// Budget checker that carries org_id (captured at construction) for gRPC calls.
+/// Budget checker that carries org_id and optional agent_id (captured at
+/// construction) for gRPC calls.
 pub struct GrpcBudgetChecker {
     client: GrpcClient,
     org_id: i64,
+    agent_id: Option<String>,
 }
 
 impl GrpcBudgetChecker {
     pub fn new(client: GrpcClient, org_id: i64) -> Self {
-        Self { client, org_id }
+        Self {
+            client,
+            org_id,
+            agent_id: None,
+        }
+    }
+
+    pub fn with_agent_id(mut self, agent_id: Option<String>) -> Self {
+        self.agent_id = agent_id;
+        self
     }
 }
 
@@ -2667,7 +2678,7 @@ impl everruns_core::traits::BudgetChecker for GrpcBudgetChecker {
         let request = proto::CheckBudgetsForSessionRequest {
             org_id: self.org_id,
             session_id: session_id.to_string(),
-            agent_id: None,
+            agent_id: self.agent_id.clone(),
         };
         let response = client
             .check_budgets_for_session(request)
