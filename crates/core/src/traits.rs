@@ -474,6 +474,21 @@ pub trait UserConnectionResolver: Send + Sync {
     }
 }
 
+// ============================================================================
+// BudgetChecker - For querying budget status from tools
+// ============================================================================
+
+/// Trait for checking budget status from within tool execution.
+///
+/// Implemented by gRPC adapters (worker → server) and direct adapters (in-process).
+/// Used by the `check_budget` tool to return real budget data to agents.
+/// The org_id is captured at construction time by the implementing adapter.
+#[async_trait]
+pub trait BudgetChecker: Send + Sync {
+    /// Check all budgets for a session and return a tool-friendly response.
+    async fn check_budgets(&self, session_id: &str) -> Result<crate::budget::BudgetToolResponse>;
+}
+
 /// Runtime context provided to tools during execution.
 ///
 /// This context contains:
@@ -547,6 +562,9 @@ pub struct ToolContext {
     /// When set, tools that support localization use this to produce
     /// locale-appropriate descriptions, error messages, and prompts.
     pub locale: Option<String>,
+
+    /// Optional budget checker for the check_budget tool.
+    pub budget_checker: Option<Arc<dyn BudgetChecker>>,
 }
 
 impl ToolContext {
@@ -573,6 +591,7 @@ impl ToolContext {
             org_id: None,
             network_access: None,
             locale: None,
+            budget_checker: None,
         }
     }
 
@@ -599,6 +618,7 @@ impl ToolContext {
             org_id: None,
             network_access: None,
             locale: None,
+            budget_checker: None,
         }
     }
 
@@ -628,6 +648,7 @@ impl ToolContext {
             org_id: None,
             network_access: None,
             locale: None,
+            budget_checker: None,
         }
     }
 
@@ -658,6 +679,7 @@ impl ToolContext {
             org_id: None,
             network_access: None,
             locale: None,
+            budget_checker: None,
         }
     }
 

@@ -13,6 +13,7 @@
 use super::{Capability, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
+use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -112,12 +113,37 @@ impl Tool for CheckBudgetTool {
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        // This is a placeholder implementation. Real budget data requires
-        // worker-side tool interception, planned for a future iteration.
+        // Fallback when no context is available (shouldn't happen in practice).
+        // Returns the same BudgetToolResponse shape for contract stability.
         ToolExecutionResult::success(serde_json::json!({
             "status": "no_budgets",
-            "message": "No budgets are configured for this session. You can proceed without budget constraints."
+            "budgets": [],
+            "hint": "No budgets are configured for this session. You can proceed without budget constraints."
         }))
+    }
+
+    async fn execute_with_context(
+        &self,
+        _arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let Some(ref checker) = context.budget_checker else {
+            // No budget checker wired — return the no_budgets fallback.
+            return self.execute(_arguments).await;
+        };
+
+        let session_id = context.session_id.to_string();
+
+        match checker.check_budgets(&session_id).await {
+            Ok(response) => {
+                ToolExecutionResult::success(serde_json::to_value(&response).unwrap_or_else(
+                    |_| serde_json::json!({"status": "no_budgets", "budgets": [], "hint": null}),
+                ))
+            }
+            Err(_) => ToolExecutionResult::tool_error(
+                "Budget check is temporarily unavailable. You can proceed normally.",
+            ),
+        }
     }
 }
 
@@ -161,11 +187,95 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_budget_tool_no_budgets() {
+    async fn test_check_budget_tool_no_budgets_fallback() {
         let tool = CheckBudgetTool;
+        // Without context, falls back to no_budgets with stable shape
         let result = tool.execute(serde_json::json!({})).await;
         if let ToolExecutionResult::Success(value) = result {
             assert_eq!(value.get("status").unwrap().as_str().unwrap(), "no_budgets");
+            assert!(value.get("budgets").unwrap().as_array().unwrap().is_empty());
+            assert!(value.get("hint").is_some());
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_check_budget_tool_with_context_no_checker() {
+        use crate::typed_id::SessionId;
+        let tool = CheckBudgetTool;
+        // With context but no budget_checker, also falls back
+        let context = ToolContext::new(SessionId::new());
+        let result = tool
+            .execute_with_context(serde_json::json!({}), &context)
+            .await;
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("status").unwrap().as_str().unwrap(), "no_budgets");
+            assert!(value.get("budgets").unwrap().as_array().unwrap().is_empty());
+        } else {
+            panic!("Expected success");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_check_budget_tool_with_mock_checker() {
+        use crate::budget::{BudgetSummary, BudgetToolResponse};
+        use crate::traits::BudgetChecker;
+        use crate::typed_id::SessionId;
+        use std::sync::Arc;
+
+        struct MockBudgetChecker;
+
+        #[async_trait]
+        impl BudgetChecker for MockBudgetChecker {
+            async fn check_budgets(
+                &self,
+                _session_id: &str,
+            ) -> crate::error::Result<BudgetToolResponse> {
+                Ok(BudgetToolResponse {
+                    status: "active".into(),
+                    budgets: vec![BudgetSummary {
+                        currency: "usd".into(),
+                        limit: 5.0,
+                        balance: 2.56,
+                        soft_limit: None,
+                        percent_remaining: 51.2,
+                        status: "active".into(),
+                    }],
+                    hint: Some("51.2% of budget remaining.".into()),
+                })
+            }
+        }
+
+        let tool = CheckBudgetTool;
+        let mut context = ToolContext::new(SessionId::new());
+        context.budget_checker = Some(Arc::new(MockBudgetChecker));
+
+        let result = tool
+            .execute_with_context(serde_json::json!({}), &context)
+            .await;
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value.get("status").unwrap().as_str().unwrap(), "active");
+            let budgets = value.get("budgets").unwrap().as_array().unwrap();
+            assert_eq!(budgets.len(), 1);
+            assert_eq!(budgets[0].get("currency").unwrap().as_str().unwrap(), "usd");
+            assert_eq!(budgets[0].get("balance").unwrap().as_f64().unwrap(), 2.56);
+            assert_eq!(
+                budgets[0]
+                    .get("percent_remaining")
+                    .unwrap()
+                    .as_f64()
+                    .unwrap(),
+                51.2
+            );
+            assert!(
+                value
+                    .get("hint")
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .contains("51.2%")
+            );
         } else {
             panic!("Expected success");
         }

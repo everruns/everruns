@@ -180,6 +180,8 @@ where
     org_id: Option<crate::typed_id::OrgId>,
     /// Merged network access list for URL filtering in tools.
     network_access: Option<crate::network_access::NetworkAccessList>,
+    /// Optional budget checker for the check_budget tool.
+    budget_checker: Option<Arc<dyn crate::traits::BudgetChecker>>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -215,6 +217,7 @@ where
             memory_store: None,
             org_id: None,
             network_access: None,
+            budget_checker: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
@@ -244,6 +247,7 @@ where
             memory_store: None,
             org_id: None,
             network_access: None,
+            budget_checker: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
@@ -380,6 +384,12 @@ where
         network_access: Option<crate::network_access::NetworkAccessList>,
     ) -> Self {
         self.network_access = network_access;
+        self
+    }
+
+    /// Set the budget checker for the check_budget tool.
+    pub fn with_budget_checker(mut self, checker: Arc<dyn crate::traits::BudgetChecker>) -> Self {
+        self.budget_checker = Some(checker);
         self
     }
 }
@@ -803,6 +813,9 @@ where
         }
         if let Some(ref store) = self.memory_store {
             tool_context.memory_store = Some(store.clone());
+        }
+        if let Some(ref checker) = self.budget_checker {
+            tool_context.budget_checker = Some(checker.clone());
         }
         tool_context.org_id = self.org_id;
         // Input network_access (per-session, merged from harness+agent+session) takes precedence

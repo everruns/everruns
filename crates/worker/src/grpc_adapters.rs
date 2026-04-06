@@ -376,6 +376,28 @@ pub type GrpcImageResolver = GrpcOrgAdapter;
 pub type GrpcSessionMutator = GrpcOrgAdapter;
 pub type GrpcScheduleStore = GrpcOrgAdapter;
 pub type GrpcPlatformStore = GrpcOrgAdapter;
+/// Budget checker that carries org_id and optional agent_id (captured at
+/// construction) for gRPC calls.
+pub struct GrpcBudgetChecker {
+    client: GrpcClient,
+    org_id: i64,
+    agent_id: Option<String>,
+}
+
+impl GrpcBudgetChecker {
+    pub fn new(client: GrpcClient, org_id: i64) -> Self {
+        Self {
+            client,
+            org_id,
+            agent_id: None,
+        }
+    }
+
+    pub fn with_agent_id(mut self, agent_id: Option<String>) -> Self {
+        self.agent_id = agent_id;
+        self
+    }
+}
 
 // ============================================================================
 // Helper functions for proto conversion
@@ -2639,6 +2661,46 @@ fn proto_value_to_json(value: prost_types::Value) -> serde_json::Value {
             serde_json::Value::Object(map)
         }
         None => serde_json::Value::Null,
+    }
+}
+
+// ============================================================================
+// BudgetChecker — check budget status from check_budget tool
+// ============================================================================
+
+#[async_trait]
+impl everruns_core::traits::BudgetChecker for GrpcBudgetChecker {
+    async fn check_budgets(
+        &self,
+        session_id: &str,
+    ) -> everruns_core::error::Result<everruns_core::budget::BudgetToolResponse> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::CheckBudgetsForSessionRequest {
+            org_id: self.org_id,
+            session_id: session_id.to_string(),
+            agent_id: self.agent_id.clone(),
+        };
+        let response = client
+            .check_budgets_for_session(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+        let resp = response.into_inner();
+        Ok(everruns_core::budget::BudgetToolResponse {
+            status: resp.status,
+            budgets: resp
+                .budgets
+                .into_iter()
+                .map(|b| everruns_core::budget::BudgetSummary {
+                    currency: b.currency,
+                    limit: b.limit,
+                    balance: b.balance,
+                    soft_limit: b.soft_limit,
+                    percent_remaining: b.percent_remaining,
+                    status: b.status,
+                })
+                .collect(),
+            hint: resp.hint,
+        })
     }
 }
 

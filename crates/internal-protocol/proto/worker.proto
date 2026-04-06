@@ -241,6 +241,10 @@ service WorkerService {
 
     // Base URL for UI links
     rpc PlatformGetBaseUrl(PlatformGetBaseUrlRequest) returns (PlatformGetBaseUrlResponse);
+
+    // === Budget operations ===
+    // Check budget status for a session (used by check_budget tool)
+    rpc CheckBudgetsForSession(CheckBudgetsForSessionRequest) returns (CheckBudgetsForSessionResponse);
 }
 
 // ============================================================================
@@ -1631,4 +1635,27 @@ message PlatformGetBaseUrlRequest {}
 
 message PlatformGetBaseUrlResponse {
     string base_url = 1;
+}
+
+// === Budget check messages ===
+
+message CheckBudgetsForSessionRequest {
+    int64 org_id = 1;
+    string session_id = 2;
+    optional string agent_id = 3;
+}
+
+message BudgetSummaryProto {
+    string currency = 1;
+    double limit = 2;
+    double balance = 3;
+    optional double soft_limit = 4;
+    double percent_remaining = 5;
+    string status = 6;
+}
+
+message CheckBudgetsForSessionResponse {
+    string status = 1;
+    repeated BudgetSummaryProto budgets = 2;
+    optional string hint = 3;
 }

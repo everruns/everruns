@@ -219,3 +219,31 @@ impl BudgetCheckResult {
         self.action == "pause"
     }
 }
+
+// ============================================================================
+// Budget tool response (returned by check_budget tool)
+// ============================================================================
+
+/// Summary of a single budget for the check_budget tool response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BudgetSummary {
+    pub currency: String,
+    pub limit: f64,
+    pub balance: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub soft_limit: Option<f64>,
+    pub percent_remaining: f64,
+    pub status: String,
+}
+
+/// Full response from the check_budget tool.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BudgetToolResponse {
+    /// Overall status: "active", "warning", "paused", "exhausted", "no_budgets"
+    pub status: String,
+    /// Per-budget summaries
+    pub budgets: Vec<BudgetSummary>,
+    /// Human-readable hint for the agent
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+}
