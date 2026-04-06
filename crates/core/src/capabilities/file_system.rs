@@ -449,7 +449,7 @@ impl Capability for FileSystemCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         use crate::tool_output_sanitizer::READ_ECONOMY_HINT;
-        const BASE: &str = "Session workspace root: `/workspace`. All file paths must start with `/workspace`. Directories are created automatically when writing files.";
+        const BASE: &str = "Session workspace root: `/workspace`. All file paths must start with `/workspace`. Directories are created automatically when writing files. These tools (read_file, write_file, etc.) operate on the session workspace ONLY — to read or write files inside a cloud sandbox, use the sandbox-specific tools (e.g. daytona_read_file, e2b_read_file).";
         // Build the full prompt lazily on first use by appending the shared read-economy hint.
         static PROMPT: std::sync::LazyLock<String> =
             std::sync::LazyLock::new(|| format!("{}{}", BASE, READ_ECONOMY_HINT));
@@ -491,7 +491,7 @@ impl Tool for ReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Read the content of a file. Returns text content directly. For image files (PNG, JPEG, GIF, WebP), the image is returned as a native image so you can see it visually."
+        "Read a file from the session workspace (/workspace). Returns text content directly. For image files (PNG, JPEG, GIF, WebP), the image is returned as a native image so you can see it visually. This is NOT for reading files in cloud sandboxes — use the sandbox-specific read tool instead."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -751,7 +751,7 @@ impl Tool for WriteFileTool {
     }
 
     fn description(&self) -> &str {
-        "Create a new file or update an existing file's content. Parent directories are created automatically."
+        "Create or update a file in the session workspace (/workspace). Parent directories are created automatically. This is NOT for writing files in cloud sandboxes."
     }
 
     fn parameters_schema(&self) -> Value {

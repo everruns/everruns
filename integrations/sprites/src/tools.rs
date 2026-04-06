@@ -327,7 +327,7 @@ impl Tool for SpritesReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Read a file from a Sprites microVM filesystem."
+        "Read a file from a remote Sprites microVM filesystem (NOT the session /workspace). Requires sprite_name."
     }
 
     fn parameters_schema(&self) -> Value {
