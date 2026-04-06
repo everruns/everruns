@@ -353,7 +353,7 @@ impl Tool for E2BReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Read a file from an E2B sandbox."
+        "Read a file from a remote E2B sandbox filesystem (NOT the session /workspace). Requires sandbox_id."
     }
 
     fn parameters_schema(&self) -> Value {

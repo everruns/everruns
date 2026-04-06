@@ -520,7 +520,7 @@ impl Tool for DaytonaReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Read a file from a Daytona sandbox filesystem."
+        "Read a file from a remote Daytona sandbox filesystem (NOT the session /workspace). Requires sandbox_id."
     }
 
     fn parameters_schema(&self) -> Value {
