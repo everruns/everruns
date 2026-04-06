@@ -1707,15 +1707,23 @@ impl Tool for DaytonaApiCallTool {
             }
         };
 
-        let body = arguments
+        let mut body = arguments
             .get("body")
             .and_then(|v| if v.is_null() { None } else { Some(v.clone()) });
+
+        // Inject ownership labels into POST /sandbox body for audit/cleanup traceability.
+        // Without these labels, sandboxes created via raw API are invisible to
+        // Daytona-side orphan cleanup that filters on the "everruns" label.
+        let is_sandbox_create = method_str == "POST" && path == "/sandbox";
+        if is_sandbox_create {
+            body = Some(Self::inject_labels(context, body.unwrap_or_else(|| json!({}))).await);
+        }
 
         let client = DaytonaClient::new(api_key);
         match client.api_call(method, &path, body).await {
             Ok(response) => {
                 // Track sandbox resources created/deleted via raw API calls
-                self.track_resources(context, &method_str, &path, &response)
+                self.track_resources(context, &client, &method_str, &path, &response)
                     .await;
                 ToolExecutionResult::success(response)
             }
@@ -1725,6 +1733,55 @@ impl Tool for DaytonaApiCallTool {
 }
 
 impl DaytonaApiCallTool {
+    /// Build ownership labels for Daytona sandbox audit/cleanup.
+    ///
+    /// Mirrors the labels added by `DaytonaCreateSandboxTool` so that sandboxes
+    /// created via raw API are still discoverable by label-based cleanup queries.
+    async fn build_labels(context: &ToolContext) -> serde_json::Map<String, Value> {
+        let mut labels = serde_json::Map::new();
+        labels.insert("everruns".to_string(), json!("true"));
+        labels.insert(
+            "everruns.session_id".to_string(),
+            json!(context.session_id.to_string()),
+        );
+        if let Some(session_store) = &context.session_store
+            && let Ok(Some(session)) = session_store.get_session(context.session_id).await
+        {
+            labels.insert(
+                "everruns.harness_id".to_string(),
+                json!(session.harness_id.to_string()),
+            );
+            labels.insert(
+                "everruns.org_id".to_string(),
+                json!(&session.organization_id),
+            );
+            if let Some(agent_id) = &session.agent_id {
+                labels.insert("everruns.agent_id".to_string(), json!(agent_id.to_string()));
+            }
+        }
+        labels
+    }
+
+    /// Inject everruns ownership labels into a POST /sandbox request body.
+    ///
+    /// Merges with any user-provided labels (user labels take precedence for
+    /// non-everruns keys; everruns.* keys are always set to prevent tampering).
+    async fn inject_labels(context: &ToolContext, mut body: Value) -> Value {
+        let labels = Self::build_labels(context).await;
+        if let Some(obj) = body.as_object_mut() {
+            let existing = obj
+                .entry("labels")
+                .or_insert_with(|| json!({}))
+                .as_object_mut();
+            if let Some(existing_labels) = existing {
+                for (k, v) in labels {
+                    existing_labels.insert(k, v);
+                }
+            }
+        }
+        body
+    }
+
     /// Best-effort resource tracking for sandbox lifecycle operations via raw API.
     ///
     /// When the agent creates or deletes sandboxes through `daytona_api_call` instead
@@ -1732,11 +1789,12 @@ impl DaytonaApiCallTool {
     async fn track_resources(
         &self,
         context: &ToolContext,
+        client: &DaytonaClient,
         method: &str,
         path: &str,
         response: &Value,
     ) {
-        // POST /sandbox → new sandbox created, register lease
+        // POST /sandbox → new sandbox created, register lease + ensure labels
         if method == "POST"
             && path == "/sandbox"
             && let Some(sandbox_id) = response.get("id").and_then(|v| v.as_str())
@@ -1755,6 +1813,19 @@ impl DaytonaApiCallTool {
             }
             if let Err(e) = touch_sandbox_lease(context, &state, display_name).await {
                 warn!("Failed to register sandbox lease from api_call: {e:?}");
+            }
+            // Belt-and-suspenders: set labels via labels API in case the create
+            // body injection didn't work (e.g. Daytona ignores unknown fields).
+            let labels = Self::build_labels(context).await;
+            if let Err(e) = client
+                .api_call(
+                    reqwest::Method::PUT,
+                    &format!("/sandbox/{sandbox_id}/labels"),
+                    Some(json!(labels)),
+                )
+                .await
+            {
+                warn!("Failed to set labels on sandbox {sandbox_id}: {e}");
             }
             debug!(sandbox_id, "Tracked sandbox created via daytona_api_call");
         }
