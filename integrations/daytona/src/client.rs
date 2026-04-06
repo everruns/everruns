@@ -456,9 +456,15 @@ impl DaytonaClient {
     {
         self.ensure_session(sandbox_id).await?;
 
+        // Wrap the user command in a subshell `( ... )` so that `exit`,
+        // SIGPIPE, SIGHUP, and other signals only terminate the subshell,
+        // not the persistent session shell. Without this, commands like
+        // `bash -lc '...; exit'`, pipes to `head`/`sed` (SIGPIPE), and
+        // long `&&` chains that call `exit` would kill the entire session
+        // and force expensive re-establishment. See EVE-251.
         let cmd = match cwd {
-            Some(c) => format!("{SHELL_PROFILE_PREAMBLE}cd {c} && {command}"),
-            None => format!("{SHELL_PROFILE_PREAMBLE}{command}"),
+            Some(c) => format!("{SHELL_PROFILE_PREAMBLE}( cd {c} && {command} )"),
+            None => format!("{SHELL_PROFILE_PREAMBLE}( {command} )"),
         };
 
         let timeout = timeout_ms.unwrap_or(crate::EXEC_TIMEOUT_MS);
@@ -1517,8 +1523,9 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        // Exec — match the exact command body to verify preamble is prepended.
-        let expected_cmd = format!("{SHELL_PROFILE_PREAMBLE}echo hello");
+        // Exec — match the exact command body to verify preamble is prepended
+        // and command is wrapped in a subshell.
+        let expected_cmd = format!("{SHELL_PROFILE_PREAMBLE}( echo hello )");
         Mock::given(method("POST"))
             .and(path("/sb_preamble/process/session/everruns-exec/exec"))
             .and(body_json(json!({
@@ -1573,8 +1580,8 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        // With cwd, command should be: PREAMBLE + cd /tmp && ls
-        let expected_cmd = format!("{SHELL_PROFILE_PREAMBLE}cd /tmp && ls");
+        // With cwd, command should be: PREAMBLE + ( cd /tmp && ls )
+        let expected_cmd = format!("{SHELL_PROFILE_PREAMBLE}( cd /tmp && ls )");
         Mock::given(method("POST"))
             .and(path("/sb_cwd/process/session/everruns-exec/exec"))
             .and(body_json(json!({
