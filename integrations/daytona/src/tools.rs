@@ -1723,7 +1723,7 @@ impl Tool for DaytonaApiCallTool {
         match client.api_call(method, &path, body).await {
             Ok(response) => {
                 // Track sandbox resources created/deleted via raw API calls
-                self.track_resources(context, &client, &method_str, &path, &response)
+                self.track_resources(context, &method_str, &path, &response)
                     .await;
                 ToolExecutionResult::success(response)
             }
@@ -1786,15 +1786,17 @@ impl DaytonaApiCallTool {
     ///
     /// When the agent creates or deletes sandboxes through `daytona_api_call` instead
     /// of the dedicated tools, we still want leased-resource tracking to work.
+    /// Labels are injected pre-request via `inject_labels()`; Daytona's PUT labels
+    /// API does not reliably update labels post-creation, so we rely solely on
+    /// injecting them into the POST /sandbox body.
     async fn track_resources(
         &self,
         context: &ToolContext,
-        client: &DaytonaClient,
         method: &str,
         path: &str,
         response: &Value,
     ) {
-        // POST /sandbox → new sandbox created, register lease + ensure labels
+        // POST /sandbox → new sandbox created, register lease
         if method == "POST"
             && path == "/sandbox"
             && let Some(sandbox_id) = response.get("id").and_then(|v| v.as_str())
@@ -1813,19 +1815,6 @@ impl DaytonaApiCallTool {
             }
             if let Err(e) = touch_sandbox_lease(context, &state, display_name).await {
                 warn!("Failed to register sandbox lease from api_call: {e:?}");
-            }
-            // Belt-and-suspenders: set labels via labels API in case the create
-            // body injection didn't work (e.g. Daytona ignores unknown fields).
-            let labels = Self::build_labels(context).await;
-            if let Err(e) = client
-                .api_call(
-                    reqwest::Method::PUT,
-                    &format!("/sandbox/{sandbox_id}/labels"),
-                    Some(json!(labels)),
-                )
-                .await
-            {
-                warn!("Failed to set labels on sandbox {sandbox_id}: {e}");
             }
             debug!(sandbox_id, "Tracked sandbox created via daytona_api_call");
         }

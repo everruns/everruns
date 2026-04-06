@@ -420,3 +420,118 @@ async fn test_live_stop_and_start() {
     assert_eq!(result.exit_code, 0);
     assert!(result.result.contains("restarted"));
 }
+
+/// api_call: create sandbox via raw API, verify labels are set, exec via toolbox, delete.
+#[tokio::test]
+async fn test_live_api_call_sandbox_lifecycle_with_labels() {
+    let api_key = require_api_key!();
+    let client = DaytonaClient::new(api_key);
+
+    // Create sandbox via api_call with labels
+    let create_body = json!({
+        "snapshot": "daytona-small",
+        "autoStopInterval": 5,
+        "autoArchiveInterval": 30,
+        "autoDeleteInterval": 60,
+        "labels": {
+            "everruns": "true",
+            "everruns.test": "api_call_lifecycle"
+        }
+    });
+    let response = client
+        .api_call(reqwest::Method::POST, "/sandbox", Some(create_body))
+        .await
+        .expect("api_call POST /sandbox failed");
+
+    let sandbox_id = response["id"].as_str().expect("No sandbox ID in response");
+    assert!(!sandbox_id.is_empty());
+    eprintln!("[test] Created sandbox via api_call: {sandbox_id}");
+    let guard = SandboxGuard::new(sandbox_id.to_string());
+
+    // Wait for ready
+    client
+        .wait_for_ready(sandbox_id)
+        .await
+        .expect("Sandbox did not become ready");
+
+    // GET sandbox details via api_call, verify labels survived creation
+    let details = client
+        .api_call(
+            reqwest::Method::GET,
+            &format!("/sandbox/{sandbox_id}"),
+            None,
+        )
+        .await
+        .expect("api_call GET /sandbox/{id} failed");
+
+    assert_eq!(details["id"].as_str().unwrap(), sandbox_id);
+    let labels = &details["labels"];
+    assert_eq!(
+        labels["everruns"].as_str().unwrap_or(""),
+        "true",
+        "everruns label missing or wrong: {labels}"
+    );
+    assert_eq!(
+        labels["everruns.test"].as_str().unwrap_or(""),
+        "api_call_lifecycle",
+        "test label missing: {labels}"
+    );
+    eprintln!("[test] Labels verified: {labels}");
+
+    // Execute command via toolbox api_call
+    let exec_result = client
+        .api_call(
+            reqwest::Method::POST,
+            &format!("/toolbox/{sandbox_id}/process/execute"),
+            Some(json!({"command": "echo api-call-works"})),
+        )
+        .await
+        .expect("toolbox exec via api_call failed");
+    assert!(
+        exec_result["result"]
+            .as_str()
+            .unwrap_or("")
+            .contains("api-call-works"),
+        "Exec output missing marker: {exec_result}"
+    );
+    eprintln!("[test] Toolbox exec works via api_call");
+
+    // List files via toolbox api_call
+    let files = client
+        .api_call(
+            reqwest::Method::GET,
+            &format!("/toolbox/{sandbox_id}/files?path=/tmp"),
+            None,
+        )
+        .await
+        .expect("toolbox file list via api_call failed");
+    assert!(files.is_array(), "Expected array of files, got: {files}");
+    eprintln!("[test] Toolbox file listing works via api_call");
+
+    // List all sandboxes via api_call, verify ours appears
+    let all = client
+        .api_call(reqwest::Method::GET, "/sandbox", None)
+        .await
+        .expect("api_call GET /sandbox failed");
+    let found = all
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|s| s["id"].as_str() == Some(sandbox_id));
+    assert!(found, "Sandbox {sandbox_id} not found in list");
+
+    // Delete via api_call
+    let del = client
+        .api_call(
+            reqwest::Method::DELETE,
+            &format!("/sandbox/{sandbox_id}"),
+            None,
+        )
+        .await
+        .expect("api_call DELETE /sandbox/{id} failed");
+    assert!(del.is_object());
+    eprintln!("[test] Deleted sandbox via api_call: {sandbox_id}");
+
+    // Guard will also try to delete (harmless double-delete)
+    drop(guard);
+}

@@ -214,7 +214,7 @@ Call any Daytona REST API endpoint directly. Enabled via capability config `enab
 - **Returns**: Raw JSON response from the Daytona API
 - **Headers**: Authentication (`Bearer <api_key>`) and `Content-Type` headers are injected automatically — callers do NOT specify headers.
 - **Routing**: Paths starting with `/toolbox/{sandbox_id}/...` route to the Toolbox API proxy; all other paths route to the Management API.
-- **Resource tracking**: `POST /sandbox` responses automatically register sandbox state and leased-resource lease. `DELETE /sandbox/{id}` automatically releases state and lease. Other endpoints do not track resources.
+- **Resource tracking**: `POST /sandbox` requests get `everruns.*` ownership labels auto-injected into the body (same labels as `daytona_create_sandbox`). Responses register sandbox state and leased-resource lease. `DELETE /sandbox/{id}` releases state and lease. Other endpoints do not track resources.
 - **OpenAPI spec**: When enabled, the Daytona OpenAPI spec is mounted at `/daytona/openapi.yaml` in the session filesystem. The tool description references this path so agents can read it to discover endpoints.
 
 **Opt-in mechanism:** The `daytona_api_call` tool is only included when the capability config JSON has `enable_api_calling: true`. This is set per-agent in the harness capability configuration. When enabled, the system prompt also adds a section about direct API access.
@@ -312,6 +312,8 @@ The `daytona_api_call` tool is opt-in via capability config (`enable_api_calling
 **OpenAPI spec mount:** The spec is always mounted at `/daytona/openapi.yaml` (regardless of config) to avoid needing a `mounts_with_config` mechanism that doesn't exist yet. The spec file is inert documentation — mounting it has zero cost when the tool isn't enabled.
 
 **No header control:** The tool does not accept a `headers` parameter. Authentication and content-type are controlled internally to prevent credential leakage or header injection.
+
+**Label injection at create time:** `POST /sandbox` requests get `everruns.*` labels injected into the body before sending. Daytona's `PUT /sandbox/{id}/labels` API does not reliably update labels post-creation (verified against live API 2026-04), so create-time injection is the only reliable approach. This matches the labels set by `daytona_create_sandbox`.
 
 ## Crate Structure
 
