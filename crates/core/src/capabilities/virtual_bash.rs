@@ -246,6 +246,7 @@ impl Tool for BashTool {
             .env("WORKSPACE", "/workspace")
             .env("LANG", locale)
             .limits(execution_limits())
+            .max_memory(10 * 1024 * 1024) // 10 MB — prevent OOM from untrusted input
             .trace_mode(TraceMode::Redacted)
             .build();
 
