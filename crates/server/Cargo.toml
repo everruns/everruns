@@ -65,7 +65,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 urlencoding = "2"
 git2.workspace = true
 
-bashkit = { git = "https://github.com/everruns/bashkit", tag = "v0.1.14", features = ["scripted_tool"] }
+bashkit = { git = "https://github.com/everruns/bashkit", tag = "v0.1.15", features = ["scripted_tool"] }
 
 everruns-config = { path = "../config" }
 everruns-core = { path = "../core", features = ["openapi", "sqlx", "tree-sitter-outlines"] }
