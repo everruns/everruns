@@ -8,6 +8,17 @@ Harnesses may also define starter files. Starter files are copied into each new 
 
 Harnesses support single-parent inheritance via `parent_harness_id`. Inheritance is live: the effective harness is resolved from parent to child at runtime and in preview.
 
+## Harness Naming
+
+Every harness has two name fields:
+
+| Field | Purpose | Constraints | Example |
+|-------|---------|-------------|---------|
+| `name` | URL/CLI-friendly addressable identifier | `[a-z0-9]([a-z0-9-]*[a-z0-9])?`, max 64 chars, unique per org | `deep-research` |
+| `display_name` | Human-readable label shown in UI | Free-form string, max 2 KB | `Deep Research` |
+
+The `name` field works like a GitHub repository name: lowercase alphanumeric with hyphens, no consecutive hyphens, no leading/trailing hyphens. It is unique per organization (among non-deleted harnesses) and can be used for API lookups, CLI references, and URL routing.
+
 ## Built-in Harness Types
 
 ### Base
@@ -16,11 +27,12 @@ The empty harness. No capabilities, no opinions. Intended as a blank canvas for 
 
 | Property | Value |
 |----------|-------|
-| Name | Base |
+| Name | `base` |
+| Display Name | Base |
 | Seed ID | `harness_01933b5a000070008000000000000601` |
 | System Prompt | "You are a helpful assistant." |
 | Capabilities | _(none)_ |
-| Tags | `base`, `seed` |
+| Tags | `base`, `built-in` |
 
 **Use cases:**
 - Custom agent configurations where only specific capabilities are needed
@@ -33,10 +45,11 @@ The recommended default harness. Bundles the core capabilities needed for genera
 
 | Property | Value |
 |----------|-------|
-| Name | Generic |
+| Name | `generic` |
+| Display Name | Generic |
 | Seed ID | `harness_01933b5a000070008000000000000602` |
 | System Prompt | "You are a helpful assistant." |
-| Tags | `generic`, `default`, `seed` |
+| Tags | `generic`, `default`, `built-in` |
 
 **Capabilities:**
 
@@ -67,11 +80,12 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 
 | Property | Value |
 |----------|-------|
-| Name | Platform Chat |
+| Name | `platform-chat` |
+| Display Name | Platform Chat |
 | Seed ID | `harness_01933b5a000070008000000000000603` |
-| Parent | Generic |
+| Parent | `generic` |
 | System Prompt | See `crates/server/src/seed.rs` (CHAT_HARNESS) for full prompt |
-| Tags | `chat`, `seed` |
+| Tags | `chat`, `built-in` |
 
 **Local capabilities:** `platform_management`
 

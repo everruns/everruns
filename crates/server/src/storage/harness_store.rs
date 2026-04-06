@@ -80,6 +80,7 @@ impl HarnessStore for DbHarnessStore {
             chain.push(Harness {
                 id: row.id,
                 name: row.name,
+                display_name: row.display_name,
                 description: row.description,
                 system_prompt: row.system_prompt,
                 parent_harness_id: row.parent_harness_id,

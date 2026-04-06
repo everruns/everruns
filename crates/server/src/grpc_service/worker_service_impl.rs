@@ -2729,6 +2729,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let create_req = crate::api::harnesses::CreateHarnessRequest {
             name: req.name,
+            display_name: req.display_name,
             description: req.description,
             system_prompt: req.system_prompt,
             parent_harness_id: req
@@ -2765,6 +2766,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let update_req = crate::api::harnesses::UpdateHarnessRequest {
             name: req.name,
+            display_name: req.display_name,
             description: req.description,
             system_prompt: req.system_prompt,
             parent_harness_id: if req.clear_parent_harness_id.unwrap_or(false) {
@@ -2833,6 +2835,7 @@ impl WorkerService for WorkerServiceImpl {
         let harness = if let Some(new_name) = req.new_name {
             let update_req = crate::api::harnesses::UpdateHarnessRequest {
                 name: Some(new_name),
+                display_name: None,
                 description: None,
                 system_prompt: None,
                 parent_harness_id: None,

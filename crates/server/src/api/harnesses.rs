@@ -22,7 +22,9 @@ use everruns_core::{
 use super::common::{
     ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
 };
-use super::validation::{validate_create_agent_input, validate_update_agent_input};
+use super::validation::{
+    validate_create_agent_input, validate_harness_name, validate_update_agent_input,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -32,9 +34,13 @@ use crate::services::{CapabilityService, HarnessService};
 /// Request to create a new harness
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateHarnessRequest {
-    /// The name of the harness.
-    #[schema(example = "Deep Research")]
+    /// URL/CLI-friendly addressable name, unique per org.
+    /// Format: lowercase alphanumeric and hyphens, like a GitHub repo name.
+    #[schema(example = "deep-research")]
     pub name: String,
+    /// Human-readable display name shown in UI.
+    #[schema(example = "Deep Research")]
+    pub display_name: String,
     /// Description of what the harness does.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Research harness with planning and web capabilities")]
@@ -69,9 +75,14 @@ pub struct CreateHarnessRequest {
 /// Request to update a harness. Only provided fields will be updated.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateHarnessRequest {
+    /// URL/CLI-friendly addressable name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "updated-research")]
+    pub name: Option<String>,
+    /// Human-readable display name.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Updated Research Harness")]
-    pub name: Option<String>,
+    pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -208,9 +219,10 @@ pub async fn create_harness(
     State(state): State<AppState>,
     Json(req): Json<CreateHarnessRequest>,
 ) -> Result<(StatusCode, Json<Harness>), (StatusCode, Json<ErrorResponse>)> {
-    // Reuse agent validation (same limits)
+    validate_harness_name(&req.name)?;
+    // Reuse agent validation for display_name and other fields
     validate_create_agent_input(
-        &req.name,
+        &req.display_name,
         req.description.as_deref(),
         &req.system_prompt,
         req.capabilities.len(),
@@ -331,9 +343,12 @@ pub async fn update_harness(
         )
     })?;
 
-    // Reuse agent validation (same limits)
+    if let Some(ref name) = req.name {
+        validate_harness_name(name)?;
+    }
+    // Reuse agent validation for display_name and other fields
     validate_update_agent_input(
-        req.name.as_deref(),
+        req.display_name.as_deref(),
         req.description.as_deref(),
         req.system_prompt.as_deref(),
         req.capabilities.as_ref().map(|c| c.len()),

@@ -713,6 +713,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
     Ok(Harness {
         id: id.into(),
         name: proto_harness.name,
+        display_name: proto_harness.display_name,
         description: non_empty_string(proto_harness.description),
         system_prompt: proto_harness.system_prompt,
         parent_harness_id: parent_harness_id.map(|u| u.into()),
@@ -2005,6 +2006,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
     async fn create_harness(
         &self,
         name: &str,
+        display_name: &str,
         description: Option<&str>,
         system_prompt: &str,
         parent_harness_id: Option<everruns_core::HarnessId>,
@@ -2015,6 +2017,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
             .platform_create_harness(proto::PlatformCreateHarnessRequest {
                 org_id: self.org_id,
                 name: name.to_string(),
+                display_name: display_name.to_string(),
                 description: description.map(|s| s.to_string()),
                 system_prompt: system_prompt.to_string(),
                 capabilities: capabilities.to_vec(),
@@ -2036,6 +2039,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         &self,
         id: everruns_core::HarnessId,
         name: Option<&str>,
+        display_name: Option<&str>,
         description: Option<&str>,
         system_prompt: Option<&str>,
         parent_harness_id: Option<Option<everruns_core::HarnessId>>,
@@ -2046,6 +2050,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 org_id: self.org_id,
                 harness_id: Some(uuid_to_proto(id.uuid())),
                 name: name.map(|s| s.to_string()),
+                display_name: display_name.map(|s| s.to_string()),
                 description: description.map(|s| s.to_string()),
                 system_prompt: system_prompt.map(|s| s.to_string()),
                 parent_harness_id: parent_harness_id
@@ -2715,7 +2720,7 @@ mod tests {
         let parent_id = Uuid::new_v4();
         let proto = proto::Harness {
             id: Some(uuid_to_proto(harness_id)),
-            name: "Platform Chat".into(),
+            name: "platform-chat".into(),
             description: "Built-in chat harness".into(),
             system_prompt: "prompt".into(),
             default_model_id: None,
@@ -2726,6 +2731,7 @@ mod tests {
             tags: vec!["chat".into(), "built-in".into()],
             parent_harness_id: Some(uuid_to_proto(parent_id)),
             is_built_in: true,
+            display_name: "Platform Chat".into(),
         };
 
         let harness = proto_harness_to_harness(proto).expect("proto harness should convert");

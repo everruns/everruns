@@ -161,6 +161,7 @@ impl Tool for ReadHarnessesTool {
                 Ok(Some(h)) => ToolExecutionResult::success(json!({
                     "id": h.id.to_string(),
                     "name": h.name,
+                    "display_name": h.display_name,
                     "description": h.description,
                     "system_prompt": h.system_prompt,
                     "status": format!("{:?}", h.status),
@@ -180,6 +181,7 @@ impl Tool for ReadHarnessesTool {
                             json!({
                                 "id": h.id.to_string(),
                                 "name": h.name,
+                                "display_name": h.display_name,
                                 "description": h.description,
                                 "status": format!("{:?}", h.status),
                                 "capabilities": h.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
@@ -293,6 +295,10 @@ impl Tool for ManageHarnessesTool {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
+                let display_name = match require_str(&arguments, "display_name") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
                 let system_prompt =
                     get_str(&arguments, "system_prompt").unwrap_or("You are a helpful assistant.");
                 let description = get_str(&arguments, "description");
@@ -326,6 +332,7 @@ impl Tool for ManageHarnessesTool {
                 match store
                     .create_harness(
                         name,
+                        display_name,
                         description,
                         system_prompt,
                         parent_harness_id,
@@ -336,6 +343,7 @@ impl Tool for ManageHarnessesTool {
                     Ok(h) => ToolExecutionResult::success(json!({
                         "id": h.id.to_string(),
                         "name": h.name,
+                        "display_name": h.display_name,
                         "description": h.description,
                         "parent_harness_id": h.parent_harness_id.map(|id| id.to_string()),
                         "status": format!("{:?}", h.status),
@@ -362,6 +370,7 @@ impl Tool for ManageHarnessesTool {
                     }
                 };
                 let name = get_str(&arguments, "name");
+                let display_name = get_str(&arguments, "display_name");
                 let description = get_str(&arguments, "description");
                 let system_prompt = get_str(&arguments, "system_prompt");
                 let parent_harness_id = match arguments.get("parent_harness_id") {
@@ -384,12 +393,20 @@ impl Tool for ManageHarnessesTool {
                     }
                 };
                 match store
-                    .update_harness(id, name, description, system_prompt, parent_harness_id)
+                    .update_harness(
+                        id,
+                        name,
+                        display_name,
+                        description,
+                        system_prompt,
+                        parent_harness_id,
+                    )
                     .await
                 {
                     Ok(h) => ToolExecutionResult::success(json!({
                         "id": h.id.to_string(),
                         "name": h.name,
+                        "display_name": h.display_name,
                         "description": h.description,
                         "parent_harness_id": h.parent_harness_id.map(|id| id.to_string()),
                         "status": format!("{:?}", h.status),
@@ -444,6 +461,7 @@ impl Tool for ManageHarnessesTool {
                     Ok(h) => ToolExecutionResult::success(json!({
                         "id": h.id.to_string(),
                         "name": h.name,
+                        "display_name": h.display_name,
                         "description": h.description,
                         "status": format!("{:?}", h.status),
                         "ui_link": format!("{}/harnesses/{}", base_url, h.id),
@@ -1546,7 +1564,8 @@ mod tests {
             .await;
         match result {
             ToolExecutionResult::Success(v) => {
-                assert_eq!(v["name"], "Test Harness");
+                assert_eq!(v["name"], "test-harness");
+                assert_eq!(v["display_name"], "Test Harness");
                 assert!(v["system_prompt"].as_str().is_some());
                 assert!(v["ui_link"].as_str().unwrap().contains("/harnesses/"));
             }
@@ -1575,13 +1594,14 @@ mod tests {
         let tool = ManageHarnessesTool;
         let result = tool
             .execute_with_context(
-                json!({"operation": "create", "name": "My Harness", "system_prompt": "Be fun!"}),
+                json!({"operation": "create", "name": "my-harness", "display_name": "My Harness", "system_prompt": "Be fun!"}),
                 &ctx,
             )
             .await;
         match result {
             ToolExecutionResult::Success(v) => {
-                assert_eq!(v["name"], "My Harness");
+                assert_eq!(v["name"], "my-harness");
+                assert_eq!(v["display_name"], "My Harness");
                 assert!(
                     v["ui_link"]
                         .as_str()

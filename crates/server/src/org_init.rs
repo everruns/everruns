@@ -64,6 +64,7 @@ pub async fn initialize_org_harnesses_with_definitions(
                 .with_context(|| format!("resolve parent for built-in harness {}", harness.name))?;
         let input = CreateHarnessRow {
             name: harness.name.to_string(),
+            display_name: harness.display_name.to_string(),
             description: Some(harness.description.to_string()),
             system_prompt: harness.system_prompt.to_string(),
             parent_harness_id,
@@ -108,19 +109,14 @@ pub async fn initialize_org_harnesses_with_definitions(
             }
         } else {
             // Non-default org: check if built-in harness already exists by name
-            let existing = db
-                .list_harnesses(org_id, Some(&harness.name), false)
-                .await?;
-            let already_exists = existing
-                .iter()
-                .any(|h| h.name == harness.name && h.is_built_in);
+            let existing_row = db
+                .get_harness_by_name(org_id, &harness.name)
+                .await?
+                .filter(|h| h.is_built_in);
 
-            if already_exists {
+            if let Some(existing_row) = existing_row {
                 // Already provisioned — update definition if changed
-                let existing_row = existing
-                    .iter()
-                    .find(|h| h.name == harness.name && h.is_built_in)
-                    .unwrap();
+                let existing_row = &existing_row;
 
                 match db
                     .create_harness_with_id(org_id, existing_row.id, input)
@@ -177,27 +173,26 @@ async fn resolve_built_in_parent_id(
     harnesses: &[BuiltInHarnessDefinition],
     harness: &BuiltInHarnessDefinition,
 ) -> Result<Option<everruns_core::HarnessId>> {
-    let Some(parent_key) = harness.parent_key.as_deref() else {
+    let Some(parent_name) = harness.parent_name.as_deref() else {
         return Ok(None);
     };
 
     let parent = harnesses
         .iter()
-        .find(|candidate| candidate.key == parent_key)
-        .with_context(|| format!("unknown built-in parent {parent_key}"))?;
+        .find(|candidate| candidate.name == parent_name)
+        .with_context(|| format!("unknown built-in parent {parent_name}"))?;
 
     if is_default_org {
         let parent_seed = parent
             .seed_id
-            .with_context(|| format!("missing seed id for built-in parent {parent_key}"))?;
+            .with_context(|| format!("missing seed id for built-in parent {parent_name}"))?;
         return Ok(Some(parent_seed.into()));
     }
 
     let parent_row = db
-        .list_harnesses(org_id, Some(&parent.name), true)
+        .get_harness_by_name(org_id, &parent.name)
         .await?
-        .into_iter()
-        .find(|candidate| candidate.is_built_in && candidate.name == parent.name)
+        .filter(|candidate| candidate.is_built_in)
         .with_context(|| format!("missing built-in parent {} for org {org_id}", parent.name))?;
     Ok(Some(parent_row.id))
 }
@@ -439,11 +434,11 @@ mod tests {
 
         let chat = provisioned_harnesses
             .iter()
-            .find(|h| h.name == "Platform Chat")
+            .find(|h| h.name == "platform-chat")
             .expect("chat harness");
         let generic = provisioned_harnesses
             .iter()
-            .find(|h| h.name == "Generic")
+            .find(|h| h.name == "generic")
             .expect("generic harness");
         assert_eq!(chat.parent_harness_id, Some(generic.id));
 
@@ -493,8 +488,8 @@ mod tests {
             assert!(h.is_built_in);
         }
 
-        let generic_id = h_org2.iter().find(|h| h.name == "Generic").unwrap().id;
-        let base_id = h_org2.iter().find(|h| h.name == "Base").unwrap().id;
+        let generic_id = h_org2.iter().find(|h| h.name == "generic").unwrap().id;
+        let base_id = h_org2.iter().find(|h| h.name == "base").unwrap().id;
         let settings = db
             .get_organization_settings(org2.org_id)
             .await
@@ -523,7 +518,7 @@ mod tests {
         let harnesses = db.list_harnesses(org2.org_id, None, false).await.unwrap();
         let chat_id = harnesses
             .iter()
-            .find(|h| h.name == "Platform Chat")
+            .find(|h| h.name == "platform-chat")
             .unwrap()
             .id;
 
@@ -649,7 +644,7 @@ mod tests {
         let built_in_harnesses = harnesses();
         let generic = built_in_harnesses
             .iter()
-            .find(|h| h.name == "Generic")
+            .find(|h| h.name == "generic")
             .unwrap();
         let caps = db
             .get_harness_capabilities(
@@ -669,7 +664,7 @@ mod tests {
         // Base harness should have no capabilities
         let base = built_in_harnesses
             .iter()
-            .find(|h| h.name == "Base")
+            .find(|h| h.name == "base")
             .unwrap();
         let base_caps = db
             .get_harness_capabilities(

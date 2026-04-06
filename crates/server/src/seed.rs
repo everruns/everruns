@@ -2188,7 +2188,7 @@ mod tests {
         let built_in_harnesses = built_in_harnesses();
         let base = built_in_harnesses
             .iter()
-            .find(|h| h.name == "Base")
+            .find(|h| h.name == "base")
             .expect("Base harness should exist");
         assert!(
             base.capabilities.is_empty(),
@@ -2202,7 +2202,7 @@ mod tests {
         let built_in_harnesses = built_in_harnesses();
         let generic = built_in_harnesses
             .iter()
-            .find(|h| h.name == "Generic")
+            .find(|h| h.name == "generic")
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id.as_str()).collect();
@@ -2242,7 +2242,7 @@ mod tests {
         let built_in_harnesses = built_in_harnesses();
         let generic = built_in_harnesses
             .iter()
-            .find(|h| h.name == "Generic")
+            .find(|h| h.name == "generic")
             .expect("Generic harness should exist");
 
         for cap in &generic.capabilities {
@@ -2271,7 +2271,7 @@ mod tests {
         let built_in_harnesses = built_in_harnesses();
         let generic = built_in_harnesses
             .iter()
-            .find(|h| h.name == "Generic")
+            .find(|h| h.name == "generic")
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.id.clone()).collect();
@@ -2316,7 +2316,7 @@ mod tests {
         let built_in_harnesses = built_in_harnesses();
         let generic = built_in_harnesses
             .iter()
-            .find(|h| h.name == "Generic")
+            .find(|h| h.name == "generic")
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.id.clone()).collect();
@@ -2362,7 +2362,7 @@ mod tests {
         let built_in_harnesses = built_in_harnesses();
         let generic = built_in_harnesses
             .iter()
-            .find(|h| h.name == "Generic")
+            .find(|h| h.name == "generic")
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.id.clone()).collect();
@@ -2570,7 +2570,7 @@ mod tests {
         let harness_id = everruns_core::HarnessId::from_uuid(
             built_in_harnesses
                 .iter()
-                .find(|h| h.name == "Base")
+                .find(|h| h.name == "base")
                 .unwrap()
                 .seed_id
                 .expect("OSS built-in harness should have a seed id"),

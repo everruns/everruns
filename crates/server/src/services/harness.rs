@@ -86,6 +86,7 @@ impl HarnessService {
 
         let input = CreateHarnessRow {
             name: req.name,
+            display_name: req.display_name,
             description: req.description,
             system_prompt: req.system_prompt,
             parent_harness_id,
@@ -220,6 +221,7 @@ impl HarnessService {
 
         let input = UpdateHarness {
             name: req.name,
+            display_name: req.display_name,
             description: req.description,
             system_prompt: req.system_prompt,
             parent_harness_id: req.parent_harness_id.map(|_| parent_harness_id),
@@ -274,7 +276,8 @@ impl HarnessService {
         };
 
         let req = CreateHarnessRequest {
-            name: format!("{} (copy)", source.name),
+            name: format!("{}-copy", source.name),
+            display_name: format!("{} (copy)", source.display_name),
             description: source.description,
             system_prompt: source.system_prompt,
             parent_harness_id: source.parent_harness_id,
@@ -405,7 +408,7 @@ impl HarnessService {
 
         let child_names = children
             .iter()
-            .map(|child| child.name.as_str())
+            .map(|child| child.display_name.as_str())
             .collect::<Vec<_>>()
             .join(", ");
         anyhow::bail!(
@@ -417,6 +420,7 @@ impl HarnessService {
         Harness {
             id: row.id,
             name: row.name,
+            display_name: row.display_name,
             description: row.description,
             system_prompt: row.system_prompt,
             parent_harness_id: row.parent_harness_id,
@@ -502,6 +506,7 @@ pub(crate) fn merge_preview_layer(
     let draft = Harness {
         id: HarnessId::new(),
         name: "preview".to_string(),
+        display_name: "Preview".to_string(),
         description: None,
         system_prompt: system_prompt.to_string(),
         parent_harness_id: None,
@@ -558,7 +563,8 @@ mod tests {
         default_model_id: Option<everruns_core::ModelId>,
     ) -> CreateHarnessRequest {
         CreateHarnessRequest {
-            name: "Test Harness".to_string(),
+            name: "test-harness".to_string(),
+            display_name: "Test Harness".to_string(),
             description: None,
             system_prompt: "Test".to_string(),
             parent_harness_id: None,
@@ -575,6 +581,7 @@ mod tests {
     ) -> UpdateHarnessRequest {
         UpdateHarnessRequest {
             name: None,
+            display_name: None,
             description: None,
             system_prompt: None,
             parent_harness_id: None,
@@ -690,7 +697,8 @@ mod tests {
             .create(
                 &caller,
                 CreateHarnessRequest {
-                    name: "Parent".to_string(),
+                    name: "parent".to_string(),
+                    display_name: "Parent".to_string(),
                     description: None,
                     system_prompt: "Parent prompt".to_string(),
                     parent_harness_id: None,
@@ -716,7 +724,8 @@ mod tests {
             .create(
                 &caller,
                 CreateHarnessRequest {
-                    name: "Child".to_string(),
+                    name: "child".to_string(),
+                    display_name: "Child".to_string(),
                     description: None,
                     system_prompt: "Child prompt".to_string(),
                     parent_harness_id: Some(parent.id),
@@ -768,7 +777,8 @@ mod tests {
             .create(
                 &caller,
                 CreateHarnessRequest {
-                    name: "Child".to_string(),
+                    name: "child".to_string(),
+                    display_name: "Child".to_string(),
                     description: None,
                     system_prompt: "Child".to_string(),
                     parent_harness_id: Some(parent.id),

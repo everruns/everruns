@@ -1051,7 +1051,8 @@ mod tests {
             .create_harness(
                 42,
                 CreateHarnessRow {
-                    name: "Generic".to_string(),
+                    name: "generic".to_string(),
+                    display_name: "Generic".to_string(),
                     description: Some("Generic".to_string()),
                     system_prompt: "You are helpful.".to_string(),
                     parent_harness_id: None,
@@ -1065,7 +1066,7 @@ mod tests {
             .await
             .unwrap();
 
-        let harness_id = resolve_session_harness_id(&db, 42, None, Some("Generic"))
+        let harness_id = resolve_session_harness_id(&db, 42, None, Some("generic"))
             .await
             .unwrap();
         assert_eq!(harness_id, row.id);
@@ -1086,7 +1087,7 @@ mod tests {
         .await
         .unwrap();
 
-        let harness_id = resolve_session_harness_id(&db, 42, None, Some("Generic"))
+        let harness_id = resolve_session_harness_id(&db, 42, None, Some("generic"))
             .await
             .unwrap();
         assert_eq!(harness_id, default_harness_id);

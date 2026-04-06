@@ -398,6 +398,8 @@ pub struct HarnessRow {
     pub id: HarnessId,
     pub org_id: i64,
     pub name: String,
+    #[sqlx(default)]
+    pub display_name: String,
     pub description: Option<String>,
     pub system_prompt: String,
     pub parent_harness_id: Option<HarnessId>,
@@ -420,6 +422,7 @@ pub struct HarnessRow {
 #[derive(Debug, Clone)]
 pub struct CreateHarnessRow {
     pub name: String,
+    pub display_name: String,
     pub description: Option<String>,
     pub system_prompt: String,
     pub parent_harness_id: Option<HarnessId>,
@@ -435,6 +438,7 @@ pub struct CreateHarnessRow {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateHarness {
     pub name: Option<String>,
+    pub display_name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: Option<String>,
     pub parent_harness_id: Option<Option<HarnessId>>,
