@@ -36,11 +36,8 @@ pub struct ExecResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotInfo {
-    #[serde(default)]
     pub id: String,
-    #[serde(default)]
     pub name: String,
-    #[serde(default)]
     pub state: String,
     #[serde(default)]
     pub cpu: Option<u64>,
