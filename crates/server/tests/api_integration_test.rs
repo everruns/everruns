@@ -1468,8 +1468,8 @@ async fn test_list_harnesses_includes_base_and_generic() {
         .iter()
         .filter_map(|h| h["name"].as_str())
         .collect();
-    assert!(names.contains(&"Base"), "Should have Base harness");
-    assert!(names.contains(&"Generic"), "Should have Generic harness");
+    assert!(names.contains(&"base"), "Should have Base harness");
+    assert!(names.contains(&"generic"), "Should have Generic harness");
 }
 
 #[tokio::test]
@@ -1482,7 +1482,7 @@ async fn test_get_base_harness() {
         .assert_status(StatusCode::OK)
         .json();
 
-    assert_eq!(harness.name, "Base");
+    assert_eq!(harness.name, "base");
     assert!(
         harness.capabilities.is_empty(),
         "Base harness should have no capabilities"
@@ -1501,7 +1501,7 @@ async fn test_get_generic_harness() {
         .assert_status(StatusCode::OK)
         .json();
 
-    assert_eq!(harness.name, "Generic");
+    assert_eq!(harness.name, "generic");
     assert!(harness.tags.contains(&"generic".to_string()));
     assert!(harness.tags.contains(&"default".to_string()));
 
@@ -1654,7 +1654,8 @@ async fn test_copy_harness() {
         .post(
             "/v1/harnesses",
             json!({
-                "name": "Original Harness",
+                "name": "original-harness",
+                "display_name": "Original Harness",
                 "description": "Original harness description",
                 "system_prompt": "Harness prompt",
                 "tags": ["harness-tag"],
@@ -1675,7 +1676,8 @@ async fn test_copy_harness() {
         .json();
 
     // Verify copy
-    assert_eq!(copied.name, "Original Harness (copy)");
+    assert_eq!(copied.name, "original-harness-copy");
+    assert_eq!(copied.display_name, "Original Harness (copy)");
     assert_eq!(
         copied.description.as_deref(),
         Some("Original harness description")
@@ -1696,7 +1698,8 @@ async fn test_create_harness_missing_default_model_returns_not_found() {
         .post(
             "/v1/harnesses",
             json!({
-                "name": "Missing Model Harness",
+                "name": "missing-model-harness",
+                "display_name": "Missing Model Harness",
                 "system_prompt": "Test",
                 "default_model_id": "model_019563a3000070008000000000000003"
             }),
@@ -1713,7 +1716,8 @@ async fn test_update_harness_missing_default_model_returns_not_found() {
         .post(
             "/v1/harnesses",
             json!({
-                "name": "Update Missing Model Harness",
+                "name": "update-missing-model-harness",
+                "display_name": "Update Missing Model Harness",
                 "system_prompt": "Test"
             }),
         )
@@ -1739,7 +1743,7 @@ async fn test_update_nonexistent_harness_returns_not_found() {
     server
         .patch(
             "/v1/harnesses/harness_ffffffffffffffffffffffffffffffff",
-            json!({ "name": "Updated" }),
+            json!({ "name": "updated" }),
         )
         .await
         .assert_status(StatusCode::NOT_FOUND);
@@ -1785,7 +1789,8 @@ async fn test_copy_seed_generic_harness() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    assert_eq!(copied.name, "Generic (copy)");
+    assert_eq!(copied.name, "generic-copy");
+    assert_eq!(copied.display_name, "Generic (copy)");
     // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),
@@ -2473,7 +2478,7 @@ async fn test_chat_harness_exists_in_seed() {
 
     let chat_harness = harnesses
         .iter()
-        .find(|h| h.name == "Platform Chat")
+        .find(|h| h.name == "platform-chat")
         .expect("Platform Chat harness should exist in seed data");
 
     assert_eq!(chat_harness.id.to_string(), SEED_CHAT_HARNESS_ID);
@@ -2490,7 +2495,7 @@ async fn test_chat_harness_has_platform_management() {
         .assert_status(StatusCode::OK)
         .json();
 
-    assert_eq!(harness.name, "Platform Chat");
+    assert_eq!(harness.name, "platform-chat");
     assert_eq!(
         harness.parent_harness_id.as_ref().map(ToString::to_string),
         Some(SEED_GENERIC_HARNESS_ID.to_string()),

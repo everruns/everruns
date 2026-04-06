@@ -342,6 +342,7 @@ pub fn schema_harness_to_proto(value: &everruns_core::Harness) -> proto::Harness
             .parent_harness_id
             .map(|id| uuid_to_proto_uuid(id.uuid())),
         is_built_in: value.is_built_in,
+        display_name: value.display_name.clone(),
     }
 }
 
@@ -372,6 +373,7 @@ pub fn proto_harness_to_schema(
     let json = serde_json::json!({
         "id": id_str,
         "name": value.name,
+        "display_name": value.display_name,
         "description": if value.description.is_empty() { None } else { Some(&value.description) },
         "system_prompt": value.system_prompt,
         "parent_harness_id": parent_harness_id_str,

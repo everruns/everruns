@@ -62,24 +62,23 @@ impl BuiltInCapabilityDefinition {
 /// Built-in harness template provisioned by a platform definition.
 #[derive(Debug, Clone)]
 pub struct BuiltInHarnessDefinition {
-    /// Stable key for the template inside the platform definition.
-    ///
-    /// This key is for code-level identification and should not be shown to
-    /// users. Use values like `base`, `generic`, or `platform_chat`.
-    pub key: String,
+    /// URL/CLI-friendly addressable name, unique per org.
+    /// Format: `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars. No consecutive hyphens.
+    /// Used for code-level identification, API addressing, and DB storage.
+    pub name: String,
     /// Fixed UUID used for the default org when backward compatibility matters.
     ///
     /// Other organizations still receive fresh UUIDs; the template name and
     /// `is_built_in` flag are used to reconcile them.
     pub seed_id: Option<Uuid>,
-    /// Display name shown in the UI and API.
-    pub name: String,
+    /// Human-readable display name shown in UI.
+    pub display_name: String,
     /// Human-readable description.
     pub description: String,
     /// Base system prompt for the harness.
     pub system_prompt: String,
-    /// Optional parent harness key to inherit from during provisioning.
-    pub parent_key: Option<String>,
+    /// Optional parent harness name to inherit from during provisioning.
+    pub parent_name: Option<String>,
     /// Tags applied to the harness.
     pub tags: Vec<String>,
     /// Capabilities enabled by default for the harness.
@@ -91,18 +90,18 @@ pub struct BuiltInHarnessDefinition {
 impl BuiltInHarnessDefinition {
     /// Create a built-in harness template.
     pub fn new(
-        key: impl Into<String>,
         name: impl Into<String>,
+        display_name: impl Into<String>,
         description: impl Into<String>,
         system_prompt: impl Into<String>,
     ) -> Self {
         Self {
-            key: key.into(),
-            seed_id: None,
             name: name.into(),
+            seed_id: None,
+            display_name: display_name.into(),
             description: description.into(),
             system_prompt: system_prompt.into(),
-            parent_key: None,
+            parent_name: None,
             tags: Vec::new(),
             capabilities: Vec::new(),
             roles: Vec::new(),
@@ -125,9 +124,9 @@ impl BuiltInHarnessDefinition {
         self
     }
 
-    /// Set the parent harness key used for inheritance during provisioning.
-    pub fn with_parent_key(mut self, parent_key: impl Into<String>) -> Self {
-        self.parent_key = Some(parent_key.into());
+    /// Set the parent harness name used for inheritance during provisioning.
+    pub fn with_parent_name(mut self, parent_name: impl Into<String>) -> Self {
+        self.parent_name = Some(parent_name.into());
         self
     }
 
@@ -271,7 +270,7 @@ impl Default for PlatformDefinition {
 
 impl std::fmt::Debug for PlatformDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let harness_keys: Vec<_> = self.built_in_harnesses.iter().map(|h| &h.key).collect();
+        let harness_keys: Vec<_> = self.built_in_harnesses.iter().map(|h| &h.name).collect();
         f.debug_struct("PlatformDefinition")
             .field("capabilities", &self.capability_registry)
             .field("drivers", &self.driver_registry.registered_providers())
@@ -433,7 +432,7 @@ mod tests {
                 .harness_for_role(BuiltInHarnessRole::Base)
                 .unwrap()
                 .name,
-            "Minimal"
+            "minimal"
         );
         assert!(
             platform
@@ -467,7 +466,7 @@ mod tests {
             platform
                 .harness_for_role(BuiltInHarnessRole::Chat)
                 .unwrap()
-                .key,
+                .name,
             "chat"
         );
     }

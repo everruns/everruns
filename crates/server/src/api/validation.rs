@@ -37,6 +37,9 @@ pub const MAX_AGENT_IMPORT_FILE_BYTES: usize = 3 * 1024 * 1024; // 3 MB
 /// Maximum size for locale tags.
 pub const MAX_LOCALE_BYTES: usize = 64;
 
+/// Maximum length for harness name (addressable slug).
+pub const MAX_HARNESS_NAME_LEN: usize = 64;
+
 /// Maximum number of starter files on an agent or harness.
 pub const MAX_INITIAL_FILES: usize = 100;
 
@@ -88,6 +91,54 @@ pub fn validate_agent_name(name: &str) -> Result<(), ValidationError> {
             MAX_AGENT_NAME_BYTES
         );
         return Err(ValidationError);
+    }
+    Ok(())
+}
+
+/// Validate harness name is a valid slug: `[a-z0-9]([a-z0-9-]*[a-z0-9])?`.
+/// Max 64 chars, no consecutive hyphens, no leading/trailing hyphens.
+pub fn validate_harness_name(name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if name.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new("Harness name must not be empty")),
+        ));
+    }
+    if name.len() > MAX_HARNESS_NAME_LEN {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(format!(
+                "Harness name must be at most {} characters",
+                MAX_HARNESS_NAME_LEN
+            ))),
+        ));
+    }
+    if !name
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "Harness name must contain only lowercase letters, digits, and hyphens",
+            )),
+        ));
+    }
+    if name.starts_with('-') || name.ends_with('-') {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "Harness name must not start or end with a hyphen",
+            )),
+        ));
+    }
+    if name.contains("--") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "Harness name must not contain consecutive hyphens",
+            )),
+        ));
     }
     Ok(())
 }

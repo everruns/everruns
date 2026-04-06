@@ -59,8 +59,11 @@ pub struct Harness {
     /// Unique identifier for the harness (format: harness_{32-hex}).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "harness_01933b5a00007000800000000000001"))]
     pub id: HarnessId,
-    /// Display name of the harness.
+    /// URL/CLI-friendly addressable name, unique per org.
+    /// Format: `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars. No consecutive hyphens.
     pub name: String,
+    /// Human-readable display name shown in UI.
+    pub display_name: String,
     /// Human-readable description of what the harness does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -121,6 +124,7 @@ pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
     Harness {
         id: child.id,
         name: child.name.clone(),
+        display_name: child.display_name.clone(),
         description: child.description.clone(),
         system_prompt: merge_system_prompts(&parent.system_prompt, &child.system_prompt),
         parent_harness_id: child.parent_harness_id,
@@ -217,7 +221,8 @@ mod tests {
     fn test_harness(id_seed: u128, system_prompt: &str) -> Harness {
         Harness {
             id: HarnessId::from_uuid(uuid::Uuid::from_u128(id_seed)),
-            name: format!("Harness {id_seed}"),
+            name: format!("harness-{id_seed}"),
+            display_name: format!("Harness {id_seed}"),
             description: None,
             system_prompt: system_prompt.to_string(),
             parent_harness_id: None,

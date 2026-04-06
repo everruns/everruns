@@ -389,6 +389,10 @@ impl StorageBackend {
         dispatch!(self, get_harness, org_id, id)
     }
 
+    pub async fn get_harness_by_name(&self, org_id: i64, name: &str) -> Result<Option<HarnessRow>> {
+        dispatch!(self, get_harness_by_name, org_id, name)
+    }
+
     pub async fn list_harnesses(
         &self,
         org_id: i64,

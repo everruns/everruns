@@ -19,6 +19,7 @@ impl InMemoryDatabase {
             id,
             org_id,
             name: input.name,
+            display_name: input.display_name,
             description: input.description,
             system_prompt: input.system_prompt,
             parent_harness_id: input.parent_harness_id,
@@ -51,6 +52,7 @@ impl InMemoryDatabase {
 
         if let Some(existing) = harnesses.get(&id) {
             if existing.name == input.name
+                && existing.display_name == input.display_name
                 && existing.description == input.description
                 && existing.system_prompt == input.system_prompt
                 && existing.parent_harness_id == input.parent_harness_id
@@ -61,6 +63,7 @@ impl InMemoryDatabase {
             }
             let row = HarnessRow {
                 name: input.name,
+                display_name: input.display_name,
                 description: input.description,
                 system_prompt: input.system_prompt,
                 parent_harness_id: input.parent_harness_id,
@@ -77,6 +80,7 @@ impl InMemoryDatabase {
             id,
             org_id,
             name: input.name,
+            display_name: input.display_name,
             description: input.description,
             system_prompt: input.system_prompt,
             parent_harness_id: input.parent_harness_id,
@@ -104,6 +108,15 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn get_harness_by_name(&self, org_id: i64, name: &str) -> Result<Option<HarnessRow>> {
+        Ok(self
+            .harnesses
+            .read()
+            .values()
+            .find(|h| h.org_id == org_id && h.name == name && h.status != "deleted")
+            .cloned())
+    }
+
     pub async fn list_harnesses(
         &self,
         org_id: i64,
@@ -122,7 +135,14 @@ impl InMemoryDatabase {
                     }
             })
             .filter(|h| {
-                matches_search_tokens(search, &[&h.name, h.description.as_deref().unwrap_or("")])
+                matches_search_tokens(
+                    search,
+                    &[
+                        &h.display_name,
+                        &h.name,
+                        h.description.as_deref().unwrap_or(""),
+                    ],
+                )
             })
             .cloned()
             .collect();
@@ -140,6 +160,9 @@ impl InMemoryDatabase {
         if let Some(harness) = harnesses.get_mut(&id).filter(|h| h.org_id == org_id) {
             if let Some(name) = input.name {
                 harness.name = name;
+            }
+            if let Some(display_name) = input.display_name {
+                harness.display_name = display_name;
             }
             if let Some(description) = input.description {
                 harness.description = Some(description);
