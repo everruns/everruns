@@ -26,8 +26,8 @@ use std::time::Duration;
 
 use tools::{
     DaytonaCreateSandboxTool, DaytonaDownloadWorkspaceTool, DaytonaExecTool, DaytonaGitCloneTool,
-    DaytonaGitCredentialsTool, DaytonaListSandboxesTool, DaytonaManageSandboxTool,
-    DaytonaReadFileTool, DaytonaWriteFileTool,
+    DaytonaGitCredentialsTool, DaytonaListSandboxesTool, DaytonaListSnapshotsTool,
+    DaytonaManageSandboxTool, DaytonaReadFileTool, DaytonaWriteFileTool,
 };
 
 // ============================================================================
@@ -90,7 +90,8 @@ Cloud-based sandboxes via Daytona. Each sandbox is an isolated environment with 
 Authentication: Daytona API key is resolved automatically from Settings > Connections > Daytona.
 If not configured, guide the user to set up their key in Settings > Connections.
 
-All tools except `daytona_create_sandbox` and `daytona_list_sandboxes` require a `sandbox_id`.
+All tools except `daytona_create_sandbox`, `daytona_list_sandboxes`, and `daytona_list_snapshots` require a `sandbox_id`.
+Use `daytona_list_snapshots` to discover available snapshots and their resource specs before creating sandboxes.
 Sandboxes auto-stop after 5 min of inactivity, auto-archive after 30 min, and auto-delete after 60 min.
 Stopped sandboxes are also cleaned up by the control plane after 20 min.
 Always DELETE sandboxes when done (stop leaves them on the dashboard).
@@ -158,6 +159,7 @@ impl Capability for DaytonaCapability {
             Box::new(DaytonaReadFileTool),
             Box::new(DaytonaWriteFileTool),
             Box::new(DaytonaDownloadWorkspaceTool),
+            Box::new(DaytonaListSnapshotsTool),
             Box::new(DaytonaListSandboxesTool),
             Box::new(DaytonaManageSandboxTool),
             Box::new(DaytonaGitCloneTool),
@@ -197,7 +199,7 @@ mod tests {
     fn test_capability_has_all_tools() {
         let cap = DaytonaCapability;
         let tools = cap.tools();
-        assert_eq!(tools.len(), 9);
+        assert_eq!(tools.len(), 10);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"daytona_create_sandbox"));
@@ -205,6 +207,7 @@ mod tests {
         assert!(names.contains(&"daytona_read_file"));
         assert!(names.contains(&"daytona_write_file"));
         assert!(names.contains(&"daytona_download_workspace"));
+        assert!(names.contains(&"daytona_list_snapshots"));
         assert!(names.contains(&"daytona_list_sandboxes"));
         assert!(names.contains(&"daytona_manage_sandbox"));
         assert!(names.contains(&"daytona_git_clone"));

@@ -33,6 +33,35 @@ pub struct ExecResult {
     pub exit_code: i32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotInfo {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub cpu: Option<u64>,
+    #[serde(default)]
+    pub mem: Option<u64>,
+    #[serde(default)]
+    pub disk: Option<u64>,
+    #[serde(default)]
+    pub gpu: Option<u64>,
+    #[serde(default)]
+    pub size: Option<String>,
+    #[serde(default)]
+    pub general: Option<bool>,
+    #[serde(default)]
+    pub image_name: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
 // ============================================================================
 // Persisted Sandbox State (stored in session secrets as JSON)
 // ============================================================================
@@ -316,6 +345,29 @@ mod tests {
         let args = serde_json::json!({"name": 42});
         let result = required_str(&args, "name");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_snapshot_info_deserialization() {
+        let json = r#"{"id": "snap_1", "name": "my-snap", "state": "active", "cpu": 2, "mem": 4, "disk": 10}"#;
+        let info: SnapshotInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.id, "snap_1");
+        assert_eq!(info.name, "my-snap");
+        assert_eq!(info.state, "active");
+        assert_eq!(info.cpu, Some(2));
+        assert_eq!(info.mem, Some(4));
+        assert_eq!(info.disk, Some(10));
+        assert_eq!(info.gpu, None);
+    }
+
+    #[test]
+    fn test_snapshot_info_minimal() {
+        let json = r#"{"id": "snap_2", "name": "bare", "state": "active"}"#;
+        let info: SnapshotInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.name, "bare");
+        assert_eq!(info.cpu, None);
+        assert_eq!(info.mem, None);
+        assert_eq!(info.disk, None);
     }
 
     #[test]

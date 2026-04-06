@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use tracing::debug;
 
-use crate::state::{ExecResult, SandboxInfo};
+use crate::state::{ExecResult, SandboxInfo, SnapshotInfo};
 use crate::{EXEC_POLL_INTERVAL, SANDBOX_READY_MAX_WAIT, SANDBOX_READY_POLL_INTERVAL};
 
 /// Fixed session ID used for all command execution in a sandbox.
@@ -290,6 +290,19 @@ impl DaytonaClient {
         )
         .await?;
         Ok(())
+    }
+
+    // --- Snapshots API ---
+
+    pub async fn list_snapshots(&self) -> Result<Vec<SnapshotInfo>, String> {
+        let resp = self
+            .management_request(reqwest::Method::GET, "/snapshots", None)
+            .await?;
+
+        // API returns an array of snapshot objects.
+        let snapshots: Vec<SnapshotInfo> = serde_json::from_value(resp)
+            .map_err(|e| format!("Failed to parse snapshots response: {e}"))?;
+        Ok(snapshots)
     }
 
     /// Wait for sandbox to reach "started" state after creation.

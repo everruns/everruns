@@ -860,6 +860,103 @@ impl Tool for DaytonaDownloadWorkspaceTool {
 }
 
 // ============================================================================
+// DaytonaListSnapshotsTool
+// ============================================================================
+
+pub struct DaytonaListSnapshotsTool;
+
+#[async_trait]
+impl Tool for DaytonaListSnapshotsTool {
+    fn name(&self) -> &str {
+        "daytona_list_snapshots"
+    }
+
+    fn description(&self) -> &str {
+        "List available Daytona snapshots that can be used when creating sandboxes. \
+         Returns snapshot names, resource specs (CPU, memory, disk), and state. \
+         Use the snapshot name in daytona_create_sandbox's `snapshot` parameter."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+        })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "daytona_list_snapshots requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        _arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let api_key = match get_api_key(context).await {
+            Ok(k) => k,
+            Err(e) => return e,
+        };
+
+        let client = DaytonaClient::new(api_key);
+        let snapshots = match client.list_snapshots().await {
+            Ok(s) => s,
+            Err(e) => return ToolExecutionResult::tool_error(e),
+        };
+
+        let items: Vec<Value> = snapshots
+            .iter()
+            .filter(|s| s.state == "active")
+            .map(|s| {
+                let mut obj = json!({
+                    "name": s.name,
+                    "state": s.state,
+                });
+                if let Some(cpu) = s.cpu {
+                    obj["cpu"] = json!(cpu);
+                }
+                if let Some(mem) = s.mem {
+                    obj["memory_gb"] = json!(mem);
+                }
+                if let Some(disk) = s.disk {
+                    obj["disk_gb"] = json!(disk);
+                }
+                if let Some(gpu) = s.gpu {
+                    obj["gpu"] = json!(gpu);
+                }
+                if let Some(ref size) = s.size {
+                    obj["size"] = json!(size);
+                }
+                if let Some(general) = s.general {
+                    obj["general"] = json!(general);
+                }
+                obj
+            })
+            .collect();
+
+        ToolExecutionResult::success(json!({
+            "snapshots": items,
+            "count": items.len()
+        }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// ============================================================================
 // DaytonaListSandboxesTool
 // ============================================================================
 
@@ -1651,6 +1748,15 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_list_snapshots_without_context() {
+        let tool = DaytonaListSnapshotsTool;
+        let result = tool.execute(json!({})).await;
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
+        );
+    }
+
+    #[tokio::test]
     async fn test_list_sandboxes_without_context() {
         let tool = DaytonaListSandboxesTool;
         let result = tool.execute(json!({})).await;
@@ -1738,6 +1844,13 @@ mod tests {
     }
 
     #[test]
+    fn test_list_snapshots_schema_no_required() {
+        let tool = DaytonaListSnapshotsTool;
+        let schema = tool.parameters_schema();
+        assert!(schema.get("required").is_none());
+    }
+
+    #[test]
     fn test_list_sandboxes_schema_no_required() {
         let tool = DaytonaListSandboxesTool;
         let schema = tool.parameters_schema();
@@ -1762,6 +1875,7 @@ mod tests {
             Box::new(DaytonaReadFileTool),
             Box::new(DaytonaWriteFileTool),
             Box::new(DaytonaDownloadWorkspaceTool),
+            Box::new(DaytonaListSnapshotsTool),
             Box::new(DaytonaListSandboxesTool),
             Box::new(DaytonaManageSandboxTool),
             Box::new(DaytonaGitCloneTool),
@@ -1803,6 +1917,7 @@ mod tests {
             Box::new(DaytonaReadFileTool),
             Box::new(DaytonaWriteFileTool),
             Box::new(DaytonaDownloadWorkspaceTool),
+            Box::new(DaytonaListSnapshotsTool),
             Box::new(DaytonaListSandboxesTool),
             Box::new(DaytonaManageSandboxTool),
             Box::new(DaytonaGitCloneTool),
@@ -1825,6 +1940,7 @@ mod tests {
             Box::new(DaytonaReadFileTool),
             Box::new(DaytonaWriteFileTool),
             Box::new(DaytonaDownloadWorkspaceTool),
+            Box::new(DaytonaListSnapshotsTool),
             Box::new(DaytonaListSandboxesTool),
             Box::new(DaytonaManageSandboxTool),
             Box::new(DaytonaGitCloneTool),
