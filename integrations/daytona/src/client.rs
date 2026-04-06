@@ -228,6 +228,36 @@ impl DaytonaClient {
         Ok(())
     }
 
+    // --- Generic API call (for daytona_api_call tool) ---
+
+    /// Generic Daytona API call. Routes to Management or Toolbox API based on path prefix.
+    ///
+    /// - Paths starting with `/toolbox/{sandbox_id}/...` → Toolbox API
+    /// - All other paths → Management API
+    ///
+    /// Headers (Authorization, Content-Type) are controlled internally.
+    pub async fn api_call(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<Value, String> {
+        if let Some(rest) = path.strip_prefix("/toolbox/") {
+            // Extract sandbox_id from /toolbox/{sandbox_id}/...
+            let (sandbox_id, toolbox_path) = rest
+                .split_once('/')
+                .map(|(id, p)| (id, format!("/{p}")))
+                .unwrap_or((rest, String::new()));
+            if sandbox_id.is_empty() {
+                return Err("Invalid toolbox path: expected /toolbox/{sandbox_id}/...".to_string());
+            }
+            self.toolbox_request(method, sandbox_id, &toolbox_path, body)
+                .await
+        } else {
+            self.management_request(method, path, body).await
+        }
+    }
+
     // --- Management API ---
 
     pub async fn create_sandbox(&self, body: Value) -> Result<SandboxInfo, String> {

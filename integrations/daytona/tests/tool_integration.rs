@@ -143,7 +143,8 @@ async fn setup_context_with_sandbox(
 fn get_tool(name: &str) -> Box<dyn Tool> {
     let cap = everruns_integrations_daytona::DaytonaCapability;
     use everruns_core::capabilities::Capability;
-    cap.tools()
+    // Use tools_with_config to include opt-in tools like daytona_api_call
+    cap.tools_with_config(&json!({"enable_api_calling": true}))
         .into_iter()
         .find(|t| t.name() == name)
         .unwrap_or_else(|| panic!("Tool {name} not found"))
@@ -1222,4 +1223,209 @@ async fn test_list_snapshots_tool_missing_api_key() {
         }
         other => panic!("Expected ConnectionRequired, got: {other:?}"),
     }
+}
+
+// ============================================================================
+// DaytonaApiCallTool integration tests (wiremock)
+// ============================================================================
+
+#[tokio::test]
+async fn test_api_call_get_sandbox_list() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/sandbox"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": "sb_1", "name": "Test", "state": "started"},
+            {"id": "sb_2", "name": "Other", "state": "stopped"}
+        ])))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+    let result = client
+        .api_call(reqwest::Method::GET, "/sandbox", None)
+        .await
+        .unwrap();
+
+    let sandboxes = result.as_array().unwrap();
+    assert_eq!(sandboxes.len(), 2);
+    assert_eq!(sandboxes[0]["id"], "sb_1");
+}
+
+#[tokio::test]
+async fn test_api_call_routes_toolbox_path() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/sb_test/files"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"name": "hello.txt", "isDir": false, "size": 12}
+        ])))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+    let result = client
+        .api_call(reqwest::Method::GET, "/toolbox/sb_test/files", None)
+        .await
+        .unwrap();
+
+    let files = result.as_array().unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0]["name"], "hello.txt");
+}
+
+#[tokio::test]
+async fn test_api_call_tool_injects_labels_on_sandbox_create() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/sandbox"))
+        .and(wiremock::matchers::body_partial_json(json!({
+            "labels": {
+                "everruns": "true"
+            }
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_api_created",
+            "name": "API Created",
+            "state": "started"
+        })))
+        .expect(1)
+        .named("create with labels")
+        .mount(&mock_server)
+        .await;
+
+    let session_id = SessionId::new();
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let body = json!({"name": "API Created", "snapshot": "daytona-small"});
+    let mut labels = serde_json::Map::new();
+    labels.insert("everruns".to_string(), json!("true"));
+    labels.insert(
+        "everruns.session_id".to_string(),
+        json!(session_id.to_string()),
+    );
+    let mut body_with_labels = body.clone();
+    body_with_labels
+        .as_object_mut()
+        .unwrap()
+        .insert("labels".to_string(), json!(labels));
+
+    let response = client
+        .api_call(reqwest::Method::POST, "/sandbox", Some(body_with_labels))
+        .await
+        .unwrap();
+    assert_eq!(response["id"], "sb_api_created");
+}
+
+#[tokio::test]
+async fn test_api_call_tool_tracks_sandbox_state_on_create() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/sandbox"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_tracked",
+            "name": "Tracked Sandbox",
+            "state": "started"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let response = client
+        .api_call(
+            reqwest::Method::POST,
+            "/sandbox",
+            Some(json!({"name": "Tracked Sandbox"})),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response["id"], "sb_tracked");
+    assert_eq!(response["state"], "started");
+}
+
+#[tokio::test]
+async fn test_api_call_delete_sandbox() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("DELETE"))
+        .and(path("/sandbox/sb_del"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let result = client
+        .api_call(reqwest::Method::DELETE, "/sandbox/sb_del", None)
+        .await
+        .unwrap();
+    assert!(result.is_object());
+}
+
+#[tokio::test]
+async fn test_api_call_client_error_propagates() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/sandbox/nonexistent"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("Sandbox not found"))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let result = client
+        .api_call(reqwest::Method::GET, "/sandbox/nonexistent", None)
+        .await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("404"));
+}
+
+#[tokio::test]
+async fn test_api_call_toolbox_post_with_body() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/sb_exec/process/execute"))
+        .and(wiremock::matchers::body_partial_json(json!({
+            "command": "echo hello"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "code": 0,
+            "result": "hello\n"
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let result = client
+        .api_call(
+            reqwest::Method::POST,
+            "/toolbox/sb_exec/process/execute",
+            Some(json!({"command": "echo hello"})),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result["code"], 0);
+    assert_eq!(result["result"], "hello\n");
 }
