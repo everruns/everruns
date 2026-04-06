@@ -1132,3 +1132,94 @@ async fn test_create_sandbox_tool_rejects_invalid_auto_stop() {
         other => panic!("Expected ToolError, got: {other:?}"),
     }
 }
+
+// ============================================================================
+// Snapshot listing tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_list_snapshots_via_client() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/snapshots"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {
+                "id": "snap_1",
+                "name": "daytona-small",
+                "state": "active",
+                "cpu": 1,
+                "mem": 1,
+                "disk": 3,
+                "general": true
+            },
+            {
+                "id": "snap_2",
+                "name": "daytona-medium",
+                "state": "active",
+                "cpu": 2,
+                "mem": 4,
+                "disk": 8,
+                "general": true
+            },
+            {
+                "id": "snap_3",
+                "name": "custom-ml",
+                "state": "active",
+                "cpu": 4,
+                "mem": 16,
+                "disk": 50,
+                "gpu": 1,
+                "general": false
+            }
+        ])))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let snapshots = client.list_snapshots().await.unwrap();
+    assert_eq!(snapshots.len(), 3);
+    assert_eq!(snapshots[0].name, "daytona-small");
+    assert_eq!(snapshots[0].cpu, Some(1));
+    assert_eq!(snapshots[1].name, "daytona-medium");
+    assert_eq!(snapshots[2].name, "custom-ml");
+    assert_eq!(snapshots[2].gpu, Some(1));
+}
+
+#[tokio::test]
+async fn test_list_snapshots_empty() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/snapshots"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client =
+        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
+
+    let snapshots = client.list_snapshots().await.unwrap();
+    assert!(snapshots.is_empty());
+}
+
+#[tokio::test]
+async fn test_list_snapshots_tool_missing_api_key() {
+    let tool = get_tool("daytona_list_snapshots");
+    let session_id = SessionId::new();
+    let store = Arc::new(MockStorageStore::new());
+    let context = ToolContext::with_storage_store(session_id, store);
+
+    let result = tool.execute_with_context(json!({}), &context).await;
+
+    match result {
+        ToolExecutionResult::ConnectionRequired { provider } => {
+            assert_eq!(provider, "daytona");
+        }
+        other => panic!("Expected ConnectionRequired, got: {other:?}"),
+    }
+}

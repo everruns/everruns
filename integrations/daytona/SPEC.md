@@ -79,6 +79,7 @@ This avoids entering the key in chat (see TM-AGENT-016).
 |--------|------|---------|-------------|
 | POST | `/sandbox` | Create sandbox | `{ name?, snapshot?, autoStopInterval, autoArchiveInterval, autoDeleteInterval, labels? }` |
 | GET | `/sandbox/{id}` | Get sandbox info | — |
+| GET | `/snapshots` | List available snapshots | — |
 | POST | `/sandbox/{id}/start` | Start sandbox | — |
 | POST | `/sandbox/{id}/stop` | Stop sandbox | — |
 | DELETE | `/sandbox/{id}` | Delete sandbox | — |
@@ -144,6 +145,14 @@ Downloads sandbox workspace to session file storage.
   - `sandbox_path`: string (optional, default: workspace_path)
   - `session_path`: string (optional, default: `/workspace`)
 - **Returns**: `{ files_downloaded, files_skipped, errors? }`
+
+### daytona_list_snapshots
+
+List available Daytona snapshots that can be used when creating sandboxes. Only returns active snapshots.
+
+- **Parameters**: none
+- **Returns**: `{ snapshots: [{name, state, cpu?, memory_gb?, disk_gb?, gpu?, size?, general?}], count }`
+- **Usage**: Use the `name` field as the `snapshot` parameter in `daytona_create_sandbox`.
 
 ### daytona_list_sandboxes
 
@@ -292,7 +301,7 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 | `src/client.rs` | `DaytonaClient` HTTP client (management + toolbox APIs), URL encoding |
 | `src/connection.rs` | `DaytonaConnectionProvider` — API-key connection plugin |
 | `src/state.rs` | API types (`SandboxInfo`, `ExecResult`, `SandboxState`), session state helpers |
-| `src/tools.rs` | 9 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
+| `src/tools.rs` | 10 tool implementations (`DaytonaCreateSandboxTool`, etc.) |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration |
 | `tests/tool_integration.rs` | Integration tests: tool execution + wiremock Daytona API |
 | `tests/live_api_test.rs` | Live API integration tests (feature-gated: `daytona-live-tests`) |
