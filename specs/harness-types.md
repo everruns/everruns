@@ -14,7 +14,7 @@ Every harness has two name fields:
 
 | Field | Purpose | Constraints | Example |
 |-------|---------|-------------|---------|
-| `name` | URL/CLI-friendly addressable identifier | `[a-z0-9]([a-z0-9-]*[a-z0-9])?`, max 64 chars, unique per org | `deep-research` |
+| `name` | URL/CLI-friendly addressable identifier | `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars, unique per org | `deep-research` |
 | `display_name` | Human-readable label shown in UI | Free-form string, max 2 KB | `Deep Research` |
 
 The `name` field works like a GitHub repository name: lowercase alphanumeric with hyphens, no consecutive hyphens, no leading/trailing hyphens. It is unique per organization (among non-deleted harnesses) and can be used for API lookups, CLI references, and URL routing.

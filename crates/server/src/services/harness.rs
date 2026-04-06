@@ -69,6 +69,8 @@ impl HarnessService {
 
     #[policy(HARNESS_MANAGE)]
     pub async fn create(&self, caller: &Caller, req: CreateHarnessRequest) -> Result<Harness> {
+        self.ensure_name_available(caller.org_id, &req.name, None)
+            .await?;
         let capabilities_to_store =
             ensure_file_system_capability(req.capabilities.clone(), !req.initial_files.is_empty());
         crate::services::capability_validation::validate_capability_refs(
@@ -184,6 +186,10 @@ impl HarnessService {
         if existing.status != "active" {
             anyhow::bail!("Archived or deleted harnesses cannot be edited");
         }
+        if let Some(ref name) = req.name {
+            self.ensure_name_available(caller.org_id, name, Some(HarnessId::from_uuid(id)))
+                .await?;
+        }
         let existing_initial_files: Vec<InitialFile> =
             serde_json::from_value(existing.initial_files.clone()).unwrap_or_default();
         let final_has_initial_files = req
@@ -266,8 +272,8 @@ impl HarnessService {
         }
     }
 
-    /// Copy a harness by UUID. Creates a new harness with "{name} (copy)" and
-    /// duplicates description, system_prompt, default_model_id, tags, capabilities.
+    /// Copy a harness by UUID. Generates a unique slug (`{name}-copy`, `-copy-2`, etc.)
+    /// and duplicates description, system_prompt, default_model_id, tags, capabilities.
     #[policy(HARNESS_MANAGE)]
     pub async fn copy(&self, caller: &Caller, id: Uuid) -> Result<Option<Harness>> {
         let source = self.get(caller, id).await?;
@@ -275,8 +281,12 @@ impl HarnessService {
             return Ok(None);
         };
 
+        let copy_name = self
+            .find_unique_name(caller.org_id, &format!("{}-copy", source.name))
+            .await?;
+
         let req = CreateHarnessRequest {
-            name: format!("{}-copy", source.name),
+            name: copy_name,
             display_name: format!("{} (copy)", source.display_name),
             description: source.description,
             system_prompt: source.system_prompt,
@@ -328,6 +338,45 @@ impl HarnessService {
 
     pub async fn resolve_effective(&self, org_id: i64, id: HarnessId) -> Result<Option<Harness>> {
         resolve_effective_harness(self.db.as_ref(), org_id, id).await
+    }
+
+    /// Check if a name is already taken by another harness in the org.
+    async fn ensure_name_available(
+        &self,
+        org_id: i64,
+        name: &str,
+        exclude_id: Option<HarnessId>,
+    ) -> Result<()> {
+        if let Some(existing) = self.db.get_harness_by_name(org_id, name).await?
+            && exclude_id != Some(existing.id)
+        {
+            anyhow::bail!("Harness name '{}' is already taken", name);
+        }
+        Ok(())
+    }
+
+    /// Find a unique slug name, appending `-2`, `-3`, etc. if needed.
+    async fn find_unique_name(&self, org_id: i64, base_name: &str) -> Result<String> {
+        if self
+            .db
+            .get_harness_by_name(org_id, base_name)
+            .await?
+            .is_none()
+        {
+            return Ok(base_name.to_string());
+        }
+        for n in 2..=100 {
+            let candidate = format!("{base_name}-{n}");
+            if self
+                .db
+                .get_harness_by_name(org_id, &candidate)
+                .await?
+                .is_none()
+            {
+                return Ok(candidate);
+            }
+        }
+        anyhow::bail!("Could not find a unique name for '{base_name}'")
     }
 
     /// Check if a harness is built-in (system-managed, readonly).
