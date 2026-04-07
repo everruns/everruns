@@ -165,7 +165,7 @@ const ID_PREFIX_MAP: Record<
   session_: { category: "session", label: "Session", path: "/sessions" },
   harness_: { category: "harness", label: "Harness", path: "/harnesses" },
   skill_: { category: "skill", label: "Skill", path: "/skills" },
-  mcp_: { category: "mcp_server", label: "MCP Server", path: "/settings/mcp-servers" },
+  mcp_: { category: "mcp_server", label: "MCP Server", path: "/mcp-servers" },
   eval_: { category: "eval", label: "Eval", path: "/evals" },
   app_: { category: "app", label: "App", path: "/apps" },
   identity_: { category: "agent_identity", label: "Agent Identity", path: "/agent-identities" },
@@ -361,7 +361,7 @@ export function useGlobalSearch(query: string) {
           icon: Server,
           title: server.name,
           subtitle: `MCP Servers > ${server.name}`,
-          href: `/settings/mcp-servers/${server.id}`,
+          href: `/mcp-servers`,
         });
         mcpCount++;
       }
