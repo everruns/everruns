@@ -172,10 +172,14 @@ impl TestServer {
         // Create driver registry
         let driver_registry = Arc::new(platform_definition.driver_registry().clone());
 
+        // Shared event delivery — mirrors production wiring where all services
+        // publish to the same broadcast backend that SSE subscribers listen on.
+        let event_delivery = everruns_server::EventDelivery::in_memory();
+
         // Create event listeners (minimal for tests)
         let event_service = Arc::new(services::EventService::with_listeners(
             db.clone(),
-            everruns_server::EventDelivery::in_memory(),
+            event_delivery.clone(),
             vec![],
         ));
         let feature_flags = everruns_core::FeatureFlags::from_env(&grade);
@@ -186,14 +190,14 @@ impl TestServer {
             runner.clone(),
             auth_state.clone(),
             &platform_definition,
-            everruns_server::EventDelivery::in_memory(),
+            event_delivery.clone(),
         );
         let messages_state = api::messages::AppState::new(
             db.clone(),
             runner.clone(),
             auth_state.clone(),
             feature_flags.notifications,
-            everruns_server::EventDelivery::in_memory(),
+            event_delivery.clone(),
         );
         let sse_tracker = Arc::new(everruns_server::api::sse::SseConnectionTracker::new(
             everruns_server::api::sse::SseConnectionLimits::default(),
