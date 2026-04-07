@@ -20,8 +20,7 @@ impl InMemoryDatabase {
             public_id: input.public_id,
             name: input.name,
             description: input.description,
-            agent_id: input.agent_id,
-            harness_id: input.harness_id,
+            target: input.target,
             model_override: input.model_override,
             tags: input.tags,
             status: "active".to_string(),
@@ -91,11 +90,8 @@ impl InMemoryDatabase {
         if let Some(description) = input.description {
             eval.description = Some(description);
         }
-        if let Some(agent_id) = input.agent_id {
-            eval.agent_id = agent_id;
-        }
-        if let Some(harness_id) = input.harness_id {
-            eval.harness_id = harness_id;
+        if let Some(target) = input.target {
+            eval.target = Some(target);
         }
         if let Some(model_override) = input.model_override {
             eval.model_override = Some(model_override);
@@ -141,6 +137,7 @@ impl InMemoryDatabase {
             public_id: input.public_id,
             name: input.name,
             description: input.description,
+            target: input.target,
             tags: input.tags,
             conversation: input.conversation,
             scorers: input.scorers,
@@ -196,6 +193,9 @@ impl InMemoryDatabase {
         if let Some(description) = input.description {
             case.description = Some(description);
         }
+        if let Some(target) = input.target {
+            case.target = Some(target);
+        }
         if let Some(tags) = input.tags {
             case.tags = tags;
         }
@@ -245,6 +245,7 @@ impl InMemoryDatabase {
             eval_id: input.eval_id,
             org_id,
             public_id: input.public_id,
+            target: input.target,
             model_override: input.model_override,
             filter_tags: input.filter_tags,
             status: "pending".to_string(),
@@ -331,6 +332,8 @@ impl InMemoryDatabase {
             eval_case_id: input.eval_case_id,
             public_id: input.public_id,
             session_id: None,
+            target: input.target,
+            target_snapshot: input.target_snapshot,
             status: "pending".to_string(),
             scores: None,
             turns: None,
@@ -370,6 +373,12 @@ impl InMemoryDatabase {
         };
         if let Some(session_id) = input.session_id {
             result.session_id = Some(session_id);
+        }
+        if let Some(target) = input.target {
+            result.target = Some(target);
+        }
+        if let Some(target_snapshot) = input.target_snapshot {
+            result.target_snapshot = Some(target_snapshot);
         }
         if let Some(status) = input.status {
             result.status = status;

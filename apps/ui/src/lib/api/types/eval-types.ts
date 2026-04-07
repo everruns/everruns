@@ -1,11 +1,30 @@
 // Eval domain types matching Rust Eval, EvalCase, EvalRun, EvalCaseResult
+// EvalTarget defines how to instantiate sessions for eval cases.
+// Resolution: EvalRun.target → EvalCase.target → Eval.target → org default harness.
+
+export type EvalTarget =
+  | {
+      type: "session_params";
+      harness_id: string;
+      agent_id?: string;
+      model_id?: string;
+      system_prompt?: string;
+    }
+  | {
+      type: "app";
+      app_id: string;
+    }
+  | {
+      type: "harness";
+      harness_id: string;
+      agent_id?: string;
+    };
 
 export interface Eval {
   id: string;
   name: string;
   description?: string;
-  agent_id: string;
-  harness_id: string;
+  target?: EvalTarget;
   model_override?: string;
   tags: string[];
   status: "active" | "archived" | "deleted";
@@ -41,6 +60,7 @@ export interface EvalCase {
   id: string;
   name: string;
   description?: string;
+  target?: EvalTarget;
   tags: string[];
   conversation: EvalInputMessage[];
   scorers: Scorer[];
@@ -68,6 +88,7 @@ export type Scorer =
 
 export interface EvalRun {
   id: string;
+  target?: EvalTarget;
   model_override?: string;
   filter_tags?: string[];
   status: EvalRunStatus;
@@ -85,6 +106,8 @@ export interface EvalCaseResult {
   eval_case_id: string;
   case_name?: string;
   session_id?: string;
+  target?: EvalTarget;
+  target_snapshot?: EvalTarget;
   status: "pending" | "running" | "passed" | "failed" | "errored" | "timeout";
   scores?: Record<string, { pass: boolean; value: number; reason: string }>;
   turns?: number;
@@ -100,8 +123,7 @@ export interface EvalCaseResult {
 export interface CreateEvalRequest {
   name: string;
   description?: string;
-  agent_id: string;
-  harness_id: string;
+  target?: EvalTarget;
   model_override?: string;
   tags?: string[];
 }
@@ -109,8 +131,7 @@ export interface CreateEvalRequest {
 export interface UpdateEvalRequest {
   name?: string;
   description?: string;
-  agent_id?: string;
-  harness_id?: string;
+  target?: EvalTarget;
   model_override?: string;
   tags?: string[];
 }
@@ -118,6 +139,7 @@ export interface UpdateEvalRequest {
 export interface CreateEvalCaseRequest {
   name: string;
   description?: string;
+  target?: EvalTarget;
   tags?: string[];
   conversation: EvalInputMessage[];
   scorers: Scorer[];
@@ -127,5 +149,6 @@ export interface CreateEvalCaseRequest {
 }
 
 export interface CreateEvalRunRequest {
+  target?: EvalTarget;
   model_override?: string;
 }

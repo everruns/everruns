@@ -8,7 +8,6 @@ import {
   useCreateEvalCase,
   useDeleteEvalCase,
   useCreateEvalRun,
-  useAgents,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -23,7 +22,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ArrowLeft, Pencil, Play, Plus, Trash2, ListChecks, BarChart3 } from "lucide-react";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
-import type { EvalCase, EvalRun, Scorer, EvalInputMessage } from "@/lib/api/types";
+import type { EvalCase, EvalRun, Scorer, EvalInputMessage, EvalTarget } from "@/lib/api/types";
 
 function passRateColor(rate: number): string {
   if (rate >= 0.9) return "text-green-600";
@@ -71,6 +70,32 @@ function scorerLabel(scorer: Scorer): string {
   }
 }
 
+function TargetBadge({ target }: { target?: EvalTarget }) {
+  if (!target) return null;
+  switch (target.type) {
+    case "harness":
+      return (
+        <Badge variant="outline" className="text-xs">
+          harness
+        </Badge>
+      );
+    case "session_params":
+      return (
+        <Badge variant="outline" className="text-xs">
+          session_params
+        </Badge>
+      );
+    case "app":
+      return (
+        <Badge variant="outline" className="text-xs">
+          app: {target.app_id}
+        </Badge>
+      );
+    default:
+      return null;
+  }
+}
+
 function CaseCard({
   evalCase,
   onDelete,
@@ -98,6 +123,12 @@ function CaseCard({
       <CardContent className="space-y-3">
         {evalCase.description && (
           <p className="text-sm text-muted-foreground">{evalCase.description}</p>
+        )}
+        {evalCase.target && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Target override:</span>
+            <TargetBadge target={evalCase.target} />
+          </div>
         )}
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground">Messages</p>
@@ -148,6 +179,7 @@ function RunRow({ evalId, run }: { evalId: string; run: EvalRun }) {
               {new Date(run.created_at).toLocaleString()}
             </span>
             <span className="text-xs text-muted-foreground">by {run.triggered_by}</span>
+            {run.target && <TargetBadge target={run.target} />}
           </div>
           <div className="flex items-center gap-4 text-sm">
             {run.summary && (
@@ -296,11 +328,8 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
   const { data: ev, isLoading: evalLoading } = useEval(evalId);
   const { data: cases, isLoading: casesLoading } = useEvalCases(evalId);
   const { data: runs, isLoading: runsLoading } = useEvalRuns(evalId);
-  const { data: agents } = useAgents({ includeArchived: false });
   const deleteCase = useDeleteEvalCase(evalId);
   const createRun = useCreateEvalRun(evalId);
-
-  const agentName = agents?.find((a) => a.id === ev?.agent_id)?.name;
 
   const handleDeleteCase = useCallback(
     async (caseId: string) => {
@@ -362,7 +391,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
           </h1>
           {ev.description && <p className="text-muted-foreground mt-1">{ev.description}</p>}
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-            {agentName && <span>Agent: {agentName}</span>}
+            <TargetBadge target={ev.target} />
             <span>{ev.case_count} cases</span>
             {ev.tags.length > 0 && (
               <div className="flex gap-1">

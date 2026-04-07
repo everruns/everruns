@@ -15,9 +15,9 @@ impl Database {
     pub async fn create_eval(&self, org_id: i64, input: CreateEvalRow) -> Result<EvalRow> {
         let row = sqlx::query_as::<_, EvalRow>(
             r#"
-            INSERT INTO evals (org_id, public_id, name, description, agent_id, harness_id, model_override, tags)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id, org_id, public_id, name, description, agent_id, harness_id,
+            INSERT INTO evals (org_id, public_id, name, description, target, model_override, tags)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, org_id, public_id, name, description, target,
                       model_override, tags, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
@@ -25,8 +25,7 @@ impl Database {
         .bind(&input.public_id)
         .bind(&input.name)
         .bind(&input.description)
-        .bind(input.agent_id)
-        .bind(input.harness_id)
+        .bind(&input.target)
         .bind(&input.model_override)
         .bind(&input.tags)
         .fetch_one(&self.pool)
@@ -41,7 +40,7 @@ impl Database {
     ) -> Result<Option<EvalRow>> {
         let row = sqlx::query_as::<_, EvalRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, agent_id, harness_id,
+            SELECT id, org_id, public_id, name, description, target,
                    model_override, tags, status, created_at, updated_at, archived_at, deleted_at
             FROM evals
             WHERE org_id = $1 AND public_id = $2
@@ -68,7 +67,7 @@ impl Database {
             " AND status NOT IN ('archived', 'deleted')"
         };
         let sql = format!(
-            r#"SELECT id, org_id, public_id, name, description, agent_id, harness_id,
+            r#"SELECT id, org_id, public_id, name, description, target,
                       model_override, tags, status, created_at, updated_at, archived_at, deleted_at
                FROM evals
                WHERE org_id = $1{status_sql}{search_sql}
@@ -93,14 +92,13 @@ impl Database {
             SET
                 name = COALESCE($3, name),
                 description = COALESCE($4, description),
-                agent_id = COALESCE($5, agent_id),
-                harness_id = COALESCE($6, harness_id),
-                model_override = COALESCE($7, model_override),
-                tags = COALESCE($8, tags),
-                status = COALESCE($9, status),
+                target = COALESCE($5, target),
+                model_override = COALESCE($6, model_override),
+                tags = COALESCE($7, tags),
+                status = COALESCE($8, status),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, public_id, name, description, agent_id, harness_id,
+            RETURNING id, org_id, public_id, name, description, target,
                       model_override, tags, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
@@ -108,8 +106,7 @@ impl Database {
         .bind(id)
         .bind(&input.name)
         .bind(&input.description)
-        .bind(input.agent_id)
-        .bind(input.harness_id)
+        .bind(&input.target)
         .bind(&input.model_override)
         .bind(&input.tags)
         .bind(&input.status)
@@ -144,9 +141,9 @@ impl Database {
     ) -> Result<EvalCaseRow> {
         let row = sqlx::query_as::<_, EvalCaseRow>(
             r#"
-            INSERT INTO eval_cases (eval_id, public_id, name, description, tags, conversation, scorers, max_turns, timeout_seconds, position)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id, eval_id, public_id, name, description, tags, conversation, scorers,
+            INSERT INTO eval_cases (eval_id, public_id, name, description, target, tags, conversation, scorers, max_turns, timeout_seconds, position)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, scorers,
                       max_turns, timeout_seconds, position, created_at, updated_at
             "#,
         )
@@ -154,6 +151,7 @@ impl Database {
         .bind(&input.public_id)
         .bind(&input.name)
         .bind(&input.description)
+        .bind(&input.target)
         .bind(&input.tags)
         .bind(&input.conversation)
         .bind(&input.scorers)
@@ -168,7 +166,7 @@ impl Database {
     pub async fn list_eval_cases(&self, eval_id: Uuid) -> Result<Vec<EvalCaseRow>> {
         let rows = sqlx::query_as::<_, EvalCaseRow>(
             r#"
-            SELECT id, eval_id, public_id, name, description, tags, conversation, scorers,
+            SELECT id, eval_id, public_id, name, description, target, tags, conversation, scorers,
                    max_turns, timeout_seconds, position, created_at, updated_at
             FROM eval_cases
             WHERE eval_id = $1
@@ -188,7 +186,7 @@ impl Database {
     ) -> Result<Option<EvalCaseRow>> {
         let row = sqlx::query_as::<_, EvalCaseRow>(
             r#"
-            SELECT id, eval_id, public_id, name, description, tags, conversation, scorers,
+            SELECT id, eval_id, public_id, name, description, target, tags, conversation, scorers,
                    max_turns, timeout_seconds, position, created_at, updated_at
             FROM eval_cases
             WHERE eval_id = $1 AND public_id = $2
@@ -212,21 +210,23 @@ impl Database {
             SET
                 name = COALESCE($2, name),
                 description = COALESCE($3, description),
-                tags = COALESCE($4, tags),
-                conversation = COALESCE($5, conversation),
-                scorers = COALESCE($6, scorers),
-                max_turns = COALESCE($7, max_turns),
-                timeout_seconds = COALESCE($8, timeout_seconds),
-                position = COALESCE($9, position),
+                target = COALESCE($4, target),
+                tags = COALESCE($5, tags),
+                conversation = COALESCE($6, conversation),
+                scorers = COALESCE($7, scorers),
+                max_turns = COALESCE($8, max_turns),
+                timeout_seconds = COALESCE($9, timeout_seconds),
+                position = COALESCE($10, position),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, eval_id, public_id, name, description, tags, conversation, scorers,
+            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, scorers,
                       max_turns, timeout_seconds, position, created_at, updated_at
             "#,
         )
         .bind(id)
         .bind(&input.name)
         .bind(&input.description)
+        .bind(&input.target)
         .bind(&input.tags)
         .bind(&input.conversation)
         .bind(&input.scorers)
@@ -265,15 +265,16 @@ impl Database {
     ) -> Result<EvalRunRow> {
         let row = sqlx::query_as::<_, EvalRunRow>(
             r#"
-            INSERT INTO eval_runs (eval_id, org_id, public_id, model_override, filter_tags, triggered_by)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, eval_id, org_id, public_id, model_override, filter_tags, status,
+            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
                       triggered_by, started_at, completed_at, summary, created_at, updated_at
             "#,
         )
         .bind(input.eval_id)
         .bind(org_id)
         .bind(&input.public_id)
+        .bind(&input.target)
         .bind(&input.model_override)
         .bind(&input.filter_tags)
         .bind(&input.triggered_by)
@@ -285,7 +286,7 @@ impl Database {
     pub async fn list_eval_runs(&self, eval_id: Uuid) -> Result<Vec<EvalRunRow>> {
         let rows = sqlx::query_as::<_, EvalRunRow>(
             r#"
-            SELECT id, eval_id, org_id, public_id, model_override, filter_tags, status,
+            SELECT id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
                    triggered_by, started_at, completed_at, summary, created_at, updated_at
             FROM eval_runs
             WHERE eval_id = $1
@@ -305,7 +306,7 @@ impl Database {
     ) -> Result<Option<EvalRunRow>> {
         let row = sqlx::query_as::<_, EvalRunRow>(
             r#"
-            SELECT id, eval_id, org_id, public_id, model_override, filter_tags, status,
+            SELECT id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
                    triggered_by, started_at, completed_at, summary, created_at, updated_at
             FROM eval_runs
             WHERE org_id = $1 AND public_id = $2
@@ -341,7 +342,7 @@ impl Database {
                 summary = COALESCE($5, summary),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, eval_id, org_id, public_id, model_override, filter_tags, status,
+            RETURNING id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
                       triggered_by, started_at, completed_at, summary, created_at, updated_at
             "#,
         )
@@ -358,7 +359,7 @@ impl Database {
     pub async fn get_latest_eval_run(&self, eval_id: Uuid) -> Result<Option<EvalRunRow>> {
         let row = sqlx::query_as::<_, EvalRunRow>(
             r#"
-            SELECT id, eval_id, org_id, public_id, model_override, filter_tags, status,
+            SELECT id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
                    triggered_by, started_at, completed_at, summary, created_at, updated_at
             FROM eval_runs
             WHERE eval_id = $1
@@ -382,16 +383,18 @@ impl Database {
     ) -> Result<EvalCaseResultRow> {
         let row = sqlx::query_as::<_, EvalCaseResultRow>(
             r#"
-            INSERT INTO eval_case_results (eval_run_id, eval_case_id, public_id)
-            VALUES ($1, $2, $3)
-            RETURNING id, eval_run_id, eval_case_id, public_id, session_id, status,
-                      scores, turns, latency_ms, input_tokens, output_tokens, error_message,
+            INSERT INTO eval_case_results (eval_run_id, eval_case_id, public_id, target, target_snapshot)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, eval_run_id, eval_case_id, public_id, session_id, target, target_snapshot,
+                      status, scores, turns, latency_ms, input_tokens, output_tokens, error_message,
                       created_at, updated_at
             "#,
         )
         .bind(input.eval_run_id)
         .bind(input.eval_case_id)
         .bind(&input.public_id)
+        .bind(&input.target)
+        .bind(&input.target_snapshot)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -404,6 +407,7 @@ impl Database {
         let rows = sqlx::query_as::<_, EvalCaseResultRow>(
             r#"
             SELECT ecr.id, ecr.eval_run_id, ecr.eval_case_id, ecr.public_id, ecr.session_id,
+                   ecr.target, ecr.target_snapshot,
                    ecr.status, ecr.scores, ecr.turns, ecr.latency_ms,
                    ecr.input_tokens, ecr.output_tokens, ecr.error_message,
                    ecr.created_at, ecr.updated_at
@@ -428,22 +432,26 @@ impl Database {
             UPDATE eval_case_results
             SET
                 session_id = COALESCE($2, session_id),
-                status = COALESCE($3, status),
-                scores = COALESCE($4, scores),
-                turns = COALESCE($5, turns),
-                latency_ms = COALESCE($6, latency_ms),
-                input_tokens = COALESCE($7, input_tokens),
-                output_tokens = COALESCE($8, output_tokens),
-                error_message = COALESCE($9, error_message),
+                target = COALESCE($3, target),
+                target_snapshot = COALESCE($4, target_snapshot),
+                status = COALESCE($5, status),
+                scores = COALESCE($6, scores),
+                turns = COALESCE($7, turns),
+                latency_ms = COALESCE($8, latency_ms),
+                input_tokens = COALESCE($9, input_tokens),
+                output_tokens = COALESCE($10, output_tokens),
+                error_message = COALESCE($11, error_message),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, eval_run_id, eval_case_id, public_id, session_id, status,
-                      scores, turns, latency_ms, input_tokens, output_tokens, error_message,
+            RETURNING id, eval_run_id, eval_case_id, public_id, session_id, target, target_snapshot,
+                      status, scores, turns, latency_ms, input_tokens, output_tokens, error_message,
                       created_at, updated_at
             "#,
         )
         .bind(id)
         .bind(input.session_id)
+        .bind(&input.target)
+        .bind(&input.target_snapshot)
         .bind(&input.status)
         .bind(&input.scores)
         .bind(input.turns)

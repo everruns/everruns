@@ -1542,8 +1542,7 @@ pub struct EvalRow {
     pub public_id: String,
     pub name: String,
     pub description: Option<String>,
-    pub agent_id: Uuid,
-    pub harness_id: Uuid,
+    pub target: Option<serde_json::Value>,
     pub model_override: Option<String>,
     pub tags: Vec<String>,
     pub status: String,
@@ -1559,8 +1558,7 @@ pub struct CreateEvalRow {
     pub public_id: String,
     pub name: String,
     pub description: Option<String>,
-    pub agent_id: Uuid,
-    pub harness_id: Uuid,
+    pub target: Option<serde_json::Value>,
     pub model_override: Option<String>,
     pub tags: Vec<String>,
 }
@@ -1570,8 +1568,7 @@ pub struct CreateEvalRow {
 pub struct UpdateEvalRow {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub agent_id: Option<Uuid>,
-    pub harness_id: Option<Uuid>,
+    pub target: Option<serde_json::Value>,
     pub model_override: Option<String>,
     pub tags: Option<Vec<String>>,
     pub status: Option<String>,
@@ -1585,6 +1582,7 @@ pub struct EvalCaseRow {
     pub public_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub target: Option<serde_json::Value>,
     pub tags: Vec<String>,
     pub conversation: serde_json::Value,
     pub scorers: serde_json::Value,
@@ -1601,6 +1599,7 @@ pub struct CreateEvalCaseRow {
     pub public_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub target: Option<serde_json::Value>,
     pub tags: Vec<String>,
     pub conversation: serde_json::Value,
     pub scorers: serde_json::Value,
@@ -1614,6 +1613,7 @@ pub struct CreateEvalCaseRow {
 pub struct UpdateEvalCaseRow {
     pub name: Option<String>,
     pub description: Option<String>,
+    pub target: Option<serde_json::Value>,
     pub tags: Option<Vec<String>>,
     pub conversation: Option<serde_json::Value>,
     pub scorers: Option<serde_json::Value>,
@@ -1629,6 +1629,7 @@ pub struct EvalRunRow {
     pub eval_id: Uuid,
     pub org_id: i64,
     pub public_id: String,
+    pub target: Option<serde_json::Value>,
     pub model_override: Option<String>,
     pub filter_tags: Option<Vec<String>>,
     pub status: String,
@@ -1645,6 +1646,7 @@ pub struct EvalRunRow {
 pub struct CreateEvalRunRow {
     pub public_id: String,
     pub eval_id: Uuid,
+    pub target: Option<serde_json::Value>,
     pub model_override: Option<String>,
     pub filter_tags: Option<Vec<String>>,
     pub triggered_by: String,
@@ -1658,6 +1660,8 @@ pub struct EvalCaseResultRow {
     pub eval_case_id: Uuid,
     pub public_id: String,
     pub session_id: Option<Uuid>,
+    pub target: Option<serde_json::Value>,
+    pub target_snapshot: Option<serde_json::Value>,
     pub status: String,
     pub scores: Option<serde_json::Value>,
     pub turns: Option<i32>,
@@ -1675,12 +1679,16 @@ pub struct CreateEvalCaseResultRow {
     pub public_id: String,
     pub eval_run_id: Uuid,
     pub eval_case_id: Uuid,
+    pub target: Option<serde_json::Value>,
+    pub target_snapshot: Option<serde_json::Value>,
 }
 
 /// Input for updating an eval case result
 #[derive(Debug, Clone, Default)]
 pub struct UpdateEvalCaseResultRow {
     pub session_id: Option<Uuid>,
+    pub target: Option<serde_json::Value>,
+    pub target_snapshot: Option<serde_json::Value>,
     pub status: Option<String>,
     pub scores: Option<serde_json::Value>,
     pub turns: Option<i32>,

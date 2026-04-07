@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Square, ExternalLink } from "lucide-react";
-import type { EvalCaseResult, EvalRunStatus } from "@/lib/api/types";
+import type { EvalCaseResult, EvalRunStatus, EvalTarget } from "@/lib/api/types";
 
 function passRateColor(rate: number): string {
   if (rate >= 0.9) return "text-green-600";
@@ -54,6 +54,21 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function TargetBadge({ target }: { target?: EvalTarget }) {
+  if (!target) return null;
+  const label =
+    target.type === "app"
+      ? `app: ${target.app_id}`
+      : target.type === "session_params"
+        ? "session_params"
+        : "harness";
+  return (
+    <Badge variant="outline" className="text-xs">
+      {label}
+    </Badge>
+  );
+}
+
 function ResultRow({ result }: { result: EvalCaseResult }) {
   return (
     <tr className="border-b last:border-b-0">
@@ -69,6 +84,9 @@ function ResultRow({ result }: { result: EvalCaseResult }) {
       </td>
       <td className="py-3 px-4">
         <Badge variant={resultStatusVariant(result.status)}>{result.status}</Badge>
+      </td>
+      <td className="py-3 px-4 text-sm text-muted-foreground">
+        <TargetBadge target={result.target_snapshot} />
       </td>
       <td className="py-3 px-4 text-sm text-muted-foreground">{result.turns ?? "-"}</td>
       <td className="py-3 px-4 text-sm text-muted-foreground">
@@ -159,6 +177,7 @@ export default function EvalRunDetailPage({
           <h1 className="text-2xl font-bold flex items-center gap-2">
             Run
             <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
+            {run.target && <TargetBadge target={run.target} />}
           </h1>
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
             <span>
@@ -241,6 +260,7 @@ export default function EvalRunDetailPage({
                   <tr className="border-b text-left">
                     <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Case</th>
                     <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Status</th>
+                    <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Target</th>
                     <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Turns</th>
                     <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Latency</th>
                     <th className="py-2 px-4 text-sm font-medium text-muted-foreground">Input</th>

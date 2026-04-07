@@ -9,6 +9,10 @@
   - LLM-as-judge scorer deferred to Phase 2 (requires model call inside scoring)
   - No dataset management — evals are small, curated collections
   - No cross-org visibility — evals are org-scoped like all other entities
+  - EvalTarget replaces harness_id + agent_id — unified session setup contract
+  - EvalTarget can be: SessionParams (full session params), App (app reference), or Harness (simple reference)
+  - Resolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness
+  - EvalCaseResult stores both target (live reference) and target_snapshot (frozen copy at execution time)
 -->
 
 ## Abstract
@@ -19,12 +23,24 @@ Each eval case creates a real session with the target agent and harness. Failed 
 
 ## Concepts
 
+### EvalTarget
+
+Defines how to instantiate a session for eval cases. Three variants:
+
+- **`session_params`**: Full session input parameters — `harness_id` (required), `agent_id`, `model_id`, `system_prompt`. Maximum control over session setup.
+- **`app`**: Reference to a deployed App — `app_id`. Session created via the app's configuration.
+- **`harness`**: Simple harness + optional agent reference — `harness_id` (required), `agent_id`. No extra session params.
+
+**Resolution order**: `EvalRun.target` → `EvalCase.target` → `Eval.target` → org default harness.
+
+All three levels (Eval, EvalCase, EvalRun) have an optional `target` field. The first non-null target in the resolution chain is used. This allows running the same eval cases against different targets per run, or defining per-case overrides for heterogeneous test suites.
+
 ### Eval
 
-Top-level entity. Targets a specific agent and harness combination. Contains cases that define expected behaviors.
+Top-level entity. Contains cases that define expected behaviors.
 
 - Org-scoped, follows standard building-block lifecycle (`active → archived → deleted`)
-- References one agent (required) and one harness (required)
+- Optional `target` (EvalTarget) — the default session setup for all cases
 - Optional `model_override` for baseline model selection
 - Tagged for organization and filtering
 
@@ -33,6 +49,7 @@ Top-level entity. Targets a specific agent and harness combination. Contains cas
 A single test within an eval. Defines input messages, scoring criteria, and execution bounds.
 
 - Each case has a `description` explaining what behavior it measures (self-documenting)
+- Optional `target` (EvalTarget) — per-case override
 - `conversation`: one or more input messages sent sequentially (multi-turn support)
 - `scorers`: list of scoring rules applied after execution completes
 - `max_turns`: optional bound on agent turns (default: 10)
@@ -44,6 +61,7 @@ A single test within an eval. Defines input messages, scoring criteria, and exec
 A single execution of all (or a tagged subset of) cases in an eval.
 
 - Creates one session per case
+- Optional `target` (EvalTarget) — per-run override (e.g., test same cases against a different app)
 - Supports model override per run (compare models without editing the eval)
 - Tracks aggregate metrics: pass rate, average score, turns, latency, tokens
 - Triggered by user action, API call, or scheduled task
@@ -54,6 +72,8 @@ A single execution of all (or a tagged subset of) cases in an eval.
 The outcome of a single case within a run.
 
 - Links to the actual session created for this case (browsable in UI)
+- `target`: resolved EvalTarget used (live reference, may change if eval is edited)
+- `target_snapshot`: frozen copy of the resolved target at execution time (immutable, for reproducibility)
 - Contains per-scorer scores with pass/fail, value (0.0–1.0), and reason
 - Captures efficiency metrics: turn count, latency, token usage
 
@@ -92,8 +112,7 @@ See `crates/core/src/eval.rs` for full field definitions.
 | `org_id` | i64 | Owning organization |
 | `name` | String | Display name |
 | `description` | Option\<String\> | Optional description |
-| `agent_id` | UUID | FK to agent under test |
-| `harness_id` | UUID | FK to harness for test sessions |
+| `target` | Option\<EvalTarget\> | Session setup target (JSONB) |
 | `model_override` | Option\<String\> | Optional default model for runs |
 | `tags` | Vec\<String\> | Organization tags |
 | `status` | EvalStatus | `active`, `archived`, `deleted` |
@@ -110,6 +129,7 @@ See `crates/core/src/eval.rs` for full field definitions.
 | `eval_id` | UUID | FK to parent eval |
 | `name` | String | Case name |
 | `description` | Option\<String\> | What behavior this measures |
+| `target` | Option\<EvalTarget\> | Per-case target override (JSONB) |
 | `tags` | Vec\<String\> | Tags for subset runs |
 | `conversation` | Vec\<InputMessage\> | Input messages (sequential) |
 | `scorers` | Vec\<Scorer\> | Scoring rules (JSONB) |
@@ -126,6 +146,7 @@ See `crates/core/src/eval.rs` for full field definitions.
 | `id` / `public_id` | UUID / EvalRunId | Dual-ID pattern (`evalrun_` prefix) |
 | `eval_id` | UUID | FK to parent eval |
 | `org_id` | i64 | Owning organization |
+| `target` | Option\<EvalTarget\> | Per-run target override (JSONB) |
 | `model_override` | Option\<String\> | Model override for this run |
 | `filter_tags` | Option\<Vec\<String\>\> | Only run cases matching these tags |
 | `status` | EvalRunStatus | `pending`, `running`, `completed`, `failed`, `cancelled` |
@@ -159,6 +180,8 @@ See `crates/core/src/eval.rs` for full field definitions.
 | `eval_run_id` | UUID | FK to parent run |
 | `eval_case_id` | UUID | FK to the case |
 | `session_id` | Option\<UUID\> | FK to session created for this case |
+| `target` | Option\<EvalTarget\> | Resolved target (live reference, JSONB) |
+| `target_snapshot` | Option\<EvalTarget\> | Frozen target at execution time (JSONB) |
 | `status` | CaseResultStatus | `pending`, `running`, `passed`, `failed`, `errored`, `timeout` |
 | `scores` | Option\<Map\<String, Score\>\> | Per-scorer results (JSONB) |
 | `turns` | Option\<u32\> | Turn count |
@@ -223,13 +246,19 @@ All endpoints under `/v1/evals`. See `crates/server/src/api/evals.rs`.
 ```
 POST /v1/evals/{eval_id}/runs
   │
-  ├─ Create EvalRun (status: pending)
-  ├─ Create EvalCaseResult per case (status: pending)
+  ├─ Create EvalRun (status: pending, target from request body)
+  ├─ For each case:
+  │    ├─ Resolve target: run.target → case.target → eval.target → org default
+  │    └─ Create EvalCaseResult (status: pending, target + target_snapshot = resolved target)
   ├─ Start durable workflow: RunEvalWorkflow
   │
   │  For each case (bounded concurrency = 5):
   │    1. Update CaseResult status → running
-  │    2. Create session (harness_id, agent_id, model_override, tags: ["eval", "eval:{eval_id}"])
+  │    2. Create session from resolved EvalTarget:
+  │       - session_params: use harness_id, agent_id, model_id, system_prompt
+  │       - app: create session via app
+  │       - harness: use harness_id + agent_id
+  │       Tags: ["eval", "eval:{eval_id}"]
   │    3. For each message in case.conversation:
   │       a. POST message to session
   │       b. Wait for session.idled event
@@ -292,7 +321,12 @@ Select two runs from the runs tab → side-by-side view:
 
 ### Create Eval Form (`/evals/new`)
 
-Fields: name, description, agent (select), harness (select), model override (optional select), tags.
+Fields: name, description, target type selector (harness / session_params / app), target fields (varies by type), model override (optional), tags.
+
+Target type selector:
+- **Harness**: harness (select), agent (optional select)
+- **Session Params**: harness (select), agent (optional select), model (optional), system prompt (optional textarea)
+- **App**: app ID (text input)
 
 Cases added after creation on the detail page (simpler flow, avoids complex nested form).
 

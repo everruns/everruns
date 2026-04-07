@@ -14,6 +14,9 @@ import { ArrowLeft, X } from "lucide-react";
 import { ModelPicker } from "@/components/models/model-picker";
 import { AgentSelect } from "@/components/agent/agent-select";
 import { HarnessSelect } from "@/components/harness/harness-select";
+import type { EvalTarget, CreateEvalRequest } from "@/lib/api/types";
+
+type TargetType = "harness" | "session_params" | "app";
 
 export default function NewEvalPage() {
   const router = useRouter();
@@ -21,10 +24,14 @@ export default function NewEvalPage() {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    agent_id: "",
-    harness_id: "",
     model_override: "",
   });
+  const [targetType, setTargetType] = useState<TargetType>("harness");
+  const [harnessId, setHarnessId] = useState("");
+  const [agentId, setAgentId] = useState("");
+  const [appId, setAppId] = useState("");
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [modelId, setModelId] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
 
@@ -47,24 +54,54 @@ export default function NewEvalPage() {
     }
   };
 
+  const buildTarget = (): EvalTarget | undefined => {
+    switch (targetType) {
+      case "harness":
+        if (!harnessId) return undefined;
+        return {
+          type: "harness",
+          harness_id: harnessId,
+          agent_id: agentId || undefined,
+        };
+      case "session_params":
+        if (!harnessId) return undefined;
+        return {
+          type: "session_params",
+          harness_id: harnessId,
+          agent_id: agentId || undefined,
+          model_id: modelId || undefined,
+          system_prompt: systemPrompt || undefined,
+        };
+      case "app":
+        if (!appId) return undefined;
+        return { type: "app", app_id: appId };
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    try {
-      const ev = await createEval.mutateAsync({
-        name: formData.name,
-        description: formData.description || undefined,
-        agent_id: formData.agent_id,
-        harness_id: formData.harness_id,
-        model_override: formData.model_override || undefined,
-        tags: tags.length > 0 ? tags : undefined,
-      });
+    const target = buildTarget();
 
+    const req: CreateEvalRequest = {
+      name: formData.name,
+      description: formData.description || undefined,
+      target,
+      model_override: formData.model_override || undefined,
+      tags: tags.length > 0 ? tags : undefined,
+    };
+
+    try {
+      const ev = await createEval.mutateAsync(req);
       router.push(`/evals/${ev.id}`);
     } catch (error) {
       console.error("Failed to create eval:", error);
     }
   };
+
+  const canSubmit =
+    formData.name &&
+    (targetType === "app" ? !!appId : targetType === "harness" || targetType === "session_params");
 
   return (
     <div className="container mx-auto p-6">
@@ -104,24 +141,89 @@ export default function NewEvalPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="agent">Agent</Label>
-              <AgentSelect
-                value={formData.agent_id}
-                onValueChange={(value) => setFormData({ ...formData, agent_id: value })}
-                placeholder="Select an agent"
-                className="w-full"
-              />
-            </div>
+            {/* Target type selector */}
+            <div className="space-y-4">
+              <Label>Target Type</Label>
+              <div className="flex gap-2">
+                {(["harness", "session_params", "app"] as TargetType[]).map((t) => (
+                  <Button
+                    key={t}
+                    type="button"
+                    variant={targetType === t ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTargetType(t)}
+                  >
+                    {t === "harness"
+                      ? "Harness"
+                      : t === "session_params"
+                        ? "Session Params"
+                        : "App"}
+                  </Button>
+                ))}
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="harness">Harness</Label>
-              <HarnessSelect
-                value={formData.harness_id}
-                onValueChange={(value) => setFormData({ ...formData, harness_id: value })}
-                placeholder="Select a harness"
-                className="w-full"
-              />
+              {/* Harness / Session Params fields */}
+              {(targetType === "harness" || targetType === "session_params") && (
+                <div className="space-y-4 border rounded-lg p-4">
+                  <div className="space-y-2">
+                    <Label>Harness</Label>
+                    <HarnessSelect
+                      value={harnessId}
+                      onValueChange={setHarnessId}
+                      placeholder="Select a harness"
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Agent (optional)</Label>
+                    <AgentSelect
+                      value={agentId}
+                      onValueChange={setAgentId}
+                      placeholder="Select an agent"
+                      className="w-full"
+                    />
+                  </div>
+
+                  {targetType === "session_params" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>Model (optional)</Label>
+                        <ModelPicker
+                          value={modelId}
+                          onChange={setModelId}
+                          placeholder="Use default"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>System Prompt (optional)</Label>
+                        <Textarea
+                          placeholder="Override system prompt..."
+                          value={systemPrompt}
+                          onChange={(e) => setSystemPrompt(e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* App fields */}
+              {targetType === "app" && (
+                <div className="space-y-4 border rounded-lg p-4">
+                  <div className="space-y-2">
+                    <Label>App ID</Label>
+                    <Input
+                      placeholder="app_01933b5a..."
+                      value={appId}
+                      onChange={(e) => setAppId(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -164,10 +266,7 @@ export default function NewEvalPage() {
             </div>
 
             <div className="flex gap-4">
-              <Button
-                type="submit"
-                disabled={createEval.isPending || !formData.agent_id || !formData.harness_id}
-              >
+              <Button type="submit" disabled={createEval.isPending || !canSubmit}>
                 {createEval.isPending ? "Creating..." : "Create Eval"}
               </Button>
               <Button type="button" variant="outline" onClick={() => router.back()}>
