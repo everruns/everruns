@@ -200,9 +200,9 @@ impl ToolExecutionResult {
             },
             ToolExecutionResult::ToolError(message) => ToolResult {
                 tool_call_id: tool_call_id.to_string(),
-                result: Some(serde_json::json!({ "error": message })),
+                result: Some(serde_json::json!({ "error": &message })),
                 images: None,
-                error: None,
+                error: Some(message),
                 connection_required: None,
                 raw_output: None,
             },
@@ -872,10 +872,10 @@ mod tests {
         assert!(tool_result.error.is_none());
         assert_eq!(tool_result.result.unwrap()["value"], 42);
 
-        // Tool error (packaged as {"error": "..."} in result field)
+        // Tool error (packaged as {"error": "..."} in result field, also sets error)
         let result = ToolExecutionResult::tool_error("Invalid input");
         let tool_result = result.into_tool_result("call_2", "test_tool");
-        assert!(tool_result.error.is_none());
+        assert_eq!(tool_result.error.as_deref(), Some("Invalid input"));
         assert_eq!(
             tool_result.result.unwrap(),
             serde_json::json!({"error": "Invalid input"})

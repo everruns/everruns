@@ -111,7 +111,7 @@ async fn test_tool_error_handling() {
     // Execute and verify error is packaged as {"error": "..."} in result field
     let result = registry.execute(&tool_call, &tool_def).await.unwrap();
 
-    assert!(result.error.is_none());
+    assert_eq!(result.error.as_deref(), Some("Expected test failure"));
     assert_eq!(
         result.result,
         Some(json!({"error": "Expected test failure"}))
