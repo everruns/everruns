@@ -384,19 +384,33 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
 
     const merged = [...realChatEvents, ...pendingOptimisticEvents];
     // Sort by sequence to guarantee correct chronological order regardless of
-    // SSE arrival order. Optimistic events use sequence -1, so they naturally
-    // sort before real events — but we want them at the end (they represent the
-    // latest user message). Use timestamp as tiebreaker for equal/missing sequences.
+    // SSE arrival order. Only optimistic events use sequence -1, and they
+    // should appear at the end (they represent the latest user message).
+    // Events missing a sequence fall back to timestamp ordering.
     merged.sort((a, b) => {
-      const seqA = a.sequence ?? -1;
-      const seqB = b.sequence ?? -1;
-      if (seqA !== seqB) {
-        // Push optimistic (sequence -1) to end by treating -1 as Infinity
-        const effA = seqA < 0 ? Number.MAX_SAFE_INTEGER : seqA;
-        const effB = seqB < 0 ? Number.MAX_SAFE_INTEGER : seqB;
-        return effA - effB;
+      const seqA = a.sequence;
+      const seqB = b.sequence;
+      const isOptimisticA = seqA === -1;
+      const isOptimisticB = seqB === -1;
+      const hasSeqA = seqA != null && seqA !== -1;
+      const hasSeqB = seqB != null && seqB !== -1;
+
+      // Optimistic events always sort to the end
+      if (isOptimisticA !== isOptimisticB) {
+        return isOptimisticA ? 1 : -1;
       }
-      // Same sequence — compare by timestamp
+
+      // Both have real sequences — sort numerically
+      if (hasSeqA && hasSeqB && seqA !== seqB) {
+        return seqA - seqB;
+      }
+
+      // One has a sequence and the other doesn't — sequenced first
+      if (hasSeqA !== hasSeqB) {
+        return hasSeqA ? -1 : 1;
+      }
+
+      // Same sequence, both missing, or both optimistic — compare by timestamp
       return a.ts.localeCompare(b.ts);
     });
     return merged;
