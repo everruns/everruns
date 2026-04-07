@@ -23,7 +23,7 @@ use super::common::{
     ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
 };
 use super::validation::{
-    validate_create_agent_input, validate_harness_name, validate_update_agent_input,
+    validate_create_agent_input, validate_harness_name_strict, validate_update_agent_input,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -219,7 +219,7 @@ pub async fn create_harness(
     State(state): State<AppState>,
     Json(req): Json<CreateHarnessRequest>,
 ) -> Result<(StatusCode, Json<Harness>), (StatusCode, Json<ErrorResponse>)> {
-    validate_harness_name(&req.name)?;
+    validate_harness_name_strict(&req.name)?;
     // Reuse agent validation for display_name and other fields
     validate_create_agent_input(
         &req.display_name,
@@ -349,7 +349,7 @@ pub async fn update_harness(
     })?;
 
     if let Some(ref name) = req.name {
-        validate_harness_name(name)?;
+        validate_harness_name_strict(name)?;
     }
     // Reuse agent validation for display_name and other fields
     validate_update_agent_input(
