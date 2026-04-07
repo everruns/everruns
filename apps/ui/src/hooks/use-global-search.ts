@@ -85,6 +85,8 @@ const NAVIGATION_PAGES: NavigationPage[] = [
   { title: "Skills", href: "/skills", icon: BookOpen, keywords: ["ability", "tool"] },
   { title: "Capabilities", href: "/capabilities", icon: Puzzle },
   { title: "Apps", href: "/apps", icon: Rocket, keywords: ["deploy", "channel"] },
+  { title: "Evals", href: "/evals", icon: FlaskConical, keywords: ["evaluation", "test", "benchmark", "score"] },
+  { title: "MCP Servers", href: "/mcp-servers", icon: Server, keywords: ["mcp", "tool", "integration"] },
   { title: "Settings", href: "/settings", icon: Settings, keywords: ["preferences", "config"] },
   {
     title: "Settings > Profile",
