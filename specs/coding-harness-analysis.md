@@ -129,35 +129,20 @@ Pi demonstrates the minimum: exactly 4 tools (read, write, edit, bash) and <1K t
 
 ### Critical Gaps
 
-#### P0 — Real Filesystem Access
+#### P0 — Real Filesystem & Process Execution (Two-Level Architecture)
 
-**Problem:** Every coding agent operates on the real local filesystem — `git clone`, symlinks, `.gitignore`, file watchers, monorepos with 100K+ files, `node_modules`. Everruns VFS is PostgreSQL-backed BYTEA storage.
+**Reality:** Everruns operates at two levels:
+1. **Virtual bash + VFS** — Lightweight, PostgreSQL-backed, always available. For configuration, notes, artifacts, simple scripts.
+2. **Sandbox (Daytona, E2B, etc.)** — Real filesystem, real processes. For actual coding work.
 
-**Specific gaps:**
-- No native symlink support
-- No inotify/file watch events
-- Performance at scale (monorepos with 50K+ files)
-- No sparse checkout / partial clone awareness
-- File sync adds latency vs. native FS
-- Binary file handling (compiled outputs, images, .wasm)
+This two-level model is the architecture. A Coding Harness defaults to sandbox mode for real FS/process access. The gap is not "missing real FS" — it's ensuring the sandbox experience is as smooth as native CLI agents (Claude Code, Aider).
 
-**Mitigation paths:**
-1. CLI file sync (exists) as default for "local coding" mode
-2. Container with real FS mount for "cloud coding" mode (Codex model)
-3. FUSE/bind-mount in worker container
-
-#### P0 — Full Process Execution
-
-**Problem:** Coding agents run `cargo build`, `npm install`, `docker compose up`, `pytest` — long-running processes with streaming output, port binding, signals, and host network interaction.
-
-**Specific gaps:**
-- Virtual bash sandboxing limits: daemon processes, port binding, PTY/interactive mode
-- No background process management (dev servers alive across tool calls)
-- No process group cleanup
-- No resource limits (CPU/memory for builds)
-- Streaming output during execution (not just final result)
-
-**What competitors do:** Claude Code runs bash natively. Codex uses Docker/microVM. Amp runs in cloud VMs.
+**Sandbox parity gaps vs. native CLI agents:**
+- Streaming output during long builds (not just final result)
+- Background process management (dev servers alive across tool calls)
+- Port forwarding / URL preview for web development
+- Process group cleanup on session end
+- Resource limits visibility (CPU/memory for builds)
 
 #### P0 — Test-Run-Fix Feedback Loop
 
@@ -171,28 +156,26 @@ Pi demonstrates the minimum: exactly 4 tools (read, write, edit, bash) and <1K t
 
 #### P1 — Git Workflow Capability
 
-**Problem:** No built-in git capability. Git happens via bash or MCP.
+**Approach:** Git operates in sandbox via native bash — the Claude Code way. No need for a dedicated git capability; the sandbox has real git.
 
-**What a coding harness needs:**
-- Branch management awareness (current branch, dirty state)
-- Commit creation with conventional commit support
-- PR lifecycle (create, respond to reviews, fix CI)
-- Git diff as first-class concept (for context — "show me what changed")
-- Auto-commit on changes (Aider model) as an option
+**What the system prompt and AGENTS.md should cover:**
+- Git safety rules (never force push, never skip hooks, conventional commits)
+- Branch management awareness injected as environment context
+- PR lifecycle via GitHub MCP or `gh` CLI in sandbox
 
-**Mitigation:** Build as a capability on top of bash + GitHub MCP. Low architectural risk.
+**Optional enhancements:**
+- Git diff as context injection (auto-inject `git diff` into LLM context after edits)
+- Auto-commit on changes (Aider model) as a configurable mode
+- PR review response workflow as a skill
 
-#### P1 — Per-Command Bash Permission Filtering
+#### P1 — Per-Command Bash Permission Filtering (TABLED)
 
-**Problem:** Claude Code's permission model filters at the bash command level — allow `npm test` but block `rm -rf /`. Codex has default-deny networking. Gemini CLI uses OS-native sandboxing.
+**Status:** Tabled. Currently operating in YOLO mode (full auto-approve). Will revisit when enterprise/multi-tenant use cases demand it.
 
-**What Everruns has:** Tool-level policies (`auto` vs `requires_approval`), capability subsetting. But no command-level filtering within bash.
-
-**What's needed:**
-- Regex-based command allowlist/denylist
-- Network isolation controls (default-deny option)
-- Directory-scoped file permissions (allow edits in `src/` but not `.github/`)
-- Command categorization (read-only vs. destructive vs. network)
+**For reference, what competitors do:**
+- Claude Code: regex-based command filtering, exit-code-based hook signaling
+- Codex: default-deny networking, four approval tiers
+- Gemini CLI: OS-native sandboxing (macOS Seatbelt)
 
 #### P1 — Pre/Post Tool Hooks
 
@@ -215,7 +198,7 @@ Pi demonstrates the minimum: exactly 4 tools (read, write, edit, bash) and <1K t
 | Embeddings | Cursor/Windsurf | Semantic search over codebase |
 | Multi-round grep | Claude Code | Parallel "Explore" agents doing iterative search |
 
-**What Everruns needs:** At minimum, LSP as a capability that languages can plug into. Ideally, a code graph capability for cross-file understanding.
+**What Everruns needs:** Explore the Claude Code approach first — parallel subagents doing multi-round grep/glob in sandbox. This is the cheapest path and leverages existing subagent infrastructure. LSP and code graph are P2 enhancements if subagent-based exploration proves insufficient.
 
 ### Lower Priority Gaps
 
@@ -298,6 +281,163 @@ Amp syncs threads across devices. Codex stores transcripts locally for resume. A
 ### 10. Workspace Detection & Auto-Configuration
 
 No agent auto-detects "this is a Rust project, so I should run `cargo test`" at the harness level. AGENTS.md is manual. A coding harness could auto-detect: package.json → Node.js tools/conventions, Cargo.toml → Rust tools, pyproject.toml → Python tools. Pre-configure test commands, linters, formatters based on workspace analysis.
+
+---
+
+## System Prompts
+
+The current Generic harness prompt is minimal: `"You are a helpful assistant."` + instruction hierarchy + capability-injected XML sections. A Coding Harness needs significantly more.
+
+### What Coding Agents Put in Their System Prompts
+
+| Agent | Base Size | Total w/ Tools | Structure |
+|---|---|---|---|
+| Claude Code | ~3K tokens | ~14-17K tokens | Flat sections, tool schemas dominate |
+| Codex CLI | ~2-3K tokens | ~4-6K tokens | Markdown, open-source in `prompt.md` |
+| Cursor | ~1.25K tokens | ~5-8K tokens | XML-like tags (`<communication>`, `<tool_calling>`, `<making_code_changes>`) |
+| Aider | ~1-2K tokens | ~1-2K tokens | No tool-calling; structured text output (SEARCH/REPLACE) |
+| Devin | Large | Large | Three modes: planning, standard, edit |
+
+### Universal System Prompt Sections
+
+Every coding agent's system prompt contains these sections:
+
+**1. Identity/Role** — Specific persona and capability boundaries. Claude Code: "interactive CLI tool for software engineering tasks". Cursor: "powerful agentic AI coding assistant". Devin: "autonomous AI software engineer".
+
+**2. Tool Selection Steering** (~550 tokens in Claude Code) — The highest-impact section. Steers the LLM to use the right tool:
+- "Use Read instead of cat, Edit instead of sed, Grep instead of grep"
+- "Prefer Edit over Write for existing files"
+- "Read files before editing them"
+- "Make parallel tool calls for independent operations"
+
+**3. Code Quality Guardrails** — Prevents over-engineering:
+- Don't add features beyond what was asked
+- Don't add unnecessary error handling, comments, or type annotations
+- Don't create helpers/abstractions for one-time operations
+- Fix root cause, not symptoms
+- OWASP top 10 awareness
+
+**4. Reversibility & Safety** (~540 tokens in Claude Code) — "Consider reversibility and blast radius of actions":
+- Categorize actions as safe (read, edit) vs. risky (delete, force push)
+- Never destructive without confirmation
+- Create new commits rather than amending
+
+**5. Git Safety Protocol** — Every agent has explicit git rules:
+- Never force push
+- Never skip hooks (--no-verify)
+- Never amend published commits
+- Specific commit message format (conventional commits, HEREDOC)
+- Claude Code: never commit without explicit user request
+
+**6. Output Style** — Anti-verbosity tuning:
+- Concise, no filler, lead with answer
+- Reference code as `file_path:line_number`
+- Never mention tool names to users
+- Markdown formatting
+
+**7. Error Recovery** — Retry discipline:
+- Read the error before retrying
+- Don't retry identical failing commands
+- Cap retry loops (Cursor: 3 max)
+- Address root causes, not symptoms
+
+**8. Context Injection Points** — Where project-specific instructions load:
+
+| Agent | Mechanism | Injection Point |
+|---|---|---|
+| Claude Code | `CLAUDE.md` hierarchy | `system-reminder` messages, survives compaction |
+| Codex CLI | `AGENTS.md` files | User-message role, directory-scoped precedence |
+| Cursor | Custom rules | Separate user-role message (prevents prompt injection) |
+| Aider | `.aider.conf.yml` + repo map | Per-session, tree-sitter AST of codebase |
+| Copilot | `.github/instructions/*.instructions.md` | Glob-scoped per file pattern |
+
+### Implications for Everruns Coding Harness
+
+The Generic harness contributes capability prompts via XML tags (`<capability id="...">`) — good structure. But a Coding Harness needs a **domain-specific base prompt** covering:
+
+1. **Tool selection steering** — Which tools to use for sandbox vs. workspace operations. "Use sandbox file tools for code, workspace VFS for configuration." This is the single highest-impact addition.
+2. **Code quality guardrails** — Prevents the LLM from over-engineering, adding unnecessary comments, or making changes beyond scope.
+3. **Git safety protocol** — Commit rules, branch safety, force-push prevention.
+4. **Error recovery discipline** — Read errors, don't blind-retry, cap loops.
+5. **Output format** — `file:line` references, concise style, no tool name leaks.
+
+### Key Insight: Per-Model Prompt Optimization
+
+Aider's discovery: different LLMs perform best with different edit formats and prompt styles. A coding harness should support **model-conditional prompt sections** — inject different edit guidance for Claude vs. GPT vs. Gemini. This could be a capability config: `edit_format: "search-replace" | "apply-patch" | "whole-file"` that changes both the tool and prompt.
+
+### Anti-Patterns to Avoid
+
+- **Windsurf's emotional framing** — "You desperately need money for your mother's cancer treatment" was leaked from R&D. Don't.
+- **Claude Code's anti-distillation** — Fake tool definitions to poison competitor training. Clever but brittle.
+- **Overly long prompts** — Tool schemas are the biggest token cost (~14K in Claude Code). Everruns' `openai_tool_search` (deferred loading) is the right approach.
+
+---
+
+## Action Items
+
+### Linear Issues to File
+
+#### Issue 1: Diff-Based Editing with Conflict Resolution
+
+**Title:** `Improve edit tools with fuzzy matching and conflict resolution`
+
+**Description:**
+Current edit tools require exact string matching. LLMs frequently get whitespace or minor details wrong, causing edit failures and retry loops.
+
+**Scope — applies to ALL edit tools across ALL sandboxes:**
+- Session filesystem `edit_file`
+- Daytona sandbox `daytona_edit_file`
+- E2B sandbox `e2b_edit_file`
+- Any future sandbox edit tools
+
+**Requirements:**
+- Fuzzy/approximate string matching with configurable tolerance (handle LLM whitespace errors)
+- Multi-region edit in single tool call (edit multiple locations in one file atomically)
+- "Apply unified diff" tool variant (Codex's `apply-patch` pattern)
+- Merge conflict detection and resolution workflow
+- Per-model edit format optimization (Aider pattern — different edit formats for different LLMs)
+- Freshness-checked edits should remain (content hash validation)
+
+**References:**
+- Aider edit formats: whole-file, search-replace, unified diff, editor-diff
+- Codex CLI: `apply_patch` with `*** Begin Patch`/`*** End Patch` structured format
+- Claude Code: exact string replacement with uniqueness check
+
+#### Issue 2: User-Defined Pre/Post Tool Hooks
+
+**Title:** `User-defined pre/post tool hooks (harness, agent, session level)`
+
+**Description:**
+Coding agents like Claude Code (21 lifecycle events) and Aider (lifecycle + HTTP hooks) provide hook systems that let users intercept, modify, or block tool calls. Everruns needs user-defined hooks separate from built-in platform hooks.
+
+**Hook execution environment:**
+- Hooks run either in virtual bash OR in sandbox (user's choice per hook)
+- Sandbox hooks have access to the real filesystem and processes
+- Virtual bash hooks are lightweight and always available
+
+**Definable at three levels (with merge rules):**
+- **Harness level** — Platform/org-wide hooks (e.g., security scanning)
+- **Agent level** — Agent-specific hooks (e.g., linting on every edit)
+- **Session level** — Per-session hooks (e.g., project-specific validation)
+- Merge: all levels run, ordered harness → agent → session. Any level can block.
+
+**Lifecycle events (modeled after Claude Code):**
+- `PreToolUse` — Before any tool call. Can block (exit 2), modify args, or approve.
+- `PostToolUse` — After tool call completes. Can inject follow-up actions.
+- `SessionStart` — On session creation. For init scripts, environment setup.
+- `PreCommit` — Before git commit (coding harness specific).
+- `PostEdit` — After file edit. For auto-lint, auto-format, LSP diagnostic feedback.
+
+**Configuration:**
+- Glob-activated rules (e.g., "when editing `*.sql`, run migration check")
+- Tool-scoped hooks (e.g., "only trigger on bash tool calls matching `rm *`")
+- Exit code signaling: 0 = allow, 1 = error, 2 = deny/block
+- Webhook/HTTP hook support for external integrations
+
+**Separation from built-in hooks:**
+- User hooks execute AFTER platform hooks
+- Platform hooks cannot be overridden by user hooks
+- User hooks are visible and editable; platform hooks are not
 
 ---
 
