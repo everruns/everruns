@@ -322,8 +322,12 @@ pub async fn create_session(
         ));
     }
 
-    // Resolve harness_name to harness_id if provided
+    // Resolve harness_name to harness_id if provided.
+    // Input is validated with the same rules as harness CRUD endpoints.
+    // HARNESS_VIEW policy is not checked here because the existing flow already
+    // validates harness access via db.get_harness() below.
     if let Some(ref name) = req.harness_name {
+        validation::validate_harness_name(name)?;
         let row = state
             .db
             .get_harness_by_name(org.org_id, name)

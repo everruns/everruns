@@ -282,7 +282,6 @@ pub async fn list_harnesses(
     ),
     responses(
         (status = 200, description = "Harness found", body = Harness),
-        (status = 400, description = "Invalid harness ID"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Harness not found"),
         (status = 500, description = "Internal server error")

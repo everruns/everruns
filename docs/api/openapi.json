@@ -1507,9 +1507,6 @@
               }
             }
           },
-          "400": {
-            "description": "Invalid harness ID"
-          },
           "403": {
             "description": "Forbidden"
           },

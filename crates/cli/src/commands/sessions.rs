@@ -134,10 +134,11 @@ async fn create(
     let secrets = parse_secrets(&raw_secrets)?;
     let budget_specs = parse_budget_limits(&raw_budget_limits, &raw_budget_soft_limits)?;
 
-    // Resolve harness: if the value looks like a prefixed ID, use it directly.
-    // Otherwise treat it as an addressable name and look it up via the API.
+    // Resolve harness: if it looks like a prefixed ID (harness_ + 32 hex chars),
+    // use it directly. Otherwise resolve via the server's GET /v1/harnesses/{id_or_name}
+    // endpoint (which handles both IDs and names).
     let harness_id = match harness {
-        Some(h) if h.starts_with("harness_") => Some(h),
+        Some(h) if h.starts_with("harness_") && h.len() == 40 => Some(h),
         Some(name) => {
             let resolved = resolve_harness_name(api_url, api_key, &name).await?;
             Some(resolved)
@@ -634,10 +635,13 @@ async fn export(
 }
 
 /// Resolve a harness name to its ID via the GET /v1/harnesses/{name} endpoint.
+/// Harness names are `[a-z0-9-]` only, so no percent-encoding is needed for path
+/// segments. We strip trailing slashes from the base URL to avoid double slashes.
 async fn resolve_harness_name(api_url: &str, api_key: &str, name: &str) -> Result<String> {
+    let base = api_url.trim_end_matches('/');
     let http = reqwest::Client::new();
     let resp = http
-        .get(format!("{}/v1/harnesses/{}", api_url, name))
+        .get(format!("{base}/v1/harnesses/{name}"))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await
