@@ -3043,6 +3043,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let create_req = crate::api::sessions::CreateSessionRequest {
             harness_id: Some(everruns_core::HarnessId::from_uuid(harness_id)),
+            harness_name: None,
             agent_id: agent_public_id,
             agent_identity_id: None,
             title: req.title,

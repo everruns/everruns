@@ -39,9 +39,16 @@ use utoipa::{IntoParams, ToSchema};
 pub struct CreateSessionRequest {
     /// ID of the harness for this session (format: harness_{32-hex}).
     /// If omitted, the org default harness is used. New orgs default that to Generic.
+    /// Mutually exclusive with `harness_name`.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: Option<HarnessId>,
+    /// Addressable name of the harness (e.g. "generic", "deep-research").
+    /// Alternative to `harness_id` — looked up by stable name within the org.
+    /// Mutually exclusive with `harness_id`.
+    #[serde(default)]
+    #[schema(example = "generic")]
+    pub harness_name: Option<String>,
     /// ID of the agent to work in this session (optional, format: agent_{32-hex}).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
@@ -304,6 +311,31 @@ pub async fn create_session(
 ) -> Result<(StatusCode, Json<Session>), (StatusCode, Json<ErrorResponse>)> {
     req.locale = normalize_locale(req.locale)
         .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
+
+    // Reject if both harness_id and harness_name are specified
+    if req.harness_id.is_some() && req.harness_name.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "Cannot specify both harness_id and harness_name",
+            )),
+        ));
+    }
+
+    // Resolve harness_name to harness_id if provided.
+    // Input is validated with the same rules as harness CRUD endpoints.
+    // HARNESS_VIEW policy is not checked here because the existing flow already
+    // validates harness access via db.get_harness() below.
+    if let Some(ref name) = req.harness_name {
+        validation::validate_harness_name(name)?;
+        let row = state
+            .db
+            .get_harness_by_name(org.org_id, name)
+            .await
+            .log_internal_error_json("resolve harness by name")?
+            .ok_or_not_found_json("Harness")?;
+        req.harness_id = Some(row.id);
+    }
 
     let harness_id = resolve_session_harness_id(
         &state.db,

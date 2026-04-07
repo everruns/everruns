@@ -145,6 +145,19 @@ impl HarnessService {
     }
 
     #[policy(HARNESS_VIEW)]
+    pub async fn get_by_name(&self, caller: &Caller, name: &str) -> Result<Option<Harness>> {
+        let row = self.db.get_harness_by_name(caller.org_id, name).await?;
+        match row {
+            Some(row) if row.status != "deleted" => {
+                let capabilities = self.get_capabilities(row.id.uuid()).await?;
+                Ok(Some(Self::row_to_harness(row, capabilities)))
+            }
+            None => Ok(None),
+            Some(_) => Ok(None),
+        }
+    }
+
+    #[policy(HARNESS_VIEW)]
     pub async fn list(
         &self,
         caller: &Caller,

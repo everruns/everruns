@@ -63,6 +63,15 @@ Infinity Context and Context Compaction work together to keep long sessions unbo
 | Testing capability behavior | Base |
 | Custom tool composition | Base |
 
+## Harness Naming
+
+Every harness has two names:
+
+- **`name`** — A stable, URL-friendly slug (e.g. `generic`, `deep-research`). Unique per org. Use this in API calls, CLI commands, and code.
+- **`display_name`** — A human-readable label (e.g. "Generic", "Deep Research"). Shown in the UI.
+
+The `name` field follows the format `[a-z0-9]+(-[a-z0-9]+)*` (max 64 chars, no consecutive hyphens) — similar to a GitHub repo name.
+
 ## Managing Harnesses
 
 ### Via API
@@ -73,13 +82,24 @@ List available harnesses:
 curl http://localhost:9300/api/v1/harnesses
 ```
 
+Get a harness by name or ID:
+
+```bash
+# By name
+curl http://localhost:9300/api/v1/harnesses/generic
+
+# By ID
+curl http://localhost:9300/api/v1/harnesses/harness_01933b5a000070008000000000000602
+```
+
 Create a custom harness:
 
 ```bash
 curl -X POST http://localhost:9300/api/v1/harnesses \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "My Custom Harness",
+    "name": "research-assistant",
+    "display_name": "Research Assistant",
     "description": "Harness with research capabilities",
     "system_prompt": "You are a research assistant.",
     "capabilities": [
@@ -93,12 +113,31 @@ curl -X POST http://localhost:9300/api/v1/harnesses \
 Use a harness when creating a session:
 
 ```bash
+# By name
 curl -X POST http://localhost:9300/api/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{
-    "harness_id": "harness_...",
+    "harness_name": "generic",
     "agent_id": "agent_..."
   }'
+
+# By ID
+curl -X POST http://localhost:9300/api/v1/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "harness_id": "harness_01933b5a000070008000000000000602",
+    "agent_id": "agent_..."
+  }'
+```
+
+### Via CLI
+
+```bash
+# By name
+everruns sessions create --harness generic
+
+# By ID
+everruns sessions create --harness harness_01933b5a000070008000000000000602
 ```
 
 ### Preview a Harness

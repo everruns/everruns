@@ -19,6 +19,12 @@ Every harness has two name fields:
 
 The `name` field works like a GitHub repository name: lowercase alphanumeric with hyphens, no consecutive hyphens, no leading/trailing hyphens. It is unique per organization (among non-deleted harnesses) and can be used for API lookups, CLI references, and URL routing.
 
+### Name-based access
+
+- **GET /v1/harnesses/{id_or_name}** — Accepts either a prefixed ID (`harness_...`) or a stable name (`generic`). The server tries parsing as ID first, then falls back to name lookup.
+- **POST /v1/sessions** — Accepts `harness_name` as an alternative to `harness_id`. The two fields are mutually exclusive.
+- **CLI** — `everruns sessions create --harness generic` accepts both IDs and names. Non-ID values are resolved via `GET /v1/harnesses/{name}` before session creation.
+
 ## Built-in Harness Types
 
 ### Base

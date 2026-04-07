@@ -564,6 +564,7 @@ async fn process_slack_message(
                 let title = build_session_title(slack_config, event);
                 let req = CreateSessionRequest {
                     harness_id: Some(app.harness_id),
+                    harness_name: None,
                     agent_id: Some(app.agent_id),
                     title: Some(title),
                     locale: None,

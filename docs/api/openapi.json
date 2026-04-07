@@ -1302,6 +1302,411 @@
         }
       }
     },
+    "/v1/harnesses": {
+      "get": {
+        "tags": [
+          "harnesses"
+        ],
+        "summary": "GET /v1/harnesses",
+        "operationId": "list_harnesses",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name or description (case-insensitive substring match).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived harnesses. Deleted harnesses never appear in lists.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of harnesses",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Harness"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "harnesses"
+        ],
+        "summary": "POST /v1/harnesses",
+        "operationId": "create_harness",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateHarnessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Harness created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Harness"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/harnesses/config": {
+      "get": {
+        "tags": [
+          "harnesses"
+        ],
+        "summary": "GET /v1/harnesses/config",
+        "description": "Returns which harness policies the caller satisfies.\nUI uses this to show/hide controls (e.g. delete button).",
+        "operationId": "harness_config",
+        "responses": {
+          "200": {
+            "description": "Resource config for harnesses",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/harnesses/preview": {
+      "post": {
+        "tags": [
+          "harnesses"
+        ],
+        "summary": "POST /v1/harnesses/preview",
+        "operationId": "preview_harness",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewHarnessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Harness preview generated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HarnessPreviewResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/harnesses/{harness_id}": {
+      "get": {
+        "tags": [
+          "harnesses"
+        ],
+        "summary": "GET /v1/harnesses/{harness_id}",
+        "description": "Accepts either a harness ID (e.g. `harness_01933b5a...`) or an addressable\nname (e.g. `generic`). Names are resolved within the caller's org.",
+        "operationId": "get_harness",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "description": "Harness ID (prefixed) or addressable name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Harness found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Harness"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Harness not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "harnesses"
+        ],
+        "summary": "DELETE /v1/harnesses/{harness_id}",
+        "operationId": "delete_harness",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "description": "Harness ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Harness archived"
+          },
+          "400": {
+            "description": "Invalid harness ID"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Harness not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "harnesses"
+        ],
+        "summary": "PATCH /v1/harnesses/{harness_id}",
+        "operationId": "update_harness",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "description": "Harness ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateHarnessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Harness updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Harness"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Harness not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/harnesses/{harness_id}/copy": {
+      "post": {
+        "tags": [
+          "harnesses"
+        ],
+        "summary": "POST /v1/harnesses/{harness_id}/copy - Copy a harness",
+        "description": "Creates a new harness with the same configuration as the source harness.\nThe new harness's name will be \"{original name} (copy)\".",
+        "operationId": "copy_harness",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "description": "Source harness ID to copy",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Harness copied successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Harness"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid harness ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Source harness not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/images": {
       "get": {
         "tags": [
@@ -5737,6 +6142,102 @@
           }
         }
       },
+      "CreateHarnessRequest": {
+        "type": "object",
+        "description": "Request to create a new harness",
+        "required": [
+          "name",
+          "display_name",
+          "system_prompt"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentCapabilityConfig"
+            },
+            "description": "Capabilities to enable with per-harness configuration.",
+            "example": [
+              {
+                "config": {},
+                "ref": "current_time"
+              },
+              {
+                "config": {},
+                "ref": "web_fetch"
+              }
+            ]
+          },
+          "default_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default LLM model ID for this harness. Lowest priority in model chain.",
+            "example": "model_01933b5a00007000800000000000001"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Description of what the harness does.",
+            "example": "Research harness with planning and web capabilities"
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable display name shown in UI.",
+            "example": "Deep Research"
+          },
+          "initial_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitialFile"
+            },
+            "description": "Starter files copied into each new session for this harness."
+          },
+          "name": {
+            "type": "string",
+            "description": "URL/CLI-friendly addressable name, unique per org.\nFormat: lowercase alphanumeric and hyphens, like a GitHub repo name.",
+            "example": "deep-research"
+          },
+          "network_access": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NetworkAccessList",
+                "description": "Network access list controlling which hosts/URLs sessions can reach."
+              }
+            ]
+          },
+          "parent_harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional parent harness to inherit from.",
+            "example": "harness_01933b5a000070008000000000000602"
+          },
+          "system_prompt": {
+            "type": "string",
+            "description": "The system prompt defining the harness's base behavior.",
+            "example": "You are a research assistant with deep analytical capabilities."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for organizing harnesses.",
+            "example": [
+              "research",
+              "planning"
+            ]
+          }
+        }
+      },
       "CreateLlmModelRequest": {
         "type": "object",
         "description": "Request to create a new LLM model for a provider",
@@ -6041,8 +6542,16 @@
               "string",
               "null"
             ],
-            "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the org default harness is used. New orgs default that to Generic.",
+            "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the org default harness is used. New orgs default that to Generic.\nMutually exclusive with `harness_name`.",
             "example": "harness_01933b5a00007000800000000000001"
+          },
+          "harness_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Addressable name of the harness (e.g. \"generic\", \"deep-research\").\nAlternative to `harness_id` — looked up by stable name within the org.\nMutually exclusive with `harness_id`.",
+            "example": "generic"
           },
           "hints": {
             "type": [
@@ -6848,6 +7357,155 @@
             "type": "string"
           }
         }
+      },
+      "Harness": {
+        "type": "object",
+        "description": "Harness configuration for sessions.\nA harness defines the base behavior and capabilities that apply to all sessions.",
+        "required": [
+          "id",
+          "name",
+          "display_name",
+          "system_prompt",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when the harness was archived."
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentCapabilityConfig"
+            },
+            "description": "Capabilities enabled for this harness with per-harness configuration."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the harness was created."
+          },
+          "default_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default LLM model ID for this harness.\nLowest priority in chain: controls > session > agent > harness.",
+            "example": "model_01933b5a00007000800000000000001"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when the harness was deleted."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description of what the harness does."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable display name shown in UI."
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the harness (format: harness_{32-hex}).",
+            "example": "harness_01933b5a00007000800000000000001"
+          },
+          "initial_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitialFile"
+            },
+            "description": "Starter files copied into each new session for this harness."
+          },
+          "is_built_in": {
+            "type": "boolean",
+            "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them."
+          },
+          "name": {
+            "type": "string",
+            "description": "URL/CLI-friendly addressable name, unique per org.\nFormat: `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars. No consecutive hyphens."
+          },
+          "network_access": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NetworkAccessList",
+                "description": "Network access list controlling which hosts/URLs sessions can reach.\nMerged with agent and session layers (allowed: intersect, blocked: union)."
+              }
+            ]
+          },
+          "parent_harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional parent harness that this harness inherits from.",
+            "example": "harness_01933b5a000070008000000000000602"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HarnessStatus",
+            "description": "Current lifecycle status of the harness."
+          },
+          "system_prompt": {
+            "type": "string",
+            "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for organizing and filtering harnesses."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the harness was last updated."
+          }
+        }
+      },
+      "HarnessPreviewResponse": {
+        "type": "object",
+        "description": "Preview response showing merged prompt and tools",
+        "required": [
+          "system_prompt",
+          "tools"
+        ],
+        "properties": {
+          "system_prompt": {
+            "type": "string"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "HarnessStatus": {
+        "type": "string",
+        "description": "Harness lifecycle status.\n- `active`: Harness is available for use\n- `archived`: Harness is hidden from listings and cannot be modified or assigned\n- `deleted`: Harness is a tombstone kept only for historical references",
+        "enum": [
+          "active",
+          "archived",
+          "deleted"
+        ]
       },
       "ImageContentPart": {
         "type": "object",
@@ -7721,6 +8379,140 @@
                 },
                 "path": {
                   "type": "string"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_Harness": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Harness configuration for sessions.\nA harness defines the base behavior and capabilities that apply to all sessions.",
+              "required": [
+                "id",
+                "name",
+                "display_name",
+                "system_prompt",
+                "status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the harness was archived."
+                },
+                "capabilities": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentCapabilityConfig"
+                  },
+                  "description": "Capabilities enabled for this harness with per-harness configuration."
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when the harness was created."
+                },
+                "default_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Default LLM model ID for this harness.\nLowest priority in chain: controls > session > agent > harness.",
+                  "example": "model_01933b5a00007000800000000000001"
+                },
+                "deleted_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when the harness was deleted."
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable description of what the harness does."
+                },
+                "display_name": {
+                  "type": "string",
+                  "description": "Human-readable display name shown in UI."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "Unique identifier for the harness (format: harness_{32-hex}).",
+                  "example": "harness_01933b5a00007000800000000000001"
+                },
+                "initial_files": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InitialFile"
+                  },
+                  "description": "Starter files copied into each new session for this harness."
+                },
+                "is_built_in": {
+                  "type": "boolean",
+                  "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "URL/CLI-friendly addressable name, unique per org.\nFormat: `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars. No consecutive hyphens."
+                },
+                "network_access": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/NetworkAccessList",
+                      "description": "Network access list controlling which hosts/URLs sessions can reach.\nMerged with agent and session layers (allowed: intersect, blocked: union)."
+                    }
+                  ]
+                },
+                "parent_harness_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional parent harness that this harness inherits from.",
+                  "example": "harness_01933b5a000070008000000000000602"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/HarnessStatus",
+                  "description": "Current lifecycle status of the harness."
+                },
+                "system_prompt": {
+                  "type": "string",
+                  "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack."
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tags for organizing and filtering harnesses."
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when the harness was last updated."
                 }
               }
             },
@@ -10161,6 +10953,32 @@
           }
         }
       },
+      "PreviewHarnessRequest": {
+        "type": "object",
+        "description": "Request to preview harness shape with capabilities applied",
+        "required": [
+          "system_prompt"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentCapabilityConfig"
+            }
+          },
+          "parent_harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "harness_01933b5a000070008000000000000602"
+          },
+          "system_prompt": {
+            "type": "string",
+            "example": "You are a research assistant."
+          }
+        }
+      },
       "ReasonCompletedData": {
         "type": "object",
         "description": "Data for reason.completed event",
@@ -10380,6 +11198,25 @@
           "value": {
             "$ref": "#/components/schemas/ReasoningEffort",
             "description": "The API value (e.g., \"low\", \"medium\")"
+          }
+        }
+      },
+      "ResourceConfigResponse": {
+        "type": "object",
+        "description": "Response type for per-resource config endpoints.\n\nEvery resource exposes `GET /v1/{resource}/config` returning this type.\nUI uses it to gate controls (create/edit/delete buttons, admin panels).",
+        "required": [
+          "policies"
+        ],
+        "properties": {
+          "policies": {
+            "type": "object",
+            "description": "Map of policy ID → whether the caller satisfies it.",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
           }
         }
       },
@@ -12266,6 +13103,100 @@
           }
         }
       },
+      "UpdateHarnessRequest": {
+        "type": "object",
+        "description": "Request to update a harness. Only provided fields will be updated.",
+        "properties": {
+          "capabilities": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/AgentCapabilityConfig"
+            }
+          },
+          "default_model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name.",
+            "example": "Updated Research Harness"
+          },
+          "initial_files": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/InitialFile"
+            }
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URL/CLI-friendly addressable name.",
+            "example": "updated-research"
+          },
+          "network_access": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NetworkAccessList",
+                "description": "Network access list. Send `{}` (empty object) to clear. Omit to leave unchanged."
+              }
+            ]
+          },
+          "parent_harness_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HarnessStatus"
+              }
+            ]
+          },
+          "system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "UpdateLlmModelRequest": {
         "type": "object",
         "description": "Request to update an LLM model. Only provided fields will be updated.",
@@ -12764,6 +13695,10 @@
     {
       "name": "session-storage",
       "description": "Session key-value storage endpoints"
+    },
+    {
+      "name": "harnesses",
+      "description": "Harness management endpoints"
     },
     {
       "name": "skills",
