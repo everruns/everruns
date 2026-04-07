@@ -335,9 +335,17 @@ pub async fn create_session(
                 .get_organization_settings(org.org_id)
                 .await
                 .log_internal_error_json("resolve org default harness")?;
-            let harness_id = settings
-                .and_then(|s| s.default_harness_id)
-                .ok_or_not_found_json("Default harness not configured for this organization")?;
+            let harness_id = match settings.and_then(|s| s.default_harness_id) {
+                Some(id) => id,
+                None => {
+                    return Err((
+                        StatusCode::NOT_FOUND,
+                        Json(ErrorResponse::new(
+                            "Default harness not configured for this organization",
+                        )),
+                    ));
+                }
+            };
             req.harness_id = Some(harness_id);
         } else {
             let row = state

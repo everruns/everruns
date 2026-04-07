@@ -4,7 +4,6 @@
 // Policy enforcement via #[policy] macro — see specs/permissions.md.
 
 use crate::api::harnesses::{CreateHarnessRequest, UpdateHarnessRequest};
-use crate::api::validation::RESERVED_HARNESS_NAMES;
 use crate::errors::ResourceNotFoundError;
 use crate::storage::{
     HarnessRow, StorageBackend,
@@ -167,7 +166,7 @@ impl HarnessService {
         caller: &Caller,
         name: &str,
     ) -> Result<Option<Harness>> {
-        if RESERVED_HARNESS_NAMES.contains(&name) && name == "default" {
+        if name == "default" {
             let settings = self.db.get_organization_settings(caller.org_id).await?;
             if let Some(harness_id) = settings.and_then(|s| s.default_harness_id) {
                 return self.get(caller, harness_id.uuid()).await;
