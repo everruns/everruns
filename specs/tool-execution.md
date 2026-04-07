@@ -58,6 +58,26 @@ Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convent
 | `requires_secrets` | Needs API keys or credentials | Assume no secrets needed |
 | `long_running` | May take significant time (> ~5s typical) | Assume fast |
 | `persist_output` | Tool requests full output be persisted to VFS before truncation when supported | Assume no persistence |
+| `narration_noun` | Entity noun for operation-based narration (e.g. `"agent"`, `"harness"`) | Generic "Ran {display_name}" fallback |
+
+### Narration Formatting
+
+Every tool call displayed in the UI gets a human-readable narration line (e.g. "Created agent: Neon Cartographer"). The narration system lives in `crates/core/src/tool_narration.rs`.
+
+**Built-in tools** have hardcoded narration (bash → "Ran `ls`", read_file → "Read AGENTS.md"). Tools that don't match a hardcoded case fall through to the generic path.
+
+**Operation-based narration via `narration_noun`:** Multi-operation tools (CRUD tools with an `operation`/`action` argument) should set `narration_noun` in their `ToolHints`. The narration system then:
+
+1. Reads the `operation` (or `action`) argument value
+2. Maps it to verb forms: create→Creating/Created, update→Updating/Updated, delete→Deleting/Deleted, copy→Copying/Copied, etc.
+3. Reads a display name from `name`, `title`, or `new_name` arguments
+4. Produces: `"{Verb} {noun}: {name}"` or `"{Verb} {noun}"` if no name
+
+Example: `manage_agents` with `narration_noun: "agent"` and args `{operation: "create", name: "Neon Cartographer"}` → "Created agent: Neon Cartographer".
+
+If `narration_noun` is set but no `operation` argument exists, falls back to generic narration. See `operation_narration()` and `operation_verbs()` in `tool_narration.rs`.
+
+**Requirement:** All new tools with an `operation`/`action` parameter **must** set `narration_noun` in their hints. Tools without operation semantics get reasonable default narration from `display_name` and need no special configuration.
 
 **Design rules:**
 - Hints are informational — they do not enforce policy. Use `ToolPolicy` for execution gating.

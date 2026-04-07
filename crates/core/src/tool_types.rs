@@ -253,6 +253,13 @@ pub struct ToolHints {
     /// and `output_files` into the result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist_output: Option<bool>,
+
+    /// Entity noun for operation-based narration (e.g. "agent", "harness").
+    /// When set, the narration system reads the `operation` argument and
+    /// produces verb-based narration like "Created agent: Neon Cartographer"
+    /// instead of the generic "Ran Manage Agents".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narration_noun: Option<String>,
 }
 
 impl ToolHints {
@@ -300,6 +307,12 @@ impl ToolHints {
     /// Builder: set persist_output hint.
     pub fn with_persist_output(mut self, value: bool) -> Self {
         self.persist_output = Some(value);
+        self
+    }
+
+    /// Builder: set narration noun for operation-based narration.
+    pub fn with_narration_noun(mut self, noun: impl Into<String>) -> Self {
+        self.narration_noun = Some(noun.into());
         self
     }
 }
