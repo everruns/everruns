@@ -13418,8 +13418,16 @@
               "string",
               "null"
             ],
-            "description": "Default harness to preselect in the UI for new sessions.",
+            "description": "Default harness to preselect in the UI for new sessions.\nMutually exclusive with `default_harness_name`.",
             "example": "harness_01933b5a000070008000000000000602"
+          },
+          "default_harness_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Alternative to `default_harness_id` — looked up by stable name within the org.\nMutually exclusive with `default_harness_id`.",
+            "example": "generic"
           },
           "default_model_id": {
             "type": [
