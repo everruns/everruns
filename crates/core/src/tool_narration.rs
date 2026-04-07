@@ -111,7 +111,8 @@ fn operation_verbs(operation: &str) -> (&str, &str, &str) {
 fn operation_narration(noun: &str, arguments: &Value, phase: ToolNarrationPhase) -> Option<String> {
     let operation = arg_str(arguments, &["operation", "action"])?;
     let (started, completed, failed) = operation_verbs(operation);
-    let name = arg_str(arguments, &["name", "title", "new_name"]).map(|v| truncate(v, 40));
+    let name =
+        arg_str(arguments, &["display_name", "name", "title", "new_name"]).map(|v| truncate(v, 40));
     let target = match name {
         Some(name) => format!("{noun}: {name}"),
         None => noun.to_string(),
@@ -146,7 +147,7 @@ fn generic_phrase(
 }
 
 fn ukrainian_phrase(
-    tool_def: Option<&ToolDefinition>,
+    _tool_def: Option<&ToolDefinition>,
     tool_call: &ToolCall,
     fallback_name: &str,
     phase: ToolNarrationPhase,
@@ -446,26 +447,17 @@ fn ukrainian_phrase(
             ToolNarrationPhase::Completed => "Оновив список задач".to_string(),
             ToolNarrationPhase::Failed => "Не вдалося оновити список задач".to_string(),
         },
-        _ => {
-            // Ukrainian reuses English operation_narration for now (operation
-            // names like "create"/"delete" are kept as-is in the UI).
-            if let Some(narration) = tool_def
-                .and_then(|def| def.hints().narration_noun.as_deref())
-                .and_then(|noun| operation_narration(noun, args, phase))
-            {
-                narration
-            } else {
-                match phase {
-                    ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
-                        format!("Запускаю {fallback_name}")
-                    }
-                    ToolNarrationPhase::Completed => format!("Запустив {fallback_name}"),
-                    ToolNarrationPhase::Failed => {
-                        format!("Не вдалося запустити {fallback_name}")
-                    }
-                }
+        // Ukrainian operation_narration not yet localized — use generic
+        // Ukrainian fallback to avoid mixing English verbs into the UI.
+        _ => match phase {
+            ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
+                format!("Запускаю {fallback_name}")
             }
-        }
+            ToolNarrationPhase::Completed => format!("Запустив {fallback_name}"),
+            ToolNarrationPhase::Failed => {
+                format!("Не вдалося запустити {fallback_name}")
+            }
+        },
     }
 }
 
@@ -1018,6 +1010,39 @@ mod tests {
         assert_eq!(
             render_tool_narration(Some(&def), &tool_call, ToolNarrationPhase::Completed),
             "Ran Manage Agents"
+        );
+    }
+
+    #[test]
+    fn narration_noun_ukrainian_uses_generic_fallback() {
+        use crate::tool_types::{BuiltinTool, ToolDefinition, ToolHints};
+
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "manage_agents".to_string(),
+            arguments: json!({ "operation": "create", "name": "Test Agent" }),
+        };
+
+        let def = ToolDefinition::Builtin(BuiltinTool {
+            name: "manage_agents".to_string(),
+            display_name: Some("Manage Agents".to_string()),
+            description: String::new(),
+            parameters: json!({}),
+            policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
+            hints: ToolHints::default().with_narration_noun("agent"),
+        });
+
+        // Ukrainian doesn't use operation_narration yet — stays in Ukrainian
+        assert_eq!(
+            render_tool_narration_with_locale(
+                Some(&def),
+                &tool_call,
+                ToolNarrationPhase::Completed,
+                Some("uk"),
+            ),
+            "Запустив Manage Agents"
         );
     }
 }
