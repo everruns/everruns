@@ -5,6 +5,7 @@ import {
   useContext,
   useState,
   useMemo,
+  useCallback,
   useEffect,
   useRef,
   type ReactNode,
@@ -381,7 +382,38 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
       return !realUserTexts.has(optText);
     });
 
-    return [...realChatEvents, ...pendingOptimisticEvents];
+    const merged = [...realChatEvents, ...pendingOptimisticEvents];
+    // Sort by sequence to guarantee correct chronological order regardless of
+    // SSE arrival order. Only optimistic events use sequence -1, and they
+    // should appear at the end (they represent the latest user message).
+    // Events missing a sequence fall back to timestamp ordering.
+    merged.sort((a, b) => {
+      const seqA = a.sequence;
+      const seqB = b.sequence;
+      const isOptimisticA = seqA === -1;
+      const isOptimisticB = seqB === -1;
+      const hasSeqA = seqA != null && seqA !== -1;
+      const hasSeqB = seqB != null && seqB !== -1;
+
+      // Optimistic events always sort to the end
+      if (isOptimisticA !== isOptimisticB) {
+        return isOptimisticA ? 1 : -1;
+      }
+
+      // Both have real sequences — sort numerically
+      if (hasSeqA && hasSeqB && seqA !== seqB) {
+        return seqA - seqB;
+      }
+
+      // One has a sequence and the other doesn't — sequenced first
+      if (hasSeqA !== hasSeqB) {
+        return hasSeqA ? -1 : 1;
+      }
+
+      // Same sequence, both missing, or both optimistic — compare by timestamp
+      return a.ts.localeCompare(b.ts);
+    });
+    return merged;
   }, [events, optimisticEvents]);
 
   // Build tool result lookup by tool_call_id
@@ -508,29 +540,35 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     ? getReasoningEffortName(reasoningEffortConfig.default)
     : "Medium";
 
-  // Extract text from message event data
-  const getMessageText = (data: InputMessageData | OutputMessageCompletedData): string => {
-    const content = data.message?.content;
-    if (!content) return "";
-    return getTextFromContent(content);
-  };
+  // Extract text from message event data (stable ref — no deps)
+  const getMessageText = useCallback(
+    (data: InputMessageData | OutputMessageCompletedData): string => {
+      const content = data.message?.content;
+      if (!content) return "";
+      return getTextFromContent(content);
+    },
+    [],
+  );
 
-  // Get tool calls from message event data
-  const getToolCalls = (
-    data: OutputMessageCompletedData,
-  ): Array<{
-    id: string;
-    name: string;
-    arguments: Record<string, unknown>;
-  }> => {
-    const content = data.message?.content;
-    if (!content) return [];
-    return content.filter(isToolCallPart).map((part) => ({
-      id: part.id,
-      name: part.name,
-      arguments: part.arguments,
-    }));
-  };
+  // Get tool calls from message event data (stable ref — no deps)
+  const getToolCalls = useCallback(
+    (
+      data: OutputMessageCompletedData,
+    ): Array<{
+      id: string;
+      name: string;
+      arguments: Record<string, unknown>;
+    }> => {
+      const content = data.message?.content;
+      if (!content) return [];
+      return content.filter(isToolCallPart).map((part) => ({
+        id: part.id,
+        name: part.name,
+        arguments: part.arguments,
+      }));
+    },
+    [],
+  );
 
   const value: SessionContextValue = {
     agentId,
