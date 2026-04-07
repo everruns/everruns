@@ -518,7 +518,7 @@ mod tests {
         let agent = Agent {
             public_id: AgentId::from_uuid(uuid),
             internal_id: uuid,
-            name: "Test Agent".to_string(),
+            name: "test-agent".to_string(),
             display_name: "Test Agent".to_string(),
             description: None,
             system_prompt: "Agent prompt.".to_string(),
@@ -656,7 +656,7 @@ mod tests {
         let agent = Agent {
             public_id: AgentId::from_uuid(uuid),
             internal_id: uuid,
-            name: "Client Tool Agent".to_string(),
+            name: "client-tool-agent".to_string(),
             display_name: "Client Tool Agent".to_string(),
             description: None,
             system_prompt: "Agent with client tools.".to_string(),
@@ -711,7 +711,7 @@ mod tests {
         let agent = Agent {
             public_id: AgentId::from_uuid(uuid),
             internal_id: uuid,
-            name: "Mixed Tool Agent".to_string(),
+            name: "mixed-tool-agent".to_string(),
             display_name: "Mixed Tool Agent".to_string(),
             description: None,
             system_prompt: "Agent with mixed tools.".to_string(),
@@ -763,7 +763,7 @@ mod tests {
         let agent = Agent {
             public_id: AgentId::from_uuid(uuid),
             internal_id: uuid,
-            name: "Test Agent".to_string(),
+            name: "test-agent".to_string(),
             display_name: "Test Agent".to_string(),
             description: None,
             system_prompt: "Agent prompt.".to_string(),

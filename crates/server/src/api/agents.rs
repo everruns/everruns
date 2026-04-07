@@ -39,7 +39,7 @@ pub struct CreateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub id: Option<AgentId>,
-    /// URL/CLI-friendly addressable name, unique per org.
+    /// Name, unique per org. Lowercase alphanumeric and hyphens.
     /// Format: lowercase alphanumeric and hyphens (e.g. "customer-support").
     #[schema(example = "customer-support")]
     pub name: String,
@@ -87,7 +87,7 @@ pub struct CreateAgentRequest {
 /// Request to update an agent. Only provided fields will be updated.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateAgentRequest {
-    /// URL/CLI-friendly addressable name, unique per org.
+    /// Name, unique per org. Lowercase alphanumeric and hyphens.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "updated-support")]
     pub name: Option<String>,
@@ -218,7 +218,7 @@ struct AgentFile {
     /// Optional agent ID (format: agent_{32-hex}). Preserved during import/export.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<AgentId>,
-    /// Addressable slug name (e.g. "customer-support"). If absent, auto-generated from display_name/name.
+    /// Name (e.g. "customer-support"). If absent, derived from display_name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// Human-readable display name. Falls back to name if absent.
@@ -441,15 +441,15 @@ pub async fn list_agents(
     Ok(Json(PaginatedResponse::new(agents, total, offset, limit)))
 }
 
-/// GET /v1/agents/{agent_id} - Get agent by ID or addressable name
+/// GET /v1/agents/{agent_id} - Get agent by ID or name
 ///
-/// Accepts either an agent ID (e.g. `agent_01933b5a...`) or an addressable
+/// Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
 /// name (e.g. `customer-support`). Names are resolved within the caller's org.
 #[utoipa::path(
     get,
     path = "/v1/agents/{agent_id}",
     params(
-        ("agent_id" = String, Path, description = "Agent ID (prefixed) or addressable name")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     responses(
         (status = 200, description = "Agent found", body = Agent),
@@ -674,14 +674,14 @@ pub async fn copy_agent(
 
 /// PUT /v1/agents/{agent_id} - Create or update agent (upsert)
 ///
-/// Accepts either an agent ID (e.g. `agent_01933b5a...`) or an addressable
+/// Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
 /// name (e.g. `customer-support`). If the agent exists, update it; if not,
 /// create it. Returns 201 on create, 200 on update.
 #[utoipa::path(
     put,
     path = "/v1/agents/{agent_id}",
     params(
-        ("agent_id" = String, Path, description = "Agent ID (prefixed) or addressable name")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     request_body = CreateAgentRequest,
     responses(

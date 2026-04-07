@@ -34,8 +34,7 @@ use crate::services::{CapabilityService, HarnessService};
 /// Request to create a new harness
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateHarnessRequest {
-    /// URL/CLI-friendly addressable name, unique per org.
-    /// Format: lowercase alphanumeric and hyphens, like a GitHub repo name.
+    /// Name, unique per org. Lowercase alphanumeric and hyphens.
     #[schema(example = "deep-research")]
     pub name: String,
     /// Human-readable display name shown in UI.
@@ -75,7 +74,7 @@ pub struct CreateHarnessRequest {
 /// Request to update a harness. Only provided fields will be updated.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateHarnessRequest {
-    /// URL/CLI-friendly addressable name.
+    /// Name, unique per org.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "updated-research")]
     pub name: Option<String>,
@@ -341,14 +340,14 @@ pub async fn list_harnesses(
 
 /// GET /v1/harnesses/{harness_id}
 ///
-/// Accepts either a harness ID (e.g. `harness_01933b5a...`) or an addressable
+/// Accepts either a harness ID (e.g. `harness_01933b5a...`) or a
 /// name (e.g. `generic`). The virtual name `default` resolves to the org's
 /// configured default harness. Names are resolved within the caller's org.
 #[utoipa::path(
     get,
     path = "/v1/harnesses/{harness_id}",
     params(
-        ("harness_id" = String, Path, description = "Harness ID (prefixed) or addressable name")
+        ("harness_id" = String, Path, description = "Harness ID (prefixed) or name")
     ),
     responses(
         (status = 200, description = "Harness found", body = Harness),

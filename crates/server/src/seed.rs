@@ -330,7 +330,7 @@ pub(crate) struct SeedAgent {
     /// Retained for stable identification; not auto-seeded into DB.
     #[allow(dead_code)]
     pub(crate) id: Uuid,
-    /// Addressable name, unique per org (e.g. "dad-jokes-agent").
+    /// Unique name (e.g. "dad-jokes-agent").
     pub(crate) name: &'static str,
     /// Human-readable display name (e.g. "Dad Jokes Agent").
     pub(crate) display_name: &'static str,

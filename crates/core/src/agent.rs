@@ -70,8 +70,7 @@ pub struct Agent {
     /// Internal UUID primary key. Used for FK references. Never exposed in API.
     #[serde(skip, default = "Uuid::nil")]
     pub internal_id: Uuid,
-    /// URL/CLI-friendly addressable name, unique per org.
-    /// Format: lowercase alphanumeric and hyphens (e.g. "customer-support").
+    /// Name, unique per org (e.g. "customer-support").
     pub name: String,
     /// Human-readable display name shown in UI (e.g. "Customer Support Agent").
     pub display_name: String,

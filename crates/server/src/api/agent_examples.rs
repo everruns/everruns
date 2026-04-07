@@ -2,7 +2,7 @@
 //
 // Decision: Examples live in code (SEED_AGENTS), not in DB.
 // Decision: "Use" creates a real Agent via the existing create flow
-// Decision: Examples are identified by their addressable name
+// Decision: Examples are identified by their name
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::seed::{SEED_AGENTS, SeedAgent};
@@ -26,7 +26,7 @@ use crate::services::AgentService;
 /// A read-only agent example defined in code
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentExample {
-    /// Addressable name (e.g. "dad-jokes-agent")
+    /// Name (e.g. "dad-jokes-agent")
     pub name: String,
     /// Human-readable display name (e.g. "Dad Jokes Agent")
     pub display_name: String,

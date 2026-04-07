@@ -37,7 +37,7 @@ pub const MAX_AGENT_IMPORT_FILE_BYTES: usize = 3 * 1024 * 1024; // 3 MB
 /// Maximum size for locale tags.
 pub const MAX_LOCALE_BYTES: usize = 64;
 
-/// Maximum length for addressable names (harness, agent).
+/// Maximum length for names (harness, agent).
 pub const MAX_NAME_LEN: usize = 64;
 
 /// Maximum length for harness name.
@@ -134,7 +134,7 @@ fn validate_harness_name_inner(name: &str) -> Result<(), (StatusCode, Json<Error
     validate_name_format("Harness", name)
 }
 
-/// Validate an addressable name: `[a-z0-9]([a-z0-9-]*[a-z0-9])?`.
+/// Validate a name: `[a-z0-9]([a-z0-9-]*[a-z0-9])?`.
 /// Max 64 chars, no consecutive hyphens, no leading/trailing hyphens.
 /// Used for both harness and agent names.
 fn validate_name_format(entity: &str, name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
@@ -185,7 +185,7 @@ fn validate_name_format(entity: &str, name: &str) -> Result<(), (StatusCode, Jso
     Ok(())
 }
 
-/// Validate agent addressable name for create/update — same format as harness names.
+/// Validate agent name for create/update — same format as harness names.
 pub fn validate_agent_name_format(name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     validate_name_format("Agent", name)
 }

@@ -313,7 +313,7 @@ mod tests {
         let agent = Agent {
             public_id: agent_id,
             internal_id: agent_id.uuid(),
-            name: "Research Agent".to_string(),
+            name: "research-agent".to_string(),
             display_name: "Research Agent".to_string(),
             description: Some("desc".to_string()),
             system_prompt: "prompt".to_string(),

@@ -59,8 +59,7 @@ pub struct Harness {
     /// Unique identifier for the harness (format: harness_{32-hex}).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "harness_01933b5a00007000800000000000001"))]
     pub id: HarnessId,
-    /// URL/CLI-friendly addressable name, unique per org.
-    /// Format: `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars. No consecutive hyphens.
+    /// Name, unique per org (e.g. "generic").
     pub name: String,
     /// Human-readable display name shown in UI.
     pub display_name: String,
