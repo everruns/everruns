@@ -10,6 +10,9 @@
  * 6. MCP Servers (client-side filter over cached list)
  * 7. Capabilities (client-side filter over cached list)
  * 8. ID-based lookup (detects prefixed IDs and provides direct navigation)
+ * 9. Evals (client-side filter over cached list)
+ * 10. Apps (client-side filter over cached list)
+ * 11. Agent Identities (client-side filter over cached list)
  *
  * All entity searches are client-side over already-fetched React Query data.
  * Backend search endpoints are available for server-side filtering when needed.
@@ -42,15 +45,21 @@ import { useHarnesses } from "@/hooks/use-harnesses";
 import { useSkills } from "@/hooks/use-skills";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { useCapabilities } from "@/hooks/use-capabilities";
+import { useEvals } from "@/hooks/use-evals";
+import { useApps } from "@/hooks/use-apps";
+import { useAgentIdentities } from "@/hooks/use-agent-identities";
 
 export type SearchResultCategory =
   | "navigation"
   | "agent"
+  | "agent_identity"
   | "session"
   | "harness"
   | "skill"
   | "mcp_server"
   | "capability"
+  | "app"
+  | "eval"
   | "id";
 
 export interface SearchResult {
@@ -147,6 +156,9 @@ const ID_PREFIX_MAP: Record<
   harness_: { category: "harness", label: "Harness", path: "/harnesses" },
   skill_: { category: "skill", label: "Skill", path: "/skills" },
   mcp_: { category: "mcp_server", label: "MCP Server", path: "/settings/mcp-servers" },
+  eval_: { category: "eval", label: "Eval", path: "/evals" },
+  app_: { category: "app", label: "App", path: "/apps" },
+  identity_: { category: "agent_identity", label: "Agent Identity", path: "/agent-identities" },
 };
 
 /**
@@ -172,6 +184,9 @@ export function useGlobalSearch(query: string) {
   const { data: skillsData } = useSkills();
   const { data: mcpServersData } = useMcpServers();
   const { data: capabilitiesData } = useCapabilities();
+  const { data: evalsData } = useEvals();
+  const { data: appsData } = useApps();
+  const { data: agentIdentitiesData } = useAgentIdentities();
 
   const agents = agentsData ?? EMPTY_ARRAY;
   const sessions = sessionsData?.data ?? EMPTY_ARRAY;
@@ -179,6 +194,9 @@ export function useGlobalSearch(query: string) {
   const skills = skillsData ?? EMPTY_ARRAY;
   const mcpServers = mcpServersData ?? EMPTY_ARRAY;
   const capabilities = capabilitiesData ?? EMPTY_ARRAY;
+  const evals = evalsData ?? EMPTY_ARRAY;
+  const apps = appsData ?? EMPTY_ARRAY;
+  const agentIdentities = agentIdentitiesData ?? EMPTY_ARRAY;
 
   return useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -218,6 +236,12 @@ export function useGlobalSearch(query: string) {
           resolvedName = skills.find((s) => s.id === idValue)?.name;
         } else if (prefix === "mcp_") {
           resolvedName = mcpServers.find((m) => m.id === idValue)?.name;
+        } else if (prefix === "eval_") {
+          resolvedName = evals.find((e) => e.id === idValue)?.name;
+        } else if (prefix === "app_") {
+          resolvedName = apps.find((a) => a.id === idValue)?.name;
+        } else if (prefix === "identity_") {
+          resolvedName = agentIdentities.find((ai) => ai.id === idValue)?.name;
         }
 
         results.push({
@@ -359,6 +383,57 @@ export function useGlobalSearch(query: string) {
       }
     }
 
+    // 9. Evals
+    let evalCount = 0;
+    for (const ev of evals) {
+      if (evalCount >= MAX_PER_CATEGORY) break;
+      if (matchesTokens(tokens, ev.name, ev.description, ev.id, "eval")) {
+        results.push({
+          id: `eval:${ev.id}`,
+          category: "eval",
+          icon: FlaskConical,
+          title: ev.name,
+          subtitle: `Evals > ${ev.name}`,
+          href: `/evals/${ev.id}`,
+        });
+        evalCount++;
+      }
+    }
+
+    // 10. Apps
+    let appCount = 0;
+    for (const app of apps) {
+      if (appCount >= MAX_PER_CATEGORY) break;
+      if (matchesTokens(tokens, app.name, app.description, app.id, "app")) {
+        results.push({
+          id: `app:${app.id}`,
+          category: "app",
+          icon: Rocket,
+          title: app.name,
+          subtitle: `Apps > ${app.name}`,
+          href: `/apps/${app.id}`,
+        });
+        appCount++;
+      }
+    }
+
+    // 11. Agent Identities
+    let identityCount = 0;
+    for (const identity of agentIdentities) {
+      if (identityCount >= MAX_PER_CATEGORY) break;
+      if (matchesTokens(tokens, identity.name, identity.description, identity.id, "agent identity")) {
+        results.push({
+          id: `identity:${identity.id}`,
+          category: "agent_identity",
+          icon: UserRound,
+          title: identity.name,
+          subtitle: `Agent Identities > ${identity.name}`,
+          href: `/agent-identities/${identity.id}`,
+        });
+        identityCount++;
+      }
+    }
+
     return results;
-  }, [query, agents, sessions, harnesses, skills, mcpServers, capabilities]);
+  }, [query, agents, sessions, harnesses, skills, mcpServers, capabilities, evals, apps, agentIdentities]);
 }
