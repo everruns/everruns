@@ -424,7 +424,7 @@ pub async fn update_organization(
         ));
     }
     if let Some(ref harness_name) = default_harness_name {
-        super::validation::validate_harness_name(harness_name)?;
+        super::validation::validate_harness_name_strict(harness_name)?;
         let row = state
             .db
             .get_harness_by_name(org_row.org_id, harness_name)
@@ -434,7 +434,7 @@ pub async fn update_organization(
         default_harness_id = Some(row.id);
     }
 
-    // Validate referenced IDs exist
+    // Validate referenced IDs exist (skip if already resolved from name)
     if let Some(ref model_id) = default_model_id {
         // Verify the model exists and is installed
         let model = state
@@ -457,7 +457,9 @@ pub async fn update_organization(
             ));
         }
     }
-    if let Some(default_harness_id) = default_harness_id {
+    if default_harness_name.is_none()
+        && let Some(default_harness_id) = default_harness_id
+    {
         state
             .db
             .get_harness(org_row.org_id, default_harness_id)
