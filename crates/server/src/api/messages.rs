@@ -171,10 +171,16 @@ impl AppState {
         runner: Arc<dyn AgentRunner>,
         auth: AuthState,
         notifications_enabled: bool,
+        event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
-            message_service: Arc::new(MessageService::new(db, runner, notifications_enabled)),
+            message_service: Arc::new(MessageService::new(
+                db,
+                runner,
+                notifications_enabled,
+                event_delivery,
+            )),
             auth,
         }
     }

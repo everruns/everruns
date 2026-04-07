@@ -193,6 +193,7 @@ impl TestServer {
             runner.clone(),
             auth_state.clone(),
             feature_flags.notifications,
+            everruns_server::EventDelivery::in_memory(),
         );
         let sse_tracker = Arc::new(everruns_server::api::sse::SseConnectionTracker::new(
             everruns_server::api::sse::SseConnectionLimits::default(),
