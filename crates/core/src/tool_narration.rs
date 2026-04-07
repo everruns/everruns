@@ -89,6 +89,27 @@ fn location_phrase(arguments: &Value, locale: Option<&str>) -> String {
         .unwrap_or_else(|| backend_strings(locale).current_directory.to_string())
 }
 
+/// Build a narration suffix from tool arguments using the given keys.
+/// Returns `None` if no values are found.
+fn narration_suffix(arguments: &Value, keys: &[String]) -> Option<String> {
+    let parts: Vec<String> = keys
+        .iter()
+        .filter_map(|key| {
+            arguments
+                .get(key.as_str())
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(|v| truncate(v, 40))
+        })
+        .collect();
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" "))
+    }
+}
+
 fn generic_phrase(
     verb_started: &str,
     verb_completed: &str,
@@ -110,6 +131,7 @@ fn generic_phrase(
 }
 
 fn ukrainian_phrase(
+    tool_def: Option<&ToolDefinition>,
     tool_call: &ToolCall,
     fallback_name: &str,
     phase: ToolNarrationPhase,
@@ -409,13 +431,22 @@ fn ukrainian_phrase(
             ToolNarrationPhase::Completed => "Оновив список задач".to_string(),
             ToolNarrationPhase::Failed => "Не вдалося оновити список задач".to_string(),
         },
-        _ => match phase {
-            ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
-                format!("Запускаю {fallback_name}")
+        _ => {
+            let suffix = tool_def
+                .and_then(|def| def.hints().narration_keys.as_ref())
+                .and_then(|keys| narration_suffix(args, keys));
+            let target = match suffix {
+                Some(s) => format!("{fallback_name}: {s}"),
+                None => fallback_name.to_string(),
+            };
+            match phase {
+                ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
+                    format!("Запускаю {target}")
+                }
+                ToolNarrationPhase::Completed => format!("Запустив {target}"),
+                ToolNarrationPhase::Failed => format!("Не вдалося запустити {target}"),
             }
-            ToolNarrationPhase::Completed => format!("Запустив {fallback_name}"),
-            ToolNarrationPhase::Failed => format!("Не вдалося запустити {fallback_name}"),
-        },
+        }
     }
 }
 
@@ -429,7 +460,7 @@ pub fn render_tool_narration_with_locale(
     let fallback_name = display_name(tool_def, tool_call, locale);
 
     if resolve_backend_locale(locale) == BackendLocale::Uk {
-        return ukrainian_phrase(tool_call, &fallback_name, phase);
+        return ukrainian_phrase(tool_def, tool_call, &fallback_name, phase);
     }
 
     match tool_call.name.as_str() {
@@ -664,13 +695,16 @@ pub fn render_tool_narration_with_locale(
             None,
             phase,
         ),
-        _ => generic_phrase(
-            "Running",
-            "Ran",
-            "Failed to run",
-            Some(fallback_name),
-            phase,
-        ),
+        _ => {
+            let suffix = tool_def
+                .and_then(|def| def.hints().narration_keys.as_ref())
+                .and_then(|keys| narration_suffix(args, keys));
+            let target = match suffix {
+                Some(s) => format!("{fallback_name}: {s}"),
+                None => fallback_name,
+            };
+            generic_phrase("Running", "Ran", "Failed to run", Some(target), phase)
+        }
     }
 }
 
@@ -869,6 +903,104 @@ mod tests {
         assert_eq!(
             headline,
             "Переглянув файли у поточній директорії, Прочитав AGENTS.md, і ще 1 дію"
+        );
+    }
+
+    #[test]
+    fn narration_keys_produce_descriptive_suffix() {
+        use crate::tool_types::{BuiltinTool, ToolDefinition, ToolHints};
+
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "manage_agents".to_string(),
+            arguments: json!({ "operation": "create", "name": "Neon Cartographer" }),
+        };
+
+        let def = ToolDefinition::Builtin(BuiltinTool {
+            name: "manage_agents".to_string(),
+            display_name: Some("Manage Agents".to_string()),
+            description: String::new(),
+            parameters: json!({}),
+            policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
+            hints: ToolHints::default()
+                .with_narration_keys(vec!["operation".to_string(), "name".to_string()]),
+        });
+
+        assert_eq!(
+            render_tool_narration(Some(&def), &tool_call, ToolNarrationPhase::Started),
+            "Running Manage Agents: create Neon Cartographer"
+        );
+        assert_eq!(
+            render_tool_narration(Some(&def), &tool_call, ToolNarrationPhase::Completed),
+            "Ran Manage Agents: create Neon Cartographer"
+        );
+        assert_eq!(
+            render_tool_narration(Some(&def), &tool_call, ToolNarrationPhase::Failed),
+            "Failed to run Manage Agents: create Neon Cartographer"
+        );
+    }
+
+    #[test]
+    fn narration_keys_missing_values_fall_back() {
+        use crate::tool_types::{BuiltinTool, ToolDefinition, ToolHints};
+
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "manage_agents".to_string(),
+            arguments: json!({ "operation": "delete", "agent_id": "agent_123" }),
+        };
+
+        let def = ToolDefinition::Builtin(BuiltinTool {
+            name: "manage_agents".to_string(),
+            display_name: Some("Manage Agents".to_string()),
+            description: String::new(),
+            parameters: json!({}),
+            policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
+            hints: ToolHints::default()
+                .with_narration_keys(vec!["operation".to_string(), "name".to_string()]),
+        });
+
+        // "name" is missing, so only "operation" value appears
+        assert_eq!(
+            render_tool_narration(Some(&def), &tool_call, ToolNarrationPhase::Completed),
+            "Ran Manage Agents: delete"
+        );
+    }
+
+    #[test]
+    fn narration_keys_ukrainian() {
+        use crate::tool_types::{BuiltinTool, ToolDefinition, ToolHints};
+
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "manage_agents".to_string(),
+            arguments: json!({ "operation": "create", "name": "Test Agent" }),
+        };
+
+        let def = ToolDefinition::Builtin(BuiltinTool {
+            name: "manage_agents".to_string(),
+            display_name: Some("Manage Agents".to_string()),
+            description: String::new(),
+            parameters: json!({}),
+            policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
+            hints: ToolHints::default()
+                .with_narration_keys(vec!["operation".to_string(), "name".to_string()]),
+        });
+
+        assert_eq!(
+            render_tool_narration_with_locale(
+                Some(&def),
+                &tool_call,
+                ToolNarrationPhase::Completed,
+                Some("uk"),
+            ),
+            "Запустив Manage Agents: create Test Agent"
         );
     }
 }

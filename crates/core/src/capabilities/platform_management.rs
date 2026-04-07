@@ -268,6 +268,10 @@ impl Tool for ManageHarnessesTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_narration_keys(vec!["operation".to_string(), "name".to_string()])
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "manage_harnesses requires context. This tool must be executed with session context.",
@@ -650,6 +654,10 @@ impl Tool for ManageAgentsTool {
         })
     }
 
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_narration_keys(vec!["operation".to_string(), "name".to_string()])
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "manage_agents requires context. This tool must be executed with session context.",
@@ -958,6 +966,10 @@ impl Tool for ManageSessionsTool {
             "required": ["operation"],
             "additionalProperties": false
         })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_narration_keys(vec!["operation".to_string(), "title".to_string()])
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

@@ -253,6 +253,13 @@ pub struct ToolHints {
     /// and `output_files` into the result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist_output: Option<bool>,
+
+    /// Ordered list of argument keys whose values should appear in tool narration.
+    /// The generic narration fallback appends extracted values as a suffix, e.g.
+    /// `["operation", "name"]` on `manage_agents` produces
+    /// "Ran Manage Agents: create Neon Cartographer".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narration_keys: Option<Vec<String>>,
 }
 
 impl ToolHints {
@@ -300,6 +307,12 @@ impl ToolHints {
     /// Builder: set persist_output hint.
     pub fn with_persist_output(mut self, value: bool) -> Self {
         self.persist_output = Some(value);
+        self
+    }
+
+    /// Builder: set narration keys for descriptive tool narration.
+    pub fn with_narration_keys(mut self, keys: Vec<String>) -> Self {
+        self.narration_keys = Some(keys);
         self
     }
 }
