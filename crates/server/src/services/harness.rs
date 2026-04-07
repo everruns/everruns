@@ -168,10 +168,7 @@ impl HarnessService {
         name: &str,
     ) -> Result<Option<Harness>> {
         if RESERVED_HARNESS_NAMES.contains(&name) && name == "default" {
-            let settings = self
-                .db
-                .get_organization_settings(caller.org_id)
-                .await?;
+            let settings = self.db.get_organization_settings(caller.org_id).await?;
             if let Some(harness_id) = settings.and_then(|s| s.default_harness_id) {
                 return self.get(caller, harness_id.uuid()).await;
             }
