@@ -22,11 +22,14 @@ import { Search, CornerDownLeft, ArrowUp, ArrowDown } from "lucide-react";
 const CATEGORY_LABELS: Record<SearchResultCategory, string> = {
   navigation: "Pages",
   agent: "Agents",
+  agent_identity: "Agent Identities",
   session: "Sessions",
   harness: "Harnesses",
   skill: "Skills",
   capability: "Capabilities",
   mcp_server: "MCP Servers",
+  app: "Apps",
+  eval: "Evals",
   id: "Go to",
 };
 
@@ -34,11 +37,14 @@ const CATEGORY_ORDER: SearchResultCategory[] = [
   "id",
   "navigation",
   "agent",
+  "agent_identity",
   "session",
   "harness",
   "skill",
   "capability",
   "mcp_server",
+  "app",
+  "eval",
 ];
 
 function groupResults(
