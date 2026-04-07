@@ -167,10 +167,10 @@ Run axe-core audits on specified pages...
 
 Entries can be:
 - `.` — the entire directory (all non-hidden files, plus `.agents/`)
-- `.agents` or `.agents/*` — a specific subdirectory
+- `.agents` or `.agents/*` — a specific subdirectory (glob suffixes like `/*` are stripped; the directory is walked recursively)
 - `README.md` — a single file
 
-The CLI expands these to full file contents before sending to the API. The same security rules apply: hidden files are skipped (except `.agents/`), symlinks outside the base directory are rejected, and binary files are ignored.
+The CLI expands these to full file contents before sending to the API. The same security rules apply: hidden files are skipped (except `.agents/`), symlinks outside the base directory are rejected, binary files are ignored, and explicitly listed hidden files (e.g. `.env`) are rejected.
 
 #### List Agents
 
