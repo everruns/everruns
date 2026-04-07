@@ -228,7 +228,8 @@ pub async fn harness_config(
     params(CheckNameQuery),
     responses(
         (status = 200, description = "Name availability result", body = CheckNameResponse),
-        (status = 400, description = "Invalid name format", body = ErrorResponse),
+        (status = 400, description = "Invalid exclude_id", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
     ),
     tag = "harnesses"
 )]
@@ -256,15 +257,12 @@ pub async fn check_harness_name(
             )
         })?;
 
+    let caller = Caller::from(&org);
     let existing = state
         .service
-        .check_name_available(org.org_id, &query.name, exclude_id)
+        .check_name_available(&caller, &query.name, exclude_id)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to check harness name: {}", e);
-            ErrorResponse::new("Internal server error")
-                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-        })?;
+        .map_policy_or_internal("check harness name")?;
 
     Ok(Json(CheckNameResponse {
         available: existing,

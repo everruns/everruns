@@ -13,6 +13,7 @@ interface NameAvailabilityResult {
 
 /**
  * Debounced harness name availability check.
+ * Uses a request counter to discard stale responses from superseded requests.
  *
  * @param name - current name value from the input
  * @param excludeId - harness ID to exclude (for edit forms)
@@ -25,7 +26,7 @@ export function useHarnessNameAvailability(
 ): NameAvailabilityResult {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     // Reset if name is empty or too short
@@ -38,20 +39,19 @@ export function useHarnessNameAvailability(
     setIsChecking(true);
     setAvailable(null);
 
-    const timer = setTimeout(async () => {
-      // Cancel any in-flight request
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
+    // Increment to invalidate any in-flight request
+    const currentRequestId = ++requestIdRef.current;
 
+    const timer = setTimeout(async () => {
       try {
         const result = await checkHarnessName(name, excludeId);
-        if (!controller.signal.aborted) {
+        // Only apply result if this is still the latest request
+        if (currentRequestId === requestIdRef.current) {
           setAvailable(result.available);
           setIsChecking(false);
         }
       } catch {
-        if (!controller.signal.aborted) {
+        if (currentRequestId === requestIdRef.current) {
           setAvailable(null);
           setIsChecking(false);
         }
@@ -60,7 +60,6 @@ export function useHarnessNameAvailability(
 
     return () => {
       clearTimeout(timer);
-      abortRef.current?.abort();
     };
   }, [name, excludeId, debounceMs]);
 

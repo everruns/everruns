@@ -373,13 +373,14 @@ impl HarnessService {
     }
 
     /// Check if a harness name is available (public, for the check-name endpoint).
+    #[policy(HARNESS_VIEW)]
     pub async fn check_name_available(
         &self,
-        org_id: i64,
+        caller: &Caller,
         name: &str,
         exclude_id: Option<HarnessId>,
     ) -> Result<bool> {
-        if let Some(existing) = self.db.get_harness_by_name(org_id, name).await?
+        if let Some(existing) = self.db.get_harness_by_name(caller.org_id, name).await?
             && exclude_id != Some(existing.id)
         {
             return Ok(false);
