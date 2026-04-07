@@ -254,12 +254,12 @@ pub struct ToolHints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist_output: Option<bool>,
 
-    /// Ordered list of argument keys whose values should appear in tool narration.
-    /// The generic narration fallback appends extracted values as a suffix, e.g.
-    /// `["operation", "name"]` on `manage_agents` produces
-    /// "Ran Manage Agents: create Neon Cartographer".
+    /// Entity noun for operation-based narration (e.g. "agent", "harness").
+    /// When set, the narration system reads the `operation` argument and
+    /// produces verb-based narration like "Created agent: Neon Cartographer"
+    /// instead of the generic "Ran Manage Agents".
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub narration_keys: Option<Vec<String>>,
+    pub narration_noun: Option<String>,
 }
 
 impl ToolHints {
@@ -310,9 +310,9 @@ impl ToolHints {
         self
     }
 
-    /// Builder: set narration keys for descriptive tool narration.
-    pub fn with_narration_keys(mut self, keys: Vec<String>) -> Self {
-        self.narration_keys = Some(keys);
+    /// Builder: set narration noun for operation-based narration.
+    pub fn with_narration_noun(mut self, noun: impl Into<String>) -> Self {
+        self.narration_noun = Some(noun.into());
         self
     }
 }

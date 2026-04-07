@@ -269,7 +269,7 @@ impl Tool for ManageHarnessesTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_narration_keys(vec!["operation".to_string(), "name".to_string()])
+        ToolHints::default().with_narration_noun("harness")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -655,7 +655,7 @@ impl Tool for ManageAgentsTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_narration_keys(vec!["operation".to_string(), "name".to_string()])
+        ToolHints::default().with_narration_noun("agent")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -969,7 +969,7 @@ impl Tool for ManageSessionsTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_narration_keys(vec!["operation".to_string(), "title".to_string()])
+        ToolHints::default().with_narration_noun("session")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
