@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useCreateHarness, useCapabilities } from "@/hooks";
+import { useCreateHarness, useCapabilities, useHarnessNameAvailability } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PromptEditor } from "@/components/ui/prompt-editor";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Check, X, Loader2 } from "lucide-react";
 import { ModelPicker } from "@/components/models/model-picker";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { HarnessSelect } from "@/components/harness/harness-select";
@@ -30,6 +30,8 @@ export default function NewHarnessPage() {
     default_model_id: "",
     tags: "",
   });
+
+  const nameAvailability = useHarnessNameAvailability(formData.name);
 
   const [selectedCapabilities, setSelectedCapabilities] = useState<AgentCapabilityConfig[]>([]);
   const [initialFiles, setInitialFiles] = useState<InitialFile[]>([]);
@@ -84,11 +86,31 @@ export default function NewHarnessPage() {
               <Label htmlFor="name">Name</Label>
               <Input
                 id="name"
-                placeholder="My Harness"
+                placeholder="my-harness"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
               />
+              {formData.name.length >= 2 && (
+                <div className="flex items-center gap-1.5 text-xs">
+                  {nameAvailability.isChecking ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                      <span className="text-muted-foreground">Checking availability…</span>
+                    </>
+                  ) : nameAvailability.available === true ? (
+                    <>
+                      <Check className="w-3 h-3 text-green-600" />
+                      <span className="text-green-600">Name is available</span>
+                    </>
+                  ) : nameAvailability.available === false ? (
+                    <>
+                      <X className="w-3 h-3 text-destructive" />
+                      <span className="text-destructive">Name is already taken or invalid</span>
+                    </>
+                  ) : null}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

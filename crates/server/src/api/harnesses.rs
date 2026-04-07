@@ -135,6 +135,22 @@ pub struct ListHarnessesQuery {
     pub include_archived: Option<bool>,
 }
 
+/// Query parameters for checking harness name availability.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct CheckNameQuery {
+    /// The harness name to check.
+    pub name: String,
+    /// Optional harness ID to exclude (for edit forms where the current harness's own name is valid).
+    pub exclude_id: Option<String>,
+}
+
+/// Response for name availability check.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CheckNameResponse {
+    /// Whether the name is available for use.
+    pub available: bool,
+}
+
 /// App state for harness routes
 #[derive(Clone)]
 pub struct AppState {
@@ -163,6 +179,7 @@ impl_auth_state!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/harnesses", post(create_harness).get(list_harnesses))
+        .route("/v1/harnesses/check-name", get(check_harness_name))
         .route("/v1/harnesses/config", get(harness_config))
         .route("/v1/harnesses/preview", post(preview_harness))
         .route(
@@ -199,6 +216,59 @@ pub async fn harness_config(
         &[&HARNESS_VIEW, &HARNESS_MANAGE, &HARNESS_DANGEROUS],
     );
     Json(ResourceConfigResponse { policies })
+}
+
+/// GET /v1/harnesses/check-name
+///
+/// Returns whether a harness name is available for use. Optionally excludes
+/// a specific harness ID (for edit forms where the harness's own name is valid).
+#[utoipa::path(
+    get,
+    path = "/v1/harnesses/check-name",
+    params(CheckNameQuery),
+    responses(
+        (status = 200, description = "Name availability result", body = CheckNameResponse),
+        (status = 400, description = "Invalid name format", body = ErrorResponse),
+    ),
+    tag = "harnesses"
+)]
+pub async fn check_harness_name(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Query(query): Query<CheckNameQuery>,
+) -> Result<Json<CheckNameResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Validate format first — if the name is invalid, it's not "available"
+    if validate_harness_name_strict(&query.name).is_err() {
+        return Ok(Json(CheckNameResponse { available: false }));
+    }
+
+    let exclude_id = query
+        .exclude_id
+        .as_deref()
+        .map(|id| id.parse::<HarnessId>())
+        .transpose()
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: format!("Invalid exclude_id: {}", e),
+                }),
+            )
+        })?;
+
+    let existing = state
+        .service
+        .check_name_available(org.org_id, &query.name, exclude_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to check harness name: {}", e);
+            ErrorResponse::new("Internal server error")
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+
+    Ok(Json(CheckNameResponse {
+        available: existing,
+    }))
 }
 
 /// POST /v1/harnesses

@@ -372,6 +372,21 @@ impl HarnessService {
         resolve_effective_harness(self.db.as_ref(), org_id, id).await
     }
 
+    /// Check if a harness name is available (public, for the check-name endpoint).
+    pub async fn check_name_available(
+        &self,
+        org_id: i64,
+        name: &str,
+        exclude_id: Option<HarnessId>,
+    ) -> Result<bool> {
+        if let Some(existing) = self.db.get_harness_by_name(org_id, name).await?
+            && exclude_id != Some(existing.id)
+        {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
     /// Check if a name is already taken by another harness in the org.
     async fn ensure_name_available(
         &self,
