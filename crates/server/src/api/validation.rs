@@ -95,9 +95,34 @@ pub fn validate_agent_name(name: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
-/// Validate harness name is a valid slug: `[a-z0-9]([a-z0-9-]*[a-z0-9])?`.
+/// Names that cannot be used for user-created harnesses because they have
+/// special meaning (virtual aliases, future system harnesses).
+pub const RESERVED_HARNESS_NAMES: &[&str] = &["default"];
+
+/// Validate harness name/alias is a valid slug: `[a-z0-9]([a-z0-9-]*[a-z0-9])?`.
 /// Max 64 chars, no consecutive hyphens, no leading/trailing hyphens.
+/// Accepts reserved names (virtual aliases like "default"). Use this for
+/// endpoints that resolve names, e.g. session creation with `harness_name`.
 pub fn validate_harness_name(name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    validate_harness_name_inner(name)
+}
+
+/// Validate harness name for create/update — same slug rules as
+/// [`validate_harness_name`] but additionally rejects reserved names.
+pub fn validate_harness_name_strict(name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    validate_harness_name_inner(name)?;
+    if RESERVED_HARNESS_NAMES.contains(&name) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(format!(
+                "Harness name '{name}' is reserved and cannot be used"
+            ))),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_harness_name_inner(name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     if name.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -430,6 +455,37 @@ mod tests {
     #[test]
     fn test_invalid_capabilities_count() {
         assert!(validate_agent_capabilities_count(MAX_AGENT_CAPABILITIES + 1).is_err());
+    }
+
+    #[test]
+    fn test_valid_harness_name() {
+        assert!(validate_harness_name("my-harness").is_ok());
+        assert!(validate_harness_name("harness1").is_ok());
+        assert!(validate_harness_name("a").is_ok());
+    }
+
+    #[test]
+    fn test_harness_name_accepts_reserved_aliases() {
+        // validate_harness_name (non-strict) allows reserved names so that
+        // endpoints accepting aliases (e.g. session creation) can pass them.
+        assert!(validate_harness_name("default").is_ok());
+    }
+
+    #[test]
+    fn test_harness_name_strict_rejects_reserved() {
+        let err = validate_harness_name_strict("default").unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        // Non-reserved names still pass strict validation
+        assert!(validate_harness_name_strict("my-harness").is_ok());
+    }
+
+    #[test]
+    fn test_invalid_harness_name() {
+        assert!(validate_harness_name("").is_err());
+        assert!(validate_harness_name("-leading").is_err());
+        assert!(validate_harness_name("trailing-").is_err());
+        assert!(validate_harness_name("bad--double").is_err());
+        assert!(validate_harness_name("UPPERCASE").is_err());
     }
 
     #[test]
