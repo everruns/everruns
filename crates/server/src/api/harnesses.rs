@@ -273,7 +273,8 @@ pub async fn list_harnesses(
 /// GET /v1/harnesses/{harness_id}
 ///
 /// Accepts either a harness ID (e.g. `harness_01933b5a...`) or an addressable
-/// name (e.g. `generic`). Names are resolved within the caller's org.
+/// name (e.g. `generic`). The virtual name `default` resolves to the org's
+/// configured default harness. Names are resolved within the caller's org.
 #[utoipa::path(
     get,
     path = "/v1/harnesses/{harness_id}",
@@ -308,7 +309,7 @@ pub async fn get_harness(
 
     let harness = state
         .service
-        .get_by_name(&caller, &harness_id_or_name)
+        .get_by_name_or_alias(&caller, &harness_id_or_name)
         .await
         .map_policy_or_internal("get harness by name")?
         .ok_or_not_found_json("Harness")?;
