@@ -80,9 +80,15 @@ pub struct UpdateOrganizationRequest {
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<everruns_core::ModelId>,
     /// Default harness to preselect in the UI for new sessions.
+    /// Mutually exclusive with `default_harness_name`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000602")]
     pub default_harness_id: Option<everruns_core::HarnessId>,
+    /// Alternative to `default_harness_id` — looked up by stable name within the org.
+    /// Mutually exclusive with `default_harness_id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "generic")]
+    pub default_harness_name: Option<String>,
     /// Base harness to use when a session is started without an explicit harness_id.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000601")]
@@ -403,11 +409,32 @@ pub async fn update_organization(
     let UpdateOrganizationRequest {
         name,
         default_model_id,
-        default_harness_id,
+        mut default_harness_id,
+        default_harness_name,
         base_harness_id,
     } = req;
 
-    // Validate referenced IDs exist
+    // Resolve default_harness_name to default_harness_id (mutually exclusive)
+    if default_harness_id.is_some() && default_harness_name.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "Cannot specify both default_harness_id and default_harness_name",
+            )),
+        ));
+    }
+    if let Some(ref harness_name) = default_harness_name {
+        super::validation::validate_harness_name_strict(harness_name)?;
+        let row = state
+            .db
+            .get_harness_by_name(org_row.org_id, harness_name)
+            .await
+            .log_internal_error_json("resolve default harness by name")?
+            .ok_or_not_found_json("Harness")?;
+        default_harness_id = Some(row.id);
+    }
+
+    // Validate referenced IDs exist (skip if already resolved from name)
     if let Some(ref model_id) = default_model_id {
         // Verify the model exists and is installed
         let model = state
@@ -430,7 +457,9 @@ pub async fn update_organization(
             ));
         }
     }
-    if let Some(default_harness_id) = default_harness_id {
+    if default_harness_name.is_none()
+        && let Some(default_harness_id) = default_harness_id
+    {
         state
             .db
             .get_harness(org_row.org_id, default_harness_id)
