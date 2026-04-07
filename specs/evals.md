@@ -10,7 +10,7 @@
   - No dataset management — evals are small, curated collections
   - No cross-org visibility — evals are org-scoped like all other entities
   - EvalTarget replaces harness_id + agent_id — unified session setup contract
-  - EvalTarget can be: SessionParams (full session params), App (app reference), or Harness (simple reference)
+  - EvalTarget::Session mirrors CreateSessionRequest; EvalTarget::App references a deployed app
   - Resolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness
   - EvalCaseResult stores both target (live reference) and target_snapshot (frozen copy at execution time)
 -->
@@ -25,11 +25,10 @@ Each eval case creates a real session with the target agent and harness. Failed 
 
 ### EvalTarget
 
-Defines how to instantiate a session for eval cases. Three variants:
+Defines how to instantiate a session for eval cases. Two variants:
 
-- **`session_params`**: Full session input parameters — `harness_id` (required), `agent_id`, `model_id`, `system_prompt`. Maximum control over session setup.
+- **`session`**: Mirrors `CreateSessionRequest` — `harness_id` or `harness_name` (optional, defaults to org default), `agent_id`, `model_id`, `system_prompt`, `max_iterations`. Full control over session setup.
 - **`app`**: Reference to a deployed App — `app_id`. Session created via the app's configuration.
-- **`harness`**: Simple harness + optional agent reference — `harness_id` (required), `agent_id`. No extra session params.
 
 **Resolution order**: `EvalRun.target` → `EvalCase.target` → `Eval.target` → org default harness.
 
@@ -255,9 +254,8 @@ POST /v1/evals/{eval_id}/runs
   │  For each case (bounded concurrency = 5):
   │    1. Update CaseResult status → running
   │    2. Create session from resolved EvalTarget:
-  │       - session_params: use harness_id, agent_id, model_id, system_prompt
+  │       - session: use harness_id/harness_name, agent_id, model_id, system_prompt, max_iterations
   │       - app: create session via app
-  │       - harness: use harness_id + agent_id
   │       Tags: ["eval", "eval:{eval_id}"]
   │    3. For each message in case.conversation:
   │       a. POST message to session
@@ -321,11 +319,10 @@ Select two runs from the runs tab → side-by-side view:
 
 ### Create Eval Form (`/evals/new`)
 
-Fields: name, description, target type selector (harness / session_params / app), target fields (varies by type), model override (optional), tags.
+Fields: name, description, target type selector (session / app), target fields (varies by type), model override (optional), tags.
 
 Target type selector:
-- **Harness**: harness (select), agent (optional select)
-- **Session Params**: harness (select), agent (optional select), model (optional), system prompt (optional textarea)
+- **Session**: harness (optional select, defaults to org default), agent (optional select), model (optional), system prompt (optional textarea)
 - **App**: app ID (text input)
 
 Cases added after creation on the detail page (simpler flow, avoids complex nested form).

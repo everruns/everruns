@@ -11,7 +11,7 @@
 ALTER TABLE evals ADD COLUMN target JSONB;
 
 UPDATE evals SET target = jsonb_build_object(
-    'type', 'harness',
+    'type', 'session',
     'harness_id', (SELECT public_id FROM harnesses WHERE harnesses.id = evals.harness_id),
     'agent_id', (SELECT public_id FROM agents WHERE agents.id = evals.agent_id)
 ) WHERE agent_id IS NOT NULL AND harness_id IS NOT NULL;

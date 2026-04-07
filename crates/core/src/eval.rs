@@ -6,7 +6,7 @@
 //
 // Design Decision: EvalTarget is the session setup contract.
 // Resolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.
-// EvalTarget can be: full session params, an app reference, or a harness+agent reference.
+// EvalTarget::Session mirrors CreateSessionRequest params; EvalTarget::App references a deployed app.
 // EvalCaseResult stores both a live reference and a frozen snapshot for reproducibility.
 //
 // See specs/evals.md for full specification.
@@ -28,39 +28,42 @@ use utoipa::ToSchema;
 
 /// Defines how to instantiate a session for an eval case.
 ///
+/// Two modes:
+/// - `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.
+/// - `App`: references a deployed app by ID.
+///
 /// Resolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EvalTarget {
-    /// Full session input parameters for maximum control.
-    SessionParams {
-        /// Harness to use for the session.
-        #[cfg_attr(feature = "openapi", schema(value_type = String))]
-        harness_id: HarnessId,
-        /// Optional agent.
+    /// Session creation parameters (mirrors CreateSessionRequest).
+    Session {
+        /// Harness for the session. If omitted, org default harness is used.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+        harness_id: Option<HarnessId>,
+        /// Addressable harness name (alternative to harness_id).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        harness_name: Option<String>,
+        /// Agent to work in this session.
         #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
         agent_id: Option<AgentId>,
-        /// Model override.
+        /// LLM model override.
         #[serde(skip_serializing_if = "Option::is_none")]
         model_id: Option<String>,
-        /// System prompt override.
+        /// System prompt override (prepended to agent prompt).
         #[serde(skip_serializing_if = "Option::is_none")]
         system_prompt: Option<String>,
+        /// Max LLM iterations per turn.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        max_iterations: Option<usize>,
     },
     /// Reference to a deployed app.
     App {
         #[cfg_attr(feature = "openapi", schema(value_type = String))]
         app_id: AppId,
-    },
-    /// Simple harness + optional agent reference (no extra session params).
-    Harness {
-        #[cfg_attr(feature = "openapi", schema(value_type = String))]
-        harness_id: HarnessId,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
-        agent_id: Option<AgentId>,
     },
 }
 
@@ -627,18 +630,42 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_target_serde_roundtrip() {
-        let target = EvalTarget::SessionParams {
-            harness_id: HarnessId::from_uuid(Uuid::nil()),
+    fn test_eval_target_session_serde_roundtrip() {
+        let target = EvalTarget::Session {
+            harness_id: Some(HarnessId::from_uuid(Uuid::nil())),
+            harness_name: None,
             agent_id: Some(AgentId::from_uuid(Uuid::nil())),
             model_id: Some("gpt-4".to_string()),
             system_prompt: None,
+            max_iterations: None,
         };
         let json = serde_json::to_value(&target).unwrap();
-        assert_eq!(json["type"], "session_params");
+        assert_eq!(json["type"], "session");
         assert!(json.get("harness_id").is_some());
         assert!(json.get("model_id").is_some());
         assert!(json.get("system_prompt").is_none()); // skip_serializing_if
+        assert!(json.get("harness_name").is_none());
+        assert!(json.get("max_iterations").is_none());
+
+        let parsed: EvalTarget = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed, target);
+    }
+
+    #[test]
+    fn test_eval_target_session_minimal() {
+        // Session with just harness_name, no other params
+        let target = EvalTarget::Session {
+            harness_id: None,
+            harness_name: Some("generic".to_string()),
+            agent_id: None,
+            model_id: None,
+            system_prompt: None,
+            max_iterations: None,
+        };
+        let json = serde_json::to_value(&target).unwrap();
+        assert_eq!(json["type"], "session");
+        assert_eq!(json["harness_name"], "generic");
+        assert!(json.get("harness_id").is_none());
 
         let parsed: EvalTarget = serde_json::from_value(json).unwrap();
         assert_eq!(parsed, target);
@@ -658,21 +685,6 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_target_harness_variant() {
-        let target = EvalTarget::Harness {
-            harness_id: HarnessId::from_uuid(Uuid::nil()),
-            agent_id: None,
-        };
-        let json = serde_json::to_value(&target).unwrap();
-        assert_eq!(json["type"], "harness");
-        assert!(json.get("harness_id").is_some());
-        assert!(json.get("agent_id").is_none());
-
-        let parsed: EvalTarget = serde_json::from_value(json).unwrap();
-        assert_eq!(parsed, target);
-    }
-
-    #[test]
     fn test_eval_serde_skips_internal_fields() {
         let eval = Eval {
             public_id: EvalId::from_uuid(Uuid::nil()),
@@ -680,9 +692,13 @@ mod tests {
             org_id: 1,
             name: "test".into(),
             description: None,
-            target: Some(EvalTarget::Harness {
-                harness_id: HarnessId::from_uuid(Uuid::nil()),
+            target: Some(EvalTarget::Session {
+                harness_id: Some(HarnessId::from_uuid(Uuid::nil())),
+                harness_name: None,
                 agent_id: Some(AgentId::from_uuid(Uuid::nil())),
+                model_id: None,
+                system_prompt: None,
+                max_iterations: None,
             }),
             model_override: None,
             tags: vec![],

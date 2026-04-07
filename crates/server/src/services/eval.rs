@@ -51,11 +51,7 @@ impl EvalService {
         let internal_uuid = Uuid::now_v7();
         let public_id = EvalId::from_uuid(internal_uuid);
 
-        let target_json = req
-            .target
-            .as_ref()
-            .map(serde_json::to_value)
-            .transpose()?;
+        let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
         let input = CreateEvalRow {
             public_id: public_id.to_string(),
@@ -113,11 +109,7 @@ impl EvalService {
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Eval"))?;
 
-        let target_json = req
-            .target
-            .as_ref()
-            .map(serde_json::to_value)
-            .transpose()?;
+        let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
         let input = UpdateEvalRow {
             name: req.name,
@@ -172,11 +164,7 @@ impl EvalService {
 
         let case_count = self.db.count_eval_cases(eval.id).await?;
 
-        let target_json = req
-            .target
-            .as_ref()
-            .map(serde_json::to_value)
-            .transpose()?;
+        let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
         let input = CreateEvalCaseRow {
             public_id: case_public_id.to_string(),
@@ -247,11 +235,7 @@ impl EvalService {
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("EvalCase"))?;
 
-        let target_json = req
-            .target
-            .as_ref()
-            .map(serde_json::to_value)
-            .transpose()?;
+        let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
         let input = UpdateEvalCaseRow {
             name: req.name,
@@ -312,11 +296,7 @@ impl EvalService {
         let run_uuid = Uuid::now_v7();
         let run_public_id = EvalRunId::from_uuid(run_uuid);
 
-        let target_json = req
-            .target
-            .as_ref()
-            .map(serde_json::to_value)
-            .transpose()?;
+        let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
         let input = CreateEvalRunRow {
             public_id: run_public_id.to_string(),
@@ -350,10 +330,7 @@ impl EvalService {
 
             let resolved = run_target.clone().or(case_target).or(eval_target.clone());
 
-            let resolved_json = resolved
-                .as_ref()
-                .map(serde_json::to_value)
-                .transpose()?;
+            let resolved_json = resolved.as_ref().map(serde_json::to_value).transpose()?;
 
             let result_input = CreateEvalCaseResultRow {
                 public_id: result_public_id.to_string(),

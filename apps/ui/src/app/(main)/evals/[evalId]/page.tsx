@@ -73,16 +73,10 @@ function scorerLabel(scorer: Scorer): string {
 function TargetBadge({ target }: { target?: EvalTarget }) {
   if (!target) return null;
   switch (target.type) {
-    case "harness":
+    case "session":
       return (
         <Badge variant="outline" className="text-xs">
-          harness
-        </Badge>
-      );
-    case "session_params":
-      return (
-        <Badge variant="outline" className="text-xs">
-          session_params
+          session
         </Badge>
       );
     case "app":

@@ -56,12 +56,7 @@ function formatDuration(ms: number): string {
 
 function TargetBadge({ target }: { target?: EvalTarget }) {
   if (!target) return null;
-  const label =
-    target.type === "app"
-      ? `app: ${target.app_id}`
-      : target.type === "session_params"
-        ? "session_params"
-        : "harness";
+  const label = target.type === "app" ? `app: ${target.app_id}` : "session";
   return (
     <Badge variant="outline" className="text-xs">
       {label}

@@ -22,8 +22,7 @@ function passRateColor(rate: number): string {
 function targetLabel(target?: EvalTarget, agentMap?: Map<string, string>): string | undefined {
   if (!target) return undefined;
   switch (target.type) {
-    case "harness":
-    case "session_params": {
+    case "session": {
       const agentName = target.agent_id ? agentMap?.get(target.agent_id) : undefined;
       return agentName ?? target.agent_id ?? undefined;
     }

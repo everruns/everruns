@@ -16,7 +16,7 @@ import { AgentSelect } from "@/components/agent/agent-select";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import type { EvalTarget, CreateEvalRequest } from "@/lib/api/types";
 
-type TargetType = "harness" | "session_params" | "app";
+type TargetType = "session" | "app";
 
 export default function NewEvalPage() {
   const router = useRouter();
@@ -26,7 +26,7 @@ export default function NewEvalPage() {
     description: "",
     model_override: "",
   });
-  const [targetType, setTargetType] = useState<TargetType>("harness");
+  const [targetType, setTargetType] = useState<TargetType>("session");
   const [harnessId, setHarnessId] = useState("");
   const [agentId, setAgentId] = useState("");
   const [appId, setAppId] = useState("");
@@ -56,18 +56,10 @@ export default function NewEvalPage() {
 
   const buildTarget = (): EvalTarget | undefined => {
     switch (targetType) {
-      case "harness":
-        if (!harnessId) return undefined;
+      case "session":
         return {
-          type: "harness",
-          harness_id: harnessId,
-          agent_id: agentId || undefined,
-        };
-      case "session_params":
-        if (!harnessId) return undefined;
-        return {
-          type: "session_params",
-          harness_id: harnessId,
+          type: "session",
+          harness_id: harnessId || undefined,
           agent_id: agentId || undefined,
           model_id: modelId || undefined,
           system_prompt: systemPrompt || undefined,
@@ -99,9 +91,7 @@ export default function NewEvalPage() {
     }
   };
 
-  const canSubmit =
-    formData.name &&
-    (targetType === "app" ? !!appId : targetType === "harness" || targetType === "session_params");
+  const canSubmit = formData.name && (targetType === "app" ? !!appId : true);
 
   return (
     <div className="container mx-auto p-6">
@@ -145,7 +135,7 @@ export default function NewEvalPage() {
             <div className="space-y-4">
               <Label>Target Type</Label>
               <div className="flex gap-2">
-                {(["harness", "session_params", "app"] as TargetType[]).map((t) => (
+                {(["session", "app"] as TargetType[]).map((t) => (
                   <Button
                     key={t}
                     type="button"
@@ -153,24 +143,20 @@ export default function NewEvalPage() {
                     size="sm"
                     onClick={() => setTargetType(t)}
                   >
-                    {t === "harness"
-                      ? "Harness"
-                      : t === "session_params"
-                        ? "Session Params"
-                        : "App"}
+                    {t === "session" ? "Session" : "App"}
                   </Button>
                 ))}
               </div>
 
-              {/* Harness / Session Params fields */}
-              {(targetType === "harness" || targetType === "session_params") && (
+              {/* Session fields (mirrors session creation params) */}
+              {targetType === "session" && (
                 <div className="space-y-4 border rounded-lg p-4">
                   <div className="space-y-2">
-                    <Label>Harness</Label>
+                    <Label>Harness (optional)</Label>
                     <HarnessSelect
                       value={harnessId}
                       onValueChange={setHarnessId}
-                      placeholder="Select a harness"
+                      placeholder="Use org default"
                       className="w-full"
                     />
                   </div>
@@ -185,28 +171,24 @@ export default function NewEvalPage() {
                     />
                   </div>
 
-                  {targetType === "session_params" && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>Model (optional)</Label>
-                        <ModelPicker
-                          value={modelId}
-                          onChange={setModelId}
-                          placeholder="Use default"
-                        />
-                      </div>
+                  <div className="space-y-2">
+                    <Label>Model (optional)</Label>
+                    <ModelPicker
+                      value={modelId}
+                      onChange={setModelId}
+                      placeholder="Use default"
+                    />
+                  </div>
 
-                      <div className="space-y-2">
-                        <Label>System Prompt (optional)</Label>
-                        <Textarea
-                          placeholder="Override system prompt..."
-                          value={systemPrompt}
-                          onChange={(e) => setSystemPrompt(e.target.value)}
-                          rows={3}
-                        />
-                      </div>
-                    </>
-                  )}
+                  <div className="space-y-2">
+                    <Label>System Prompt (optional)</Label>
+                    <Textarea
+                      placeholder="Override system prompt..."
+                      value={systemPrompt}
+                      onChange={(e) => setSystemPrompt(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
                 </div>
               )}
 

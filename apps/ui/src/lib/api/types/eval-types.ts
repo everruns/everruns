@@ -4,20 +4,17 @@
 
 export type EvalTarget =
   | {
-      type: "session_params";
-      harness_id: string;
+      type: "session";
+      harness_id?: string;
+      harness_name?: string;
       agent_id?: string;
       model_id?: string;
       system_prompt?: string;
+      max_iterations?: number;
     }
   | {
       type: "app";
       app_id: string;
-    }
-  | {
-      type: "harness";
-      harness_id: string;
-      agent_id?: string;
     };
 
 export interface Eval {
