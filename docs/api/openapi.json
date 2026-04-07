@@ -1483,7 +1483,7 @@
           "harnesses"
         ],
         "summary": "GET /v1/harnesses/{harness_id}",
-        "description": "Accepts either a harness ID (e.g. `harness_01933b5a...`) or an addressable\nname (e.g. `generic`). Names are resolved within the caller's org.",
+        "description": "Accepts either a harness ID (e.g. `harness_01933b5a...`) or an addressable\nname (e.g. `generic`). The virtual name `default` resolves to the org's\nconfigured default harness. Names are resolved within the caller's org.",
         "operationId": "get_harness",
         "parameters": [
           {

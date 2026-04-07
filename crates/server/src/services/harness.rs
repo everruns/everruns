@@ -157,6 +157,25 @@ impl HarnessService {
         }
     }
 
+    /// Resolve a harness name that may be a virtual alias (e.g. "default").
+    /// "default" resolves to the org's configured default harness. All other
+    /// names are looked up literally via [`Self::get_by_name`].
+    #[policy(HARNESS_VIEW)]
+    pub async fn get_by_name_or_alias(
+        &self,
+        caller: &Caller,
+        name: &str,
+    ) -> Result<Option<Harness>> {
+        if name == "default" {
+            let settings = self.db.get_organization_settings(caller.org_id).await?;
+            if let Some(harness_id) = settings.and_then(|s| s.default_harness_id) {
+                return self.get(caller, harness_id.uuid()).await;
+            }
+            return Ok(None);
+        }
+        self.get_by_name(caller, name).await
+    }
+
     #[policy(HARNESS_VIEW)]
     pub async fn list(
         &self,

@@ -323,18 +323,39 @@ pub async fn create_session(
     }
 
     // Resolve harness_name to harness_id if provided.
-    // Input is validated with the same rules as harness CRUD endpoints.
+    // "default" is a virtual alias that resolves to the org's configured
+    // default harness (from org settings). Other names are looked up literally.
     // HARNESS_VIEW policy is not checked here because the existing flow already
     // validates harness access via db.get_harness() below.
     if let Some(ref name) = req.harness_name {
         validation::validate_harness_name(name)?;
-        let row = state
-            .db
-            .get_harness_by_name(org.org_id, name)
-            .await
-            .log_internal_error_json("resolve harness by name")?
-            .ok_or_not_found_json("Harness")?;
-        req.harness_id = Some(row.id);
+        if name == "default" {
+            let settings = state
+                .db
+                .get_organization_settings(org.org_id)
+                .await
+                .log_internal_error_json("resolve org default harness")?;
+            let harness_id = match settings.and_then(|s| s.default_harness_id) {
+                Some(id) => id,
+                None => {
+                    return Err((
+                        StatusCode::NOT_FOUND,
+                        Json(ErrorResponse::new(
+                            "Default harness not configured for this organization",
+                        )),
+                    ));
+                }
+            };
+            req.harness_id = Some(harness_id);
+        } else {
+            let row = state
+                .db
+                .get_harness_by_name(org.org_id, name)
+                .await
+                .log_internal_error_json("resolve harness by name")?
+                .ok_or_not_found_json("Harness")?;
+            req.harness_id = Some(row.id);
+        }
     }
 
     let harness_id = resolve_session_harness_id(
