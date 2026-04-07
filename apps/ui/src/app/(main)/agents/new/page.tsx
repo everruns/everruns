@@ -130,7 +130,7 @@ export default function NewAgentPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Use default model</SelectItem>
-                  {models.map((model) => (
+                  {models.filter((m) => m.installed).map((model) => (
                     <SelectItem key={model.id} value={model.id}>
                       <div className="flex items-center gap-2">
                         <ProviderIcon

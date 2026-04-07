@@ -209,7 +209,7 @@ export function ChatComposer({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">{defaultModelOptionLabel}</SelectItem>
-                  {llmModels.map((model) => (
+                  {llmModels.filter((m) => m.installed).map((model) => (
                     <SelectItem key={model.id} value={model.id}>
                       {model.display_name}
                     </SelectItem>
