@@ -111,7 +111,7 @@ async fn test_tool_error_handling() {
     // Execute and verify error is packaged as {"error": "..."} in result field
     let result = registry.execute(&tool_call, &tool_def).await.unwrap();
 
-    assert!(result.error.is_none());
+    assert_eq!(result.error.as_deref(), Some("Expected test failure"));
     assert_eq!(
         result.result,
         Some(json!({"error": "Expected test failure"}))
@@ -145,8 +145,11 @@ async fn test_internal_error_is_hidden() {
     // Execute and verify internal error is hidden (packaged as {"error": "..."} with generic message)
     let result = registry.execute(&tool_call, &tool_def).await.unwrap();
 
-    assert!(result.error.is_none());
-    // Internal error message should be replaced with generic message in result field
+    // Internal error sets generic message in error field (real details are only logged)
+    assert_eq!(
+        result.error.as_deref(),
+        Some("An internal error occurred while executing the tool")
+    );
     assert_eq!(
         result.result,
         Some(json!({"error": "An internal error occurred while executing the tool"}))

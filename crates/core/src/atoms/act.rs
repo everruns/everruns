@@ -1093,6 +1093,25 @@ mod tests {
         })
     }
 
+    fn read_capabilities_tool_def() -> crate::ToolDefinition {
+        crate::ToolDefinition::Builtin(crate::BuiltinTool {
+            name: "read_capabilities".to_string(),
+            display_name: None,
+            description: "List capabilities".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "search": {"type": "string"}
+                }
+            }),
+            policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
+            hints: crate::tool_types::ToolHints::default(),
+        })
+    }
+
     #[tokio::test]
     async fn test_act_atom_platform_tool_works_with_platform_store() {
         use crate::capabilities::{Capability, PlatformManagementCapability};
@@ -1117,10 +1136,10 @@ mod tests {
             agent_id: None,
             tool_calls: vec![ToolCall {
                 id: "call_1".to_string(),
-                name: "manage_harnesses".to_string(),
-                arguments: json!({"operation": "list"}),
+                name: "read_capabilities".to_string(),
+                arguments: json!({}),
             }],
-            tool_definitions: vec![manage_harnesses_tool_def()],
+            tool_definitions: vec![read_capabilities_tool_def()],
             locale: None,
             blueprint_id: None,
             network_access: None,
@@ -1132,15 +1151,14 @@ mod tests {
         assert_eq!(result.results.len(), 1);
         assert!(
             result.results[0].success,
-            "manage_harnesses should succeed when platform_store is wired: {:?}",
+            "read_capabilities should succeed when platform_store is wired: {:?}",
             result.results[0].result.error
         );
     }
 
     /// Regression test: `manage_harnesses` called through ActAtom WITHOUT
     /// `platform_store` should produce an error message in the result body.
-    /// ToolErrors are "normal" results (success=true) by design, but the
-    /// result body contains `{"error": "..."}` that the LLM sees.
+    /// ToolErrors set error field so they are logged as failures in events.
     #[tokio::test]
     async fn test_act_atom_platform_tool_fails_without_platform_store() {
         use crate::capabilities::{Capability, PlatformManagementCapability};
@@ -1176,10 +1194,9 @@ mod tests {
 
         assert!(result.completed);
         assert_eq!(result.results.len(), 1);
-        // ToolErrors produce result body with {"error": "..."} but the ActAtom
-        // treats them as successful completions (error field is None).
-        let result_body = result.results[0].result.result.as_ref().unwrap();
-        let err_msg = result_body["error"].as_str().unwrap();
+        // ToolErrors set error field and are logged as failures
+        assert!(!result.results[0].success);
+        let err_msg = result.results[0].result.error.as_deref().unwrap();
         assert!(
             err_msg.contains("Platform management not available"),
             "Expected platform management error, got: {err_msg}"

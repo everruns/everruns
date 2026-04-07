@@ -82,7 +82,9 @@ fn get_platform_store(
 }
 
 fn get_str<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
-    args.get(key).and_then(|v| v.as_str())
+    args.get(key)
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
 }
 
 fn require_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, ToolExecutionResult> {
@@ -2234,6 +2236,37 @@ mod tests {
         match result {
             ToolExecutionResult::Success(v) => {
                 assert_eq!(v["count"], 0);
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_capabilities_empty_id_returns_all() {
+        let ctx = mock_context();
+        let tool = ReadCapabilitiesTool;
+        // LLMs sometimes send empty strings for optional params — must not crash
+        let result = tool
+            .execute_with_context(json!({"id": "", "search": ""}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                let count = v["count"].as_u64().unwrap();
+                assert!(count > 0, "empty id/search should return all capabilities");
+            }
+            other => panic!("expected success with all capabilities, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_capabilities_empty_id_only_returns_all() {
+        let ctx = mock_context();
+        let tool = ReadCapabilitiesTool;
+        let result = tool.execute_with_context(json!({"id": ""}), &ctx).await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                let count = v["count"].as_u64().unwrap();
+                assert!(count > 0, "empty id should return all capabilities");
             }
             other => panic!("expected success, got: {other:?}"),
         }
