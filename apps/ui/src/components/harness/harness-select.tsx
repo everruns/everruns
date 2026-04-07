@@ -57,9 +57,12 @@ export function HarnessSelect({
 
   // Resolve ID → name. When harnesses haven't loaded yet (org switch race),
   // show "Loading…" instead of the raw ID (EVE-142).
+  // When no value is set and includeNoneOption is true, show the noneLabel.
   const displayValue = value
     ? (harnessMap.get(value)?.name ?? (filteredHarnesses.length === 0 ? "Loading…" : value))
-    : undefined;
+    : includeNoneOption
+      ? noneLabel
+      : undefined;
 
   return (
     <Select
