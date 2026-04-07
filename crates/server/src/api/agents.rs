@@ -24,7 +24,7 @@ use super::common::{
     impl_auth_state,
 };
 use super::validation::{
-    validate_agent_slug_name, validate_create_agent_input, validate_import_file_size,
+    validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
     validate_update_agent_input,
 };
 use serde::{Deserialize, Serialize};
@@ -371,7 +371,7 @@ pub async fn create_agent(
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
     // Validate slug name format
-    validate_agent_slug_name(&req.name)?;
+    validate_agent_name_format(&req.name)?;
 
     // Validate input sizes (last-resort protection against abuse)
     validate_create_agent_input(
@@ -520,7 +520,7 @@ pub async fn update_agent(
 
     // Validate slug name format if provided
     if let Some(ref name) = req.name {
-        validate_agent_slug_name(name)?;
+        validate_agent_name_format(name)?;
     }
 
     // Validate input sizes (last-resort protection against abuse)
@@ -674,19 +674,20 @@ pub async fn copy_agent(
 
 /// PUT /v1/agents/{agent_id} - Create or update agent (upsert)
 ///
-/// If agent with this ID exists, update it. If not, create it.
-/// Returns 201 on create, 200 on update.
+/// Accepts either an agent ID (e.g. `agent_01933b5a...`) or an addressable
+/// name (e.g. `customer-support`). If the agent exists, update it; if not,
+/// create it. Returns 201 on create, 200 on update.
 #[utoipa::path(
     put,
     path = "/v1/agents/{agent_id}",
     params(
-        ("agent_id" = String, Path, description = "Agent ID (format: agent_{32-hex})")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or addressable name")
     ),
     request_body = CreateAgentRequest,
     responses(
         (status = 200, description = "Agent updated", body = Agent),
         (status = 201, description = "Agent created", body = Agent),
-        (status = 400, description = "Invalid agent ID or input exceeds allowed limits", body = ErrorResponse),
+        (status = 400, description = "Invalid input", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "agents"
@@ -694,20 +695,11 @@ pub async fn copy_agent(
 pub async fn upsert_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id_or_name): Path<String>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
-    let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
-        )
-    })?;
-
-    // Validate slug name format
-    validate_agent_slug_name(&req.name)?;
+    // Validate name format
+    validate_agent_name_format(&req.name)?;
 
     // Validate input sizes
     validate_create_agent_input(
@@ -723,11 +715,21 @@ pub async fn upsert_agent(
     require_admin_for_high_risk(&org, &req.capabilities, &state.capability_service)?;
 
     let caller = Caller::from(&org);
-    let (agent, was_created) = state
-        .service
-        .upsert(&caller, &agent_id.to_string(), req)
-        .await
-        .map_policy_or_internal("upsert agent")?;
+
+    // Try parsing as a prefixed ID first; fall back to upsert by name.
+    let (agent, was_created) = if let Ok(agent_id) = agent_id_or_name.parse::<AgentId>() {
+        state
+            .service
+            .upsert(&caller, &agent_id.to_string(), req)
+            .await
+            .map_policy_or_internal("upsert agent")?
+    } else {
+        state
+            .service
+            .upsert_by_name(&caller, req)
+            .await
+            .map_policy_or_internal("upsert agent by name")?
+    };
 
     let status = if was_created {
         StatusCode::CREATED

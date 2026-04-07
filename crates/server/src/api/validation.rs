@@ -37,11 +37,11 @@ pub const MAX_AGENT_IMPORT_FILE_BYTES: usize = 3 * 1024 * 1024; // 3 MB
 /// Maximum size for locale tags.
 pub const MAX_LOCALE_BYTES: usize = 64;
 
-/// Maximum length for addressable slug names (harness, agent).
-pub const MAX_SLUG_NAME_LEN: usize = 64;
+/// Maximum length for addressable names (harness, agent).
+pub const MAX_NAME_LEN: usize = 64;
 
-/// Maximum length for harness name (addressable slug).
-pub const MAX_HARNESS_NAME_LEN: usize = MAX_SLUG_NAME_LEN;
+/// Maximum length for harness name.
+pub const MAX_HARNESS_NAME_LEN: usize = MAX_NAME_LEN;
 
 /// Maximum number of starter files on an agent or harness.
 pub const MAX_INITIAL_FILES: usize = 100;
@@ -131,13 +131,13 @@ pub fn validate_harness_name_strict(name: &str) -> Result<(), (StatusCode, Json<
 }
 
 fn validate_harness_name_inner(name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    validate_slug_name("Harness", name)
+    validate_name_format("Harness", name)
 }
 
-/// Validate an addressable slug name: `[a-z0-9]([a-z0-9-]*[a-z0-9])?`.
+/// Validate an addressable name: `[a-z0-9]([a-z0-9-]*[a-z0-9])?`.
 /// Max 64 chars, no consecutive hyphens, no leading/trailing hyphens.
-/// Used for both harness and agent addressable names.
-fn validate_slug_name(entity: &str, name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+/// Used for both harness and agent names.
+fn validate_name_format(entity: &str, name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     if name.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -146,12 +146,12 @@ fn validate_slug_name(entity: &str, name: &str) -> Result<(), (StatusCode, Json<
             ))),
         ));
     }
-    if name.len() > MAX_SLUG_NAME_LEN {
+    if name.len() > MAX_NAME_LEN {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse::new(format!(
                 "{entity} name must be at most {} characters",
-                MAX_SLUG_NAME_LEN
+                MAX_NAME_LEN
             ))),
         ));
     }
@@ -185,10 +185,9 @@ fn validate_slug_name(entity: &str, name: &str) -> Result<(), (StatusCode, Json<
     Ok(())
 }
 
-/// Validate agent addressable name for create/update — slug rules,
-/// same format as harness names.
-pub fn validate_agent_slug_name(name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    validate_slug_name("Agent", name)
+/// Validate agent addressable name for create/update — same format as harness names.
+pub fn validate_agent_name_format(name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    validate_name_format("Agent", name)
 }
 
 /// Validate agent description size
@@ -336,7 +335,7 @@ pub fn validate_create_agent_input(
     validate_agent_system_prompt(system_prompt)?;
     validate_agent_capabilities_count(capabilities_count)?;
     validate_initial_files(initial_files)?;
-    // Slug name validated separately via validate_agent_slug_name (returns typed error)
+    // Slug name validated separately via validate_agent_name_format (returns typed error)
     let _ = name;
     Ok(())
 }
@@ -413,20 +412,20 @@ mod tests {
 
     #[test]
     fn test_valid_agent_slug_name() {
-        assert!(validate_agent_slug_name("my-agent").is_ok());
-        assert!(validate_agent_slug_name("agent1").is_ok());
-        assert!(validate_agent_slug_name("a").is_ok());
-        assert!(validate_agent_slug_name("customer-support").is_ok());
+        assert!(validate_agent_name_format("my-agent").is_ok());
+        assert!(validate_agent_name_format("agent1").is_ok());
+        assert!(validate_agent_name_format("a").is_ok());
+        assert!(validate_agent_name_format("customer-support").is_ok());
     }
 
     #[test]
     fn test_invalid_agent_slug_name() {
-        assert!(validate_agent_slug_name("").is_err());
-        assert!(validate_agent_slug_name("-leading").is_err());
-        assert!(validate_agent_slug_name("trailing-").is_err());
-        assert!(validate_agent_slug_name("bad--double").is_err());
-        assert!(validate_agent_slug_name("UPPERCASE").is_err());
-        assert!(validate_agent_slug_name("has space").is_err());
+        assert!(validate_agent_name_format("").is_err());
+        assert!(validate_agent_name_format("-leading").is_err());
+        assert!(validate_agent_name_format("trailing-").is_err());
+        assert!(validate_agent_name_format("bad--double").is_err());
+        assert!(validate_agent_name_format("UPPERCASE").is_err());
+        assert!(validate_agent_name_format("has space").is_err());
     }
 
     #[test]

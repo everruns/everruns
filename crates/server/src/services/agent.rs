@@ -437,6 +437,71 @@ impl AgentService {
         Ok((Self::row_to_agent(row, capabilities), was_created))
     }
 
+    /// Upsert agent by name. If agent with this name exists in the org, update it;
+    /// otherwise create a new one. Returns (agent, was_created).
+    #[policy(AGENT_MANAGE)]
+    pub async fn upsert_by_name(
+        &self,
+        caller: &Caller,
+        req: CreateAgentRequest,
+    ) -> Result<(Agent, bool)> {
+        let capabilities_to_store =
+            ensure_file_system_capability(req.capabilities.clone(), !req.initial_files.is_empty());
+        crate::services::capability_validation::validate_capability_refs(
+            &self.db,
+            caller.org_id,
+            &capabilities_to_store,
+        )
+        .await?;
+        let default_model_id = self
+            .validate_default_model_id(caller.org_id, req.default_model_id)
+            .await?;
+
+        // Generate a public_id for new agents; ignored on update.
+        let internal_uuid = Uuid::now_v7();
+        let public_id = AgentId::from_uuid(internal_uuid);
+
+        let input = CreateAgentRow {
+            public_id: public_id.to_string(),
+            name: req.name,
+            display_name: req.display_name,
+            description: req.description,
+            system_prompt: req.system_prompt,
+            default_model_id,
+            tags: req.tags,
+            initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
+            tools: serde_json::to_value(&req.tools).unwrap_or_default(),
+            max_iterations: req.max_iterations.map(|v| v as i32),
+            network_access: None,
+        };
+        let (row, was_created) = self.db.upsert_agent_by_name(caller.org_id, input).await?;
+        let agent_id_uuid = row.id.uuid();
+
+        let capabilities = if !capabilities_to_store.is_empty() {
+            let cap_tuples: Vec<(String, i32, serde_json::Value)> = capabilities_to_store
+                .iter()
+                .enumerate()
+                .map(|(idx, cap)| {
+                    (
+                        cap.capability_ref.to_string(),
+                        idx as i32,
+                        cap.config.clone(),
+                    )
+                })
+                .collect();
+            self.db
+                .set_agent_capabilities(agent_id_uuid, cap_tuples)
+                .await?;
+            capabilities_to_store
+        } else if was_created {
+            vec![]
+        } else {
+            self.get_capabilities(agent_id_uuid).await?
+        };
+
+        Ok((Self::row_to_agent(row, capabilities), was_created))
+    }
+
     #[policy(AGENT_VIEW)]
     pub async fn get_by_name(&self, caller: &Caller, name: &str) -> Result<Option<Agent>> {
         let row = self.db.get_agent_by_name(caller.org_id, name).await?;

@@ -315,6 +315,63 @@ impl InMemoryDatabase {
         }
     }
 
+    /// Upsert agent by name within org. Returns (row, was_created).
+    pub async fn upsert_agent_by_name(
+        &self,
+        org_id: i64,
+        input: CreateAgentRow,
+    ) -> Result<(AgentRow, bool)> {
+        let mut agents = self.agents.write();
+        let existing_key = agents
+            .iter()
+            .find(|(_, a)| a.org_id == org_id && a.name == input.name && a.status != "deleted")
+            .map(|(k, _)| *k);
+
+        if let Some(key) = existing_key {
+            let agent = agents.get_mut(&key).unwrap();
+            agent.display_name = input.display_name;
+            agent.description = input.description;
+            agent.system_prompt = input.system_prompt;
+            agent.default_model_id = input.default_model_id;
+            agent.tags = input.tags;
+            agent.initial_files = input.initial_files;
+            agent.tools = input.tools;
+            agent.max_iterations = input.max_iterations;
+            agent.status = "active".to_string();
+            agent.updated_at = Self::now();
+            Ok((agent.clone(), false))
+        } else {
+            let now = Self::now();
+            let id = AgentId::new();
+            let row = AgentRow {
+                id,
+                public_id: input.public_id,
+                org_id,
+                name: input.name,
+                display_name: input.display_name,
+                description: input.description,
+                system_prompt: input.system_prompt,
+                default_model_id: input.default_model_id,
+                tags: input.tags,
+                initial_files: input.initial_files,
+                tools: input.tools,
+                network_access: input.network_access,
+                max_iterations: input.max_iterations,
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+                archived_at: None,
+                deleted_at: None,
+                total_input_tokens: 0,
+                total_output_tokens: 0,
+                total_cache_read_tokens: 0,
+                total_cache_creation_tokens: 0,
+            };
+            agents.insert(id, row.clone());
+            Ok((row, true))
+        }
+    }
+
     /// Get agent public_id from internal UUID
     pub async fn get_agent_public_id(&self, org_id: i64, id: AgentId) -> Result<Option<String>> {
         Ok(self

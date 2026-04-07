@@ -335,6 +335,51 @@ impl Database {
         Ok((row, was_created))
     }
 
+    /// Upsert agent by name within org. Returns (row, was_created).
+    pub async fn upsert_agent_by_name(
+        &self,
+        org_id: i64,
+        input: CreateAgentRow,
+    ) -> Result<(AgentRow, bool)> {
+        let row = sqlx::query_as::<_, AgentRow>(
+            r#"
+            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, network_access, max_iterations, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active')
+            ON CONFLICT (org_id, name) WHERE status != 'deleted' DO UPDATE SET
+                display_name = EXCLUDED.display_name,
+                description = EXCLUDED.description,
+                system_prompt = EXCLUDED.system_prompt,
+                default_model_id = EXCLUDED.default_model_id,
+                tags = EXCLUDED.tags,
+                initial_files = EXCLUDED.initial_files,
+                tools = EXCLUDED.tools,
+                network_access = EXCLUDED.network_access,
+                max_iterations = EXCLUDED.max_iterations,
+                status = 'active',
+                updated_at = NOW()
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
+            "#,
+        )
+        .bind(org_id)
+        .bind(&input.public_id)
+        .bind(&input.name)
+        .bind(&input.display_name)
+        .bind(&input.description)
+        .bind(&input.system_prompt)
+        .bind(input.default_model_id)
+        .bind(&input.tags)
+        .bind(&input.initial_files)
+        .bind(&input.tools)
+        .bind(&input.network_access)
+        .bind(input.max_iterations)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let was_created = row.created_at == row.updated_at;
+        Ok((row, was_created))
+    }
+
     /// Get agent public_id from internal UUID (for session responses)
     pub async fn get_agent_public_id(&self, org_id: i64, id: AgentId) -> Result<Option<String>> {
         let row: Option<(String,)> =

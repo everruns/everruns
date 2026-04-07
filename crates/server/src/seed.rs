@@ -330,7 +330,10 @@ pub(crate) struct SeedAgent {
     /// Retained for stable identification; not auto-seeded into DB.
     #[allow(dead_code)]
     pub(crate) id: Uuid,
+    /// Addressable name, unique per org (e.g. "dad-jokes-agent").
     pub(crate) name: &'static str,
+    /// Human-readable display name (e.g. "Dad Jokes Agent").
+    pub(crate) display_name: &'static str,
     pub(crate) description: &'static str,
     pub(crate) system_prompt: &'static str,
     pub(crate) tags: &'static [&'static str],
@@ -343,7 +346,8 @@ pub(crate) struct SeedAgent {
 pub(crate) const SEED_AGENTS: &[SeedAgent] = &[
     SeedAgent {
         id: seed_ids::DAD_JOKES_AGENT,
-        name: "Dad Jokes Agent",
+        name: "dad-jokes-agent",
+        display_name: "Dad Jokes Agent",
         description: "A friendly agent that tells dad jokes and knows what time it is.",
         system_prompt: r#"You are a friendly Dad Jokes Agent. Your purpose is to make people smile with
 classic dad jokes - the kind that are so bad they're good.
@@ -365,7 +369,8 @@ Example jokes you might tell:
     },
     SeedAgent {
         id: seed_ids::RESEARCH_AGENT,
-        name: "Research Agent",
+        name: "research-agent",
+        display_name: "Research Agent",
         description: "An agent specialized in conducting thorough technical research with organized note-taking",
         system_prompt: r#"You are an expert research analyst. Your role is to conduct thorough research on
 technical topics, gathering information from multiple sources and synthesizing
@@ -422,7 +427,8 @@ Use this structure for organizing research:
     },
     SeedAgent {
         id: seed_ids::MS_LEARN_AGENT,
-        name: "Microsoft Learn Assistant",
+        name: "microsoft-learn-assistant",
+        display_name: "Microsoft Learn Assistant",
         description: "An agent that searches and answers questions using Microsoft Learn documentation",
         system_prompt: r#"You are a Microsoft Learn Documentation Assistant. You help users find and understand
 information from Microsoft Learn documentation (learn.microsoft.com).
@@ -461,7 +467,8 @@ You have access to Microsoft Learn MCP tools that allow you to:
     },
     SeedAgent {
         id: seed_ids::PYTHON_CODER_AGENT,
-        name: "Python Coder",
+        name: "python-coder",
+        display_name: "Python Coder",
         description: "A fast coding agent that writes, executes, and debugs Python code in a Docker container",
         system_prompt: r#"You are a Python Coder Agent with access to a Docker container running Python.
 You can write code, execute it, and iterate quickly to solve programming tasks.
@@ -514,7 +521,8 @@ To write and run a Python script:
     },
     SeedAgent {
         id: seed_ids::SHELL_ASSISTANT_AGENT,
-        name: "Shell Assistant",
+        name: "shell-assistant",
+        display_name: "Shell Assistant",
         description: "An agent that helps with shell scripting and file manipulation using a sandboxed bash environment",
         system_prompt: r#"You are a Shell Assistant with access to a sandboxed bash environment.
 You help users with shell scripting, text processing, and file manipulation tasks.
@@ -572,7 +580,8 @@ Files you create are stored in the session's virtual filesystem:
     },
     SeedAgent {
         id: seed_ids::DATA_ANALYST_AGENT,
-        name: "Data Analyst",
+        name: "data-analyst",
+        display_name: "Data Analyst",
         description: "An agent that analyzes data using SQL databases, takes notes, and produces reports",
         system_prompt: r#"You are a Data Analyst Agent. You help users analyze data by creating SQL databases,
 importing data, running queries, and producing clear reports.
@@ -619,7 +628,8 @@ sql_query(database="analytics", sql="SELECT product, SUM(amount) as total FROM s
     },
     SeedAgent {
         id: seed_ids::DAYTONA_CODER_AGENT,
-        name: "Daytona Coder",
+        name: "daytona-coder",
+        display_name: "Daytona Coder",
         description: "A coding agent that runs code in cloud sandboxes powered by Daytona",
         system_prompt: r#"You are a Daytona Coder Agent. You run code in cloud sandboxes powered by Daytona.
 
@@ -645,7 +655,8 @@ Always delete sandboxes when done."#,
     },
     SeedAgent {
         id: seed_ids::E2B_CODER_AGENT,
-        name: "E2B Coder",
+        name: "e2b-coder",
+        display_name: "E2B Coder",
         description: "A coding agent that runs code in cloud sandboxes powered by E2B",
         system_prompt: r#"You are an E2B Coder Agent. You run code in cloud sandboxes powered by E2B.
 
@@ -670,7 +681,8 @@ Delete sandboxes when work is complete; pause only when the user explicitly want
     },
     SeedAgent {
         id: seed_ids::DENO_CODER_AGENT,
-        name: "Deno Coder",
+        name: "deno-coder",
+        display_name: "Deno Coder",
         description: "A coding agent that runs code in cloud sandboxes powered by Deno",
         system_prompt: r#"You are a Deno Coder Agent. You run code in cloud sandboxes powered by Deno.
 
@@ -695,7 +707,8 @@ Always delete sandboxes when done."#,
     },
     SeedAgent {
         id: seed_ids::SPRITES_CODER_AGENT,
-        name: "Sprites Coder",
+        name: "sprites-coder",
+        display_name: "Sprites Coder",
         description: "A coding agent that runs code in persistent Firecracker microVMs powered by Sprites",
         system_prompt: r#"You are a Sprites Coder Agent. You run code in persistent, hardware-isolated Linux microVMs powered by Sprites.
 
@@ -735,7 +748,8 @@ Always delete sprites when done to avoid storage charges."#,
     },
     SeedAgent {
         id: seed_ids::CLOUD_INFRA_AGENT,
-        name: "Cloud Cost & Security Auditor",
+        name: "cloud-cost-security-auditor",
+        display_name: "Cloud Cost & Security Auditor",
         description: "Autonomous auditor that inventories fake AWS infrastructure, checks CloudWatch metrics, identifies cost waste and security violations, remediates issues, and writes a findings report. Designed for benchmarking long-running agents with 25+ tool calls.",
         system_prompt: r#"You are a Cloud Cost & Security Auditor. You perform autonomous, thorough audits
 of AWS infrastructure. All resources here are FAKE / SIMULATED for benchmarking
@@ -819,7 +833,8 @@ Verify each action by re-listing the affected resource type.
     },
     SeedAgent {
         id: seed_ids::PLATFORM_MANAGER_AGENT,
-        name: "Platform Manager",
+        name: "platform-manager",
+        display_name: "Platform Manager",
         description: "Manages Everruns entities: harnesses, agents, and sessions. Can create, update, delete, copy harnesses and agents, start sessions, send messages, and retrieve results.",
         system_prompt: r#"You are a Platform Manager Agent for Everruns. You can manage the entire platform
 programmatically using the management tools available to you.
@@ -883,7 +898,8 @@ All tool results include UI links so you can point users to the web interface."#
     },
     SeedAgent {
         id: seed_ids::WEB_RESEARCHER_AGENT,
-        name: "Web Researcher",
+        name: "web-researcher",
+        display_name: "Web Researcher",
         description: "An agent that searches the web using Brave Search to find current information, news, and documentation. Always cites sources with links.",
         system_prompt: r#"You are a Web Researcher Agent. You search the web using Brave Search to find
 current, accurate information for any topic.
@@ -930,7 +946,8 @@ Get a free key at https://brave.com/search/api/"#,
     },
     SeedAgent {
         id: seed_ids::BROWSER_TESTER_AGENT,
-        name: "Browser Tester",
+        name: "browser-tester",
+        display_name: "Browser Tester",
         description: "An agent that automates browser testing: navigates web pages, takes screenshots, reads DOM content, scrapes data, and interacts with UI elements (click, type, keyboard, mouse, touch). Useful for accessibility testing, regression testing, and web automation.",
         system_prompt: r#"You are a Browser Tester Agent. You automate browser interactions using Browserless.
 
@@ -1004,7 +1021,8 @@ Get a token at https://www.browserless.io/account/home"#,
     },
     SeedAgent {
         id: seed_ids::DASHBOARD_BUILDER_AGENT,
-        name: "Dashboard Builder",
+        name: "dashboard-builder",
+        display_name: "Dashboard Builder",
         description: "An agent that creates rich interactive dashboards, charts, tables, and forms using OpenUI components",
         system_prompt: r#"You are a Dashboard Builder Agent. You create rich interactive UI components —
 charts, tables, forms, cards, and layouts — using OpenUI Lang.
@@ -1066,7 +1084,8 @@ This shows your key metrics at the top, revenue trend in the middle, and recent 
     },
     SeedAgent {
         id: seed_ids::TASK_ORCHESTRATOR_AGENT,
-        name: "Task Orchestrator",
+        name: "task-orchestrator",
+        display_name: "Task Orchestrator",
         description: "An agent that breaks complex tasks into subtasks and delegates them to subagents for parallel execution. Coordinates results and synthesizes a final answer.",
         system_prompt: r#"You are a Task Orchestrator Agent. You break complex tasks into subtasks and delegate them to specialized subagents.
 
@@ -1103,7 +1122,8 @@ User: "Analyze my codebase and suggest improvements"
     },
     SeedAgent {
         id: seed_ids::KNOWLEDGE_BASE_AGENT,
-        name: "Knowledge Base Agent",
+        name: "knowledge-base-agent",
+        display_name: "Knowledge Base Agent",
         description: "An agent with persistent memory that learns from conversations, remembers facts, preferences, and corrections across sessions.",
         system_prompt: r#"You are a Knowledge Base Agent with persistent memory. You learn from every
 conversation and remember important information across sessions.
