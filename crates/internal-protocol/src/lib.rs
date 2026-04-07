@@ -316,6 +316,7 @@ pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
             .iter()
             .map(|c| c.capability_id().to_string())
             .collect(),
+        display_name: Some(value.display_name.clone()),
     }
 }
 
@@ -1102,7 +1103,8 @@ mod tests {
         let agent = everruns_core::Agent {
             public_id: everruns_core::AgentId::from_uuid(id),
             internal_id: id,
-            name: "Test Agent".to_string(),
+            name: "test-agent".to_string(),
+            display_name: "Test Agent".to_string(),
             description: Some("Test description".to_string()),
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
@@ -1162,7 +1164,8 @@ mod tests {
         let agent = everruns_core::Agent {
             public_id: everruns_core::AgentId::from_uuid(id),
             internal_id: id,
-            name: "Test Agent".to_string(),
+            name: "test-agent".to_string(),
+            display_name: "Test Agent".to_string(),
             description: None,
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,

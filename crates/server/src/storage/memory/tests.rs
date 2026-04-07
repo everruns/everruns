@@ -20,6 +20,7 @@ async fn test_create_and_get_agent() {
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
                 name: "Test Agent".to_string(),
+                display_name: "Test Agent".to_string(),
                 description: Some("A test agent".to_string()),
                 system_prompt: "You are helpful".to_string(),
                 default_model_id: None,
@@ -50,6 +51,7 @@ async fn test_create_and_list_sessions() {
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
                 name: "Test Agent".to_string(),
+                display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -106,6 +108,7 @@ async fn test_session_updated_at() {
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
                 name: "Test Agent".to_string(),
+                display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -179,6 +182,7 @@ async fn test_events_sequence() {
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
                 name: "Test Agent".to_string(),
+                display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -248,6 +252,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
                 name: "Filter Test Agent".to_string(),
+                display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -732,6 +737,7 @@ async fn test_list_events_empty_session_with_limit() {
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
                 name: "Empty Agent".to_string(),
+                display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -786,6 +792,7 @@ async fn test_sessions_pagination() {
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
                 name: "Test Agent".to_string(),
+                display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -880,6 +887,7 @@ async fn test_sessions_pagination_ordering() {
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
                 name: "Test Agent".to_string(),
+                display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -1370,6 +1378,7 @@ async fn create_test_agent(
         CreateAgentRow {
             public_id: AgentId::new().to_string(),
             name: name.to_string(),
+            display_name: "Test Agent".to_string(),
             description: description.map(|d| d.to_string()),
             system_prompt: String::new(),
             default_model_id: None,
@@ -1899,6 +1908,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
                 name: "Search Test Agent".to_string(),
+                display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,

@@ -70,6 +70,8 @@ impl AgentService {
         client_id: Option<AgentId>,
         req: CreateAgentRequest,
     ) -> Result<Agent> {
+        self.ensure_name_available(caller.org_id, &req.name, None)
+            .await?;
         let capabilities_to_store =
             ensure_file_system_capability(req.capabilities.clone(), !req.initial_files.is_empty());
         crate::services::capability_validation::validate_capability_refs(
@@ -90,6 +92,7 @@ impl AgentService {
             let input = CreateAgentRow {
                 public_id: client_id.to_string(),
                 name: req.name.clone(),
+                display_name: req.display_name.clone(),
                 description: req.description.clone(),
                 system_prompt: req.system_prompt.clone(),
                 default_model_id,
@@ -111,6 +114,7 @@ impl AgentService {
             let input = CreateAgentRow {
                 public_id: public_id.to_string(),
                 name: req.name.clone(),
+                display_name: req.display_name.clone(),
                 description: req.description.clone(),
                 system_prompt: req.system_prompt.clone(),
                 default_model_id,
@@ -225,6 +229,10 @@ impl AgentService {
             anyhow::bail!("Archived or deleted agents cannot be edited");
         }
         let internal_id = existing.id;
+        if let Some(ref name) = req.name {
+            self.ensure_name_available(caller.org_id, name, Some(internal_id))
+                .await?;
+        }
         let existing_initial_files: Vec<InitialFile> =
             serde_json::from_value(existing.initial_files.clone()).unwrap_or_default();
         let final_has_initial_files = req
@@ -255,6 +263,7 @@ impl AgentService {
 
         let input = UpdateAgent {
             name: req.name,
+            display_name: req.display_name,
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id,
@@ -305,8 +314,8 @@ impl AgentService {
         }
     }
 
-    /// Copy an agent by public_id. Creates a new agent with "{name} (copy)" and
-    /// duplicates description, system_prompt, default_model_id, tags, capabilities, tools.
+    /// Copy an agent by public_id. Generates a unique slug (`{name}-copy`, `-copy-2`, etc.)
+    /// and duplicates description, system_prompt, default_model_id, tags, capabilities, tools.
     #[policy(AGENT_MANAGE)]
     pub async fn copy(&self, caller: &Caller, public_id: &str) -> Result<Option<Agent>> {
         let source = self.get_by_public_id(caller, public_id).await?;
@@ -314,9 +323,14 @@ impl AgentService {
             return Ok(None);
         };
 
+        let copy_name = self
+            .find_unique_name(caller.org_id, &format!("{}-copy", source.name))
+            .await?;
+
         let req = CreateAgentRequest {
             id: None,
-            name: format!("{} (copy)", source.name),
+            name: copy_name,
+            display_name: format!("{} (copy)", source.display_name),
             description: source.description,
             system_prompt: source.system_prompt,
             default_model_id: source.default_model_id,
@@ -383,6 +397,7 @@ impl AgentService {
         let input = CreateAgentRow {
             public_id: public_id.to_string(),
             name: req.name,
+            display_name: req.display_name,
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id,
@@ -420,6 +435,57 @@ impl AgentService {
         };
 
         Ok((Self::row_to_agent(row, capabilities), was_created))
+    }
+
+    #[policy(AGENT_VIEW)]
+    pub async fn get_by_name(&self, caller: &Caller, name: &str) -> Result<Option<Agent>> {
+        let row = self.db.get_agent_by_name(caller.org_id, name).await?;
+        match row {
+            Some(row) if row.status != "deleted" => {
+                let capabilities = self.get_capabilities(row.id.uuid()).await?;
+                Ok(Some(Self::row_to_agent(row, capabilities)))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Check if a name is already taken by another agent in the org.
+    async fn ensure_name_available(
+        &self,
+        org_id: i64,
+        name: &str,
+        exclude_id: Option<AgentId>,
+    ) -> Result<()> {
+        if let Some(existing) = self.db.get_agent_by_name(org_id, name).await?
+            && exclude_id != Some(existing.id)
+        {
+            anyhow::bail!("Agent name '{}' is already taken", name);
+        }
+        Ok(())
+    }
+
+    /// Find a unique slug name, appending `-2`, `-3`, etc. if needed.
+    async fn find_unique_name(&self, org_id: i64, base_name: &str) -> Result<String> {
+        if self
+            .db
+            .get_agent_by_name(org_id, base_name)
+            .await?
+            .is_none()
+        {
+            return Ok(base_name.to_string());
+        }
+        for n in 2..=100 {
+            let candidate = format!("{base_name}-{n}");
+            if self
+                .db
+                .get_agent_by_name(org_id, &candidate)
+                .await?
+                .is_none()
+            {
+                return Ok(candidate);
+            }
+        }
+        anyhow::bail!("Could not find a unique name for '{base_name}'")
     }
 
     async fn get_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityConfig>> {
@@ -478,6 +544,7 @@ impl AgentService {
             public_id,
             internal_id: row.id.uuid(),
             name: row.name,
+            display_name: row.display_name,
             description: row.description,
             system_prompt: row.system_prompt,
             default_model_id: row.default_model_id,
@@ -511,7 +578,8 @@ mod tests {
     ) -> CreateAgentRequest {
         CreateAgentRequest {
             id: None,
-            name: "Test Agent".to_string(),
+            name: "test-agent".to_string(),
+            display_name: "Test Agent".to_string(),
             description: None,
             system_prompt: "Test".to_string(),
             default_model_id,
@@ -529,6 +597,7 @@ mod tests {
     ) -> UpdateAgentRequest {
         UpdateAgentRequest {
             name: None,
+            display_name: None,
             description: None,
             system_prompt: None,
             default_model_id,

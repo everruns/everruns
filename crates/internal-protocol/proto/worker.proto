@@ -310,6 +310,7 @@ message Agent {
     Timestamp created_at = 9;
     Timestamp updated_at = 10;
     repeated string capability_ids = 11;
+    optional string display_name = 12;
 }
 
 message GetAgentRequest {

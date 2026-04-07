@@ -15,15 +15,16 @@ impl Database {
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, network_access, max_iterations, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
+            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, network_access, max_iterations, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active')
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(org_id)
         .bind(&input.public_id)
         .bind(&input.name)
+        .bind(&input.display_name)
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id)
@@ -48,10 +49,11 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (id, org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, network_access, max_iterations, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active')
+            INSERT INTO agents (id, org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, network_access, max_iterations, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active')
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
+                display_name = EXCLUDED.display_name,
                 description = EXCLUDED.description,
                 system_prompt = EXCLUDED.system_prompt,
                 tags = EXCLUDED.tags,
@@ -62,6 +64,7 @@ impl Database {
                 updated_at = NOW()
             WHERE
                 agents.name IS DISTINCT FROM EXCLUDED.name
+                OR agents.display_name IS DISTINCT FROM EXCLUDED.display_name
                 OR agents.description IS DISTINCT FROM EXCLUDED.description
                 OR agents.system_prompt IS DISTINCT FROM EXCLUDED.system_prompt
                 OR agents.tags IS DISTINCT FROM EXCLUDED.tags
@@ -69,7 +72,7 @@ impl Database {
                 OR agents.tools IS DISTINCT FROM EXCLUDED.tools
                 OR agents.network_access IS DISTINCT FROM EXCLUDED.network_access
                 OR agents.max_iterations IS DISTINCT FROM EXCLUDED.max_iterations
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -77,6 +80,7 @@ impl Database {
         .bind(org_id)
         .bind(&input.public_id)
         .bind(&input.name)
+        .bind(&input.display_name)
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id.map(|m| m.uuid()))
@@ -136,8 +140,11 @@ impl Database {
         include_archived: bool,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<AgentRow>, u32)> {
-        let (search_sql, patterns) =
-            build_search_sql(search, "LOWER(name || ' ' || COALESCE(description, ''))", 2);
+        let (search_sql, patterns) = build_search_sql(
+            search,
+            "LOWER(display_name || ' ' || name || ' ' || COALESCE(description, ''))",
+            2,
+        );
         let status_sql = if include_archived {
             " AND status != 'deleted'"
         } else {
@@ -159,7 +166,7 @@ impl Database {
         let limit_idx = param_idx + 1;
         let offset_idx = param_idx + 2;
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
+            r#"SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM agents
                 WHERE org_id = $1{status_sql}{search_sql}
@@ -182,10 +189,10 @@ impl Database {
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
+            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
-            WHERE org_id = $1 AND name = $2 AND status = 'active'
+            WHERE org_id = $1 AND name = $2 AND status != 'deleted'
             "#,
         )
         .bind(org_id)
@@ -207,24 +214,26 @@ impl Database {
             UPDATE agents
             SET
                 name = COALESCE($3, name),
-                description = COALESCE($4, description),
-                system_prompt = COALESCE($5, system_prompt),
-                default_model_id = COALESCE($6, default_model_id),
-                tags = COALESCE($7, tags),
-                status = COALESCE($8, status),
-                initial_files = COALESCE($9, initial_files),
-                tools = COALESCE($10, tools),
-                network_access = CASE WHEN $11 THEN $12 ELSE network_access END,
-                max_iterations = CASE WHEN $13 THEN $14 ELSE max_iterations END,
+                display_name = COALESCE($4, display_name),
+                description = COALESCE($5, description),
+                system_prompt = COALESCE($6, system_prompt),
+                default_model_id = COALESCE($7, default_model_id),
+                tags = COALESCE($8, tags),
+                status = COALESCE($9, status),
+                initial_files = COALESCE($10, initial_files),
+                tools = COALESCE($11, tools),
+                network_access = CASE WHEN $12 THEN $13 ELSE network_access END,
+                max_iterations = CASE WHEN $14 THEN $15 ELSE max_iterations END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(org_id)
         .bind(id.uuid())
         .bind(&input.name)
+        .bind(&input.display_name)
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id.map(|m| m.uuid()))
@@ -287,10 +296,11 @@ impl Database {
             WITH existing AS (
                 SELECT id FROM agents WHERE org_id = $1 AND public_id = $2
             )
-            INSERT INTO agents (org_id, public_id, name, description, system_prompt, default_model_id, tags, initial_files, tools, network_access, max_iterations, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')
+            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, network_access, max_iterations, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active')
             ON CONFLICT (org_id, public_id) DO UPDATE SET
                 name = EXCLUDED.name,
+                display_name = EXCLUDED.display_name,
                 description = EXCLUDED.description,
                 system_prompt = EXCLUDED.system_prompt,
                 default_model_id = EXCLUDED.default_model_id,
@@ -301,13 +311,14 @@ impl Database {
                 max_iterations = EXCLUDED.max_iterations,
                 status = 'active',
                 updated_at = NOW()
-            RETURNING id, public_id, org_id, name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, network_access, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
         .bind(org_id)
         .bind(&input.public_id)
         .bind(&input.name)
+        .bind(&input.display_name)
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id)

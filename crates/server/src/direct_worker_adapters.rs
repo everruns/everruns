@@ -1095,6 +1095,7 @@ impl DirectWorkerAdapters {
                 .unwrap_or_else(|_| AgentId::from_uuid(r.id.uuid())),
             internal_id: r.id.uuid(),
             name: r.name,
+            display_name: r.display_name,
             description: r.description,
             system_prompt: r.system_prompt,
             default_model_id: r.default_model_id,
@@ -1355,6 +1356,7 @@ impl DirectPlatformStore {
             public_id,
             internal_id: row.id.uuid(),
             name: row.name,
+            display_name: row.display_name,
             description: row.description,
             system_prompt: row.system_prompt,
             default_model_id: row.default_model_id,
@@ -1666,6 +1668,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         let input = CreateAgentRow {
             public_id: public_id.to_string(),
             name: name.to_string(),
+            display_name: name.to_string(),
             description: description.map(|s| s.to_string()),
             system_prompt: system_prompt.to_string(),
             default_model_id: None,
@@ -2294,6 +2297,7 @@ mod tests {
         let create = CreateAgentRow {
             public_id,
             name: "test-agent".to_string(),
+            display_name: "Test Agent".to_string(),
             description: None,
             system_prompt: String::new(),
             default_model_id: None,

@@ -139,6 +139,7 @@ async fn main() -> anyhow::Result<()> {
         public_id: AgentId::from_uuid(agent_id),
         internal_id: agent_id,
         name: "Weather Assistant".to_string(),
+        display_name: "Weather Assistant".to_string(),
         description: Some("A helpful weather assistant".to_string()),
         system_prompt: "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.".to_string(),
         default_model_id: None,

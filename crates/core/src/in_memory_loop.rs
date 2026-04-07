@@ -353,7 +353,8 @@ impl InMemoryAgenticLoopBuilder {
         let agent = Agent {
             public_id: agent_id,
             internal_id: agent_id.uuid(),
-            name: self.agent_name,
+            name: "in-memory".to_string(),
+            display_name: self.agent_name,
             description: None,
             system_prompt: self.system_prompt,
             default_model_id: None,

@@ -2892,7 +2892,8 @@ impl WorkerService for WorkerServiceImpl {
 
         let create_req = crate::api::agents::CreateAgentRequest {
             id: None,
-            name: req.name,
+            name: req.name.clone(),
+            display_name: req.name.clone(),
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id: None,
@@ -2934,6 +2935,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let update_req = crate::api::agents::UpdateAgentRequest {
             name: req.name,
+            display_name: None,
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id: None,

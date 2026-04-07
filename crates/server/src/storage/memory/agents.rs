@@ -20,6 +20,7 @@ impl InMemoryDatabase {
             public_id: input.public_id,
             org_id,
             name: input.name,
+            display_name: input.display_name,
             description: input.description,
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
@@ -57,6 +58,7 @@ impl InMemoryDatabase {
         if let Some(existing) = agents.get(&id) {
             // Check if seed-controlled fields differ
             if existing.name == input.name
+                && existing.display_name == input.display_name
                 && existing.description == input.description
                 && existing.system_prompt == input.system_prompt
                 && existing.tags == input.tags
@@ -68,6 +70,7 @@ impl InMemoryDatabase {
             // Update changed fields
             let row = AgentRow {
                 name: input.name,
+                display_name: input.display_name,
                 description: input.description,
                 system_prompt: input.system_prompt,
                 tags: input.tags,
@@ -85,6 +88,7 @@ impl InMemoryDatabase {
             public_id: input.public_id,
             org_id,
             name: input.name,
+            display_name: input.display_name,
             description: input.description,
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
@@ -148,7 +152,14 @@ impl InMemoryDatabase {
                     }
             })
             .filter(|a| {
-                matches_search_tokens(search, &[&a.name, a.description.as_deref().unwrap_or("")])
+                matches_search_tokens(
+                    search,
+                    &[
+                        &a.display_name,
+                        &a.name,
+                        a.description.as_deref().unwrap_or(""),
+                    ],
+                )
             })
             .cloned()
             .collect();
@@ -167,7 +178,7 @@ impl InMemoryDatabase {
             .agents
             .read()
             .values()
-            .find(|a| a.org_id == org_id && a.name == name && a.status == "active")
+            .find(|a| a.org_id == org_id && a.name == name && a.status != "deleted")
             .cloned())
     }
 
@@ -181,6 +192,9 @@ impl InMemoryDatabase {
         if let Some(agent) = agents.get_mut(&id).filter(|a| a.org_id == org_id) {
             if let Some(name) = input.name {
                 agent.name = name;
+            }
+            if let Some(display_name) = input.display_name {
+                agent.display_name = display_name;
             }
             if let Some(description) = input.description {
                 agent.description = Some(description);
@@ -258,6 +272,7 @@ impl InMemoryDatabase {
         if let Some(key) = existing_key {
             let agent = agents.get_mut(&key).unwrap();
             agent.name = input.name;
+            agent.display_name = input.display_name;
             agent.description = input.description;
             agent.system_prompt = input.system_prompt;
             agent.default_model_id = input.default_model_id;
@@ -276,6 +291,7 @@ impl InMemoryDatabase {
                 public_id: input.public_id,
                 org_id,
                 name: input.name,
+                display_name: input.display_name,
                 description: input.description,
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,

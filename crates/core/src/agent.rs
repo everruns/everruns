@@ -70,8 +70,11 @@ pub struct Agent {
     /// Internal UUID primary key. Used for FK references. Never exposed in API.
     #[serde(skip, default = "Uuid::nil")]
     pub internal_id: Uuid,
-    /// Display name of the agent.
+    /// URL/CLI-friendly addressable name, unique per org.
+    /// Format: lowercase alphanumeric and hyphens (e.g. "customer-support").
     pub name: String,
+    /// Human-readable display name shown in UI (e.g. "Customer Support Agent").
+    pub display_name: String,
     /// Human-readable description of what the agent does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -172,7 +175,8 @@ mod tests {
         let agent = Agent {
             public_id: "agent_01933b5a000070008000000000000001".parse().unwrap(),
             internal_id: Uuid::nil(),
-            name: "Test".to_string(),
+            name: "test".to_string(),
+            display_name: "Test".to_string(),
             description: None,
             system_prompt: "test".to_string(),
             default_model_id: None,
@@ -201,7 +205,8 @@ mod tests {
     fn test_agent_deserialize_from_api_json() {
         let json = serde_json::json!({
             "id": "agent_01933b5a000070008000000000000001",
-            "name": "Test",
+            "name": "test",
+            "display_name": "Test",
             "system_prompt": "test",
             "status": "active",
             "tags": [],

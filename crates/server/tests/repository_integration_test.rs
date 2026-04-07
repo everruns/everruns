@@ -58,7 +58,8 @@ async fn test_agent_crud() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: "Repo Test Agent".to_string(),
+                name: "repo-test-agent".to_string(),
+                display_name: "Repo Test Agent".to_string(),
                 description: Some("Test description".to_string()),
                 system_prompt: "Test prompt".to_string(),
                 default_model_id: None,
@@ -134,7 +135,8 @@ async fn test_agent_upsert_initial_files() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: public_id.clone(),
-                name: "Upsert Files Agent".to_string(),
+                name: "upsert-files-agent".to_string(),
+                display_name: "Upsert Files Agent".to_string(),
                 description: None,
                 system_prompt: "prompt".to_string(),
                 default_model_id: None,
@@ -159,7 +161,8 @@ async fn test_agent_upsert_initial_files() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: public_id.clone(),
-                name: "Upsert Files Agent".to_string(),
+                name: "upsert-files-agent".to_string(),
+                display_name: "Upsert Files Agent".to_string(),
                 description: None,
                 system_prompt: "prompt".to_string(),
                 default_model_id: None,
@@ -199,6 +202,7 @@ async fn test_agent_get_by_name() {
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: unique_name.clone(),
+                display_name: unique_name.clone(),
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
@@ -238,7 +242,8 @@ async fn test_session_crud() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: "Session Test Agent".to_string(),
+                name: "session-test-agent".to_string(),
+                display_name: "Session Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
@@ -342,7 +347,8 @@ async fn test_event_crud() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: "Event Test Agent".to_string(),
+                name: "event-test-agent".to_string(),
+                display_name: "Event Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
@@ -426,7 +432,8 @@ async fn test_event_exclude_types() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: "Event Exclude Test Agent".to_string(),
+                name: "event-exclude-test-agent".to_string(),
+                display_name: "Event Exclude Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
@@ -518,7 +525,8 @@ async fn test_event_filter_types() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: "Event Filter Types Agent".to_string(),
+                name: "event-filter-types-agent".to_string(),
+                display_name: "Event Filter Types Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
@@ -812,7 +820,8 @@ async fn test_session_file_crud() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: "File Test Agent".to_string(),
+                name: "file-test-agent".to_string(),
+                display_name: "File Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
@@ -997,7 +1006,8 @@ async fn test_agent_capabilities() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: "Capability Test Agent".to_string(),
+                name: "capability-test-agent".to_string(),
+                display_name: "Capability Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
@@ -1265,7 +1275,8 @@ async fn test_session_usage_tracking() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: "Usage Test Agent".to_string(),
+                name: "usage-test-agent".to_string(),
+                display_name: "Usage Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
@@ -1355,7 +1366,8 @@ async fn test_session_previews() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: "Preview Test Agent".to_string(),
+                name: "preview-test-agent".to_string(),
+                display_name: "Preview Test Agent".to_string(),
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,

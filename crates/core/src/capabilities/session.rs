@@ -314,6 +314,7 @@ mod tests {
             public_id: agent_id,
             internal_id: agent_id.uuid(),
             name: "Research Agent".to_string(),
+            display_name: "Research Agent".to_string(),
             description: Some("desc".to_string()),
             system_prompt: "prompt".to_string(),
             default_model_id: None,
