@@ -130,20 +130,22 @@ export default function NewAgentPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Use default model</SelectItem>
-                  {models.filter((m) => m.installed).map((model) => (
-                    <SelectItem key={model.id} value={model.id}>
-                      <div className="flex items-center gap-2">
-                        <ProviderIcon
-                          providerType={model.provider_type}
-                          size="sm"
-                          showBackground={false}
-                        />
-                        <span>
-                          {model.display_name} ({model.provider_name})
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {models
+                    .filter((m) => m.installed)
+                    .map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        <div className="flex items-center gap-2">
+                          <ProviderIcon
+                            providerType={model.provider_type}
+                            size="sm"
+                            showBackground={false}
+                          />
+                          <span>
+                            {model.display_name} ({model.provider_name})
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
