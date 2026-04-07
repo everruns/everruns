@@ -7,7 +7,7 @@
 "use client";
 
 import { Bot, CalendarClock, Loader2 } from "lucide-react";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import type {
   ContentPart,
   Event,
@@ -162,7 +162,7 @@ function renderTurnDivider(
   );
 }
 
-export function ChatMessageList({
+export const ChatMessageList = memo(function ChatMessageList({
   events,
   chatEvents,
   sessionId,
@@ -458,4 +458,4 @@ export function ChatMessageList({
       })}
     </div>
   );
-}
+});

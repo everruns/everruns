@@ -5,6 +5,7 @@ import {
   useContext,
   useState,
   useMemo,
+  useCallback,
   useEffect,
   useRef,
   type ReactNode,
@@ -525,29 +526,35 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     ? getReasoningEffortName(reasoningEffortConfig.default)
     : "Medium";
 
-  // Extract text from message event data
-  const getMessageText = (data: InputMessageData | OutputMessageCompletedData): string => {
-    const content = data.message?.content;
-    if (!content) return "";
-    return getTextFromContent(content);
-  };
+  // Extract text from message event data (stable ref — no deps)
+  const getMessageText = useCallback(
+    (data: InputMessageData | OutputMessageCompletedData): string => {
+      const content = data.message?.content;
+      if (!content) return "";
+      return getTextFromContent(content);
+    },
+    [],
+  );
 
-  // Get tool calls from message event data
-  const getToolCalls = (
-    data: OutputMessageCompletedData,
-  ): Array<{
-    id: string;
-    name: string;
-    arguments: Record<string, unknown>;
-  }> => {
-    const content = data.message?.content;
-    if (!content) return [];
-    return content.filter(isToolCallPart).map((part) => ({
-      id: part.id,
-      name: part.name,
-      arguments: part.arguments,
-    }));
-  };
+  // Get tool calls from message event data (stable ref — no deps)
+  const getToolCalls = useCallback(
+    (
+      data: OutputMessageCompletedData,
+    ): Array<{
+      id: string;
+      name: string;
+      arguments: Record<string, unknown>;
+    }> => {
+      const content = data.message?.content;
+      if (!content) return [];
+      return content.filter(isToolCallPart).map((part) => ({
+        id: part.id,
+        name: part.name,
+        arguments: part.arguments,
+      }));
+    },
+    [],
+  );
 
   const value: SessionContextValue = {
     agentId,
