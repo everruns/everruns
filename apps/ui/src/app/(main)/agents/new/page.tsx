@@ -2,23 +2,16 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useCreateAgent, useLlmModels, useCapabilities } from "@/hooks";
+import { useCreateAgent, useCapabilities } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PromptEditor } from "@/components/ui/prompt-editor";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { ProviderIcon } from "@/components/providers/provider-icon";
+import { ModelPicker } from "@/components/models/model-picker";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
@@ -26,7 +19,6 @@ import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 export default function NewAgentPage() {
   const router = useRouter();
   const createAgent = useCreateAgent();
-  const { data: models = [] } = useLlmModels();
   const { data: allCapabilities = [] } = useCapabilities();
 
   const [formData, setFormData] = useState({
@@ -102,52 +94,11 @@ export default function NewAgentPage() {
 
             <div className="space-y-2">
               <Label htmlFor="model">Model (optional)</Label>
-              <Select
-                value={formData.default_model_id || "none"}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, default_model_id: value === "none" ? "" : value })
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue>
-                    {(() => {
-                      const selectedModel = models.find((m) => m.id === formData.default_model_id);
-                      if (!selectedModel) return "Use default model";
-                      return (
-                        <div className="flex items-center gap-2">
-                          <ProviderIcon
-                            providerType={selectedModel.provider_type}
-                            size="sm"
-                            showBackground={false}
-                          />
-                          <span>
-                            {selectedModel.display_name} ({selectedModel.provider_name})
-                          </span>
-                        </div>
-                      );
-                    })()}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Use default model</SelectItem>
-                  {models
-                    .filter((m) => m.installed)
-                    .map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        <div className="flex items-center gap-2">
-                          <ProviderIcon
-                            providerType={model.provider_type}
-                            size="sm"
-                            showBackground={false}
-                          />
-                          <span>
-                            {model.display_name} ({model.provider_name})
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <ModelPicker
+                value={formData.default_model_id}
+                onChange={(value) => setFormData({ ...formData, default_model_id: value })}
+                placeholder="Use default model"
+              />
               <p className="text-xs text-muted-foreground">
                 Select a specific model or leave empty to use the default
               </p>

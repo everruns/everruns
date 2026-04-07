@@ -2,31 +2,22 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useCreateEval, useAgents, useHarnesses, useLlmModels } from "@/hooks";
+import { useCreateEval } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import Link from "next/link";
 import { ArrowLeft, X } from "lucide-react";
-import { ProviderIcon } from "@/components/providers/provider-icon";
+import { ModelPicker } from "@/components/models/model-picker";
+import { AgentSelect } from "@/components/agent/agent-select";
+import { HarnessSelect } from "@/components/harness/harness-select";
 
 export default function NewEvalPage() {
   const router = useRouter();
   const createEval = useCreateEval();
-  const { data: agents = [] } = useAgents({ includeArchived: false });
-  const { data: harnesses = [] } = useHarnesses({ includeArchived: false });
-  const { data: models = [] } = useLlmModels();
-
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -115,102 +106,29 @@ export default function NewEvalPage() {
 
             <div className="space-y-2">
               <Label htmlFor="agent">Agent</Label>
-              <Select
-                value={formData.agent_id || "none"}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, agent_id: value === "none" ? "" : value })
-                }
-                required
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select an agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none" disabled>
-                    Select an agent
-                  </SelectItem>
-                  {agents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <AgentSelect
+                value={formData.agent_id}
+                onValueChange={(value) => setFormData({ ...formData, agent_id: value })}
+                placeholder="Select an agent"
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="harness">Harness</Label>
-              <Select
-                value={formData.harness_id || "none"}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, harness_id: value === "none" ? "" : value })
-                }
-                required
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a harness" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none" disabled>
-                    Select a harness
-                  </SelectItem>
-                  {harnesses.map((harness) => (
-                    <SelectItem key={harness.id} value={harness.id}>
-                      {harness.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <HarnessSelect
+                value={formData.harness_id}
+                onValueChange={(value) => setFormData({ ...formData, harness_id: value })}
+                placeholder="Select a harness"
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="model">Model Override (optional)</Label>
-              <Select
-                value={formData.model_override || "none"}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, model_override: value === "none" ? "" : value })
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue>
-                    {(() => {
-                      const selectedModel = models.find((m) => m.id === formData.model_override);
-                      if (!selectedModel) return "Use agent default";
-                      return (
-                        <div className="flex items-center gap-2">
-                          <ProviderIcon
-                            providerType={selectedModel.provider_type}
-                            size="sm"
-                            showBackground={false}
-                          />
-                          <span>
-                            {selectedModel.display_name} ({selectedModel.provider_name})
-                          </span>
-                        </div>
-                      );
-                    })()}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Use agent default</SelectItem>
-                  {models
-                    .filter((m) => m.installed)
-                    .map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        <div className="flex items-center gap-2">
-                          <ProviderIcon
-                            providerType={model.provider_type}
-                            size="sm"
-                            showBackground={false}
-                          />
-                          <span>
-                            {model.display_name} ({model.provider_name})
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <ModelPicker
+                value={formData.model_override}
+                onChange={(value) => setFormData({ ...formData, model_override: value })}
+                placeholder="Use agent default"
+              />
               <p className="text-xs text-muted-foreground">
                 Override the agent model for eval runs
               </p>
