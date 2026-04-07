@@ -12659,6 +12659,13 @@
             ],
             "description": "Tool may take significant time to complete (> ~5s typical).\nUseful for clients to show progress indicators and set timeouts."
           },
+          "narration_noun": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Entity noun for operation-based narration (e.g. \"agent\", \"harness\").\nWhen set, the narration system reads the `operation` argument and\nproduces verb-based narration like \"Created agent: Neon Cartographer\"\ninstead of the generic \"Ran Manage Agents\"."
+          },
           "open_world": {
             "type": [
               "boolean",
