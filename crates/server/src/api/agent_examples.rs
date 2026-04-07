@@ -188,7 +188,7 @@ pub async fn use_example(
 
     let req = CreateAgentRequest {
         id: None,
-        name: seed.name.to_string(),
+        name: slug_from_name(seed.name),
         display_name: seed.name.to_string(),
         description: Some(seed.description.to_string()),
         system_prompt: seed.system_prompt.to_string(),
