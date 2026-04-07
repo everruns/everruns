@@ -10,6 +10,7 @@ import {
   useDeleteHarness,
   useDestroyHarness,
   useCapabilities,
+  useHarnessNameAvailability,
 } from "@/hooks";
 import { usePolicies } from "@/hooks/use-policies";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,7 @@ import { HarnessSelect } from "@/components/harness/harness-select";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
-import { ArrowLeft, Save, Trash2, Eye, Edit2 } from "lucide-react";
+import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
@@ -95,6 +96,10 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
         : undefined,
     [formData.parent_harness_id, harnesses],
   );
+
+  // Only check availability when name has been changed from original
+  const nameChanged = formData.name !== initialFormData.name;
+  const nameAvailability = useHarnessNameAvailability(nameChanged ? formData.name : "", harnessId);
 
   const handleFormChange = useCallback((field: keyof FormData, value: string) => {
     setFormChanges((prev) => ({ ...prev, [field]: value }));
@@ -247,12 +252,34 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                       <Label htmlFor="name">Name</Label>
                       <Input
                         id="name"
-                        placeholder="My Harness"
+                        placeholder="my-harness"
                         value={formData.name}
                         onChange={(e) => handleFormChange("name", e.target.value)}
                         disabled={isSaving || isReadOnly}
                         required
                       />
+                      {nameChanged && formData.name.length >= 2 && (
+                        <div className="flex items-center gap-1.5 text-xs">
+                          {nameAvailability.isChecking ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                              <span className="text-muted-foreground">Checking availability…</span>
+                            </>
+                          ) : nameAvailability.available === true ? (
+                            <>
+                              <Check className="w-3 h-3 text-green-600" />
+                              <span className="text-green-600">Name is available</span>
+                            </>
+                          ) : nameAvailability.available === false ? (
+                            <>
+                              <X className="w-3 h-3 text-destructive" />
+                              <span className="text-destructive">
+                                Name is already taken or invalid
+                              </span>
+                            </>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-2">

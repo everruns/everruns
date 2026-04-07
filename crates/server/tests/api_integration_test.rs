@@ -1642,6 +1642,89 @@ async fn test_copy_agent_not_found() {
 }
 
 // ============================================
+// Check Harness Name Tests
+// ============================================
+
+#[tokio::test]
+async fn test_check_harness_name_available() {
+    let server = TestServer::new().await;
+
+    let data: Value = server
+        .get("/v1/harnesses/check-name?name=fresh-new-name")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(data["available"], true);
+}
+
+#[tokio::test]
+async fn test_check_harness_name_taken() {
+    let server = TestServer::new().await;
+
+    // "generic" is a built-in harness name
+    let data: Value = server
+        .get("/v1/harnesses/check-name?name=generic")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(data["available"], false);
+}
+
+#[tokio::test]
+async fn test_check_harness_name_taken_with_exclude_id() {
+    let server = TestServer::new().await;
+
+    // Create a harness
+    let harness: Harness = server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "check-name-test",
+                "display_name": "Check Name Test",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Without exclude_id — should be taken
+    let data: Value = server
+        .get("/v1/harnesses/check-name?name=check-name-test")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(data["available"], false);
+
+    // With exclude_id (self) — should be available
+    let data: Value = server
+        .get(&format!(
+            "/v1/harnesses/check-name?name=check-name-test&exclude_id={}",
+            harness.id
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(data["available"], true);
+}
+
+#[tokio::test]
+async fn test_check_harness_name_invalid_format() {
+    let server = TestServer::new().await;
+
+    // Uppercase is invalid for harness names
+    let data: Value = server
+        .get("/v1/harnesses/check-name?name=INVALID")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(data["available"], false);
+}
+
+// ============================================
 // Copy Harness Tests
 // ============================================
 

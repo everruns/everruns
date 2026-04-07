@@ -22,6 +22,18 @@ export const updateHarness = harnessesCrudApi.update;
 export const deleteHarness = harnessesCrudApi.delete;
 export const destroyHarness = harnessesCrudApi.destroy;
 
+export async function checkHarnessName(
+  name: string,
+  excludeId?: string,
+): Promise<{ available: boolean }> {
+  const params = new URLSearchParams({ name });
+  if (excludeId) params.set("exclude_id", excludeId);
+  const response = await api.get<{ available: boolean }>(
+    `/v1/harnesses/check-name?${params.toString()}`,
+  );
+  return response.data;
+}
+
 export async function copyHarness(harnessId: string): Promise<Harness> {
   const response = await api.post<Harness>(`/v1/harnesses/${harnessId}/copy`, {});
   return response.data;
