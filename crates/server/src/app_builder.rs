@@ -482,6 +482,7 @@ impl ServerAppBuilder {
             runner.clone(),
             auth_state.clone(),
             notifications_enabled,
+            event_delivery.clone(),
         );
         let tool_results_state = api::tool_results::AppState::new(
             db.clone(),

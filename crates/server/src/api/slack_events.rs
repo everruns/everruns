@@ -216,6 +216,7 @@ impl SlackState {
                 db.clone(),
                 runner,
                 notifications_enabled,
+                event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             db,

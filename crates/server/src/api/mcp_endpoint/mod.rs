@@ -268,6 +268,7 @@ impl AppState {
                 db.clone(),
                 runner.clone(),
                 notifications_enabled,
+                event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             db,

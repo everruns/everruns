@@ -43,11 +43,9 @@ impl MessageService {
         db: Arc<StorageBackend>,
         runner: Arc<dyn AgentRunner>,
         notifications_enabled: bool,
+        event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
-        let event_service = EventService::new(
-            db.clone(),
-            crate::event_delivery::EventDelivery::in_memory(),
-        );
+        let event_service = EventService::new(db.clone(), event_delivery);
         let notification_service = NotificationService::new(db.clone());
         Self {
             db,
