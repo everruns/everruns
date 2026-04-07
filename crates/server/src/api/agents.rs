@@ -179,6 +179,28 @@ impl AgentFileCapability {
     }
 }
 
+/// Entry in agent file initial_files - supports both string (glob pattern) and
+/// object (fully-specified file) formats. String entries are glob patterns that
+/// must be expanded by the CLI before sending to the server; the server silently
+/// drops them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+enum AgentFileInitialFile {
+    /// Glob pattern (e.g. ".", ".agents/*") - CLI-only, server ignores
+    GlobPattern(String),
+    /// Fully-specified file with content
+    File(InitialFile),
+}
+
+impl AgentFileInitialFile {
+    fn into_initial_file(self) -> Option<InitialFile> {
+        match self {
+            AgentFileInitialFile::GlobPattern(_) => None,
+            AgentFileInitialFile::File(f) => Some(f),
+        }
+    }
+}
+
 /// Agent file format for import (matches CLI format)
 /// Parsed from YAML front matter in Markdown files.
 /// Supports both legacy (string list) and new (object with ref/config) capability formats.
@@ -196,8 +218,10 @@ struct AgentFile {
     /// Capabilities - supports both string IDs and objects with ref/config
     #[serde(default)]
     pub capabilities: Vec<AgentFileCapability>,
+    /// Initial files - supports string globs (CLI-only, stripped by server) and
+    /// fully-specified InitialFile objects.
     #[serde(default)]
-    pub initial_files: Vec<InitialFile>,
+    pub initial_files: Vec<AgentFileInitialFile>,
 }
 
 use crate::services::agent::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
@@ -781,12 +805,19 @@ pub async fn import_agent(
     }
 
     // Validate parsed content sizes (last-resort protection against abuse)
+    // Strip glob patterns (CLI-only); keep only fully-specified files
+    let initial_files: Vec<InitialFile> = agent_file
+        .initial_files
+        .into_iter()
+        .filter_map(|f| f.into_initial_file())
+        .collect();
+
     validate_create_agent_input(
         &name,
         agent_file.description.as_deref(),
         &system_prompt,
         agent_file.capabilities.len(),
-        &agent_file.initial_files,
+        &initial_files,
     )?;
 
     let client_id = agent_file.id;
@@ -802,7 +833,7 @@ pub async fn import_agent(
             .iter()
             .map(|c| c.to_agent_capability_config())
             .collect(),
-        initial_files: agent_file.initial_files,
+        initial_files,
         tools: vec![],
         network_access: None,
         max_iterations: None,

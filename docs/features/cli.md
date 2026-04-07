@@ -136,6 +136,42 @@ Always cite your sources and provide accurate information.
 
 The markdown body becomes the system prompt. Both the full format (`ref` + `config`) and shorthand (just capability ID) are supported in markdown files.
 
+#### Initial Files
+
+You can seed an agent's sessions with starter files using either the `--initial-files-dir` flag or the `initial_files` frontmatter field.
+
+**Using `--initial-files-dir`:**
+
+```bash
+everruns agents create -f agent.md --initial-files-dir ./project-context
+```
+
+This recursively collects non-hidden text files from the directory. Files are read-only by default; add `--writable` to make them editable.
+
+**Using frontmatter `initial_files`:**
+
+List relative paths directly in the agent definition. Each entry is resolved relative to the agent file's parent directory:
+
+```markdown
+---
+name: "a11y-audit"
+description: "Accessibility auditor for the platform UI"
+capabilities:
+  - ref: daytona
+initial_files:
+  - .
+  - .agents/*
+---
+Run axe-core audits on specified pages...
+```
+
+Entries can be:
+- `.` — the entire directory (all non-hidden files, plus `.agents/`)
+- `.agents` or `.agents/*` — a specific subdirectory (glob suffixes like `/*` are stripped; the directory is walked recursively)
+- `README.md` — a single file
+
+The CLI expands these to full file contents before sending to the API. The same security rules apply: hidden files are skipped (except `.agents/`), symlinks outside the base directory are rejected, binary files are ignored, and explicitly listed hidden files (e.g. `.env`) are rejected.
+
 #### List Agents
 
 ```bash

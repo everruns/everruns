@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use everruns_sdk::{CreateAgentRequest, Everruns};
 use serde::Deserialize;
+use std::path::Path;
 
 #[derive(Subcommand)]
 pub enum AgentsCommand {
@@ -237,12 +238,26 @@ async fn import_from_file(
     let content =
         std::fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path))?;
 
+    // Resolve the agent file's parent directory for expanding initial_files globs.
+    let file_dir = std::fs::canonicalize(path)
+        .with_context(|| format!("Cannot resolve file path: {}", path))?
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
     // If --initial-files-dir is provided, parse the agent file, inject the files,
     // and send as JSON so the server receives initial_files in the payload.
+    // Also parse when initial_files contains glob patterns (strings) in frontmatter.
     let (body, content_type) = if let Some(dir) = initial_files_dir {
         let files = glob_initial_files(dir, writable)?;
         let mut agent: serde_json::Value =
             parse_agent_file_as_json(&content).context("Failed to parse agent file")?;
+        agent["initial_files"] = serde_json::to_value(&files)?;
+        (serde_json::to_string(&agent)?, "application/json")
+    } else if has_initial_files_globs(&content) {
+        let mut agent: serde_json::Value =
+            parse_agent_file_as_json(&content).context("Failed to parse agent file")?;
+        let files = expand_initial_files_globs(&agent, &file_dir, writable)?;
         agent["initial_files"] = serde_json::to_value(&files)?;
         (serde_json::to_string(&agent)?, "application/json")
     } else {
@@ -293,7 +308,7 @@ async fn import_from_file(
 }
 
 /// Represents a file to be uploaded as an initial file for an agent.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct CollectedFile {
     path: String,
     content: String,
@@ -398,6 +413,246 @@ fn glob_initial_files(dir: &str, writable: bool) -> Result<Vec<CollectedFile>> {
 
     files.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(files)
+}
+
+/// Quick check whether parsed initial_files contains glob patterns (strings)
+/// rather than fully-specified InitialFile objects.
+fn has_initial_files_globs(content: &str) -> bool {
+    // Fast-path: parse just enough to detect string entries in initial_files.
+    let Ok(agent) = parse_agent_file_as_json(content) else {
+        return false;
+    };
+    let Some(arr) = agent.get("initial_files").and_then(|v| v.as_array()) else {
+        return false;
+    };
+    arr.iter().any(|v| v.is_string())
+}
+
+/// Check if a path component is a hidden/dot entry that should be skipped.
+/// Returns true if the component is hidden and NOT in the allowlist.
+fn is_disallowed_hidden(component: &str) -> bool {
+    if !component.starts_with('.') {
+        return false;
+    }
+    !ALLOWED_DOT_ENTRIES.contains(&component)
+}
+
+/// Strip glob metacharacters from a pattern to find the directory prefix.
+/// e.g. ".agents/*" → ".agents", "src/**/*.rs" → "src", "." → "."
+fn glob_base_dir(pattern: &str) -> &str {
+    // Find the first glob metacharacter
+    if let Some(pos) = pattern.find(['*', '?', '[']) {
+        // Walk back to the last path separator before the metacharacter
+        let prefix = &pattern[..pos];
+        prefix.trim_end_matches('/').trim_end_matches('\\')
+    } else {
+        pattern
+    }
+}
+
+/// Expand initial_files glob patterns from agent frontmatter into CollectedFile entries.
+/// String entries are treated as relative paths resolved against `base_dir`.
+/// All workspace paths are computed relative to `base_dir` so subdirectory
+/// prefixes are preserved (e.g. ".agents/skills/SKILL.md" → "/workspace/.agents/skills/SKILL.md").
+/// Object entries (already-expanded InitialFile) are passed through as-is.
+fn expand_initial_files_globs(
+    agent: &serde_json::Value,
+    base_dir: &Path,
+    writable: bool,
+) -> Result<Vec<CollectedFile>> {
+    let Some(arr) = agent.get("initial_files").and_then(|v| v.as_array()) else {
+        return Ok(vec![]);
+    };
+
+    let base_canonical = std::fs::canonicalize(base_dir)?;
+    let mut all_files: Vec<CollectedFile> = Vec::new();
+
+    for entry in arr {
+        if let Some(pattern) = entry.as_str() {
+            // Strip glob metacharacters to find the actual directory/file path.
+            // e.g. ".agents/*" → ".agents", "." → "."
+            let clean_path = glob_base_dir(pattern);
+            let resolved = base_dir.join(clean_path);
+            let resolved = std::fs::canonicalize(&resolved).with_context(|| {
+                format!(
+                    "Cannot resolve initial_files path: {} (relative to {})",
+                    pattern,
+                    base_dir.display()
+                )
+            })?;
+
+            if resolved.is_dir() {
+                // Directory: collect all files, computing workspace paths relative to base_dir
+                collect_dir_files(&resolved, &base_canonical, writable, &mut all_files)?;
+            } else if resolved.is_file() {
+                // Single file — reject disallowed hidden files
+                collect_single_file(&resolved, &base_canonical, writable, &mut all_files)?;
+            } else {
+                anyhow::bail!(
+                    "initial_files pattern resolved to non-existent path: {}",
+                    resolved.display()
+                );
+            }
+        } else if entry.is_object() {
+            // Already a full InitialFile object — pass through
+            let file: CollectedFile = serde_json::from_value(entry.clone())
+                .context("Invalid initial_files entry object")?;
+            all_files.push(file);
+        } else {
+            anyhow::bail!("initial_files entries must be strings (paths/globs) or objects");
+        }
+    }
+
+    // Deduplicate by path (first occurrence wins)
+    let mut seen = std::collections::HashSet::new();
+    all_files.retain(|f| seen.insert(f.path.clone()));
+
+    if all_files.is_empty() {
+        anyhow::bail!("initial_files patterns matched no files");
+    }
+
+    all_files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(all_files)
+}
+
+/// Collect all text files from a directory into the CollectedFile list.
+/// Workspace paths are computed relative to `workspace_base` (the agent file's
+/// parent directory), preserving subdirectory prefixes.
+fn collect_dir_files(
+    dir: &Path,
+    workspace_base: &Path,
+    writable: bool,
+    files: &mut Vec<CollectedFile>,
+) -> Result<()> {
+    // Main walker skips hidden files for security (.env, .ssh, etc.)
+    let walker = ignore::WalkBuilder::new(dir)
+        .hidden(true)
+        .git_ignore(true)
+        .git_global(false)
+        .git_exclude(false)
+        .build();
+
+    // Also walk allowed dot-directories that hidden(true) would skip.
+    let dot_walkers: Vec<_> = ALLOWED_DOT_ENTRIES
+        .iter()
+        .filter_map(|name| {
+            let dot_path = dir.join(name);
+            if dot_path.is_dir() {
+                Some(
+                    ignore::WalkBuilder::new(&dot_path)
+                        .hidden(false)
+                        .git_ignore(true)
+                        .git_global(false)
+                        .git_exclude(false)
+                        .build(),
+                )
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let all_entries = walker.chain(dot_walkers.into_iter().flatten());
+    for entry in all_entries {
+        let entry = entry.context("Failed to read directory entry")?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let canonical = std::fs::canonicalize(path)
+            .with_context(|| format!("Cannot resolve file: {}", path.display()))?;
+        if !canonical.starts_with(workspace_base) {
+            eprintln!(
+                "Warning: skipping symlink outside base directory: {}",
+                path.display()
+            );
+            continue;
+        }
+
+        // Compute workspace path relative to workspace_base (agent file dir)
+        let rel = canonical
+            .strip_prefix(workspace_base)
+            .context("File outside base directory")?;
+        let rel_normalized = rel.to_string_lossy().replace('\\', "/");
+        let workspace_path = format!("/workspace/{}", rel_normalized);
+
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                files.push(CollectedFile {
+                    path: workspace_path,
+                    content,
+                    encoding: "text".to_string(),
+                    is_readonly: !writable,
+                });
+            }
+            Err(_) => {
+                eprintln!(
+                    "Warning: skipping binary or unreadable file: {}",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Collect a single file into the CollectedFile list.
+/// Rejects hidden files not in ALLOWED_DOT_ENTRIES to match directory-walk security rules.
+fn collect_single_file(
+    file_path: &Path,
+    workspace_base: &Path,
+    writable: bool,
+    files: &mut Vec<CollectedFile>,
+) -> Result<()> {
+    let canonical = std::fs::canonicalize(file_path)
+        .with_context(|| format!("Cannot resolve file: {}", file_path.display()))?;
+
+    if !canonical.starts_with(workspace_base) {
+        eprintln!(
+            "Warning: skipping file outside base directory: {}",
+            file_path.display()
+        );
+        return Ok(());
+    }
+
+    // Check for disallowed hidden path components (e.g. .env, .ssh/config)
+    let rel = canonical.strip_prefix(workspace_base)?;
+    for component in rel.components() {
+        if let std::path::Component::Normal(c) = component {
+            let name = c.to_string_lossy();
+            if is_disallowed_hidden(&name) {
+                eprintln!(
+                    "Warning: skipping hidden file: {} (only {:?} allowed)",
+                    file_path.display(),
+                    ALLOWED_DOT_ENTRIES
+                );
+                return Ok(());
+            }
+        }
+    }
+
+    let rel_normalized = rel.to_string_lossy().replace('\\', "/");
+    let workspace_path = format!("/workspace/{}", rel_normalized);
+
+    match std::fs::read_to_string(file_path) {
+        Ok(content) => {
+            files.push(CollectedFile {
+                path: workspace_path,
+                content,
+                encoding: "text".to_string(),
+                is_readonly: !writable,
+            });
+        }
+        Err(_) => {
+            eprintln!(
+                "Warning: skipping binary or unreadable file: {}",
+                file_path.display()
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Parse agent file content (Markdown/YAML/JSON) into a JSON Value.
@@ -769,5 +1024,193 @@ mod tests {
         let content = "just a string";
         let result = parse_agent_file_as_json(content);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_has_initial_files_globs_with_strings() {
+        let content = "---\nname: test\ninitial_files:\n  - .\n  - .agents/*\n---\nPrompt";
+        assert!(has_initial_files_globs(content));
+    }
+
+    #[test]
+    fn test_has_initial_files_globs_without_strings() {
+        // No initial_files at all
+        let content = "---\nname: test\n---\nPrompt";
+        assert!(!has_initial_files_globs(content));
+
+        // initial_files with objects (already expanded)
+        let content = r#"{"name":"test","initial_files":[{"path":"/workspace/f.txt","content":"x","encoding":"text","is_readonly":false}]}"#;
+        assert!(!has_initial_files_globs(content));
+    }
+
+    #[test]
+    fn test_expand_initial_files_globs_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hello.txt"), "world").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub/nested.txt"), "content").unwrap();
+
+        let agent = serde_json::json!({
+            "name": "test",
+            "initial_files": ["."]
+        });
+
+        let files = expand_initial_files_globs(&agent, dir.path(), false).unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().any(|f| f.path == "/workspace/hello.txt"));
+        assert!(files.iter().any(|f| f.path == "/workspace/sub/nested.txt"));
+        assert!(files.iter().all(|f| f.is_readonly));
+    }
+
+    #[test]
+    fn test_expand_initial_files_globs_subdirectory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("root.txt"), "root").unwrap();
+        std::fs::create_dir_all(dir.path().join(".agents/skills")).unwrap();
+        std::fs::write(dir.path().join(".agents/skills/SKILL.md"), "# Skill").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub/nested.txt"), "nested").unwrap();
+
+        // .agents subdirectory preserves prefix in workspace path
+        let agent = serde_json::json!({
+            "name": "test",
+            "initial_files": [".agents"]
+        });
+
+        let files = expand_initial_files_globs(&agent, dir.path(), false).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "/workspace/.agents/skills/SKILL.md");
+
+        // Regular subdirectory also preserves prefix
+        let agent2 = serde_json::json!({
+            "name": "test",
+            "initial_files": ["sub"]
+        });
+
+        let files2 = expand_initial_files_globs(&agent2, dir.path(), false).unwrap();
+        assert_eq!(files2.len(), 1);
+        assert_eq!(files2[0].path, "/workspace/sub/nested.txt");
+    }
+
+    #[test]
+    fn test_expand_initial_files_globs_with_wildcard() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("root.txt"), "root").unwrap();
+        std::fs::create_dir_all(dir.path().join(".agents/skills")).unwrap();
+        std::fs::write(dir.path().join(".agents/skills/SKILL.md"), "# Skill").unwrap();
+
+        // ".agents/*" should work — the * is stripped, .agents/ is walked
+        let agent = serde_json::json!({
+            "name": "test",
+            "initial_files": [".agents/*"]
+        });
+
+        let files = expand_initial_files_globs(&agent, dir.path(), false).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "/workspace/.agents/skills/SKILL.md");
+    }
+
+    #[test]
+    fn test_expand_initial_files_globs_deduplicates() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hello.txt"), "world").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub/readme.md"), "# Hi").unwrap();
+
+        // Both "." entries collect the same files — dedup by workspace path
+        let agent = serde_json::json!({
+            "name": "test",
+            "initial_files": [".", "."]
+        });
+
+        let files = expand_initial_files_globs(&agent, dir.path(), false).unwrap();
+        let hello_count = files
+            .iter()
+            .filter(|f| f.path.contains("hello.txt"))
+            .count();
+        assert_eq!(hello_count, 1);
+        assert_eq!(files.len(), 2);
+
+        // "." and "sub" overlap on sub/readme.md — dedup keeps first occurrence
+        let agent2 = serde_json::json!({
+            "name": "test",
+            "initial_files": [".", "sub"]
+        });
+
+        let files2 = expand_initial_files_globs(&agent2, dir.path(), false).unwrap();
+        assert_eq!(files2.len(), 2);
+        assert!(files2.iter().any(|f| f.path == "/workspace/hello.txt"));
+        assert!(files2.iter().any(|f| f.path == "/workspace/sub/readme.md"));
+    }
+
+    #[test]
+    fn test_expand_initial_files_globs_single_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("README.md"), "# Readme").unwrap();
+        std::fs::write(dir.path().join("other.txt"), "other").unwrap();
+
+        let agent = serde_json::json!({
+            "name": "test",
+            "initial_files": ["README.md"]
+        });
+
+        let files = expand_initial_files_globs(&agent, dir.path(), false).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "/workspace/README.md");
+        assert_eq!(files[0].content, "# Readme");
+    }
+
+    #[test]
+    fn test_expand_initial_files_globs_writable() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("hello.txt"), "world").unwrap();
+
+        let agent = serde_json::json!({
+            "name": "test",
+            "initial_files": ["."]
+        });
+
+        let files = expand_initial_files_globs(&agent, dir.path(), true).unwrap();
+        assert!(files.iter().all(|f| !f.is_readonly));
+    }
+
+    #[test]
+    fn test_expand_initial_files_globs_nonexistent_errors() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let agent = serde_json::json!({
+            "name": "test",
+            "initial_files": ["nonexistent"]
+        });
+
+        let result = expand_initial_files_globs(&agent, dir.path(), false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_expand_initial_files_rejects_hidden_single_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".env"), "SECRET=key").unwrap();
+        std::fs::write(dir.path().join("ok.txt"), "safe").unwrap();
+
+        // Explicitly listing .env should be rejected (hidden, not in allowlist)
+        let agent = serde_json::json!({
+            "name": "test",
+            "initial_files": [".env", "ok.txt"]
+        });
+
+        let files = expand_initial_files_globs(&agent, dir.path(), false).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "/workspace/ok.txt");
+    }
+
+    #[test]
+    fn test_glob_base_dir() {
+        assert_eq!(glob_base_dir("."), ".");
+        assert_eq!(glob_base_dir(".agents"), ".agents");
+        assert_eq!(glob_base_dir(".agents/*"), ".agents");
+        assert_eq!(glob_base_dir("src/**/*.rs"), "src");
+        assert_eq!(glob_base_dir("*.txt"), "");
+        assert_eq!(glob_base_dir("dir/sub/*.md"), "dir/sub");
     }
 }
