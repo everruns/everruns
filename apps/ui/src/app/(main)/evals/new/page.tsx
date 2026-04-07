@@ -110,6 +110,7 @@ export default function NewEvalPage() {
                 value={formData.agent_id}
                 onValueChange={(value) => setFormData({ ...formData, agent_id: value })}
                 placeholder="Select an agent"
+                className="w-full"
               />
             </div>
 
@@ -119,6 +120,7 @@ export default function NewEvalPage() {
                 value={formData.harness_id}
                 onValueChange={(value) => setFormData({ ...formData, harness_id: value })}
                 placeholder="Select a harness"
+                className="w-full"
               />
             </div>
 
