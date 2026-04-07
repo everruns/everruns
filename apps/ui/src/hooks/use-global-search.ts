@@ -94,8 +94,18 @@ const NAVIGATION_PAGES: NavigationPage[] = [
   { title: "Skills", href: "/skills", icon: BookOpen, keywords: ["ability", "tool"] },
   { title: "Capabilities", href: "/capabilities", icon: Puzzle },
   { title: "Apps", href: "/apps", icon: Rocket, keywords: ["deploy", "channel"] },
-  { title: "Evals", href: "/evals", icon: FlaskConical, keywords: ["evaluation", "test", "benchmark", "score"] },
-  { title: "MCP Servers", href: "/mcp-servers", icon: Server, keywords: ["mcp", "tool", "integration"] },
+  {
+    title: "Evals",
+    href: "/evals",
+    icon: FlaskConical,
+    keywords: ["evaluation", "test", "benchmark", "score"],
+  },
+  {
+    title: "MCP Servers",
+    href: "/mcp-servers",
+    icon: Server,
+    keywords: ["mcp", "tool", "integration"],
+  },
   { title: "Settings", href: "/settings", icon: Settings, keywords: ["preferences", "config"] },
   {
     title: "Settings > Profile",
@@ -421,7 +431,9 @@ export function useGlobalSearch(query: string) {
     let identityCount = 0;
     for (const identity of agentIdentities) {
       if (identityCount >= MAX_PER_CATEGORY) break;
-      if (matchesTokens(tokens, identity.name, identity.description, identity.id, "agent identity")) {
+      if (
+        matchesTokens(tokens, identity.name, identity.description, identity.id, "agent identity")
+      ) {
         results.push({
           id: `identity:${identity.id}`,
           category: "agent_identity",
@@ -435,5 +447,16 @@ export function useGlobalSearch(query: string) {
     }
 
     return results;
-  }, [query, agents, sessions, harnesses, skills, mcpServers, capabilities, evals, apps, agentIdentities]);
+  }, [
+    query,
+    agents,
+    sessions,
+    harnesses,
+    skills,
+    mcpServers,
+    capabilities,
+    evals,
+    apps,
+    agentIdentities,
+  ]);
 }
