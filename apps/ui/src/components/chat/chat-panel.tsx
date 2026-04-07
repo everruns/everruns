@@ -37,6 +37,7 @@ export function ChatPanel() {
     isActive,
     reasoningEffort,
     setReasoningEffort,
+    isWaitingForResponse,
     setIsWaitingForResponse,
     isThinking,
     streamingText,
@@ -92,7 +93,7 @@ export function ChatPanel() {
       loadingOlderEvents,
       loadOlderEvents,
       sessionId,
-      scrollDeps: [streamingText, isThinking],
+      scrollDeps: [streamingText, isThinking, isWaitingForResponse],
     });
 
   const { isDraggingOver, dropZoneProps, handlePaste } = useImageDropZone({
@@ -199,7 +200,7 @@ export function ChatPanel() {
           getToolCalls={getToolCalls}
         />
 
-        {(isThinking || streamingText) && (
+        {(isWaitingForResponse || isThinking || streamingText) && (
           <div className="mt-6 flex justify-start">
             <div className={chatSurfaceStyles.agentMessageRow}>
               <div className={chatSurfaceStyles.agentIcon}>
@@ -211,11 +212,11 @@ export function ChatPanel() {
                     {t("iteration", { value: streamingIteration })}
                   </div>
                 )}
-                {isThinking && !streamingText ? (
-                  <ThinkingIndicator />
-                ) : streamingText ? (
+                {streamingText ? (
                   <StreamingMessage text={streamingText} />
-                ) : null}
+                ) : (
+                  <ThinkingIndicator />
+                )}
               </div>
             </div>
           </div>

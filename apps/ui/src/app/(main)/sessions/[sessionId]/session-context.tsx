@@ -381,7 +381,24 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
       return !realUserTexts.has(optText);
     });
 
-    return [...realChatEvents, ...pendingOptimisticEvents];
+    const merged = [...realChatEvents, ...pendingOptimisticEvents];
+    // Sort by sequence to guarantee correct chronological order regardless of
+    // SSE arrival order. Optimistic events use sequence -1, so they naturally
+    // sort before real events — but we want them at the end (they represent the
+    // latest user message). Use timestamp as tiebreaker for equal/missing sequences.
+    merged.sort((a, b) => {
+      const seqA = a.sequence ?? -1;
+      const seqB = b.sequence ?? -1;
+      if (seqA !== seqB) {
+        // Push optimistic (sequence -1) to end by treating -1 as Infinity
+        const effA = seqA < 0 ? Number.MAX_SAFE_INTEGER : seqA;
+        const effB = seqB < 0 ? Number.MAX_SAFE_INTEGER : seqB;
+        return effA - effB;
+      }
+      // Same sequence — compare by timestamp
+      return a.ts.localeCompare(b.ts);
+    });
+    return merged;
   }, [events, optimisticEvents]);
 
   // Build tool result lookup by tool_call_id
