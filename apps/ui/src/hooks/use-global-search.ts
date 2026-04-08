@@ -81,20 +81,55 @@ interface NavigationPage {
 }
 
 const NAVIGATION_PAGES: NavigationPage[] = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, keywords: ["home", "overview"] },
-  { title: "Sessions", href: "/sessions", icon: MessageSquare, keywords: ["chat", "conversation"] },
-  { title: "Chat", href: "/chat", icon: MessageCircle, keywords: ["global chat"] },
-  { title: "Agents", href: "/agents", icon: Boxes, keywords: ["bot", "assistant"] },
+  {
+    title: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    keywords: ["home", "overview"],
+  },
+  {
+    title: "Sessions",
+    href: "/sessions",
+    icon: MessageSquare,
+    keywords: ["chat", "conversation"],
+  },
+  {
+    title: "Chat",
+    href: "/chat",
+    icon: MessageCircle,
+    keywords: ["global chat"],
+  },
+  {
+    title: "Agents",
+    href: "/agents",
+    icon: Boxes,
+    keywords: ["bot", "assistant"],
+  },
   {
     title: "Agent Identities",
     href: "/agent-identities",
     icon: UserRound,
     keywords: ["persona", "principal", "identity"],
   },
-  { title: "Harnesses", href: "/harnesses", icon: Shield, keywords: ["template", "config"] },
-  { title: "Skills", href: "/skills", icon: BookOpen, keywords: ["ability", "tool"] },
+  {
+    title: "Harnesses",
+    href: "/harnesses",
+    icon: Shield,
+    keywords: ["template", "config"],
+  },
+  {
+    title: "Skills",
+    href: "/skills",
+    icon: BookOpen,
+    keywords: ["ability", "tool"],
+  },
   { title: "Capabilities", href: "/capabilities", icon: Puzzle },
-  { title: "Apps", href: "/apps", icon: Rocket, keywords: ["deploy", "channel"] },
+  {
+    title: "Apps",
+    href: "/apps",
+    icon: Rocket,
+    keywords: ["deploy", "channel"],
+  },
   {
     title: "Evals",
     href: "/evals",
@@ -107,7 +142,12 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     icon: Server,
     keywords: ["mcp", "tool", "integration"],
   },
-  { title: "Settings", href: "/settings", icon: Settings, keywords: ["preferences", "config"] },
+  {
+    title: "Settings",
+    href: "/settings",
+    icon: Settings,
+    keywords: ["preferences", "config"],
+  },
   {
     title: "Settings > Profile",
     href: "/settings/profile",
@@ -169,7 +209,11 @@ const ID_PREFIX_MAP: Record<
   mcp_: { category: "mcp_server", label: "MCP Server", path: "/mcp-servers" },
   eval_: { category: "eval", label: "Eval", path: "/evals" },
   app_: { category: "app", label: "App", path: "/apps" },
-  identity_: { category: "agent_identity", label: "Agent Identity", path: "/agent-identities" },
+  identity_: {
+    category: "agent_identity",
+    label: "Agent Identity",
+    path: "/agent-identities",
+  },
 };
 
 /**
@@ -178,7 +222,10 @@ const ID_PREFIX_MAP: Record<
  * matches an agent named "Daytona Coder" because "daytona" hits the name
  * and "agent" hits the category context passed via `extraContext`.
  */
-function matchesTokens(tokens: string[], ...texts: (string | undefined | null)[]): boolean {
+function matchesTokens(
+  tokens: string[],
+  ...texts: (string | undefined | null)[]
+): boolean {
   const combined = texts
     .filter(Boolean)
     .map((t) => t!.toLowerCase())
@@ -232,7 +279,9 @@ export function useGlobalSearch(query: string) {
     for (const [prefix, meta] of Object.entries(ID_PREFIX_MAP)) {
       if (q.startsWith(prefix) || q.startsWith(prefix.replace("_", ""))) {
         // Normalize: allow "session3242" or "session_3242"
-        const idValue = q.startsWith(prefix) ? q : `${prefix}${q.slice(prefix.length - 1)}`;
+        const idValue = q.startsWith(prefix)
+          ? q
+          : `${prefix}${q.slice(prefix.length - 1)}`;
 
         // Try to resolve a friendly name from cached data
         let resolvedName: string | undefined;
@@ -260,7 +309,9 @@ export function useGlobalSearch(query: string) {
           id: `id:${idValue}`,
           category: "id",
           icon: Boxes,
-          title: resolvedName ? `${meta.label}: ${resolvedName}` : `Go to ${meta.label}`,
+          title: resolvedName
+            ? `${meta.label}: ${resolvedName}`
+            : `Go to ${meta.label}`,
           subtitle: idValue,
           href: `${meta.path}/${idValue}`,
         });
@@ -288,7 +339,16 @@ export function useGlobalSearch(query: string) {
     for (const agent of agents) {
       if (agentCount >= MAX_PER_CATEGORY) break;
       const agentDisplayName = getDisplayName(agent);
-      if (matchesTokens(tokens, agent.name, agentDisplayName, agent.description, agent.id, "agent")) {
+      if (
+        matchesTokens(
+          tokens,
+          agent.name,
+          agentDisplayName,
+          agent.description,
+          agent.id,
+          "agent",
+        )
+      ) {
         results.push({
           id: `agent:${agent.id}`,
           category: "agent",
@@ -306,7 +366,9 @@ export function useGlobalSearch(query: string) {
     for (const session of sessions) {
       if (sessionCount >= MAX_PER_CATEGORY) break;
       const title = session.title || session.preview || session.id;
-      if (matchesTokens(tokens, title, session.id, session.preview, "session")) {
+      if (
+        matchesTokens(tokens, title, session.id, session.preview, "session")
+      ) {
         results.push({
           id: `session:${session.id}`,
           category: "session",
@@ -323,7 +385,15 @@ export function useGlobalSearch(query: string) {
     let harnessCount = 0;
     for (const harness of harnesses) {
       if (harnessCount >= MAX_PER_CATEGORY) break;
-      if (matchesTokens(tokens, harness.name, harness.description, harness.id, "harness")) {
+      if (
+        matchesTokens(
+          tokens,
+          harness.name,
+          harness.description,
+          harness.id,
+          "harness",
+        )
+      ) {
         results.push({
           id: `harness:${harness.id}`,
           category: "harness",
@@ -340,7 +410,9 @@ export function useGlobalSearch(query: string) {
     let skillCount = 0;
     for (const skill of skills) {
       if (skillCount >= MAX_PER_CATEGORY) break;
-      if (matchesTokens(tokens, skill.name, skill.description, skill.id, "skill")) {
+      if (
+        matchesTokens(tokens, skill.name, skill.description, skill.id, "skill")
+      ) {
         results.push({
           id: `skill:${skill.id}`,
           category: "skill",
@@ -357,7 +429,15 @@ export function useGlobalSearch(query: string) {
     let mcpCount = 0;
     for (const server of mcpServers) {
       if (mcpCount >= MAX_PER_CATEGORY) break;
-      if (matchesTokens(tokens, server.name, server.description, server.id, "mcp server")) {
+      if (
+        matchesTokens(
+          tokens,
+          server.name,
+          server.description,
+          server.id,
+          "mcp server",
+        )
+      ) {
         results.push({
           id: `mcp:${server.id}`,
           category: "mcp_server",
@@ -435,7 +515,13 @@ export function useGlobalSearch(query: string) {
     for (const identity of agentIdentities) {
       if (identityCount >= MAX_PER_CATEGORY) break;
       if (
-        matchesTokens(tokens, identity.name, identity.description, identity.id, "agent identity")
+        matchesTokens(
+          tokens,
+          identity.name,
+          identity.description,
+          identity.id,
+          "agent identity",
+        )
       ) {
         results.push({
           id: `identity:${identity.id}`,

@@ -23,11 +23,28 @@ import { ProviderIcon } from "@/components/providers/provider-icon";
 import { SessionCard } from "@/components/session/session-card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AgentPreview } from "@/components/agents/agent-preview";
-import { ArrowLeft, Plus, Pencil, Download, Copy, Zap, Eye, LayoutDashboard } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  Pencil,
+  Download,
+  Copy,
+  Zap,
+  Eye,
+  LayoutDashboard,
+} from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
-import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
+import type {
+  Capability,
+  LlmModelWithProvider,
+  TokenUsage,
+} from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
-import { getDisplayName, getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import {
+  getDisplayName,
+  getEntityNameClassName,
+  getEntityStatusBadgeVariant,
+} from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
 import { formatTokens } from "@/lib/formatting";
 
@@ -36,15 +53,22 @@ function totalTokens(usage: TokenUsage): number {
   return usage.input_tokens + usage.output_tokens;
 }
 
-export default function AgentDetailPage({ params }: { params: Promise<{ agentId: string }> }) {
+export default function AgentDetailPage({
+  params,
+}: {
+  params: Promise<{ agentId: string }>;
+}) {
   const { agentId } = use(params);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   // Fetch only top 10 sessions for the overview
-  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(agentId, {
-    limit: 10,
-  });
+  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(
+    agentId,
+    {
+      limit: 10,
+    },
+  );
   const sessions = sessionsResponse?.data ?? [];
   const totalSessions = sessionsResponse?.total ?? 0;
   const hasMoreSessions = totalSessions > 10;
@@ -63,7 +87,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   }, [llmModels]);
 
   // Get the agent's default model
-  const defaultModel = agent?.default_model_id ? modelMap.get(agent.default_model_id) : undefined;
+  const defaultModel = agent?.default_model_id
+    ? modelMap.get(agent.default_model_id)
+    : undefined;
 
   const handleNewSession = async () => {
     const harnessId = organization?.default_harness_id || harnesses?.[0]?.id;
@@ -146,18 +172,32 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <span className={getEntityNameClassName(agent.status)}>{getDisplayName(agent)}</span>
+            <span className={getEntityNameClassName(agent.status)}>
+              {getDisplayName(agent)}
+            </span>
             <CopyButton value={agent.id} />
-            <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
+            <Badge variant={getEntityStatusBadgeVariant(agent.status)}>
+              {agent.status}
+            </Badge>
           </h1>
-          <p className="text-sm text-muted-foreground font-mono mt-1">{agent.name}</p>
+          <p className="text-sm text-muted-foreground font-mono mt-1">
+            {agent.name}
+          </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleCopy} disabled={copyAgent.isPending}>
+          <Button
+            variant="outline"
+            onClick={handleCopy}
+            disabled={copyAgent.isPending}
+          >
             <Copy className="w-4 h-4 mr-2" />
             {copyAgent.isPending ? "Copying..." : "Copy"}
           </Button>
-          <Button variant="outline" onClick={handleExport} disabled={exportAgent.isPending}>
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={exportAgent.isPending}
+          >
             <Download className="w-4 h-4 mr-2" />
             {exportAgent.isPending ? "Exporting..." : "Export"}
           </Button>
@@ -232,7 +272,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                         <SessionCard
                           key={session.id}
                           session={session}
-                          model={session.model_id ? modelMap.get(session.model_id) : undefined}
+                          model={
+                            session.model_id
+                              ? modelMap.get(session.model_id)
+                              : undefined
+                          }
                         />
                       ))}
                       {hasMoreSessions && (
@@ -280,7 +324,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                             <IconComponent className="w-4 h-4" />
                             <div className="flex-1">
                               <p className="text-sm font-medium">{cap.name}</p>
-                              <p className="text-xs text-muted-foreground">{cap.description}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {cap.description}
+                              </p>
                             </div>
                           </div>
                         );
@@ -299,8 +345,13 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                     <div>
                       <p className="text-sm font-medium mb-2">Default Model</p>
                       <div className="flex items-center gap-2">
-                        <ProviderIcon providerType={defaultModel.provider_type} size="sm" />
-                        <span className="text-sm">{defaultModel.display_name}</span>
+                        <ProviderIcon
+                          providerType={defaultModel.provider_type}
+                          size="sm"
+                        />
+                        <span className="text-sm">
+                          {defaultModel.display_name}
+                        </span>
                       </div>
                     </div>
                   )}
@@ -309,7 +360,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                     <div>
                       <p className="text-sm font-medium">Description</p>
                       <div className="text-sm text-muted-foreground">
-                        <InlineStreamdownMessage>{agent.description}</InlineStreamdownMessage>
+                        <InlineStreamdownMessage>
+                          {agent.description}
+                        </InlineStreamdownMessage>
                       </div>
                     </div>
                   )}

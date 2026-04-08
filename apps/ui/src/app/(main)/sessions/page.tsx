@@ -31,7 +31,10 @@ import { Label } from "@/components/ui/label";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { exportSessionJsonl } from "@/lib/api/sessions";
 import type { LlmModelWithProvider, Agent } from "@/lib/api/types";
-import { getDisplayName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
+import {
+  getDisplayName,
+  getEntityReferenceLabel,
+} from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
 
 const PAGE_SIZE = 20;
@@ -43,10 +46,13 @@ export default function SessionsPage() {
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
   const [newSessionHarnessId, setNewSessionHarnessId] = useState<string>("");
   const [newSessionAgentId, setNewSessionAgentId] = useState<string>("");
-  const [newSessionAgentIdentityId, setNewSessionAgentIdentityId] = useState<string>("");
+  const [newSessionAgentIdentityId, setNewSessionAgentIdentityId] =
+    useState<string>("");
   const offset = page * PAGE_SIZE;
 
-  const { data: agents, isLoading: agentsLoading } = useAgents({ includeArchived: true });
+  const { data: agents, isLoading: agentsLoading } = useAgents({
+    includeArchived: true,
+  });
   const { data: organization } = useOrganization();
   const { data: harnesses } = useHarnesses();
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(
@@ -85,7 +91,9 @@ export default function SessionsPage() {
   const handleOpenNewSessionDialog = () => {
     const defaultHarnessId = organization?.default_harness_id;
     const genericHarness = harnesses?.find((h) => h.name === "Generic");
-    setNewSessionHarnessId(defaultHarnessId || genericHarness?.id || harnesses?.[0]?.id || "");
+    setNewSessionHarnessId(
+      defaultHarnessId || genericHarness?.id || harnesses?.[0]?.id || "",
+    );
     // Pre-select the filtered agent if one is selected, otherwise leave empty (optional)
     setNewSessionAgentId(selectedAgentId || "");
     setNewSessionDialogOpen(true);
@@ -143,7 +151,11 @@ export default function SessionsPage() {
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Sessions</h1>
-        <Button variant="accent" onClick={handleOpenNewSessionDialog} disabled={!harnesses?.length}>
+        <Button
+          variant="accent"
+          onClick={handleOpenNewSessionDialog}
+          disabled={!harnesses?.length}
+        >
           <Plus className="w-4 h-4 mr-2" />
           New Session
         </Button>
@@ -153,13 +165,18 @@ export default function SessionsPage() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
             <CardTitle>
-              {selectedAgentId ? getDisplayName(agentMap.get(selectedAgentId)) || "Agent" : "All Agents"}
+              {selectedAgentId
+                ? getDisplayName(agentMap.get(selectedAgentId)) || "Agent"
+                : "All Agents"}
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
               {totalSessions} session{totalSessions !== 1 ? "s" : ""}
             </p>
           </div>
-          <AgentFilterMenu value={selectedAgentId} onValueChange={handleAgentFilterChange} />
+          <AgentFilterMenu
+            value={selectedAgentId}
+            onValueChange={handleAgentFilterChange}
+          />
         </CardHeader>
         <CardContent>
           {sessionsLoading || agentsLoading ? (
@@ -175,7 +192,9 @@ export default function SessionsPage() {
           ) : (
             <div className="space-y-2">
               {sessions.map((session) => {
-                const agent = session.agent_id ? agentMap.get(session.agent_id) : undefined;
+                const agent = session.agent_id
+                  ? agentMap.get(session.agent_id)
+                  : undefined;
                 return (
                   <SessionCard
                     key={session.id}
@@ -189,8 +208,16 @@ export default function SessionsPage() {
                           })
                         : undefined
                     }
-                    agentStatus={session.agent_id ? (agent?.status ?? "deleted") : undefined}
-                    model={session.model_id ? modelMap.get(session.model_id) : undefined}
+                    agentStatus={
+                      session.agent_id
+                        ? (agent?.status ?? "deleted")
+                        : undefined
+                    }
+                    model={
+                      session.model_id
+                        ? modelMap.get(session.model_id)
+                        : undefined
+                    }
                     onTogglePin={handleTogglePin}
                     onExport={handleExport}
                   />
@@ -203,8 +230,9 @@ export default function SessionsPage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4 pt-4 border-t">
               <p className="text-sm text-muted-foreground">
-                Showing {offset + 1}-{Math.min(offset + PAGE_SIZE, totalSessions)} of{" "}
-                {totalSessions} sessions
+                Showing {offset + 1}-
+                {Math.min(offset + PAGE_SIZE, totalSessions)} of {totalSessions}{" "}
+                sessions
               </p>
               <div className="flex items-center gap-2">
                 <Button
@@ -235,12 +263,16 @@ export default function SessionsPage() {
       </Card>
 
       {/* New Session Dialog */}
-      <Dialog open={newSessionDialogOpen} onOpenChange={setNewSessionDialogOpen}>
+      <Dialog
+        open={newSessionDialogOpen}
+        onOpenChange={setNewSessionDialogOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New Session</DialogTitle>
             <DialogDescription>
-              Select a harness and optionally an agent to start a new conversation.
+              Select a harness and optionally an agent to start a new
+              conversation.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
@@ -271,7 +303,10 @@ export default function SessionsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNewSessionDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setNewSessionDialogOpen(false)}
+            >
               Cancel
             </Button>
             <Button

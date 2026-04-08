@@ -58,10 +58,16 @@ export function AgentSelect({
   const selectedAgent = value ? agentMap.get(value) : undefined;
   const displayValue = selectedAgent
     ? getDisplayName(selectedAgent)
-    : includeAll ? allLabel : undefined;
+    : includeAll
+      ? allLabel
+      : undefined;
 
   return (
-    <Select value={selectValue} onValueChange={handleChange} disabled={disabled}>
+    <Select
+      value={selectValue}
+      onValueChange={handleChange}
+      disabled={disabled}
+    >
       <SelectTrigger className={className}>
         <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
       </SelectTrigger>

@@ -13,7 +13,13 @@ import {
 } from "@/hooks";
 import { usePolicies } from "@/hooks/use-policies";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,7 +38,16 @@ import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
-import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Save,
+  Trash2,
+  Eye,
+  Edit2,
+  Check,
+  X,
+  Loader2,
+} from "lucide-react";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
@@ -45,7 +60,11 @@ interface FormData {
   default_model_id: string;
 }
 
-export default function EditAgentPage({ params }: { params: Promise<{ agentId: string }> }) {
+export default function EditAgentPage({
+  params,
+}: {
+  params: Promise<{ agentId: string }>;
+}) {
   const { agentId } = use(params);
   const router = useRouter();
 
@@ -57,7 +76,8 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   const { can: canPolicies } = usePolicies("agents");
 
   // Capabilities data
-  const { data: allCapabilities, isLoading: capabilitiesLoading } = useCapabilities();
+  const { data: allCapabilities, isLoading: capabilitiesLoading } =
+    useCapabilities();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<string>("edit");
@@ -69,7 +89,14 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   // Compute initial values from agent data
   const initialFormData = useMemo((): FormData => {
     if (!agent) {
-      return { display_name: "", name: "", description: "", system_prompt: "", tags: "", default_model_id: "" };
+      return {
+        display_name: "",
+        name: "",
+        description: "",
+        system_prompt: "",
+        tags: "",
+        default_model_id: "",
+      };
     }
     return {
       display_name: agent.display_name || "",
@@ -87,13 +114,19 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
     [initialFormData, formChanges],
   );
 
-  const handleFormChange = useCallback((field: keyof FormData, value: string) => {
-    setFormChanges((prev) => ({ ...prev, [field]: value }));
-  }, []);
+  const handleFormChange = useCallback(
+    (field: keyof FormData, value: string) => {
+      setFormChanges((prev) => ({ ...prev, [field]: value }));
+    },
+    [],
+  );
 
   // Only check availability when name has been changed from original
   const nameChanged = formData.name !== initialFormData.name;
-  const nameAvailability = useAgentNameAvailability(nameChanged ? formData.name : "", agentId);
+  const nameAvailability = useAgentNameAvailability(
+    nameChanged ? formData.name : "",
+    agentId,
+  );
 
   // Capabilities state - now included directly in agent response
   // Use full AgentCapabilityConfig objects to preserve per-agent config
@@ -101,16 +134,26 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
     return agent?.capabilities ?? [];
   }, [agent?.capabilities]);
 
-  const [localCapabilities, setLocalCapabilities] = useState<AgentCapabilityConfig[] | null>(null);
+  const [localCapabilities, setLocalCapabilities] = useState<
+    AgentCapabilityConfig[] | null
+  >(null);
   const selectedCapabilities = localCapabilities ?? initialCapabilities;
-  const initialFiles = useMemo(() => agent?.initial_files ?? [], [agent?.initial_files]);
-  const [localInitialFiles, setLocalInitialFiles] = useState<InitialFile[] | null>(null);
+  const initialFiles = useMemo(
+    () => agent?.initial_files ?? [],
+    [agent?.initial_files],
+  );
+  const [localInitialFiles, setLocalInitialFiles] = useState<
+    InitialFile[] | null
+  >(null);
   const selectedInitialFiles = localInitialFiles ?? initialFiles;
 
   // Capabilities change handler
-  const handleCapabilitiesChange = useCallback((newCapabilities: AgentCapabilityConfig[]) => {
-    setLocalCapabilities(newCapabilities);
-  }, []);
+  const handleCapabilitiesChange = useCallback(
+    (newCapabilities: AgentCapabilityConfig[]) => {
+      setLocalCapabilities(newCapabilities);
+    },
+    [],
+  );
 
   // Submit handler
   const handleSubmit = async (e: React.FormEvent) => {
@@ -126,7 +169,8 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
       // Get capabilities to save (already full AgentCapabilityConfig format)
       const capabilitiesToSave = localCapabilities ?? initialCapabilities;
       const capabilitiesChanged =
-        JSON.stringify(capabilitiesToSave) !== JSON.stringify(initialCapabilities);
+        JSON.stringify(capabilitiesToSave) !==
+        JSON.stringify(initialCapabilities);
       const initialFilesToSave = localInitialFiles ?? initialFiles;
       const initialFilesChanged =
         JSON.stringify(initialFilesToSave) !== JSON.stringify(initialFiles);
@@ -249,7 +293,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         id="display_name"
                         placeholder="Customer Support Agent"
                         value={formData.display_name}
-                        onChange={(e) => handleFormChange("display_name", e.target.value)}
+                        onChange={(e) =>
+                          handleFormChange("display_name", e.target.value)
+                        }
                         disabled={isSaving || isReadOnly}
                       />
                       <p className="text-xs text-muted-foreground">
@@ -263,7 +309,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         id="name"
                         placeholder="customer-support"
                         value={formData.name}
-                        onChange={(e) => handleFormChange("name", e.target.value)}
+                        onChange={(e) =>
+                          handleFormChange("name", e.target.value)
+                        }
                         disabled={isSaving || isReadOnly}
                         required
                       />
@@ -272,23 +320,30 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                           {nameAvailability.isChecking ? (
                             <>
                               <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-                              <span className="text-muted-foreground">Checking availability…</span>
+                              <span className="text-muted-foreground">
+                                Checking availability…
+                              </span>
                             </>
                           ) : nameAvailability.available === true ? (
                             <>
                               <Check className="w-3 h-3 text-green-600" />
-                              <span className="text-green-600">Name is available</span>
+                              <span className="text-green-600">
+                                Name is available
+                              </span>
                             </>
                           ) : nameAvailability.available === false ? (
                             <>
                               <X className="w-3 h-3 text-destructive" />
-                              <span className="text-destructive">Name is already taken or invalid</span>
+                              <span className="text-destructive">
+                                Name is already taken or invalid
+                              </span>
                             </>
                           ) : null}
                         </div>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        Unique identifier used in URLs and API. Lowercase letters, numbers, and hyphens.
+                        Unique identifier used in URLs and API. Lowercase
+                        letters, numbers, and hyphens.
                       </p>
                     </div>
 
@@ -298,7 +353,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         id="description"
                         placeholder="Describe what this agent does..."
                         value={formData.description}
-                        onChange={(e) => handleFormChange("description", e.target.value)}
+                        onChange={(e) =>
+                          handleFormChange("description", e.target.value)
+                        }
                         disabled={isSaving || isReadOnly}
                         rows={2}
                       />
@@ -310,22 +367,29 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         id="tags"
                         placeholder="tag1, tag2, tag3"
                         value={formData.tags}
-                        onChange={(e) => handleFormChange("tags", e.target.value)}
+                        onChange={(e) =>
+                          handleFormChange("tags", e.target.value)
+                        }
                         disabled={isSaving || isReadOnly}
                       />
-                      <p className="text-xs text-muted-foreground">Comma-separated list of tags</p>
+                      <p className="text-xs text-muted-foreground">
+                        Comma-separated list of tags
+                      </p>
                     </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="model">Model (optional)</Label>
                       <ModelPicker
                         value={formData.default_model_id || ""}
-                        onChange={(value) => handleFormChange("default_model_id", value)}
+                        onChange={(value) =>
+                          handleFormChange("default_model_id", value)
+                        }
                         disabled={isSaving || isReadOnly}
                         placeholder="Use default model"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Select a specific model or leave empty to use the default
+                        Select a specific model or leave empty to use the
+                        default
                       </p>
                     </div>
 
@@ -335,7 +399,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         id="system_prompt"
                         placeholder="You are a helpful assistant..."
                         value={formData.system_prompt}
-                        onChange={(value) => handleFormChange("system_prompt", value)}
+                        onChange={(value) =>
+                          handleFormChange("system_prompt", value)
+                        }
                         disabled={isSaving || isReadOnly}
                         required
                       />
@@ -356,14 +422,20 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                 {/* Danger Zone */}
                 <Card className="border-destructive/50">
                   <CardHeader>
-                    <CardTitle className="text-destructive">Danger Zone</CardTitle>
-                    <CardDescription>Irreversible actions that affect this agent</CardDescription>
+                    <CardTitle className="text-destructive">
+                      Danger Zone
+                    </CardTitle>
+                    <CardDescription>
+                      Irreversible actions that affect this agent
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-medium">
-                          {agent.status === "archived" ? "Delete this agent" : "Archive this agent"}
+                          {agent.status === "archived"
+                            ? "Delete this agent"
+                            : "Archive this agent"}
                         </p>
                         <p className="text-sm text-muted-foreground">
                           {agent.status === "archived"
@@ -380,7 +452,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                             disabled={destroyAgent.isPending}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
-                            {destroyAgent.isPending ? "Deleting..." : "Delete Agent"}
+                            {destroyAgent.isPending
+                              ? "Deleting..."
+                              : "Delete Agent"}
                           </Button>
                         )
                       ) : (
@@ -390,7 +464,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                           onClick={handleArchive}
                           disabled={deleteAgent.isPending}
                         >
-                          {deleteAgent.isPending ? "Archiving..." : "Archive Agent"}
+                          {deleteAgent.isPending
+                            ? "Archiving..."
+                            : "Archive Agent"}
                         </Button>
                       )}
                     </div>
@@ -416,7 +492,11 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
 
                 {/* Save button */}
                 <div className="flex gap-4">
-                  <Button type="submit" disabled={isSaving || isReadOnly} className="flex-1">
+                  <Button
+                    type="submit"
+                    disabled={isSaving || isReadOnly}
+                    className="flex-1"
+                  >
                     <Save className="w-4 h-4 mr-2" />
                     {isReadOnly
                       ? "Archived Agents Are Read-Only"
@@ -424,13 +504,19 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         ? "Saving..."
                         : "Save Changes"}
                   </Button>
-                  <Button type="button" variant="outline" onClick={() => router.back()}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => router.back()}
+                  >
                     Cancel
                   </Button>
                 </div>
 
                 {updateAgent.error && (
-                  <p className="text-sm text-destructive">Error: {updateAgent.error.message}</p>
+                  <p className="text-sm text-destructive">
+                    Error: {updateAgent.error.message}
+                  </p>
                 )}
               </div>
             </div>
@@ -458,11 +544,15 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                 <CardContent className="space-y-4">
                   <div>
                     <p className="text-sm font-medium">Display Name</p>
-                    <p className="text-sm text-muted-foreground">{formData.display_name || "(not set)"}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {formData.display_name || "(not set)"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium">Name</p>
-                    <p className="text-sm text-muted-foreground font-mono">{formData.name || "(not set)"}</p>
+                    <p className="text-sm text-muted-foreground font-mono">
+                      {formData.name || "(not set)"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium">Description</p>
@@ -483,8 +573,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
               <Card className="border-dashed">
                 <CardContent className="pt-6">
                   <p className="text-sm text-muted-foreground text-center">
-                    This preview shows what the final agent will look like after applying all
-                    capabilities. Switch to the Edit tab to make changes.
+                    This preview shows what the final agent will look like after
+                    applying all capabilities. Switch to the Edit tab to make
+                    changes.
                   </p>
                 </CardContent>
               </Card>
@@ -497,15 +588,22 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           <DialogHeader>
             <DialogTitle>Delete Agent</DialogTitle>
             <DialogDescription>
-              Permanently delete the archived agent &quot;{agentDisplayName}&quot;? Existing references
-              will render as deleted tombstones.
+              Permanently delete the archived agent &quot;{agentDisplayName}
+              &quot;? Existing references will render as deleted tombstones.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteDialog(false)}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDestroy} disabled={destroyAgent.isPending}>
+            <Button
+              variant="destructive"
+              onClick={handleDestroy}
+              disabled={destroyAgent.isPending}
+            >
               {destroyAgent.isPending ? "Deleting..." : "Delete Agent"}
             </Button>
           </DialogFooter>

@@ -54,5 +54,5 @@ Verify the `/v1/agents/check-name` endpoint correctly reports name availability,
 | Step 3: `available` | `false` (name is taken) |
 | Step 4: `available` | `true` (excluded own ID) |
 | Step 5: `available` | `false` (invalid format) |
-| Step 6: `available` | `false` (too short / invalid) |
+| Step 6: `available` | `true` (single char is valid) |
 | All steps: HTTP status | 200 |

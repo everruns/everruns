@@ -1,7 +1,13 @@
 "use client";
 
 import { use, useState, useMemo } from "react";
-import { useAgent, useHarnesses, useSessions, useCreateSession, useLlmModels } from "@/hooks";
+import {
+  useAgent,
+  useHarnesses,
+  useSessions,
+  useCreateSession,
+  useLlmModels,
+} from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -15,17 +21,24 @@ import { useOrganization } from "@/hooks/use-organizations";
 
 const PAGE_SIZE = 20;
 
-export default function SessionsListPage({ params }: { params: Promise<{ agentId: string }> }) {
+export default function SessionsListPage({
+  params,
+}: {
+  params: Promise<{ agentId: string }>;
+}) {
   const { agentId } = use(params);
   const router = useRouter();
   const [page, setPage] = useState(0);
   const offset = page * PAGE_SIZE;
 
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
-  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(agentId, {
-    offset,
-    limit: PAGE_SIZE,
-  });
+  const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(
+    agentId,
+    {
+      offset,
+      limit: PAGE_SIZE,
+    },
+  );
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
   const { data: organization } = useOrganization();
@@ -95,12 +108,18 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
 
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">{getDisplayName(agent)} - Sessions</h1>
+          <h1 className="text-2xl font-bold">
+            {getDisplayName(agent)} - Sessions
+          </h1>
           <p className="text-muted-foreground">
             {totalSessions} session{totalSessions !== 1 ? "s" : ""} total
           </p>
         </div>
-        <Button variant="accent" onClick={handleNewSession} disabled={createSession.isPending}>
+        <Button
+          variant="accent"
+          onClick={handleNewSession}
+          disabled={createSession.isPending}
+        >
           <Plus className="w-4 h-4 mr-2" />
           {createSession.isPending ? "Creating..." : "New Session"}
         </Button>
@@ -127,7 +146,11 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
                 <SessionCard
                   key={session.id}
                   session={session}
-                  model={session.model_id ? modelMap.get(session.model_id) : undefined}
+                  model={
+                    session.model_id
+                      ? modelMap.get(session.model_id)
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -137,8 +160,9 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4 pt-4 border-t">
               <p className="text-sm text-muted-foreground">
-                Showing {offset + 1}-{Math.min(offset + PAGE_SIZE, totalSessions)} of{" "}
-                {totalSessions} sessions
+                Showing {offset + 1}-
+                {Math.min(offset + PAGE_SIZE, totalSessions)} of {totalSessions}{" "}
+                sessions
               </p>
               <div className="flex items-center gap-2">
                 <Button

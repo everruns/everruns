@@ -29,7 +29,11 @@ interface AgentFilterMenuProps {
  * Agent filter dropdown menu for filtering lists by agent.
  * Uses menu pattern (better for filters) instead of form select.
  */
-export function AgentFilterMenu({ value, onValueChange, className }: AgentFilterMenuProps) {
+export function AgentFilterMenu({
+  value,
+  onValueChange,
+  className,
+}: AgentFilterMenuProps) {
   const { data: agents = [] } = useAgents();
   const [open, setOpen] = useState(false);
 
@@ -47,13 +51,18 @@ export function AgentFilterMenu({ value, onValueChange, className }: AgentFilter
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger className={cn(buttonVariants({ variant: "outline" }), className)}>
+      <DropdownMenuTrigger
+        className={cn(buttonVariants({ variant: "outline" }), className)}
+      >
         {displayValue}
         <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
       </DropdownMenuTrigger>
       <DropdownMenuPositioner align="end">
         <DropdownMenuContent className="w-[200px]">
-          <DropdownMenuRadioGroup value={value} onValueChange={handleValueChange}>
+          <DropdownMenuRadioGroup
+            value={value}
+            onValueChange={handleValueChange}
+          >
             <DropdownMenuRadioItem value="">All agents</DropdownMenuRadioItem>
             {agents.map((agent) => (
               <DropdownMenuRadioItem key={agent.id} value={agent.id}>

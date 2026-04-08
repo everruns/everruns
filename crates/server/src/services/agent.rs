@@ -515,6 +515,7 @@ impl AgentService {
     }
 
     /// Check whether a name is available (for UI form validation).
+    #[policy(AGENT_VIEW)]
     pub async fn check_name_available(
         &self,
         caller: &Caller,

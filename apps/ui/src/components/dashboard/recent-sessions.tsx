@@ -6,8 +6,17 @@ import { Badge } from "@/components/ui/badge";
 import { MessageSquare, Loader2, Zap, Sparkles, Bot } from "lucide-react";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { shortenId } from "@/lib/utils";
-import type { Session, Agent, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
-import { getDisplayName, getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
+import type {
+  Session,
+  Agent,
+  LlmModelWithProvider,
+  TokenUsage,
+} from "@/lib/api/types";
+import {
+  getDisplayName,
+  getEntityReferenceClassName,
+  getEntityReferenceLabel,
+} from "@/lib/entity-lifecycle";
 
 interface RecentSessionsProps {
   sessions: Session[];
@@ -27,7 +36,11 @@ function formatTotalTokens(usage: TokenUsage): string {
 
 const MAX_RECENT = 10;
 
-export function RecentSessions({ sessions, agents, models = [] }: RecentSessionsProps) {
+export function RecentSessions({
+  sessions,
+  agents,
+  models = [],
+}: RecentSessionsProps) {
   const recentSessions = sessions.slice(0, MAX_RECENT);
   const agentMap = new Map(agents.map((a) => [a.id, a]));
   const modelMap = new Map(models.map((m) => [m.id, m]));
@@ -71,8 +84,12 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
         ) : (
           <div className="space-y-2">
             {recentSessions.map((session) => {
-              const agent = session.agent_id ? agentMap.get(session.agent_id) : undefined;
-              const model = session.model_id ? modelMap.get(session.model_id) : undefined;
+              const agent = session.agent_id
+                ? agentMap.get(session.agent_id)
+                : undefined;
+              const model = session.model_id
+                ? modelMap.get(session.model_id)
+                : undefined;
               const agentLabel = session.agent_id
                 ? getEntityReferenceLabel({
                     kind: "Agent",
@@ -106,7 +123,11 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                       {agentLabel && (
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Bot className="icon-sharp h-3 w-3" />
-                          <span className={getEntityReferenceClassName(agent?.status ?? "deleted")}>
+                          <span
+                            className={getEntityReferenceClassName(
+                              agent?.status ?? "deleted",
+                            )}
+                          >
                             {agentLabel}
                           </span>
                         </span>
@@ -137,7 +158,8 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                         </span>
                       )}
                       {session.usage &&
-                        (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
+                        (session.usage.input_tokens > 0 ||
+                          session.usage.output_tokens > 0) && (
                           <span className="flex items-center gap-1">
                             <Zap className="icon-sharp h-3 w-3" />
                             {formatTotalTokens(session.usage)}
