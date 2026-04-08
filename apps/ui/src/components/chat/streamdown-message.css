@@ -181,3 +181,27 @@
 .streamdown .markdown-alert-caution .markdown-alert-title {
   color: #cf222e;
 }
+
+/* Streaming cursor — rendered via ::after so it stays inline with the last
+   text element instead of dropping to the next line as a sibling span would. */
+.streaming-cursor .streamdown > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  margin-left: 0.25rem;
+  background-color: var(--color-primary);
+  opacity: 0.55;
+  vertical-align: text-bottom;
+  animation: streaming-cursor-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes streaming-cursor-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}

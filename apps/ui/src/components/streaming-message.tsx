@@ -26,9 +26,8 @@ export function StreamingMessage({ text, className }: StreamingMessageProps) {
         Generating
       </div>
 
-      <div>
+      <div className="streaming-cursor">
         <MessageContent text={text} isStreaming={true} />
-        <span className="ml-1 inline-block h-4 w-px animate-pulse bg-primary/55 align-text-bottom" />
       </div>
     </div>
   );
