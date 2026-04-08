@@ -125,6 +125,36 @@ pub struct Agent {
     pub usage: Option<TokenUsage>,
 }
 
+/// Maximum length for an addressable name (agent, harness, etc.).
+pub const MAX_ADDRESSABLE_NAME_LEN: usize = 64;
+
+/// Validate an addressable name: `[a-z0-9]([a-z0-9-]*[a-z0-9])?`.
+/// Max 64 chars, no consecutive hyphens, no leading/trailing hyphens.
+/// Returns `Ok(())` or a human-readable error message.
+pub fn validate_addressable_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("name must not be empty".to_string());
+    }
+    if name.len() > MAX_ADDRESSABLE_NAME_LEN {
+        return Err(format!(
+            "name must be at most {MAX_ADDRESSABLE_NAME_LEN} characters"
+        ));
+    }
+    if !name
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err("name must contain only lowercase letters, digits, and hyphens".to_string());
+    }
+    if name.starts_with('-') || name.ends_with('-') {
+        return Err("name must not start or end with a hyphen".to_string());
+    }
+    if name.contains("--") {
+        return Err("name must not contain consecutive hyphens".to_string());
+    }
+    Ok(())
+}
+
 /// Generate a new agent public_id using UUIDv7.
 pub fn generate_agent_public_id() -> AgentId {
     AgentId::new()
@@ -169,6 +199,28 @@ mod tests {
         )); // uppercase
         assert!(!validate_agent_public_id("agent_short"));
         assert!(!validate_agent_public_id("my-custom-agent"));
+    }
+
+    #[test]
+    fn test_validate_addressable_name_valid() {
+        assert!(validate_addressable_name("my-agent").is_ok());
+        assert!(validate_addressable_name("agent1").is_ok());
+        assert!(validate_addressable_name("a").is_ok());
+        assert!(validate_addressable_name("customer-support").is_ok());
+        assert!(validate_addressable_name("a-b-c").is_ok());
+    }
+
+    #[test]
+    fn test_validate_addressable_name_invalid() {
+        assert!(validate_addressable_name("").is_err());
+        assert!(validate_addressable_name("-leading").is_err());
+        assert!(validate_addressable_name("trailing-").is_err());
+        assert!(validate_addressable_name("bad--double").is_err());
+        assert!(validate_addressable_name("UPPERCASE").is_err());
+        assert!(validate_addressable_name("has space").is_err());
+        assert!(validate_addressable_name("Customer Support Agent").is_err());
+        let long = "a".repeat(65);
+        assert!(validate_addressable_name(&long).is_err());
     }
 
     #[test]

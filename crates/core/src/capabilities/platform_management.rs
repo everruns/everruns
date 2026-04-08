@@ -635,7 +635,11 @@ impl Tool for ManageAgentsTool {
                 },
                 "name": {
                     "type": "string",
-                    "description": "Agent name (required for create)"
+                    "description": "Addressable agent name (required for create). Lowercase letters, numbers, and hyphens only (e.g. 'customer-support')."
+                },
+                "display_name": {
+                    "type": "string",
+                    "description": "Human-readable display name shown in UI (e.g. 'Customer Support Agent'). Falls back to name when absent."
                 },
                 "description": {
                     "type": "string",
@@ -689,6 +693,10 @@ impl Tool for ManageAgentsTool {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
+                if let Err(msg) = crate::agent::validate_addressable_name(name) {
+                    return ToolExecutionResult::tool_error(format!("Invalid agent name: {msg}"));
+                }
+                let display_name = get_str(&arguments, "display_name");
                 let system_prompt =
                     get_str(&arguments, "system_prompt").unwrap_or("You are a helpful assistant.");
                 let description = get_str(&arguments, "description");
@@ -702,7 +710,13 @@ impl Tool for ManageAgentsTool {
                     })
                     .unwrap_or_default();
                 match store
-                    .create_agent(name, description, system_prompt, &capabilities)
+                    .create_agent(
+                        name,
+                        display_name,
+                        description,
+                        system_prompt,
+                        &capabilities,
+                    )
                     .await
                 {
                     Ok(a) => ToolExecutionResult::success(json!({

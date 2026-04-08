@@ -237,7 +237,10 @@ pub use tool_types::{
 
 // Domain entity re-exports
 // Note: LlmProvider entity is in llm_models module. Import as: everruns_core::llm_models::LlmProvider
-pub use agent::{Agent, AgentStatus, generate_agent_public_id, validate_agent_public_id};
+pub use agent::{
+    Agent, AgentStatus, MAX_ADDRESSABLE_NAME_LEN, generate_agent_public_id,
+    validate_addressable_name, validate_agent_public_id,
+};
 pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
 pub use app::{
     App, AppChannel, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode,

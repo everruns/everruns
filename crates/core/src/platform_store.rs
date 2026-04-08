@@ -82,6 +82,7 @@ pub trait PlatformStore: Send + Sync {
     async fn create_agent(
         &self,
         name: &str,
+        display_name: Option<&str>,
         description: Option<&str>,
         system_prompt: &str,
         capabilities: &[String],
@@ -348,12 +349,14 @@ pub mod tests {
         async fn create_agent(
             &self,
             name: &str,
+            display_name: Option<&str>,
             _desc: Option<&str>,
             _prompt: &str,
             _caps: &[String],
         ) -> Result<Agent> {
             let mut a = self.agent.clone();
             a.name = name.to_string();
+            a.display_name = display_name.map(|s| s.to_string());
             Ok(a)
         }
         async fn update_agent(
