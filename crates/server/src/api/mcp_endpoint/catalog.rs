@@ -204,7 +204,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "name",
                 typ: "string",
-                description: "Agent name (required)",
+                description: "Addressable agent name (required). Lowercase letters, numbers, and hyphens only (e.g. 'customer-support').",
             },
             Param {
                 name: "system_prompt",
@@ -279,7 +279,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "name",
                 typ: "string",
-                description: "New name",
+                description: "New addressable name. Lowercase letters, numbers, and hyphens only.",
             },
             Param {
                 name: "system_prompt",

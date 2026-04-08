@@ -1658,6 +1658,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     async fn create_agent(
         &self,
         name: &str,
+        display_name: Option<&str>,
         description: Option<&str>,
         system_prompt: &str,
         capabilities: &[String],
@@ -1668,7 +1669,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         let input = CreateAgentRow {
             public_id: public_id.to_string(),
             name: name.to_string(),
-            display_name: Some(name.to_string()),
+            display_name: display_name.map(|s| s.to_string()),
             description: description.map(|s| s.to_string()),
             system_prompt: system_prompt.to_string(),
             default_model_id: None,
@@ -1712,6 +1713,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         &self,
         id: AgentId,
         name: Option<&str>,
+        display_name: Option<&str>,
         description: Option<&str>,
         system_prompt: Option<&str>,
     ) -> everruns_core::error::Result<Agent> {
@@ -1719,6 +1721,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 
         let update = UpdateAgent {
             name: name.map(|s| s.to_string()),
+            display_name: display_name.map(|s| s.to_string()),
             description: description.map(|s| s.to_string()),
             system_prompt: system_prompt.map(|s| s.to_string()),
             ..Default::default()

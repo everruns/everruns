@@ -101,17 +101,6 @@ export default function NewAgentPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="display_name">Display Name</Label>
-              <Input
-                id="display_name"
-                placeholder="Customer Support Agent"
-                value={formData.display_name}
-                onChange={(e) => handleDisplayNameChange(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Human-readable name shown in the UI</p>
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="name">Name</Label>
               <Input
                 id="name"
@@ -142,6 +131,19 @@ export default function NewAgentPage() {
               )}
               <p className="text-xs text-muted-foreground">
                 Unique identifier used in URLs and API. Lowercase letters, numbers, and hyphens.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="display_name">Display Name</Label>
+              <Input
+                id="display_name"
+                placeholder={formData.name ? undefined : "Customer Support Agent"}
+                value={formData.display_name}
+                onChange={(e) => handleDisplayNameChange(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional human-readable label shown in the UI. Defaults to name if empty.
               </p>
             </div>
 

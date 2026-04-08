@@ -635,7 +635,11 @@ impl Tool for ManageAgentsTool {
                 },
                 "name": {
                     "type": "string",
-                    "description": "Agent name (required for create)"
+                    "description": "Addressable agent name (required for create). Lowercase letters, numbers, and hyphens only (e.g. 'customer-support')."
+                },
+                "display_name": {
+                    "type": "string",
+                    "description": "Human-readable display name shown in UI (e.g. 'Customer Support Agent'). Falls back to name when absent."
                 },
                 "description": {
                     "type": "string",
@@ -689,6 +693,10 @@ impl Tool for ManageAgentsTool {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
+                if let Err(msg) = crate::agent::validate_addressable_name(name) {
+                    return ToolExecutionResult::tool_error(format!("Invalid agent name: {msg}"));
+                }
+                let display_name = get_str(&arguments, "display_name");
                 let system_prompt =
                     get_str(&arguments, "system_prompt").unwrap_or("You are a helpful assistant.");
                 let description = get_str(&arguments, "description");
@@ -702,7 +710,13 @@ impl Tool for ManageAgentsTool {
                     })
                     .unwrap_or_default();
                 match store
-                    .create_agent(name, description, system_prompt, &capabilities)
+                    .create_agent(
+                        name,
+                        display_name,
+                        description,
+                        system_prompt,
+                        &capabilities,
+                    )
                     .await
                 {
                     Ok(a) => ToolExecutionResult::success(json!({
@@ -734,10 +748,16 @@ impl Tool for ManageAgentsTool {
                     }
                 };
                 let name = get_str(&arguments, "name");
+                if let Some(n) = name
+                    && let Err(msg) = crate::agent::validate_addressable_name(n)
+                {
+                    return ToolExecutionResult::tool_error(format!("Invalid agent name: {msg}"));
+                }
+                let display_name = get_str(&arguments, "display_name");
                 let description = get_str(&arguments, "description");
                 let system_prompt = get_str(&arguments, "system_prompt");
                 match store
-                    .update_agent(id, name, description, system_prompt)
+                    .update_agent(id, name, display_name, description, system_prompt)
                     .await
                 {
                     Ok(a) => ToolExecutionResult::success(json!({
@@ -1776,12 +1796,47 @@ mod tests {
         let tool = ManageAgentsTool;
         let result = tool
             .execute_with_context(
-                json!({"operation": "create", "name": "New Agent", "system_prompt": "Be helpful"}),
+                json!({"operation": "create", "name": "new-agent", "system_prompt": "Be helpful"}),
                 &ctx,
             )
             .await;
         match result {
-            ToolExecutionResult::Success(v) => assert_eq!(v["name"], "New Agent"),
+            ToolExecutionResult::Success(v) => assert_eq!(v["name"], "new-agent"),
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_create_rejects_non_slug_name() {
+        let ctx = mock_context();
+        let tool = ManageAgentsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "create", "name": "Bad Agent Name", "system_prompt": "hi"}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(_) => {} // expected
+            other => panic!("expected tool error for non-slug name, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_create_with_display_name() {
+        let ctx = mock_context();
+        let tool = ManageAgentsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "create", "name": "support-bot", "display_name": "Support Bot", "system_prompt": "hi"}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["name"], "support-bot");
+                assert_eq!(v["display_name"], "Support Bot");
+            }
             other => panic!("expected success, got: {other:?}"),
         }
     }
@@ -1792,13 +1847,13 @@ mod tests {
         let tool = ManageAgentsTool;
         let result = tool
             .execute_with_context(
-                json!({"operation": "update", "agent_id": AgentId::new().to_string(), "name": "Renamed"}),
+                json!({"operation": "update", "agent_id": AgentId::new().to_string(), "name": "renamed-agent"}),
                 &ctx,
             )
             .await;
         match result {
             ToolExecutionResult::Success(v) => {
-                assert_eq!(v["name"], "Renamed");
+                assert_eq!(v["name"], "renamed-agent");
                 assert!(v["message"].as_str().unwrap().contains("updated"));
             }
             other => panic!("expected success, got: {other:?}"),

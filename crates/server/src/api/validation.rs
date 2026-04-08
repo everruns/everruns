@@ -136,53 +136,15 @@ fn validate_harness_name_inner(name: &str) -> Result<(), (StatusCode, Json<Error
 
 /// Validate a name: `[a-z0-9]([a-z0-9-]*[a-z0-9])?`.
 /// Max 64 chars, no consecutive hyphens, no leading/trailing hyphens.
-/// Used for both harness and agent names.
+/// Used for both harness and agent names. Delegates to core's shared
+/// `validate_addressable_name` and wraps the error as an HTTP 400.
 fn validate_name_format(entity: &str, name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if name.is_empty() {
-        return Err((
+    everruns_core::validate_addressable_name(name).map_err(|msg| {
+        (
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!(
-                "{entity} name must not be empty"
-            ))),
-        ));
-    }
-    if name.len() > MAX_NAME_LEN {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!(
-                "{entity} name must be at most {} characters",
-                MAX_NAME_LEN
-            ))),
-        ));
-    }
-    if !name
-        .bytes()
-        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-    {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!(
-                "{entity} name must contain only lowercase letters, digits, and hyphens"
-            ))),
-        ));
-    }
-    if name.starts_with('-') || name.ends_with('-') {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!(
-                "{entity} name must not start or end with a hyphen"
-            ))),
-        ));
-    }
-    if name.contains("--") {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!(
-                "{entity} name must not contain consecutive hyphens"
-            ))),
-        ));
-    }
-    Ok(())
+            Json(ErrorResponse::new(format!("{entity} {msg}"))),
+        )
+    })
 }
 
 /// Validate agent name for create/update — same format as harness names.
