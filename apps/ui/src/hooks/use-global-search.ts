@@ -236,7 +236,8 @@ export function useGlobalSearch(query: string) {
         // Try to resolve a friendly name from cached data
         let resolvedName: string | undefined;
         if (prefix === "agent_") {
-          resolvedName = agents.find((a) => a.id === idValue)?.name;
+          const a = agents.find((a) => a.id === idValue);
+          resolvedName = a ? (a.display_name || a.name) : undefined;
         } else if (prefix === "session_") {
           const s = sessions.find((s) => s.id === idValue);
           resolvedName = s?.title ?? s?.preview ?? undefined;
@@ -285,13 +286,14 @@ export function useGlobalSearch(query: string) {
     let agentCount = 0;
     for (const agent of agents) {
       if (agentCount >= MAX_PER_CATEGORY) break;
-      if (matchesTokens(tokens, agent.name, agent.description, agent.id, "agent")) {
+      const agentDisplayName = agent.display_name || agent.name;
+      if (matchesTokens(tokens, agent.name, agentDisplayName, agent.description, agent.id, "agent")) {
         results.push({
           id: `agent:${agent.id}`,
           category: "agent",
           icon: Boxes,
-          title: agent.name,
-          subtitle: `Agents > ${agent.name}`,
+          title: agentDisplayName,
+          subtitle: `Agents > ${agentDisplayName}`,
           href: `/agents/${agent.id}`,
         });
         agentCount++;

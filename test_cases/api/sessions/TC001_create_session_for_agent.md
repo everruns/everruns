@@ -13,7 +13,8 @@ Verify that a session can be created for an existing agent and starts in the cor
 
 | Field | Value |
 |-------|-------|
-| Agent Name | Chat Agent |
+| Agent Name | chat-agent |
+| Agent Display Name | Chat Agent |
 | Agent Prompt | You are a helpful chat assistant. |
 
 ## Steps
@@ -23,7 +24,8 @@ Verify that a session can be created for an existing agent and starts in the cor
    curl -s -X POST "http://localhost:9300/api/v1/agents" \
      -H "Content-Type: application/json" \
      -d '{
-       "name": "Chat Agent",
+       "name": "chat-agent",
+       "display_name": "Chat Agent",
        "system_prompt": "You are a helpful chat assistant."
      }'
    ```

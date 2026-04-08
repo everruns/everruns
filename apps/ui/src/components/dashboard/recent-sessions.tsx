@@ -76,7 +76,7 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
               const agentLabel = session.agent_id
                 ? getEntityReferenceLabel({
                     kind: "Agent",
-                    name: agent?.name,
+                    name: agent?.display_name || agent?.name,
                     status: agent?.status ?? "deleted",
                   })
                 : null;

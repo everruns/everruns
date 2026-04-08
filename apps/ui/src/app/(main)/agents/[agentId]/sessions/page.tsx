@@ -89,12 +89,12 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to {agent.name}
+        Back to {agent.display_name || agent.name}
       </Link>
 
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">{agent.name} - Sessions</h1>
+          <h1 className="text-2xl font-bold">{agent.display_name || agent.name} - Sessions</h1>
           <p className="text-muted-foreground">
             {totalSessions} session{totalSessions !== 1 ? "s" : ""} total
           </p>

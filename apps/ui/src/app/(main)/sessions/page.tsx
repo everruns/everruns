@@ -153,7 +153,7 @@ export default function SessionsPage() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
             <CardTitle>
-              {selectedAgentId ? agentMap.get(selectedAgentId)?.name || "Agent" : "All Agents"}
+              {selectedAgentId ? agentMap.get(selectedAgentId)?.display_name || agentMap.get(selectedAgentId)?.name || "Agent" : "All Agents"}
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
               {totalSessions} session{totalSessions !== 1 ? "s" : ""}
@@ -184,7 +184,7 @@ export default function SessionsPage() {
                       session.agent_id
                         ? getEntityReferenceLabel({
                             kind: "Agent",
-                            name: agent?.name,
+                            name: agent?.display_name || agent?.name,
                             status: agent?.status ?? "deleted",
                           })
                         : undefined

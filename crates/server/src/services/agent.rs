@@ -514,6 +514,21 @@ impl AgentService {
         }
     }
 
+    /// Check whether a name is available (for UI form validation).
+    pub async fn check_name_available(
+        &self,
+        caller: &Caller,
+        name: &str,
+        exclude_id: Option<AgentId>,
+    ) -> Result<bool> {
+        if let Some(existing) = self.db.get_agent_by_name(caller.org_id, name).await?
+            && exclude_id != Some(existing.id)
+        {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
     /// Check if a name is already taken by another agent in the org.
     async fn ensure_name_available(
         &self,

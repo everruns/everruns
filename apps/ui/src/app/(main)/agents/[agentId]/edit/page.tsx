@@ -9,6 +9,7 @@ import {
   useDeleteAgent,
   useDestroyAgent,
   useCapabilities,
+  useAgentNameAvailability,
 } from "@/hooks";
 import { usePolicies } from "@/hooks/use-policies";
 import { Button } from "@/components/ui/button";
@@ -31,11 +32,12 @@ import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
-import { ArrowLeft, Save, Trash2, Eye, Edit2 } from "lucide-react";
+import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 interface FormData {
+  display_name: string;
   name: string;
   description: string;
   system_prompt: string;
@@ -67,9 +69,10 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   // Compute initial values from agent data
   const initialFormData = useMemo((): FormData => {
     if (!agent) {
-      return { name: "", description: "", system_prompt: "", tags: "", default_model_id: "" };
+      return { display_name: "", name: "", description: "", system_prompt: "", tags: "", default_model_id: "" };
     }
     return {
+      display_name: agent.display_name || "",
       name: agent.name,
       description: agent.description || "",
       system_prompt: agent.system_prompt,
@@ -87,6 +90,10 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   const handleFormChange = useCallback((field: keyof FormData, value: string) => {
     setFormChanges((prev) => ({ ...prev, [field]: value }));
   }, []);
+
+  // Only check availability when name has been changed from original
+  const nameChanged = formData.name !== initialFormData.name;
+  const nameAvailability = useAgentNameAvailability(nameChanged ? formData.name : "", agentId);
 
   // Capabilities state - now included directly in agent response
   // Use full AgentCapabilityConfig objects to preserve per-agent config
@@ -129,6 +136,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
         agentId,
         request: {
           name: formData.name,
+          display_name: formData.display_name || undefined,
           description: formData.description || undefined,
           system_prompt: formData.system_prompt,
           tags,
@@ -195,6 +203,8 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
     );
   }
 
+  const agentDisplayName = agent.display_name || agent.name;
+
   return (
     <div className="container mx-auto p-6">
       <Link
@@ -234,15 +244,52 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="space-y-2">
+                      <Label htmlFor="display_name">Display Name</Label>
+                      <Input
+                        id="display_name"
+                        placeholder="Customer Support Agent"
+                        value={formData.display_name}
+                        onChange={(e) => handleFormChange("display_name", e.target.value)}
+                        disabled={isSaving || isReadOnly}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Human-readable name shown in the UI
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
                       <Label htmlFor="name">Name</Label>
                       <Input
                         id="name"
-                        placeholder="My Agent"
+                        placeholder="customer-support"
                         value={formData.name}
                         onChange={(e) => handleFormChange("name", e.target.value)}
                         disabled={isSaving || isReadOnly}
                         required
                       />
+                      {nameChanged && formData.name.length >= 2 && (
+                        <div className="flex items-center gap-1.5 text-xs">
+                          {nameAvailability.isChecking ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                              <span className="text-muted-foreground">Checking availability…</span>
+                            </>
+                          ) : nameAvailability.available === true ? (
+                            <>
+                              <Check className="w-3 h-3 text-green-600" />
+                              <span className="text-green-600">Name is available</span>
+                            </>
+                          ) : nameAvailability.available === false ? (
+                            <>
+                              <X className="w-3 h-3 text-destructive" />
+                              <span className="text-destructive">Name is already taken or invalid</span>
+                            </>
+                          ) : null}
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Unique identifier used in URLs and API. Lowercase letters, numbers, and hyphens.
+                      </p>
                     </div>
 
                     <div className="space-y-2">
@@ -410,8 +457,12 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
+                    <p className="text-sm font-medium">Display Name</p>
+                    <p className="text-sm text-muted-foreground">{formData.display_name || "(not set)"}</p>
+                  </div>
+                  <div>
                     <p className="text-sm font-medium">Name</p>
-                    <p className="text-sm text-muted-foreground">{formData.name || "(not set)"}</p>
+                    <p className="text-sm text-muted-foreground font-mono">{formData.name || "(not set)"}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium">Description</p>
@@ -446,7 +497,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           <DialogHeader>
             <DialogTitle>Delete Agent</DialogTitle>
             <DialogDescription>
-              Permanently delete the archived agent &quot;{agent?.name}&quot;? Existing references
+              Permanently delete the archived agent &quot;{agentDisplayName}&quot;? Existing references
               will render as deleted tombstones.
             </DialogDescription>
           </DialogHeader>

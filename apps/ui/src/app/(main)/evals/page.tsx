@@ -68,7 +68,7 @@ export default function EvalsPage() {
   const { data: evals, isLoading, error } = useEvals({ includeArchived: false });
   const { data: agents } = useAgents({ includeArchived: false });
 
-  const agentMap = new Map((agents ?? []).map((a) => [a.id, a.name]));
+  const agentMap = new Map((agents ?? []).map((a) => [a.id, a.display_name || a.name]));
 
   if (!evalsEnabled) {
     return (

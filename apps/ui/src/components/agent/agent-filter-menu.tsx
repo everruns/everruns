@@ -36,7 +36,8 @@ export function AgentFilterMenu({ value, onValueChange, className }: AgentFilter
     return new Map<string, Agent>(agents.map((a) => [a.id, a]));
   }, [agents]);
 
-  const displayValue = value ? agentMap.get(value)?.name : "All agents";
+  const selected = value ? agentMap.get(value) : undefined;
+  const displayValue = selected ? (selected.display_name || selected.name) : "All agents";
 
   const handleValueChange = (newValue: string) => {
     onValueChange(newValue);
@@ -55,7 +56,7 @@ export function AgentFilterMenu({ value, onValueChange, className }: AgentFilter
             <DropdownMenuRadioItem value="">All agents</DropdownMenuRadioItem>
             {agents.map((agent) => (
               <DropdownMenuRadioItem key={agent.id} value={agent.id}>
-                {agent.name}
+                {agent.display_name || agent.name}
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>

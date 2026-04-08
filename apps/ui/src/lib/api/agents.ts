@@ -54,6 +54,18 @@ export async function copyAgent(agentId: string): Promise<Agent> {
   return response.data;
 }
 
+export async function checkAgentName(
+  name: string,
+  excludeId?: string,
+): Promise<{ available: boolean }> {
+  const params = new URLSearchParams({ name });
+  if (excludeId) params.set("exclude_id", excludeId);
+  const response = await api.get<{ available: boolean }>(
+    `/v1/agents/check-name?${params.toString()}`,
+  );
+  return response.data;
+}
+
 export async function previewAgent(request: PreviewAgentRequest): Promise<AgentPreviewResponse> {
   const response = await api.post<AgentPreviewResponse>("/v1/agents/preview", request);
   return response.data;

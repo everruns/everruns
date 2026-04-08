@@ -761,7 +761,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                     >
                       {getEntityReferenceLabel({
                         kind: "Agent",
-                        name: agent?.name,
+                        name: agent?.display_name || agent?.name,
                         status: agent?.status ?? "deleted",
                       })}
                     </p>

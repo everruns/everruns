@@ -170,7 +170,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
     session?.agent_id != null
       ? getEntityReferenceLabel({
           kind: "Agent",
-          name: agent?.name,
+          name: agent?.display_name || agent?.name,
           status: agent?.status ?? "deleted",
         })
       : null;

@@ -87,7 +87,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${agent.name.toLowerCase().replace(/\s+/g, "-")}.md`;
+      link.download = `${agent.name}.md`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -146,10 +146,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <span className={getEntityNameClassName(agent.status)}>{agent.name}</span>
+            <span className={getEntityNameClassName(agent.status)}>{agent.display_name || agent.name}</span>
             <CopyButton value={agent.id} />
             <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
           </h1>
+          <p className="text-sm text-muted-foreground font-mono mt-1">{agent.name}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleCopy} disabled={copyAgent.isPending}>

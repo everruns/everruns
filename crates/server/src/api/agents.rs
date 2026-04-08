@@ -258,6 +258,22 @@ pub struct ListAgentsQuery {
     pub limit: Option<u32>,
 }
 
+/// Query parameters for checking agent name availability.
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct CheckAgentNameQuery {
+    /// The agent name to check.
+    pub name: String,
+    /// Optional agent ID to exclude (for edit forms where the current agent's own name is valid).
+    pub exclude_id: Option<String>,
+}
+
+/// Response for agent name availability check.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CheckAgentNameResponse {
+    /// Whether the name is available for use.
+    pub available: bool,
+}
+
 /// Default limit for agent listing
 const DEFAULT_LIMIT: u32 = 20;
 /// Maximum allowed limit for agent listing
@@ -287,6 +303,55 @@ impl AppState {
 
 impl_auth_state!(AppState);
 
+/// GET /v1/agents/check-name
+///
+/// Returns whether an agent name is available for use. Optionally excludes
+/// a specific agent ID (for edit forms where the agent's own name is valid).
+#[utoipa::path(
+    get,
+    path = "/v1/agents/check-name",
+    params(CheckAgentNameQuery),
+    responses(
+        (status = 200, description = "Name availability result", body = CheckAgentNameResponse),
+        (status = 400, description = "Invalid exclude_id", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+    ),
+    tag = "agents"
+)]
+pub async fn check_agent_name(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Query(query): Query<CheckAgentNameQuery>,
+) -> Result<Json<CheckAgentNameResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Validate format first — if the name is invalid, it's not "available"
+    if validate_agent_name_format(&query.name).is_err() {
+        return Ok(Json(CheckAgentNameResponse { available: false }));
+    }
+
+    let exclude_id = query
+        .exclude_id
+        .as_deref()
+        .map(|id| id.parse::<AgentId>())
+        .transpose()
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: format!("Invalid exclude_id: {}", e),
+                }),
+            )
+        })?;
+
+    let caller = Caller::from(&org);
+    let available = state
+        .service
+        .check_name_available(&caller, &query.name, exclude_id)
+        .await
+        .map_policy_or_internal("check agent name")?;
+
+    Ok(Json(CheckAgentNameResponse { available }))
+}
+
 /// GET /v1/agents/config
 #[utoipa::path(
     get,
@@ -313,6 +378,7 @@ pub async fn agent_config(
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/agents", post(create_agent).get(list_agents))
+        .route("/v1/agents/check-name", get(check_agent_name))
         .route("/v1/agents/config", get(agent_config))
         .route("/v1/agents/import", post(import_agent))
         .route("/v1/agents/preview", post(preview_agent))

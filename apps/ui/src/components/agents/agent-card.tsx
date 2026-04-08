@@ -35,13 +35,16 @@ export function AgentCard({
   return (
     <Card className="bg-background transition-colors hover:bg-card">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex items-center gap-2">
-          <CardTitle className={`text-lg ${getEntityNameClassName(agent.status)}`}>
-            <Link href={`/agents/${agent.id}`} className="hover:underline">
-              {agent.name}
-            </Link>
-          </CardTitle>
-          <CopyButton value={agent.id} />
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-2">
+            <CardTitle className={`text-lg ${getEntityNameClassName(agent.status)}`}>
+              <Link href={`/agents/${agent.id}`} className="hover:underline">
+                {agent.display_name || agent.name}
+              </Link>
+            </CardTitle>
+            <CopyButton value={agent.id} />
+          </div>
+          <span className="text-xs text-muted-foreground font-mono">{agent.name}</span>
         </div>
         <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
       </CardHeader>

@@ -59,7 +59,7 @@ export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProp
                     <Boxes className="icon-sharp h-5 w-5 text-muted-foreground" />
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="font-medium">{agent.name}</p>
+                        <p className="font-medium">{agent.display_name || agent.name}</p>
                         <CopyButton value={agent.id} />
                       </div>
                       <div className="flex items-center gap-2">

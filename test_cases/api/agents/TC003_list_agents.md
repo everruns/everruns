@@ -2,7 +2,7 @@
 
 ## Description
 
-Verify that agents are listed correctly, with pagination, and that archived agents are excluded by default.
+Verify that agents are listed correctly, with pagination, and that archived agents are excluded by default. Verify both name (slug) and display_name appear in list responses.
 
 ## Preconditions
 
@@ -12,8 +12,10 @@ Verify that agents are listed correctly, with pagination, and that archived agen
 
 | Field | Value |
 |-------|-------|
-| Agent 1 Name | Agent Alpha |
-| Agent 2 Name | Agent Beta |
+| Agent 1 Name | agent-alpha |
+| Agent 1 Display Name | Agent Alpha |
+| Agent 2 Name | agent-beta |
+| Agent 2 Display Name | Agent Beta |
 
 ## Steps
 
@@ -21,11 +23,11 @@ Verify that agents are listed correctly, with pagination, and that archived agen
    ```bash
    curl -s -X POST "http://localhost:9300/api/v1/agents" \
      -H "Content-Type: application/json" \
-     -d '{"name": "Agent Alpha", "system_prompt": "Alpha agent."}'
+     -d '{"name": "agent-alpha", "display_name": "Agent Alpha", "system_prompt": "Alpha agent."}'
 
    curl -s -X POST "http://localhost:9300/api/v1/agents" \
      -H "Content-Type: application/json" \
-     -d '{"name": "Agent Beta", "system_prompt": "Beta agent."}'
+     -d '{"name": "agent-beta", "display_name": "Agent Beta", "system_prompt": "Beta agent."}'
    ```
    Save both `id` values.
 
@@ -54,8 +56,9 @@ Verify that agents are listed correctly, with pagination, and that archived agen
 | Check | Expected |
 |-------|----------|
 | Step 2: both agents in list | `data` contains both agent IDs |
+| Step 2: name fields | Each agent has `name` (slug) and `display_name` |
 | Step 3: archive returns 200 | Agent status becomes `"archived"` |
-| Step 4: archived agent excluded | `data` does not contain Agent Alpha |
-| Step 4: active agent included | `data` contains Agent Beta |
+| Step 4: archived agent excluded | `data` does not contain agent-alpha |
+| Step 4: active agent included | `data` contains agent-beta |
 | Step 5: both agents in list | `data` contains both agents |
-| Step 5: archived agent status | Agent Alpha has `status: "archived"` |
+| Step 5: archived agent status | agent-alpha has `status: "archived"` |
