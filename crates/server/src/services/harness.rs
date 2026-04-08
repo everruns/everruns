@@ -319,7 +319,10 @@ impl HarnessService {
 
         let req = CreateHarnessRequest {
             name: copy_name,
-            display_name: source.display_name.as_ref().map(|d| format!("{} (copy)", d)),
+            display_name: source
+                .display_name
+                .as_ref()
+                .map(|d| format!("{} (copy)", d)),
             description: source.description,
             system_prompt: source.system_prompt,
             parent_harness_id: source.parent_harness_id,

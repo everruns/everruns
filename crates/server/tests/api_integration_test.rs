@@ -1784,7 +1784,10 @@ async fn test_copy_harness() {
 
     // Verify copy
     assert_eq!(copied.name, "original-harness-copy");
-    assert_eq!(copied.display_name.as_deref(), Some("Original Harness (copy)"));
+    assert_eq!(
+        copied.display_name.as_deref(),
+        Some("Original Harness (copy)")
+    );
     assert_eq!(
         copied.description.as_deref(),
         Some("Original harness description")

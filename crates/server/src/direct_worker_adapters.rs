@@ -1580,7 +1580,10 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         let copy_name = new_name
             .map(|s| s.to_string())
             .unwrap_or_else(|| format!("{}-copy", source.name));
-        let copy_display_name = source.display_name.as_ref().map(|d| format!("{} (copy)", d));
+        let copy_display_name = source
+            .display_name
+            .as_ref()
+            .map(|d| format!("{} (copy)", d));
 
         let cap_ids: Vec<String> = source
             .capabilities
