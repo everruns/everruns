@@ -93,6 +93,7 @@ pub trait PlatformStore: Send + Sync {
         &self,
         id: AgentId,
         name: Option<&str>,
+        display_name: Option<&str>,
         description: Option<&str>,
         system_prompt: Option<&str>,
     ) -> Result<Agent>;
@@ -363,12 +364,16 @@ pub mod tests {
             &self,
             _id: crate::typed_id::AgentId,
             name: Option<&str>,
+            display_name: Option<&str>,
             _desc: Option<&str>,
             _prompt: Option<&str>,
         ) -> Result<Agent> {
             let mut a = self.agent.clone();
             if let Some(n) = name {
                 a.name = n.to_string();
+            }
+            if let Some(dn) = display_name {
+                a.display_name = Some(dn.to_string());
             }
             Ok(a)
         }

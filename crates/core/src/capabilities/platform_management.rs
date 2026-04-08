@@ -753,10 +753,11 @@ impl Tool for ManageAgentsTool {
                 {
                     return ToolExecutionResult::tool_error(format!("Invalid agent name: {msg}"));
                 }
+                let display_name = get_str(&arguments, "display_name");
                 let description = get_str(&arguments, "description");
                 let system_prompt = get_str(&arguments, "system_prompt");
                 match store
-                    .update_agent(id, name, description, system_prompt)
+                    .update_agent(id, name, display_name, description, system_prompt)
                     .await
                 {
                     Ok(a) => ToolExecutionResult::success(json!({
