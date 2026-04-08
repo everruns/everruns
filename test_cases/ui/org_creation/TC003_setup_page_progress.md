@@ -19,7 +19,7 @@ Verify that the org setup page displays three sequential setup steps with animat
 - Page header shows "Setting up <org name>" with a Building icon
 - Three steps appear in sequence:
   1. "Organisation created" — "Your new organisation has been provisioned"
-  2. "Harnesses initialised" — "Built-in harnesses (Base, Generic, Platform Chat) are ready"
+  2. "Harnesses initialised" — "Built-in harnesses (base, generic, platform-chat) are ready"
   3. "Default settings configured" — "Default and base harnesses have been assigned"
 - Each step transitions from pending (faded) to a spinner to a green checkmark
 - After all steps complete, a "Go to dashboard" button appears

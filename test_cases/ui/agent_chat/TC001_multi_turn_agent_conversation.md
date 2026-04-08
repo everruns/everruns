@@ -9,7 +9,7 @@ Verify that a user can open a direct chat session with an agent, send a message,
 - Server running (`just start-dev`)
 - User logged in
 - LLM API keys configured
-- An agent exists with a humor-oriented system prompt (e.g., "Dad Jokes" agent with system prompt: "You are a dad jokes comedian. Tell funny, clean dad jokes. Always stay in character.")
+- An agent exists with a humor-oriented system prompt (e.g., display name "Dad Jokes", slug `dad-jokes`, system prompt: "You are a dad jokes comedian. Tell funny, clean dad jokes. Always stay in character.")
 
 ## Test Data
 
@@ -21,7 +21,7 @@ Verify that a user can open a direct chat session with an agent, send a message,
 ## Steps
 
 1. Navigate to the Agents page (`/agents`)
-2. Click on the "Dad Jokes" agent to open its detail page
+2. Click on the "Dad Jokes" agent card (display name shown prominently, slug `dad-jokes` in monospace underneath) to open its detail page
 3. Start a new session / open the chat interface for this agent
 4. Send turn 1 message
 5. Wait for the full streamed response to complete (spinner/typing indicator disappears, message fully rendered)

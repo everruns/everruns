@@ -2,7 +2,7 @@
 
 ## Description
 
-Verify that the global chat agent can create a new agent when asked, using the `manage_agents` platform management tool.
+Verify that the global chat agent can create a new agent when asked, using the `manage_agents` platform management tool. Agents have an addressable name (slug) and an optional display name.
 
 ## Preconditions
 
@@ -31,7 +31,7 @@ Verify that the global chat agent can create a new agent when asked, using the `
 |-------|----------|
 | Agent created | Response mentions agent creation success |
 | Agent link | Response contains markdown link `[Weather Bot](/agents/agent_...)` |
-| Navigate to link | Agent detail page loads with name "Weather Bot" |
+| Navigate to link | Agent detail page loads with display name "Weather Bot" shown prominently and slug `weather-bot` in monospace underneath |
 | Agent prompt | System prompt is "You answer weather questions." |
 | Agent status | `active` |
-| Agents list | New agent visible at `/agents` |
+| Agents list | New agent visible at `/agents` — card shows display name "Weather Bot" with slug `weather-bot` beneath |

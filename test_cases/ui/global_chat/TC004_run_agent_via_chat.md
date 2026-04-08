@@ -37,4 +37,4 @@ Verify that the global chat agent can run a previously created agent by creating
 | Message sent | Task forwarded to the session |
 | Result relayed | Response includes the Math Tutor's answer (mentions "12") |
 | Session link | Response contains link to the session |
-| Session visible | New session appears at `/sessions` with Math Tutor agent |
+| Session visible | New session appears at `/sessions` showing agent display name "Math Tutor" |

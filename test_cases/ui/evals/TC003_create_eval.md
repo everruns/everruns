@@ -43,6 +43,6 @@ Verify that a new eval can be created with required fields (name, agent, harness
 | Harness dropdown | Lists available harnesses |
 | Submit disabled | "Create Eval" button disabled until agent and harness selected |
 | Redirect | After creation, redirects to `/evals/{eval_id}` |
-| Detail page | Shows eval name, description, status "active", agent name |
+| Detail page | Shows eval name, description, status "active", agent display name |
 | Cases tab | Shows "No test cases yet" empty state |
 | Runs tab | Shows "No runs yet" empty state |

@@ -28,7 +28,7 @@ None (uses sessions created by TC005).
 | Check | Expected |
 |-------|----------|
 | 10 agent sessions | At least 10 sessions with agent assignments visible |
-| Agent names | Each session shows the correct agent name |
+| Agent names | Each session shows the correct agent display name (e.g. "Math Tutor", not the slug) |
 | Status | All sessions are `idle` (turn completed) |
 | Messages | Each session has >= 2 messages (user + agent response) |
 | Chat history | Clicking a session shows the conversation with task and response |
