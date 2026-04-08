@@ -557,7 +557,7 @@ mod tests {
         let store: Arc<dyn SessionFileStore> = mock.clone();
         // Create multi-line output that exceeds budget
         let line = "x".repeat(200);
-        let lines: Vec<&str> = std::iter::repeat(line.as_str()).take(100).collect();
+        let lines: Vec<&str> = std::iter::repeat_n(line.as_str(), 100).collect();
         let large = lines.join("\n");
         assert!(large.len() > EXEC_OUTPUT_BUDGET);
         let result =
