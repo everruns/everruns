@@ -11,6 +11,7 @@ import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import type { Eval } from "@/lib/api/types";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 
 function passRateColor(rate: number): string {
   if (rate >= 0.9) return "text-green-600";
@@ -68,7 +69,7 @@ export default function EvalsPage() {
   const { data: evals, isLoading, error } = useEvals({ includeArchived: false });
   const { data: agents } = useAgents({ includeArchived: false });
 
-  const agentMap = new Map((agents ?? []).map((a) => [a.id, a.name]));
+  const agentMap = new Map((agents ?? []).map((a) => [a.id, getDisplayName(a)]));
 
   if (!evalsEnabled) {
     return (

@@ -10,7 +10,11 @@ import { CopyButton } from "@/components/ui/copy-button";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import {
+  getDisplayName,
+  getEntityNameClassName,
+  getEntityStatusBadgeVariant,
+} from "@/lib/entity-lifecycle";
 
 interface AgentCardProps {
   agent: Agent;
@@ -35,13 +39,16 @@ export function AgentCard({
   return (
     <Card className="bg-background transition-colors hover:bg-card">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex items-center gap-2">
-          <CardTitle className={`text-lg ${getEntityNameClassName(agent.status)}`}>
-            <Link href={`/agents/${agent.id}`} className="hover:underline">
-              {agent.name}
-            </Link>
-          </CardTitle>
-          <CopyButton value={agent.id} />
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-2">
+            <CardTitle className={`text-lg ${getEntityNameClassName(agent.status)}`}>
+              <Link href={`/agents/${agent.id}`} className="hover:underline">
+                {getDisplayName(agent)}
+              </Link>
+            </CardTitle>
+            <CopyButton value={agent.id} />
+          </div>
+          <span className="text-xs text-muted-foreground font-mono">{agent.name}</span>
         </div>
         <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
       </CardHeader>

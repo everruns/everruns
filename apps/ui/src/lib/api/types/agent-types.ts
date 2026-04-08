@@ -16,7 +16,10 @@ export type AgentStatus = "active" | "archived" | "deleted";
 
 export interface Agent {
   id: string;
+  /** Addressable name (slug): lowercase alphanumeric and hyphens (e.g. "customer-support") */
   name: string;
+  /** Human-readable display name shown in UI. Falls back to name when absent. */
+  display_name: string | null;
   description: string | null;
   system_prompt: string;
   default_model_id: string | null;
@@ -38,7 +41,10 @@ export interface Agent {
 }
 
 export interface CreateAgentRequest {
+  /** Addressable name (slug): lowercase alphanumeric and hyphens */
   name: string;
+  /** Human-readable display name shown in UI */
+  display_name?: string;
   description?: string;
   system_prompt: string;
   default_model_id?: string;
@@ -53,7 +59,10 @@ export interface CreateAgentRequest {
 }
 
 export interface UpdateAgentRequest {
+  /** Addressable name (slug): lowercase alphanumeric and hyphens */
   name?: string;
+  /** Human-readable display name shown in UI */
+  display_name?: string;
   description?: string;
   system_prompt?: string;
   default_model_id?: string;

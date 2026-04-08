@@ -7,7 +7,11 @@ import { MessageSquare, Loader2, Zap, Sparkles, Bot } from "lucide-react";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { shortenId } from "@/lib/utils";
 import type { Session, Agent, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
-import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
+import {
+  getDisplayName,
+  getEntityReferenceClassName,
+  getEntityReferenceLabel,
+} from "@/lib/entity-lifecycle";
 
 interface RecentSessionsProps {
   sessions: Session[];
@@ -76,7 +80,7 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
               const agentLabel = session.agent_id
                 ? getEntityReferenceLabel({
                     kind: "Agent",
-                    name: agent?.name,
+                    name: getDisplayName(agent),
                     status: agent?.status ?? "deleted",
                   })
                 : null;

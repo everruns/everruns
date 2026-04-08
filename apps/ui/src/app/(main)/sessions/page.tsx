@@ -31,7 +31,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { exportSessionJsonl } from "@/lib/api/sessions";
 import type { LlmModelWithProvider, Agent } from "@/lib/api/types";
-import { getEntityReferenceLabel } from "@/lib/entity-lifecycle";
+import { getDisplayName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
 
 const PAGE_SIZE = 20;
@@ -46,7 +46,9 @@ export default function SessionsPage() {
   const [newSessionAgentIdentityId, setNewSessionAgentIdentityId] = useState<string>("");
   const offset = page * PAGE_SIZE;
 
-  const { data: agents, isLoading: agentsLoading } = useAgents({ includeArchived: true });
+  const { data: agents, isLoading: agentsLoading } = useAgents({
+    includeArchived: true,
+  });
   const { data: organization } = useOrganization();
   const { data: harnesses } = useHarnesses();
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(
@@ -153,7 +155,9 @@ export default function SessionsPage() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
             <CardTitle>
-              {selectedAgentId ? agentMap.get(selectedAgentId)?.name || "Agent" : "All Agents"}
+              {selectedAgentId
+                ? getDisplayName(agentMap.get(selectedAgentId)) || "Agent"
+                : "All Agents"}
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
               {totalSessions} session{totalSessions !== 1 ? "s" : ""}
@@ -184,7 +188,7 @@ export default function SessionsPage() {
                       session.agent_id
                         ? getEntityReferenceLabel({
                             kind: "Agent",
-                            name: agent?.name,
+                            name: getDisplayName(agent),
                             status: agent?.status ?? "deleted",
                           })
                         : undefined

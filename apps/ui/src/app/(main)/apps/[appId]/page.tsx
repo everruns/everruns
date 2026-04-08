@@ -57,6 +57,7 @@ import type {
   SlackReplyMode,
 } from "@/lib/api/types";
 import {
+  getDisplayName,
   getEntityNameClassName,
   getEntityReferenceClassName,
   getEntityReferenceLabel,
@@ -120,7 +121,10 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
   const addChannelMutation = useMutation({
     mutationFn: async (config: SlackChannelConfig) => {
-      return apiAddChannel(appId, { channel_type: "slack", channel_config: config });
+      return apiAddChannel(appId, {
+        channel_type: "slack",
+        channel_config: config,
+      });
     },
     onSuccess: () => {
       invalidateApp();
@@ -225,7 +229,10 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       ...(editChannelIdField ? { channel_id: editChannelIdField } : {}),
       ...(editTeamId ? { team_id: editTeamId } : {}),
     };
-    await updateChannelMutation.mutateAsync({ channelId: editingChannelId, config: channelConfig });
+    await updateChannelMutation.mutateAsync({
+      channelId: editingChannelId,
+      config: channelConfig,
+    });
     setEditingChannelId(null);
   };
 
@@ -761,7 +768,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                     >
                       {getEntityReferenceLabel({
                         kind: "Agent",
-                        name: agent?.name,
+                        name: getDisplayName(agent),
                         status: agent?.status ?? "deleted",
                       })}
                     </p>

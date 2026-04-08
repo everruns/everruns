@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SessionCard } from "@/components/session/session-card";
 import { ArrowLeft, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LlmModelWithProvider } from "@/lib/api/types";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
 
 const PAGE_SIZE = 20;
@@ -89,12 +90,12 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to {agent.name}
+        Back to {getDisplayName(agent)}
       </Link>
 
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">{agent.name} - Sessions</h1>
+          <h1 className="text-2xl font-bold">{getDisplayName(agent)} - Sessions</h1>
           <p className="text-muted-foreground">
             {totalSessions} session{totalSessions !== 1 ? "s" : ""} total
           </p>

@@ -12,7 +12,8 @@ Verify that an agent can be created with capabilities and that the capabilities 
 
 | Field | Value |
 |-------|-------|
-| Name | Capable Agent |
+| Name | capable-agent |
+| Display Name | Capable Agent |
 | System Prompt | You are an assistant with tools. |
 | Capabilities | `current_time`, `web_fetch` |
 | Tags | `["test", "capable"]` |
@@ -24,7 +25,8 @@ Verify that an agent can be created with capabilities and that the capabilities 
    curl -s -X POST "http://localhost:9300/api/v1/agents" \
      -H "Content-Type: application/json" \
      -d '{
-       "name": "Capable Agent",
+       "name": "capable-agent",
+       "display_name": "Capable Agent",
        "system_prompt": "You are an assistant with tools.",
        "capabilities": [
          {"ref": "current_time"},

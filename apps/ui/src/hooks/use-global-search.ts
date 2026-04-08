@@ -48,6 +48,7 @@ import { useCapabilities } from "@/hooks/use-capabilities";
 import { useEvals } from "@/hooks/use-evals";
 import { useApps } from "@/hooks/use-apps";
 import { useAgentIdentities } from "@/hooks/use-agent-identities";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 
 export type SearchResultCategory =
   | "navigation"
@@ -80,20 +81,55 @@ interface NavigationPage {
 }
 
 const NAVIGATION_PAGES: NavigationPage[] = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, keywords: ["home", "overview"] },
-  { title: "Sessions", href: "/sessions", icon: MessageSquare, keywords: ["chat", "conversation"] },
-  { title: "Chat", href: "/chat", icon: MessageCircle, keywords: ["global chat"] },
-  { title: "Agents", href: "/agents", icon: Boxes, keywords: ["bot", "assistant"] },
+  {
+    title: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    keywords: ["home", "overview"],
+  },
+  {
+    title: "Sessions",
+    href: "/sessions",
+    icon: MessageSquare,
+    keywords: ["chat", "conversation"],
+  },
+  {
+    title: "Chat",
+    href: "/chat",
+    icon: MessageCircle,
+    keywords: ["global chat"],
+  },
+  {
+    title: "Agents",
+    href: "/agents",
+    icon: Boxes,
+    keywords: ["bot", "assistant"],
+  },
   {
     title: "Agent Identities",
     href: "/agent-identities",
     icon: UserRound,
     keywords: ["persona", "principal", "identity"],
   },
-  { title: "Harnesses", href: "/harnesses", icon: Shield, keywords: ["template", "config"] },
-  { title: "Skills", href: "/skills", icon: BookOpen, keywords: ["ability", "tool"] },
+  {
+    title: "Harnesses",
+    href: "/harnesses",
+    icon: Shield,
+    keywords: ["template", "config"],
+  },
+  {
+    title: "Skills",
+    href: "/skills",
+    icon: BookOpen,
+    keywords: ["ability", "tool"],
+  },
   { title: "Capabilities", href: "/capabilities", icon: Puzzle },
-  { title: "Apps", href: "/apps", icon: Rocket, keywords: ["deploy", "channel"] },
+  {
+    title: "Apps",
+    href: "/apps",
+    icon: Rocket,
+    keywords: ["deploy", "channel"],
+  },
   {
     title: "Evals",
     href: "/evals",
@@ -106,7 +142,12 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     icon: Server,
     keywords: ["mcp", "tool", "integration"],
   },
-  { title: "Settings", href: "/settings", icon: Settings, keywords: ["preferences", "config"] },
+  {
+    title: "Settings",
+    href: "/settings",
+    icon: Settings,
+    keywords: ["preferences", "config"],
+  },
   {
     title: "Settings > Profile",
     href: "/settings/profile",
@@ -168,7 +209,11 @@ const ID_PREFIX_MAP: Record<
   mcp_: { category: "mcp_server", label: "MCP Server", path: "/mcp-servers" },
   eval_: { category: "eval", label: "Eval", path: "/evals" },
   app_: { category: "app", label: "App", path: "/apps" },
-  identity_: { category: "agent_identity", label: "Agent Identity", path: "/agent-identities" },
+  identity_: {
+    category: "agent_identity",
+    label: "Agent Identity",
+    path: "/agent-identities",
+  },
 };
 
 /**
@@ -236,7 +281,8 @@ export function useGlobalSearch(query: string) {
         // Try to resolve a friendly name from cached data
         let resolvedName: string | undefined;
         if (prefix === "agent_") {
-          resolvedName = agents.find((a) => a.id === idValue)?.name;
+          const a = agents.find((a) => a.id === idValue);
+          resolvedName = a ? getDisplayName(a) : undefined;
         } else if (prefix === "session_") {
           const s = sessions.find((s) => s.id === idValue);
           resolvedName = s?.title ?? s?.preview ?? undefined;
@@ -285,13 +331,16 @@ export function useGlobalSearch(query: string) {
     let agentCount = 0;
     for (const agent of agents) {
       if (agentCount >= MAX_PER_CATEGORY) break;
-      if (matchesTokens(tokens, agent.name, agent.description, agent.id, "agent")) {
+      const agentDisplayName = getDisplayName(agent);
+      if (
+        matchesTokens(tokens, agent.name, agentDisplayName, agent.description, agent.id, "agent")
+      ) {
         results.push({
           id: `agent:${agent.id}`,
           category: "agent",
           icon: Boxes,
-          title: agent.name,
-          subtitle: `Agents > ${agent.name}`,
+          title: agentDisplayName,
+          subtitle: `Agents > ${agentDisplayName}`,
           href: `/agents/${agent.id}`,
         });
         agentCount++;

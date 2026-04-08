@@ -14,7 +14,7 @@ Verify the two-stage agent deletion: soft delete (archive) via DELETE, then hard
    ```bash
    curl -s -X POST "http://localhost:9300/api/v1/agents" \
      -H "Content-Type: application/json" \
-     -d '{"name": "Doomed Agent", "system_prompt": "Temporary."}'
+     -d '{"name": "doomed-agent", "display_name": "Doomed Agent", "system_prompt": "Temporary."}'
    ```
    Save `id`.
 

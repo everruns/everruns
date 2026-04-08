@@ -52,6 +52,14 @@ export function getEntityNameClassName(status: EntityLifecycleStatus | string | 
   return cn(isArchivedStatus(status) && "text-muted-foreground line-through");
 }
 
+/** Resolve the best display name for an entity with optional display_name. */
+export function getDisplayName(
+  entity: { name: string; display_name?: string | null } | null | undefined,
+): string {
+  if (!entity) return "";
+  return entity.display_name || entity.name;
+}
+
 export function getDeletedEntityLabel(kind: EntityKind): string {
   return `<Deleted ${kind}>`;
 }

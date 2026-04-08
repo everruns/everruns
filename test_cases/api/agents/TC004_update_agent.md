@@ -2,7 +2,7 @@
 
 ## Description
 
-Verify that an agent can be partially updated via PATCH and that only specified fields change.
+Verify that an agent can be partially updated via PATCH, including name (slug) and display_name independently, and that only specified fields change.
 
 ## Preconditions
 
@@ -12,8 +12,10 @@ Verify that an agent can be partially updated via PATCH and that only specified 
 
 | Field | Value |
 |-------|-------|
-| Original Name | Original Agent |
-| Updated Name | Updated Agent |
+| Original Name | original-agent |
+| Original Display Name | Original Agent |
+| Updated Name | updated-agent |
+| Updated Display Name | Updated Agent |
 | Original Prompt | You are original. |
 | Updated Prompt | You are updated. |
 
@@ -24,7 +26,8 @@ Verify that an agent can be partially updated via PATCH and that only specified 
    curl -s -X POST "http://localhost:9300/api/v1/agents" \
      -H "Content-Type: application/json" \
      -d '{
-       "name": "Original Agent",
+       "name": "original-agent",
+       "display_name": "Original Agent",
        "system_prompt": "You are original.",
        "tags": ["v1"]
      }'
@@ -35,7 +38,7 @@ Verify that an agent can be partially updated via PATCH and that only specified 
    ```bash
    curl -s -X PATCH "http://localhost:9300/api/v1/agents/{id}" \
      -H "Content-Type: application/json" \
-     -d '{"name": "Updated Agent"}'
+     -d '{"name": "updated-agent"}'
    ```
 
 3. Fetch agent:
@@ -43,7 +46,14 @@ Verify that an agent can be partially updated via PATCH and that only specified 
    curl -s "http://localhost:9300/api/v1/agents/{id}"
    ```
 
-4. Patch agent (update prompt and tags):
+4. Patch agent (update display_name only):
+   ```bash
+   curl -s -X PATCH "http://localhost:9300/api/v1/agents/{id}" \
+     -H "Content-Type: application/json" \
+     -d '{"display_name": "Updated Agent"}'
+   ```
+
+5. Patch agent (update prompt and tags):
    ```bash
    curl -s -X PATCH "http://localhost:9300/api/v1/agents/{id}" \
      -H "Content-Type: application/json" \
@@ -58,9 +68,12 @@ Verify that an agent can be partially updated via PATCH and that only specified 
 | Check | Expected |
 |-------|----------|
 | Step 2: HTTP status | 200 |
-| Step 3: `name` | `"Updated Agent"` |
+| Step 3: `name` | `"updated-agent"` |
+| Step 3: `display_name` | `"Original Agent"` (unchanged) |
 | Step 3: `system_prompt` | `"You are original."` (unchanged) |
 | Step 3: `tags` | `["v1"]` (unchanged) |
-| Step 4: `system_prompt` | `"You are updated."` |
-| Step 4: `tags` | `["v2"]` |
+| Step 4: `display_name` | `"Updated Agent"` |
+| Step 4: `name` | `"updated-agent"` (unchanged) |
+| Step 5: `system_prompt` | `"You are updated."` |
+| Step 5: `tags` | `["v2"]` |
 | `updated_at` | Changes after each PATCH |
