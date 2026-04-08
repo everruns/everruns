@@ -251,20 +251,6 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="space-y-2">
-                      <Label htmlFor="display_name">Display Name</Label>
-                      <Input
-                        id="display_name"
-                        placeholder="Customer Support Agent"
-                        value={formData.display_name}
-                        onChange={(e) => handleFormChange("display_name", e.target.value)}
-                        disabled={isSaving || isReadOnly}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Human-readable name shown in the UI
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
                       <Label htmlFor="name">Name</Label>
                       <Input
                         id="name"
@@ -300,6 +286,17 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         Unique identifier used in URLs and API. Lowercase letters, numbers, and
                         hyphens.
                       </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="display_name">Display Name (optional)</Label>
+                      <Input
+                        id="display_name"
+                        placeholder={formData.name || "Optional human-readable label"}
+                        value={formData.display_name}
+                        onChange={(e) => handleFormChange("display_name", e.target.value)}
+                        disabled={isSaving || isReadOnly}
+                      />
                     </div>
 
                     <div className="space-y-2">
@@ -467,17 +464,17 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <p className="text-sm font-medium">Display Name</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formData.display_name || "(not set)"}
-                    </p>
-                  </div>
-                  <div>
                     <p className="text-sm font-medium">Name</p>
                     <p className="text-sm text-muted-foreground font-mono">
                       {formData.name || "(not set)"}
                     </p>
                   </div>
+                  {formData.display_name && (
+                    <div>
+                      <p className="text-sm font-medium">Display Name</p>
+                      <p className="text-sm text-muted-foreground">{formData.display_name}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-sm font-medium">Description</p>
                     <p className="text-sm text-muted-foreground">

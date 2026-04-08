@@ -16,30 +16,18 @@ import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 
-/** Convert a display name to a slug: lowercase, non-alphanumeric → hyphens, deduplicate, trim. */
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-");
-}
-
 export default function NewAgentPage() {
   const router = useRouter();
   const createAgent = useCreateAgent();
   const { data: allCapabilities = [] } = useCapabilities();
 
   const [formData, setFormData] = useState({
-    display_name: "",
     name: "",
+    display_name: "",
     description: "",
     system_prompt: "",
     default_model_id: "",
   });
-
-  // Track whether the user has manually edited the slug
-  const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
 
   const nameAvailability = useAgentNameAvailability(formData.name);
 
@@ -49,20 +37,6 @@ export default function NewAgentPage() {
   const handleCapabilitiesChange = useCallback((capabilities: AgentCapabilityConfig[]) => {
     setSelectedCapabilities(capabilities);
   }, []);
-
-  const handleDisplayNameChange = (value: string) => {
-    const updates: Partial<typeof formData> = { display_name: value };
-    // Auto-derive slug unless user has manually edited it
-    if (!nameManuallyEdited) {
-      updates.name = slugify(value);
-    }
-    setFormData((prev) => ({ ...prev, ...updates }));
-  };
-
-  const handleNameChange = (value: string) => {
-    setNameManuallyEdited(true);
-    setFormData((prev) => ({ ...prev, name: value }));
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,23 +75,12 @@ export default function NewAgentPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="display_name">Display Name</Label>
-              <Input
-                id="display_name"
-                placeholder="Customer Support Agent"
-                value={formData.display_name}
-                onChange={(e) => handleDisplayNameChange(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Human-readable name shown in the UI</p>
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="name">Name</Label>
               <Input
                 id="name"
                 placeholder="customer-support"
                 value={formData.name}
-                onChange={(e) => handleNameChange(e.target.value)}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
               />
               {formData.name.length >= 2 && (
@@ -143,6 +106,16 @@ export default function NewAgentPage() {
               <p className="text-xs text-muted-foreground">
                 Unique identifier used in URLs and API. Lowercase letters, numbers, and hyphens.
               </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="display_name">Display Name (optional)</Label>
+              <Input
+                id="display_name"
+                placeholder={formData.name || "Optional human-readable label"}
+                value={formData.display_name}
+                onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
+              />
             </div>
 
             <div className="space-y-2">

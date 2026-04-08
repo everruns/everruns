@@ -635,7 +635,7 @@ impl Tool for ManageAgentsTool {
                 },
                 "name": {
                     "type": "string",
-                    "description": "Agent name (required for create)"
+                    "description": "Agent name (required for create). Used as the display name; an addressable slug is auto-derived."
                 },
                 "description": {
                     "type": "string",

@@ -1128,7 +1128,7 @@ fn parse_markdown_frontmatter(content: &str) -> Result<AgentFile, String> {
 }
 
 /// Convert string to URL-safe slug
-fn slugify(s: &str) -> String {
+pub(crate) fn slugify(s: &str) -> String {
     s.to_lowercase()
         .chars()
         .map(|c| if c.is_alphanumeric() { c } else { '-' })

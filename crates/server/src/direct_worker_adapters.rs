@@ -1662,12 +1662,21 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         system_prompt: &str,
         capabilities: &[String],
     ) -> everruns_core::error::Result<Agent> {
+        use crate::api::agents::slugify;
         use crate::storage::models::CreateAgentRow;
+
+        // The LLM provides a human-readable name; derive an addressable slug from it.
+        let slug = slugify(name);
+        let slug = if slug.is_empty() {
+            format!("agent-{}", &everruns_core::generate_agent_public_id().to_string()[6..14])
+        } else {
+            slug
+        };
 
         let public_id = everruns_core::generate_agent_public_id();
         let input = CreateAgentRow {
             public_id: public_id.to_string(),
-            name: name.to_string(),
+            name: slug,
             display_name: Some(name.to_string()),
             description: description.map(|s| s.to_string()),
             system_prompt: system_prompt.to_string(),
@@ -1715,10 +1724,14 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         description: Option<&str>,
         system_prompt: Option<&str>,
     ) -> everruns_core::error::Result<Agent> {
+        use crate::api::agents::slugify;
         use crate::storage::models::UpdateAgent;
 
+        // When name is updated via platform tool, treat it as display_name and derive slug.
+        let slugified_name = name.map(slugify).filter(|s| !s.is_empty());
         let update = UpdateAgent {
-            name: name.map(|s| s.to_string()),
+            name: slugified_name,
+            display_name: name.map(|s| s.to_string()),
             description: description.map(|s| s.to_string()),
             system_prompt: system_prompt.map(|s| s.to_string()),
             ..Default::default()
