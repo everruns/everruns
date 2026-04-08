@@ -179,8 +179,10 @@ CREATE UNIQUE INDEX idx_harnesses_org_name ON harnesses (org_id, name) WHERE sta
 -- 015: Agent addressable name
 ----------------------------------------------------------------------
 
--- Mirrors the harness pattern (section 014): `name` becomes a
+-- Similar to the harness pattern (section 014): `name` becomes a
 -- URL/CLI-friendly slug, `display_name` holds the human-readable label.
+-- Unlike harnesses, agent display_name is intentionally nullable
+-- (Option<String> in AgentRow) because the agent API allows omitting it.
 
 -- Step 1: Add display_name column, copy existing name values
 ALTER TABLE agents ADD COLUMN display_name TEXT;
