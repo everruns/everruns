@@ -8,8 +8,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::capability_types::AgentCapabilityConfig;
-use crate::config_layer::{merge_capabilities, merge_initial_files};
-use crate::network_access::{self, NetworkAccessList};
+use crate::network_access::NetworkAccessList;
 use crate::session_file::InitialFile;
 use crate::typed_id::{HarnessId, ModelId};
 
@@ -115,34 +114,33 @@ pub struct Harness {
 /// Merge a parent harness into a child harness, producing the effective child harness.
 ///
 /// Metadata remains child-owned (`id`, `name`, `tags`, status, timestamps). Runtime-affecting
-/// fields compose:
-/// - `system_prompt`: parent first, child appended
-/// - `default_model_id`: child wins, then parent fallback
-/// - `capabilities`: parent baseline, child overrides by capability id
-/// - `initial_files`: parent baseline, child overrides by normalized path
-/// - `network_access`: allowed intersects, blocked unions (child can only narrow)
+/// fields compose via `AgentConfigOverlay::merge()` — same semantics used for the full
+/// harness → agent → session fold.
 pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
+    use crate::config_layer::AgentConfigOverlay;
+
+    let effective = AgentConfigOverlay::from(parent).merge(AgentConfigOverlay::from(child));
+
     Harness {
+        // Metadata: always child-owned
         id: child.id,
         name: child.name.clone(),
         display_name: child.display_name.clone(),
         description: child.description.clone(),
-        system_prompt: merge_system_prompts(&parent.system_prompt, &child.system_prompt),
         parent_harness_id: child.parent_harness_id,
-        default_model_id: child.default_model_id.or(parent.default_model_id),
         tags: child.tags.clone(),
-        capabilities: merge_capabilities(&parent.capabilities, &child.capabilities),
-        initial_files: merge_initial_files(&parent.initial_files, &child.initial_files),
-        network_access: network_access::merge_network_access(
-            parent.network_access.as_ref(),
-            child.network_access.as_ref(),
-        ),
         is_built_in: child.is_built_in,
         status: child.status.clone(),
         created_at: child.created_at,
         updated_at: child.updated_at,
         archived_at: child.archived_at,
         deleted_at: child.deleted_at,
+        // Config: from merged overlay
+        system_prompt: effective.system_prompt.unwrap_or_default(),
+        default_model_id: effective.default_model_id,
+        capabilities: effective.capabilities,
+        initial_files: effective.initial_files,
+        network_access: effective.network_access,
     }
 }
 
@@ -152,21 +150,6 @@ pub fn merge_harness_chain(chain: &[Harness]) -> Option<Harness> {
     let first = iter.next()?.clone();
     Some(iter.fold(first, |effective, layer| merge_harness(&effective, layer)))
 }
-
-fn merge_system_prompts(parent: &str, child: &str) -> String {
-    let parent = parent.trim();
-    let child = child.trim();
-
-    match (parent.is_empty(), child.is_empty()) {
-        (true, true) => String::new(),
-        (false, true) => parent.to_string(),
-        (true, false) => child.to_string(),
-        (false, false) => format!("{parent}\n\n{child}"),
-    }
-}
-
-// merge_capabilities, merge_initial_files, and normalize_initial_file_path
-// live in config_layer.rs and are re-exported from crate root.
 
 #[cfg(test)]
 mod tests {
