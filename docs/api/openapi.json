@@ -255,13 +255,14 @@
         "tags": [
           "agents"
         ],
-        "summary": "GET /v1/agents/{agent_id} - Get agent by ID",
+        "summary": "GET /v1/agents/{agent_id} - Get agent by ID or name",
+        "description": "Accepts either an agent ID (e.g. `agent_01933b5a...`) or a\nname (e.g. `customer-support`). Names are resolved within the caller's org.",
         "operationId": "get_agent",
         "parameters": [
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
+            "description": "Agent ID (prefixed) or name",
             "required": true,
             "schema": {
               "type": "string"
@@ -295,13 +296,13 @@
           "agents"
         ],
         "summary": "PUT /v1/agents/{agent_id} - Create or update agent (upsert)",
-        "description": "If agent with this ID exists, update it. If not, create it.\nReturns 201 on create, 200 on update.",
+        "description": "Accepts either an agent ID (e.g. `agent_01933b5a...`) or a\nname (e.g. `customer-support`). If the agent exists, update it; if not,\ncreate it. Returns 201 on create, 200 on update.",
         "operationId": "upsert_agent",
         "parameters": [
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID (format: agent_{32-hex})",
+            "description": "Agent ID (prefixed) or name",
             "required": true,
             "schema": {
               "type": "string"
@@ -340,7 +341,7 @@
             }
           },
           "400": {
-            "description": "Invalid agent ID or input exceeds allowed limits",
+            "description": "Invalid input",
             "content": {
               "application/json": {
                 "schema": {
@@ -1483,13 +1484,13 @@
           "harnesses"
         ],
         "summary": "GET /v1/harnesses/{harness_id}",
-        "description": "Accepts either a harness ID (e.g. `harness_01933b5a...`) or an addressable\nname (e.g. `generic`). The virtual name `default` resolves to the org's\nconfigured default harness. Names are resolved within the caller's org.",
+        "description": "Accepts either a harness ID (e.g. `harness_01933b5a...`) or a\nname (e.g. `generic`). The virtual name `default` resolves to the org's\nconfigured default harness. Names are resolved within the caller's org.",
         "operationId": "get_harness",
         "parameters": [
           {
             "name": "harness_id",
             "in": "path",
-            "description": "Harness ID (prefixed) or addressable name",
+            "description": "Harness ID (prefixed) or name",
             "required": true,
             "schema": {
               "type": "string"
@@ -5218,6 +5219,13 @@
             ],
             "description": "Human-readable description of what the agent does."
           },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+          },
           "id": {
             "type": "string",
             "description": "External identifier (agent_<32-hex>). Shown as \"id\" in API.\nClient-supplied or auto-generated.",
@@ -5240,7 +5248,7 @@
           },
           "name": {
             "type": "string",
-            "description": "Display name of the agent."
+            "description": "Name, unique per org (e.g. \"customer-support\")."
           },
           "network_access": {
             "oneOf": [
@@ -6013,6 +6021,14 @@
             "description": "A human-readable description of what the agent does.",
             "example": "Handles customer inquiries and support tickets"
           },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name shown in UI.\nFalls back to `name` when absent.",
+            "example": "Customer Support Agent"
+          },
           "id": {
             "type": [
               "string",
@@ -6038,8 +6054,8 @@
           },
           "name": {
             "type": "string",
-            "description": "The name of the agent. Used for display purposes.",
-            "example": "Customer Support Agent"
+            "description": "Name, unique per org. Lowercase alphanumeric and hyphens.\nFormat: lowercase alphanumeric and hyphens (e.g. \"customer-support\").",
+            "example": "customer-support"
           },
           "network_access": {
             "oneOf": [
@@ -6198,7 +6214,7 @@
           },
           "name": {
             "type": "string",
-            "description": "URL/CLI-friendly addressable name, unique per org.\nFormat: lowercase alphanumeric and hyphens, like a GitHub repo name.",
+            "description": "Name, unique per org. Lowercase alphanumeric and hyphens.",
             "example": "deep-research"
           },
           "network_access": {
@@ -6550,7 +6566,7 @@
               "string",
               "null"
             ],
-            "description": "Addressable name of the harness (e.g. \"generic\", \"deep-research\").\nAlternative to `harness_id` — looked up by stable name within the org.\nMutually exclusive with `harness_id`.",
+            "description": "Harness name (e.g. \"generic\", \"deep-research\").\nAlternative to `harness_id` — looked up by name within the org.\nMutually exclusive with `harness_id`.",
             "example": "generic"
           },
           "hints": {
@@ -7436,7 +7452,7 @@
           },
           "name": {
             "type": "string",
-            "description": "URL/CLI-friendly addressable name, unique per org.\nFormat: `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars. No consecutive hyphens."
+            "description": "Name, unique per org (e.g. \"generic\")."
           },
           "network_access": {
             "oneOf": [
@@ -8000,6 +8016,13 @@
                   ],
                   "description": "Human-readable description of what the agent does."
                 },
+                "display_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+                },
                 "id": {
                   "type": "string",
                   "description": "External identifier (agent_<32-hex>). Shown as \"id\" in API.\nClient-supplied or auto-generated.",
@@ -8022,7 +8045,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "Display name of the agent."
+                  "description": "Name, unique per org (e.g. \"customer-support\")."
                 },
                 "network_access": {
                   "oneOf": [
@@ -8473,7 +8496,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "URL/CLI-friendly addressable name, unique per org.\nFormat: `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars. No consecutive hyphens."
+                  "description": "Name, unique per org (e.g. \"generic\")."
                 },
                 "network_access": {
                   "oneOf": [
@@ -10532,6 +10555,13 @@
                   ],
                   "description": "Human-readable description of what the agent does."
                 },
+                "display_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+                },
                 "id": {
                   "type": "string",
                   "description": "External identifier (agent_<32-hex>). Shown as \"id\" in API.\nClient-supplied or auto-generated.",
@@ -10554,7 +10584,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "Display name of the agent."
+                  "description": "Name, unique per org (e.g. \"customer-support\")."
                 },
                 "network_access": {
                   "oneOf": [
@@ -13002,6 +13032,14 @@
             "description": "A human-readable description of what the agent does.",
             "example": "Updated description for the agent"
           },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name shown in UI.",
+            "example": "Updated Support Agent"
+          },
           "initial_files": {
             "type": [
               "array",
@@ -13025,8 +13063,8 @@
               "string",
               "null"
             ],
-            "description": "The name of the agent. Used for display purposes.",
-            "example": "Updated Support Agent"
+            "description": "Name, unique per org. Lowercase alphanumeric and hyphens.",
+            "example": "updated-support"
           },
           "network_access": {
             "oneOf": [
@@ -13157,7 +13195,7 @@
               "string",
               "null"
             ],
-            "description": "URL/CLI-friendly addressable name.",
+            "description": "Name, unique per org.",
             "example": "updated-research"
           },
           "network_access": {
