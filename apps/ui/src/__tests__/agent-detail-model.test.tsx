@@ -52,7 +52,8 @@ jest.mock("@/components/chat/streamdown-message", () => ({
 // Mock data
 const mockAgent: Agent = {
   id: "agent-1",
-  name: "Test Agent",
+  name: "test-agent",
+  display_name: "Test Agent",
   description: "A test agent",
   system_prompt: "You are helpful",
   default_model_id: null,
