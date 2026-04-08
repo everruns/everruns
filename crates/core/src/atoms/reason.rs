@@ -541,12 +541,11 @@ impl ReasonAtom {
         previous_response_id: Option<String>,
         iteration: u32,
     ) -> Result<ReasonResult> {
-        // 1. Retrieve harness
-        let harness = self
-            .harness_store
-            .get_harness(harness_id)
-            .await?
-            .ok_or_else(|| AgentLoopError::harness_not_found(harness_id))?;
+        // 1. Retrieve harness chain (root-to-leaf)
+        let harness_chain = self.harness_store.get_harness_chain(harness_id).await?;
+        if harness_chain.is_empty() {
+            return Err(AgentLoopError::harness_not_found(harness_id));
+        }
 
         // 2. Retrieve agent (optional)
         let agent = if let Some(agent_id) = agent_id {
@@ -567,10 +566,11 @@ impl ReasonAtom {
             .await?
             .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
 
-        // 4. Fold harness → agent → session into a single config overlay.
-        //    Cheap sync merge; reused for message filters, model, and RuntimeAgent.
+        // 4. Fold harness chain → agent → session into a single config overlay.
+        //    Each harness in the inheritance chain is its own overlay.
         let effective_overlay = {
-            let mut layers: Vec<AgentConfigOverlay> = vec![AgentConfigOverlay::from(&harness)];
+            let mut layers: Vec<AgentConfigOverlay> =
+                harness_chain.iter().map(AgentConfigOverlay::from).collect();
             if let Some(ref agent) = agent {
                 layers.push(AgentConfigOverlay::from(agent));
             }

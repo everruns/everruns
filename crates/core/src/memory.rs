@@ -299,8 +299,15 @@ impl InMemoryHarnessStore {
 
 #[async_trait]
 impl HarnessStore for InMemoryHarnessStore {
-    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<Harness>> {
-        Ok(self.harnesses.read().await.get(&harness_id).cloned())
+    async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>> {
+        Ok(self
+            .harnesses
+            .read()
+            .await
+            .get(&harness_id)
+            .cloned()
+            .into_iter()
+            .collect())
     }
 }
 

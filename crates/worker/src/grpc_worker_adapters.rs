@@ -101,8 +101,13 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
         let store = GrpcHarnessStore::new(self.client.clone(), org_id);
-        everruns_core::traits::HarnessStore::get_harness(&store, HarnessId::from_uuid(harness_id))
-            .await
+        let chain = everruns_core::traits::HarnessStore::get_harness_chain(
+            &store,
+            HarnessId::from_uuid(harness_id),
+        )
+        .await?;
+        // GrpcHarnessStore returns a single pre-merged harness; take it
+        Ok(chain.into_iter().last())
     }
 
     // =========================================================================

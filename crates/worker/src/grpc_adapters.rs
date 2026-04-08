@@ -668,7 +668,10 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
 
 #[async_trait]
 impl HarnessStore for GrpcOrgAdapter {
-    async fn get_harness(&self, harness_id: everruns_core::HarnessId) -> Result<Option<Harness>> {
+    async fn get_harness_chain(
+        &self,
+        harness_id: everruns_core::HarnessId,
+    ) -> Result<Vec<Harness>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::GetHarnessRequest {
@@ -681,12 +684,13 @@ impl HarnessStore for GrpcOrgAdapter {
             .await
             .map_err(grpc_status_to_error)?;
 
+        // gRPC returns a pre-merged harness; wrap as single-element chain
         match response.into_inner().harness {
             Some(proto_harness) => {
                 let harness = proto_harness_to_harness(proto_harness)?;
-                Ok(Some(harness))
+                Ok(vec![harness])
             }
-            None => Ok(None),
+            None => Ok(vec![]),
         }
     }
 }

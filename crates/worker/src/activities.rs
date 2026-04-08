@@ -381,19 +381,22 @@ pub async fn act_activity(
             }
         } else {
             let harness_store = GrpcHarnessStore::new(grpc_client.clone(), org_id);
-            if let Ok(Some(harness)) =
-                everruns_core::traits::HarnessStore::get_harness(&harness_store, input.harness_id)
-                    .await
-            {
-                harness
-                    .capabilities
-                    .iter()
-                    .map(|c| c.capability_id().to_string())
-                    .filter(|id| !is_mcp_capability(id))
-                    .collect()
-            } else {
-                vec![]
-            }
+            let chain = everruns_core::traits::HarnessStore::get_harness_chain(
+                &harness_store,
+                input.harness_id,
+            )
+            .await
+            .unwrap_or_default();
+            // Fold harness chain into effective overlay to get merged capabilities
+            let overlay = everruns_core::AgentConfigOverlay::fold(
+                chain.iter().map(everruns_core::AgentConfigOverlay::from),
+            );
+            overlay
+                .capabilities
+                .iter()
+                .map(|c| c.capability_id().to_string())
+                .filter(|id| !is_mcp_capability(id))
+                .collect()
         };
 
         if !cap_ids.is_empty() {
