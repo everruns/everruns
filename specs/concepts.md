@@ -80,6 +80,24 @@ Modular, reusable configuration unit that extends harness, agent, or session beh
 - MCP servers appear as virtual capabilities with `mcp:{uuid}` IDs
 - Capabilities can depend on other capabilities, resolved in topological order
 
+### AgentConfigOverlay
+
+Composable configuration layer shared by Harness, Agent, and Session. Each entity produces an overlay; overlays fold bottom-up (harness → agent → session) into a single effective config that `RuntimeAgentBuilder::from_overlay()` resolves into a RuntimeAgent.
+
+See `crates/core/src/config_layer.rs` for implementation.
+
+**Fields and merge semantics:**
+
+| Field | Merge rule |
+|-------|-----------|
+| `system_prompt` | Base first, overlay appended |
+| `capabilities` | Overlay overrides base by capability ID |
+| `initial_files` | Overlay overrides base by normalized path |
+| `network_access` | Allowed intersects, blocked unions (can only narrow) |
+| `default_model_id` | Overlay wins if set, else inherit base |
+| `tools` | Additive (deduplicated by name at build time) |
+| `max_iterations` | Overlay wins if set, else inherit base |
+
 ### Tool
 
 A function the agent can invoke during execution. Tools are provided by capabilities.

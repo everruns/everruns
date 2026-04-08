@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::capability_types::AgentCapabilityConfig;
+use crate::config_layer::{merge_capabilities, merge_initial_files};
 use crate::network_access::{self, NetworkAccessList};
 use crate::session_file::InitialFile;
 use crate::typed_id::{HarnessId, ModelId};
@@ -164,55 +165,8 @@ fn merge_system_prompts(parent: &str, child: &str) -> String {
     }
 }
 
-fn merge_capabilities(
-    parent: &[AgentCapabilityConfig],
-    child: &[AgentCapabilityConfig],
-) -> Vec<AgentCapabilityConfig> {
-    let mut merged = parent.to_vec();
-
-    for child_cap in child {
-        if let Some(existing) = merged
-            .iter_mut()
-            .find(|existing| existing.capability_id() == child_cap.capability_id())
-        {
-            *existing = child_cap.clone();
-        } else {
-            merged.push(child_cap.clone());
-        }
-    }
-
-    merged
-}
-
-fn merge_initial_files(parent: &[InitialFile], child: &[InitialFile]) -> Vec<InitialFile> {
-    let mut merged = parent.to_vec();
-
-    for child_file in child {
-        let normalized_path = normalize_initial_file_path(&child_file.path);
-        if let Some(existing) = merged
-            .iter_mut()
-            .find(|existing| normalize_initial_file_path(&existing.path) == normalized_path)
-        {
-            *existing = child_file.clone();
-        } else {
-            merged.push(child_file.clone());
-        }
-    }
-
-    merged
-}
-
-fn normalize_initial_file_path(path: &str) -> String {
-    if path == "/workspace" {
-        "/".to_string()
-    } else if let Some(stripped) = path.strip_prefix("/workspace/") {
-        format!("/{}", stripped.trim_start_matches('/'))
-    } else if path.starts_with('/') {
-        path.to_string()
-    } else {
-        format!("/{}", path)
-    }
-}
+// merge_capabilities, merge_initial_files, and normalize_initial_file_path
+// live in config_layer.rs and are re-exported from crate root.
 
 #[cfg(test)]
 mod tests {

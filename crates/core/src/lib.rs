@@ -83,6 +83,7 @@ pub mod url_validation;
 pub mod atoms;
 pub mod capabilities;
 pub mod command;
+pub mod config_layer;
 pub mod dependency_blocker;
 pub mod error;
 pub mod llm_driver_helpers;
@@ -119,6 +120,9 @@ pub mod turn;
 // This enables dependency inversion - provider crates register their drivers at startup.
 
 // Re-exports for convenience
+pub use config_layer::{
+    AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
+};
 pub use error::{AgentLoopError, Result, StoreResultExt, from_json, json_val};
 pub use message::{
     ContentPart, ContentType, Controls, ExternalActor, ImageContentPart, ImageFileContentPart,

@@ -26,6 +26,7 @@ use uuid::Uuid;
 
 use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
+use crate::config_layer::AgentConfigOverlay;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
     EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, LlmRetryInfo,
@@ -566,21 +567,20 @@ impl ReasonAtom {
             .await?
             .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
 
-        // 3. Load messages with capability message filters applied.
-        //
-        // Collect only message filter providers from all capability layers
-        // (harness → agent → session). This uses the lightweight path that
-        // skips system prompt contributions and tool collection — those are
-        // expensive (e.g., AGENTS.md filesystem read) and not needed here.
-        let mut all_capability_configs: Vec<crate::AgentCapabilityConfig> =
-            harness.capabilities.clone();
-        if let Some(ref agent) = agent {
-            all_capability_configs.extend(agent.capabilities.iter().cloned());
-        }
-        all_capability_configs.extend(session.capabilities.iter().cloned());
+        // 4. Fold harness → agent → session into a single config overlay.
+        //    Cheap sync merge; reused for message filters, model, and RuntimeAgent.
+        let effective_overlay = {
+            let mut layers: Vec<AgentConfigOverlay> = vec![AgentConfigOverlay::from(&harness)];
+            if let Some(ref agent) = agent {
+                layers.push(AgentConfigOverlay::from(agent));
+            }
+            layers.push(AgentConfigOverlay::from(&session));
+            AgentConfigOverlay::fold(layers)
+        };
 
+        // 5. Load messages with capability message filters applied.
         let collected_filters = crate::capabilities::collect_message_filters_only(
-            &all_capability_configs,
+            &effective_overlay.capabilities,
             &self.capability_registry,
         );
 
@@ -593,7 +593,7 @@ impl ReasonAtom {
             return Err(AgentLoopError::NoMessages);
         }
 
-        // 4. Extract model_id from the last user message's controls (highest priority)
+        // 6. Resolve model: controls > overlay (session > agent > harness) > system default
         let controls_model_id = messages
             .iter()
             .rev()
@@ -601,25 +601,32 @@ impl ReasonAtom {
             .and_then(|m| m.controls.as_ref())
             .and_then(|c| c.model_id);
 
-        // 5. Resolve model: controls > session > agent > harness
-        let agent_model_id = agent.as_ref().and_then(|a| a.default_model_id);
         let (model_with_provider, resolved_model_id) = self
             .resolve_model(
                 controls_model_id,
-                session.model_id,
-                agent_model_id,
-                harness.default_model_id,
+                effective_overlay.default_model_id,
+                None,
+                None,
             )
             .await?;
 
-        // 6. Build runtime agent
+        // 7. Extract compaction config from merged capabilities (before consuming overlay)
+        let compaction_config = {
+            use crate::capabilities::COMPACTION_CAPABILITY_ID;
+            effective_overlay
+                .capabilities
+                .iter()
+                .find(|cap| cap.capability_id() == COMPACTION_CAPABILITY_ID)
+                .map(|cap| crate::capabilities::CompactionConfig::from_json(&cap.config))
+        };
+
+        // 8. Build runtime agent
         let resolved_locale = extract_locale_override(&messages).or_else(|| session.locale.clone());
         let prompt_ctx = crate::capabilities::SystemPromptContext {
             session_id,
             locale: resolved_locale.clone(),
             file_store: self.file_store.clone(),
         };
-
         let mut runtime_agent = if let Some(ref blueprint_id) = session.blueprint_id {
             // Blueprint path: build RuntimeAgent from blueprint definition
             let blueprint = self
@@ -657,89 +664,22 @@ impl ReasonAtom {
                 .with_locale(prompt_ctx.locale.as_deref())
                 .build()
         } else {
-            // Standard path: harness (base) → agent (optional) → session caps
-            let mut builder = RuntimeAgentBuilder::new()
-                .with_harness(&harness, &self.capability_registry, &prompt_ctx)
-                .await;
-            if let Some(ref agent) = agent {
-                builder = builder
-                    .with_agent(agent, &self.capability_registry, &prompt_ctx)
-                    .await;
-            }
-            builder = builder
-                .with_capability_configs(
-                    &session.capabilities,
-                    &self.capability_registry,
-                    &prompt_ctx,
-                )
-                .await
-                .with_locale(prompt_ctx.locale.as_deref())
-                .tools(mcp_tool_definitions.iter().cloned())
-                .model(&model_with_provider.model);
-
-            // Add session-level client-side tools (additive to agent tools)
-            if !session.tools.is_empty() {
-                builder = builder.tools(session.tools.clone());
-            }
-
-            // Prepend session-level system prompt (layers on top of agent prompt)
-            if let Some(ref session_prompt) = session.system_prompt
-                && !session_prompt.is_empty()
-            {
-                builder = builder.prepend_system_prompt(session_prompt);
-            }
-
-            // Resolve max_iterations: session > agent > default (500)
-            let resolved_max_iterations = session
-                .max_iterations
-                .or_else(|| agent.as_ref().and_then(|a| a.max_iterations));
-            if let Some(max_iter) = resolved_max_iterations {
-                builder = builder.max_iterations(max_iter);
-            }
-
-            // Merge network_access: harness ∩ agent ∩ session (each layer narrows)
-            let merged_network_access = {
-                use crate::network_access::merge_network_access;
-                let effective = merge_network_access(
-                    harness.network_access.as_ref(),
-                    agent.as_ref().and_then(|a| a.network_access.as_ref()),
-                );
-                merge_network_access(effective.as_ref(), session.network_access.as_ref())
-            };
-            builder = builder.network_access(merged_network_access);
-
-            builder.build()
+            // Standard path: use the pre-computed effective overlay
+            RuntimeAgentBuilder::from_overlay(
+                effective_overlay,
+                &self.capability_registry,
+                &prompt_ctx,
+            )
+            .await
+            .with_locale(prompt_ctx.locale.as_deref())
+            .tools(mcp_tool_definitions.iter().cloned())
+            .model(&model_with_provider.model)
+            .build()
         };
 
         if crate::progress_reporting::session_uses_report_progress(&session.tags) {
             runtime_agent = crate::progress_reporting::apply_report_progress_mode(runtime_agent);
         }
-
-        // 6b. Extract compaction config from agent/harness/session capabilities
-        let compaction_config = {
-            use crate::capabilities::COMPACTION_CAPABILITY_ID;
-
-            // Search session caps first, then agent, then harness (last-wins)
-            let mut config_json = None;
-            for cap in &harness.capabilities {
-                if cap.capability_id() == COMPACTION_CAPABILITY_ID {
-                    config_json = Some(cap.config.clone());
-                }
-            }
-            if let Some(ref agent) = agent {
-                for cap in &agent.capabilities {
-                    if cap.capability_id() == COMPACTION_CAPABILITY_ID {
-                        config_json = Some(cap.config.clone());
-                    }
-                }
-            }
-            for cap in &session.capabilities {
-                if cap.capability_id() == COMPACTION_CAPABILITY_ID {
-                    config_json = Some(cap.config.clone());
-                }
-            }
-            config_json.map(|json| crate::capabilities::CompactionConfig::from_json(&json))
-        };
 
         // 7. Create LLM driver using factory
         let llm_driver = self.create_llm_driver(&model_with_provider)?;

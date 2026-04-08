@@ -2,19 +2,23 @@
 //
 // RuntimeAgent is a DB-agnostic configuration struct that can be:
 // - Created directly for standalone usage
-// - Built from a Harness and/or Agent entity via builder methods
+// - Built from a AgentConfigOverlay via `from_overlay()` (preferred)
+// - Built from individual Harness/Agent entities via builder methods (legacy)
 //
-// Prompt layering order (via prepend pattern):
-// 1. with_harness() - sets harness system_prompt + harness caps
-// 2. with_agent() - prepends agent prompt + agent caps (optional)
-// 3. with_capabilities() - prepends session caps
-// Result: [session_caps] [agent_caps] [agent_prompt] [harness_caps] [harness_prompt]
+// Preferred usage: merge Harness/Agent/Session into a AgentConfigOverlay, then:
+//   RuntimeAgentBuilder::from_overlay(layer, &registry, &ctx).await
+//       .model("gpt-5.2")
+//       .build()
+//
+// Legacy per-entity methods (with_harness, with_agent) are kept for
+// backward compatibility but the AgentConfigOverlay path is canonical.
 
 use crate::agent::Agent;
 use crate::capabilities::{
     CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
     resolve_capability_configs,
 };
+use crate::config_layer::AgentConfigOverlay;
 use crate::harness::Harness;
 use crate::llm_driver_registry::ToolSearchConfig;
 use crate::llm_model_profiles::get_model_profile;
@@ -109,6 +113,58 @@ impl RuntimeAgentBuilder {
         Self {
             runtime_agent: RuntimeAgent::default(),
         }
+    }
+
+    /// Build from a pre-merged AgentConfigOverlay.
+    ///
+    /// This is the preferred way to build a RuntimeAgent. The caller merges
+    /// Harness/Agent/Session into a single AgentConfigOverlay (via `AgentConfigOverlay::fold`),
+    /// then this method resolves capabilities and assembles the final config.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let layer = AgentConfigOverlay::fold([
+    ///     AgentConfigOverlay::from(&harness),
+    ///     AgentConfigOverlay::from(&agent),
+    ///     AgentConfigOverlay::from(&session),
+    /// ]);
+    /// let runtime_agent = RuntimeAgentBuilder::from_overlay(layer, &registry, &ctx)
+    ///     .await
+    ///     .model("gpt-5.2")
+    ///     .build();
+    /// ```
+    pub async fn from_overlay(
+        layer: AgentConfigOverlay,
+        registry: &CapabilityRegistry,
+        ctx: &SystemPromptContext,
+    ) -> Self {
+        let mut builder = Self::new();
+
+        // Set composed system prompt
+        if let Some(ref prompt) = layer.system_prompt {
+            builder = builder.system_prompt(prompt);
+        }
+
+        // Resolve merged capabilities (once, on the effective set)
+        builder = builder
+            .with_capability_configs(&layer.capabilities, registry, ctx)
+            .await;
+
+        // Add tools from all layers
+        if !layer.tools.is_empty() {
+            builder = builder.tools(layer.tools);
+        }
+
+        // Set max_iterations if any layer specified it
+        if let Some(max) = layer.max_iterations {
+            builder = builder.max_iterations(max);
+        }
+
+        // Set merged network_access
+        builder = builder.network_access(layer.network_access);
+
+        builder
     }
 
     /// Apply a Harness's configuration to this builder.
