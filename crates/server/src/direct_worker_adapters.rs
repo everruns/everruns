@@ -1668,7 +1668,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         let input = CreateAgentRow {
             public_id: public_id.to_string(),
             name: name.to_string(),
-            display_name: name.to_string(),
+            display_name: Some(name.to_string()),
             description: description.map(|s| s.to_string()),
             system_prompt: system_prompt.to_string(),
             default_model_id: None,
@@ -2297,7 +2297,7 @@ mod tests {
         let create = CreateAgentRow {
             public_id,
             name: "test-agent".to_string(),
-            display_name: "Test Agent".to_string(),
+            display_name: Some("Test Agent".to_string()),
             description: None,
             system_prompt: String::new(),
             default_model_id: None,

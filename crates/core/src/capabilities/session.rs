@@ -170,16 +170,17 @@ impl Tool for GetSessionInfoTool {
             Err(e) => return ToolExecutionResult::internal_error(e),
         };
 
-        let agent_name =
-            if let (Some(agent_id), Some(agent_store)) = (session.agent_id, &context.agent_store) {
-                match agent_store.get_agent(agent_id).await {
-                    Ok(Some(agent)) => Some(agent.display_name),
-                    Ok(None) => None,
-                    Err(e) => return ToolExecutionResult::internal_error(e),
-                }
-            } else {
-                None
-            };
+        let agent_name = if let (Some(agent_id), Some(agent_store)) =
+            (session.agent_id, &context.agent_store)
+        {
+            match agent_store.get_agent(agent_id).await {
+                Ok(Some(agent)) => Some(agent.display_name.unwrap_or_else(|| agent.name.clone())),
+                Ok(None) => None,
+                Err(e) => return ToolExecutionResult::internal_error(e),
+            }
+        } else {
+            None
+        };
 
         ToolExecutionResult::success(json!({
             "session_id": session.id.to_string(),
@@ -314,7 +315,7 @@ mod tests {
             public_id: agent_id,
             internal_id: agent_id.uuid(),
             name: "research-agent".to_string(),
-            display_name: "Research Agent".to_string(),
+            display_name: Some("Research Agent".to_string()),
             description: Some("desc".to_string()),
             system_prompt: "prompt".to_string(),
             default_model_id: None,

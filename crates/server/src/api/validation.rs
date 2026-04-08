@@ -324,13 +324,15 @@ pub fn validate_initial_files(initial_files: &[InitialFile]) -> Result<(), Valid
 /// Validate all fields for CreateAgentRequest
 pub fn validate_create_agent_input(
     name: &str,
-    display_name: &str,
+    display_name: Option<&str>,
     description: Option<&str>,
     system_prompt: &str,
     capabilities_count: usize,
     initial_files: &[InitialFile],
 ) -> Result<(), ValidationError> {
-    validate_agent_display_name(display_name)?;
+    if let Some(dn) = display_name {
+        validate_agent_display_name(dn)?;
+    }
     validate_agent_description(description)?;
     validate_agent_system_prompt(system_prompt)?;
     validate_agent_capabilities_count(capabilities_count)?;

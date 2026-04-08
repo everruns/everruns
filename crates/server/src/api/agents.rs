@@ -44,8 +44,10 @@ pub struct CreateAgentRequest {
     #[schema(example = "customer-support")]
     pub name: String,
     /// Human-readable display name shown in UI.
+    /// Falls back to `name` when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = "Customer Support Agent")]
-    pub display_name: String,
+    pub display_name: Option<String>,
     /// A human-readable description of what the agent does.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Handles customer inquiries and support tickets")]
@@ -376,7 +378,7 @@ pub async fn create_agent(
     // Validate input sizes (last-resort protection against abuse)
     validate_create_agent_input(
         &req.name,
-        &req.display_name,
+        req.display_name.as_deref(),
         req.description.as_deref(),
         &req.system_prompt,
         req.capabilities.len(),
@@ -704,7 +706,7 @@ pub async fn upsert_agent(
     // Validate input sizes
     validate_create_agent_input(
         &req.name,
-        &req.display_name,
+        req.display_name.as_deref(),
         req.description.as_deref(),
         &req.system_prompt,
         req.capabilities.len(),
@@ -837,9 +839,9 @@ pub async fn import_agent(
     // Derive display_name and slug name.
     // Legacy files may only have `name` (the old display name); in that case,
     // treat it as display_name and derive the slug from it.
-    let display_name = agent_file
-        .display_name
-        .or(agent_file.name.clone())
+    let display_name = agent_file.display_name.or(agent_file.name.clone());
+    let name_fallback = display_name
+        .clone()
         .unwrap_or_else(|| format!("agent-{}", Utc::now().format("%Y%m%d-%H%M%S")));
     let name = agent_file
         .name
@@ -853,7 +855,7 @@ pub async fn import_agent(
                 slugify(&n)
             }
         })
-        .unwrap_or_else(|| slugify(&display_name));
+        .unwrap_or_else(|| slugify(&name_fallback));
     validate_agent_name_format(&name)?;
 
     // System prompt is required (either from body or front matter)
@@ -875,7 +877,7 @@ pub async fn import_agent(
 
     validate_create_agent_input(
         &name,
-        &display_name,
+        display_name.as_deref(),
         agent_file.description.as_deref(),
         &system_prompt,
         agent_file.capabilities.len(),
@@ -942,10 +944,9 @@ fn agent_to_markdown(agent: &Agent) -> String {
     let mut yaml_lines = vec![];
     yaml_lines.push(format!("id: \"{}\"", agent.public_id));
     yaml_lines.push(format!("name: \"{}\"", agent.name.replace('"', "\\\"")));
-    yaml_lines.push(format!(
-        "display_name: \"{}\"",
-        agent.display_name.replace('"', "\\\"")
-    ));
+    if let Some(ref dn) = agent.display_name {
+        yaml_lines.push(format!("display_name: \"{}\"", dn.replace('"', "\\\"")));
+    }
 
     if let Some(desc) = &agent.description {
         yaml_lines.push(format!("description: \"{}\"", desc.replace('"', "\\\"")));

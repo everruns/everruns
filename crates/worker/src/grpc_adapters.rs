@@ -639,7 +639,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         public_id: everruns_core::AgentId::from_uuid(id),
         internal_id: id,
         name: proto_agent.name.clone(),
-        display_name: proto_agent.display_name.unwrap_or(proto_agent.name),
+        display_name: proto_agent.display_name,
         description: non_empty_string(proto_agent.description),
         system_prompt: proto_agent.system_prompt,
         default_model_id: default_model_id.map(|u| u.into()),

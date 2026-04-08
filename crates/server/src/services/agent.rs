@@ -330,7 +330,7 @@ impl AgentService {
         let req = CreateAgentRequest {
             id: None,
             name: copy_name,
-            display_name: format!("{} (copy)", source.display_name),
+            display_name: source.display_name.map(|d| format!("{} (copy)", d)),
             description: source.description,
             system_prompt: source.system_prompt,
             default_model_id: source.default_model_id,
@@ -644,7 +644,7 @@ mod tests {
         CreateAgentRequest {
             id: None,
             name: "test-agent".to_string(),
-            display_name: "Test Agent".to_string(),
+            display_name: Some("Test Agent".to_string()),
             description: None,
             system_prompt: "Test".to_string(),
             default_model_id,

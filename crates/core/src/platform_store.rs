@@ -230,7 +230,7 @@ pub mod tests {
                     public_id: crate::typed_id::AgentId::new(),
                     internal_id: uuid::Uuid::now_v7(),
                     name: "test-agent".to_string(),
-                    display_name: "Test Agent".to_string(),
+                    display_name: Some("Test Agent".to_string()),
                     description: Some("test agent".to_string()),
                     system_prompt: "You are helpful.".to_string(),
                     default_model_id: None,

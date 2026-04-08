@@ -155,7 +155,7 @@ impl InMemoryDatabase {
                 matches_search_tokens(
                     search,
                     &[
-                        &a.display_name,
+                        a.display_name.as_deref().unwrap_or(""),
                         &a.name,
                         a.description.as_deref().unwrap_or(""),
                     ],
@@ -194,7 +194,7 @@ impl InMemoryDatabase {
                 agent.name = name;
             }
             if let Some(display_name) = input.display_name {
-                agent.display_name = display_name;
+                agent.display_name = Some(display_name);
             }
             if let Some(description) = input.description {
                 agent.description = Some(description);

@@ -173,7 +173,7 @@ pub async fn use_example(
     let req = CreateAgentRequest {
         id: None,
         name: seed.name.to_string(),
-        display_name: seed.display_name.to_string(),
+        display_name: Some(seed.display_name.to_string()),
         description: Some(seed.description.to_string()),
         system_prompt: seed.system_prompt.to_string(),
         default_model_id: None,

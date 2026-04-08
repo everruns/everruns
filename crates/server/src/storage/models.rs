@@ -321,7 +321,8 @@ pub struct AgentRow {
     pub public_id: String,
     pub org_id: i64,
     pub name: String,
-    pub display_name: String,
+    #[sqlx(default)]
+    pub display_name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
@@ -361,7 +362,7 @@ pub struct AgentRow {
 pub struct CreateAgentRow {
     pub public_id: String,
     pub name: String,
-    pub display_name: String,
+    pub display_name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,

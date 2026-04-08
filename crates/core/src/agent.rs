@@ -73,7 +73,9 @@ pub struct Agent {
     /// Name, unique per org (e.g. "customer-support").
     pub name: String,
     /// Human-readable display name shown in UI (e.g. "Customer Support Agent").
-    pub display_name: String,
+    /// Falls back to `name` when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     /// Human-readable description of what the agent does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -175,7 +177,7 @@ mod tests {
             public_id: "agent_01933b5a000070008000000000000001".parse().unwrap(),
             internal_id: Uuid::nil(),
             name: "test".to_string(),
-            display_name: "Test".to_string(),
+            display_name: Some("Test".to_string()),
             description: None,
             system_prompt: "test".to_string(),
             default_model_id: None,

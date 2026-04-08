@@ -290,7 +290,7 @@ pub async fn create_harness(
     // Reuse agent validation for display_name and other fields
     validate_create_agent_input(
         &req.name,
-        &req.display_name,
+        Some(&req.display_name),
         req.description.as_deref(),
         &req.system_prompt,
         req.capabilities.len(),

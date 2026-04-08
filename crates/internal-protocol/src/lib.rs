@@ -283,6 +283,7 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
     let json = serde_json::json!({
         "id": id_str,
         "name": value.name,
+        "display_name": value.display_name,
         "description": if value.description.is_empty() { None } else { Some(&value.description) },
         "system_prompt": value.system_prompt,
         "default_model_id": model_id_str,
@@ -316,7 +317,7 @@ pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
             .iter()
             .map(|c| c.capability_id().to_string())
             .collect(),
-        display_name: Some(value.display_name.clone()),
+        display_name: value.display_name.clone(),
     }
 }
 
@@ -1104,7 +1105,7 @@ mod tests {
             public_id: everruns_core::AgentId::from_uuid(id),
             internal_id: id,
             name: "test-agent".to_string(),
-            display_name: "Test Agent".to_string(),
+            display_name: Some("Test Agent".to_string()),
             description: Some("Test description".to_string()),
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
@@ -1165,7 +1166,7 @@ mod tests {
             public_id: everruns_core::AgentId::from_uuid(id),
             internal_id: id,
             name: "test-agent".to_string(),
-            display_name: "Test Agent".to_string(),
+            display_name: Some("Test Agent".to_string()),
             description: None,
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,

@@ -5,7 +5,6 @@
 -- Step 1: Add display_name column, copy existing name values
 ALTER TABLE agents ADD COLUMN display_name TEXT;
 UPDATE agents SET display_name = name;
-ALTER TABLE agents ALTER COLUMN display_name SET NOT NULL;
 
 -- Step 2: Convert name to lowercase slug format.
 -- Fall back to 'agent-<short-id>' if result is empty.
