@@ -3,6 +3,10 @@
     "linear": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://mcp.linear.app/sse"]
+    },
+    "figma": {
+      "command": "npx",
+      "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"]
     }
   }
 }
