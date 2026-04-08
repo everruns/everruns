@@ -9,6 +9,7 @@
 
 import { cn } from "@/lib/utils";
 import { MessageContent } from "@/components/chat/message-content";
+import "./streaming-message.css";
 
 interface StreamingMessageProps {
   text: string;
