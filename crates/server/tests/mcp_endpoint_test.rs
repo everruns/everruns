@@ -213,7 +213,8 @@ async fn test_mcp_agent_run() {
         .post(
             "/v1/agents",
             json!({
-                "name": "MCP Test Agent",
+                "name": "mcp-test-agent",
+                "display_name": "MCP Test Agent",
                 "system_prompt": "You are a test agent."
             }),
         )
@@ -650,7 +651,7 @@ async fn test_mcp_execute_create_and_get_agent() {
         &url,
         "execute",
         json!({
-            "command": "create_agent --name 'MCP Execute Agent' --system_prompt 'Test prompt'"
+            "command": "create_agent --name 'mcp-execute-agent' --display_name 'MCP Execute Agent' --system_prompt 'Test prompt'"
         }),
     )
     .await;
@@ -681,7 +682,7 @@ async fn test_mcp_execute_create_and_get_agent() {
 
     let result = tool_json(&resp);
     let fetched: Value = serde_json::from_str(result["stdout"].as_str().unwrap()).unwrap();
-    assert_eq!(fetched["name"], "MCP Execute Agent");
+    assert_eq!(fetched["name"], "mcp-execute-agent");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -787,7 +788,7 @@ async fn test_mcp_execute_bash_script() {
 
     // Multi-line script: create agent then list to verify
     let script = r#"
-        create_agent --name 'Script Agent' --system_prompt 'scripted' > /dev/null
+        create_agent --name 'script-agent' --display_name 'Script Agent' --system_prompt 'scripted' > /dev/null
         list_agents | jq '.data | length'
     "#;
 
@@ -874,7 +875,7 @@ async fn test_mcp_execute_agent_crud_workflow() {
         &url,
         "execute",
         json!({
-            "command": "create_agent --name 'CRUD Agent' --system_prompt 'CRUD test'"
+            "command": "create_agent --name 'crud-agent' --display_name 'CRUD Agent' --system_prompt 'CRUD test'"
         }),
     )
     .await;
@@ -893,7 +894,7 @@ async fn test_mcp_execute_agent_crud_workflow() {
         &url,
         "execute",
         json!({
-            "command": format!("update_agent --id {agent_id} --name 'Updated CRUD Agent'")
+            "command": format!("update_agent --id {agent_id} --name 'updated-crud-agent'")
         }),
     )
     .await;
@@ -905,7 +906,7 @@ async fn test_mcp_execute_agent_crud_workflow() {
     let result = tool_json(&resp);
     assert!(result["success"].as_bool().unwrap(), "update failed");
     let updated: Value = serde_json::from_str(result["stdout"].as_str().unwrap()).unwrap();
-    assert_eq!(updated["name"], "Updated CRUD Agent");
+    assert_eq!(updated["name"], "updated-crud-agent");
 
     // Delete (archive)
     let resp = mcp_tool_call_http(
@@ -931,7 +932,8 @@ async fn test_mcp_full_flow_agent_run_then_status() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Flow Agent",
+                "name": "flow-agent",
+                "display_name": "Flow Agent",
                 "system_prompt": "You are a flow test agent."
             }),
         )

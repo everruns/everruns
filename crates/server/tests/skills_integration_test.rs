@@ -354,7 +354,8 @@ async fn test_agent_with_skill_capability() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Skill Agent",
+                "name": "skill-agent",
+                "display_name": "Skill Agent",
                 "system_prompt": "You are a helpful assistant.",
                 "capabilities": [
                     { "ref": cap_id, "config": {} }
@@ -365,7 +366,7 @@ async fn test_agent_with_skill_capability() {
         .assert_status(StatusCode::CREATED);
 
     let agent = agent_resp.json_value();
-    assert_eq!(agent["name"], "Skill Agent");
+    assert_eq!(agent["name"], "skill-agent");
 
     // Verify capabilities include the skill
     let agent_caps = agent["capabilities"].as_array().unwrap();
