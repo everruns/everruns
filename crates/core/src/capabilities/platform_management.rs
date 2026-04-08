@@ -748,6 +748,11 @@ impl Tool for ManageAgentsTool {
                     }
                 };
                 let name = get_str(&arguments, "name");
+                if let Some(n) = name
+                    && let Err(msg) = crate::agent::validate_addressable_name(n)
+                {
+                    return ToolExecutionResult::tool_error(format!("Invalid agent name: {msg}"));
+                }
                 let description = get_str(&arguments, "description");
                 let system_prompt = get_str(&arguments, "system_prompt");
                 match store
@@ -1790,12 +1795,47 @@ mod tests {
         let tool = ManageAgentsTool;
         let result = tool
             .execute_with_context(
-                json!({"operation": "create", "name": "New Agent", "system_prompt": "Be helpful"}),
+                json!({"operation": "create", "name": "new-agent", "system_prompt": "Be helpful"}),
                 &ctx,
             )
             .await;
         match result {
-            ToolExecutionResult::Success(v) => assert_eq!(v["name"], "New Agent"),
+            ToolExecutionResult::Success(v) => assert_eq!(v["name"], "new-agent"),
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_create_rejects_non_slug_name() {
+        let ctx = mock_context();
+        let tool = ManageAgentsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "create", "name": "Bad Agent Name", "system_prompt": "hi"}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(_) => {} // expected
+            other => panic!("expected tool error for non-slug name, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn agent_create_with_display_name() {
+        let ctx = mock_context();
+        let tool = ManageAgentsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "create", "name": "support-bot", "display_name": "Support Bot", "system_prompt": "hi"}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["name"], "support-bot");
+                assert_eq!(v["display_name"], "Support Bot");
+            }
             other => panic!("expected success, got: {other:?}"),
         }
     }
@@ -1806,13 +1846,13 @@ mod tests {
         let tool = ManageAgentsTool;
         let result = tool
             .execute_with_context(
-                json!({"operation": "update", "agent_id": AgentId::new().to_string(), "name": "Renamed"}),
+                json!({"operation": "update", "agent_id": AgentId::new().to_string(), "name": "renamed-agent"}),
                 &ctx,
             )
             .await;
         match result {
             ToolExecutionResult::Success(v) => {
-                assert_eq!(v["name"], "Renamed");
+                assert_eq!(v["name"], "renamed-agent");
                 assert!(v["message"].as_str().unwrap().contains("updated"));
             }
             other => panic!("expected success, got: {other:?}"),
