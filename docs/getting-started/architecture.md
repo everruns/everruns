@@ -7,7 +7,7 @@ Everruns is a **headless durable agentic harness engine** built for reliability 
 
 ## Platform Overview
 
-![Platform Overview](../images/architecture/platform-overview.png)
+![Platform Overview](../images/architecture/platform-overview.svg)
 
 ## Key Design Principles
 

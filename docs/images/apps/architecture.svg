@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 320" width="800" fill="none">
+  <defs>
+    <marker id="arrowSolid" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0,0 8,3 0,6" fill="#0A1636"/>
+    </marker>
+    <marker id="arrowDashed" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0,0 8,3 0,6" fill="#0A1636"/>
+    </marker>
+  </defs>
+
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <!-- White background -->
+  <rect width="800" height="320" fill="#FFFFFF"/>
+
+  <!-- CHANNEL column header -->
+  <text x="80" y="50" class="header-text" text-anchor="middle">CHANNEL</text>
+
+  <!-- External Channel box -->
+  <rect x="20" y="65" width="120" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="80" y="86" class="label" text-anchor="middle">External Channel</text>
+  <text x="80" y="102" class="sublabel" text-anchor="middle">Slack, WhatsApp, etc.</text>
+
+  <!-- APP column header -->
+  <text x="250" y="50" class="header-text" text-anchor="middle">APP</text>
+
+  <!-- App box -->
+  <rect x="190" y="65" width="120" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="250" y="86" class="label" text-anchor="middle">App</text>
+  <text x="250" y="102" class="sublabel" text-anchor="middle">Routes to agent</text>
+
+  <!-- CONFIGURATION column header -->
+  <text x="440" y="50" class="header-text" text-anchor="middle">CONFIGURATION</text>
+
+  <!-- Harness box -->
+  <rect x="380" y="65" width="120" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="440" y="86" class="label" text-anchor="middle">Harness</text>
+  <text x="440" y="102" class="sublabel" text-anchor="middle">Environment</text>
+
+  <!-- Agent box -->
+  <rect x="380" y="140" width="120" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="440" y="161" class="label" text-anchor="middle">Agent</text>
+  <text x="440" y="177" class="sublabel" text-anchor="middle">Prompt + tools</text>
+
+  <!-- RUNTIME column header -->
+  <text x="650" y="50" class="header-text" text-anchor="middle">RUNTIME</text>
+
+  <!-- Session box -->
+  <rect x="580" y="65" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="650" y="86" class="label" text-anchor="middle">Session</text>
+  <text x="650" y="102" class="sublabel" text-anchor="middle">Conversation instance</text>
+
+  <!-- RuntimeAgent box -->
+  <rect x="580" y="140" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="650" y="161" class="label" text-anchor="middle">RuntimeAgent</text>
+  <text x="650" y="177" class="sublabel" text-anchor="middle">Merged config</text>
+
+  <!-- Step 1 badge + arrow: External Channel -> App -->
+  <rect x="147" y="81" width="18" height="18" fill="#0A1636"/>
+  <text x="156" y="94" class="step-num" text-anchor="middle">1</text>
+  <line x1="140" y1="90" x2="182" y2="90" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowSolid)"/>
+  <text x="161" y="78" class="arrow-label" text-anchor="middle">webhook</text>
+
+  <!-- Step 2 badge + arrow: App -> Session -->
+  <rect x="527" y="81" width="18" height="18" fill="#0A1636"/>
+  <text x="536" y="94" class="step-num" text-anchor="middle">2</text>
+  <line x1="310" y1="90" x2="572" y2="90" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowSolid)"/>
+  <text x="441" y="78" class="arrow-label" text-anchor="middle">find/create</text>
+
+  <!-- Step 3 badge + arrow: Session -> RuntimeAgent -->
+  <rect x="641" y="121" width="18" height="18" fill="#0A1636"/>
+  <text x="650" y="134" class="step-num" text-anchor="middle">3</text>
+  <line x1="650" y1="115" x2="650" y2="132" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowSolid)"/>
+  <text x="672" y="128" class="arrow-label">runs</text>
+
+  <!-- Dashed: App -> Harness ("references") -->
+  <line x1="310" y1="82" x2="372" y2="82" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrowDashed)"/>
+  <text x="341" y="75" class="arrow-label" text-anchor="middle">references</text>
+
+  <!-- Dashed: App -> Agent ("references") -->
+  <line x1="280" y1="115" x2="372" y2="155" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrowDashed)"/>
+  <text x="305" y="148" class="arrow-label" text-anchor="middle">references</text>
+</svg>

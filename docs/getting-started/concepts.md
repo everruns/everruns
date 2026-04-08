@@ -9,32 +9,7 @@ This page describes the core entities in Everruns and how they relate to each ot
 
 Harness and Agent are **configuration containers** — they hold capabilities and define behavior. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
 
-```mermaid
-graph LR
-    Harness -->|has| Agent
-    Harness -->|has| Capability
-    Agent -->|has| Capability
-
-    Harness -.->|assembles| RuntimeAgent
-    Agent -.->|assembles| RuntimeAgent
-    Capability -.->|assembles| RuntimeAgent
-
-    RuntimeAgent -.->|executes in| Session
-
-    App -->|uses| Harness
-    App -->|uses| Agent
-    App -.->|creates| Session
-
-    classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
-    classDef assembly fill:#ffd6a5,stroke:#e07b39,color:#5a3000
-    classDef runtime fill:#bde0fe,stroke:#3a86a8,color:#023047
-    classDef deploy fill:#e8daef,stroke:#7d3c98,color:#4a235a
-
-    class Harness,Agent,Capability config
-    class RuntimeAgent assembly
-    class Session runtime
-    class App deploy
-```
+![Configuration Hierarchy](../images/concepts/configuration-hierarchy.svg)
 
 - **Solid arrows** — configuration ownership: Harness has Agents and Capabilities, Agent has Capabilities
 - **Dashed arrows** — runtime assembly: config merges into RuntimeAgent, which executes in a Session
@@ -109,19 +84,7 @@ See [Apps](/features/apps/) for setup and configuration.
 
 Each session contains turns, messages, events, an isolated filesystem, and key-value storage.
 
-```mermaid
-erDiagram
-    Session ||--o{ Turn : "contains"
-    Session ||--o{ Event : "append-only log"
-    Session ||--|{ FileSystem : "isolated"
-    Session ||--|{ KeyValueStore : "isolated"
-
-    Turn ||--o{ Event : "emits"
-
-    Event ||--o{ Message : "reconstructs"
-
-    Message ||--o{ ContentPart : "contains"
-```
+![Session Internals](../images/concepts/session-internals.svg)
 
 ### Turn
 
@@ -135,23 +98,7 @@ A Turn is one iteration of the agent loop: reason (call the LLM) then act (execu
 
 Understanding the reason-act loop is key to building effective agents. Here's what happens inside each turn:
 
-```mermaid
-graph TD
-    Start([Message received]) --> Input[InputAtom<br/>Load user message]
-    Input --> Reason[ReasonAtom<br/>Call LLM with context]
-    Reason --> Decision{Tool calls<br/>in response?}
-    Decision -->|Yes| Act[ActAtom<br/>Execute tools in parallel]
-    Act --> Reason
-    Decision -->|No| Done([Turn complete<br/>Agent response emitted])
-
-    classDef atom fill:#bde0fe,stroke:#3a86a8,color:#023047
-    classDef decision fill:#ffd6a5,stroke:#e07b39,color:#5a3000
-    classDef terminal fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
-
-    class Input,Reason,Act atom
-    class Decision decision
-    class Start,Done terminal
-```
+![Agentic Loop](../images/concepts/agentic-loop.svg)
 
 Each iteration:
 
@@ -214,16 +161,7 @@ Each session has scoped storage with two tiers:
 
 System-wide configuration for LLM providers, models, and MCP servers.
 
-```mermaid
-erDiagram
-    LlmProvider ||--o{ LlmModel : "contains"
-
-    Agent }o--|| LlmModel : "default model"
-    Session }o--o| LlmModel : "override model"
-
-    McpServer ||--o{ Tool : "exposes"
-    McpServer ||--|| Capability : "virtual capability"
-```
+![Settings](../images/concepts/settings.svg)
 
 ### LLM Provider
 

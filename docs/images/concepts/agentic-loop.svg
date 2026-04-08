@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <!-- White background -->
+  <rect width="800" height="480" fill="#FFFFFF"/>
+
+  <!-- Start: "Message received" (terminal box, Navy border) -->
+  <rect x="300" y="20" width="200" height="40" fill="#F5F5F5" stroke="#0A1636" stroke-width="2"/>
+  <text x="400" y="45" class="label" text-anchor="middle">Message received</text>
+
+  <!-- Arrow: Start → InputAtom -->
+  <line x1="400" y1="60" x2="400" y2="96" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="400,100 396,93 404,93" fill="#0A1636"/>
+
+  <!-- InputAtom box -->
+  <rect x="300" y="100" width="200" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="120" class="label" text-anchor="middle">InputAtom</text>
+  <text x="400" y="134" class="sublabel" text-anchor="middle">Load user message</text>
+
+  <!-- Step badge 1 on arrow Start→InputAtom -->
+  <rect x="406" y="70" width="18" height="18" fill="#0A1636"/>
+  <text x="415" y="83" class="step-num" text-anchor="middle">1</text>
+
+  <!-- Arrow: InputAtom → ReasonAtom -->
+  <line x1="400" y1="144" x2="400" y2="176" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="400,180 396,173 404,173" fill="#0A1636"/>
+
+  <!-- ReasonAtom box -->
+  <rect x="300" y="180" width="200" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="200" class="label" text-anchor="middle">ReasonAtom</text>
+  <text x="400" y="214" class="sublabel" text-anchor="middle">Call LLM with context</text>
+
+  <!-- Arrow: ReasonAtom → Decision -->
+  <line x1="400" y1="224" x2="400" y2="256" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="400,260 396,253 404,253" fill="#0A1636"/>
+
+  <!-- Step badge 2 on arrow ReasonAtom→Decision -->
+  <rect x="406" y="232" width="18" height="18" fill="#0A1636"/>
+  <text x="415" y="245" class="step-num" text-anchor="middle">2</text>
+
+  <!-- Decision diamond -->
+  <polygon points="400,260 480,295 400,330 320,295" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="292" class="label" text-anchor="middle" font-size="11">Tool calls in</text>
+  <text x="400" y="304" class="label" text-anchor="middle" font-size="11">response?</text>
+
+  <!-- "Decision" annotation -->
+  <text x="260" y="266" class="sublabel" font-style="italic">Decision</text>
+
+  <!-- Yes path: Decision → ActAtom (right side) -->
+  <line x1="480" y1="295" x2="530" y2="295" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="530" y1="295" x2="530" y2="360" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="530" y1="360" x2="504" y2="360" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="500,360 507,356 507,364" fill="#0A1636"/>
+  <text x="544" y="290" class="arrow-label">Yes</text>
+
+  <!-- Step badge 3 on Yes path -->
+  <rect x="534" y="318" width="18" height="18" fill="#0A1636"/>
+  <text x="543" y="331" class="step-num" text-anchor="middle">3</text>
+
+  <!-- ActAtom box -->
+  <rect x="300" y="338" width="200" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="358" class="label" text-anchor="middle">ActAtom</text>
+  <text x="400" y="372" class="sublabel" text-anchor="middle">Execute tools in parallel</text>
+
+  <!-- Loop-back arrow: ActAtom → ReasonAtom (right side) -->
+  <line x1="500" y1="360" x2="500" y2="360" stroke="none"/>
+  <line x1="300" y1="360" x2="260" y2="360" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="260" y1="360" x2="260" y2="202" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="260" y1="202" x2="296" y2="202" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="300,202 293,198 293,206" fill="#0A1636"/>
+
+  <!-- Step badge 4 on loop-back arrow -->
+  <rect x="244" y="270" width="18" height="18" fill="#0A1636"/>
+  <text x="253" y="283" class="step-num" text-anchor="middle">4</text>
+
+  <!-- No path: Decision → Done (down) -->
+  <line x1="400" y1="330" x2="400" y2="416" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="400,420 396,413 404,413" fill="#0A1636"/>
+  <text x="414" y="378" class="arrow-label">No</text>
+
+  <!-- Done: "Turn complete" (terminal box, Navy border) -->
+  <rect x="300" y="420" width="200" height="40" fill="#F5F5F5" stroke="#0A1636" stroke-width="2"/>
+  <text x="400" y="445" class="label" text-anchor="middle">Turn complete</text>
+</svg>

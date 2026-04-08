@@ -165,56 +165,11 @@ The session strategy controls how Slack messages map to Everruns sessions:
 
 ### Architecture
 
-```mermaid
-graph LR
-    Thread["Slack Thread"] <-->|messages| Bot["Slack Bot"]
-    Bot -->|"POST /v1/apps/{id}/slack/events"| Webhook["Webhook Endpoint"]
-    Webhook -->|"verify HMAC-SHA256"| App
-    App -->|references| Harness
-    App -->|references| Agent
-    App -->|config| SlackConfig["Slack Config<br/>(signing_secret, bot_token,<br/>session_strategy)"]
-    App -->|"find/create by tag"| Session
-    Session -->|runs| RuntimeAgent["Runtime Agent"]
-    RuntimeAgent -->|emits events| Dispatcher["Slack Delivery<br/>Dispatcher"]
-    Dispatcher -->|"chat.postMessage<br/>(with retry)"| Bot
-
-    classDef slack fill:#e8f5e9,stroke:#4a154b,color:#1b4332
-    classDef security fill:#fff3e0,stroke:#e07b39,color:#5a3000
-    classDef app fill:#e8daef,stroke:#7d3c98,color:#4a235a
-    classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
-    classDef runtime fill:#bde0fe,stroke:#3a86a8,color:#023047
-
-    class Thread,Bot slack
-    class Webhook security
-    class App,SlackConfig app
-    class Harness,Agent config
-    class Session,RuntimeAgent,Dispatcher runtime
-```
+![Slack Architecture](../images/integrations/slack-architecture.svg)
 
 ### Message Flow
 
-```mermaid
-sequenceDiagram
-    participant S as Slack
-    participant W as Webhook
-    participant A as App
-    participant R as Runtime Agent
-    participant D as Delivery Dispatcher
-
-    S->>W: POST /v1/apps/{app_id}/slack/events
-    W->>W: Verify signing secret (HMAC-SHA256)
-    W->>W: Dedup check (slack_ts)
-    W->>S: 200 OK (< 3 seconds)
-    W->>A: Route to App
-    A->>A: Find or create Session (by tag strategy)
-    A->>R: Create user message → trigger agent turn
-    A->>D: Register delivery for this turn
-    R->>R: Process message (tools, LLM calls, etc.)
-    R-->>D: output.message.completed (via PG NOTIFY)
-    D->>S: chat.postMessage to thread (with retry)
-    R-->>D: turn.completed
-    D->>D: Unregister delivery
-```
+![Slack Message Flow](../images/integrations/slack-message-flow.svg)
 
 **Inbound path:**
 

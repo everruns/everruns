@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 350" width="800" fill="none">
+  <defs>
+    <marker id="arrowSolid" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0,0 8,3 0,6" fill="#0A1636"/>
+    </marker>
+    <marker id="arrowSolidLeft" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto">
+      <polygon points="8,0 0,3 8,6" fill="#0A1636"/>
+    </marker>
+    <marker id="arrowDashed" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0,0 8,3 0,6" fill="#0A1636"/>
+    </marker>
+  </defs>
+
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <!-- White background -->
+  <rect width="800" height="350" fill="#FFFFFF"/>
+
+  <!-- === TOP ROW === -->
+
+  <!-- PROVIDERS column header -->
+  <text x="110" y="45" class="header-text" text-anchor="middle">PROVIDERS</text>
+
+  <!-- LlmProvider box -->
+  <rect x="40" y="60" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="110" y="81" class="label" text-anchor="middle">LlmProvider</text>
+  <text x="110" y="97" class="sublabel" text-anchor="middle">OpenAI, Anthropic</text>
+
+  <!-- MODELS column header -->
+  <text x="310" y="45" class="header-text" text-anchor="middle">MODELS</text>
+
+  <!-- LlmModel box -->
+  <rect x="240" y="60" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="310" y="81" class="label" text-anchor="middle">LlmModel</text>
+  <text x="310" y="97" class="sublabel" text-anchor="middle">gpt-4o, claude-sonnet-4</text>
+
+  <!-- CONSUMERS column header -->
+  <text x="510" y="45" class="header-text" text-anchor="middle">CONSUMERS</text>
+
+  <!-- Agent box -->
+  <rect x="440" y="60" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="510" y="81" class="label" text-anchor="middle">Agent</text>
+  <text x="510" y="97" class="sublabel" text-anchor="middle">default model</text>
+
+  <!-- Session box -->
+  <rect x="440" y="130" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="510" y="151" class="label" text-anchor="middle">Session</text>
+  <text x="510" y="167" class="sublabel" text-anchor="middle">override model</text>
+
+  <!-- LlmProvider -> LlmModel: "contains" (solid) -->
+  <line x1="180" y1="85" x2="232" y2="85" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowSolid)"/>
+  <text x="206" y="78" class="arrow-label" text-anchor="middle">contains</text>
+
+  <!-- Agent -> LlmModel: "default model" (solid, pointing left) -->
+  <line x1="440" y1="85" x2="388" y2="85" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowSolidLeft)"/>
+  <text x="414" y="78" class="arrow-label" text-anchor="middle">default model</text>
+
+  <!-- Session -> LlmModel: "override" (dashed, pointing left) -->
+  <line x1="440" y1="155" x2="382" y2="115" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrowSolidLeft)"/>
+  <text x="420" y="130" class="arrow-label" text-anchor="middle">override</text>
+
+  <!-- === BOTTOM ROW === -->
+
+  <!-- INTEGRATIONS header -->
+  <text x="310" y="215" class="header-text" text-anchor="middle">INTEGRATIONS</text>
+
+  <!-- McpServer box -->
+  <rect x="40" y="230" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="110" y="251" class="label" text-anchor="middle">McpServer</text>
+  <text x="110" y="267" class="sublabel" text-anchor="middle">Remote tool server</text>
+
+  <!-- Tool box -->
+  <rect x="280" y="230" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="350" y="251" class="label" text-anchor="middle">Tool</text>
+  <text x="350" y="267" class="sublabel" text-anchor="middle">Discovered function</text>
+
+  <!-- Capability box -->
+  <rect x="520" y="230" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="590" y="251" class="label" text-anchor="middle">Capability</text>
+  <text x="590" y="267" class="sublabel" text-anchor="middle">Virtual capability</text>
+
+  <!-- McpServer -> Tool: "exposes" (solid) -->
+  <line x1="180" y1="255" x2="272" y2="255" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowSolid)"/>
+  <text x="226" y="248" class="arrow-label" text-anchor="middle">exposes</text>
+
+  <!-- McpServer -> Capability: "virtual" (dashed) -->
+  <line x1="180" y1="265" x2="512" y2="265" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrowDashed)"/>
+  <text x="346" y="290" class="arrow-label" text-anchor="middle">virtual</text>
+</svg>

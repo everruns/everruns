@@ -13,23 +13,7 @@ Everruns is a **durable agentic harness engine**. It provides the infrastructure
 
 Think of it as the runtime that turns a language model into a reliable, stateful agent:
 
-```mermaid
-graph LR
-    App[Your Application] -->|everruns-sdk| Server[Everruns Server]
-    Server -->|Reason| LLM[LLM Provider]
-    LLM -->|Tool Calls| Server
-    Server -->|Act| Tools[Tool Execution]
-    Tools -->|Results| Server
-    Server -->|SSE Events| App
-
-    classDef app fill:#bde0fe,stroke:#3a86a8,color:#023047
-    classDef server fill:#ffd6a5,stroke:#e07b39,color:#5a3000
-    classDef external fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
-
-    class App app
-    class Server server
-    class LLM,Tools external
-```
+![SDK Overview](../../images/tutorials/sdk-overview.svg)
 
 Unlike calling an LLM API directly, Everruns gives you:
 
@@ -43,29 +27,7 @@ Unlike calling an LLM API directly, Everruns gives you:
 
 Before writing code, let's understand the entities you'll work with.
 
-```mermaid
-graph TB
-    Harness["Harness<br/><small>Environment template</small>"]
-    Agent["Agent<br/><small>System prompt + capabilities</small>"]
-    Session["Session<br/><small>Conversation instance</small>"]
-    Capability["Capability<br/><small>Tools + prompt additions</small>"]
-    Turn["Turn<br/><small>Reason → Act loop</small>"]
-    Event["Event<br/><small>Immutable record</small>"]
-
-    Harness -->|configures| Agent
-    Agent -->|has| Capability
-    Agent -->|runs in| Session
-    Session -->|contains| Turn
-    Turn -->|emits| Event
-
-    classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
-    classDef runtime fill:#bde0fe,stroke:#3a86a8,color:#023047
-    classDef data fill:#ffd6a5,stroke:#e07b39,color:#5a3000
-
-    class Harness,Agent,Capability config
-    class Session,Turn runtime
-    class Event data
-```
+![Core Concepts](../../images/tutorials/sdk-core-concepts.svg)
 
 | Concept | What it is | Analogy |
 |---------|-----------|---------|
@@ -270,36 +232,7 @@ The `client.events.stream()` method handles:
 
 When you send a message, here's the typical event sequence:
 
-```mermaid
-sequenceDiagram
-    participant App as Your App (SDK)
-    participant API as Everruns API
-    participant Worker as Worker
-    participant LLM as LLM Provider
-
-    App->>API: client.messages.create()
-    API-->>App: Message stored
-
-    Worker->>API: emit turn.started
-    Worker->>API: emit reason.started
-    Worker->>LLM: Generate completion
-    LLM-->>Worker: Response + tool calls
-    Worker->>API: emit output.message.delta (streaming)
-    Worker->>API: emit reason.completed
-
-    Worker->>API: emit act.started
-    Worker->>Worker: Execute tools
-    Worker->>API: emit tool.started / tool.completed
-    Worker->>API: emit act.completed
-
-    Note over Worker,LLM: Loop continues if more tool calls needed
-
-    Worker->>API: emit output.message.completed
-    Worker->>API: emit turn.completed
-    Worker->>API: emit session.idled
-
-    App->>API: client.events.stream() receives all events
-```
+![Event Lifecycle](../../images/tutorials/sdk-event-lifecycle.svg)
 
 ## Step 6: Multi-Turn Conversations
 
@@ -569,51 +502,7 @@ await client.messages.create(
 
 Understanding the architecture helps you make better integration decisions.
 
-```mermaid
-graph TB
-    subgraph Clients
-        App[Your App<br/>everruns-sdk]
-        UI[Everruns Web UI]
-    end
-
-    subgraph Control["Control Plane (Server)"]
-        REST["REST API<br/>:9301"]
-        GRPC["gRPC Server<br/>:9001"]
-        Services[Service Layer]
-        DB[(PostgreSQL)]
-    end
-
-    subgraph Workers
-        W1[Worker 1]
-        W2[Worker 2]
-    end
-
-    subgraph External
-        OpenAI[OpenAI]
-        Anthropic[Anthropic]
-    end
-
-    App -->|HTTP| REST
-    UI -->|HTTP| REST
-    REST --> Services
-    Services --> DB
-    GRPC --> Services
-
-    W1 -->|gRPC| GRPC
-    W2 -->|gRPC| GRPC
-    W1 --> OpenAI
-    W2 --> Anthropic
-
-    classDef client fill:#bde0fe,stroke:#3a86a8,color:#023047
-    classDef control fill:#ffd6a5,stroke:#e07b39,color:#5a3000
-    classDef worker fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
-    classDef ext fill:#e8e8e8,stroke:#999,color:#333
-
-    class App,UI client
-    class REST,GRPC,Services,DB control
-    class W1,W2 worker
-    class OpenAI,Anthropic ext
-```
+![Architecture Overview](../../images/tutorials/sdk-architecture.svg)
 
 **Control Plane** (Server) owns all state. It exposes two interfaces:
 - **REST API** (local direct port 9301) — Internal API server behind the local Caddy proxy
