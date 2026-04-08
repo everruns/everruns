@@ -38,8 +38,9 @@ pub struct CreateHarnessRequest {
     #[schema(example = "deep-research")]
     pub name: String,
     /// Human-readable display name shown in UI.
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Deep Research")]
-    pub display_name: String,
+    pub display_name: Option<String>,
     /// Description of what the harness does.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Research harness with planning and web capabilities")]
@@ -290,7 +291,7 @@ pub async fn create_harness(
     // Reuse agent validation for display_name and other fields
     validate_create_agent_input(
         &req.name,
-        Some(&req.display_name),
+        req.display_name.as_deref(),
         req.description.as_deref(),
         &req.system_prompt,
         req.capabilities.len(),

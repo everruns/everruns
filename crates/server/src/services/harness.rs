@@ -319,7 +319,7 @@ impl HarnessService {
 
         let req = CreateHarnessRequest {
             name: copy_name,
-            display_name: format!("{} (copy)", source.display_name),
+            display_name: source.display_name.as_ref().map(|d| format!("{} (copy)", d)),
             description: source.description,
             system_prompt: source.system_prompt,
             parent_harness_id: source.parent_harness_id,
@@ -505,7 +505,7 @@ impl HarnessService {
 
         let child_names = children
             .iter()
-            .map(|child| child.display_name.as_str())
+            .map(|child| child.display_name.as_deref().unwrap_or(&child.name))
             .collect::<Vec<_>>()
             .join(", ");
         anyhow::bail!(
@@ -603,7 +603,7 @@ pub(crate) fn merge_preview_layer(
     let draft = Harness {
         id: HarnessId::new(),
         name: "preview".to_string(),
-        display_name: "Preview".to_string(),
+        display_name: Some("Preview".to_string()),
         description: None,
         system_prompt: system_prompt.to_string(),
         parent_harness_id: None,
@@ -661,7 +661,7 @@ mod tests {
     ) -> CreateHarnessRequest {
         CreateHarnessRequest {
             name: "test-harness".to_string(),
-            display_name: "Test Harness".to_string(),
+            display_name: Some("Test Harness".to_string()),
             description: None,
             system_prompt: "Test".to_string(),
             parent_harness_id: None,
@@ -795,7 +795,7 @@ mod tests {
                 &caller,
                 CreateHarnessRequest {
                     name: "parent".to_string(),
-                    display_name: "Parent".to_string(),
+                    display_name: Some("Parent".to_string()),
                     description: None,
                     system_prompt: "Parent prompt".to_string(),
                     parent_harness_id: None,
@@ -822,7 +822,7 @@ mod tests {
                 &caller,
                 CreateHarnessRequest {
                     name: "child".to_string(),
-                    display_name: "Child".to_string(),
+                    display_name: Some("Child".to_string()),
                     description: None,
                     system_prompt: "Child prompt".to_string(),
                     parent_harness_id: Some(parent.id),
@@ -875,7 +875,7 @@ mod tests {
                 &caller,
                 CreateHarnessRequest {
                     name: "child".to_string(),
-                    display_name: "Child".to_string(),
+                    display_name: Some("Child".to_string()),
                     description: None,
                     system_prompt: "Child".to_string(),
                     parent_harness_id: Some(parent.id),

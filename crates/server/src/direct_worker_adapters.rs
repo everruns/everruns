@@ -1479,7 +1479,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     async fn create_harness(
         &self,
         name: &str,
-        display_name: &str,
+        display_name: Option<&str>,
         description: Option<&str>,
         system_prompt: &str,
         parent_harness_id: Option<HarnessId>,
@@ -1489,7 +1489,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 
         let input = CreateHarnessRow {
             name: name.to_string(),
-            display_name: display_name.to_string(),
+            display_name: display_name.map(|s| s.to_string()),
             description: description.map(|s| s.to_string()),
             system_prompt: system_prompt.to_string(),
             parent_harness_id,
@@ -1580,7 +1580,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         let copy_name = new_name
             .map(|s| s.to_string())
             .unwrap_or_else(|| format!("{}-copy", source.name));
-        let copy_display_name = format!("{} (copy)", source.display_name);
+        let copy_display_name = source.display_name.as_ref().map(|d| format!("{} (copy)", d));
 
         let cap_ids: Vec<String> = source
             .capabilities
@@ -1590,7 +1590,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 
         self.create_harness(
             &copy_name,
-            &copy_display_name,
+            copy_display_name.as_deref(),
             source.description.as_deref(),
             &source.system_prompt,
             source.parent_harness_id,

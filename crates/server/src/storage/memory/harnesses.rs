@@ -138,7 +138,7 @@ impl InMemoryDatabase {
                 matches_search_tokens(
                     search,
                     &[
-                        &h.display_name,
+                        h.display_name.as_deref().unwrap_or(""),
                         &h.name,
                         h.description.as_deref().unwrap_or(""),
                     ],
@@ -162,7 +162,7 @@ impl InMemoryDatabase {
                 harness.name = name;
             }
             if let Some(display_name) = input.display_name {
-                harness.display_name = display_name;
+                harness.display_name = Some(display_name);
             }
             if let Some(description) = input.description {
                 harness.description = Some(description);

@@ -64,7 +64,7 @@ pub async fn initialize_org_harnesses_with_definitions(
                 .with_context(|| format!("resolve parent for built-in harness {}", harness.name))?;
         let input = CreateHarnessRow {
             name: harness.name.to_string(),
-            display_name: harness.display_name.to_string(),
+            display_name: Some(harness.display_name.to_string()),
             description: Some(harness.description.to_string()),
             system_prompt: harness.system_prompt.to_string(),
             parent_harness_id,

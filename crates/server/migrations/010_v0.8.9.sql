@@ -117,10 +117,9 @@ ALTER TABLE sessions ADD COLUMN network_access JSONB;
 -- Makes harness `name` the URL/CLI-friendly addressable identifier (slug).
 -- Adds `display_name` for the human-readable label.
 
--- Step 1: Add display_name column, copy existing name values
+-- Step 1: Add display_name column, copy existing name values (nullable)
 ALTER TABLE harnesses ADD COLUMN display_name TEXT;
 UPDATE harnesses SET display_name = name;
-ALTER TABLE harnesses ALTER COLUMN display_name SET NOT NULL;
 
 -- Step 2: Convert name to slug format (lowercase, spaces/underscores -> hyphens,
 -- strip non-alphanumeric-hyphen, collapse consecutive hyphens, trim hyphens).
@@ -179,10 +178,9 @@ CREATE UNIQUE INDEX idx_harnesses_org_name ON harnesses (org_id, name) WHERE sta
 -- 015: Agent addressable name
 ----------------------------------------------------------------------
 
--- Similar to the harness pattern (section 014): `name` becomes a
+-- Mirrors the harness pattern (section 014): `name` becomes a
 -- URL/CLI-friendly slug, `display_name` holds the human-readable label.
--- Unlike harnesses, agent display_name is intentionally nullable
--- (Option<String> in AgentRow) because the agent API allows omitting it.
+-- Both harness and agent display_name are nullable.
 
 -- Step 1: Add display_name column, copy existing name values
 ALTER TABLE agents ADD COLUMN display_name TEXT;

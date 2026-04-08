@@ -1784,7 +1784,7 @@ async fn test_copy_harness() {
 
     // Verify copy
     assert_eq!(copied.name, "original-harness-copy");
-    assert_eq!(copied.display_name, "Original Harness (copy)");
+    assert_eq!(copied.display_name.as_deref(), Some("Original Harness (copy)"));
     assert_eq!(
         copied.description.as_deref(),
         Some("Original harness description")
@@ -1897,7 +1897,7 @@ async fn test_copy_seed_generic_harness() {
         .json();
 
     assert_eq!(copied.name, "generic-copy");
-    assert_eq!(copied.display_name, "Generic (copy)");
+    assert_eq!(copied.display_name.as_deref(), Some("Generic (copy)"));
     // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),
