@@ -19,7 +19,7 @@ async fn test_create_and_get_agent() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
                 display_name: "Test Agent".to_string(),
                 description: Some("A test agent".to_string()),
                 system_prompt: "You are helpful".to_string(),
@@ -50,7 +50,7 @@ async fn test_create_and_list_sessions() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
                 display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
@@ -107,7 +107,7 @@ async fn test_session_updated_at() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
                 display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
@@ -181,7 +181,7 @@ async fn test_events_sequence() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
                 display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
@@ -251,8 +251,8 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Filter Test Agent".to_string(),
-                display_name: "Test Agent".to_string(),
+                name: "filter-test-agent".to_string(),
+                display_name: "Filter Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -736,8 +736,8 @@ async fn test_list_events_empty_session_with_limit() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Empty Agent".to_string(),
-                display_name: "Test Agent".to_string(),
+                name: "empty-agent".to_string(),
+                display_name: "Empty Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -791,7 +791,7 @@ async fn test_sessions_pagination() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
                 display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
@@ -886,7 +886,7 @@ async fn test_sessions_pagination_ordering() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
                 display_name: "Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
@@ -1907,8 +1907,8 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Search Test Agent".to_string(),
-                display_name: "Test Agent".to_string(),
+                name: "search-test-agent".to_string(),
+                display_name: "Search Test Agent".to_string(),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,

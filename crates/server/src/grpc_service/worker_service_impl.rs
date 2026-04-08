@@ -2890,10 +2890,11 @@ impl WorkerService for WorkerServiceImpl {
             .map(|id| everruns_core::AgentCapabilityConfig::new(id.as_str()))
             .collect();
 
+        let display_name = req.display_name.unwrap_or_else(|| req.name.clone());
         let create_req = crate::api::agents::CreateAgentRequest {
             id: None,
             name: req.name.clone(),
-            display_name: req.name.clone(),
+            display_name,
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id: None,
@@ -2935,7 +2936,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let update_req = crate::api::agents::UpdateAgentRequest {
             name: req.name,
-            display_name: None,
+            display_name: req.display_name,
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id: None,

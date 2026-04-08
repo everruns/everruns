@@ -2167,6 +2167,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 description: description.map(|s| s.to_string()),
                 system_prompt: system_prompt.to_string(),
                 capabilities: capabilities.to_vec(),
+                display_name: None,
             })
             .await
             .map_err(grpc_status_to_error)?;
@@ -2195,6 +2196,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 name: name.map(|s| s.to_string()),
                 description: description.map(|s| s.to_string()),
                 system_prompt: system_prompt.map(|s| s.to_string()),
+                display_name: None,
             })
             .await
             .map_err(grpc_status_to_error)?;

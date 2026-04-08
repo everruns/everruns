@@ -724,6 +724,15 @@ pub async fn upsert_agent(
             .await
             .map_policy_or_internal("upsert agent")?
     } else {
+        // Enforce path name matches body name to prevent ambiguous updates.
+        if req.name != agent_id_or_name {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "Agent name in URL must match name in request body",
+                )),
+            ));
+        }
         state
             .service
             .upsert_by_name(&caller, req)
@@ -845,6 +854,7 @@ pub async fn import_agent(
             }
         })
         .unwrap_or_else(|| slugify(&display_name));
+    validate_agent_name_format(&name)?;
 
     // System prompt is required (either from body or front matter)
     let system_prompt = agent_file.system_prompt.unwrap_or_default();

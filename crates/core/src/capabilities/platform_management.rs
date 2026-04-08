@@ -559,6 +559,7 @@ impl Tool for ReadAgentsTool {
                 Ok(Some(a)) => ToolExecutionResult::success(json!({
                     "id": a.public_id.to_string(),
                     "name": a.name,
+                    "display_name": a.display_name,
                     "description": a.description,
                     "system_prompt": a.system_prompt,
                     "status": format!("{:?}", a.status),
@@ -578,6 +579,7 @@ impl Tool for ReadAgentsTool {
                             json!({
                                 "id": a.public_id.to_string(),
                                 "name": a.name,
+                                "display_name": a.display_name,
                                 "description": a.description,
                                 "status": format!("{:?}", a.status),
                                 "capabilities": a.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
@@ -706,6 +708,7 @@ impl Tool for ManageAgentsTool {
                     Ok(a) => ToolExecutionResult::success(json!({
                         "id": a.public_id.to_string(),
                         "name": a.name,
+                        "display_name": a.display_name,
                         "description": a.description,
                         "status": format!("{:?}", a.status),
                         "ui_link": format!("{}/agents/{}", base_url, a.public_id),
@@ -740,6 +743,7 @@ impl Tool for ManageAgentsTool {
                     Ok(a) => ToolExecutionResult::success(json!({
                         "id": a.public_id.to_string(),
                         "name": a.name,
+                        "display_name": a.display_name,
                         "description": a.description,
                         "status": format!("{:?}", a.status),
                         "ui_link": format!("{}/agents/{}", base_url, a.public_id),
@@ -1741,7 +1745,8 @@ mod tests {
             .await;
         match result {
             ToolExecutionResult::Success(v) => {
-                assert_eq!(v["name"], "Test Agent");
+                assert_eq!(v["name"], "test-agent");
+                assert_eq!(v["display_name"], "Test Agent");
                 assert!(v["ui_link"].as_str().unwrap().contains("/agents/"));
             }
             other => panic!("expected success, got: {other:?}"),

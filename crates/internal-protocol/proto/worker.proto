@@ -1518,6 +1518,7 @@ message PlatformCreateAgentRequest {
     optional string description = 3;
     string system_prompt = 4;
     repeated string capabilities = 5;
+    optional string display_name = 6;
 }
 
 message PlatformCreateAgentResponse {
@@ -1530,6 +1531,7 @@ message PlatformUpdateAgentRequest {
     optional string name = 3;
     optional string description = 4;
     optional string system_prompt = 5;
+    optional string display_name = 6;
 }
 
 message PlatformUpdateAgentResponse {

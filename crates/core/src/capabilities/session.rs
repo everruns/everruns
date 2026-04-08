@@ -173,7 +173,7 @@ impl Tool for GetSessionInfoTool {
         let agent_name =
             if let (Some(agent_id), Some(agent_store)) = (session.agent_id, &context.agent_store) {
                 match agent_store.get_agent(agent_id).await {
-                    Ok(Some(agent)) => Some(agent.name),
+                    Ok(Some(agent)) => Some(agent.display_name),
                     Ok(None) => None,
                     Err(e) => return ToolExecutionResult::internal_error(e),
                 }
