@@ -376,4 +376,193 @@ mod tests {
         assert!(annotated.contains("1 KiB"));
         assert!(annotated.contains("read_file with offset/limit"));
     }
+
+    // --- persist_large_output tests ---
+
+    use crate::error::Result;
+    use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+    use crate::traits::SessionFileStore;
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    use uuid::Uuid;
+
+    #[derive(Default)]
+    struct MockFileStore {
+        files: Mutex<HashMap<String, String>>,
+    }
+
+    impl MockFileStore {
+        fn content(&self, path: &str) -> Option<String> {
+            self.files.lock().unwrap().get(path).cloned()
+        }
+    }
+
+    #[async_trait]
+    impl SessionFileStore for MockFileStore {
+        async fn read_file(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+        ) -> Result<Option<SessionFile>> {
+            Ok(None)
+        }
+
+        async fn write_file(
+            &self,
+            _session_id: SessionId,
+            path: &str,
+            content: &str,
+            _encoding: &str,
+        ) -> Result<SessionFile> {
+            self.files
+                .lock()
+                .unwrap()
+                .insert(path.to_string(), content.to_string());
+            Ok(SessionFile {
+                id: Uuid::new_v4(),
+                session_id: Uuid::nil(),
+                path: path.to_string(),
+                name: path.rsplit('/').next().unwrap_or("").to_string(),
+                content: Some(content.to_string()),
+                encoding: "utf-8".to_string(),
+                is_directory: false,
+                is_readonly: false,
+                size_bytes: content.len() as i64,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            })
+        }
+
+        async fn delete_file(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+            _recursive: bool,
+        ) -> Result<bool> {
+            Ok(false)
+        }
+
+        async fn list_directory(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+        ) -> Result<Vec<FileInfo>> {
+            Ok(vec![])
+        }
+
+        async fn stat_file(&self, _session_id: SessionId, _path: &str) -> Result<Option<FileStat>> {
+            Ok(None)
+        }
+
+        async fn grep_files(
+            &self,
+            _session_id: SessionId,
+            _pattern: &str,
+            _path_pattern: Option<&str>,
+        ) -> Result<Vec<GrepMatch>> {
+            Ok(vec![])
+        }
+
+        async fn create_directory(&self, _session_id: SessionId, _path: &str) -> Result<FileInfo> {
+            Err(anyhow::anyhow!("not implemented").into())
+        }
+    }
+
+    fn test_session_id() -> SessionId {
+        SessionId::from(Uuid::nil())
+    }
+
+    #[tokio::test]
+    async fn test_persist_large_output_returns_none_below_budget() {
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::default());
+        let small = "a".repeat(EXEC_OUTPUT_BUDGET);
+        let result = persist_large_output(&store, test_session_id(), "call-1", &small, "").await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_persist_large_output_persists_stdout_above_budget() {
+        let mock = Arc::new(MockFileStore::default());
+        let store: Arc<dyn SessionFileStore> = mock.clone();
+        let large = "x".repeat(EXEC_OUTPUT_BUDGET + 1);
+        let result = persist_large_output(&store, test_session_id(), "call-2", &large, "").await;
+        let r = result.expect("should persist");
+        assert!(r.stdout_path.is_some());
+        assert_eq!(r.stdout_path.as_deref(), Some("/.outputs/call-2.stdout"));
+        assert!(r.stderr_path.is_none());
+        assert_eq!(r.stdout_total_lines, 1);
+        // Verify content was written
+        assert_eq!(
+            mock.content("/.outputs/call-2.stdout").unwrap().len(),
+            large.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_persist_large_output_persists_stderr_above_threshold() {
+        let mock = Arc::new(MockFileStore::default());
+        let store: Arc<dyn SessionFileStore> = mock.clone();
+        let large_stderr = "e".repeat(4097);
+        let result =
+            persist_large_output(&store, test_session_id(), "call-3", "small", &large_stderr).await;
+        let r = result.expect("should persist stderr");
+        assert!(r.stdout_path.is_none());
+        assert_eq!(r.stderr_path.as_deref(), Some("/.outputs/call-3.stderr"));
+        assert_eq!(mock.content("/.outputs/call-3.stderr").unwrap().len(), 4097);
+    }
+
+    #[tokio::test]
+    async fn test_persist_large_output_both_stdout_and_stderr() {
+        let mock = Arc::new(MockFileStore::default());
+        let store: Arc<dyn SessionFileStore> = mock.clone();
+        let large_stdout = "o".repeat(EXEC_OUTPUT_BUDGET + 100);
+        let large_stderr = "e".repeat(5000);
+        let result = persist_large_output(
+            &store,
+            test_session_id(),
+            "call-4",
+            &large_stdout,
+            &large_stderr,
+        )
+        .await;
+        let r = result.expect("should persist both");
+        assert!(r.stdout_path.is_some());
+        assert!(r.stderr_path.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_persist_large_output_sanitizes_id() {
+        let mock = Arc::new(MockFileStore::default());
+        let store: Arc<dyn SessionFileStore> = mock.clone();
+        let large = "x".repeat(EXEC_OUTPUT_BUDGET + 1);
+        let result =
+            persist_large_output(&store, test_session_id(), "call/../../../etc", &large, "").await;
+        let r = result.expect("should persist with sanitized id");
+        // Path traversal chars stripped, only alphanumeric + dash + underscore kept
+        assert_eq!(r.stdout_path.as_deref(), Some("/.outputs/calletc.stdout"));
+    }
+
+    #[tokio::test]
+    async fn test_persist_large_output_empty_id_returns_none() {
+        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::default());
+        let large = "x".repeat(EXEC_OUTPUT_BUDGET + 1);
+        let result = persist_large_output(&store, test_session_id(), "///...", &large, "").await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_persist_large_output_line_count() {
+        let mock = Arc::new(MockFileStore::default());
+        let store: Arc<dyn SessionFileStore> = mock.clone();
+        // Create multi-line output that exceeds budget
+        let line = "x".repeat(200);
+        let lines: Vec<&str> = std::iter::repeat(line.as_str()).take(100).collect();
+        let large = lines.join("\n");
+        assert!(large.len() > EXEC_OUTPUT_BUDGET);
+        let result =
+            persist_large_output(&store, test_session_id(), "call-lines", &large, "").await;
+        let r = result.expect("should persist");
+        assert_eq!(r.stdout_total_lines, 100);
+    }
 }
