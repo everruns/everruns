@@ -1,13 +1,16 @@
-// Composable configuration layer for Harness → Agent → Session merging.
+// Composable configuration overlay for Harness → Agent → Session merging.
 //
-// Design Decision: Harness, Agent, and Session share a common set of additive
-// fields (system_prompt, capabilities, initial_files, network_access, tools,
-// max_iterations, default_model_id). AgentConfigOverlay extracts this shared shape
-// so merge semantics are defined once and tested in one place.
+// See specs/concepts.md#AgentConfigOverlay for design rationale and diagrams.
 //
-// Each entity produces a AgentConfigOverlay via From<&T>. Layers fold bottom-up
-// (harness → agent → session) into a single effective config that the
-// RuntimeAgentBuilder resolves into a RuntimeAgent.
+// Harness, Agent, and Session share additive fields (system_prompt, capabilities,
+// initial_files, network_access, tools, max_iterations, default_model_id).
+// AgentConfigOverlay extracts this shared shape so merge semantics are defined
+// once and tested in one place.
+//
+// Each entity produces an AgentConfigOverlay via From<&T>. Harness inheritance
+// chains produce one overlay per harness. All overlays fold bottom-up into a
+// single effective config that RuntimeAgentBuilder::from_overlay() resolves
+// into a RuntimeAgent.
 //
 // Merge semantics per field:
 // - system_prompt: base first, overlay appended (concatenate non-empty parts)
