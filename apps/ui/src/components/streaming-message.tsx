@@ -9,6 +9,7 @@
 
 import { cn } from "@/lib/utils";
 import { MessageContent } from "@/components/chat/message-content";
+import "./streaming-message.css";
 
 interface StreamingMessageProps {
   text: string;
@@ -26,9 +27,8 @@ export function StreamingMessage({ text, className }: StreamingMessageProps) {
         Generating
       </div>
 
-      <div>
+      <div className="streaming-cursor">
         <MessageContent text={text} isStreaming={true} />
-        <span className="ml-1 inline-block h-4 w-px animate-pulse bg-primary/55 align-text-bottom" />
       </div>
     </div>
   );
