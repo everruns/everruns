@@ -34,11 +34,14 @@ async fn test_create_and_get_agent() {
         .await
         .unwrap();
 
-    assert_eq!(agent.name, "Test Agent");
+    assert_eq!(agent.name, "test-agent");
+    assert_eq!(agent.display_name, Some("Test Agent".to_string()));
 
     let fetched = db.get_agent(DEFAULT_ORG_ID, agent.id).await.unwrap();
     assert!(fetched.is_some());
-    assert_eq!(fetched.unwrap().name, "Test Agent");
+    let fetched = fetched.unwrap();
+    assert_eq!(fetched.name, "test-agent");
+    assert_eq!(fetched.display_name, Some("Test Agent".to_string()));
 }
 
 #[tokio::test]
