@@ -5,12 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -56,17 +51,12 @@ interface SessionLayoutProps {
   params: Promise<{ sessionId: string }>;
 }
 
-export default function SessionLayout({
-  children,
-  params,
-}: SessionLayoutProps) {
+export default function SessionLayout({ children, params }: SessionLayoutProps) {
   const { sessionId } = use(params);
 
   return (
     <SessionProvider sessionId={sessionId}>
-      <SessionLayoutContent sessionId={sessionId}>
-        {children}
-      </SessionLayoutContent>
+      <SessionLayoutContent sessionId={sessionId}>{children}</SessionLayoutContent>
     </SessionProvider>
   );
 }
@@ -134,9 +124,7 @@ function EditableSessionTitle({
         <Input
           ref={inputRef}
           value={value}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-            setValue(e.target.value)
-          }
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
           onKeyDown={(e: React.KeyboardEvent) => {
             if (e.key === "Enter") save();
             if (e.key === "Escape") setEditing(false);
@@ -177,21 +165,11 @@ function EditableSessionTitle({
   );
 }
 
-function SessionLayoutContent({
-  children,
-  sessionId,
-}: SessionLayoutContentProps) {
+function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const {
-    agent,
-    session,
-    llmModel,
-    sessionLoading,
-    effectiveStatus,
-    liveUsage,
-    agentId,
-  } = useSessionContext();
+  const { agent, session, llmModel, sessionLoading, effectiveStatus, liveUsage, agentId } =
+    useSessionContext();
   const agentReferenceLabel =
     session?.agent_id != null
       ? getEntityReferenceLabel({
@@ -200,8 +178,7 @@ function SessionLayoutContent({
           status: agent?.status ?? "deleted",
         })
       : null;
-  const agentReferenceStatus =
-    session?.agent_id != null ? (agent?.status ?? "deleted") : null;
+  const agentReferenceStatus = session?.agent_id != null ? (agent?.status ?? "deleted") : null;
 
   // Determine active tab from pathname
   const getActiveTab = (): SessionNavKey => {
@@ -219,16 +196,11 @@ function SessionLayoutContent({
   const getNavigationClassName = (isActive: boolean) =>
     cn(
       buttonVariants({ variant: "outline", size: "sm" }),
-      isActive
-        ? "border-primary bg-card text-foreground"
-        : "text-muted-foreground",
+      isActive ? "border-primary bg-card text-foreground" : "text-muted-foreground",
     );
 
   // Compute active feature set from session capabilities
-  const features = useMemo(
-    () => new Set(session?.features ?? []),
-    [session?.features],
-  );
+  const features = useMemo(() => new Set(session?.features ?? []), [session?.features]);
   const hasFeature = (feature: string) => features.has(feature);
   const navigationItems: SessionNavItem[] = [
     {
@@ -296,9 +268,7 @@ function SessionLayoutContent({
   ];
   const chatItem = navigationItems[0];
   const advancedNavigationItems = navigationItems.slice(1);
-  const activeAdvancedItem = advancedNavigationItems.find(
-    (item) => item.key === activeTab,
-  );
+  const activeAdvancedItem = advancedNavigationItems.find((item) => item.key === activeTab);
 
   if (sessionLoading) {
     return (
@@ -314,10 +284,7 @@ function SessionLayoutContent({
     return (
       <div className="container mx-auto p-6">
         <div className="text-destructive">Session not found</div>
-        <Link
-          href="/sessions"
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
+        <Link href="/sessions" className="text-sm text-muted-foreground hover:text-foreground">
           Back to sessions
         </Link>
       </div>
@@ -351,22 +318,14 @@ function SessionLayoutContent({
                     className="inline-flex items-center gap-1 hover:text-foreground"
                   >
                     <Bot className="icon-sharp h-3 w-3" />
-                    <span
-                      className={getEntityReferenceClassName(
-                        agentReferenceStatus,
-                      )}
-                    >
+                    <span className={getEntityReferenceClassName(agentReferenceStatus)}>
                       {agentReferenceLabel}
                     </span>
                   </Link>
                 ) : (
                   <span className="inline-flex items-center gap-1">
                     <Bot className="icon-sharp h-3 w-3" />
-                    <span
-                      className={getEntityReferenceClassName(
-                        agentReferenceStatus,
-                      )}
-                    >
+                    <span className={getEntityReferenceClassName(agentReferenceStatus)}>
                       {agentReferenceLabel}
                     </span>
                   </span>
@@ -399,19 +358,13 @@ function SessionLayoutContent({
                       {(liveUsage.cache_read_tokens ?? 0) > 0 && (
                         <>
                           <dt className="text-muted-foreground">Cache read</dt>
-                          <dd>
-                            {liveUsage.cache_read_tokens!.toLocaleString()}
-                          </dd>
+                          <dd>{liveUsage.cache_read_tokens!.toLocaleString()}</dd>
                         </>
                       )}
                       {(liveUsage.cache_creation_tokens ?? 0) > 0 && (
                         <>
-                          <dt className="text-muted-foreground">
-                            Cache created
-                          </dt>
-                          <dd>
-                            {liveUsage.cache_creation_tokens!.toLocaleString()}
-                          </dd>
+                          <dt className="text-muted-foreground">Cache created</dt>
+                          <dd>{liveUsage.cache_creation_tokens!.toLocaleString()}</dd>
                         </>
                       )}
                     </dl>
@@ -425,15 +378,9 @@ function SessionLayoutContent({
                 {llmModel.display_name}
               </Badge>
             )}
-            {effectiveStatus === "active" && (
-              <Badge variant="default">Processing...</Badge>
-            )}
-            {effectiveStatus === "idle" && (
-              <Badge variant="secondary">Ready</Badge>
-            )}
-            {effectiveStatus === "started" && (
-              <Badge variant="outline">New</Badge>
-            )}
+            {effectiveStatus === "active" && <Badge variant="default">Processing...</Badge>}
+            {effectiveStatus === "idle" && <Badge variant="secondary">Ready</Badge>}
+            {effectiveStatus === "started" && <Badge variant="outline">New</Badge>}
             <Link
               href={chatItem.href}
               className={getNavigationClassName(activeTab === chatItem.key)}
@@ -472,9 +419,7 @@ function SessionLayoutContent({
                           </span>
                           <span className="flex items-center gap-2">
                             {item.badge && (
-                              <DropdownMenuShortcut>
-                                {item.badge}
-                              </DropdownMenuShortcut>
+                              <DropdownMenuShortcut>{item.badge}</DropdownMenuShortcut>
                             )}
                             {activeTab === item.key && (
                               <Check className="icon-sharp h-4 w-4 text-primary" />

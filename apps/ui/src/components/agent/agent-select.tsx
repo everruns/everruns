@@ -63,11 +63,7 @@ export function AgentSelect({
       : undefined;
 
   return (
-    <Select
-      value={selectValue}
-      onValueChange={handleChange}
-      disabled={disabled}
-    >
+    <Select value={selectValue} onValueChange={handleChange} disabled={disabled}>
       <SelectTrigger className={className}>
         <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
       </SelectTrigger>

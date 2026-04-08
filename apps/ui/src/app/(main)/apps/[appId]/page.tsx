@@ -47,17 +47,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  ArrowLeft,
-  Globe,
-  GlobeLock,
-  Trash2,
-  Pencil,
-  Check,
-  X,
-  Rocket,
-  Plus,
-} from "lucide-react";
+import { ArrowLeft, Globe, GlobeLock, Trash2, Pencil, Check, X, Rocket, Plus } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { SlackSetupGuidance } from "@/components/apps/slack-setup-guidance";
 import type {
@@ -75,11 +65,7 @@ import {
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
 
-export default function AppDetailPage({
-  params,
-}: {
-  params: Promise<{ appId: string }>;
-}) {
+export default function AppDetailPage({ params }: { params: Promise<{ appId: string }> }) {
   const { appId } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -110,10 +96,8 @@ export default function AppDetailPage({
   const [editBotToken, setEditBotToken] = useState("");
   const [editChannelIdField, setEditChannelIdField] = useState("");
   const [editTeamId, setEditTeamId] = useState("");
-  const [editSessionStrategy, setEditSessionStrategy] =
-    useState<SessionStrategy>("per_thread");
-  const [editReplyMode, setEditReplyMode] =
-    useState<SlackReplyMode>("all_messages");
+  const [editSessionStrategy, setEditSessionStrategy] = useState<SessionStrategy>("per_thread");
+  const [editReplyMode, setEditReplyMode] = useState<SlackReplyMode>("all_messages");
 
   const [creatingSlackApp, setCreatingSlackApp] = useState(false);
 
@@ -164,9 +148,7 @@ export default function AppDetailPage({
   const slackChannel = app?.channels?.find(
     (ch: AppChannel) => ch.channel_type === "slack" && ch.enabled,
   );
-  const slackConfig = slackChannel?.channel_config as
-    | SlackChannelConfig
-    | undefined;
+  const slackConfig = slackChannel?.channel_config as SlackChannelConfig | undefined;
   const hasSlackConfig = slackConfig?.signing_secret && slackConfig?.bot_token;
 
   const webhookUrl =
@@ -176,8 +158,7 @@ export default function AppDetailPage({
 
   const isLocalhost =
     typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1");
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
   const webhookPath = `/api/v1/apps/${appId}/slack/events`;
 
   const handleCreateSlackApp = useCallback(async () => {
@@ -279,9 +260,7 @@ export default function AppDetailPage({
   };
 
   const agent = agents?.find((candidate) => candidate.id === app?.agent_id);
-  const harness = harnesses?.find(
-    (candidate) => candidate.id === app?.harness_id,
-  );
+  const harness = harnesses?.find((candidate) => candidate.id === app?.harness_id);
 
   if (isLoading) {
     return (
@@ -317,8 +296,7 @@ export default function AppDetailPage({
           required
         />
         <p className="text-xs text-muted-foreground mt-1">
-          Found in your Slack app &rarr; Settings &rarr; Basic Information
-          &rarr; App Credentials
+          Found in your Slack app &rarr; Settings &rarr; Basic Information &rarr; App Credentials
         </p>
       </div>
 
@@ -333,8 +311,7 @@ export default function AppDetailPage({
           required
         />
         <p className="text-xs text-muted-foreground mt-1">
-          Found in your Slack app &rarr; OAuth &amp; Permissions &rarr; Bot User
-          OAuth Token
+          Found in your Slack app &rarr; OAuth &amp; Permissions &rarr; Bot User OAuth Token
         </p>
       </div>
 
@@ -389,10 +366,7 @@ export default function AppDetailPage({
 
       <div>
         <Label htmlFor={`reply_mode_${formId}`}>Reply Mode</Label>
-        <Select
-          value={editReplyMode}
-          onValueChange={(v) => setEditReplyMode(v as SlackReplyMode)}
-        >
+        <Select value={editReplyMode} onValueChange={(v) => setEditReplyMode(v as SlackReplyMode)}>
           <SelectTrigger>
             <SelectValue>
               {
@@ -405,9 +379,7 @@ export default function AppDetailPage({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all_messages">All Assistant Messages</SelectItem>
-            <SelectItem value="report_progress_only">
-              Report Progress Only
-            </SelectItem>
+            <SelectItem value="report_progress_only">Report Progress Only</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -449,15 +421,11 @@ export default function AppDetailPage({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-medium">Signing Secret</p>
-                <p className="text-sm text-muted-foreground font-mono">
-                  {"*".repeat(12)}
-                </p>
+                <p className="text-sm text-muted-foreground font-mono">{"*".repeat(12)}</p>
               </div>
               <div>
                 <p className="text-sm font-medium">Bot User OAuth Token</p>
-                <p className="text-sm text-muted-foreground font-mono">
-                  {"*".repeat(12)}
-                </p>
+                <p className="text-sm text-muted-foreground font-mono">{"*".repeat(12)}</p>
               </div>
             </div>
 
@@ -466,17 +434,13 @@ export default function AppDetailPage({
                 {config?.team_id && (
                   <div>
                     <p className="text-sm font-medium">Workspace ID</p>
-                    <p className="text-sm text-muted-foreground font-mono">
-                      {config.team_id}
-                    </p>
+                    <p className="text-sm text-muted-foreground font-mono">{config.team_id}</p>
                   </div>
                 )}
                 {config?.channel_id && (
                   <div>
                     <p className="text-sm font-medium">Channel ID</p>
-                    <p className="text-sm text-muted-foreground font-mono">
-                      {config.channel_id}
-                    </p>
+                    <p className="text-sm text-muted-foreground font-mono">{config.channel_id}</p>
                   </div>
                 )}
               </div>
@@ -547,17 +511,11 @@ export default function AppDetailPage({
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Rocket className="w-6 h-6" />
-            <span className={getEntityNameClassName(app.status)}>
-              {app.name}
-            </span>
+            <span className={getEntityNameClassName(app.status)}>{app.name}</span>
             <CopyButton value={app.id} />
-            <Badge variant={getEntityStatusBadgeVariant(app.status)}>
-              {app.status}
-            </Badge>
+            <Badge variant={getEntityStatusBadgeVariant(app.status)}>{app.status}</Badge>
           </h1>
-          {app.description && (
-            <p className="text-muted-foreground mt-1">{app.description}</p>
-          )}
+          {app.description && <p className="text-muted-foreground mt-1">{app.description}</p>}
         </div>
         <div className="flex gap-2">
           {isPublished ? (
@@ -611,26 +569,17 @@ export default function AppDetailPage({
                   <Badge variant="outline" className="capitalize">
                     {channel.channel_type}
                   </Badge>
-                  {!channel.enabled && (
-                    <Badge variant="secondary">Disabled</Badge>
-                  )}
+                  {!channel.enabled && <Badge variant="secondary">Disabled</Badge>}
                   {(app.channels ?? []).length > 1 && (
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {channel.id}
-                    </span>
+                    <span className="text-xs text-muted-foreground font-mono">{channel.id}</span>
                   )}
                 </CardTitle>
                 <div className="flex gap-1">
                   {editingChannelId !== channel.id && !isReadOnly && (
                     <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => startEditChannel(channel)}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => startEditChannel(channel)}>
                         <Pencil className="w-3 h-3 mr-1" />
-                        {(channel.channel_config as SlackChannelConfig)
-                          ?.signing_secret
+                        {(channel.channel_config as SlackChannelConfig)?.signing_secret
                           ? "Edit"
                           : "Configure"}
                       </Button>
@@ -638,9 +587,7 @@ export default function AppDetailPage({
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() =>
-                            deleteChannelMutation.mutate(channel.id)
-                          }
+                          onClick={() => deleteChannelMutation.mutate(channel.id)}
                           disabled={deleteChannelMutation.isPending}
                         >
                           <Trash2 className="w-3 h-3" />
@@ -652,10 +599,7 @@ export default function AppDetailPage({
               </CardHeader>
               <CardContent>
                 {editingChannelId === channel.id
-                  ? renderChannelForm(
-                      updateChannelMutation.isPending,
-                      channel.id,
-                    )
+                  ? renderChannelForm(updateChannelMutation.isPending, channel.id)
                   : renderChannelDisplay(channel)}
               </CardContent>
             </Card>
@@ -663,11 +607,7 @@ export default function AppDetailPage({
 
           {/* Add Channel button */}
           {!isReadOnly && !showAddChannel && (
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={startAddChannel}
-            >
+            <Button variant="outline" className="w-full" onClick={startAddChannel}>
               <Plus className="w-4 h-4 mr-2" />
               Add Channel
             </Button>
@@ -679,9 +619,7 @@ export default function AppDetailPage({
               <CardHeader>
                 <CardTitle>Add Slack Channel</CardTitle>
               </CardHeader>
-              <CardContent>
-                {renderChannelForm(addChannelMutation.isPending, "new")}
-              </CardContent>
+              <CardContent>{renderChannelForm(addChannelMutation.isPending, "new")}</CardContent>
             </Card>
           )}
 
@@ -698,8 +636,7 @@ export default function AppDetailPage({
                 {isLocalhost ? (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      Slack can&apos;t reach{" "}
-                      <code className="text-xs">localhost</code>. Use{" "}
+                      Slack can&apos;t reach <code className="text-xs">localhost</code>. Use{" "}
                       <a
                         href="https://ngrok.com"
                         target="_blank"
@@ -711,14 +648,10 @@ export default function AppDetailPage({
                       to expose your local server:
                     </p>
                     <div className="bg-muted p-3 rounded-md space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        1. Start ngrok:
-                      </p>
+                      <p className="text-xs font-medium text-muted-foreground">1. Start ngrok:</p>
                       <code className="text-xs block">
                         ngrok http{" "}
-                        {typeof window !== "undefined"
-                          ? window.location.port || "9300"
-                          : "9300"}
+                        {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}
                       </code>
                       <p className="text-xs font-medium text-muted-foreground mt-2">
                         2. Copy your Request URL:
@@ -731,15 +664,12 @@ export default function AppDetailPage({
                 ) : (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      Paste this URL in your Slack app &rarr;{" "}
-                      <strong>Event Subscriptions</strong> &rarr;{" "}
-                      <strong>Request URL</strong>.
+                      Paste this URL in your Slack app &rarr; <strong>Event Subscriptions</strong>{" "}
+                      &rarr; <strong>Request URL</strong>.
                     </p>
                     <div className="flex items-center gap-2 bg-muted p-3 rounded-md">
                       <Globe className="w-4 h-4 shrink-0 text-muted-foreground" />
-                      <code className="text-sm flex-1 truncate">
-                        {webhookUrl}
-                      </code>
+                      <code className="text-sm flex-1 truncate">{webhookUrl}</code>
                       <CopyButton value={webhookUrl} />
                     </div>
                   </>
@@ -785,18 +715,12 @@ export default function AppDetailPage({
 
                   <div>
                     <Label>Harness</Label>
-                    <HarnessSelect
-                      value={editHarnessId}
-                      onValueChange={setEditHarnessId}
-                    />
+                    <HarnessSelect value={editHarnessId} onValueChange={setEditHarnessId} />
                   </div>
 
                   <div>
                     <Label>Agent</Label>
-                    <AgentSelect
-                      value={editAgentId}
-                      onValueChange={setEditAgentId}
-                    />
+                    <AgentSelect value={editAgentId} onValueChange={setEditAgentId} />
                   </div>
 
                   <div>
@@ -811,21 +735,12 @@ export default function AppDetailPage({
                     <Button
                       size="sm"
                       onClick={saveBasic}
-                      disabled={
-                        updateApp.isPending ||
-                        !editName ||
-                        !editAgentId ||
-                        !editHarnessId
-                      }
+                      disabled={updateApp.isPending || !editName || !editAgentId || !editHarnessId}
                     >
                       <Check className="w-3 h-3 mr-1" />
                       {updateApp.isPending ? "Saving..." : "Save"}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setEditingBasic(false)}
-                    >
+                    <Button size="sm" variant="outline" onClick={() => setEditingBasic(false)}>
                       <X className="w-3 h-3 mr-1" />
                       Cancel
                     </Button>
@@ -863,18 +778,12 @@ export default function AppDetailPage({
                     <p className="text-sm font-medium">Channels</p>
                     <div className="flex gap-1 flex-wrap">
                       {(app.channels ?? []).map((ch: AppChannel) => (
-                        <Badge
-                          key={ch.id}
-                          variant="outline"
-                          className="capitalize"
-                        >
+                        <Badge key={ch.id} variant="outline" className="capitalize">
                           {ch.channel_type}
                         </Badge>
                       ))}
                       {(app.channels ?? []).length === 0 && (
-                        <span className="text-sm text-muted-foreground">
-                          None configured
-                        </span>
+                        <span className="text-sm text-muted-foreground">None configured</span>
                       )}
                     </div>
                   </div>
@@ -914,15 +823,12 @@ export default function AppDetailPage({
           <DialogHeader>
             <DialogTitle>Delete App</DialogTitle>
             <DialogDescription>
-              Permanently delete the archived app &quot;{app.name}&quot;?
-              Existing references will render as deleted tombstones.
+              Permanently delete the archived app &quot;{app.name}&quot;? Existing references will
+              render as deleted tombstones.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowDeleteDialog(false)}
-            >
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
               Cancel
             </Button>
             <Button

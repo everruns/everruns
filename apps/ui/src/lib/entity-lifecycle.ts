@@ -48,9 +48,7 @@ export function getEntityStatusBadgeVariant(
   }
 }
 
-export function getEntityNameClassName(
-  status: EntityLifecycleStatus | string | null | undefined,
-) {
+export function getEntityNameClassName(status: EntityLifecycleStatus | string | null | undefined) {
   return cn(isArchivedStatus(status) && "text-muted-foreground line-through");
 }
 
@@ -78,9 +76,7 @@ export function getEntityReferenceLabel(params: {
   return name;
 }
 
-export function getEntityReferenceClassName(
-  status?: EntityLifecycleStatus | string | null,
-) {
+export function getEntityReferenceClassName(status?: EntityLifecycleStatus | string | null) {
   return cn(
     isArchivedStatus(status) && "text-muted-foreground line-through",
     isDeletedStatus(status) && "text-destructive",

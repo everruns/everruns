@@ -2,11 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import {
-  useCreateAgent,
-  useCapabilities,
-  useAgentNameAvailability,
-} from "@/hooks";
+import { useCreateAgent, useCapabilities, useAgentNameAvailability } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,17 +43,12 @@ export default function NewAgentPage() {
 
   const nameAvailability = useAgentNameAvailability(formData.name);
 
-  const [selectedCapabilities, setSelectedCapabilities] = useState<
-    AgentCapabilityConfig[]
-  >([]);
+  const [selectedCapabilities, setSelectedCapabilities] = useState<AgentCapabilityConfig[]>([]);
   const [initialFiles, setInitialFiles] = useState<InitialFile[]>([]);
 
-  const handleCapabilitiesChange = useCallback(
-    (capabilities: AgentCapabilityConfig[]) => {
-      setSelectedCapabilities(capabilities);
-    },
-    [],
-  );
+  const handleCapabilitiesChange = useCallback((capabilities: AgentCapabilityConfig[]) => {
+    setSelectedCapabilities(capabilities);
+  }, []);
 
   const handleDisplayNameChange = (value: string) => {
     const updates: Partial<typeof formData> = { display_name: value };
@@ -83,8 +74,7 @@ export default function NewAgentPage() {
         description: formData.description || undefined,
         system_prompt: formData.system_prompt,
         default_model_id: formData.default_model_id || undefined,
-        capabilities:
-          selectedCapabilities.length > 0 ? selectedCapabilities : undefined,
+        capabilities: selectedCapabilities.length > 0 ? selectedCapabilities : undefined,
         initial_files: initialFiles.length > 0 ? initialFiles : undefined,
       });
 
@@ -118,9 +108,7 @@ export default function NewAgentPage() {
                 value={formData.display_name}
                 onChange={(e) => handleDisplayNameChange(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                Human-readable name shown in the UI
-              </p>
+              <p className="text-xs text-muted-foreground">Human-readable name shown in the UI</p>
             </div>
 
             <div className="space-y-2">
@@ -137,9 +125,7 @@ export default function NewAgentPage() {
                   {nameAvailability.isChecking ? (
                     <>
                       <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-                      <span className="text-muted-foreground">
-                        Checking availability…
-                      </span>
+                      <span className="text-muted-foreground">Checking availability…</span>
                     </>
                   ) : nameAvailability.available === true ? (
                     <>
@@ -149,16 +135,13 @@ export default function NewAgentPage() {
                   ) : nameAvailability.available === false ? (
                     <>
                       <X className="w-3 h-3 text-destructive" />
-                      <span className="text-destructive">
-                        Name is already taken or invalid
-                      </span>
+                      <span className="text-destructive">Name is already taken or invalid</span>
                     </>
                   ) : null}
                 </div>
               )}
               <p className="text-xs text-muted-foreground">
-                Unique identifier used in URLs and API. Lowercase letters,
-                numbers, and hyphens.
+                Unique identifier used in URLs and API. Lowercase letters, numbers, and hyphens.
               </p>
             </div>
 
@@ -168,9 +151,7 @@ export default function NewAgentPage() {
                 id="description"
                 placeholder="Describe what this agent does..."
                 value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={2}
               />
             </div>
@@ -179,9 +160,7 @@ export default function NewAgentPage() {
               <Label htmlFor="model">Model (optional)</Label>
               <ModelPicker
                 value={formData.default_model_id}
-                onChange={(value) =>
-                  setFormData({ ...formData, default_model_id: value })
-                }
+                onChange={(value) => setFormData({ ...formData, default_model_id: value })}
                 placeholder="Use default model"
               />
               <p className="text-xs text-muted-foreground">
@@ -199,8 +178,7 @@ export default function NewAgentPage() {
                 label=""
               />
               <p className="text-xs text-muted-foreground">
-                Add capabilities to give your agent tools and specialized
-                behaviors
+                Add capabilities to give your agent tools and specialized behaviors
               </p>
             </div>
 
@@ -210,9 +188,7 @@ export default function NewAgentPage() {
                 id="system_prompt"
                 placeholder="You are a helpful assistant..."
                 value={formData.system_prompt}
-                onChange={(value) =>
-                  setFormData({ ...formData, system_prompt: value })
-                }
+                onChange={(value) => setFormData({ ...formData, system_prompt: value })}
                 required
               />
               <p className="text-xs text-muted-foreground">
@@ -231,19 +207,13 @@ export default function NewAgentPage() {
               <Button type="submit" disabled={createAgent.isPending}>
                 {createAgent.isPending ? "Creating..." : "Create Agent"}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => router.back()}
-              >
+              <Button type="button" variant="outline" onClick={() => router.back()}>
                 Cancel
               </Button>
             </div>
 
             {createAgent.error && (
-              <p className="text-sm text-destructive">
-                Error: {createAgent.error.message}
-              </p>
+              <p className="text-sm text-destructive">Error: {createAgent.error.message}</p>
             )}
           </form>
         </CardContent>

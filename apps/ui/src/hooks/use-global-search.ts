@@ -222,10 +222,7 @@ const ID_PREFIX_MAP: Record<
  * matches an agent named "Daytona Coder" because "daytona" hits the name
  * and "agent" hits the category context passed via `extraContext`.
  */
-function matchesTokens(
-  tokens: string[],
-  ...texts: (string | undefined | null)[]
-): boolean {
+function matchesTokens(tokens: string[], ...texts: (string | undefined | null)[]): boolean {
   const combined = texts
     .filter(Boolean)
     .map((t) => t!.toLowerCase())
@@ -279,9 +276,7 @@ export function useGlobalSearch(query: string) {
     for (const [prefix, meta] of Object.entries(ID_PREFIX_MAP)) {
       if (q.startsWith(prefix) || q.startsWith(prefix.replace("_", ""))) {
         // Normalize: allow "session3242" or "session_3242"
-        const idValue = q.startsWith(prefix)
-          ? q
-          : `${prefix}${q.slice(prefix.length - 1)}`;
+        const idValue = q.startsWith(prefix) ? q : `${prefix}${q.slice(prefix.length - 1)}`;
 
         // Try to resolve a friendly name from cached data
         let resolvedName: string | undefined;
@@ -309,9 +304,7 @@ export function useGlobalSearch(query: string) {
           id: `id:${idValue}`,
           category: "id",
           icon: Boxes,
-          title: resolvedName
-            ? `${meta.label}: ${resolvedName}`
-            : `Go to ${meta.label}`,
+          title: resolvedName ? `${meta.label}: ${resolvedName}` : `Go to ${meta.label}`,
           subtitle: idValue,
           href: `${meta.path}/${idValue}`,
         });
@@ -340,14 +333,7 @@ export function useGlobalSearch(query: string) {
       if (agentCount >= MAX_PER_CATEGORY) break;
       const agentDisplayName = getDisplayName(agent);
       if (
-        matchesTokens(
-          tokens,
-          agent.name,
-          agentDisplayName,
-          agent.description,
-          agent.id,
-          "agent",
-        )
+        matchesTokens(tokens, agent.name, agentDisplayName, agent.description, agent.id, "agent")
       ) {
         results.push({
           id: `agent:${agent.id}`,
@@ -366,9 +352,7 @@ export function useGlobalSearch(query: string) {
     for (const session of sessions) {
       if (sessionCount >= MAX_PER_CATEGORY) break;
       const title = session.title || session.preview || session.id;
-      if (
-        matchesTokens(tokens, title, session.id, session.preview, "session")
-      ) {
+      if (matchesTokens(tokens, title, session.id, session.preview, "session")) {
         results.push({
           id: `session:${session.id}`,
           category: "session",
@@ -385,15 +369,7 @@ export function useGlobalSearch(query: string) {
     let harnessCount = 0;
     for (const harness of harnesses) {
       if (harnessCount >= MAX_PER_CATEGORY) break;
-      if (
-        matchesTokens(
-          tokens,
-          harness.name,
-          harness.description,
-          harness.id,
-          "harness",
-        )
-      ) {
+      if (matchesTokens(tokens, harness.name, harness.description, harness.id, "harness")) {
         results.push({
           id: `harness:${harness.id}`,
           category: "harness",
@@ -410,9 +386,7 @@ export function useGlobalSearch(query: string) {
     let skillCount = 0;
     for (const skill of skills) {
       if (skillCount >= MAX_PER_CATEGORY) break;
-      if (
-        matchesTokens(tokens, skill.name, skill.description, skill.id, "skill")
-      ) {
+      if (matchesTokens(tokens, skill.name, skill.description, skill.id, "skill")) {
         results.push({
           id: `skill:${skill.id}`,
           category: "skill",
@@ -429,15 +403,7 @@ export function useGlobalSearch(query: string) {
     let mcpCount = 0;
     for (const server of mcpServers) {
       if (mcpCount >= MAX_PER_CATEGORY) break;
-      if (
-        matchesTokens(
-          tokens,
-          server.name,
-          server.description,
-          server.id,
-          "mcp server",
-        )
-      ) {
+      if (matchesTokens(tokens, server.name, server.description, server.id, "mcp server")) {
         results.push({
           id: `mcp:${server.id}`,
           category: "mcp_server",
@@ -515,13 +481,7 @@ export function useGlobalSearch(query: string) {
     for (const identity of agentIdentities) {
       if (identityCount >= MAX_PER_CATEGORY) break;
       if (
-        matchesTokens(
-          tokens,
-          identity.name,
-          identity.description,
-          identity.id,
-          "agent identity",
-        )
+        matchesTokens(tokens, identity.name, identity.description, identity.id, "agent identity")
       ) {
         results.push({
           id: `identity:${identity.id}`,

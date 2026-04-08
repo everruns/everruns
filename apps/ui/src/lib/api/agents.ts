@@ -11,11 +11,9 @@ import type {
   UpdateAgentRequest,
 } from "./types";
 
-export const agentsCrudApi = createCrudApi<
-  Agent,
-  CreateAgentRequest,
-  UpdateAgentRequest
->("/v1/agents");
+export const agentsCrudApi = createCrudApi<Agent, CreateAgentRequest, UpdateAgentRequest>(
+  "/v1/agents",
+);
 
 export const createAgent = agentsCrudApi.create;
 export const listAgents = agentsCrudApi.list;
@@ -68,12 +66,7 @@ export async function checkAgentName(
   return response.data;
 }
 
-export async function previewAgent(
-  request: PreviewAgentRequest,
-): Promise<AgentPreviewResponse> {
-  const response = await api.post<AgentPreviewResponse>(
-    "/v1/agents/preview",
-    request,
-  );
+export async function previewAgent(request: PreviewAgentRequest): Promise<AgentPreviewResponse> {
+  const response = await api.post<AgentPreviewResponse>("/v1/agents/preview", request);
   return response.data;
 }

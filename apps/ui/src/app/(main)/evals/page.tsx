@@ -26,16 +26,12 @@ function EvalCard({ eval: ev, agentName }: { eval: Eval; agentName?: string }) {
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base truncate">{ev.name}</CardTitle>
-            <Badge variant={ev.status === "active" ? "default" : "secondary"}>
-              {ev.status}
-            </Badge>
+            <Badge variant={ev.status === "active" ? "default" : "secondary"}>{ev.status}</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
           {ev.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2">
-              {ev.description}
-            </p>
+            <p className="text-sm text-muted-foreground line-clamp-2">{ev.description}</p>
           )}
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             {agentName && <span>Agent: {agentName}</span>}
@@ -43,11 +39,7 @@ function EvalCard({ eval: ev, agentName }: { eval: Eval; agentName?: string }) {
           </div>
           {ev.last_run && (
             <div className="flex items-center gap-3 text-xs">
-              <Badge
-                variant={
-                  ev.last_run.status === "completed" ? "default" : "outline"
-                }
-              >
+              <Badge variant={ev.last_run.status === "completed" ? "default" : "outline"}>
                 {ev.last_run.status}
               </Badge>
               {ev.last_run.summary && (
@@ -74,16 +66,10 @@ function EvalCard({ eval: ev, agentName }: { eval: Eval; agentName?: string }) {
 
 export default function EvalsPage() {
   const evalsEnabled = useFeatureFlag("evals");
-  const {
-    data: evals,
-    isLoading,
-    error,
-  } = useEvals({ includeArchived: false });
+  const { data: evals, isLoading, error } = useEvals({ includeArchived: false });
   const { data: agents } = useAgents({ includeArchived: false });
 
-  const agentMap = new Map(
-    (agents ?? []).map((a) => [a.id, getDisplayName(a)]),
-  );
+  const agentMap = new Map((agents ?? []).map((a) => [a.id, getDisplayName(a)]));
 
   if (!evalsEnabled) {
     return (
@@ -133,11 +119,7 @@ export default function EvalsPage() {
         {(items) => (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {items.map((ev) => (
-              <EvalCard
-                key={ev.id}
-                eval={ev}
-                agentName={agentMap.get(ev.agent_id)}
-              />
+              <EvalCard key={ev.id} eval={ev} agentName={agentMap.get(ev.agent_id)} />
             ))}
           </div>
         )}
