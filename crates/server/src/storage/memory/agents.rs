@@ -336,6 +336,7 @@ impl InMemoryDatabase {
             agent.tags = input.tags;
             agent.initial_files = input.initial_files;
             agent.tools = input.tools;
+            agent.network_access = input.network_access;
             agent.max_iterations = input.max_iterations;
             agent.status = "active".to_string();
             agent.updated_at = Self::now();

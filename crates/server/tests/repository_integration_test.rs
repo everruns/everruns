@@ -195,7 +195,7 @@ async fn test_agent_get_by_name() {
     let backend = create_test_backend().await;
 
     // Create unique agent
-    let unique_name = format!("NameTest_{}", Uuid::now_v7());
+    let unique_name = format!("name-test-{}", &Uuid::now_v7().to_string()[..8]);
     let agent = backend
         .create_agent(
             TEST_ORG_ID,
