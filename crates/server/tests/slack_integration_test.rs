@@ -137,7 +137,7 @@ async fn create_test_agent(server: &TestServer) -> String {
         .post(
             "/v1/agents",
             json!({
-                "name": format!("slack-test-agent-{}", ts),
+                "name": format!("slack-test-agent-{}", ts.replace('.', "-")),
                 "display_name": format!("Slack Test Agent {}", ts),
                 "system_prompt": "You are a test agent."
             }),
