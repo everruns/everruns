@@ -97,5 +97,5 @@ export function QueryStateWrapper<T>({
     return emptyState ?? <DefaultEmpty message={emptyMessage} />;
   }
 
-  return children(data);
+  return children(data) ?? null;
 }
