@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Boxes, Plus } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 
 interface AgentListWidgetProps {
@@ -59,7 +60,7 @@ export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProp
                     <Boxes className="icon-sharp h-5 w-5 text-muted-foreground" />
                     <div>
                       <div className="flex items-center gap-1">
-                        <p className="font-medium">{agent.display_name || agent.name}</p>
+                        <p className="font-medium">{getDisplayName(agent)}</p>
                         <CopyButton value={agent.id} />
                       </div>
                       <div className="flex items-center gap-2">

@@ -10,7 +10,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import { getDisplayName, getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 
 interface AgentCardProps {
   agent: Agent;
@@ -39,7 +39,7 @@ export function AgentCard({
           <div className="flex items-center gap-2">
             <CardTitle className={`text-lg ${getEntityNameClassName(agent.status)}`}>
               <Link href={`/agents/${agent.id}`} className="hover:underline">
-                {agent.display_name || agent.name}
+                {getDisplayName(agent)}
               </Link>
             </CardTitle>
             <CopyButton value={agent.id} />

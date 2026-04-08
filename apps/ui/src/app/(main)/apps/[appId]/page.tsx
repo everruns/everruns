@@ -57,6 +57,7 @@ import type {
   SlackReplyMode,
 } from "@/lib/api/types";
 import {
+  getDisplayName,
   getEntityNameClassName,
   getEntityReferenceClassName,
   getEntityReferenceLabel,
@@ -761,7 +762,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                     >
                       {getEntityReferenceLabel({
                         kind: "Agent",
-                        name: agent?.display_name || agent?.name,
+                        name: getDisplayName(agent),
                         status: agent?.status ?? "deleted",
                       })}
                     </p>

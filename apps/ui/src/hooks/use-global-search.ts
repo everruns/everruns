@@ -48,6 +48,7 @@ import { useCapabilities } from "@/hooks/use-capabilities";
 import { useEvals } from "@/hooks/use-evals";
 import { useApps } from "@/hooks/use-apps";
 import { useAgentIdentities } from "@/hooks/use-agent-identities";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 
 export type SearchResultCategory =
   | "navigation"
@@ -237,7 +238,7 @@ export function useGlobalSearch(query: string) {
         let resolvedName: string | undefined;
         if (prefix === "agent_") {
           const a = agents.find((a) => a.id === idValue);
-          resolvedName = a ? (a.display_name || a.name) : undefined;
+          resolvedName = a ? getDisplayName(a) : undefined;
         } else if (prefix === "session_") {
           const s = sessions.find((s) => s.id === idValue);
           resolvedName = s?.title ?? s?.preview ?? undefined;
@@ -286,7 +287,7 @@ export function useGlobalSearch(query: string) {
     let agentCount = 0;
     for (const agent of agents) {
       if (agentCount >= MAX_PER_CATEGORY) break;
-      const agentDisplayName = agent.display_name || agent.name;
+      const agentDisplayName = getDisplayName(agent);
       if (matchesTokens(tokens, agent.name, agentDisplayName, agent.description, agent.id, "agent")) {
         results.push({
           id: `agent:${agent.id}`,

@@ -34,7 +34,7 @@ import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
-import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
+import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 interface FormData {
   display_name: string;
@@ -203,7 +203,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
     );
   }
 
-  const agentDisplayName = agent.display_name || agent.name;
+  const agentDisplayName = getDisplayName(agent);
 
   return (
     <div className="container mx-auto p-6">

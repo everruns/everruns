@@ -14,6 +14,7 @@ import { useAgents } from "@/hooks";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Agent } from "@/lib/api/types";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 
 interface AgentFilterMenuProps {
   /** Selected agent ID (empty string = all) */
@@ -37,7 +38,7 @@ export function AgentFilterMenu({ value, onValueChange, className }: AgentFilter
   }, [agents]);
 
   const selected = value ? agentMap.get(value) : undefined;
-  const displayValue = selected ? (selected.display_name || selected.name) : "All agents";
+  const displayValue = selected ? getDisplayName(selected) : "All agents";
 
   const handleValueChange = (newValue: string) => {
     onValueChange(newValue);
@@ -56,7 +57,7 @@ export function AgentFilterMenu({ value, onValueChange, className }: AgentFilter
             <DropdownMenuRadioItem value="">All agents</DropdownMenuRadioItem>
             {agents.map((agent) => (
               <DropdownMenuRadioItem key={agent.id} value={agent.id}>
-                {agent.display_name || agent.name}
+                {getDisplayName(agent)}
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>

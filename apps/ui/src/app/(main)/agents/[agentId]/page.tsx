@@ -27,7 +27,7 @@ import { ArrowLeft, Plus, Pencil, Download, Copy, Zap, Eye, LayoutDashboard } fr
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
-import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import { getDisplayName, getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
 import { formatTokens } from "@/lib/formatting";
 
@@ -146,7 +146,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <span className={getEntityNameClassName(agent.status)}>{agent.display_name || agent.name}</span>
+            <span className={getEntityNameClassName(agent.status)}>{getDisplayName(agent)}</span>
             <CopyButton value={agent.id} />
             <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
           </h1>

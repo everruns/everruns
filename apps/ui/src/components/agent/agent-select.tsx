@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { useAgents } from "@/hooks";
 import type { Agent } from "@/lib/api/types";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 
 interface AgentSelectProps {
   /** Selected agent ID */
@@ -56,7 +57,7 @@ export function AgentSelect({
 
   const selectedAgent = value ? agentMap.get(value) : undefined;
   const displayValue = selectedAgent
-    ? (selectedAgent.display_name || selectedAgent.name)
+    ? getDisplayName(selectedAgent)
     : includeAll ? allLabel : undefined;
 
   return (
@@ -68,7 +69,7 @@ export function AgentSelect({
         {includeAll && <SelectItem value="all">{allLabel}</SelectItem>}
         {agents.map((agent) => (
           <SelectItem key={agent.id} value={agent.id}>
-            {agent.display_name || agent.name}
+            {getDisplayName(agent)}
           </SelectItem>
         ))}
       </SelectContent>

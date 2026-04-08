@@ -39,7 +39,7 @@ import { cn, shortenId } from "@/lib/utils";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useUpdateSession } from "@/hooks/use-sessions";
 import { SessionProvider, useSessionContext } from "./session-context";
-import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
+import { getDisplayName, getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 import { formatTokens } from "@/lib/formatting";
 
 interface SessionLayoutProps {
@@ -170,7 +170,7 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
     session?.agent_id != null
       ? getEntityReferenceLabel({
           kind: "Agent",
-          name: agent?.display_name || agent?.name,
+          name: getDisplayName(agent),
           status: agent?.status ?? "deleted",
         })
       : null;
