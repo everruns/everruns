@@ -81,9 +81,9 @@ export default function AllExamplesPage() {
       >
         {(items) => (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {items.map((example) => (
+            {items.map((example, index) => (
               <ExampleCard
-                key={example.slug}
+                key={example.slug ?? `example-${index}`}
                 example={example}
                 allCapabilities={allCapabilities}
                 onUse={handleUse}

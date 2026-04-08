@@ -136,9 +136,9 @@ export default function AgentsPage() {
         >
           {(items) => (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {items.map((agent) => (
+              {items.map((agent, index) => (
                 <AgentCard
-                  key={agent.id}
+                  key={agent.id ?? `agent-${index}`}
                   agent={agent}
                   allCapabilities={allCapabilities}
                   showEditButton
@@ -180,9 +180,9 @@ export default function AgentsPage() {
         >
           {(items) => (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {items.map((example) => (
+              {items.map((example, index) => (
                 <ExampleCard
-                  key={example.slug}
+                  key={example.slug ?? `example-${index}`}
                   example={example}
                   allCapabilities={allCapabilities}
                   onUse={handleUse}
