@@ -20,7 +20,7 @@ async fn setup_session_with_files(server: &TestServer) -> String {
     let agent: Agent = server
         .post(
             "/v1/agents",
-            json!({"name": "Git Test Agent", "system_prompt": "Test"}),
+            json!({"name": "git-test-agent", "display_name": "Git Test Agent", "system_prompt": "Test"}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -316,7 +316,7 @@ async fn test_git_empty_file_committed_in_memory() {
     let agent: Agent = server
         .post(
             "/v1/agents",
-            json!({"name": "Empty File Agent", "system_prompt": "T"}),
+            json!({"name": "empty-file-agent", "display_name": "Empty File Agent", "system_prompt": "T"}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -383,7 +383,7 @@ async fn test_git_binary_roundtrip_in_memory() {
     let agent: Agent = server
         .post(
             "/v1/agents",
-            json!({"name": "Binary Agent", "system_prompt": "T"}),
+            json!({"name": "binary-agent", "display_name": "Binary Agent", "system_prompt": "T"}),
         )
         .await
         .assert_status(StatusCode::CREATED)

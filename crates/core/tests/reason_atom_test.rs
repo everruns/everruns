@@ -78,7 +78,8 @@ async fn setup_test_environment() -> (
     let agent = Agent {
         public_id: AgentId::from_uuid(agent_id),
         internal_id: agent_id,
-        name: "Test Agent".to_string(),
+        name: "test-agent".to_string(),
+        display_name: Some("Test Agent".to_string()),
         description: None,
         system_prompt: "You are a helpful assistant.".to_string(),
         capabilities: vec![],

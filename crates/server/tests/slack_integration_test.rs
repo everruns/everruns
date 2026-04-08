@@ -132,11 +132,13 @@ fn sign_slack_request(signing_secret: &str, timestamp: &str, body: &[u8]) -> Str
 
 /// Helper: create a fresh agent via API (avoids FK issues with soft-deleted seed agents).
 async fn create_test_agent(server: &TestServer) -> String {
+    let ts = unique_ts();
     let agent: Value = server
         .post(
             "/v1/agents",
             json!({
-                "name": format!("Slack Test Agent {}", unique_ts()),
+                "name": format!("slack-test-agent-{}", ts.replace('.', "-")),
+                "display_name": format!("Slack Test Agent {}", ts),
                 "system_prompt": "You are a test agent."
             }),
         )

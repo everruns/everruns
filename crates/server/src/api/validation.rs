@@ -37,8 +37,11 @@ pub const MAX_AGENT_IMPORT_FILE_BYTES: usize = 3 * 1024 * 1024; // 3 MB
 /// Maximum size for locale tags.
 pub const MAX_LOCALE_BYTES: usize = 64;
 
-/// Maximum length for harness name (addressable slug).
-pub const MAX_HARNESS_NAME_LEN: usize = 64;
+/// Maximum length for names (harness, agent).
+pub const MAX_NAME_LEN: usize = 64;
+
+/// Maximum length for harness name.
+pub const MAX_HARNESS_NAME_LEN: usize = MAX_NAME_LEN;
 
 /// Maximum number of starter files on an agent or harness.
 pub const MAX_INITIAL_FILES: usize = 100;
@@ -82,17 +85,22 @@ impl From<ValidationError> for (StatusCode, Json<ErrorResponse>) {
     }
 }
 
-/// Validate agent name size
-pub fn validate_agent_name(name: &str) -> Result<(), ValidationError> {
+/// Validate agent display name size
+pub fn validate_agent_display_name(name: &str) -> Result<(), ValidationError> {
     if name.len() > MAX_AGENT_NAME_BYTES {
         tracing::warn!(
-            "Agent name exceeds limit: {} bytes (max: {})",
+            "Agent display name exceeds limit: {} bytes (max: {})",
             name.len(),
             MAX_AGENT_NAME_BYTES
         );
         return Err(ValidationError);
     }
     Ok(())
+}
+
+/// Validate agent name size (legacy alias for display_name validation)
+pub fn validate_agent_name(name: &str) -> Result<(), ValidationError> {
+    validate_agent_display_name(name)
 }
 
 /// Names that cannot be used for user-created harnesses because they have
@@ -123,18 +131,27 @@ pub fn validate_harness_name_strict(name: &str) -> Result<(), (StatusCode, Json<
 }
 
 fn validate_harness_name_inner(name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    validate_name_format("Harness", name)
+}
+
+/// Validate a name: `[a-z0-9]([a-z0-9-]*[a-z0-9])?`.
+/// Max 64 chars, no consecutive hyphens, no leading/trailing hyphens.
+/// Used for both harness and agent names.
+fn validate_name_format(entity: &str, name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     if name.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new("Harness name must not be empty")),
+            Json(ErrorResponse::new(format!(
+                "{entity} name must not be empty"
+            ))),
         ));
     }
-    if name.len() > MAX_HARNESS_NAME_LEN {
+    if name.len() > MAX_NAME_LEN {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse::new(format!(
-                "Harness name must be at most {} characters",
-                MAX_HARNESS_NAME_LEN
+                "{entity} name must be at most {} characters",
+                MAX_NAME_LEN
             ))),
         ));
     }
@@ -144,28 +161,33 @@ fn validate_harness_name_inner(name: &str) -> Result<(), (StatusCode, Json<Error
     {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(
-                "Harness name must contain only lowercase letters, digits, and hyphens",
-            )),
+            Json(ErrorResponse::new(format!(
+                "{entity} name must contain only lowercase letters, digits, and hyphens"
+            ))),
         ));
     }
     if name.starts_with('-') || name.ends_with('-') {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(
-                "Harness name must not start or end with a hyphen",
-            )),
+            Json(ErrorResponse::new(format!(
+                "{entity} name must not start or end with a hyphen"
+            ))),
         ));
     }
     if name.contains("--") {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(
-                "Harness name must not contain consecutive hyphens",
-            )),
+            Json(ErrorResponse::new(format!(
+                "{entity} name must not contain consecutive hyphens"
+            ))),
         ));
     }
     Ok(())
+}
+
+/// Validate agent name for create/update — same format as harness names.
+pub fn validate_agent_name_format(name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    validate_name_format("Agent", name)
 }
 
 /// Validate agent description size
@@ -302,32 +324,35 @@ pub fn validate_initial_files(initial_files: &[InitialFile]) -> Result<(), Valid
 /// Validate all fields for CreateAgentRequest
 pub fn validate_create_agent_input(
     name: &str,
+    display_name: Option<&str>,
     description: Option<&str>,
     system_prompt: &str,
     capabilities_count: usize,
     initial_files: &[InitialFile],
 ) -> Result<(), ValidationError> {
-    validate_agent_name(name)?;
+    if let Some(dn) = display_name {
+        validate_agent_display_name(dn)?;
+    }
     validate_agent_description(description)?;
     validate_agent_system_prompt(system_prompt)?;
     validate_agent_capabilities_count(capabilities_count)?;
     validate_initial_files(initial_files)?;
+    // Slug name validated separately via validate_agent_name_format (returns typed error)
+    let _ = name;
     Ok(())
 }
 
 /// Validate all provided fields for UpdateAgentRequest
 pub fn validate_update_agent_input(
-    name: Option<&str>,
+    display_name: Option<&str>,
     description: Option<&str>,
     system_prompt: Option<&str>,
     capabilities_count: Option<usize>,
     initial_files: Option<&[InitialFile]>,
 ) -> Result<(), ValidationError> {
-    if let Some(name) = name {
-        validate_agent_name(name)?;
+    if let Some(name) = display_name {
+        validate_agent_display_name(name)?;
     }
-    // For update, description is Option<Option<String>> effectively
-    // but we receive Option<String> - validate if present
     if let Some(desc) = description
         && desc.len() > MAX_AGENT_DESCRIPTION_BYTES
     {
@@ -377,14 +402,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_valid_agent_name() {
-        assert!(validate_agent_name("My Agent").is_ok());
-        assert!(validate_agent_name(&"x".repeat(MAX_AGENT_NAME_BYTES)).is_ok());
+    fn test_valid_agent_display_name() {
+        assert!(validate_agent_display_name("My Agent").is_ok());
+        assert!(validate_agent_display_name(&"x".repeat(MAX_AGENT_NAME_BYTES)).is_ok());
     }
 
     #[test]
-    fn test_invalid_agent_name() {
-        assert!(validate_agent_name(&"x".repeat(MAX_AGENT_NAME_BYTES + 1)).is_err());
+    fn test_invalid_agent_display_name() {
+        assert!(validate_agent_display_name(&"x".repeat(MAX_AGENT_NAME_BYTES + 1)).is_err());
+    }
+
+    #[test]
+    fn test_valid_agent_slug_name() {
+        assert!(validate_agent_name_format("my-agent").is_ok());
+        assert!(validate_agent_name_format("agent1").is_ok());
+        assert!(validate_agent_name_format("a").is_ok());
+        assert!(validate_agent_name_format("customer-support").is_ok());
+    }
+
+    #[test]
+    fn test_invalid_agent_slug_name() {
+        assert!(validate_agent_name_format("").is_err());
+        assert!(validate_agent_name_format("-leading").is_err());
+        assert!(validate_agent_name_format("trailing-").is_err());
+        assert!(validate_agent_name_format("bad--double").is_err());
+        assert!(validate_agent_name_format("UPPERCASE").is_err());
+        assert!(validate_agent_name_format("has space").is_err());
     }
 
     #[test]

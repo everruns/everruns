@@ -19,7 +19,8 @@ async fn test_create_and_get_agent() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
+                display_name: Some("Test Agent".to_string()),
                 description: Some("A test agent".to_string()),
                 system_prompt: "You are helpful".to_string(),
                 default_model_id: None,
@@ -33,11 +34,14 @@ async fn test_create_and_get_agent() {
         .await
         .unwrap();
 
-    assert_eq!(agent.name, "Test Agent");
+    assert_eq!(agent.name, "test-agent");
+    assert_eq!(agent.display_name, Some("Test Agent".to_string()));
 
     let fetched = db.get_agent(DEFAULT_ORG_ID, agent.id).await.unwrap();
     assert!(fetched.is_some());
-    assert_eq!(fetched.unwrap().name, "Test Agent");
+    let fetched = fetched.unwrap();
+    assert_eq!(fetched.name, "test-agent");
+    assert_eq!(fetched.display_name, Some("Test Agent".to_string()));
 }
 
 #[tokio::test]
@@ -49,7 +53,8 @@ async fn test_create_and_list_sessions() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
+                display_name: Some("Test Agent".to_string()),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -105,7 +110,8 @@ async fn test_session_updated_at() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
+                display_name: Some("Test Agent".to_string()),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -178,7 +184,8 @@ async fn test_events_sequence() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
+                display_name: Some("Test Agent".to_string()),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -247,7 +254,8 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Filter Test Agent".to_string(),
+                name: "filter-test-agent".to_string(),
+                display_name: Some("Filter Test Agent".to_string()),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -731,7 +739,8 @@ async fn test_list_events_empty_session_with_limit() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Empty Agent".to_string(),
+                name: "empty-agent".to_string(),
+                display_name: Some("Empty Agent".to_string()),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -785,7 +794,8 @@ async fn test_sessions_pagination() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
+                display_name: Some("Test Agent".to_string()),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -879,7 +889,8 @@ async fn test_sessions_pagination_ordering() {
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Test Agent".to_string(),
+                name: "test-agent".to_string(),
+                display_name: Some("Test Agent".to_string()),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
@@ -1370,6 +1381,7 @@ async fn create_test_agent(
         CreateAgentRow {
             public_id: AgentId::new().to_string(),
             name: name.to_string(),
+            display_name: Some("Test Agent".to_string()),
             description: description.map(|d| d.to_string()),
             system_prompt: String::new(),
             default_model_id: None,
@@ -1898,7 +1910,8 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             DEFAULT_ORG_ID,
             CreateAgentRow {
                 public_id: AgentId::new().to_string(),
-                name: "Search Test Agent".to_string(),
+                name: "search-test-agent".to_string(),
+                display_name: Some("Search Test Agent".to_string()),
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,

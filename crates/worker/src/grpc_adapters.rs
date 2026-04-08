@@ -638,7 +638,8 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
     Ok(Agent {
         public_id: everruns_core::AgentId::from_uuid(id),
         internal_id: id,
-        name: proto_agent.name,
+        name: proto_agent.name.clone(),
+        display_name: proto_agent.display_name,
         description: non_empty_string(proto_agent.description),
         system_prompt: proto_agent.system_prompt,
         default_model_id: default_model_id.map(|u| u.into()),
@@ -2166,6 +2167,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 description: description.map(|s| s.to_string()),
                 system_prompt: system_prompt.to_string(),
                 capabilities: capabilities.to_vec(),
+                display_name: None,
             })
             .await
             .map_err(grpc_status_to_error)?;
@@ -2194,6 +2196,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 name: name.map(|s| s.to_string()),
                 description: description.map(|s| s.to_string()),
                 system_prompt: system_prompt.map(|s| s.to_string()),
+                display_name: None,
             })
             .await
             .map_err(grpc_status_to_error)?;

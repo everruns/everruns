@@ -2,7 +2,7 @@
 //
 // Decision: Examples live in code (SEED_AGENTS), not in DB.
 // Decision: "Use" creates a real Agent via the existing create flow
-// Decision: Examples use a slug (kebab-case name) as their identifier
+// Decision: Examples are identified by their name
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::seed::{SEED_AGENTS, SeedAgent};
@@ -26,10 +26,10 @@ use crate::services::AgentService;
 /// A read-only agent example defined in code
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentExample {
-    /// URL-safe identifier (kebab-case of name)
-    pub slug: String,
-    /// Display name
+    /// Name (e.g. "dad-jokes-agent")
     pub name: String,
+    /// Human-readable display name (e.g. "Dad Jokes Agent")
+    pub display_name: String,
     /// Short description
     pub description: String,
     /// Tags for categorization
@@ -40,26 +40,10 @@ pub struct AgentExample {
     pub dev_only: bool,
 }
 
-fn slug_from_name(name: &str) -> String {
-    let raw = name
-        .to_lowercase()
-        .replace(' ', "-")
-        .replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "");
-    // Collapse consecutive hyphens
-    let mut result = String::with_capacity(raw.len());
-    for c in raw.chars() {
-        if c == '-' && result.ends_with('-') {
-            continue;
-        }
-        result.push(c);
-    }
-    result
-}
-
 fn seed_to_example(seed: &SeedAgent) -> AgentExample {
     AgentExample {
-        slug: slug_from_name(seed.name),
         name: seed.name.to_string(),
+        display_name: seed.display_name.to_string(),
         description: seed.description.to_string(),
         tags: seed.tags.iter().map(|s| s.to_string()).collect(),
         capabilities: seed
@@ -74,8 +58,8 @@ fn seed_to_example(seed: &SeedAgent) -> AgentExample {
     }
 }
 
-fn find_seed_by_slug(slug: &str) -> Option<&'static SeedAgent> {
-    SEED_AGENTS.iter().find(|s| slug_from_name(s.name) == slug)
+fn find_seed_by_name(name: &str) -> Option<&'static SeedAgent> {
+    SEED_AGENTS.iter().find(|s| s.name == name)
 }
 
 /// App state for agent example routes
@@ -94,7 +78,7 @@ impl_auth_state!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/agent-examples", get(list_examples))
-        .route("/v1/agent-examples/{slug}/use", post(use_example))
+        .route("/v1/agent-examples/{name}/use", post(use_example))
         .with_state(state)
 }
 
@@ -131,12 +115,12 @@ pub async fn list_examples(
     Json(examples)
 }
 
-/// POST /v1/agent-examples/{slug}/use — create a real Agent from an example
+/// POST /v1/agent-examples/{name}/use — create a real Agent from an example
 #[utoipa::path(
     post,
-    path = "/v1/agent-examples/{slug}/use",
+    path = "/v1/agent-examples/{name}/use",
     params(
-        ("slug" = String, Path, description = "Example slug (kebab-case name)")
+        ("name" = String, Path, description = "Example name (e.g. dad-jokes-agent)")
     ),
     responses(
         (status = 201, description = "Agent created from example", body = Agent),
@@ -148,14 +132,14 @@ pub async fn list_examples(
 pub async fn use_example(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path(slug): Path<String>,
+    Path(name): Path<String>,
 ) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
-    let seed = find_seed_by_slug(&slug)
-        .ok_or_else(|| ErrorResponse::not_found(&format!("agent example '{slug}'")))?;
+    let seed = find_seed_by_name(&name)
+        .ok_or_else(|| ErrorResponse::not_found(&format!("agent example '{name}'")))?;
 
     // Check dev-only
     if seed.dev_only && !state.grade.experimental_features_enabled() {
-        return Err(ErrorResponse::not_found(&format!("agent example '{slug}'")));
+        return Err(ErrorResponse::not_found(&format!("agent example '{name}'")));
     }
 
     // Check capabilities registered
@@ -189,6 +173,7 @@ pub async fn use_example(
     let req = CreateAgentRequest {
         id: None,
         name: seed.name.to_string(),
+        display_name: Some(seed.display_name.to_string()),
         description: Some(seed.description.to_string()),
         system_prompt: seed.system_prompt.to_string(),
         default_model_id: None,
@@ -215,33 +200,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_slug_from_name() {
-        assert_eq!(slug_from_name("Dad Jokes Agent"), "dad-jokes-agent");
-        assert_eq!(slug_from_name("Python Coder"), "python-coder");
-        assert_eq!(
-            slug_from_name("Cloud Cost & Security Auditor"),
-            "cloud-cost-security-auditor"
-        );
-    }
-
-    #[test]
-    fn test_all_seeds_have_unique_slugs() {
-        let slugs: Vec<String> = SEED_AGENTS.iter().map(|s| slug_from_name(s.name)).collect();
-        let mut unique = slugs.clone();
+    fn test_all_seeds_have_unique_names() {
+        let names: Vec<&str> = SEED_AGENTS.iter().map(|s| s.name).collect();
+        let mut unique = names.clone();
         unique.sort();
         unique.dedup();
-        assert_eq!(slugs.len(), unique.len(), "Duplicate example slugs");
+        assert_eq!(names.len(), unique.len(), "Duplicate example names");
     }
 
     #[test]
-    fn test_find_seed_by_slug() {
-        let seed = find_seed_by_slug("dad-jokes-agent");
+    fn test_find_seed_by_name() {
+        let seed = find_seed_by_name("dad-jokes-agent");
         assert!(seed.is_some());
-        assert_eq!(seed.unwrap().name, "Dad Jokes Agent");
+        assert_eq!(seed.unwrap().display_name, "Dad Jokes Agent");
     }
 
     #[test]
-    fn test_find_seed_by_slug_not_found() {
-        assert!(find_seed_by_slug("nonexistent").is_none());
+    fn test_find_seed_by_name_not_found() {
+        assert!(find_seed_by_name("nonexistent").is_none());
     }
 }

@@ -43,8 +43,8 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: Option<HarnessId>,
-    /// Addressable name of the harness (e.g. "generic", "deep-research").
-    /// Alternative to `harness_id` — looked up by stable name within the org.
+    /// Harness name (e.g. "generic", "deep-research").
+    /// Alternative to `harness_id` — looked up by name within the org.
     /// Mutually exclusive with `harness_id`.
     #[serde(default)]
     #[schema(example = "generic")]

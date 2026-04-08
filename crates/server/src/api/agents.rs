@@ -24,7 +24,8 @@ use super::common::{
     impl_auth_state,
 };
 use super::validation::{
-    validate_create_agent_input, validate_import_file_size, validate_update_agent_input,
+    validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
+    validate_update_agent_input,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -38,9 +39,15 @@ pub struct CreateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub id: Option<AgentId>,
-    /// The name of the agent. Used for display purposes.
-    #[schema(example = "Customer Support Agent")]
+    /// Name, unique per org. Lowercase alphanumeric and hyphens.
+    /// Format: lowercase alphanumeric and hyphens (e.g. "customer-support").
+    #[schema(example = "customer-support")]
     pub name: String,
+    /// Human-readable display name shown in UI.
+    /// Falls back to `name` when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Customer Support Agent")]
+    pub display_name: Option<String>,
     /// A human-readable description of what the agent does.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Handles customer inquiries and support tickets")]
@@ -82,10 +89,14 @@ pub struct CreateAgentRequest {
 /// Request to update an agent. Only provided fields will be updated.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateAgentRequest {
-    /// The name of the agent. Used for display purposes.
+    /// Name, unique per org. Lowercase alphanumeric and hyphens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "updated-support")]
+    pub name: Option<String>,
+    /// Human-readable display name shown in UI.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Updated Support Agent")]
-    pub name: Option<String>,
+    pub display_name: Option<String>,
     /// A human-readable description of what the agent does.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Updated description for the agent")]
@@ -209,7 +220,12 @@ struct AgentFile {
     /// Optional agent ID (format: agent_{32-hex}). Preserved during import/export.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<AgentId>,
+    /// Name (e.g. "customer-support"). If absent, derived from display_name.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Human-readable display name. Falls back to name if absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     pub description: Option<String>,
     pub system_prompt: Option<String>,
     pub default_model_id: Option<ModelId>,
@@ -356,9 +372,13 @@ pub async fn create_agent(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+    // Validate slug name format
+    validate_agent_name_format(&req.name)?;
+
     // Validate input sizes (last-resort protection against abuse)
     validate_create_agent_input(
         &req.name,
+        req.display_name.as_deref(),
         req.description.as_deref(),
         &req.system_prompt,
         req.capabilities.len(),
@@ -423,12 +443,15 @@ pub async fn list_agents(
     Ok(Json(PaginatedResponse::new(agents, total, offset, limit)))
 }
 
-/// GET /v1/agents/{agent_id} - Get agent by ID
+/// GET /v1/agents/{agent_id} - Get agent by ID or name
+///
+/// Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
+/// name (e.g. `customer-support`). Names are resolved within the caller's org.
 #[utoipa::path(
     get,
     path = "/v1/agents/{agent_id}",
     params(
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     responses(
         (status = 200, description = "Agent found", body = Agent),
@@ -441,23 +464,26 @@ pub async fn list_agents(
 pub async fn get_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id_or_name): Path<String>,
 ) -> ApiResult<Agent> {
-    let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
-        )
-    })?;
-
     let caller = Caller::from(&org);
+
+    // Try parsing as a prefixed ID first; fall back to name lookup.
+    if let Ok(agent_id) = agent_id_or_name.parse::<AgentId>() {
+        let agent = state
+            .service
+            .get_by_public_id(&caller, &agent_id.to_string())
+            .await
+            .map_policy_or_internal("get agent")?
+            .ok_or_not_found_json("Agent")?;
+        return Ok(Json(agent));
+    }
+
     let agent = state
         .service
-        .get_by_public_id(&caller, &agent_id.to_string())
+        .get_by_name(&caller, &agent_id_or_name)
         .await
-        .map_policy_or_internal("get agent")?
+        .map_policy_or_internal("get agent by name")?
         .ok_or_not_found_json("Agent")?;
 
     Ok(Json(agent))
@@ -494,9 +520,14 @@ pub async fn update_agent(
         )
     })?;
 
+    // Validate slug name format if provided
+    if let Some(ref name) = req.name {
+        validate_agent_name_format(name)?;
+    }
+
     // Validate input sizes (last-resort protection against abuse)
     validate_update_agent_input(
-        req.name.as_deref(),
+        req.display_name.as_deref(),
         req.description.as_deref(),
         req.system_prompt.as_deref(),
         req.capabilities.as_ref().map(|c| c.len()),
@@ -645,19 +676,20 @@ pub async fn copy_agent(
 
 /// PUT /v1/agents/{agent_id} - Create or update agent (upsert)
 ///
-/// If agent with this ID exists, update it. If not, create it.
-/// Returns 201 on create, 200 on update.
+/// Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
+/// name (e.g. `customer-support`). If the agent exists, update it; if not,
+/// create it. Returns 201 on create, 200 on update.
 #[utoipa::path(
     put,
     path = "/v1/agents/{agent_id}",
     params(
-        ("agent_id" = String, Path, description = "Agent ID (format: agent_{32-hex})")
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     request_body = CreateAgentRequest,
     responses(
         (status = 200, description = "Agent updated", body = Agent),
         (status = 201, description = "Agent created", body = Agent),
-        (status = 400, description = "Invalid agent ID or input exceeds allowed limits", body = ErrorResponse),
+        (status = 400, description = "Invalid input", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "agents"
@@ -665,21 +697,16 @@ pub async fn copy_agent(
 pub async fn upsert_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path(agent_id): Path<String>,
+    Path(agent_id_or_name): Path<String>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
-    let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
-        )
-    })?;
+    // Validate name format
+    validate_agent_name_format(&req.name)?;
 
     // Validate input sizes
     validate_create_agent_input(
         &req.name,
+        req.display_name.as_deref(),
         req.description.as_deref(),
         &req.system_prompt,
         req.capabilities.len(),
@@ -690,11 +717,30 @@ pub async fn upsert_agent(
     require_admin_for_high_risk(&org, &req.capabilities, &state.capability_service)?;
 
     let caller = Caller::from(&org);
-    let (agent, was_created) = state
-        .service
-        .upsert(&caller, &agent_id.to_string(), req)
-        .await
-        .map_policy_or_internal("upsert agent")?;
+
+    // Try parsing as a prefixed ID first; fall back to upsert by name.
+    let (agent, was_created) = if let Ok(agent_id) = agent_id_or_name.parse::<AgentId>() {
+        state
+            .service
+            .upsert(&caller, &agent_id.to_string(), req)
+            .await
+            .map_policy_or_internal("upsert agent")?
+    } else {
+        // Enforce path name matches body name to prevent ambiguous updates.
+        if req.name != agent_id_or_name {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "Agent name in URL must match name in request body",
+                )),
+            ));
+        }
+        state
+            .service
+            .upsert_by_name(&caller, req)
+            .await
+            .map_policy_or_internal("upsert agent by name")?
+    };
 
     let status = if was_created {
         StatusCode::CREATED
@@ -790,10 +836,27 @@ pub async fn import_agent(
         ErrorResponse::new(format!("Invalid format: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
 
-    // Generate date-based name if not provided
+    // Derive display_name and slug name.
+    // Legacy files may only have `name` (the old display name); in that case,
+    // treat it as display_name and derive the slug from it.
+    let display_name = agent_file.display_name.or(agent_file.name.clone());
+    let name_fallback = display_name
+        .clone()
+        .unwrap_or_else(|| format!("agent-{}", Utc::now().format("%Y%m%d-%H%M%S")));
     let name = agent_file
         .name
-        .unwrap_or_else(|| format!("agent-{}", Utc::now().format("%Y%m%d-%H%M%S")));
+        .map(|n| {
+            // If it looks like a slug already, use it; otherwise slugify
+            if n.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+            {
+                n
+            } else {
+                slugify(&n)
+            }
+        })
+        .unwrap_or_else(|| slugify(&name_fallback));
+    validate_agent_name_format(&name)?;
 
     // System prompt is required (either from body or front matter)
     let system_prompt = agent_file.system_prompt.unwrap_or_default();
@@ -814,6 +877,7 @@ pub async fn import_agent(
 
     validate_create_agent_input(
         &name,
+        display_name.as_deref(),
         agent_file.description.as_deref(),
         &system_prompt,
         agent_file.capabilities.len(),
@@ -824,6 +888,7 @@ pub async fn import_agent(
     let request = CreateAgentRequest {
         id: None, // Already extracted as client_id
         name,
+        display_name,
         description: agent_file.description,
         system_prompt,
         default_model_id: agent_file.default_model_id,
@@ -879,6 +944,9 @@ fn agent_to_markdown(agent: &Agent) -> String {
     let mut yaml_lines = vec![];
     yaml_lines.push(format!("id: \"{}\"", agent.public_id));
     yaml_lines.push(format!("name: \"{}\"", agent.name.replace('"', "\\\"")));
+    if let Some(ref dn) = agent.display_name {
+        yaml_lines.push(format!("display_name: \"{}\"", dn.replace('"', "\\\"")));
+    }
 
     if let Some(desc) = &agent.description {
         yaml_lines.push(format!("description: \"{}\"", desc.replace('"', "\\\"")));
@@ -960,6 +1028,7 @@ fn parse_agent_content(content: &str) -> Result<AgentFile, String> {
     Ok(AgentFile {
         id: None,
         name: None, // Will be auto-generated
+        display_name: None,
         description: None,
         system_prompt: Some(content.to_string()),
         default_model_id: None,

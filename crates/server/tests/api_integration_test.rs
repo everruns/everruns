@@ -90,7 +90,8 @@ async fn test_create_agent() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Test Agent",
+                "name": "test-agent",
+                "display_name": "Test Agent",
                 "description": "An agent for testing",
                 "system_prompt": "You are a helpful assistant"
             }),
@@ -99,7 +100,7 @@ async fn test_create_agent() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    assert_eq!(agent.name, "Test Agent");
+    assert_eq!(agent.name, "test-agent");
     assert_eq!(agent.description.as_deref(), Some("An agent for testing"));
 }
 
@@ -112,7 +113,8 @@ async fn test_list_agents() {
         .post(
             "/v1/agents",
             json!({
-                "name": "List Test Agent",
+                "name": "list-test-agent",
+                "display_name": "List Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -140,7 +142,8 @@ async fn test_get_agent_by_id() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Get Test Agent",
+                "name": "get-test-agent",
+                "display_name": "Get Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -156,7 +159,7 @@ async fn test_get_agent_by_id() {
         .json();
 
     assert_eq!(fetched_agent.public_id, agent.public_id);
-    assert_eq!(fetched_agent.name, "Get Test Agent");
+    assert_eq!(fetched_agent.name, "get-test-agent");
 }
 
 #[tokio::test]
@@ -168,7 +171,8 @@ async fn test_update_agent() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Original Name",
+                "name": "original-name",
+                "display_name": "Original Name",
                 "system_prompt": "Test"
             }),
         )
@@ -181,7 +185,8 @@ async fn test_update_agent() {
         .patch(
             &format!("/v1/agents/{}", agent.public_id),
             json!({
-                "name": "Updated Name",
+                "name": "updated-name",
+                "display_name": "Updated Name",
                 "description": "Updated description"
             }),
         )
@@ -189,7 +194,7 @@ async fn test_update_agent() {
         .assert_status(StatusCode::OK)
         .json();
 
-    assert_eq!(updated_agent.name, "Updated Name");
+    assert_eq!(updated_agent.name, "updated-name");
     assert_eq!(
         updated_agent.description.as_deref(),
         Some("Updated description")
@@ -204,7 +209,8 @@ async fn test_create_agent_missing_default_model_returns_not_found() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Missing Model Agent",
+                "name": "missing-model-agent",
+                "display_name": "Missing Model Agent",
                 "system_prompt": "Test",
                 "default_model_id": "model_019563a3000070008000000000000001"
             }),
@@ -221,7 +227,8 @@ async fn test_update_agent_missing_default_model_returns_not_found() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Update Missing Model Agent",
+                "name": "update-missing-model-agent",
+                "display_name": "Update Missing Model Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -249,7 +256,8 @@ async fn test_delete_agent() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Delete Test Agent",
+                "name": "delete-test-agent",
+                "display_name": "Delete Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -307,7 +315,8 @@ async fn test_destroy_agent_requires_archive_and_hides_detail_api() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Destroy Test Agent",
+                "name": "destroy-test-agent",
+                "display_name": "Destroy Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -344,7 +353,8 @@ async fn test_create_session_rejects_archived_agent() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Archived Session Agent",
+                "name": "archived-session-agent",
+                "display_name": "Archived Session Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -383,7 +393,8 @@ async fn test_create_session() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Session Test Agent",
+                "name": "session-test-agent",
+                "display_name": "Session Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -615,7 +626,8 @@ async fn test_get_session() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Get Session Test Agent",
+                "name": "get-session-test-agent",
+                "display_name": "Get Session Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -655,7 +667,8 @@ async fn test_sessions_pagination() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Pagination Test Agent",
+                "name": "pagination-test-agent",
+                "display_name": "Pagination Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -721,7 +734,8 @@ async fn test_list_sessions_unknown_agent_returns_empty() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Test Agent",
+                "name": "test-agent-unknown",
+                "display_name": "Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -766,7 +780,8 @@ async fn test_create_user_message() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Message Test Agent",
+                "name": "message-test-agent",
+                "display_name": "Message Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -813,7 +828,8 @@ async fn test_list_messages() {
         .post(
             "/v1/agents",
             json!({
-                "name": "List Messages Test Agent",
+                "name": "list-messages-test-agent",
+                "display_name": "List Messages Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -872,7 +888,8 @@ async fn test_list_events() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Events Test Agent",
+                "name": "events-test-agent",
+                "display_name": "Events Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -929,7 +946,8 @@ async fn test_list_events_limit_one_returns_last_event() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Events Limit Test Agent",
+                "name": "events-limit-test-agent",
+                "display_name": "Events Limit Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -1007,7 +1025,8 @@ async fn test_list_events_since_id_filters_old_events() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Events SinceId Test Agent",
+                "name": "events-sinceid-test-agent",
+                "display_name": "Events SinceId Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -1265,7 +1284,8 @@ async fn test_session_inherits_agent_default_model() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Model Inheritance Agent",
+                "name": "model-inheritance-agent",
+                "display_name": "Model Inheritance Agent",
                 "system_prompt": "Test",
                 "default_model_id": model.id.to_string()
             }),
@@ -1321,7 +1341,8 @@ async fn test_session_filesystem() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Filesystem Test Agent",
+                "name": "filesystem-test-agent",
+                "display_name": "Filesystem Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -1417,7 +1438,8 @@ async fn test_session_filesystem_list_nonexistent_directory_returns_404() {
         .post(
             "/v1/agents",
             json!({
-                "name": "FS 404 Test Agent",
+                "name": "fs-404-test-agent",
+                "display_name": "FS 404 Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -1559,7 +1581,8 @@ async fn test_create_session_with_generic_harness() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Generic Harness Test Agent",
+                "name": "generic-harness-test-agent",
+                "display_name": "Generic Harness Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -1597,7 +1620,8 @@ async fn test_copy_agent() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Original Agent",
+                "name": "original-agent",
+                "display_name": "Original Agent",
                 "description": "Original description",
                 "system_prompt": "You are helpful",
                 "tags": ["tag1", "tag2"],
@@ -1618,7 +1642,7 @@ async fn test_copy_agent() {
         .json();
 
     // Verify copy
-    assert_eq!(copied.name, "Original Agent (copy)");
+    assert_eq!(copied.name, "original-agent-copy");
     assert_eq!(copied.description.as_deref(), Some("Original description"));
     assert_eq!(copied.system_prompt, "You are helpful");
     assert_eq!(copied.tags, vec!["tag1", "tag2"]);
@@ -1919,7 +1943,8 @@ async fn test_agent_with_capabilities() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Capability Test Agent",
+                "name": "capability-test-agent",
+                "display_name": "Capability Test Agent",
                 "system_prompt": "Test",
                 "capabilities": [
                     {"ref": "current_time", "config": {}},
@@ -1951,7 +1976,8 @@ async fn test_session_databases_crud() {
         .post(
             "/v1/agents",
             json!({
-                "name": "SQL Test Agent",
+                "name": "sql-test-agent",
+                "display_name": "SQL Test Agent",
                 "system_prompt": "Test",
                 "capabilities": [{"ref": "session_sql_database", "config": {}}]
             }),
@@ -2055,7 +2081,8 @@ async fn test_session_databases_schema() {
         .post(
             "/v1/agents",
             json!({
-                "name": "SQL Schema Agent",
+                "name": "sql-schema-agent",
+                "display_name": "SQL Schema Agent",
                 "system_prompt": "Test",
                 "capabilities": [{"ref": "session_sql_database", "config": {}}]
             }),
@@ -2110,7 +2137,8 @@ async fn test_session_databases_invalid_name() {
         .post(
             "/v1/agents",
             json!({
-                "name": "SQL Invalid Name Agent",
+                "name": "sql-invalid-name-agent",
+                "display_name": "SQL Invalid Name Agent",
                 "system_prompt": "Test",
             }),
         )
@@ -2159,7 +2187,7 @@ async fn test_session_features_base_harness_empty() {
     let agent: Agent = server
         .post(
             "/v1/agents",
-            json!({"name": "Base Features Agent", "system_prompt": "Test"}),
+            json!({"name": "base-features-agent", "display_name": "Base Features Agent", "system_prompt": "Test"}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -2192,7 +2220,7 @@ async fn test_session_features_generic_harness() {
     let agent: Agent = server
         .post(
             "/v1/agents",
-            json!({"name": "Generic Features Agent", "system_prompt": "Test"}),
+            json!({"name": "generic-features-agent", "display_name": "Generic Features Agent", "system_prompt": "Test"}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -2242,7 +2270,7 @@ async fn test_session_features_persisted_in_get() {
     let agent: Agent = server
         .post(
             "/v1/agents",
-            json!({"name": "Get Features Agent", "system_prompt": "Test"}),
+            json!({"name": "get-features-agent", "display_name": "Get Features Agent", "system_prompt": "Test"}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -2280,7 +2308,7 @@ async fn test_session_features_in_list() {
     let agent: Agent = server
         .post(
             "/v1/agents",
-            json!({"name": "List Features Agent", "system_prompt": "Test"}),
+            json!({"name": "list-features-agent", "display_name": "List Features Agent", "system_prompt": "Test"}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -2325,7 +2353,7 @@ async fn test_session_features_with_session_capabilities() {
     let agent: Agent = server
         .post(
             "/v1/agents",
-            json!({"name": "Session Cap Features Agent", "system_prompt": "Test"}),
+            json!({"name": "session-cap-features-agent", "display_name": "Session Cap Features Agent", "system_prompt": "Test"}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -2361,7 +2389,8 @@ async fn test_session_features_with_agent_capabilities() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Agent Cap Features Agent",
+                "name": "agent-cap-features-agent",
+                "display_name": "Agent Cap Features Agent",
                 "system_prompt": "Test",
                 "capabilities": [{"ref": "session_schedule"}],
             }),
@@ -2400,7 +2429,7 @@ async fn test_session_features_sql_database() {
     let agent: Agent = server
         .post(
             "/v1/agents",
-            json!({"name": "SqlDb Features Agent", "system_prompt": "Test"}),
+            json!({"name": "sqldb-features-agent", "display_name": "SqlDb Features Agent", "system_prompt": "Test"}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -2707,7 +2736,8 @@ async fn test_cannot_delete_readonly_file() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Readonly Delete Test",
+                "name": "readonly-delete-test",
+                "display_name": "Readonly Delete Test",
                 "system_prompt": "Test"
             }),
         )
@@ -2765,7 +2795,8 @@ async fn test_cannot_recursively_delete_directory_with_readonly_file() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Readonly Recursive Delete Test",
+                "name": "readonly-recursive-delete-test",
+                "display_name": "Readonly Recursive Delete Test",
                 "system_prompt": "Test"
             }),
         )
@@ -2829,7 +2860,8 @@ async fn test_can_delete_non_readonly_file() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Normal Delete Test",
+                "name": "normal-delete-test",
+                "display_name": "Normal Delete Test",
                 "system_prompt": "Test"
             }),
         )
@@ -2913,7 +2945,8 @@ async fn test_create_app_missing_harness_returns_not_found() {
         .post(
             "/v1/agents",
             json!({
-                "name": "Test Agent",
+                "name": "app-missing-harness-agent",
+                "display_name": "Test Agent",
                 "system_prompt": "Test"
             }),
         )
@@ -2961,7 +2994,7 @@ async fn test_update_app_missing_harness_returns_not_found() {
     let agent: Value = server
         .post(
             "/v1/agents",
-            json!({ "name": "Test Agent", "system_prompt": "Test" }),
+            json!({ "name": "update-app-harness-agent", "display_name": "Test Agent", "system_prompt": "Test" }),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -2997,7 +3030,7 @@ async fn test_update_app_missing_agent_returns_not_found() {
     let agent: Value = server
         .post(
             "/v1/agents",
-            json!({ "name": "Test Agent", "system_prompt": "Test" }),
+            json!({ "name": "update-app-agent-agent", "display_name": "Test Agent", "system_prompt": "Test" }),
         )
         .await
         .assert_status(StatusCode::CREATED)

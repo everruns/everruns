@@ -63,6 +63,7 @@ impl AgentStore for DbAgentStore {
                         .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid())),
                     internal_id: row.id.uuid(),
                     name: row.name,
+                    display_name: row.display_name,
                     description: row.description,
                     system_prompt: row.system_prompt,
                     default_model_id: row.default_model_id,

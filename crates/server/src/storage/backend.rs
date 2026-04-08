@@ -364,6 +364,14 @@ impl StorageBackend {
         dispatch!(self, upsert_agent, org_id, input)
     }
 
+    pub async fn upsert_agent_by_name(
+        &self,
+        org_id: i64,
+        input: CreateAgentRow,
+    ) -> Result<(AgentRow, bool)> {
+        dispatch!(self, upsert_agent_by_name, org_id, input)
+    }
+
     pub async fn get_agent_public_id(&self, org_id: i64, id: AgentId) -> Result<Option<String>> {
         dispatch!(self, get_agent_public_id, org_id, id)
     }

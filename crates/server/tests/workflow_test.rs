@@ -37,7 +37,8 @@ async fn test_full_agent_session_workflow() {
     let create_agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Test Agent",
+            "name": "test-agent",
+            "display_name": "Test Agent",
             "description": "An agent for testing",
             "system_prompt": "You are a helpful assistant"
         }))
@@ -58,7 +59,7 @@ async fn test_full_agent_session_workflow() {
         .expect("Failed to parse agent response");
 
     println!("Created agent: {}", agent.public_id);
-    assert_eq!(agent.name, "Test Agent");
+    assert_eq!(agent.name, "test-agent");
     assert_eq!(agent.status.to_string(), "active");
 
     // Step 2: List agents
@@ -95,7 +96,8 @@ async fn test_full_agent_session_workflow() {
     let update_response = client
         .patch(format!("{}/v1/agents/{}", API_BASE_URL, agent.public_id))
         .json(&json!({
-            "name": "Updated Test Agent",
+            "name": "updated-test-agent",
+            "display_name": "Updated Test Agent",
             "description": "Updated description"
         }))
         .send()
@@ -105,7 +107,7 @@ async fn test_full_agent_session_workflow() {
     assert_eq!(update_response.status(), 200);
     let updated_agent: Agent = update_response.json().await.expect("Failed to parse agent");
     println!("Updated agent: {}", updated_agent.name);
-    assert_eq!(updated_agent.name, "Updated Test Agent");
+    assert_eq!(updated_agent.name, "updated-test-agent");
 
     // Step 5: Create a session
     println!("\nStep 5: Creating session...");
@@ -485,7 +487,8 @@ async fn test_session_inherits_agent_default_model() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Agent with Default Model",
+            "name": "agent-with-default-model",
+            "display_name": "Agent with Default Model",
             "system_prompt": "Test agent",
             "default_model_id": model.id.to_string()
         }))
@@ -620,7 +623,8 @@ async fn test_session_filesystem() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Filesystem Test Agent",
+            "name": "filesystem-test-agent",
+            "display_name": "Filesystem Test Agent",
             "system_prompt": "Test agent for filesystem"
         }))
         .send()
@@ -873,7 +877,8 @@ async fn test_session_filesystem_workspace_prefix() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Workspace Test Agent",
+            "name": "workspace-test-agent",
+            "display_name": "Workspace Test Agent",
             "system_prompt": "Test agent"
         }))
         .send()
@@ -1075,7 +1080,8 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "FS Bash Test Agent",
+            "name": "fs-bash-test-agent",
+            "display_name": "FS Bash Test Agent",
             "system_prompt": "You are a file system assistant. When asked to create a file, use the write_file tool to create it. Always confirm what you did.",
             "capabilities": [
                 {"ref": "session_file_system", "config": {}},
@@ -1338,7 +1344,8 @@ async fn test_agent_execution_llmsim_with_edit_file_tool() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Edit Tool Test Agent",
+            "name": "edit-tool-test-agent",
+            "display_name": "Edit Tool Test Agent",
             "system_prompt": "You are a file editing assistant. When asked to update an existing file, first use read_file to inspect the file and obtain its content hash, then use edit_file to make the requested exact replacement. Do not use write_file for existing files. After editing, confirm the final file contents.",
             "capabilities": [{"ref": "session_file_system", "config": {}}],
             "default_model_id": model.id
@@ -1544,7 +1551,8 @@ async fn test_message_triggers_agent_workflow() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Workflow Test Agent",
+            "name": "workflow-test-agent",
+            "display_name": "Workflow Test Agent",
             "system_prompt": "You are a helpful assistant. Respond briefly.",
             "default_model_id": model.id.to_string()
         }))
@@ -1822,7 +1830,8 @@ async fn test_no_duplicate_tool_calls() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Time Tool Test Agent",
+            "name": "time-tool-test-agent",
+            "display_name": "Time Tool Test Agent",
             "system_prompt": "You are a helpful time assistant. When asked about the current time, use the get_current_time tool.",
             "capabilities": [{"ref": "current_time", "config": {}}],
             "default_model_id": model.id
@@ -2024,7 +2033,8 @@ async fn test_sessions_pagination() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Pagination Test Agent",
+            "name": "pagination-test-agent",
+            "display_name": "Pagination Test Agent",
             "system_prompt": "Test agent"
         }))
         .send()
@@ -2264,7 +2274,8 @@ async fn test_second_message_triggers_workflow() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Second Message Test Agent",
+            "name": "second-message-test-agent",
+            "display_name": "Second Message Test Agent",
             "system_prompt": "You are a helpful assistant. Respond briefly.",
             "default_model_id": model.id.to_string()
         }))
@@ -2534,7 +2545,8 @@ async fn test_capability_mounts_applied_on_session_creation() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Mount Test Agent",
+            "name": "mount-test-agent",
+            "display_name": "Mount Test Agent",
             "system_prompt": "Test agent for capability mounts",
             "capabilities": [
                 {"ref": "sample_data", "config": {}},
@@ -3108,7 +3120,8 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Dad Jokes Time Agent",
+            "name": "dad-jokes-time-agent",
+            "display_name": "Dad Jokes Time Agent",
             "system_prompt": "You are a dad jokes comedian. When asked for a joke about the time, first use the get_current_time tool to get the current time, then tell a dad joke that incorporates the time. Your jokes should be punny and family-friendly.",
             "capabilities": [{"ref": "current_time", "config": {}}],
             "default_model_id": model.id
@@ -3402,7 +3415,8 @@ async fn test_agent_execution_openai_with_tool_calls() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "OpenAI Dad Jokes Agent",
+            "name": "openai-dad-jokes-agent",
+            "display_name": "OpenAI Dad Jokes Agent",
             "system_prompt": "You are a dad jokes comedian. When the user asks for a joke about the time, you MUST first use the get_current_time tool to get the current time, then tell a short dad joke that somehow references the time you received. Keep your response brief.",
             "capabilities": [{"ref": "current_time", "config": {}}],
             "default_model_id": model.id
@@ -3650,7 +3664,8 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Anthropic Dad Jokes Agent",
+            "name": "anthropic-dad-jokes-agent",
+            "display_name": "Anthropic Dad Jokes Agent",
             "system_prompt": "You are a dad jokes comedian. When the user asks for a joke about the time, you MUST first use the get_current_time tool to get the current time, then tell a short dad joke that somehow references the time you received. Keep your response brief.",
             "capabilities": [{"ref": "current_time", "config": {}}],
             "default_model_id": model.id
@@ -3876,7 +3891,8 @@ async fn test_agent_execution_multiple_tool_calls() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Math Calculator Agent",
+            "name": "math-calculator-agent",
+            "display_name": "Math Calculator Agent",
             "system_prompt": "You are a math calculator. Use the available math tools (add, subtract, multiply, divide) to solve problems. Show your work step by step.",
             "capabilities": [{"ref": "test_math", "config": {}}],
             "default_model_id": model.id
@@ -4056,7 +4072,8 @@ async fn test_streaming_events_emitted() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Streaming Test Agent",
+            "name": "streaming-test-agent",
+            "display_name": "Streaming Test Agent",
             "system_prompt": "You are a helpful assistant. Respond briefly.",
             "default_model_id": model.id.to_string()
         }))
@@ -4382,7 +4399,8 @@ async fn test_cancel_turn_endpoint() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Cancel Test Agent",
+            "name": "cancel-test-agent",
+            "display_name": "Cancel Test Agent",
             "system_prompt": "You are a helpful assistant.",
             "default_model_id": model.id.to_string()
         }))
@@ -4542,7 +4560,8 @@ async fn test_anthropic_extended_thinking() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Thinking Test Agent",
+            "name": "thinking-test-agent",
+            "display_name": "Thinking Test Agent",
             "system_prompt": "You are a helpful assistant. Think through problems step by step.",
             "default_model_id": model.id
         }))
@@ -4900,7 +4919,8 @@ async fn test_anthropic_extended_thinking_with_tools() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Time Reporter Agent",
+            "name": "time-reporter-agent",
+            "display_name": "Time Reporter Agent",
             "system_prompt": "You help users with simple requests. When asked for the time, call the current_time tool once and report the result.",
             "default_model_id": model.id,
             "capabilities": [
@@ -5187,7 +5207,8 @@ async fn test_events_api_contract() {
     let agent: Agent = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "Events Contract Test Agent",
+            "name": "events-contract-test-agent",
+            "display_name": "Events Contract Test Agent",
             "system_prompt": "You are helpful"
         }))
         .send()
@@ -5298,7 +5319,8 @@ async fn test_events_sse_contract() {
     let agent: Agent = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "SSE Contract Test Agent",
+            "name": "sse-contract-test-agent",
+            "display_name": "SSE Contract Test Agent",
             "system_prompt": "You are helpful"
         }))
         .send()

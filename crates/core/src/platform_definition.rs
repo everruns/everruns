@@ -62,9 +62,7 @@ impl BuiltInCapabilityDefinition {
 /// Built-in harness template provisioned by a platform definition.
 #[derive(Debug, Clone)]
 pub struct BuiltInHarnessDefinition {
-    /// URL/CLI-friendly addressable name, unique per org.
-    /// Format: `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars. No consecutive hyphens.
-    /// Used for code-level identification, API addressing, and DB storage.
+    /// Name, unique per org (e.g. "generic").
     pub name: String,
     /// Fixed UUID used for the default org when backward compatibility matters.
     ///

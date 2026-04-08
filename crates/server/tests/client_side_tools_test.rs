@@ -20,7 +20,8 @@ use serde_json::json;
 fn test_agent_with_client_side_tools_serialization() {
     let agent_json = json!({
         "id": "agent_550e8400e29b41d4a716446655440000",
-        "name": "Browser Agent",
+        "name": "browser-agent",
+        "display_name": "Browser Agent",
         "system_prompt": "You control a browser.",
         "status": "active",
         "tags": [],
@@ -49,7 +50,8 @@ fn test_agent_with_client_side_tools_serialization() {
 fn test_agent_with_mixed_tools_serialization() {
     let agent_json = json!({
         "id": "agent_550e8400e29b41d4a716446655440000",
-        "name": "Mixed Agent",
+        "name": "mixed-agent",
+        "display_name": "Mixed Agent",
         "system_prompt": "You have both tool types.",
         "status": "active",
         "tags": [],
@@ -94,7 +96,8 @@ fn test_agent_with_mixed_tools_serialization() {
 fn test_agent_with_no_tools_omits_field() {
     let agent_json = json!({
         "id": "agent_550e8400e29b41d4a716446655440000",
-        "name": "No Tools Agent",
+        "name": "no-tools-agent",
+        "display_name": "No Tools Agent",
         "system_prompt": "No tools.",
         "status": "active",
         "tags": [],

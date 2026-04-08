@@ -983,7 +983,8 @@ mod tests {
                 None,
                 CreateAgentRequest {
                     id: None,
-                    name: "Agent".to_string(),
+                    name: "test-agent".to_string(),
+                    display_name: Some("Test Agent".to_string()),
                     description: None,
                     system_prompt: "Agent prompt".to_string(),
                     default_model_id: None,
@@ -1171,7 +1172,8 @@ mod tests {
                 None,
                 CreateAgentRequest {
                     id: None,
-                    name: "Agent".to_string(),
+                    name: "test-agent".to_string(),
+                    display_name: Some("Test Agent".to_string()),
                     description: None,
                     system_prompt: "Agent prompt".to_string(),
                     default_model_id: None,
@@ -1365,7 +1367,8 @@ mod tests {
                 None,
                 CreateAgentRequest {
                     id: None,
-                    name: "Other Agent".to_string(),
+                    name: "other-agent".to_string(),
+                    display_name: Some("Other Agent".to_string()),
                     description: None,
                     system_prompt: "Other".to_string(),
                     default_model_id: None,
@@ -1464,7 +1467,8 @@ mod tests {
                 None,
                 CreateAgentRequest {
                     id: None,
-                    name: "Other Agent".to_string(),
+                    name: "other-agent".to_string(),
+                    display_name: Some("Other Agent".to_string()),
                     description: None,
                     system_prompt: "Other".to_string(),
                     default_model_id: None,
