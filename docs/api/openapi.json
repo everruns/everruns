@@ -207,10 +207,24 @@
             }
           },
           "403": {
-            "description": "High-risk capabilities require admin role"
+            "description": "High-risk capabilities require admin role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Example not found"
+            "description": "Example not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
             "description": "Internal server error",

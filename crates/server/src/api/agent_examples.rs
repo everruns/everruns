@@ -113,14 +113,14 @@ mod tests {
     }
 
     #[test]
-    fn test_find_seed_by_name() {
+    fn test_known_seed_exists_by_name() {
         let seed = SEED_AGENTS.iter().find(|s| s.name == "dad-jokes-agent");
         assert!(seed.is_some());
         assert_eq!(seed.unwrap().display_name, "Dad Jokes Agent");
     }
 
     #[test]
-    fn test_find_seed_by_name_not_found() {
+    fn test_unknown_name_returns_none() {
         let seed = SEED_AGENTS.iter().find(|s| s.name == "nonexistent");
         assert!(seed.is_none());
     }

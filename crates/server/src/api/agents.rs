@@ -907,8 +907,8 @@ pub struct ImportAgentQuery {
         (status = 200, description = "Agent updated via import", body = Agent),
         (status = 201, description = "Agent imported successfully", body = Agent),
         (status = 400, description = "Invalid format or input exceeds limits", body = ErrorResponse),
-        (status = 404, description = "Example not found"),
-        (status = 403, description = "High-risk capabilities require admin role"),
+        (status = 404, description = "Example not found", body = ErrorResponse),
+        (status = 403, description = "High-risk capabilities require admin role", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "agents"
@@ -976,25 +976,39 @@ async fn import_from_example(
 
     let caller = Caller::from(&org);
 
-    // If an agent with the same name exists, append a random suffix
+    // If an agent with the same name exists, keep trying suffixed variants
+    // to avoid one-shot collisions and reduce failures under concurrency.
     let unique_name = {
+        use rand::Rng;
+
         let base = seed.name;
-        let available = state
-            .service
-            .check_name_available(&caller, base, None)
-            .await
-            .map_err(|_| ErrorResponse::internal_error())?;
-        if available {
-            base.to_string()
-        } else {
-            use rand::Rng;
-            let suffix: String = rand::rng()
-                .sample_iter(&rand::distr::Alphanumeric)
-                .take(5)
-                .map(|c| (c as char).to_ascii_lowercase())
-                .collect();
-            format!("{base}-{suffix}")
+        let mut selected = None;
+
+        for attempt in 0..10 {
+            let candidate = if attempt == 0 {
+                base.to_string()
+            } else {
+                let suffix: String = rand::rng()
+                    .sample_iter(&rand::distr::Alphanumeric)
+                    .take(5)
+                    .map(|c| (c as char).to_ascii_lowercase())
+                    .collect();
+                format!("{base}-{suffix}")
+            };
+
+            let available = state
+                .service
+                .check_name_available(&caller, &candidate, None)
+                .await
+                .map_err(|_| ErrorResponse::internal_error())?;
+
+            if available {
+                selected = Some(candidate);
+                break;
+            }
         }
+
+        selected.ok_or_else(ErrorResponse::internal_error)?
     };
 
     let req = CreateAgentRequest {
