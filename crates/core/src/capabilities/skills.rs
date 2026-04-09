@@ -1528,6 +1528,9 @@ mod tests {
                         walk(store, session_id, &path, &entry.source);
                     }
                 }
+                MountSource::Virtual { .. } => {
+                    // Virtual mounts are not materialized in tests
+                }
             }
         }
         walk(store, session_id, &mount.path, &mount.source);

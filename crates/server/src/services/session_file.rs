@@ -58,11 +58,23 @@ pub struct GrepInput {
 
 pub struct SessionFileService {
     db: Arc<StorageBackend>,
+    virtual_registry: Option<Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>>,
 }
 
 impl SessionFileService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self { db }
+        Self {
+            db,
+            virtual_registry: None,
+        }
+    }
+
+    pub fn with_virtual_registry(
+        mut self,
+        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+    ) -> Self {
+        self.virtual_registry = Some(registry);
+        self
     }
 
     /// Normalize a path: ensure it starts with /, no trailing slash, no double slashes
@@ -262,6 +274,28 @@ impl SessionFileService {
     /// Read a file
     pub async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
         let path = Self::normalize_path(path);
+
+        // Check virtual mounts first
+        if let Some(registry) = &self.virtual_registry
+            && let Some(vf) = registry.read_file(&session_id, &path)
+        {
+            let now = chrono::Utc::now();
+            let (content, encoding) = SessionFile::encode_content(&vf.content);
+            return Ok(Some(SessionFile {
+                id: uuid::Uuid::nil(),
+                session_id,
+                path: vf.path.clone(),
+                name: FileInfo::name_from_path(&vf.path),
+                content: Some(content),
+                encoding,
+                is_directory: vf.is_directory,
+                is_readonly: true,
+                size_bytes: vf.content.len() as i64,
+                created_at: now,
+                updated_at: now,
+            }));
+        }
+
         let row = self.db.get_session_file(session_id, &path).await?;
         Ok(row.map(Self::row_to_session_file))
     }
@@ -283,6 +317,21 @@ impl SessionFileService {
             }));
         }
 
+        // Check virtual mounts first
+        if let Some(registry) = &self.virtual_registry
+            && let Some(vf) = registry.read_file(&session_id, &path)
+        {
+            return Ok(Some(FileStat {
+                path: vf.path.clone(),
+                name: FileInfo::name_from_path(&vf.path),
+                is_directory: vf.is_directory,
+                is_readonly: true,
+                size_bytes: vf.content.len() as i64,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }));
+        }
+
         let row = self.db.get_session_file(session_id, &path).await?;
         Ok(row.map(|r| FileStat {
             path: r.path.clone(),
@@ -299,8 +348,14 @@ impl SessionFileService {
     pub async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
         let path = Self::normalize_path(path);
 
+        // Check if directory exists in virtual mounts
+        let virtual_dir_exists = self.virtual_registry.as_ref().is_some_and(|r| {
+            r.read_file(&session_id, &path)
+                .is_some_and(|f| f.is_directory)
+        });
+
         // Verify directory exists (root always exists)
-        if path != "/" {
+        if path != "/" && !virtual_dir_exists {
             let dir = self.db.get_session_file(session_id, &path).await?;
             match dir {
                 Some(d) if !d.is_directory => {
@@ -312,10 +367,34 @@ impl SessionFileService {
         }
 
         let rows = self.db.list_session_files(session_id, &path).await?;
-        Ok(rows
+        let mut entries: Vec<FileInfo> = rows
             .into_iter()
             .map(Self::row_to_file_info_from_info)
-            .collect())
+            .collect();
+
+        // Merge virtual entries (virtual wins on name conflict)
+        if let Some(registry) = &self.virtual_registry {
+            let virtual_entries = registry.list_directory(&session_id, &path);
+            let now = chrono::Utc::now();
+            for vf in virtual_entries {
+                let name = FileInfo::name_from_path(&vf.path);
+                if !entries.iter().any(|e| e.name == name) {
+                    entries.push(FileInfo {
+                        id: uuid::Uuid::nil(),
+                        session_id,
+                        path: vf.path,
+                        name,
+                        is_directory: vf.is_directory,
+                        is_readonly: true,
+                        size_bytes: vf.content.len() as i64,
+                        created_at: now,
+                        updated_at: now,
+                    });
+                }
+            }
+        }
+
+        Ok(entries)
     }
 
     /// List all files recursively
@@ -335,6 +414,13 @@ impl SessionFileService {
         req: UpdateFileInput,
     ) -> Result<Option<SessionFile>> {
         let path = Self::normalize_path(path);
+
+        // Virtual files cannot be modified
+        if let Some(registry) = &self.virtual_registry
+            && registry.is_virtual_path(&session_id, &path)
+        {
+            return Err(anyhow!("Cannot modify readonly file: {}", path));
+        }
 
         // Check if file exists and is not readonly
         if let Some(existing) = self.db.get_session_file(session_id, &path).await? {
@@ -650,6 +736,15 @@ impl SessionFileService {
         let is_readonly = mount.is_readonly();
         let mut stats = MountStats::default();
 
+        // Virtual mounts are registered in-memory, not written to DB
+        if let MountSource::Virtual { tree } = &mount.source {
+            if let Some(registry) = &self.virtual_registry {
+                registry.register(session_id, path, tree.clone(), mount.capability_id.clone());
+                stats.files_created += tree.len();
+            }
+            return Ok(stats);
+        }
+
         self.apply_mount_source(session_id, &path, &mount.source, is_readonly, &mut stats)
             .await?;
 
@@ -684,6 +779,10 @@ impl SessionFileService {
                         self.apply_mount_entry(session_id, &child_path, entry, is_readonly, stats)
                             .await?;
                     }
+                }
+                MountSource::Virtual { .. } => {
+                    // Virtual mounts are handled in apply_single_mount, not here
+                    unreachable!("Virtual mounts should be handled before apply_mount_source");
                 }
             }
             Ok(())

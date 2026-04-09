@@ -28,6 +28,7 @@ pub mod session_git;
 pub mod session_schedule;
 pub mod skill;
 pub mod usage_tracking;
+pub mod virtual_mount_registry;
 
 pub use agent::AgentService;
 pub use agent_identity::AgentIdentityService;
