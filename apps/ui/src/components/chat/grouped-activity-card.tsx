@@ -26,7 +26,7 @@ export function GroupedActivityCard({
   mode: "server" | "client";
 }) {
   const { backendLocale, t } = useLocale();
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const activityCompletedCount = useMemo(
     () => toolCalls.filter((toolCall) => toolResultsMap.has(toolCall.id)).length,
     [toolCalls, toolResultsMap],

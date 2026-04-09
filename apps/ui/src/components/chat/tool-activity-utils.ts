@@ -254,10 +254,58 @@ function summarizeStructuredResult(toolCall: ToolCallContent, parsed: unknown): 
   return preview.length > 120 ? `${preview.slice(0, 120)}...` : preview;
 }
 
+/** Fields filtered from human-friendly details view (noise for the user). */
+const HIDDEN_DETAIL_FIELDS = new Set([
+  "id",
+  "_id",
+  "agent_id",
+  "session_id",
+  "harness_id",
+  "capability_id",
+  "organization_id",
+  "created_at",
+  "updated_at",
+  "deleted_at",
+]);
+
+function formatValueForDisplay(value: unknown, indent = 0): string {
+  if (value === null || value === undefined) return "null";
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "(none)";
+    const items = value.map((item) => formatValueForDisplay(item, indent + 2));
+    if (items.every((item) => !item.includes("\n"))) {
+      return items.join(", ");
+    }
+    const prefix = " ".repeat(indent + 2);
+    return items.map((item) => `${prefix}- ${item}`).join("\n");
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).filter(
+      ([key]) => !HIDDEN_DETAIL_FIELDS.has(key),
+    );
+    if (entries.length === 0) return "{}";
+    const prefix = " ".repeat(indent + 2);
+    return entries
+      .map(([key, val]) => `${prefix}${key}: ${formatValueForDisplay(val, indent + 2)}`)
+      .join("\n");
+  }
+  return String(value);
+}
+
 export function formatResultDetails(toolCall: ToolCallContent, fullText: string): string {
   const parsed = parseStructuredText(fullText);
   if (!parsed) return fullText;
-  return JSON.stringify(maskSensitiveFields(toolCall.name, parsed), null, 2);
+
+  const masked = maskSensitiveFields(toolCall.name, parsed);
+  if (!isRecord(masked)) return formatValueForDisplay(masked);
+
+  const entries = Object.entries(masked).filter(([key]) => !HIDDEN_DETAIL_FIELDS.has(key));
+  if (entries.length === 0) return "{}";
+
+  return entries.map(([key, value]) => `${key}: ${formatValueForDisplay(value)}`).join("\n");
 }
 
 export function getResultPreview(

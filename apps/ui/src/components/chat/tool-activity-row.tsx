@@ -6,18 +6,11 @@
 "use client";
 
 import { useState } from "react";
-import {
-  AlertCircle,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  MonitorSmartphone,
-} from "lucide-react";
+import { AlertCircle, Check, Loader2, MonitorSmartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ToolCompletedData } from "@/lib/api/types";
 import type { ToolCallContent } from "./tool-call-utils";
-import { formatResultDetails, getResultPreview, getToolLabel } from "./tool-activity-utils";
+import { formatResultDetails, getToolLabel } from "./tool-activity-utils";
 import { getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -74,33 +67,21 @@ export function ToolActivityRow({
                 {progressMessage ?? (mode === "client" ? t("waiting") : t("running"))}
               </span>
             )}
+            {!isRunning && hasOutput && (
+              <button
+                type="button"
+                onClick={() => setIsExpanded((current) => !current)}
+                aria-expanded={isExpanded}
+                aria-controls={detailsId}
+                className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/50 transition-colors hover:text-foreground"
+              >
+                {isExpanded ? t("hide_details") : t("details")}
+              </button>
+            )}
           </div>
 
           {hasToolError && (
             <div className="mt-1 text-xs text-red-600 dark:text-red-400">{toolResult?.error}</div>
-          )}
-
-          {!hasToolError && !isExpanded && hasOutput && (
-            <div className="mt-1 truncate text-xs text-muted-foreground/70">
-              {getResultPreview(toolCall, toolResult)}
-            </div>
-          )}
-
-          {hasOutput && (
-            <button
-              type="button"
-              onClick={() => setIsExpanded((current) => !current)}
-              aria-expanded={isExpanded}
-              aria-controls={detailsId}
-              className="mt-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/65 transition-colors hover:text-foreground"
-            >
-              {isExpanded ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronRight className="h-3 w-3" />
-              )}
-              {isExpanded ? t("hide_details") : t("details")}
-            </button>
           )}
 
           <div
