@@ -50,6 +50,7 @@ A single test within an eval. Defines input messages, scoring criteria, and exec
 - Each case has a `description` explaining what behavior it measures (self-documenting)
 - Optional `target` (EvalTarget) — per-case override
 - `conversation`: one or more input messages sent sequentially (multi-turn support)
+- `post`: optional verification messages sent after conversation completes and session idles, before scoring (e.g. running test scripts for SWE-bench)
 - `scorers`: list of scoring rules applied after execution completes
 - `max_turns`: optional bound on agent turns (default: 10)
 - `timeout_seconds`: per-case timeout (default: 120)
@@ -131,6 +132,7 @@ See `crates/core/src/eval.rs` for full field definitions.
 | `target` | Option\<EvalTarget\> | Per-case target override (JSONB) |
 | `tags` | Vec\<String\> | Tags for subset runs |
 | `conversation` | Vec\<InputMessage\> | Input messages (sequential) |
+| `post` | Option\<Vec\<InputMessage\>\> | Post-conversation verification messages (sent after session idles, before scoring) |
 | `scorers` | Vec\<Scorer\> | Scoring rules (JSONB) |
 | `max_turns` | Option\<u32\> | Turn limit (default: 10) |
 | `timeout_seconds` | Option\<u32\> | Timeout (default: 120) |
@@ -249,20 +251,19 @@ POST /v1/evals/{eval_id}/runs
   ├─ For each case:
   │    ├─ Resolve target: run.target → case.target → eval.target → org default
   │    └─ Create EvalCaseResult (status: pending, target + target_snapshot = resolved target)
-  ├─ Start durable workflow: RunEvalWorkflow
+  ├─ Spawn background execution task
   │
   │  For each case (bounded concurrency = 5):
   │    1. Update CaseResult status → running
-  │    2. Create session from resolved EvalTarget:
-  │       - session: use harness_id/harness_name, agent_id, model_id, system_prompt, max_iterations
-  │       - app: create session via app
-  │       Tags: ["eval", "eval:{eval_id}"]
+  │    2. Create session from resolved EvalTarget (tags: ["eval"])
   │    3. For each message in case.conversation:
   │       a. POST message to session
-  │       b. Wait for session.idled event
-  │    4. Fetch session events (tool.completed, turn.completed)
-  │    5. Fetch final assistant messages
-  │    6. Fetch session filesystem (for file_contains scorer)
+  │       b. Wait for session idle
+  │    4. For each message in case.post (if present):
+  │       a. POST message to session
+  │       b. Wait for session idle
+  │    5. Fetch session events (tool.completed, turn.completed)
+  │    6. Fetch final assistant messages
   │    7. Run scorers → produce Score per scorer
   │    8. Update CaseResult (status, scores, turns, latency, tokens)
   │
