@@ -118,7 +118,6 @@ jobs:
           class Everruns < Formula
             desc "Open-source AI agent platform"
             homepage "${{ github.server_url }}/${{ github.repository }}"
-            version "${VERSION}"
             license "Apache-2.0"
 
             on_macos do
