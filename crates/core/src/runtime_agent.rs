@@ -141,10 +141,9 @@ impl RuntimeAgentBuilder {
     ) -> Self {
         let mut builder = Self::new();
 
-        // Set composed system prompt
-        if let Some(ref prompt) = layer.system_prompt {
-            builder = builder.system_prompt(prompt);
-        }
+        // Always set system prompt (even to empty) so an intentionally empty
+        // merged prompt clears the builder default instead of leaving it.
+        builder = builder.system_prompt(layer.system_prompt.unwrap_or_default());
 
         // Resolve merged capabilities (once, on the effective set)
         builder = builder

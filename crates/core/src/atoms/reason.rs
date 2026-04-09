@@ -664,7 +664,15 @@ impl ReasonAtom {
                 .with_locale(prompt_ctx.locale.as_deref())
                 .build()
         } else {
-            // Standard path: use the pre-computed effective overlay
+            // Standard path: use the pre-computed effective overlay.
+            //
+            // Tool ordering matters — build() deduplicates by name (last wins).
+            // Extract overlay tools so we can insert MCP tools before them,
+            // preserving legacy precedence where session/agent tools win over
+            // same-named MCP tools.
+            let mut effective_overlay = effective_overlay;
+            let overlay_tools = std::mem::take(&mut effective_overlay.tools);
+
             RuntimeAgentBuilder::from_overlay(
                 effective_overlay,
                 &self.capability_registry,
@@ -673,6 +681,7 @@ impl ReasonAtom {
             .await
             .with_locale(prompt_ctx.locale.as_deref())
             .tools(mcp_tool_definitions.iter().cloned())
+            .tools(overlay_tools)
             .model(&model_with_provider.model)
             .build()
         };
