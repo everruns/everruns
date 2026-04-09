@@ -17,12 +17,22 @@ import { HarnessSelect } from "@/components/harness/harness-select";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 
+/** Convert a display name to a slug: lowercase, non-alphanumeric → hyphens, deduplicate, trim. */
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
 export default function NewHarnessPage() {
   const router = useRouter();
   const createHarness = useCreateHarness();
   const { data: allCapabilities = [] } = useCapabilities();
 
   const [formData, setFormData] = useState({
+    display_name: "",
     name: "",
     description: "",
     system_prompt: "",
@@ -31,7 +41,24 @@ export default function NewHarnessPage() {
     tags: "",
   });
 
+  // Track whether the user has manually edited the slug
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
+
   const nameAvailability = useHarnessNameAvailability(formData.name);
+
+  const handleDisplayNameChange = (value: string) => {
+    const updates: Partial<typeof formData> = { display_name: value };
+    // Auto-derive slug unless user has manually edited it
+    if (!nameManuallyEdited) {
+      updates.name = slugify(value);
+    }
+    setFormData((prev) => ({ ...prev, ...updates }));
+  };
+
+  const handleNameChange = (value: string) => {
+    setNameManuallyEdited(true);
+    setFormData((prev) => ({ ...prev, name: value }));
+  };
 
   const [selectedCapabilities, setSelectedCapabilities] = useState<AgentCapabilityConfig[]>([]);
   const [initialFiles, setInitialFiles] = useState<InitialFile[]>([]);
@@ -51,6 +78,7 @@ export default function NewHarnessPage() {
 
       const harness = await createHarness.mutateAsync({
         name: formData.name,
+        display_name: formData.display_name || undefined,
         description: formData.description || undefined,
         system_prompt: formData.system_prompt,
         parent_harness_id: formData.parent_harness_id || undefined,
@@ -88,7 +116,7 @@ export default function NewHarnessPage() {
                 id="name"
                 placeholder="my-harness"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) => handleNameChange(e.target.value)}
                 required
               />
               {formData.name.length >= 2 && (
@@ -111,6 +139,22 @@ export default function NewHarnessPage() {
                   ) : null}
                 </div>
               )}
+              <p className="text-xs text-muted-foreground">
+                Unique identifier used in URLs and API. Lowercase letters, numbers, and hyphens.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="display_name">Display Name</Label>
+              <Input
+                id="display_name"
+                placeholder={formData.name ? undefined : "My Harness"}
+                value={formData.display_name}
+                onChange={(e) => handleDisplayNameChange(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional human-readable label shown in the UI. Defaults to name if empty.
+              </p>
             </div>
 
             <div className="space-y-2">

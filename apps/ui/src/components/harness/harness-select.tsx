@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { useHarnesses } from "@/hooks";
 import type { Harness } from "@/lib/api/types";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 
 interface HarnessSelectProps {
   /** Selected harness ID */
@@ -59,7 +60,7 @@ export function HarnessSelect({
   // show "Loading…" instead of the raw ID (EVE-142).
   // When no value is set and includeNoneOption is true, show the noneLabel.
   const displayValue = value
-    ? (harnessMap.get(value)?.name ?? (filteredHarnesses.length === 0 ? "Loading…" : value))
+    ? getDisplayName(harnessMap.get(value)) || (filteredHarnesses.length === 0 ? "Loading…" : value)
     : includeNoneOption
       ? noneLabel
       : undefined;
@@ -77,7 +78,7 @@ export function HarnessSelect({
         {includeNoneOption && <SelectItem value={noneValue}>{noneLabel}</SelectItem>}
         {filteredHarnesses.map((harness) => (
           <SelectItem key={harness.id} value={harness.id}>
-            {harness.name}
+            {getDisplayName(harness)}
           </SelectItem>
         ))}
       </SelectContent>

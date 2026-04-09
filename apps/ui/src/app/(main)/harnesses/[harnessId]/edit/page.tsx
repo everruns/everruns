@@ -36,9 +36,10 @@ import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
-import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
+import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 interface FormData {
+  display_name: string;
   name: string;
   description: string;
   system_prompt: string;
@@ -67,6 +68,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
   const initialFormData = useMemo((): FormData => {
     if (!harness) {
       return {
+        display_name: "",
         name: "",
         description: "",
         system_prompt: "",
@@ -76,6 +78,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
       };
     }
     return {
+      display_name: harness.display_name || "",
       name: harness.name,
       description: harness.description || "",
       system_prompt: harness.system_prompt,
@@ -139,6 +142,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
         harnessId,
         request: {
           name: formData.name,
+          display_name: formData.display_name || undefined,
           description: formData.description || undefined,
           system_prompt: formData.system_prompt,
           parent_harness_id: formData.parent_harness_id || null,
@@ -280,6 +284,20 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                           ) : null}
                         </div>
                       )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="display_name">Display Name</Label>
+                      <Input
+                        id="display_name"
+                        placeholder={formData.name ? undefined : "My Harness"}
+                        value={formData.display_name}
+                        onChange={(e) => handleFormChange("display_name", e.target.value)}
+                        disabled={isSaving || isReadOnly}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Optional human-readable label shown in the UI. Defaults to name if empty.
+                      </p>
                     </div>
 
                     <div className="space-y-2">
@@ -467,7 +485,15 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                 <CardContent className="space-y-4">
                   <div>
                     <p className="text-sm font-medium">Name</p>
-                    <p className="text-sm text-muted-foreground">{formData.name || "(not set)"}</p>
+                    <p className="text-sm text-muted-foreground font-mono">
+                      {formData.name || "(not set)"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Display Name</p>
+                    <p className="text-sm text-muted-foreground">
+                      {formData.display_name || "(not set)"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium">Description</p>
@@ -478,7 +504,9 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                   <div>
                     <p className="text-sm font-medium">Parent Harness</p>
                     <p className="text-sm text-muted-foreground">
-                      {(selectedParentHarness?.name ?? formData.parent_harness_id) || "(none)"}
+                      {getDisplayName(selectedParentHarness) ||
+                        formData.parent_harness_id ||
+                        "(none)"}
                     </p>
                   </div>
                   <div>
@@ -508,8 +536,8 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
           <DialogHeader>
             <DialogTitle>Delete Harness</DialogTitle>
             <DialogDescription>
-              Permanently delete the archived harness &quot;{harness?.name}&quot;? Existing
-              references will render as deleted tombstones.
+              Permanently delete the archived harness &quot;{getDisplayName(harness)}&quot;?
+              Existing references will render as deleted tombstones.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

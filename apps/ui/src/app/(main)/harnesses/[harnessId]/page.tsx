@@ -24,7 +24,11 @@ import { ArrowLeft, Pencil, Copy, Trash2, Eye, LayoutDashboard } from "lucide-re
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, LlmModelWithProvider } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
-import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import {
+  getDisplayName,
+  getEntityNameClassName,
+  getEntityStatusBadgeVariant,
+} from "@/lib/entity-lifecycle";
 
 export default function HarnessDetailPage({ params }: { params: Promise<{ harnessId: string }> }) {
   const { harnessId } = use(params);
@@ -109,7 +113,9 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <span className={getEntityNameClassName(harness.status)}>{harness.name}</span>
+            <span className={getEntityNameClassName(harness.status)}>
+              {getDisplayName(harness)}
+            </span>
             <CopyButton value={harness.id} />
             {harness.is_built_in && <Badge variant="outline">Built-in</Badge>}
             <Badge variant={getEntityStatusBadgeVariant(harness.status)}>{harness.status}</Badge>
@@ -236,7 +242,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
                           href={`/harnesses/${parentHarness.id}`}
                           className="text-sm text-primary hover:underline"
                         >
-                          {parentHarness.name}
+                          {getDisplayName(parentHarness)}
                         </Link>
                       ) : (
                         <p className="text-sm text-muted-foreground">{harness.parent_harness_id}</p>
