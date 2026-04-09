@@ -36,8 +36,15 @@ pub struct EvalRunContext {
 /// Spawn the eval run execution in the background.
 pub fn spawn_eval_run(ctx: Arc<EvalRunContext>, org_id: i64, run_id: Uuid) {
     tokio::spawn(async move {
-        if let Err(e) = execute_eval_run(ctx, org_id, run_id).await {
+        if let Err(e) = execute_eval_run(ctx.clone(), org_id, run_id).await {
             tracing::error!(run_id = %run_id, error = %e, "Eval run failed");
+            // Mark run as failed so it doesn't stay "running" indefinitely
+            if let Err(update_err) = ctx.db.update_eval_run_status(run_id, "failed", None).await {
+                tracing::error!(
+                    run_id = %run_id, error = %update_err,
+                    "Failed to mark eval run as failed"
+                );
+            }
         }
     });
 }
@@ -226,8 +233,8 @@ async fn execute_case_inner(
         case_row.post.map(serde_json::from_value).transpose()?;
     let scorers: Vec<Scorer> = serde_json::from_value(case_row.scorers)?;
     let timeout_secs = case_row.timeout_seconds.map(|v| v as u64).unwrap_or(120);
-    let max_poll =
-        std::time::Duration::from_secs(timeout_secs.max(30).min(MAX_POLL_DURATION.as_secs()));
+    let case_deadline = Instant::now()
+        + std::time::Duration::from_secs(timeout_secs.min(MAX_POLL_DURATION.as_secs()));
 
     // Resolve target
     let target: EvalTarget = target_json
@@ -321,7 +328,7 @@ async fn execute_case_inner(
         session_id,
         harness_id,
         agent_id,
-        max_poll,
+        case_deadline,
     };
 
     // Send conversation messages
@@ -339,20 +346,33 @@ async fn execute_case_inner(
         }
     }
 
-    // Collect events for scoring
-    let events = ctx
+    // Collect events for scoring using filtered queries to avoid 10k row cap
+    let msg_filter = vec!["output.message.completed".to_string()];
+    let msg_events = ctx
         .db
-        .list_events(session_id, None, None, &[], &[], None, None)
+        .list_events(session_id, None, None, &msg_filter, &[], None, None)
+        .await?;
+
+    let tool_filter = vec!["tool.completed".to_string()];
+    let tool_events = ctx
+        .db
+        .list_events(session_id, None, None, &tool_filter, &[], None, None)
+        .await?;
+
+    let turn_filter = vec![TURN_COMPLETED.to_string()];
+    let turn_events = ctx
+        .db
+        .list_events(session_id, None, None, &turn_filter, &[], None, None)
         .await?;
 
     // Extract final assistant message content
-    let final_assistant_content = extract_final_assistant_content(&events);
+    let final_assistant_content = extract_final_assistant_content(&msg_events);
 
     // Extract tool calls
-    let tool_calls = extract_tool_calls(&events);
+    let tool_calls = extract_tool_calls(&tool_events);
 
     // Extract token usage
-    let (input_tokens, output_tokens) = extract_token_usage(&events);
+    let (input_tokens, output_tokens) = extract_token_usage(&turn_events);
 
     // Run scorers
     let scores = run_scorers(
@@ -412,7 +432,7 @@ struct SessionCtx {
     session_id: SessionId,
     harness_id: Uuid,
     agent_id: Option<Uuid>,
-    max_poll: std::time::Duration,
+    case_deadline: Instant,
 }
 
 async fn send_message_and_wait(
@@ -420,12 +440,8 @@ async fn send_message_and_wait(
     sctx: &SessionCtx,
     content: &str,
 ) -> Result<()> {
-    // Get current max sequence before sending
-    let events_before = ctx
-        .db
-        .list_events(sctx.session_id, None, None, &[], &[], None, None)
-        .await?;
-    let last_seq = events_before.last().map(|e| e.sequence).unwrap_or(0);
+    // Get current latest sequence via count (no row materialization)
+    let last_seq = ctx.db.count_events(sctx.session_id, &[]).await.unwrap_or(0) as i32;
 
     // Send message
     let msg_ctx = CreateMessageContext {
@@ -448,36 +464,53 @@ async fn send_message_and_wait(
     };
     ctx.message_service.create(msg_ctx, msg_req).await?;
 
-    // Poll for turn completion
-    let start = Instant::now();
+    // Poll for turn completion against the case-level deadline
     loop {
-        if start.elapsed() > sctx.max_poll {
-            anyhow::bail!(
-                "Timeout waiting for turn completion after {}s",
-                sctx.max_poll.as_secs()
-            );
+        if Instant::now() >= sctx.case_deadline {
+            anyhow::bail!("Case timeout exceeded");
         }
 
         tokio::time::sleep(POLL_INTERVAL).await;
 
+        let turn_filter = vec![TURN_COMPLETED.to_string(), TURN_FAILED.to_string()];
         let new_events = ctx
             .db
-            .list_events(sctx.session_id, Some(last_seq), None, &[], &[], None, None)
+            .list_events(
+                sctx.session_id,
+                Some(last_seq),
+                None,
+                &turn_filter,
+                &[],
+                None,
+                None,
+            )
             .await?;
 
         for event in &new_events {
-            if event.event_type == TURN_COMPLETED || event.event_type == TURN_FAILED {
+            if event.event_type == TURN_COMPLETED {
                 return Ok(());
+            }
+            if event.event_type == TURN_FAILED {
+                let error_msg = event
+                    .data
+                    .get("error")
+                    .and_then(|e| e.get("message"))
+                    .and_then(|m| m.as_str())
+                    .or_else(|| event.data.get("message").and_then(|m| m.as_str()))
+                    .unwrap_or("turn failed");
+                anyhow::bail!("Turn failed: {error_msg}");
             }
         }
     }
 }
 
 fn extract_final_assistant_content(events: &[crate::storage::models::EventRow]) -> String {
-    // Find the last output.message.completed event
+    // Find the last output.message.completed event.
+    // Event data format: { "message": { "content": [{ "type": "text", "text": "..." }] } }
     for event in events.iter().rev() {
         if event.event_type == "output.message.completed"
-            && let Some(content) = event.data.get("content")
+            && let Some(message) = event.data.get("message")
+            && let Some(content) = message.get("content")
             && let Some(parts) = content.as_array()
         {
             let text_parts: Vec<&str> = parts
