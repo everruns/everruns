@@ -21,6 +21,8 @@ This separation means:
 - **Width**: 800px (standard). Use `viewBox` so the SVG scales responsively.
 - **Height**: Varies. Keep it tight - no empty space at the bottom. Typical range 300-500px.
 - **Fill**: Set `fill="none"` on the root `<svg>` element. Add an explicit white background rect.
+- **Root element**: Use `viewBox` only. Do **not** set `width` or `height` attributes on the root `<svg>` — let the browser scale via `viewBox`.
+- **No outer border**: The white background rect must have no stroke. The diagram should blend with the page.
 
 ## Colors
 
@@ -133,14 +135,44 @@ Copy-paste these snippets when constructing a diagram.
 
 ## Generation hints
 
-1. Start with the flow, not the layout. Write steps as a numbered list first.
+1. Start with the flow, not the layout. Write steps as a numbered list first. Each step becomes an arrow. Each noun becomes a box.
 2. Place the primary flow left-to-right at the top. Secondary flows below.
 3. Begin with the SVG template. Replace `{HEIGHT}` once you know the content height.
 4. Position boxes first, then connect with arrows. Adjust viewBox height last.
 5. Use `text-anchor="middle"` and center x-coordinates inside boxes.
-6. Test at small sizes. Make sure 10px text stays legible at ~400px wide.
+6. Test at small sizes. Make sure 10px text stays legible when the SVG is ~400px wide on mobile.
 7. Keep it to 3-5 boxes and 2-4 arrows. Split into two diagrams if needed.
 8. No decorative elements. Every element should carry information.
+
+## Avoiding overlaps
+
+These are the most common layout mistakes. Check each one before finishing a diagram.
+
+1. **Route arrows around boxes, not through them.** If an arrow from A to C must pass near B, use an L-shaped right-angle path that goes around B — never a straight line that crosses B's rect. Route via the left/right/bottom edge of the obstacle.
+2. **Keep labels clear of boxes.** Arrow labels (`class="arrow-label"`) must not overlap with any box's label or sublabel text. Place them above or beside the arrow, offset from the nearest box edge by at least 10px.
+3. **Separate step badges.** When two arrows are parallel (e.g., bidirectional), put their step badges on opposite sides — one left, one right — so they don't stack on top of each other.
+4. **Use right-angle paths for long connections.** Diagonal arrows that span multiple rows or columns cross over other elements. Use L-shaped or Z-shaped polylines (`<line>` segments) that follow the gaps between boxes.
+5. **Widen boxes for long labels.** A 13px `.label` needs roughly 8px per character. "Management UI" (13 chars) needs ~110px minimum. "RuntimeAgent" needs ~100px. If the label clips, widen the box.
+6. **Section headers need clearance.** Uppercase Silver headers sit above boxes. Leave at least 15px between a header's y-position and the nearest arrow label or step badge to prevent overlap.
+7. **Use inline `<polygon>` for arrowheads.** Do not use `<defs><marker>` — markers render inconsistently across SVG rasterizers and can produce oversized or misaligned heads. Each arrowhead is a separate `<polygon points="...">` element.
+
+## Visual review (required)
+
+After creating or modifying an SVG, **rasterize it to PNG and visually inspect** the result. This catches overlapping text, misaligned arrows, and clipped labels that are invisible when reading raw XML coordinates.
+
+```bash
+pip install cairosvg  # once
+cairosvg docs/images/<category>/<name>.svg -o /tmp/<name>.png --output-width 800
+```
+
+Check the PNG for:
+- Text overlapping other text or boxes
+- Arrows crossing through boxes they shouldn't
+- Labels clipped by box edges
+- Unbalanced whitespace (one side much emptier than the other)
+- Step badges stacking or crowding
+
+Fix coordinate issues in the SVG, re-render, and re-check until clean. Do not ship a diagram without visually verifying the rasterized output.
 
 ## SVG template
 
