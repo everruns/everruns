@@ -1,13 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 320" width="800" fill="none">
-  <defs>
-    <marker id="arrowSolid" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <polygon points="0,0 8,3 0,6" fill="#0A1636"/>
-    </marker>
-    <marker id="arrowDashed" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <polygon points="0,0 8,3 0,6" fill="#0A1636"/>
-    </marker>
-  </defs>
-
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 240" fill="none">
   <style>
     text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
     .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
@@ -19,73 +10,71 @@
   </style>
 
   <!-- White background -->
-  <rect width="800" height="320" fill="#FFFFFF"/>
+  <rect width="800" height="240" fill="#FFFFFF"/>
 
-  <!-- CHANNEL column header -->
-  <text x="80" y="50" class="header-text" text-anchor="middle">CHANNEL</text>
+  <!-- Section headers -->
+  <text x="85" y="40" text-anchor="middle" class="header-text">CHANNEL</text>
+  <text x="270" y="40" text-anchor="middle" class="header-text">APP</text>
+  <text x="545" y="40" text-anchor="middle" class="header-text">RUNTIME</text>
 
   <!-- External Channel box -->
-  <rect x="20" y="65" width="120" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="80" y="86" class="label" text-anchor="middle">External Channel</text>
-  <text x="80" y="102" class="sublabel" text-anchor="middle">Slack, WhatsApp, etc.</text>
-
-  <!-- APP column header -->
-  <text x="250" y="50" class="header-text" text-anchor="middle">APP</text>
+  <rect x="20" y="55" width="130" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="85" y="78" text-anchor="middle" class="label">External Channel</text>
+  <text x="85" y="96" text-anchor="middle" class="sublabel">Slack, WhatsApp, etc.</text>
 
   <!-- App box -->
-  <rect x="190" y="65" width="120" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="250" y="86" class="label" text-anchor="middle">App</text>
-  <text x="250" y="102" class="sublabel" text-anchor="middle">Routes to agent</text>
-
-  <!-- CONFIGURATION column header -->
-  <text x="440" y="50" class="header-text" text-anchor="middle">CONFIGURATION</text>
-
-  <!-- Harness box -->
-  <rect x="380" y="65" width="120" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="440" y="86" class="label" text-anchor="middle">Harness</text>
-  <text x="440" y="102" class="sublabel" text-anchor="middle">Environment</text>
-
-  <!-- Agent box -->
-  <rect x="380" y="140" width="120" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="440" y="161" class="label" text-anchor="middle">Agent</text>
-  <text x="440" y="177" class="sublabel" text-anchor="middle">Prompt + tools</text>
-
-  <!-- RUNTIME column header -->
-  <text x="650" y="50" class="header-text" text-anchor="middle">RUNTIME</text>
+  <rect x="220" y="55" width="100" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="270" y="78" text-anchor="middle" class="label">App</text>
+  <text x="270" y="96" text-anchor="middle" class="sublabel">Routes to agent</text>
 
   <!-- Session box -->
-  <rect x="580" y="65" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="650" y="86" class="label" text-anchor="middle">Session</text>
-  <text x="650" y="102" class="sublabel" text-anchor="middle">Conversation instance</text>
+  <rect x="480" y="55" width="130" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="545" y="78" text-anchor="middle" class="label">Session</text>
+  <text x="545" y="96" text-anchor="middle" class="sublabel">Conversation instance</text>
 
   <!-- RuntimeAgent box -->
-  <rect x="580" y="140" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="650" y="161" class="label" text-anchor="middle">RuntimeAgent</text>
-  <text x="650" y="177" class="sublabel" text-anchor="middle">Merged config</text>
+  <rect x="480" y="155" width="130" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="545" y="177" text-anchor="middle" class="label">RuntimeAgent</text>
+  <text x="545" y="193" text-anchor="middle" class="sublabel">Merged config</text>
 
-  <!-- Step 1 badge + arrow: External Channel -> App -->
-  <rect x="147" y="81" width="18" height="18" fill="#0A1636"/>
-  <text x="156" y="94" class="step-num" text-anchor="middle">1</text>
-  <line x1="140" y1="90" x2="182" y2="90" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowSolid)"/>
-  <text x="161" y="78" class="arrow-label" text-anchor="middle">webhook</text>
+  <!-- Harness box -->
+  <rect x="195" y="165" width="100" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="245" y="185" text-anchor="middle" class="label">Harness</text>
+  <text x="245" y="199" text-anchor="middle" class="sublabel">Environment</text>
 
-  <!-- Step 2 badge + arrow: App -> Session -->
-  <rect x="527" y="81" width="18" height="18" fill="#0A1636"/>
-  <text x="536" y="94" class="step-num" text-anchor="middle">2</text>
-  <line x1="310" y1="90" x2="572" y2="90" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowSolid)"/>
-  <text x="441" y="78" class="arrow-label" text-anchor="middle">find/create</text>
+  <!-- Agent box -->
+  <rect x="315" y="165" width="100" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="365" y="185" text-anchor="middle" class="label">Agent</text>
+  <text x="365" y="199" text-anchor="middle" class="sublabel">Prompt + tools</text>
 
-  <!-- Step 3 badge + arrow: Session -> RuntimeAgent -->
-  <rect x="641" y="121" width="18" height="18" fill="#0A1636"/>
-  <text x="650" y="134" class="step-num" text-anchor="middle">3</text>
-  <line x1="650" y1="115" x2="650" y2="132" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowSolid)"/>
-  <text x="672" y="128" class="arrow-label">runs</text>
+  <!-- Arrow 1: External Channel -> App -->
+  <line x1="150" y1="82" x2="212" y2="82" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="220,82 212,78 212,86" fill="#0A1636"/>
+  <rect x="163" y="73" width="18" height="18" fill="#0A1636"/>
+  <text x="172" y="86" text-anchor="middle" class="step-num">1</text>
+  <text x="185" y="68" text-anchor="middle" class="arrow-label">webhook</text>
 
-  <!-- Dashed: App -> Harness ("references") -->
-  <line x1="310" y1="82" x2="372" y2="82" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrowDashed)"/>
-  <text x="341" y="75" class="arrow-label" text-anchor="middle">references</text>
+  <!-- Arrow 2: App -> Session -->
+  <line x1="320" y1="82" x2="472" y2="82" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="480,82 472,78 472,86" fill="#0A1636"/>
+  <rect x="380" y="73" width="18" height="18" fill="#0A1636"/>
+  <text x="389" y="86" text-anchor="middle" class="step-num">2</text>
+  <text x="400" y="68" text-anchor="middle" class="arrow-label">find/create</text>
 
-  <!-- Dashed: App -> Agent ("references") -->
-  <line x1="280" y1="115" x2="372" y2="155" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrowDashed)"/>
-  <text x="305" y="148" class="arrow-label" text-anchor="middle">references</text>
+  <!-- Arrow 3: Session -> RuntimeAgent (vertical down) -->
+  <line x1="545" y1="110" x2="545" y2="147" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="545,155 541,147 549,147" fill="#0A1636"/>
+  <rect x="551" y="122" width="18" height="18" fill="#0A1636"/>
+  <text x="560" y="135" text-anchor="middle" class="step-num">3</text>
+  <text x="575" y="140" class="arrow-label">runs</text>
+
+  <!-- Dashed: App -> Harness (down-left) -->
+  <line x1="250" y1="110" x2="245" y2="157" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <polygon points="245,165 241,157 249,157" fill="#A0A0A0"/>
+  <text x="228" y="140" class="arrow-label">references</text>
+
+  <!-- Dashed: App -> Agent (down-right) -->
+  <line x1="290" y1="110" x2="355" y2="157" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <polygon points="358,160 349,155 353,163" fill="#A0A0A0"/>
+  <text x="340" y="127" class="arrow-label">references</text>
 </svg>
