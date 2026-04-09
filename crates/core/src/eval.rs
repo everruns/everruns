@@ -3,16 +3,69 @@
 // Design Decision: Evals are user-facing behavioral tests for agents.
 // Each eval case creates a real session — same behavior as production, debuggable.
 // Scorers return 0.0–1.0 (not binary) to support nuanced grading.
+//
+// Design Decision: EvalTarget is the session setup contract.
+// Resolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.
+// EvalTarget::Session mirrors CreateSessionRequest params; EvalTarget::App references a deployed app.
+// EvalCaseResult stores both a live reference and a frozen snapshot for reproducibility.
+//
 // See specs/evals.md for full specification.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::typed_id::{AgentId, EvalCaseId, EvalId, EvalResultId, EvalRunId, HarnessId, SessionId};
+use crate::typed_id::{
+    AgentId, AppId, EvalCaseId, EvalId, EvalResultId, EvalRunId, HarnessId, SessionId,
+};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
+
+// ============================================
+// Eval Target
+// ============================================
+
+/// Defines how to instantiate a session for an eval case.
+///
+/// Two modes:
+/// - `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.
+/// - `App`: references a deployed app by ID.
+///
+/// Resolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum EvalTarget {
+    /// Session creation parameters (mirrors CreateSessionRequest).
+    Session {
+        /// Harness for the session. If omitted, org default harness is used.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+        harness_id: Option<HarnessId>,
+        /// Addressable harness name (alternative to harness_id).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        harness_name: Option<String>,
+        /// Agent to work in this session.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+        agent_id: Option<AgentId>,
+        /// LLM model override.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        model_id: Option<String>,
+        /// System prompt override (prepended to agent prompt).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        system_prompt: Option<String>,
+        /// Max LLM iterations per turn.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        max_iterations: Option<usize>,
+    },
+    /// Reference to a deployed app.
+    App {
+        #[cfg_attr(feature = "openapi", schema(value_type = String))]
+        app_id: AppId,
+    },
+}
 
 // ============================================
 // Eval Status
@@ -281,12 +334,9 @@ pub struct Eval {
     /// Optional description.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Agent under test.
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
-    pub agent_id: AgentId,
-    /// Harness for test sessions.
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
-    pub harness_id: HarnessId,
+    /// Session setup target. Defines how to create sessions for eval cases.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<EvalTarget>,
     /// Optional default model override for runs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_override: Option<String>,
@@ -335,6 +385,9 @@ pub struct EvalCase {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional per-case target override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<EvalTarget>,
     #[serde(default)]
     pub tags: Vec<String>,
     /// Input messages sent sequentially.
@@ -364,6 +417,9 @@ pub struct EvalRun {
     pub internal_id: Uuid,
     #[serde(skip, default)]
     pub org_id: i64,
+    /// Optional per-run target override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<EvalTarget>,
     /// Model override for this run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_override: Option<String>,
@@ -406,6 +462,12 @@ pub struct EvalCaseResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub session_id: Option<SessionId>,
+    /// Resolved target used for this result (live reference).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<EvalTarget>,
+    /// Frozen snapshot of the resolved target at execution time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_snapshot: Option<EvalTarget>,
     pub status: CaseResultStatus,
     /// Per-scorer results.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -568,6 +630,61 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_target_session_serde_roundtrip() {
+        let target = EvalTarget::Session {
+            harness_id: Some(HarnessId::from_uuid(Uuid::nil())),
+            harness_name: None,
+            agent_id: Some(AgentId::from_uuid(Uuid::nil())),
+            model_id: Some("gpt-4".to_string()),
+            system_prompt: None,
+            max_iterations: None,
+        };
+        let json = serde_json::to_value(&target).unwrap();
+        assert_eq!(json["type"], "session");
+        assert!(json.get("harness_id").is_some());
+        assert!(json.get("model_id").is_some());
+        assert!(json.get("system_prompt").is_none()); // skip_serializing_if
+        assert!(json.get("harness_name").is_none());
+        assert!(json.get("max_iterations").is_none());
+
+        let parsed: EvalTarget = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed, target);
+    }
+
+    #[test]
+    fn test_eval_target_session_minimal() {
+        // Session with just harness_name, no other params
+        let target = EvalTarget::Session {
+            harness_id: None,
+            harness_name: Some("generic".to_string()),
+            agent_id: None,
+            model_id: None,
+            system_prompt: None,
+            max_iterations: None,
+        };
+        let json = serde_json::to_value(&target).unwrap();
+        assert_eq!(json["type"], "session");
+        assert_eq!(json["harness_name"], "generic");
+        assert!(json.get("harness_id").is_none());
+
+        let parsed: EvalTarget = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed, target);
+    }
+
+    #[test]
+    fn test_eval_target_app_variant() {
+        let target = EvalTarget::App {
+            app_id: AppId::from_uuid(Uuid::nil()),
+        };
+        let json = serde_json::to_value(&target).unwrap();
+        assert_eq!(json["type"], "app");
+        assert!(json.get("app_id").is_some());
+
+        let parsed: EvalTarget = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed, target);
+    }
+
+    #[test]
     fn test_eval_serde_skips_internal_fields() {
         let eval = Eval {
             public_id: EvalId::from_uuid(Uuid::nil()),
@@ -575,8 +692,14 @@ mod tests {
             org_id: 1,
             name: "test".into(),
             description: None,
-            agent_id: AgentId::from_uuid(Uuid::nil()),
-            harness_id: HarnessId::from_uuid(Uuid::nil()),
+            target: Some(EvalTarget::Session {
+                harness_id: Some(HarnessId::from_uuid(Uuid::nil())),
+                harness_name: None,
+                agent_id: Some(AgentId::from_uuid(Uuid::nil())),
+                model_id: None,
+                system_prompt: None,
+                max_iterations: None,
+            }),
             model_override: None,
             tags: vec![],
             status: EvalStatus::Active,
@@ -591,6 +714,7 @@ mod tests {
         assert!(json.get("id").is_some());
         assert!(json.get("internal_id").is_none());
         assert!(json.get("org_id").is_none());
+        assert!(json.get("target").is_some());
         assert!(json.get("description").is_none());
         assert!(json.get("model_override").is_none());
     }

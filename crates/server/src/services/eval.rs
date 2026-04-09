@@ -1,6 +1,7 @@
 // Eval service for business logic
 // Decision: Evals reuse the same permission policies as agents (OrgAgentsManage)
 // Decision: Each eval case creates a real session — no mock execution
+// Decision: EvalTarget replaces harness_id + agent_id. Resolution: run → case → eval → org default.
 
 use crate::api::evals::{
     CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest, UpdateEvalCaseRequest,
@@ -15,7 +16,7 @@ use crate::storage::models::{
 use anyhow::Result;
 use everruns_core::eval::*;
 use everruns_core::typed_id::{EvalCaseId, EvalId, EvalResultId, EvalRunId, SessionId};
-use everruns_core::{AgentId, Caller, HarnessId, Permission, Policy, Rule};
+use everruns_core::{Caller, Permission, Policy, Rule};
 use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -36,6 +37,21 @@ pub struct EvalService {
     db: Arc<StorageBackend>,
 }
 
+/// Validates an EvalTarget if present. Returns error on invalid combinations.
+fn validate_target(target: &Option<EvalTarget>) -> Result<()> {
+    if let Some(EvalTarget::Session {
+        harness_id,
+        harness_name,
+        ..
+    }) = target
+        && harness_id.is_some()
+        && harness_name.is_some()
+    {
+        anyhow::bail!("harness_id and harness_name are mutually exclusive in eval target");
+    }
+    Ok(())
+}
+
 impl EvalService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self { db }
@@ -47,35 +63,18 @@ impl EvalService {
 
     #[policy(EVAL_MANAGE)]
     pub async fn create(&self, caller: &Caller, req: CreateEvalRequest) -> Result<Eval> {
-        // Validate agent exists
-        let agent_row = self
-            .db
-            .get_agent_by_public_id(caller.org_id, &req.agent_id.to_string())
-            .await?
-            .ok_or_else(|| ResourceNotFoundError::new("Agent"))?;
-        if agent_row.status != "active" {
-            anyhow::bail!("Archived or deleted agents cannot be assigned to evals");
-        }
-
-        // Validate harness exists
-        let harness_row = self
-            .db
-            .get_harness(caller.org_id, req.harness_id)
-            .await?
-            .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
-        if harness_row.status != "active" {
-            anyhow::bail!("Archived or deleted harnesses cannot be assigned to evals");
-        }
+        validate_target(&req.target)?;
 
         let internal_uuid = Uuid::now_v7();
         let public_id = EvalId::from_uuid(internal_uuid);
+
+        let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
         let input = CreateEvalRow {
             public_id: public_id.to_string(),
             name: req.name,
             description: req.description,
-            agent_id: agent_row.id.uuid(),
-            harness_id: harness_row.id.uuid(),
+            target: target_json,
             model_override: req.model_override,
             tags: req.tags.unwrap_or_default(),
         };
@@ -121,45 +120,20 @@ impl EvalService {
         public_id: &str,
         req: UpdateEvalRequest,
     ) -> Result<Option<Eval>> {
+        validate_target(&req.target)?;
+
         let existing = self
             .db
             .get_eval_by_public_id(caller.org_id, public_id)
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Eval"))?;
 
-        let agent_id = if let Some(ref agent_id) = req.agent_id {
-            let agent_row = self
-                .db
-                .get_agent_by_public_id(caller.org_id, &agent_id.to_string())
-                .await?
-                .ok_or_else(|| ResourceNotFoundError::new("Agent"))?;
-            if agent_row.status != "active" {
-                anyhow::bail!("Archived or deleted agents cannot be assigned to evals");
-            }
-            Some(agent_row.id.uuid())
-        } else {
-            None
-        };
-
-        let harness_id = if let Some(ref harness_id) = req.harness_id {
-            let harness_row = self
-                .db
-                .get_harness(caller.org_id, *harness_id)
-                .await?
-                .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
-            if harness_row.status != "active" {
-                anyhow::bail!("Archived or deleted harnesses cannot be assigned to evals");
-            }
-            Some(harness_row.id.uuid())
-        } else {
-            None
-        };
+        let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
         let input = UpdateEvalRow {
             name: req.name,
             description: req.description,
-            agent_id,
-            harness_id,
+            target: target_json,
             model_override: req.model_override,
             tags: req.tags,
             status: None,
@@ -198,6 +172,8 @@ impl EvalService {
         eval_public_id: &str,
         req: CreateEvalCaseRequest,
     ) -> Result<EvalCase> {
+        validate_target(&req.target)?;
+
         let eval = self
             .db
             .get_eval_by_public_id(caller.org_id, eval_public_id)
@@ -209,10 +185,13 @@ impl EvalService {
 
         let case_count = self.db.count_eval_cases(eval.id).await?;
 
+        let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
+
         let input = CreateEvalCaseRow {
             public_id: case_public_id.to_string(),
             name: req.name,
             description: req.description,
+            target: target_json,
             tags: req.tags.unwrap_or_default(),
             conversation: serde_json::to_value(&req.conversation)?,
             scorers: serde_json::to_value(&req.scorers)?,
@@ -265,6 +244,8 @@ impl EvalService {
         case_public_id: &str,
         req: UpdateEvalCaseRequest,
     ) -> Result<Option<EvalCase>> {
+        validate_target(&req.target)?;
+
         let eval = self
             .db
             .get_eval_by_public_id(caller.org_id, eval_public_id)
@@ -277,9 +258,12 @@ impl EvalService {
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("EvalCase"))?;
 
+        let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
+
         let input = UpdateEvalCaseRow {
             name: req.name,
             description: req.description,
+            target: target_json,
             tags: req.tags,
             conversation: req.conversation.map(serde_json::to_value).transpose()?,
             scorers: req.scorers.map(serde_json::to_value).transpose()?,
@@ -326,6 +310,8 @@ impl EvalService {
         eval_public_id: &str,
         req: CreateEvalRunRequest,
     ) -> Result<EvalRun> {
+        validate_target(&req.target)?;
+
         let eval = self
             .db
             .get_eval_by_public_id(caller.org_id, eval_public_id)
@@ -335,9 +321,12 @@ impl EvalService {
         let run_uuid = Uuid::now_v7();
         let run_public_id = EvalRunId::from_uuid(run_uuid);
 
+        let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
+
         let input = CreateEvalRunRow {
             public_id: run_public_id.to_string(),
             eval_id: eval.id,
+            target: target_json,
             model_override: req.model_override,
             filter_tags: None, // Phase 2: tag-based partial runs
             triggered_by: "user".to_string(),
@@ -345,15 +334,45 @@ impl EvalService {
 
         let run_row = self.db.create_eval_run(caller.org_id, input).await?;
 
-        // Create pending case results for each case
+        // Load eval-level target for resolution
+        let eval_target: Option<EvalTarget> = eval
+            .target
+            .as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+        let run_target: Option<EvalTarget> = req.target.clone();
+
+        // Create pending case results for each case, resolving target per case.
+        // target_snapshot must always store a concrete resolved target so results
+        // remain reproducible and do not depend on future default changes.
         let cases = self.db.list_eval_cases(eval.id).await?;
         for case in &cases {
             let result_uuid = Uuid::now_v7();
             let result_public_id = EvalResultId::from_uuid(result_uuid);
+
+            // Resolve target: run → case → eval. Fail if nothing resolved.
+            let case_target: Option<EvalTarget> = case
+                .target
+                .as_ref()
+                .and_then(|v| serde_json::from_value(v.clone()).ok());
+
+            let resolved = run_target
+                .clone()
+                .or(case_target)
+                .or(eval_target.clone())
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "no eval target configured — set a target on the eval, case, or run"
+                    )
+                })?;
+
+            let resolved_json = serde_json::to_value(&resolved)?;
+
             let result_input = CreateEvalCaseResultRow {
                 public_id: result_public_id.to_string(),
                 eval_run_id: run_row.id,
                 eval_case_id: case.id,
+                target: Some(resolved_json.clone()),
+                target_snapshot: Some(resolved_json),
             };
             self.db.create_eval_case_result(result_input).await?;
         }
@@ -472,9 +491,10 @@ impl EvalService {
             created_at: r.created_at,
         });
 
-        // Resolve agent and harness public IDs
-        let agent_id = AgentId::from_uuid(row.agent_id);
-        let harness_id = HarnessId::from_uuid(row.harness_id);
+        let target: Option<EvalTarget> = row
+            .target
+            .as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
 
         let public_id: EvalId = row
             .public_id
@@ -487,8 +507,7 @@ impl EvalService {
             org_id: row.org_id,
             name: row.name,
             description: row.description,
-            agent_id,
-            harness_id,
+            target,
             model_override: row.model_override,
             tags: row.tags,
             status: EvalStatus::from(row.status.as_str()),
@@ -503,6 +522,11 @@ impl EvalService {
 }
 
 fn case_row_to_case(row: crate::storage::models::EvalCaseRow) -> EvalCase {
+    let target: Option<EvalTarget> = row
+        .target
+        .as_ref()
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+
     EvalCase {
         public_id: row
             .public_id
@@ -511,6 +535,7 @@ fn case_row_to_case(row: crate::storage::models::EvalCaseRow) -> EvalCase {
         internal_id: row.id,
         name: row.name,
         description: row.description,
+        target,
         tags: row.tags,
         conversation: serde_json::from_value(row.conversation).unwrap_or_default(),
         scorers: serde_json::from_value(row.scorers).unwrap_or_default(),
@@ -526,6 +551,11 @@ fn run_row_to_run(
     row: crate::storage::models::EvalRunRow,
     results: Vec<EvalCaseResult>,
 ) -> EvalRun {
+    let target: Option<EvalTarget> = row
+        .target
+        .as_ref()
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+
     EvalRun {
         public_id: row
             .public_id
@@ -533,6 +563,7 @@ fn run_row_to_run(
             .unwrap_or_else(|_| EvalRunId::from_uuid(row.id)),
         internal_id: row.id,
         org_id: row.org_id,
+        target,
         model_override: row.model_override,
         filter_tags: row.filter_tags,
         status: EvalRunStatus::from(row.status.as_str()),
@@ -550,6 +581,15 @@ fn result_row_to_result(
     row: crate::storage::models::EvalCaseResultRow,
     case_name: Option<String>,
 ) -> EvalCaseResult {
+    let target: Option<EvalTarget> = row
+        .target
+        .as_ref()
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+    let target_snapshot: Option<EvalTarget> = row
+        .target_snapshot
+        .as_ref()
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+
     EvalCaseResult {
         public_id: row
             .public_id
@@ -559,6 +599,8 @@ fn result_row_to_result(
         eval_case_id: EvalCaseId::from_uuid(row.eval_case_id),
         case_name,
         session_id: row.session_id.map(SessionId::from_uuid),
+        target,
+        target_snapshot,
         status: CaseResultStatus::from(row.status.as_str()),
         scores: row.scores,
         turns: row.turns.map(|v| v as u32),

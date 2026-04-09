@@ -10,7 +10,7 @@ import { Plus } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
-import type { Eval } from "@/lib/api/types";
+import type { Eval, EvalTarget } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 
 function passRateColor(rate: number): string {
@@ -19,7 +19,23 @@ function passRateColor(rate: number): string {
   return "text-red-600";
 }
 
-function EvalCard({ eval: ev, agentName }: { eval: Eval; agentName?: string }) {
+function targetLabel(target?: EvalTarget, agentMap?: Map<string, string>): string | undefined {
+  if (!target) return undefined;
+  switch (target.type) {
+    case "session": {
+      const agentName = target.agent_id ? agentMap?.get(target.agent_id) : undefined;
+      return agentName ?? target.agent_id ?? undefined;
+    }
+    case "app":
+      return `App: ${target.app_id}`;
+    default:
+      return undefined;
+  }
+}
+
+function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, string> }) {
+  const label = targetLabel(ev.target, agentMap);
+
   return (
     <Link href={`/evals/${ev.id}`}>
       <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
@@ -34,7 +50,12 @@ function EvalCard({ eval: ev, agentName }: { eval: Eval; agentName?: string }) {
             <p className="text-sm text-muted-foreground line-clamp-2">{ev.description}</p>
           )}
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            {agentName && <span>Agent: {agentName}</span>}
+            {label && <span>{label}</span>}
+            {ev.target?.type && (
+              <Badge variant="outline" className="text-xs">
+                {ev.target.type}
+              </Badge>
+            )}
             <span>{ev.case_count} cases</span>
           </div>
           {ev.last_run && (
@@ -119,7 +140,7 @@ export default function EvalsPage() {
         {(items) => (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {items.map((ev) => (
-              <EvalCard key={ev.id} eval={ev} agentName={agentMap.get(ev.agent_id)} />
+              <EvalCard key={ev.id} eval={ev} agentMap={agentMap} />
             ))}
           </div>
         )}

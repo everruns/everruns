@@ -8,7 +8,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 
 use everruns_core::eval::*;
-use everruns_core::typed_id::{AgentId, EvalCaseId, EvalId, EvalRunId, HarnessId};
+use everruns_core::typed_id::{EvalCaseId, EvalId, EvalRunId};
 
 use crate::api::common::{
     ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse,
@@ -52,10 +52,9 @@ pub struct CreateEvalRequest {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[schema(value_type = String)]
-    pub agent_id: AgentId,
-    #[schema(value_type = String)]
-    pub harness_id: HarnessId,
+    /// Session setup target (harness+agent, app, or full session params).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<EvalTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_override: Option<String>,
     #[serde(default)]
@@ -69,12 +68,9 @@ pub struct UpdateEvalRequest {
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Session setup target (harness+agent, app, or full session params).
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
-    pub agent_id: Option<AgentId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
-    pub harness_id: Option<HarnessId>,
+    pub target: Option<EvalTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_override: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -87,6 +83,9 @@ pub struct CreateEvalCaseRequest {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional per-case target override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<EvalTarget>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
     pub conversation: Vec<EvalInputMessage>,
@@ -106,6 +105,9 @@ pub struct UpdateEvalCaseRequest {
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional per-case target override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<EvalTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -123,6 +125,9 @@ pub struct UpdateEvalCaseRequest {
 /// Request to create an eval run
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateEvalRunRequest {
+    /// Optional per-run target override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<EvalTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_override: Option<String>,
 }
