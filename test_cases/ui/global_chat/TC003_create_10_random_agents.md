@@ -39,6 +39,6 @@ Verify that the global chat agent can create 10 distinct agents in a single conv
 ## Validation Commands
 
 ```bash
-# Assert: 10 agents exist by slug (excluding any pre-existing agents)
-curl -s "http://localhost:9300/api/v1/agents" | jq '[.data[] | select(.name | test("code-reviewer|data-analyst|writing-editor|math-tutor|devops-helper|security-auditor|api-designer|test-writer|debug-assistant|doc-generator"))] | length == 10'
+# Assert: 10 agents exist by exact slug (excluding any pre-existing agents)
+curl -s "http://localhost:9300/api/v1/agents" | jq '[.data[] | select(.name | test("^(code-reviewer|data-analyst|writing-editor|math-tutor|devops-helper|security-auditor|api-designer|test-writer|debug-assistant|doc-generator)$"))] | length == 10'
 ```

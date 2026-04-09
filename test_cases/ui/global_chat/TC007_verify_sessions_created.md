@@ -19,7 +19,7 @@ None (uses sessions created by TC005).
 1. Navigate to `/sessions`
 2. Observe the sessions list
 3. For each of the 10 agent-linked sessions:
-   - Verify agent name is displayed
+   - Verify agent display name is displayed (e.g. "Math Tutor")
    - Click into the session
    - Check session status and messages
 
