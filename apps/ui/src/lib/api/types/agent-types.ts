@@ -79,8 +79,8 @@ export interface UpdateAgentRequest {
 
 /** Read-only agent example defined in code, adoptable as a real Agent */
 export interface AgentExample {
-  slug: string;
   name: string;
+  display_name: string;
   description: string;
   tags: string[];
   capabilities: AgentCapabilityConfig[];

@@ -8,7 +8,7 @@ export async function listAgentExamples(): Promise<AgentExample[]> {
   return response.data;
 }
 
-export async function adoptAgentExample(slug: string): Promise<Agent> {
-  const response = await api.post<Agent>(`/v1/agent-examples/${slug}/use`);
+export async function importAgentExample(name: string): Promise<Agent> {
+  const response = await api.post<Agent>(`/v1/agents/import?from-example=${name}`);
   return response.data;
 }

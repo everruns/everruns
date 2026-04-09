@@ -4,7 +4,7 @@ import { useRef, useState, useCallback } from "react";
 import {
   useAgents,
   useAgentExamples,
-  useAdoptAgentExample,
+  useImportAgentExample,
   useCapabilities,
   useImportAgent,
 } from "@/hooks";
@@ -23,10 +23,10 @@ export default function AgentsPage() {
   const { data: allCapabilities } = useCapabilities();
   const { data: examples, isLoading: examplesLoading, error: examplesError } = useAgentExamples();
   const importAgent = useImportAgent();
-  const adoptExample = useAdoptAgentExample();
+  const importExample = useImportAgentExample();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
-  const [adoptingSlug, setAdoptingSlug] = useState<string | null>(null);
+  const [importingName, setImportingName] = useState<string | null>(null);
 
   const handleImportClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -55,19 +55,19 @@ export default function AgentsPage() {
     [importAgent, router],
   );
 
-  const handleUse = useCallback(
-    async (slug: string) => {
-      setAdoptingSlug(slug);
+  const handleImport = useCallback(
+    async (name: string) => {
+      setImportingName(name);
       try {
-        const agent = await adoptExample.mutateAsync(slug);
+        const agent = await importExample.mutateAsync(name);
         router.push(`/agents/${agent.id}`);
       } catch (err) {
-        console.error("Failed to use example:", err);
+        console.error("Failed to import example:", err);
       } finally {
-        setAdoptingSlug(null);
+        setImportingName(null);
       }
     },
-    [adoptExample, router],
+    [importExample, router],
   );
 
   const previewAgents = agents?.slice(0, PREVIEW_LIMIT);
@@ -182,11 +182,11 @@ export default function AgentsPage() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {items.map((example, index) => (
                 <ExampleCard
-                  key={example.slug ?? `example-${index}`}
+                  key={example.name ?? `example-${index}`}
                   example={example}
                   allCapabilities={allCapabilities}
-                  onUse={handleUse}
-                  adopting={adoptingSlug === example.slug}
+                  onImport={handleImport}
+                  adopting={importingName === example.name}
                 />
               ))}
             </div>

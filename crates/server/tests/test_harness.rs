@@ -139,7 +139,8 @@ impl TestServer {
 
         // Seed default data synchronously (harnesses, agents, providers, etc.)
         let grade = everruns_core::DeploymentGrade::from_env();
-        let platform_definition = everruns_server::oss_platform_definition_for_grade(grade);
+        let platform_definition =
+            Arc::new(everruns_server::oss_platform_definition_for_grade(grade));
         seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
             .await
             .expect("Failed to seed test data");
@@ -234,8 +235,13 @@ impl TestServer {
             capability_service.clone(),
             auth_state.clone(),
         );
-        let agents_state =
-            api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
+        let agents_state = api::agents::AppState::new(
+            db.clone(),
+            capability_service,
+            auth_state.clone(),
+            grade,
+            platform_definition.clone(),
+        );
         let session_files_state = api::session_files::AppState::new(
             db.clone(),
             event_service.clone(),

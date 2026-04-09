@@ -555,15 +555,19 @@ impl ServerAppBuilder {
         );
         let commands_state =
             api::commands::AppState::new(capability_service.clone(), auth_state.clone());
+        let grade = everruns_core::DeploymentGrade::from_env();
         let agent_examples_state = api::agent_examples::AppState {
-            agent_service: Arc::new(services::AgentService::new(db.clone())),
-            capability_service: capability_service.clone(),
             auth: auth_state.clone(),
-            grade: everruns_core::DeploymentGrade::from_env(),
+            grade,
             platform_definition: platform_definition.clone(),
         };
-        let agents_state =
-            api::agents::AppState::new(db.clone(), capability_service, auth_state.clone());
+        let agents_state = api::agents::AppState::new(
+            db.clone(),
+            capability_service,
+            auth_state.clone(),
+            grade,
+            platform_definition.clone(),
+        );
         let agent_identities_state =
             api::agent_identities::AppState::new(db.clone(), auth_state.clone());
         let agent_identity_connections_state = api::agent_identity_connections::AppState::new(

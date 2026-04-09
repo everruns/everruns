@@ -4,21 +4,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus } from "lucide-react";
+import { Import } from "lucide-react";
 import type { AgentExample, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 
 interface ExampleCardProps {
   example: AgentExample;
   allCapabilities?: Capability[];
-  onUse: (slug: string) => void;
+  onImport: (name: string) => void;
   adopting?: boolean;
 }
 
 export function ExampleCard({
   example,
   allCapabilities,
-  onUse,
+  onImport,
   adopting = false,
 }: ExampleCardProps) {
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
@@ -27,7 +27,7 @@ export function ExampleCard({
   return (
     <Card className="bg-background transition-colors hover:bg-card">
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <CardTitle className="text-lg">{example.name}</CardTitle>
+        <CardTitle className="text-lg">{example.display_name}</CardTitle>
         {example.dev_only && (
           <Badge variant="outline" className="text-xs">
             dev
@@ -74,16 +74,16 @@ export function ExampleCard({
           </div>
         )}
 
-        {/* Use button */}
+        {/* Import button */}
         <div className="flex items-center justify-end">
           <Button
             variant="accent"
             size="sm"
-            onClick={() => onUse(example.slug)}
+            onClick={() => onImport(example.name)}
             disabled={adopting}
           >
-            <Plus className="w-4 h-4 mr-2" />
-            {adopting ? "Adding..." : "Use"}
+            <Import className="w-4 h-4 mr-2" />
+            {adopting ? "Importing..." : "Import"}
           </Button>
         </div>
       </CardContent>
