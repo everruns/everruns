@@ -44,7 +44,7 @@ pub trait PlatformStore: Send + Sync {
     async fn create_harness(
         &self,
         name: &str,
-        display_name: &str,
+        display_name: Option<&str>,
         description: Option<&str>,
         system_prompt: &str,
         parent_harness_id: Option<HarnessId>,
@@ -212,7 +212,7 @@ pub mod tests {
                 harness: Harness {
                     id: HarnessId::new(),
                     name: "test-harness".to_string(),
-                    display_name: "Test Harness".to_string(),
+                    display_name: Some("Test Harness".to_string()),
                     description: Some("test harness".to_string()),
                     system_prompt: "You are helpful.".to_string(),
                     parent_harness_id: None,
@@ -299,7 +299,7 @@ pub mod tests {
         async fn create_harness(
             &self,
             name: &str,
-            display_name: &str,
+            display_name: Option<&str>,
             _desc: Option<&str>,
             _prompt: &str,
             parent_harness_id: Option<HarnessId>,
@@ -307,7 +307,7 @@ pub mod tests {
         ) -> Result<Harness> {
             let mut h = self.harness.clone();
             h.name = name.to_string();
-            h.display_name = display_name.to_string();
+            h.display_name = display_name.map(|s| s.to_string());
             h.parent_harness_id = parent_harness_id;
             Ok(h)
         }
@@ -325,7 +325,7 @@ pub mod tests {
                 h.name = n.to_string();
             }
             if let Some(dn) = display_name {
-                h.display_name = dn.to_string();
+                h.display_name = Some(dn.to_string());
             }
             if let Some(parent_harness_id) = parent_harness_id {
                 h.parent_harness_id = parent_harness_id;

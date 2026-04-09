@@ -330,7 +330,7 @@ impl InMemoryAgenticLoopBuilder {
         let harness = crate::harness::Harness {
             id: harness_id,
             name: "in-memory".to_string(),
-            display_name: "In-Memory Harness".to_string(),
+            display_name: Some("In-Memory Harness".to_string()),
             description: None,
             system_prompt: self.system_prompt.clone(),
             parent_harness_id: None,

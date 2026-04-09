@@ -338,7 +338,7 @@ impl Tool for ManageHarnessesTool {
                 match store
                     .create_harness(
                         name,
-                        display_name,
+                        Some(display_name),
                         description,
                         system_prompt,
                         parent_harness_id,

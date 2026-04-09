@@ -340,7 +340,7 @@ message Harness {
     repeated string tags = 10;
     optional Uuid parent_harness_id = 11;
     bool is_built_in = 12;
-    string display_name = 13;
+    optional string display_name = 13;
 }
 
 message GetHarnessRequest {
@@ -1463,7 +1463,7 @@ message PlatformCreateHarnessRequest {
     string system_prompt = 4;
     repeated string capabilities = 5;
     optional Uuid parent_harness_id = 6;
-    string display_name = 7;
+    optional string display_name = 7;
 }
 
 message PlatformCreateHarnessResponse {

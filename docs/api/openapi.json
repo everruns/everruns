@@ -6163,7 +6163,6 @@
         "description": "Request to create a new harness",
         "required": [
           "name",
-          "display_name",
           "system_prompt"
         ],
         "properties": {
@@ -6201,7 +6200,10 @@
             "example": "Research harness with planning and web capabilities"
           },
           "display_name": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Human-readable display name shown in UI.",
             "example": "Deep Research"
           },
@@ -7380,7 +7382,6 @@
         "required": [
           "id",
           "name",
-          "display_name",
           "system_prompt",
           "status",
           "created_at",
@@ -7431,7 +7432,10 @@
             "description": "Human-readable description of what the harness does."
           },
           "display_name": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "Human-readable display name shown in UI."
           },
           "id": {
@@ -8424,7 +8428,6 @@
               "required": [
                 "id",
                 "name",
-                "display_name",
                 "system_prompt",
                 "status",
                 "created_at",
@@ -8475,7 +8478,10 @@
                   "description": "Human-readable description of what the harness does."
                 },
                 "display_name": {
-                  "type": "string",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "description": "Human-readable display name shown in UI."
                 },
                 "id": {

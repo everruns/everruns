@@ -55,7 +55,7 @@ async fn setup_test_environment() -> (
     let harness = Harness {
         id: harness_id,
         name: "test-harness".to_string(),
-        display_name: "Test Harness".to_string(),
+        display_name: Some("Test Harness".to_string()),
         description: None,
         system_prompt: "You are a helpful assistant.".to_string(),
         parent_harness_id: None,

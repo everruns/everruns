@@ -116,7 +116,7 @@ async fn main() -> anyhow::Result<()> {
     let harness = Harness {
         id: harness_id,
         name: "default".to_string(),
-        display_name: "Default Harness".to_string(),
+        display_name: Some("Default Harness".to_string()),
         description: None,
         system_prompt: "You are a helpful assistant.".to_string(),
         parent_harness_id: None,

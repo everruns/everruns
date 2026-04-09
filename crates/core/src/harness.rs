@@ -62,7 +62,8 @@ pub struct Harness {
     /// Name, unique per org (e.g. "generic").
     pub name: String,
     /// Human-readable display name shown in UI.
-    pub display_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     /// Human-readable description of what the harness does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -221,7 +222,7 @@ mod tests {
         Harness {
             id: HarnessId::from_uuid(uuid::Uuid::from_u128(id_seed)),
             name: format!("harness-{id_seed}"),
-            display_name: format!("Harness {id_seed}"),
+            display_name: Some(format!("Harness {id_seed}")),
             description: None,
             system_prompt: system_prompt.to_string(),
             parent_harness_id: None,

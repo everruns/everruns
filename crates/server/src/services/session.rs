@@ -950,7 +950,7 @@ mod tests {
                 &caller,
                 CreateHarnessRequest {
                     name: "harness".to_string(),
-                    display_name: "Harness".to_string(),
+                    display_name: Some("Harness".to_string()),
                     description: None,
                     system_prompt: "Harness prompt".to_string(),
                     parent_harness_id: None,
@@ -1061,7 +1061,7 @@ mod tests {
                 &caller,
                 CreateHarnessRequest {
                     name: "parent".to_string(),
-                    display_name: "Parent".to_string(),
+                    display_name: Some("Parent".to_string()),
                     description: None,
                     system_prompt: "Parent prompt".to_string(),
                     parent_harness_id: None,
@@ -1093,7 +1093,7 @@ mod tests {
                 &caller,
                 CreateHarnessRequest {
                     name: "child".to_string(),
-                    display_name: "Child".to_string(),
+                    display_name: Some("Child".to_string()),
                     description: None,
                     system_prompt: "Child prompt".to_string(),
                     parent_harness_id: Some(parent.id),
@@ -1152,7 +1152,7 @@ mod tests {
                 &caller,
                 CreateHarnessRequest {
                     name: "harness".to_string(),
-                    display_name: "Harness".to_string(),
+                    display_name: Some("Harness".to_string()),
                     description: None,
                     system_prompt: "Harness prompt".to_string(),
                     parent_harness_id: None,
@@ -1213,7 +1213,7 @@ mod tests {
                 &caller,
                 CreateHarnessRequest {
                     name: "harness-2".to_string(),
-                    display_name: "Harness 2".to_string(),
+                    display_name: Some("Harness 2".to_string()),
                     description: None,
                     system_prompt: "Harness prompt".to_string(),
                     parent_harness_id: None,
@@ -1261,7 +1261,7 @@ mod tests {
                 &Caller::internal(other_org_id),
                 CreateHarnessRequest {
                     name: "other-harness".to_string(),
-                    display_name: "Other Harness".to_string(),
+                    display_name: Some("Other Harness".to_string()),
                     description: None,
                     system_prompt: "Other".to_string(),
                     parent_harness_id: None,
@@ -1304,7 +1304,7 @@ mod tests {
                 &caller,
                 CreateHarnessRequest {
                     name: "harness".to_string(),
-                    display_name: "Harness".to_string(),
+                    display_name: Some("Harness".to_string()),
                     description: None,
                     system_prompt: "Harness".to_string(),
                     parent_harness_id: None,
@@ -1347,7 +1347,7 @@ mod tests {
                 &Caller::internal(other_org_id),
                 CreateHarnessRequest {
                     name: "other-harness".to_string(),
-                    display_name: "Other Harness".to_string(),
+                    display_name: Some("Other Harness".to_string()),
                     description: None,
                     system_prompt: "Other".to_string(),
                     parent_harness_id: None,
@@ -1447,7 +1447,7 @@ mod tests {
                 &Caller::internal(other_org_id),
                 CreateHarnessRequest {
                     name: "other-harness".to_string(),
-                    display_name: "Other Harness".to_string(),
+                    display_name: Some("Other Harness".to_string()),
                     description: None,
                     system_prompt: "Other".to_string(),
                     parent_harness_id: None,
