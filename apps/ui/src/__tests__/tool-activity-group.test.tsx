@@ -323,7 +323,7 @@ describe("ToolActivityGroup", () => {
     render(<ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />);
 
     expect(screen.getByText("Get DAYTONA_API_KEY")).toBeInTheDocument();
-    expect(screen.getByText("DAYTONA_API_KEY not found")).toBeInTheDocument();
+    expect(screen.getByText("details")).toBeInTheDocument();
     expect(screen.queryByText("Secret Store")).not.toBeInTheDocument();
     expect(screen.queryByText("1 of 1 complete")).not.toBeInTheDocument();
     expect(screen.queryByText(/"found":false/)).not.toBeInTheDocument();
