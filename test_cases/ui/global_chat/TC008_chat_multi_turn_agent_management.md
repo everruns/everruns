@@ -2,7 +2,7 @@
 
 ## Description
 
-Verify that global chat supports multi-turn conversation for agent management: create an agent, run it, check results, then update the agent — all in one conversation.
+Verify that global chat supports multi-turn conversation for agent management: create an agent, run it, check results, then update the agent — all in one conversation. Agents have an addressable name (slug) and optional display name.
 
 ## Preconditions
 
@@ -24,7 +24,7 @@ Verify that global chat supports multi-turn conversation for agent management: c
 
 1. Navigate to `/chat`
 2. Send turn 1 message, confirm creation if asked
-3. Wait for response, verify agent created
+3. Wait for response, verify agent created with display name "Joke Bot" and slug `joke-bot`
 4. Send turn 2 message
 5. Wait for response, verify Joke Bot ran and returned a joke
 6. Send turn 3 message
@@ -36,7 +36,7 @@ Verify that global chat supports multi-turn conversation for agent management: c
 
 | Check | Expected |
 |-------|----------|
-| Turn 1 | Agent "Joke Bot" created with link |
+| Turn 1 | Agent created with display name "Joke Bot" (slug `joke-bot`), response contains link |
 | Turn 2 | Session created, joke returned |
 | Turn 3 | Chat agent recalls the joke from previous turn |
 | Turn 4 | Agent list returned, includes Joke Bot |

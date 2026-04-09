@@ -19,7 +19,7 @@ None (uses sessions created by TC005).
 1. Navigate to `/sessions`
 2. Observe the sessions list
 3. For each of the 10 agent-linked sessions:
-   - Verify agent name is displayed
+   - Verify agent display name is displayed (e.g. "Math Tutor")
    - Click into the session
    - Check session status and messages
 
@@ -28,7 +28,7 @@ None (uses sessions created by TC005).
 | Check | Expected |
 |-------|----------|
 | 10 agent sessions | At least 10 sessions with agent assignments visible |
-| Agent names | Each session shows the correct agent name |
+| Agent names | Each session shows the correct agent display name (e.g. "Math Tutor", not the slug) |
 | Status | All sessions are `idle` (turn completed) |
 | Messages | Each session has >= 2 messages (user + agent response) |
 | Chat history | Clicking a session shows the conversation with task and response |

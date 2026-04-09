@@ -2,7 +2,7 @@
 
 ## Description
 
-Verify that built-in harnesses are provisioned for the new organisation by navigating to the Harnesses page after setup.
+Verify that built-in harnesses are provisioned for the new organisation by navigating to the Harnesses page after setup. Harnesses now use addressable names (slugs) with separate display names.
 
 ## Preconditions
 
@@ -17,5 +17,6 @@ Verify that built-in harnesses are provisioned for the new organisation by navig
 ## Expected Result
 
 - Dashboard loads without errors
-- Harnesses page shows at least three built-in harnesses: Base, Generic, Platform Chat
+- Harnesses page shows at least three built-in harnesses with names: `base`, `generic`, `platform-chat`
+- Each harness card shows a "Built-in" badge
 - Each harness card is clickable and links to a detail page

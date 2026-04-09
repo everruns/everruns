@@ -16,14 +16,14 @@ Verify that an agent with Deno capability prompts for a Deno access token via th
 
 | Field | Value |
 |-------|-------|
-| Agent | Deno Coder (seed agent) |
+| Agent | Deno Coder (seed agent, slug: `deno-coder`, display name: "Deno Coder") |
 | First Message | Create a sandbox and calculate the result of 123 * 456. Do NOT delete the sandbox after - I want to keep it running. |
 | Deno Access Token | *(use a valid Deno organization token, `ddo_...`)* |
 | Cleanup Message | Delete the sandbox |
 
 ## Steps
 
-1. Navigate to the Agents page and locate **Deno Coder**
+1. Navigate to the Agents page and locate **Deno Coder** (card shows display name "Deno Coder" with slug `deno-coder` underneath)
 2. Click **Run** to start a new session
 3. Send the message: `Create a sandbox and calculate the result of 123 * 456. Do NOT delete the sandbox after - I want to keep it running.`
 4. Wait for the inline **Setup Connection** card to appear in the chat (OpenUI connection prompt for Deno)

@@ -19,7 +19,7 @@ Verify that Settings > Organisation shows correct details for a newly created or
 ## Expected Result
 
 - Organisation name matches the name entered during creation
-- Default Harness dropdown has a harness selected (not empty)
-- Base Harness dropdown has a harness selected (not empty)
+- Default Harness dropdown has a harness selected (not empty) — displays the harness slug (e.g. `generic`)
+- Base Harness dropdown has a harness selected (not empty) — displays the harness slug (e.g. `base`)
 - Organisation ID is displayed and starts with `org_`
 - A copy button is present next to the Organisation ID

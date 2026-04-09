@@ -16,14 +16,14 @@ Verify that the Daytona Coder agent prompts for a Daytona API key via the inline
 
 | Field | Value |
 |-------|-------|
-| Agent | Daytona Coder (seed agent) |
+| Agent | Daytona Coder (seed agent, slug: `daytona-coder`, display name: "Daytona Coder") |
 | First Message | Create a sandbox and calculate the result of 123 * 456. Do NOT delete the sandbox after - I want to keep it running. |
 | Daytona API Key | *(use a valid Daytona API key)* |
 | Cleanup Message | Delete the sandbox |
 
 ## Steps
 
-1. Navigate to the Agents page and locate **Daytona Coder**
+1. Navigate to the Agents page and locate **Daytona Coder** (card shows display name "Daytona Coder" with slug `daytona-coder` underneath)
 2. Click **Run** to start a new session
 3. Send the message: `Create a sandbox and calculate the result of 123 * 456. Do NOT delete the sandbox after - I want to keep it running.`
 4. Wait for the inline **Setup Connection** card to appear in the chat (OpenUI connection prompt for Daytona)
