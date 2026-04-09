@@ -151,9 +151,20 @@
         "tags": [
           "agents"
         ],
-        "summary": "POST /v1/agents/import - Import agent from Markdown, YAML, or JSON",
-        "description": "Accepts agent definition in multiple formats:\n- Markdown with YAML front matter (if starts with ---)\n- Pure YAML\n- Pure JSON\n- Plain text (treated as system prompt, name auto-generated)\n\nIf the file contains an `id` field and an agent with that ID already exists,\nthe agent is updated (upsert). Returns 201 on create, 200 on update.",
+        "summary": "POST /v1/agents/import - Import agent from file or built-in example",
+        "description": "Two modes:\n1. **From example** — `POST /v1/agents/import?from-example={name}` (body ignored)\n2. **From file** — `POST /v1/agents/import` with a text body in Markdown/YAML/JSON\n\nFile mode accepts:\n- Markdown with YAML front matter (if starts with ---)\n- Pure YAML\n- Pure JSON\n- Plain text (treated as system prompt, name auto-generated)\n\nIf the file contains an `id` field and an agent with that ID already exists,\nthe agent is updated (upsert). Returns 201 on create, 200 on update.",
         "operationId": "import_agent",
+        "parameters": [
+          {
+            "name": "from-example",
+            "in": "query",
+            "description": "Import from a built-in example by name (e.g. `dad-jokes-agent`).\nWhen set, the request body is ignored.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "text/plain": {
@@ -194,6 +205,12 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "High-risk capabilities require admin role"
+          },
+          "404": {
+            "description": "Example not found"
           },
           "500": {
             "description": "Internal server error",
