@@ -9,132 +9,100 @@
     .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
   </style>
 
-  <!-- White background -->
   <rect width="800" height="430" fill="#FFFFFF"/>
 
-  <!-- ═══════════════════════════════════════════════ -->
-  <!-- CLIENTS region (left, top)                      -->
-  <!-- x=20 y=15 w=180 h=185                           -->
-  <!-- ═══════════════════════════════════════════════ -->
-  <rect x="20" y="15" width="180" height="185" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
-  <text x="32" y="35" class="header-text">CLIENTS</text>
+  <!-- === CLIENTS region === -->
+  <rect x="20" y="20" width="175" height="170" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="30" y="38" class="header-text">CLIENTS</text>
 
-  <!-- Your App -->
-  <rect x="35" y="45" width="150" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="110" y="67" class="label" text-anchor="middle">Your App</text>
-  <text x="110" y="83" class="sublabel" text-anchor="middle">everruns-sdk</text>
+  <rect x="35" y="50" width="140" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="105" y="70" text-anchor="middle" class="label">Your App</text>
+  <text x="105" y="84" text-anchor="middle" class="sublabel">everruns-sdk</text>
 
-  <!-- Web UI -->
-  <rect x="35" y="115" width="150" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="110" y="137" class="label" text-anchor="middle">Web UI</text>
-  <text x="110" y="153" class="sublabel" text-anchor="middle">Management console</text>
+  <rect x="35" y="120" width="140" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="105" y="140" text-anchor="middle" class="label">Web UI</text>
+  <text x="105" y="154" text-anchor="middle" class="sublabel">Management console</text>
 
-  <!-- ═══════════════════════════════════════════════ -->
-  <!-- CONTROL PLANE region (center-right, top)        -->
-  <!-- x=245 y=15 w=320 h=185                          -->
-  <!-- ═══════════════════════════════════════════════ -->
-  <rect x="245" y="15" width="320" height="185" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
-  <text x="257" y="35" class="header-text">CONTROL PLANE</text>
+  <!-- === CONTROL PLANE region === -->
+  <rect x="230" y="20" width="340" height="260" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="240" y="38" class="header-text">CONTROL PLANE</text>
 
-  <!-- REST API -->
-  <rect x="265" y="45" width="130" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="330" y="67" class="label" text-anchor="middle">REST API</text>
-  <text x="330" y="83" class="mono" text-anchor="middle">:9301</text>
+  <rect x="250" y="50" width="130" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="315" y="70" text-anchor="middle" class="label">REST API</text>
+  <text x="315" y="84" text-anchor="middle" class="mono">:9301</text>
 
-  <!-- gRPC Server -->
-  <rect x="415" y="45" width="130" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="480" y="67" class="label" text-anchor="middle">gRPC Server</text>
-  <text x="480" y="83" class="mono" text-anchor="middle">:9001</text>
+  <rect x="420" y="50" width="130" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="485" y="70" text-anchor="middle" class="label">gRPC Server</text>
+  <text x="485" y="84" text-anchor="middle" class="mono">:9001</text>
 
-  <!-- Service Layer -->
-  <rect x="310" y="120" width="190" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="405" y="142" class="label" text-anchor="middle">Service Layer</text>
-  <text x="405" y="158" class="sublabel" text-anchor="middle">Business logic</text>
+  <rect x="290" y="135" width="160" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="370" y="155" text-anchor="middle" class="label">Service Layer</text>
+  <text x="370" y="169" text-anchor="middle" class="sublabel">Business logic</text>
 
-  <!-- ═══════════════════════════════════════════════ -->
-  <!-- WORKERS region (left, bottom)                   -->
-  <!-- x=20 y=240 w=180 h=175                          -->
-  <!-- ═══════════════════════════════════════════════ -->
-  <rect x="20" y="240" width="180" height="175" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
-  <text x="32" y="260" class="header-text">WORKERS</text>
+  <rect x="290" y="218" width="160" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="370" y="238" text-anchor="middle" class="label">PostgreSQL</text>
+  <text x="370" y="252" text-anchor="middle" class="sublabel">State store</text>
 
-  <!-- Worker 1 -->
-  <rect x="35" y="270" width="150" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="110" y="297" class="label" text-anchor="middle">Worker 1</text>
+  <!-- === WORKERS region (below gRPC) === -->
+  <rect x="405" y="310" width="165" height="110" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="415" y="328" class="header-text">WORKERS</text>
 
-  <!-- Worker 2 -->
-  <rect x="35" y="340" width="150" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="110" y="367" class="label" text-anchor="middle">Worker 2</text>
+  <rect x="420" y="335" width="130" height="32" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="485" y="356" text-anchor="middle" class="label">Worker 1</text>
 
-  <!-- ═══════════════════════════════════════════════ -->
-  <!-- PostgreSQL (standalone, center bottom)          -->
-  <!-- ═══════════════════════════════════════════════ -->
-  <rect x="310" y="265" width="190" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="405" y="287" class="label" text-anchor="middle">PostgreSQL</text>
-  <text x="405" y="303" class="sublabel" text-anchor="middle">State store</text>
+  <rect x="420" y="378" width="130" height="32" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="485" y="399" text-anchor="middle" class="label">Worker 2</text>
 
-  <!-- ═══════════════════════════════════════════════ -->
-  <!-- EXTERNAL region (right, bottom)                 -->
-  <!-- x=600 y=240 w=180 h=175                         -->
-  <!-- ═══════════════════════════════════════════════ -->
-  <rect x="600" y="240" width="180" height="175" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
-  <text x="612" y="260" class="header-text">EXTERNAL</text>
+  <!-- === EXTERNAL region === -->
+  <rect x="610" y="310" width="170" height="110" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="620" y="328" class="header-text">EXTERNAL</text>
 
-  <!-- OpenAI -->
-  <rect x="620" y="270" width="140" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="690" y="297" class="label" text-anchor="middle">OpenAI</text>
+  <rect x="625" y="335" width="140" height="32" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="695" y="356" text-anchor="middle" class="label">OpenAI</text>
 
-  <!-- Anthropic -->
-  <rect x="620" y="340" width="140" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="690" y="367" class="label" text-anchor="middle">Anthropic</text>
+  <rect x="625" y="378" width="140" height="32" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="695" y="399" text-anchor="middle" class="label">Anthropic</text>
 
-  <!-- ═══════════════════════════════════════════════ -->
-  <!-- ARROWS                                          -->
-  <!-- ═══════════════════════════════════════════════ -->
+  <!-- === ARROWS === -->
 
-  <!-- Your App → REST API: HTTP (horizontal) -->
-  <line x1="185" y1="70" x2="257" y2="70" stroke="#0A1636" stroke-width="1.5"/>
-  <polygon points="257,65 267,70 257,75" fill="#0A1636"/>
-  <text x="225" y="63" class="arrow-label" text-anchor="middle">HTTP</text>
+  <!-- Your App → REST API: HTTP -->
+  <line x1="175" y1="67" x2="245" y2="67" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="245,62 255,67 245,72" fill="#0A1636"/>
+  <text x="210" y="60" text-anchor="middle" class="arrow-label">HTTP</text>
 
-  <!-- Web UI → REST API: HTTP -->
-  <!-- Right-angle: horizontal right to x=225, then vertical up to y=82, then right to REST API -->
-  <path d="M 185 140 L 225 140 L 225 82 L 257 82" stroke="#0A1636" stroke-width="1.5" fill="none"/>
-  <polygon points="257,77 267,82 257,87" fill="#0A1636"/>
-  <text x="232" y="112" class="arrow-label">HTTP</text>
+  <!-- Web UI → REST API: L-shape routed through gap -->
+  <line x1="175" y1="142" x2="212" y2="142" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="212" y1="142" x2="212" y2="82" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="212" y1="82" x2="245" y2="82" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="245,77 255,82 245,87" fill="#0A1636"/>
+  <text x="205" y="118" text-anchor="end" class="arrow-label">HTTP</text>
 
   <!-- REST API → Service Layer -->
-  <line x1="345" y1="95" x2="375" y2="112" stroke="#0A1636" stroke-width="1.5"/>
-  <polygon points="370,115 380,120 375,109" fill="#0A1636"/>
+  <line x1="315" y1="95" x2="340" y2="130" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="335,130 345,135 340,125" fill="#0A1636"/>
 
   <!-- gRPC Server → Service Layer -->
-  <line x1="465" y1="95" x2="435" y2="112" stroke="#0A1636" stroke-width="1.5"/>
-  <polygon points="440,109 430,120 436,115" fill="#0A1636"/>
+  <line x1="485" y1="95" x2="420" y2="130" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="415,130 425,125 420,135" fill="#0A1636"/>
 
-  <!-- Service Layer → PostgreSQL (vertical down) -->
-  <line x1="405" y1="170" x2="405" y2="257" stroke="#0A1636" stroke-width="1.5"/>
-  <polygon points="400,257 405,267 410,257" fill="#0A1636"/>
+  <!-- Service Layer → PostgreSQL -->
+  <line x1="370" y1="180" x2="370" y2="213" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="365,213 370,223 375,213" fill="#0A1636"/>
 
-  <!-- Worker 1 → gRPC Server -->
-  <!-- L-shape: right from Worker 1 to x=222 (gap between regions), -->
-  <!-- then up to y=82, then right to gRPC left edge                -->
-  <path d="M 185 292 L 222 292 L 222 58 L 407 58" stroke="#0A1636" stroke-width="1.5" fill="none"/>
-  <polygon points="407,53 417,58 407,63" fill="#0A1636"/>
-  <text x="229" y="180" class="arrow-label">gRPC</text>
+  <!-- Worker 1 → gRPC Server: vertical up (x=480, right of Service Layer/PostgreSQL) -->
+  <line x1="480" y1="335" x2="480" y2="100" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="475,100 480,90 485,100" fill="#0A1636"/>
+  <text x="470" y="295" text-anchor="end" class="arrow-label">gRPC</text>
 
-  <!-- Worker 2 → gRPC Server -->
-  <!-- L-shape: right from Worker 2 to x=215 (slightly offset), -->
-  <!-- then up to y=82, then right to gRPC left edge             -->
-  <path d="M 185 362 L 215 362 L 215 80 L 407 80" stroke="#0A1636" stroke-width="1.5" fill="none"/>
-  <polygon points="407,75 417,80 407,85" fill="#0A1636"/>
-  <text x="208" y="225" class="arrow-label">gRPC</text>
+  <!-- Worker 2 → gRPC Server: vertical up (x=495) -->
+  <line x1="495" y1="378" x2="495" y2="100" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="490,100 495,90 500,100" fill="#0A1636"/>
 
   <!-- Worker 1 → OpenAI (dashed) -->
-  <line x1="185" y1="297" x2="612" y2="297" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
-  <polygon points="612,292 622,297 612,302" fill="#A0A0A0"/>
+  <line x1="550" y1="351" x2="620" y2="351" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <polygon points="620,347 628,351 620,355" fill="#A0A0A0"/>
 
   <!-- Worker 2 → Anthropic (dashed) -->
-  <line x1="185" y1="362" x2="612" y2="362" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
-  <polygon points="612,357 622,362 612,367" fill="#A0A0A0"/>
-
+  <line x1="550" y1="394" x2="620" y2="394" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <polygon points="620,390 628,394 620,398" fill="#A0A0A0"/>
 </svg>

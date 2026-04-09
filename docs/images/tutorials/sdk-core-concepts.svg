@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" width="800" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 410" fill="none">
   <style>
     text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
     .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
@@ -9,74 +9,66 @@
     .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
   </style>
 
-  <!-- Background -->
-  <rect width="800" height="380" fill="#FFFFFF"/>
+  <rect width="800" height="410" fill="#FFFFFF"/>
 
-  <defs>
-    <marker id="arrowDown" markerWidth="8" markerHeight="6" refX="3" refY="6" orient="auto">
-      <polygon points="0,0 6,0 3,6" fill="#0A1636"/>
-    </marker>
-    <marker id="arrowRight" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <polygon points="0,0 8,3 0,6" fill="#0A1636"/>
-    </marker>
-  </defs>
+  <!-- Column headers -->
+  <text x="160" y="28" text-anchor="middle" class="header-text">CONFIGURATION</text>
+  <text x="415" y="28" text-anchor="middle" class="header-text">RUNTIME</text>
+  <text x="640" y="28" text-anchor="middle" class="header-text">DATA</text>
 
-  <!-- CONFIGURATION column header -->
-  <text x="190" y="30" text-anchor="middle" class="header-text">CONFIGURATION</text>
+  <!-- Harness box -->
+  <rect x="80" y="45" width="160" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="160" y="67" text-anchor="middle" class="label">Harness</text>
+  <text x="160" y="83" text-anchor="middle" class="sublabel">Environment template</text>
 
-  <!-- RUNTIME column header -->
-  <text x="500" y="30" text-anchor="middle" class="header-text">RUNTIME</text>
+  <!-- Agent box -->
+  <rect x="80" y="145" width="160" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="160" y="167" text-anchor="middle" class="label">Agent</text>
+  <text x="160" y="183" text-anchor="middle" class="sublabel">System prompt + capabilities</text>
 
-  <!-- DATA column header -->
-  <text x="680" y="30" text-anchor="middle" class="header-text">DATA</text>
+  <!-- Capability box -->
+  <rect x="330" y="145" width="170" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="415" y="167" text-anchor="middle" class="label">Capability</text>
+  <text x="415" y="183" text-anchor="middle" class="sublabel">Tools + prompt additions</text>
 
-  <!-- Harness box (top-left) -->
-  <rect x="100" y="45" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="170" y="67" text-anchor="middle" class="label">Harness</text>
-  <text x="170" y="83" text-anchor="middle" class="sublabel">Environment template</text>
+  <!-- Session box -->
+  <rect x="330" y="250" width="170" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="415" y="272" text-anchor="middle" class="label">Session</text>
+  <text x="415" y="288" text-anchor="middle" class="sublabel">Conversation instance</text>
 
-  <!-- Agent box (below Harness) -->
-  <rect x="100" y="145" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="170" y="167" text-anchor="middle" class="label">Agent</text>
-  <text x="170" y="183" text-anchor="middle" class="sublabel">System prompt + capabilities</text>
+  <!-- Turn box -->
+  <rect x="330" y="345" width="170" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="415" y="367" text-anchor="middle" class="label">Turn</text>
+  <text x="415" y="383" text-anchor="middle" class="sublabel">Reason → Act loop</text>
 
-  <!-- Capability box (right of Agent) -->
-  <rect x="290" y="145" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="360" y="167" text-anchor="middle" class="label">Capability</text>
-  <text x="360" y="183" text-anchor="middle" class="sublabel">Tools + prompt additions</text>
+  <!-- Event box -->
+  <rect x="570" y="345" width="150" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="645" y="367" text-anchor="middle" class="label">Event</text>
+  <text x="645" y="383" text-anchor="middle" class="sublabel">Immutable record</text>
 
-  <!-- Session box (center-right) -->
-  <rect x="470" y="145" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="540" y="167" text-anchor="middle" class="label">Session</text>
-  <text x="540" y="183" text-anchor="middle" class="sublabel">Conversation instance</text>
+  <!-- Arrow: Harness → Agent (configures) -->
+  <line x1="160" y1="95" x2="160" y2="140" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="155,140 160,150 165,140" fill="#0A1636"/>
+  <text x="173" y="125" class="arrow-label">configures</text>
 
-  <!-- Turn box (below Session) -->
-  <rect x="470" y="245" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="540" y="267" text-anchor="middle" class="label">Turn</text>
-  <text x="540" y="283" text-anchor="middle" class="sublabel">Reason → Act loop</text>
+  <!-- Arrow: Agent → Capability (has) -->
+  <line x1="240" y1="170" x2="325" y2="170" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="325,165 335,170 325,175" fill="#0A1636"/>
+  <text x="282" y="163" text-anchor="middle" class="arrow-label">has</text>
 
-  <!-- Event box (bottom-right) -->
-  <rect x="650" y="245" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="720" y="267" text-anchor="middle" class="label">Event</text>
-  <text x="720" y="283" text-anchor="middle" class="sublabel">Immutable record</text>
+  <!-- Arrow: Agent → Session (runs in) — L-shape going DOWN then RIGHT, avoids Capability -->
+  <line x1="160" y1="195" x2="160" y2="275" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="160" y1="275" x2="325" y2="275" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="325,270 335,275 325,280" fill="#0A1636"/>
+  <text x="242" y="268" text-anchor="middle" class="arrow-label">runs in</text>
 
-  <!-- Arrow: Harness -> Agent: "configures" -->
-  <line x1="170" y1="95" x2="170" y2="137" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowDown)"/>
-  <text x="182" y="121" text-anchor="start" class="arrow-label">configures</text>
+  <!-- Arrow: Session → Turn (contains) -->
+  <line x1="415" y1="300" x2="415" y2="340" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="410,340 415,350 420,340" fill="#0A1636"/>
+  <text x="428" y="328" class="arrow-label">contains</text>
 
-  <!-- Arrow: Agent -> Capability: "has" -->
-  <line x1="240" y1="162" x2="282" y2="162" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowRight)"/>
-  <text x="260" y="156" text-anchor="middle" class="arrow-label">has</text>
-
-  <!-- Arrow: Agent -> Session: "runs in" (routed below Capability) -->
-  <polyline points="240,178 450,178 450,170 462,170" stroke="#0A1636" stroke-width="1.5" fill="none" marker-end="url(#arrowRight)"/>
-  <text x="345" y="172" text-anchor="middle" class="arrow-label">runs in</text>
-
-  <!-- Arrow: Session -> Turn: "contains" -->
-  <line x1="540" y1="195" x2="540" y2="237" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowDown)"/>
-  <text x="552" y="221" text-anchor="start" class="arrow-label">contains</text>
-
-  <!-- Arrow: Turn -> Event: "emits" -->
-  <line x1="610" y1="270" x2="642" y2="270" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrowRight)"/>
-  <text x="625" y="264" text-anchor="middle" class="arrow-label">emits</text>
+  <!-- Arrow: Turn → Event (emits) -->
+  <line x1="500" y1="370" x2="565" y2="370" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="565,365 575,370 565,375" fill="#0A1636"/>
+  <text x="532" y="363" text-anchor="middle" class="arrow-label">emits</text>
 </svg>
