@@ -287,7 +287,9 @@ function formatValueForDisplay(value: unknown, indent = 0): string {
     );
     if (entries.length === 0) return "{}";
     const prefix = " ".repeat(indent + 2);
-    return entries.map(([key, val]) => `${prefix}${key}: ${formatValueForDisplay(val, indent + 2)}`).join("\n");
+    return entries
+      .map(([key, val]) => `${prefix}${key}: ${formatValueForDisplay(val, indent + 2)}`)
+      .join("\n");
   }
   return String(value);
 }
@@ -302,9 +304,7 @@ export function formatResultDetails(toolCall: ToolCallContent, fullText: string)
   const entries = Object.entries(masked).filter(([key]) => !HIDDEN_DETAIL_FIELDS.has(key));
   if (entries.length === 0) return fullText;
 
-  return entries
-    .map(([key, value]) => `${key}: ${formatValueForDisplay(value)}`)
-    .join("\n");
+  return entries.map(([key, value]) => `${key}: ${formatValueForDisplay(value)}`).join("\n");
 }
 
 export function getResultPreview(
