@@ -140,6 +140,7 @@ impl InMemoryDatabase {
             target: input.target,
             tags: input.tags,
             conversation: input.conversation,
+            post: input.post,
             scorers: input.scorers,
             max_turns: input.max_turns,
             timeout_seconds: input.timeout_seconds,
@@ -164,6 +165,11 @@ impl InMemoryDatabase {
                 .then(a.created_at.cmp(&b.created_at))
         });
         Ok(result)
+    }
+
+    pub async fn get_eval_case(&self, id: Uuid) -> Result<Option<EvalCaseRow>> {
+        let cases = self.eval_cases.read();
+        Ok(cases.get(&id).cloned())
     }
 
     pub async fn get_eval_case_by_public_id(
@@ -201,6 +207,9 @@ impl InMemoryDatabase {
         }
         if let Some(conversation) = input.conversation {
             case.conversation = conversation;
+        }
+        if let Some(post) = input.post {
+            case.post = Some(post);
         }
         if let Some(scorers) = input.scorers {
             case.scorers = scorers;

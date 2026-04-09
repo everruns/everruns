@@ -8,6 +8,7 @@ use crate::api::evals::{
     UpdateEvalRequest,
 };
 use crate::errors::ResourceNotFoundError;
+use crate::services::eval_runner::{EvalRunContext, spawn_eval_run};
 use crate::storage::StorageBackend;
 use crate::storage::models::{
     CreateEvalCaseResultRow, CreateEvalCaseRow, CreateEvalRow, CreateEvalRunRow, UpdateEvalCaseRow,
@@ -35,6 +36,7 @@ pub const EVAL_MANAGE: Policy = Policy {
 
 pub struct EvalService {
     db: Arc<StorageBackend>,
+    run_context: Option<Arc<EvalRunContext>>,
 }
 
 /// Validates an EvalTarget if present. Returns error on invalid combinations.
@@ -54,7 +56,15 @@ fn validate_target(target: &Option<EvalTarget>) -> Result<()> {
 
 impl EvalService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self { db }
+        Self {
+            db,
+            run_context: None,
+        }
+    }
+
+    pub fn with_run_context(mut self, ctx: Arc<EvalRunContext>) -> Self {
+        self.run_context = Some(ctx);
+        self
     }
 
     // ============================================
@@ -187,6 +197,8 @@ impl EvalService {
 
         let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
+        let post_json = req.post.as_ref().map(serde_json::to_value).transpose()?;
+
         let input = CreateEvalCaseRow {
             public_id: case_public_id.to_string(),
             name: req.name,
@@ -194,6 +206,7 @@ impl EvalService {
             target: target_json,
             tags: req.tags.unwrap_or_default(),
             conversation: serde_json::to_value(&req.conversation)?,
+            post: post_json,
             scorers: serde_json::to_value(&req.scorers)?,
             max_turns: req.max_turns.map(|v| v as i32),
             timeout_seconds: req.timeout_seconds.map(|v| v as i32),
@@ -260,12 +273,15 @@ impl EvalService {
 
         let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
+        let post_json = req.post.map(serde_json::to_value).transpose()?;
+
         let input = UpdateEvalCaseRow {
             name: req.name,
             description: req.description,
             target: target_json,
             tags: req.tags,
             conversation: req.conversation.map(serde_json::to_value).transpose()?,
+            post: post_json,
             scorers: req.scorers.map(serde_json::to_value).transpose()?,
             max_turns: req.max_turns.map(|v| v as i32),
             timeout_seconds: req.timeout_seconds.map(|v| v as i32),
@@ -375,6 +391,11 @@ impl EvalService {
                 target_snapshot: Some(resolved_json),
             };
             self.db.create_eval_case_result(result_input).await?;
+        }
+
+        // Dispatch background execution if run context is available
+        if let Some(run_ctx) = &self.run_context {
+            spawn_eval_run(run_ctx.clone(), caller.org_id, run_row.id);
         }
 
         Ok(run_row_to_run(run_row, vec![]))
@@ -538,6 +559,7 @@ fn case_row_to_case(row: crate::storage::models::EvalCaseRow) -> EvalCase {
         target,
         tags: row.tags,
         conversation: serde_json::from_value(row.conversation).unwrap_or_default(),
+        post: row.post.and_then(|v| serde_json::from_value(v).ok()),
         scorers: serde_json::from_value(row.scorers).unwrap_or_default(),
         max_turns: row.max_turns.map(|v| v as u32),
         timeout_seconds: row.timeout_seconds.map(|v| v as u32),
