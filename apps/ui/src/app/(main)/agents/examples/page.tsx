@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { useAgentExamples, useAdoptAgentExample, useCapabilities } from "@/hooks";
+import { useAgentExamples, useImportAgentExample, useCapabilities } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -15,22 +15,22 @@ export default function AllExamplesPage() {
   const [exampleSearch, setExampleSearch] = useState("");
   const { data: allCapabilities } = useCapabilities();
   const { data: examples, isLoading, error } = useAgentExamples();
-  const adoptExample = useAdoptAgentExample();
-  const [adoptingSlug, setAdoptingSlug] = useState<string | null>(null);
+  const importExample = useImportAgentExample();
+  const [importingName, setImportingName] = useState<string | null>(null);
 
-  const handleUse = useCallback(
-    async (slug: string) => {
-      setAdoptingSlug(slug);
+  const handleImport = useCallback(
+    async (name: string) => {
+      setImportingName(name);
       try {
-        const agent = await adoptExample.mutateAsync(slug);
+        const agent = await importExample.mutateAsync(name);
         router.push(`/agents/${agent.id}`);
       } catch (err) {
-        console.error("Failed to use example:", err);
+        console.error("Failed to import example:", err);
       } finally {
-        setAdoptingSlug(null);
+        setImportingName(null);
       }
     },
-    [adoptExample, router],
+    [importExample, router],
   );
 
   const filteredExamples = useMemo(() => {
@@ -38,6 +38,7 @@ export default function AllExamplesPage() {
     const query = exampleSearch.toLowerCase();
     return examples.filter(
       (ex) =>
+        ex.display_name.toLowerCase().includes(query) ||
         ex.name.toLowerCase().includes(query) ||
         ex.description.toLowerCase().includes(query) ||
         ex.tags.some((tag) => tag.toLowerCase().includes(query)),
@@ -83,11 +84,11 @@ export default function AllExamplesPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {items.map((example, index) => (
               <ExampleCard
-                key={example.slug ?? `example-${index}`}
+                key={example.name ?? `example-${index}`}
                 example={example}
                 allCapabilities={allCapabilities}
-                onUse={handleUse}
-                adopting={adoptingSlug === example.slug}
+                onImport={handleImport}
+                adopting={importingName === example.name}
               />
             ))}
           </div>

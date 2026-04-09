@@ -15,8 +15,8 @@ use axum::{
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, ModelId};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, Caller, InitialFile, OrgRole,
-    ResourceConfigResponse, ToolDefinition, evaluate_policies_with,
+    Agent, AgentCapabilityConfig, AgentStatus, Caller, DeploymentGrade, InitialFile, OrgRole,
+    PlatformDefinition, ResourceConfigResponse, ToolDefinition, evaluate_policies_with,
 };
 
 use super::common::{
@@ -285,6 +285,8 @@ pub struct AppState {
     pub service: Arc<AgentService>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
+    pub grade: DeploymentGrade,
+    pub platform_definition: Arc<PlatformDefinition>,
 }
 
 impl AppState {
@@ -292,11 +294,15 @@ impl AppState {
         db: Arc<StorageBackend>,
         capability_service: Arc<CapabilityService>,
         auth: AuthState,
+        grade: DeploymentGrade,
+        platform_definition: Arc<PlatformDefinition>,
     ) -> Self {
         Self {
             service: Arc::new(AgentService::new(db)),
             capability_service,
             auth,
+            grade,
+            platform_definition,
         }
     }
 }
@@ -868,9 +874,23 @@ pub async fn export_agent(
         .unwrap())
 }
 
-/// POST /v1/agents/import - Import agent from Markdown, YAML, or JSON
+/// Query parameters for POST /v1/agents/import
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ImportAgentQuery {
+    /// Import from a built-in example by name (e.g. `dad-jokes-agent`).
+    /// When set, the request body is ignored.
+    #[serde(rename = "from-example")]
+    pub from_example: Option<String>,
+}
+
+/// POST /v1/agents/import - Import agent from file or built-in example
 ///
-/// Accepts agent definition in multiple formats:
+/// Two modes:
+/// 1. **From example** — `POST /v1/agents/import?from-example={name}` (body ignored)
+/// 2. **From file** — `POST /v1/agents/import` with a text body in Markdown/YAML/JSON
+///
+/// File mode accepts:
 /// - Markdown with YAML front matter (if starts with ---)
 /// - Pure YAML
 /// - Pure JSON
@@ -881,11 +901,14 @@ pub async fn export_agent(
 #[utoipa::path(
     post,
     path = "/v1/agents/import",
+    params(ImportAgentQuery),
     request_body(content = String, content_type = "text/plain"),
     responses(
         (status = 200, description = "Agent updated via import", body = Agent),
         (status = 201, description = "Agent imported successfully", body = Agent),
         (status = 400, description = "Invalid format or input exceeds limits", body = ErrorResponse),
+        (status = 404, description = "Example not found", body = ErrorResponse),
+        (status = 403, description = "High-risk capabilities require admin role", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "agents"
@@ -893,6 +916,129 @@ pub async fn export_agent(
 pub async fn import_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
+    Query(query): Query<ImportAgentQuery>,
+    body: String,
+) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+    // Branch: import from built-in example
+    if let Some(name) = query.from_example {
+        return import_from_example(org, &state, &name).await;
+    }
+
+    // Branch: import from file body
+    import_from_file(org, &state, body).await
+}
+
+/// Import an agent from a built-in example by name.
+async fn import_from_example(
+    org: ResolvedOrg,
+    state: &AppState,
+    name: &str,
+) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+    use crate::seed::SEED_AGENTS;
+
+    let seed = SEED_AGENTS
+        .iter()
+        .find(|s| s.name == name)
+        .ok_or_else(|| ErrorResponse::not_found(&format!("agent example '{name}'")))?;
+
+    // Check dev-only
+    if seed.dev_only && !state.grade.experimental_features_enabled() {
+        return Err(ErrorResponse::not_found(&format!("agent example '{name}'")));
+    }
+
+    // Check capabilities registered
+    let missing: Vec<&str> = seed
+        .capabilities
+        .iter()
+        .map(|c| c.id)
+        .filter(|id| !state.platform_definition.capability_registry().has(id))
+        .collect();
+    if !missing.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Example requires unregistered capabilities: {missing:?}"),
+            }),
+        ));
+    }
+
+    let capabilities: Vec<AgentCapabilityConfig> = seed
+        .capabilities
+        .iter()
+        .map(|cap| {
+            let config = cap.config.map_or_else(|| serde_json::json!({}), |f| f());
+            AgentCapabilityConfig::with_config(cap.id.to_string(), config)
+        })
+        .collect();
+
+    // TM-AGENT-005: High-risk capabilities require admin role
+    require_admin_for_high_risk(&org, &capabilities, &state.capability_service)?;
+
+    let caller = Caller::from(&org);
+
+    // If an agent with the same name exists, keep trying suffixed variants
+    // to avoid one-shot collisions and reduce failures under concurrency.
+    let unique_name = {
+        use rand::Rng;
+
+        let base = seed.name;
+        let mut selected = None;
+
+        for attempt in 0..10 {
+            let candidate = if attempt == 0 {
+                base.to_string()
+            } else {
+                let suffix: String = rand::rng()
+                    .sample_iter(&rand::distr::Alphanumeric)
+                    .take(5)
+                    .map(|c| (c as char).to_ascii_lowercase())
+                    .collect();
+                format!("{base}-{suffix}")
+            };
+
+            let available = state
+                .service
+                .check_name_available(&caller, &candidate, None)
+                .await
+                .map_err(|_| ErrorResponse::internal_error())?;
+
+            if available {
+                selected = Some(candidate);
+                break;
+            }
+        }
+
+        selected.ok_or_else(ErrorResponse::internal_error)?
+    };
+
+    let req = CreateAgentRequest {
+        id: None,
+        name: unique_name,
+        display_name: Some(seed.display_name.to_string()),
+        description: Some(seed.description.to_string()),
+        system_prompt: seed.system_prompt.to_string(),
+        default_model_id: None,
+        tags: seed.tags.iter().map(|s| s.to_string()).collect(),
+        capabilities,
+        initial_files: vec![],
+        tools: vec![],
+        network_access: None,
+        max_iterations: None,
+    };
+
+    let agent = state
+        .service
+        .create(&caller, None, req)
+        .await
+        .map_policy_or_internal("import agent from example")?;
+
+    Ok((StatusCode::CREATED, Json(agent)))
+}
+
+/// Import an agent from a file body (Markdown/YAML/JSON).
+async fn import_from_file(
+    org: ResolvedOrg,
+    state: &AppState,
     body: String,
 ) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
     // Validate import file size (last-resort protection against abuse)

@@ -2,7 +2,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listAgentExamples, adoptAgentExample } from "@/lib/api/agent-examples";
+import { listAgentExamples, importAgentExample } from "@/lib/api/agent-examples";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 
@@ -22,11 +22,11 @@ export function useAgentExamples() {
   };
 }
 
-export function useAdoptAgentExample() {
+export function useImportAgentExample() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (slug: string) => adoptAgentExample(slug),
+    mutationFn: (name: string) => importAgentExample(name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
