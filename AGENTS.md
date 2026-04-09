@@ -83,6 +83,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
 - `specs/scheduled-tasks.md` - Cron-based scheduled tasks for durable engine
 - `specs/fail-rs-testing.md` - Failure injection testing with fail-rs
+- `specs/agent-reliability-tests.md` - Agent execution reliability tests (worker crash, CP restart, network partitions)
 - `specs/authentication.md` - Authentication modes and OAuth
 - `specs/integrations.md` - **Integration specs index** (links to specs co-located with their crates)
 - `specs/braintrust-integration.md` - Braintrust observability

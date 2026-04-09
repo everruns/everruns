@@ -294,6 +294,13 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
+        #[cfg(feature = "failpoints")]
+        fail_point!("postgres_load_events_after_query", |_| {
+            Err(StoreError::Database(
+                "injected: after load events query".into(),
+            ))
+        });
+
         let mut events = Vec::with_capacity(rows.len());
         for row in rows {
             let seq: i32 = row.get::<i32, _>("sequence_num");
@@ -634,6 +641,13 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             error!("Failed to enqueue task: {}", e);
             StoreError::Database(e.to_string())
         })?;
+
+        #[cfg(feature = "failpoints")]
+        fail_point!("postgres_enqueue_task_after_insert", |_| {
+            Err(StoreError::Database(
+                "injected: after enqueue insert".into(),
+            ))
+        });
 
         debug!(%task_id, activity_type = %task.activity_type, "enqueued task");
         Ok(task_id)
@@ -1123,6 +1137,13 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         })?;
 
         let reclaimed_ids: Vec<Uuid> = rows.iter().map(|r| r.get("id")).collect();
+
+        #[cfg(feature = "failpoints")]
+        fail_point!("postgres_reclaim_stale_after_update", |_| {
+            Err(StoreError::Database(
+                "injected: after reclaim update".into(),
+            ))
+        });
 
         if !reclaimed_ids.is_empty() || !dead_tasks.is_empty() {
             debug!(
