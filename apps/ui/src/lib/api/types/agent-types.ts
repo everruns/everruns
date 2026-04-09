@@ -113,7 +113,10 @@ export type HarnessStatus = "active" | "archived" | "deleted";
 
 export interface Harness {
   id: string;
+  /** Addressable name (slug): lowercase alphanumeric and hyphens (e.g. "my-harness") */
   name: string;
+  /** Human-readable display name shown in UI. Falls back to name when absent. */
+  display_name: string | null;
   description: string | null;
   system_prompt: string;
   parent_harness_id: string | null;
@@ -134,7 +137,10 @@ export interface Harness {
 }
 
 export interface CreateHarnessRequest {
+  /** Addressable name (slug): lowercase alphanumeric and hyphens */
   name: string;
+  /** Human-readable display name shown in UI */
+  display_name?: string;
   description?: string;
   system_prompt: string;
   parent_harness_id?: string;
@@ -148,7 +154,10 @@ export interface CreateHarnessRequest {
 }
 
 export interface UpdateHarnessRequest {
+  /** Addressable name (slug): lowercase alphanumeric and hyphens */
   name?: string;
+  /** Human-readable display name shown in UI */
+  display_name?: string;
   description?: string;
   system_prompt?: string;
   parent_harness_id?: string | null;

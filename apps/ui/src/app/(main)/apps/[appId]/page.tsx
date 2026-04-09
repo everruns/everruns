@@ -755,7 +755,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                     >
                       {getEntityReferenceLabel({
                         kind: "Harness",
-                        name: harness?.name,
+                        name: getDisplayName(harness),
                         status: harness?.status ?? "deleted",
                       })}
                     </p>

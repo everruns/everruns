@@ -10,7 +10,11 @@ import { CopyButton } from "@/components/ui/copy-button";
 import type { Harness, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import {
+  getDisplayName,
+  getEntityNameClassName,
+  getEntityStatusBadgeVariant,
+} from "@/lib/entity-lifecycle";
 
 interface HarnessCardProps {
   harness: Harness;
@@ -36,7 +40,7 @@ export function HarnessCard({
         <div className="flex items-center gap-2">
           <CardTitle className={`text-lg ${getEntityNameClassName(harness.status)}`}>
             <Link href={`/harnesses/${harness.id}`} className="hover:underline">
-              {harness.name}
+              {getDisplayName(harness)}
             </Link>
           </CardTitle>
           <CopyButton value={harness.id} />
