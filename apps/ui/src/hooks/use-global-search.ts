@@ -369,7 +369,16 @@ export function useGlobalSearch(query: string) {
     let harnessCount = 0;
     for (const harness of harnesses) {
       if (harnessCount >= MAX_PER_CATEGORY) break;
-      if (matchesTokens(tokens, harness.name, harness.display_name, harness.description, harness.id, "harness")) {
+      if (
+        matchesTokens(
+          tokens,
+          harness.name,
+          harness.display_name,
+          harness.description,
+          harness.id,
+          "harness",
+        )
+      ) {
         const harnessDisplayName = getDisplayName(harness);
         results.push({
           id: `harness:${harness.id}`,

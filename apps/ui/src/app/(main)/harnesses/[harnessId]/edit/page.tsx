@@ -504,7 +504,8 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                   <div>
                     <p className="text-sm font-medium">Parent Harness</p>
                     <p className="text-sm text-muted-foreground">
-                      {(getDisplayName(selectedParentHarness) || formData.parent_harness_id) ||
+                      {getDisplayName(selectedParentHarness) ||
+                        formData.parent_harness_id ||
                         "(none)"}
                     </p>
                   </div>
@@ -535,8 +536,8 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
           <DialogHeader>
             <DialogTitle>Delete Harness</DialogTitle>
             <DialogDescription>
-              Permanently delete the archived harness &quot;{getDisplayName(harness)}&quot;? Existing
-              references will render as deleted tombstones.
+              Permanently delete the archived harness &quot;{getDisplayName(harness)}&quot;?
+              Existing references will render as deleted tombstones.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -113,7 +113,9 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <span className={getEntityNameClassName(harness.status)}>{getDisplayName(harness)}</span>
+            <span className={getEntityNameClassName(harness.status)}>
+              {getDisplayName(harness)}
+            </span>
             <CopyButton value={harness.id} />
             {harness.is_built_in && <Badge variant="outline">Built-in</Badge>}
             <Badge variant={getEntityStatusBadgeVariant(harness.status)}>{harness.status}</Badge>

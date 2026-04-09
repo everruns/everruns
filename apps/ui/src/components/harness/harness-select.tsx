@@ -60,7 +60,7 @@ export function HarnessSelect({
   // show "Loading…" instead of the raw ID (EVE-142).
   // When no value is set and includeNoneOption is true, show the noneLabel.
   const displayValue = value
-    ? (getDisplayName(harnessMap.get(value)) || (filteredHarnesses.length === 0 ? "Loading…" : value))
+    ? getDisplayName(harnessMap.get(value)) || (filteredHarnesses.length === 0 ? "Loading…" : value)
     : includeNoneOption
       ? noneLabel
       : undefined;
