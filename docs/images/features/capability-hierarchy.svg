@@ -41,5 +41,5 @@
   <!-- Right-side arrow: Agent → Session (merges into) -->
   <line x1="590" y1="177" x2="590" y2="98" stroke="#0A1636" stroke-width="1.5"/>
   <polygon points="586,102 590,93 594,102" fill="#0A1636"/>
-  <text x="600" y="143" class="arrow-label">merges into</text>
+  <text x="600" y="148" class="arrow-label">merges into</text>
 </svg>
