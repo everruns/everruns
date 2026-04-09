@@ -2037,6 +2037,10 @@ impl StorageBackend {
         dispatch!(self, list_eval_cases, eval_id)
     }
 
+    pub async fn get_eval_case(&self, id: Uuid) -> Result<Option<EvalCaseRow>> {
+        dispatch!(self, get_eval_case, id)
+    }
+
     pub async fn get_eval_case_by_public_id(
         &self,
         eval_id: Uuid,

@@ -15,6 +15,7 @@ use crate::api::common::{
 };
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::EvalService;
+use crate::services::eval_runner::EvalRunContext;
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
 use std::sync::Arc;
@@ -39,6 +40,11 @@ impl AppState {
             service: Arc::new(EvalService::new(db)),
             auth,
         }
+    }
+
+    pub fn with_run_context(mut self, ctx: Arc<EvalRunContext>) -> Self {
+        self.service = Arc::new(EvalService::new(ctx.db.clone()).with_run_context(ctx));
+        self
     }
 }
 
@@ -89,6 +95,9 @@ pub struct CreateEvalCaseRequest {
     #[serde(default)]
     pub tags: Option<Vec<String>>,
     pub conversation: Vec<EvalInputMessage>,
+    /// Verification messages sent after conversation completes and session idles.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post: Option<Vec<EvalInputMessage>>,
     pub scorers: Vec<Scorer>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_turns: Option<u32>,
@@ -112,6 +121,9 @@ pub struct UpdateEvalCaseRequest {
     pub tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation: Option<Vec<EvalInputMessage>>,
+    /// Verification messages sent after conversation completes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post: Option<Vec<EvalInputMessage>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scorers: Option<Vec<Scorer>>,
     #[serde(skip_serializing_if = "Option::is_none")]

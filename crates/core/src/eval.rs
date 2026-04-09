@@ -392,6 +392,10 @@ pub struct EvalCase {
     pub tags: Vec<String>,
     /// Input messages sent sequentially.
     pub conversation: Vec<EvalInputMessage>,
+    /// Verification messages sent after conversation completes and session idles.
+    /// Scorers run after post messages complete (not after conversation).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post: Option<Vec<EvalInputMessage>>,
     /// Scoring rules.
     pub scorers: Vec<Scorer>,
     /// Max agent turns (default: 10).

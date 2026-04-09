@@ -11,6 +11,7 @@ mod budget_tests;
 pub mod capability;
 pub(crate) mod capability_validation;
 pub mod eval;
+pub mod eval_runner;
 pub mod event;
 pub mod harness;
 pub mod leased_resource;

@@ -578,7 +578,18 @@ impl ServerAppBuilder {
         );
         let apps_state =
             api::apps::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
-        let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone());
+        let eval_run_ctx = Arc::new(services::eval_runner::EvalRunContext {
+            db: db.clone(),
+            session_service: Arc::new(services::SessionService::new(db.clone())),
+            message_service: Arc::new(services::MessageService::new(
+                db.clone(),
+                runner.clone(),
+                notifications_enabled,
+                event_delivery.clone(),
+            )),
+        });
+        let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())
+            .with_run_context(eval_run_ctx);
         let slack_state = api::slack_events::SlackState::new(
             db.clone(),
             encryption.clone(),

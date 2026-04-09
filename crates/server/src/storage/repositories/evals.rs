@@ -141,9 +141,9 @@ impl Database {
     ) -> Result<EvalCaseRow> {
         let row = sqlx::query_as::<_, EvalCaseRow>(
             r#"
-            INSERT INTO eval_cases (eval_id, public_id, name, description, target, tags, conversation, scorers, max_turns, timeout_seconds, position)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, scorers,
+            INSERT INTO eval_cases (eval_id, public_id, name, description, target, tags, conversation, post, scorers, max_turns, timeout_seconds, position)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, post, scorers,
                       max_turns, timeout_seconds, position, created_at, updated_at
             "#,
         )
@@ -154,6 +154,7 @@ impl Database {
         .bind(&input.target)
         .bind(&input.tags)
         .bind(&input.conversation)
+        .bind(&input.post)
         .bind(&input.scorers)
         .bind(input.max_turns)
         .bind(input.timeout_seconds)
@@ -166,7 +167,7 @@ impl Database {
     pub async fn list_eval_cases(&self, eval_id: Uuid) -> Result<Vec<EvalCaseRow>> {
         let rows = sqlx::query_as::<_, EvalCaseRow>(
             r#"
-            SELECT id, eval_id, public_id, name, description, target, tags, conversation, scorers,
+            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, scorers,
                    max_turns, timeout_seconds, position, created_at, updated_at
             FROM eval_cases
             WHERE eval_id = $1
@@ -179,6 +180,21 @@ impl Database {
         Ok(rows)
     }
 
+    pub async fn get_eval_case(&self, id: Uuid) -> Result<Option<EvalCaseRow>> {
+        let row = sqlx::query_as::<_, EvalCaseRow>(
+            r#"
+            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, scorers,
+                   max_turns, timeout_seconds, position, created_at, updated_at
+            FROM eval_cases
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
     pub async fn get_eval_case_by_public_id(
         &self,
         eval_id: Uuid,
@@ -186,7 +202,7 @@ impl Database {
     ) -> Result<Option<EvalCaseRow>> {
         let row = sqlx::query_as::<_, EvalCaseRow>(
             r#"
-            SELECT id, eval_id, public_id, name, description, target, tags, conversation, scorers,
+            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, scorers,
                    max_turns, timeout_seconds, position, created_at, updated_at
             FROM eval_cases
             WHERE eval_id = $1 AND public_id = $2
@@ -213,13 +229,14 @@ impl Database {
                 target = COALESCE($4, target),
                 tags = COALESCE($5, tags),
                 conversation = COALESCE($6, conversation),
-                scorers = COALESCE($7, scorers),
-                max_turns = COALESCE($8, max_turns),
-                timeout_seconds = COALESCE($9, timeout_seconds),
-                position = COALESCE($10, position),
+                post = COALESCE($7, post),
+                scorers = COALESCE($8, scorers),
+                max_turns = COALESCE($9, max_turns),
+                timeout_seconds = COALESCE($10, timeout_seconds),
+                position = COALESCE($11, position),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, scorers,
+            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, post, scorers,
                       max_turns, timeout_seconds, position, created_at, updated_at
             "#,
         )
@@ -229,6 +246,7 @@ impl Database {
         .bind(&input.target)
         .bind(&input.tags)
         .bind(&input.conversation)
+        .bind(&input.post)
         .bind(&input.scorers)
         .bind(input.max_turns)
         .bind(input.timeout_seconds)
