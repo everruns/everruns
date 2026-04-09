@@ -38,6 +38,7 @@ import {
   Cog,
 } from "lucide-react";
 import { capabilityIconMap } from "@/lib/capability-icons";
+import { McpConnectButton } from "@/components/layout/mcp-connect-button";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { useCommandPalette } from "@/hooks/use-command-palette";
 import { useLlmProviders } from "@/hooks/use-llm-providers";
@@ -163,7 +164,10 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
           <Image src="/logo.svg" alt="Everruns" width={32} height={32} />
           <span className="text-xl font-bold">Everruns</span>
         </Link>
-        {featureFlags.notifications && <NotificationBell />}
+        <div className="flex items-center gap-1">
+          <McpConnectButton />
+          {featureFlags.notifications && <NotificationBell />}
+        </div>
       </div>
 
       <SidebarOrganizationMenu
