@@ -37,6 +37,21 @@ pub struct EvalService {
     db: Arc<StorageBackend>,
 }
 
+/// Validates an EvalTarget if present. Returns error on invalid combinations.
+fn validate_target(target: &Option<EvalTarget>) -> Result<()> {
+    if let Some(EvalTarget::Session {
+        harness_id,
+        harness_name,
+        ..
+    }) = target
+        && harness_id.is_some()
+        && harness_name.is_some()
+    {
+        anyhow::bail!("harness_id and harness_name are mutually exclusive in eval target");
+    }
+    Ok(())
+}
+
 impl EvalService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self { db }
@@ -48,6 +63,8 @@ impl EvalService {
 
     #[policy(EVAL_MANAGE)]
     pub async fn create(&self, caller: &Caller, req: CreateEvalRequest) -> Result<Eval> {
+        validate_target(&req.target)?;
+
         let internal_uuid = Uuid::now_v7();
         let public_id = EvalId::from_uuid(internal_uuid);
 
@@ -103,6 +120,8 @@ impl EvalService {
         public_id: &str,
         req: UpdateEvalRequest,
     ) -> Result<Option<Eval>> {
+        validate_target(&req.target)?;
+
         let existing = self
             .db
             .get_eval_by_public_id(caller.org_id, public_id)
@@ -153,6 +172,8 @@ impl EvalService {
         eval_public_id: &str,
         req: CreateEvalCaseRequest,
     ) -> Result<EvalCase> {
+        validate_target(&req.target)?;
+
         let eval = self
             .db
             .get_eval_by_public_id(caller.org_id, eval_public_id)
@@ -223,6 +244,8 @@ impl EvalService {
         case_public_id: &str,
         req: UpdateEvalCaseRequest,
     ) -> Result<Option<EvalCase>> {
+        validate_target(&req.target)?;
+
         let eval = self
             .db
             .get_eval_by_public_id(caller.org_id, eval_public_id)
@@ -287,6 +310,8 @@ impl EvalService {
         eval_public_id: &str,
         req: CreateEvalRunRequest,
     ) -> Result<EvalRun> {
+        validate_target(&req.target)?;
+
         let eval = self
             .db
             .get_eval_by_public_id(caller.org_id, eval_public_id)
@@ -316,28 +341,38 @@ impl EvalService {
             .and_then(|v| serde_json::from_value(v.clone()).ok());
         let run_target: Option<EvalTarget> = req.target.clone();
 
-        // Create pending case results for each case, resolving target per case
+        // Create pending case results for each case, resolving target per case.
+        // target_snapshot must always store a concrete resolved target so results
+        // remain reproducible and do not depend on future default changes.
         let cases = self.db.list_eval_cases(eval.id).await?;
         for case in &cases {
             let result_uuid = Uuid::now_v7();
             let result_public_id = EvalResultId::from_uuid(result_uuid);
 
-            // Resolve target: run → case → eval
+            // Resolve target: run → case → eval. Fail if nothing resolved.
             let case_target: Option<EvalTarget> = case
                 .target
                 .as_ref()
                 .and_then(|v| serde_json::from_value(v.clone()).ok());
 
-            let resolved = run_target.clone().or(case_target).or(eval_target.clone());
+            let resolved = run_target
+                .clone()
+                .or(case_target)
+                .or(eval_target.clone())
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "no eval target configured — set a target on the eval, case, or run"
+                    )
+                })?;
 
-            let resolved_json = resolved.as_ref().map(serde_json::to_value).transpose()?;
+            let resolved_json = serde_json::to_value(&resolved)?;
 
             let result_input = CreateEvalCaseResultRow {
                 public_id: result_public_id.to_string(),
                 eval_run_id: run_row.id,
                 eval_case_id: case.id,
-                target: resolved_json.clone(),
-                target_snapshot: resolved_json,
+                target: Some(resolved_json.clone()),
+                target_snapshot: Some(resolved_json),
             };
             self.db.create_eval_case_result(result_input).await?;
         }

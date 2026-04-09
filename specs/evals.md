@@ -27,7 +27,7 @@ Each eval case creates a real session with the target agent and harness. Failed 
 
 Defines how to instantiate a session for eval cases. Two variants:
 
-- **`session`**: Mirrors `CreateSessionRequest` — `harness_id` or `harness_name` (optional, defaults to org default), `agent_id`, `model_id`, `system_prompt`, `max_iterations`. Full control over session setup.
+- **`session`**: Mirrors `CreateSessionRequest` — `harness_id` and `harness_name` are optional but mutually exclusive (if both are provided, validation fails; if neither, the org default harness is used). Other fields: `agent_id`, `model_id`, `system_prompt`, `max_iterations`. Full control over session setup.
 - **`app`**: Reference to a deployed App — `app_id`. Session created via the app's configuration.
 
 **Resolution order**: `EvalRun.target` → `EvalCase.target` → `Eval.target` → org default harness.
@@ -71,8 +71,8 @@ A single execution of all (or a tagged subset of) cases in an eval.
 The outcome of a single case within a run.
 
 - Links to the actual session created for this case (browsable in UI)
-- `target`: resolved EvalTarget used (live reference, may change if eval is edited)
-- `target_snapshot`: frozen copy of the resolved target at execution time (immutable, for reproducibility)
+- `target`: resolved EvalTarget at execution time (always concrete, never NULL)
+- `target_snapshot`: identical frozen copy for immutability (both set at run creation, both equal initially; `target_snapshot` must never be overwritten)
 - Contains per-scorer scores with pass/fail, value (0.0–1.0), and reason
 - Captures efficiency metrics: turn count, latency, token usage
 
@@ -179,8 +179,8 @@ See `crates/core/src/eval.rs` for full field definitions.
 | `eval_run_id` | UUID | FK to parent run |
 | `eval_case_id` | UUID | FK to the case |
 | `session_id` | Option\<UUID\> | FK to session created for this case |
-| `target` | Option\<EvalTarget\> | Resolved target (live reference, JSONB) |
-| `target_snapshot` | Option\<EvalTarget\> | Frozen target at execution time (JSONB) |
+| `target` | EvalTarget | Resolved target at execution time (JSONB, always concrete) |
+| `target_snapshot` | EvalTarget | Frozen copy of resolved target (JSONB, immutable) |
 | `status` | CaseResultStatus | `pending`, `running`, `passed`, `failed`, `errored`, `timeout` |
 | `scores` | Option\<Map\<String, Score\>\> | Per-scorer results (JSONB) |
 | `turns` | Option\<u32\> | Turn count |
