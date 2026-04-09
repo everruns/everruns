@@ -16,8 +16,6 @@
   <text x="95" y="35" text-anchor="middle" class="header-text">CLIENT</text>
   <text x="385" y="35" text-anchor="middle" class="header-text">PLATFORM</text>
   <text x="730" y="35" text-anchor="middle" class="header-text">PROVIDERS</text>
-  <text x="335" y="142" text-anchor="middle" class="header-text">OPTIONAL</text>
-
   <!-- Your Application box -->
   <rect x="30" y="50" width="130" height="60" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
   <text x="95" y="75" text-anchor="middle" class="label">Your Application</text>
@@ -39,9 +37,10 @@
   <text x="730" y="93" text-anchor="middle" class="sublabel">OpenAI / Anthropic</text>
 
   <!-- Management UI box -->
-  <rect x="280" y="155" width="110" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
-  <text x="335" y="177" text-anchor="middle" class="label">Management UI</text>
-  <text x="335" y="193" text-anchor="middle" class="sublabel">Admin console</text>
+  <text x="340" y="148" text-anchor="middle" class="header-text">OPTIONAL</text>
+  <rect x="275" y="158" width="130" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="340" y="180" text-anchor="middle" class="label">Management UI</text>
+  <text x="340" y="196" text-anchor="middle" class="sublabel">Admin console</text>
 
   <!-- Arrow 1: Your Application -> Control Plane -->
   <line x1="160" y1="80" x2="242" y2="80" stroke="#0A1636" stroke-width="1.5"/>
@@ -65,7 +64,7 @@
   <text x="640" y="68" text-anchor="middle" class="arrow-label">LLM calls</text>
 
   <!-- Dashed connector: Management UI -> Control Plane (vertical up) -->
-  <line x1="335" y1="155" x2="335" y2="118" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
-  <polygon points="335,110 331,118 339,118" fill="#A0A0A0"/>
-  <text x="350" y="140" class="arrow-label">Admin</text>
+  <line x1="340" y1="158" x2="340" y2="118" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <polygon points="340,110 336,118 344,118" fill="#A0A0A0"/>
+  <text x="360" y="136" class="arrow-label">Admin</text>
 </svg>
