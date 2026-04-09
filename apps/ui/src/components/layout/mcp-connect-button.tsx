@@ -20,9 +20,13 @@ function CopySnippetButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard write can fail (permissions, insecure context) — silently ignore
+    }
   };
 
   return (
@@ -85,7 +89,7 @@ export function McpConnectButton() {
 
         <div className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-sm font-medium">MCP Server URL</label>
+            <p className="mb-1.5 text-sm font-medium">MCP Server URL</p>
             <div className="relative">
               <code className="block overflow-x-auto border bg-muted px-3 py-2 pr-9 text-sm">
                 {mcpUrl}
@@ -95,7 +99,7 @@ export function McpConnectButton() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Quick Setup</label>
+            <p className="mb-1.5 text-sm font-medium">Quick Setup</p>
             <p className="mb-2 text-sm text-muted-foreground">
               Add this to your MCP client config:
             </p>
