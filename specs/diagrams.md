@@ -1,6 +1,6 @@
 # Diagram Specification
 
-Style guide for technical diagrams in documentation. All diagrams follow the Everruns brand system (see `specs/brand.md`) and are hand-authored SVG.
+Style guide for technical diagrams in documentation. All diagrams follow the Everruns brand system (see `specs/brand.md`) and are hand-authored SVGs.
 
 Adopted from [`everruns/landing/specs/diagrams.md`](https://github.com/everruns/landing/blob/main/specs/diagrams.md).
 

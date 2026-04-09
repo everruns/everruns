@@ -31,27 +31,13 @@
   <line x1="500" y1="60" x2="500" y2="605" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
   <line x1="700" y1="60" x2="700" y2="605" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
 
-  <!-- Arrowhead marker definitions -->
-  <defs>
-    <marker id="arrow-right" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <polygon points="0,0 8,3 0,6" fill="#0A1636"/>
-    </marker>
-    <marker id="arrow-left" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto">
-      <polygon points="8,0 0,3 8,6" fill="#0A1636"/>
-    </marker>
-    <marker id="arrow-right-gray" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <polygon points="0,0 8,3 0,6" fill="#A0A0A0"/>
-    </marker>
-    <marker id="arrow-left-gray" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto">
-      <polygon points="8,0 0,3 8,6" fill="#A0A0A0"/>
-    </marker>
-  </defs>
 
   <!-- Step 1: App -> API: client.messages.create() -->
   <g transform="translate(0, 80)">
     <rect x="91" y="-9" width="18" height="18" fill="#0A1636"/>
     <text x="100" y="5" text-anchor="middle" class="step-num">1</text>
-    <line x1="112" y1="0" x2="292" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-right)"/>
+    <line x1="112" y1="0" x2="292" y2="0" stroke="#0A1636" stroke-width="1.5"/>
+    <polygon points="287,-5 297,0 287,5" fill="#0A1636"/>
     <text x="200" y="-6" text-anchor="middle" class="arrow-label">client.messages.create()</text>
   </g>
 
