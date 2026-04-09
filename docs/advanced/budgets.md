@@ -7,25 +7,7 @@ sidebar:
 
 Budgets let you cap how much a session (or agent, user, or organization) can spend. When a session hits its budget, Everruns stops scheduling further LLM calls. This prevents runaway costs from long-running or misbehaving agents.
 
-```
-┌──────────────────────────────────────────────────────┐
-│                    Budget                             │
-│                                                      │
-│  subject: session | agent | user | org               │
-│  currency: usd | tokens | credits | custom           │
-│  limit: hard cap                                     │
-│  soft_limit: optional pause threshold                │
-│                                                      │
-│  ┌────────────────────────────────────────────────┐  │
-│  │ ░░░░░░░░░░░░░░████████████████████████████████ │  │
-│  │ ^              ^                              ^ │  │
-│  │ $0          soft_limit                    limit │  │
-│  │             (pauses)                    (stops) │  │
-│  └────────────────────────────────────────────────┘  │
-│                                                      │
-│  Ledger: append-only log of every debit/credit       │
-└──────────────────────────────────────────────────────┘
-```
+![Budget Structure](../images/advanced/budget-structure.svg)
 
 ## How It Works
 
@@ -212,29 +194,4 @@ When budget is running low, a budget-aware agent will prioritize completing curr
 
 ## Budget Lifecycle
 
-```
-                     create
-                       │
-                       ▼
-              ┌──────────────┐
-              │    active     │
-              └──────┬───────┘
-                     │
-         ┌───────────┼───────────┐
-         ▼           ▼           ▼
-   soft_limit     balance≤0   disabled
-   exceeded                   (deleted)
-         │           │
-         ▼           ▼
-   ┌──────────┐ ┌───────────┐
-   │  paused  │ │ exhausted │
-   └────┬─────┘ └─────┬─────┘
-        │              │
-        └──────┬───────┘
-          top-up / resume
-               │
-               ▼
-        ┌──────────────┐
-        │    active     │
-        └──────────────┘
-```
+![Budget Lifecycle](../images/advanced/budget-lifecycle.svg)

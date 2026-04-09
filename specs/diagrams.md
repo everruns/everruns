@@ -6,9 +6,15 @@ Adopted from [`everruns/landing/specs/diagrams.md`](https://github.com/everruns/
 
 ## Placement
 
-- **File format**: SVG
-- **Location**: `docs/images/<category>/<diagram-name>.svg`
+- **File format**: SVG (rendered), Mermaid `.mmd` (source of truth)
+- **Location**: `docs/images/<category>/<diagram-name>.svg` and `docs/images/<category>/<diagram-name>.mmd`
 - **Embedding**: `![alt text](../images/<category>/<diagram-name>.svg)` in markdown
+
+Every SVG diagram **must** have a co-located `.mmd` file containing the Mermaid source that describes the same content. The `.mmd` file is the **source of truth** for the diagram's information architecture — entity names, relationships, and flow. The hand-authored SVG is the rendered artifact that follows this visual spec. When updating a diagram, update the `.mmd` first, then regenerate/update the SVG to match.
+
+This separation means:
+- `.mmd` captures **what** the diagram shows (machine-readable, diffable, easy to update)
+- `.svg` captures **how** it looks (brand-compliant rendering per this spec)
 
 ## Dimensions
 

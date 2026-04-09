@@ -166,14 +166,4 @@ The system prompt is built from three layers, each wrapped in XML tags for clari
 
 The final system prompt merges all three, with the harness system prompt at the base.
 
-```
-┌──────────────────────────────┐
-│  Session Capabilities        │  (additive, per-session)
-├──────────────────────────────┤
-│  Agent Capabilities          │  (domain-specific)
-│  Agent System Prompt         │
-├──────────────────────────────┤
-│  Harness Capabilities        │  (foundation)
-│  Harness System Prompt       │
-└──────────────────────────────┘
-```
+![Capability Hierarchy](../images/features/capability-hierarchy.svg)

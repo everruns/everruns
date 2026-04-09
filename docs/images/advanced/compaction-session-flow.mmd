@@ -1,0 +1,12 @@
+graph TD
+    DB["500 messages in database"]
+    IC["Infinity Context<br/>Load recent ~100k tokens"]
+    Check{"Exceeds 85% of<br/>context window?"}
+    No["Send to LLM as-is"]
+    Yes["Run cascade:<br/>Mask → Compact → Summarize → Trim"]
+    QH["Trimmed messages queryable<br/>via query_history"]
+    DB --> IC
+    IC --> Check
+    Check -->|No| No
+    Check -->|Yes| Yes
+    Yes --> QH

@@ -1,0 +1,15 @@
+graph TD
+    Start([Message received]) --> Input[InputAtom<br/>Load user message]
+    Input --> Reason[ReasonAtom<br/>Call LLM with context]
+    Reason --> Decision{Tool calls<br/>in response?}
+    Decision -->|Yes| Act[ActAtom<br/>Execute tools in parallel]
+    Act --> Reason
+    Decision -->|No| Done([Turn complete<br/>Agent response emitted])
+
+    classDef atom fill:#bde0fe,stroke:#3a86a8,color:#023047
+    classDef decision fill:#ffd6a5,stroke:#e07b39,color:#5a3000
+    classDef terminal fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
+
+    class Input,Reason,Act atom
+    class Decision decision
+    class Start,Done terminal

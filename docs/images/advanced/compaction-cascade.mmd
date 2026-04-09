@@ -1,0 +1,7 @@
+graph TD
+    S1[Observation Masking] -->|still over budget?| S2[Native Provider Compaction]
+    S2 -->|still over budget?| S3[Summarization]
+    S3 -->|still over budget?| S4[Aggressive Trim]
+    S1 -->|fits| Done1[Done]
+    S2 -->|fits| Done2[Done]
+    S3 -->|fits| Done3[Done]

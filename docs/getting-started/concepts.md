@@ -112,9 +112,7 @@ The loop runs for a maximum of **10 iterations** per turn to prevent runaway exe
 
 In production mode (PostgreSQL-backed), each step is a separate durable task:
 
-```
-SetupStep → ExecuteLlmStep → ExecuteToolStep(s) → ExecuteLlmStep → ... → FinalizeStep
-```
+![Durable Execution Pipeline](../images/concepts/durable-execution-pipeline.svg)
 
 If a worker crashes mid-turn, the control plane detects the missed heartbeat and re-queues the task for another worker. Your application sees a brief delay, not a failure.
 

@@ -1,0 +1,11 @@
+erDiagram
+    Session ||--o{ Turn : "contains"
+    Session ||--o{ Event : "append-only log"
+    Session ||--|{ FileSystem : "isolated"
+    Session ||--|{ KeyValueStore : "isolated"
+
+    Turn ||--o{ Event : "emits"
+
+    Event ||--o{ Message : "reconstructs"
+
+    Message ||--o{ ContentPart : "contains"

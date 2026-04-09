@@ -1,0 +1,7 @@
+graph LR
+    subgraph Context["Context Window"]
+        SP["System Prompt<br/>(always kept)"]
+        CS["Conversation Summary<br/>(cold tier replaced)"]
+        RM["Recent Messages<br/>(hot tier verbatim)"]
+    end
+    SP --- CS --- RM

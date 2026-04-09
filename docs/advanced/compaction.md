@@ -9,20 +9,7 @@ Long-running agent sessions accumulate messages until they exceed the model's co
 
 Everruns provides multiple compaction strategies that can be combined. The default `auto` strategy cascades through all of them in order — from cheapest (free) to most expensive (LLM call) — stopping as soon as the context fits.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Context Window                       │
-│                                                         │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │  System      │  │  Conversation │  │  Recent       │  │
-│  │  Prompt      │  │  Summary      │  │  Messages     │  │
-│  │  (always     │  │  (cold tier   │  │  (hot tier    │  │
-│  │   kept)      │  │   replaced)   │  │   verbatim)   │  │
-│  └─────────────┘  └──────────────┘  └───────────────┘  │
-│                                                         │
-│  ◄──────── Compaction fills this budget ────────────►   │
-└─────────────────────────────────────────────────────────┘
-```
+![Context Window](../images/advanced/context-window.svg)
 
 ## How It Works
 
@@ -34,19 +21,7 @@ Compaction operates at two points:
 
 In both cases, the same cascade of strategies executes:
 
-```
-Step 1: Observation Masking (free, instant)
-  └─ Replace old tool outputs with one-line summaries
-       ↓ still over budget?
-Step 2: Native Provider Compaction (if available)
-  └─ Call provider's compact endpoint (e.g., OpenAI /responses/compact)
-       ↓ still over budget?
-Step 3: Summarization (LLM call)
-  └─ Summarize older conversation turns into a structured summary
-       ↓ still over budget?
-Step 4: Aggressive Trim (last resort)
-  └─ Drop oldest messages to fit within the token budget
-```
+![Compaction Cascade](../images/advanced/compaction-cascade.svg)
 
 The UI shows a divider between messages whenever compaction happens:
 
@@ -101,29 +76,7 @@ The built-in **Generic** harness enables both `compaction` and `infinity_context
 
 The flow for a long-running Generic session:
 
-```
-1. Session has 500 messages in the database
-       │
-       ▼
-2. Infinity Context loads only the most recent
-   messages that fit ~100k tokens
-       │
-       ▼
-3. Compaction checks: does the loaded context
-   exceed 85% of the model's window?
-       │
-   No ──► Send to LLM as-is
-       │
-   Yes ─► Run cascade:
-          a. Mask old tool outputs (free)
-          b. Native provider compaction (if available)
-          c. Summarize older turns (LLM call)
-          d. Aggressive trim (last resort)
-       │
-       ▼
-4. Messages trimmed or summarized away remain
-   queryable via `query_history`
-```
+![Compaction Session Flow](../images/advanced/compaction-session-flow.svg)
 
 No configuration is needed — creating a session with the Generic harness gives you this behavior out of the box. To customize, override either capability's config on the agent or session level.
 
@@ -261,22 +214,7 @@ Messages beyond hot + warm are in the **cold tier** — replaced with a conversa
 
 ## Memory Tier Diagram
 
-```
-                    Messages (oldest → newest)
-  ┌──────────────────┬───────────────────────┬───────────────┐
-  │   Cold Tier      │     Warm Tier         │   Hot Tier    │
-  │                  │                       │               │
-  │  Replaced with   │  Tool outputs masked  │  Full         │
-  │  [CONVERSATION_  │  with one-line        │  verbatim     │
-  │   SUMMARY]       │  summaries            │  content      │
-  │                  │                       │               │
-  │  Queryable via   │  Message structure    │  Always sent  │
-  │  query_history   │  preserved            │  to the LLM   │
-  │  (if Infinity    │                       │               │
-  │   Context on)    │                       │               │
-  └──────────────────┴───────────────────────┴───────────────┘
-       ◄── warm_messages ──►  ◄── hot_messages ──►
-```
+![Memory Tiers](../images/advanced/memory-tiers.svg)
 
 ## Combining with Infinity Context
 

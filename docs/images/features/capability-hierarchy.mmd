@@ -1,0 +1,6 @@
+graph BT
+    Harness["Harness<br/>Capabilities + System Prompt<br/>(foundation)"]
+    Agent["Agent<br/>Capabilities + System Prompt<br/>(domain-specific)"]
+    Session["Session<br/>Capabilities<br/>(additive, per-session)"]
+    Harness --> Agent
+    Agent --> Session
