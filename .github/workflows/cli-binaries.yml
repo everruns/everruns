@@ -132,8 +132,10 @@ jobs:
 
             on_linux do
               depends_on arch: :x86_64
-              url "${BASE_URL}/everruns-x86_64-unknown-linux-gnu.tar.gz"
-              sha256 "${SHA_LINUX}"
+              if Hardware::CPU.intel?
+                url "${BASE_URL}/everruns-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "${SHA_LINUX}"
+              end
             end
 
             def install
