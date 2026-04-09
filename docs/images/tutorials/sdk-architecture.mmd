@@ -1,0 +1,43 @@
+graph TB
+    subgraph Clients
+        App[Your App<br/>everruns-sdk]
+        UI[Everruns Web UI]
+    end
+
+    subgraph Control["Control Plane (Server)"]
+        REST["REST API<br/>:9301"]
+        GRPC["gRPC Server<br/>:9001"]
+        Services[Service Layer]
+        DB[(PostgreSQL)]
+    end
+
+    subgraph Workers
+        W1[Worker 1]
+        W2[Worker 2]
+    end
+
+    subgraph External
+        OpenAI[OpenAI]
+        Anthropic[Anthropic]
+    end
+
+    App -->|HTTP| REST
+    UI -->|HTTP| REST
+    REST --> Services
+    Services --> DB
+    GRPC --> Services
+
+    W1 -->|gRPC| GRPC
+    W2 -->|gRPC| GRPC
+    W1 --> OpenAI
+    W2 --> Anthropic
+
+    classDef client fill:#bde0fe,stroke:#3a86a8,color:#023047
+    classDef control fill:#ffd6a5,stroke:#e07b39,color:#5a3000
+    classDef worker fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
+    classDef ext fill:#e8e8e8,stroke:#999,color:#333
+
+    class App,UI client
+    class REST,GRPC,Services,DB control
+    class W1,W2 worker
+    class OpenAI,Anthropic ext

@@ -66,10 +66,7 @@ Each sprite gets a unique public URL. To expose a web service:
 
 ## Sprite Lifecycle
 
-```
-Created → Running → Hibernating (idle) → Running (on next command)
-                 ↘ Deleted (explicit)
-```
+![Sprite Lifecycle](../images/integrations/sprite-lifecycle.svg)
 
 - **Running**: Active, consuming compute resources
 - **Hibernating**: Idle, no compute charges, filesystem preserved on durable storage

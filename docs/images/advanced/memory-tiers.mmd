@@ -1,0 +1,7 @@
+graph LR
+    subgraph Messages["Messages (oldest → newest)"]
+        Cold["Cold Tier<br/>Replaced with CONVERSATION_SUMMARY<br/>Queryable via query_history"]
+        Warm["Warm Tier<br/>Tool outputs masked<br/>Message structure preserved"]
+        Hot["Hot Tier<br/>Full verbatim content<br/>Always sent to LLM"]
+    end
+    Cold --- Warm --- Hot

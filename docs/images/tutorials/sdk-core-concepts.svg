@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 410" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <rect width="800" height="410" fill="#FFFFFF"/>
+
+  <!-- Column headers -->
+  <text x="160" y="28" text-anchor="middle" class="header-text">CONFIGURATION</text>
+  <text x="415" y="28" text-anchor="middle" class="header-text">RUNTIME</text>
+  <text x="640" y="28" text-anchor="middle" class="header-text">DATA</text>
+
+  <!-- Harness box -->
+  <rect x="80" y="45" width="160" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="160" y="67" text-anchor="middle" class="label">Harness</text>
+  <text x="160" y="83" text-anchor="middle" class="sublabel">Environment template</text>
+
+  <!-- Agent box -->
+  <rect x="80" y="145" width="160" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="160" y="167" text-anchor="middle" class="label">Agent</text>
+  <text x="160" y="183" text-anchor="middle" class="sublabel">System prompt + capabilities</text>
+
+  <!-- Capability box -->
+  <rect x="330" y="145" width="170" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="415" y="167" text-anchor="middle" class="label">Capability</text>
+  <text x="415" y="183" text-anchor="middle" class="sublabel">Tools + prompt additions</text>
+
+  <!-- Session box -->
+  <rect x="330" y="250" width="170" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="415" y="272" text-anchor="middle" class="label">Session</text>
+  <text x="415" y="288" text-anchor="middle" class="sublabel">Conversation instance</text>
+
+  <!-- Turn box -->
+  <rect x="330" y="345" width="170" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="415" y="367" text-anchor="middle" class="label">Turn</text>
+  <text x="415" y="383" text-anchor="middle" class="sublabel">Reason → Act loop</text>
+
+  <!-- Event box -->
+  <rect x="570" y="345" width="150" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="645" y="367" text-anchor="middle" class="label">Event</text>
+  <text x="645" y="383" text-anchor="middle" class="sublabel">Immutable record</text>
+
+  <!-- Arrow: Harness → Agent (configures) -->
+  <line x1="160" y1="95" x2="160" y2="140" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="155,140 160,150 165,140" fill="#0A1636"/>
+  <text x="173" y="125" class="arrow-label">configures</text>
+
+  <!-- Arrow: Agent → Capability (has) -->
+  <line x1="240" y1="170" x2="325" y2="170" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="325,165 335,170 325,175" fill="#0A1636"/>
+  <text x="282" y="163" text-anchor="middle" class="arrow-label">has</text>
+
+  <!-- Arrow: Agent → Session (runs in) — L-shape going DOWN then RIGHT, avoids Capability -->
+  <line x1="160" y1="195" x2="160" y2="275" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="160" y1="275" x2="325" y2="275" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="325,270 335,275 325,280" fill="#0A1636"/>
+  <text x="242" y="268" text-anchor="middle" class="arrow-label">runs in</text>
+
+  <!-- Arrow: Session → Turn (contains) -->
+  <line x1="415" y1="300" x2="415" y2="340" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="410,340 415,350 420,340" fill="#0A1636"/>
+  <text x="428" y="328" class="arrow-label">contains</text>
+
+  <!-- Arrow: Turn → Event (emits) -->
+  <line x1="500" y1="370" x2="565" y2="370" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="565,365 575,370 565,375" fill="#0A1636"/>
+  <text x="532" y="363" text-anchor="middle" class="arrow-label">emits</text>
+</svg>

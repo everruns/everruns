@@ -1,0 +1,8 @@
+erDiagram
+    LlmProvider ||--o{ LlmModel : "contains"
+
+    Agent }o--|| LlmModel : "default model"
+    Session }o--o| LlmModel : "override model"
+
+    McpServer ||--o{ Tool : "exposes"
+    McpServer ||--|| Capability : "virtual capability"

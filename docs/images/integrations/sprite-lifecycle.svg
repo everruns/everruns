@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 280" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <!-- White background -->
+  <rect width="800" height="280" fill="#FFFFFF"/>
+
+  <!-- Section header -->
+  <text x="400" y="25" text-anchor="middle" class="header-text">SPRITE LIFECYCLE</text>
+
+  <!-- Box: Created (left) -->
+  <rect x="60" y="60" width="140" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="130" y="83" text-anchor="middle" class="label">Created</text>
+  <text x="130" y="100" text-anchor="middle" class="sublabel">Initial state</text>
+
+  <!-- Box: Running (center-top) -->
+  <rect x="310" y="60" width="140" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="380" y="83" text-anchor="middle" class="label">Running</text>
+  <text x="380" y="100" text-anchor="middle" class="sublabel">Active, consuming compute</text>
+
+  <!-- Box: Hibernating (right) -->
+  <rect x="570" y="60" width="170" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="655" y="83" text-anchor="middle" class="label">Hibernating</text>
+  <text x="655" y="100" text-anchor="middle" class="sublabel">Idle, filesystem preserved</text>
+
+  <!-- Box: Deleted (below Running) -->
+  <rect x="310" y="195" width="140" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="380" y="218" text-anchor="middle" class="label">Deleted</text>
+  <text x="380" y="235" text-anchor="middle" class="sublabel">Permanently removed</text>
+
+  <!-- Arrow 1: Created → Running -->
+  <line x1="200" y1="87" x2="304" y2="87" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="304,83 314,87 304,91" fill="#0A1636"/>
+  <!-- Step badge 1 -->
+  <rect x="240" y="68" width="18" height="18" fill="#0A1636"/>
+  <text x="249" y="81" text-anchor="middle" class="step-num">1</text>
+
+  <!-- Arrow 2: Running → Hibernating (idle timeout) -->
+  <line x1="450" y1="80" x2="564" y2="80" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="564,76 574,80 564,84" fill="#0A1636"/>
+  <!-- Step badge 2 -->
+  <rect x="495" y="61" width="18" height="18" fill="#0A1636"/>
+  <text x="504" y="74" text-anchor="middle" class="step-num">2</text>
+  <text x="520" y="74" class="arrow-label">idle timeout</text>
+
+  <!-- Arrow 3: Hibernating → Running (next command) - arcs above boxes -->
+  <path d="M 655,60 L 655,40 L 380,40 L 380,60"
+        stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="376,64 380,55 384,64" fill="#0A1636"/>
+  <!-- Step badge 3 -->
+  <rect x="506" y="28" width="18" height="18" fill="#0A1636"/>
+  <text x="515" y="41" text-anchor="middle" class="step-num">3</text>
+  <text x="532" y="41" class="arrow-label">next command</text>
+
+  <!-- Arrow 4: Running → Deleted (dashed, going down) -->
+  <line x1="380" y1="115" x2="380" y2="189" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <polygon points="376,189 380,198 384,189" fill="#A0A0A0"/>
+  <text x="393" y="155" class="arrow-label">explicit delete</text>
+</svg>

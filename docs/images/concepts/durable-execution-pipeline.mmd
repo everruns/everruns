@@ -1,0 +1,6 @@
+graph LR
+    Setup[SetupStep] --> LLM1[ExecuteLlmStep]
+    LLM1 --> Tool[ExecuteToolStep]
+    Tool --> LLM2[ExecuteLlmStep]
+    LLM2 -->|more tool calls| Tool
+    LLM2 -->|no tool calls| Final[FinalizeStep]

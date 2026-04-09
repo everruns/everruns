@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 620" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <!-- White background -->
+  <rect width="800" height="620" fill="#FFFFFF"/>
+
+  <!-- Participant boxes -->
+  <rect x="40" y="15" width="120" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="100" y="42" text-anchor="middle" class="label">Your App (SDK)</text>
+
+  <rect x="240" y="15" width="120" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="300" y="42" text-anchor="middle" class="label">Everruns API</text>
+
+  <rect x="440" y="15" width="120" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="500" y="42" text-anchor="middle" class="label">Worker</text>
+
+  <rect x="640" y="15" width="120" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="700" y="42" text-anchor="middle" class="label">LLM Provider</text>
+
+  <!-- Lifelines -->
+  <line x1="100" y1="60" x2="100" y2="605" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="300" y1="60" x2="300" y2="605" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="500" y1="60" x2="500" y2="605" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="700" y1="60" x2="700" y2="605" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+
+
+  <!-- Step 1: App -> API: client.messages.create() -->
+  <g transform="translate(0, 80)">
+    <rect x="91" y="-9" width="18" height="18" fill="#0A1636"/>
+    <text x="100" y="5" text-anchor="middle" class="step-num">1</text>
+    <line x1="112" y1="0" x2="292" y2="0" stroke="#0A1636" stroke-width="1.5"/>
+    <polygon points="287,-5 297,0 287,5" fill="#0A1636"/>
+    <text x="200" y="-6" text-anchor="middle" class="arrow-label">client.messages.create()</text>
+  </g>
+
+  <!-- Step 2: API -> App: Message stored (dashed return) -->
+  <g transform="translate(0, 108)">
+    <line x1="292" y1="0" x2="108" y2="0" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrow-left-gray)"/>
+    <text x="200" y="-6" text-anchor="middle" class="arrow-label">Message stored</text>
+  </g>
+
+  <!-- Step 3: Worker -> API: emit turn.started -->
+  <g transform="translate(0, 136)">
+    <line x1="492" y1="0" x2="308" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-left)"/>
+    <text x="400" y="-6" text-anchor="middle" class="arrow-label">emit turn.started</text>
+  </g>
+
+  <!-- Step 4: Worker -> API: emit reason.started -->
+  <g transform="translate(0, 164)">
+    <line x1="492" y1="0" x2="308" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-left)"/>
+    <text x="400" y="-6" text-anchor="middle" class="arrow-label">emit reason.started</text>
+  </g>
+
+  <!-- Step 5: Worker -> LLM: Generate completion -->
+  <g transform="translate(0, 192)">
+    <rect x="491" y="-9" width="18" height="18" fill="#0A1636"/>
+    <text x="500" y="5" text-anchor="middle" class="step-num">5</text>
+    <line x1="512" y1="0" x2="692" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-right)"/>
+    <text x="600" y="-6" text-anchor="middle" class="arrow-label">Generate completion</text>
+  </g>
+
+  <!-- Step 6: LLM -> Worker: Response + tool calls (return) -->
+  <g transform="translate(0, 220)">
+    <rect x="491" y="-9" width="18" height="18" fill="#0A1636"/>
+    <text x="500" y="5" text-anchor="middle" class="step-num">6</text>
+    <line x1="692" y1="0" x2="512" y2="0" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrow-left-gray)"/>
+    <text x="600" y="-6" text-anchor="middle" class="arrow-label">Response + tool calls</text>
+  </g>
+
+  <!-- Step 7: Worker -> API: emit output.message.delta -->
+  <g transform="translate(0, 248)">
+    <line x1="492" y1="0" x2="308" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-left)"/>
+    <text x="400" y="-6" text-anchor="middle" class="arrow-label">emit output.message.delta</text>
+  </g>
+
+  <!-- Step 8: Worker -> API: emit reason.completed -->
+  <g transform="translate(0, 276)">
+    <line x1="492" y1="0" x2="308" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-left)"/>
+    <text x="400" y="-6" text-anchor="middle" class="arrow-label">emit reason.completed</text>
+  </g>
+
+  <!-- Step 9: Worker -> API: emit act.started -->
+  <g transform="translate(0, 304)">
+    <line x1="492" y1="0" x2="308" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-left)"/>
+    <text x="400" y="-6" text-anchor="middle" class="arrow-label">emit act.started</text>
+  </g>
+
+  <!-- Step 10: Worker -> Worker (self): Execute tools -->
+  <g transform="translate(0, 332)">
+    <rect x="491" y="-9" width="18" height="18" fill="#0A1636"/>
+    <text x="500" y="5" text-anchor="middle" class="step-num">10</text>
+    <polyline points="512,0 550,0 550,20 512,20" fill="none" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-left)"/>
+    <text x="555" y="-2" text-anchor="start" class="arrow-label">Execute tools</text>
+  </g>
+
+  <!-- Step 11: Worker -> API: emit tool.started / completed -->
+  <g transform="translate(0, 368)">
+    <line x1="492" y1="0" x2="308" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-left)"/>
+    <text x="400" y="-6" text-anchor="middle" class="arrow-label">emit tool.started / completed</text>
+  </g>
+
+  <!-- Step 12: Worker -> API: emit act.completed -->
+  <g transform="translate(0, 396)">
+    <line x1="492" y1="0" x2="308" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-left)"/>
+    <text x="400" y="-6" text-anchor="middle" class="arrow-label">emit act.completed</text>
+  </g>
+
+  <!-- Annotation: Loop continues if more tool calls needed -->
+  <rect x="310" y="412" width="240" height="24" fill="#FFFFFF" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="430" y="428" text-anchor="middle" class="sublabel">Loop continues if more tool calls needed</text>
+
+  <!-- Step 13: Worker -> API: emit output.message.completed -->
+  <g transform="translate(0, 452)">
+    <rect x="491" y="-9" width="18" height="18" fill="#0A1636"/>
+    <text x="500" y="5" text-anchor="middle" class="step-num">13</text>
+    <line x1="492" y1="0" x2="308" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-left)"/>
+    <text x="400" y="-6" text-anchor="middle" class="arrow-label">emit output.message.completed</text>
+  </g>
+
+  <!-- Step 14: Worker -> API: emit turn.completed -->
+  <g transform="translate(0, 480)">
+    <rect x="491" y="-9" width="18" height="18" fill="#0A1636"/>
+    <text x="500" y="5" text-anchor="middle" class="step-num">14</text>
+    <line x1="492" y1="0" x2="308" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-left)"/>
+    <text x="400" y="-6" text-anchor="middle" class="arrow-label">emit turn.completed</text>
+  </g>
+
+  <!-- Step 15: Worker -> API: emit session.idled -->
+  <g transform="translate(0, 508)">
+    <line x1="492" y1="0" x2="308" y2="0" stroke="#0A1636" stroke-width="1.5" marker-end="url(#arrow-left)"/>
+    <text x="400" y="-6" text-anchor="middle" class="arrow-label">emit session.idled</text>
+  </g>
+
+  <!-- Step 16: App -> API: events.stream() receives all (dashed) -->
+  <g transform="translate(0, 550)">
+    <line x1="108" y1="0" x2="292" y2="0" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arrow-right-gray)"/>
+    <text x="200" y="-6" text-anchor="middle" class="arrow-label">events.stream() receives all</text>
+  </g>
+</svg>

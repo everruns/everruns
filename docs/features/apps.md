@@ -7,24 +7,7 @@ An App binds a Harness and Agent to a distribution channel, turning your agent i
 
 ## How It Works
 
-```mermaid
-graph LR
-    Channel["External Channel<br/>(Slack, etc.)"] -->|webhook| App
-    App -->|references| Harness
-    App -->|references| Agent
-    App -->|creates/finds| Session
-    Session -->|runs| RuntimeAgent
-
-    classDef external fill:#ffd6a5,stroke:#e07b39,color:#5a3000
-    classDef app fill:#e8daef,stroke:#7d3c98,color:#4a235a
-    classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
-    classDef runtime fill:#bde0fe,stroke:#3a86a8,color:#023047
-
-    class Channel external
-    class App app
-    class Harness,Agent config
-    class Session,RuntimeAgent runtime
-```
+![App Architecture](../images/apps/architecture.svg)
 
 1. An external channel (e.g., Slack) sends a webhook to the App's endpoint
 2. The App verifies the request using channel-specific security (e.g., Slack signing secret)

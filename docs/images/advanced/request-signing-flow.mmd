@@ -1,0 +1,8 @@
+sequenceDiagram
+    participant A as Agent (signed)
+    participant T as Target Server
+    participant K as Bot's FQDN (/.well-known)
+    A->>T: Signed HTTP request (Ed25519, RFC 9421)
+    T->>K: GET /.well-known/http-message-signatures-directory
+    K-->>T: JWKS (Ed25519 public key)
+    T->>T: Extract keyid, verify signature

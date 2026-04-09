@@ -1,0 +1,28 @@
+sequenceDiagram
+    participant App as Your App (SDK)
+    participant API as Everruns API
+    participant Worker as Worker
+    participant LLM as LLM Provider
+
+    App->>API: client.messages.create()
+    API-->>App: Message stored
+
+    Worker->>API: emit turn.started
+    Worker->>API: emit reason.started
+    Worker->>LLM: Generate completion
+    LLM-->>Worker: Response + tool calls
+    Worker->>API: emit output.message.delta (streaming)
+    Worker->>API: emit reason.completed
+
+    Worker->>API: emit act.started
+    Worker->>Worker: Execute tools
+    Worker->>API: emit tool.started / tool.completed
+    Worker->>API: emit act.completed
+
+    Note over Worker,LLM: Loop continues if more tool calls needed
+
+    Worker->>API: emit output.message.completed
+    Worker->>API: emit turn.completed
+    Worker->>API: emit session.idled
+
+    App->>API: client.events.stream() receives all events

@@ -96,6 +96,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/budgeting.md` - Extensible budgeting system (budgets, meters, rules, soft enforcement)
 - `specs/documentation.md` - Documentation site (Astro Starlight)
 - `specs/brand.md` - Brand identity, colors, typography
+- `specs/diagrams.md` - Diagram specification (SVG style guide, building blocks, colors)
 - `specs/dismissed-options.md` - Technical options considered but dismissed
 - `specs/multitenancy.md` - Organization-based multitenancy
 - `specs/permissions.md` - Fine-grained permissions model (policies, rules, `#[policy]` macro)

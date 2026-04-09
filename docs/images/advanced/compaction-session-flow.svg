@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+  <rect width="800" height="440" fill="#FFFFFF"/>
+
+  <!-- Step 1: 500 Messages -->
+  <rect x="260" y="20" width="280" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="44" text-anchor="middle" class="label">500 Messages</text>
+  <text x="400" y="62" text-anchor="middle" class="sublabel">Full message history in database</text>
+
+  <!-- Arrow down: step badge 1 -->
+  <line x1="400" y1="75" x2="400" y2="110" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="395,110 400,120 405,110" fill="#0A1636"/>
+  <rect x="410" y="82" width="18" height="18" fill="#0A1636"/>
+  <text x="419" y="95" text-anchor="middle" class="step-num">1</text>
+
+  <!-- Step 2: Infinity Context -->
+  <rect x="260" y="120" width="280" height="55" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="144" text-anchor="middle" class="label">Infinity Context</text>
+  <text x="400" y="162" text-anchor="middle" class="sublabel">Load most recent ~100k tokens</text>
+
+  <!-- Arrow down: step badge 2 -->
+  <line x1="400" y1="175" x2="400" y2="210" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="395,210 400,220 405,210" fill="#0A1636"/>
+  <rect x="410" y="182" width="18" height="18" fill="#0A1636"/>
+  <text x="419" y="195" text-anchor="middle" class="step-num">2</text>
+
+  <!-- Step 3: Budget Check (decision box with Navy border) -->
+  <rect x="260" y="220" width="280" height="55" fill="#F5F5F5" stroke="#0A1636" stroke-width="1.5"/>
+  <text x="400" y="244" text-anchor="middle" class="label">Budget Check</text>
+  <text x="400" y="262" text-anchor="middle" class="sublabel">Exceeds 85% of context window?</text>
+
+  <!-- Right path: No -->
+  <line x1="540" y1="248" x2="640" y2="248" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="640,243 650,248 640,253" fill="#0A1636"/>
+  <text x="590" y="240" text-anchor="middle" class="arrow-label">No</text>
+
+  <!-- Result badge: Send to LLM as-is -->
+  <rect x="652" y="233" width="128" height="30" fill="#FFFFFF" stroke="#0A1636" stroke-width="1.5"/>
+  <text x="716" y="253" text-anchor="middle" class="arrow-label">Send to LLM as-is</text>
+
+  <!-- Down path: Yes -->
+  <line x1="400" y1="275" x2="400" y2="310" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="395,310 400,320 405,310" fill="#0A1636"/>
+  <text x="415" y="298" class="arrow-label">Yes</text>
+
+  <!-- Step 4: Run Cascade -->
+  <rect x="260" y="320" width="280" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="342" text-anchor="middle" class="label">Run Cascade</text>
+  <text x="400" y="360" text-anchor="middle" class="mono">a. Mask</text>
+  <text x="400" y="374" text-anchor="middle" class="mono">b. Compact  c. Summarize  d. Trim</text>
+
+  <!-- Arrow down to query_history -->
+  <line x1="400" y1="392" x2="400" y2="406" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="395,406 400,416 405,406" fill="#0A1636"/>
+
+  <!-- query_history result badge at bottom -->
+  <rect x="260" y="410" width="280" height="26" fill="#FFFFFF" stroke="#0A1636" stroke-width="1.5"/>
+  <text x="400" y="428" text-anchor="middle" class="arrow-label">Trimmed messages queryable via query_history</text>
+</svg>

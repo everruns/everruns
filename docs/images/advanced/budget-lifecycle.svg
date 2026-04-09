@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 430" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+  <rect width="800" height="430" fill="#FFFFFF"/>
+
+  <!-- "create" label at top -->
+  <text x="400" y="22" text-anchor="middle" class="arrow-label">create</text>
+  <line x1="400" y1="28" x2="400" y2="42" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="395,42 400,52 405,42" fill="#0A1636"/>
+
+  <!-- Active box (top) -->
+  <rect x="320" y="52" width="160" height="40" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="77" text-anchor="middle" class="label">Active</text>
+
+  <!-- Left: Active → Paused -->
+  <line x1="350" y1="92" x2="200" y2="195" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="195,190 200,201 205,190" fill="#0A1636"/>
+  <rect x="255" y="130" width="18" height="18" fill="#0A1636"/>
+  <text x="264" y="143" text-anchor="middle" class="step-num">1</text>
+  <text x="235" y="163" text-anchor="end" class="arrow-label">soft_limit exceeded</text>
+
+  <!-- Center: Active → Exhausted -->
+  <line x1="400" y1="92" x2="400" y2="195" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="395,195 400,205 405,195" fill="#0A1636"/>
+  <rect x="408" y="135" width="18" height="18" fill="#0A1636"/>
+  <text x="417" y="148" text-anchor="middle" class="step-num">2</text>
+  <text x="432" y="148" class="arrow-label">balance ≤ 0</text>
+
+  <!-- Right: Active → Disabled -->
+  <line x1="450" y1="92" x2="600" y2="195" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="595,190 600,201 605,190" fill="#0A1636"/>
+  <rect x="540" y="130" width="18" height="18" fill="#0A1636"/>
+  <text x="549" y="143" text-anchor="middle" class="step-num">3</text>
+  <text x="565" y="143" class="arrow-label">disabled</text>
+
+  <!-- Paused box -->
+  <rect x="120" y="205" width="160" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="200" y="228" text-anchor="middle" class="label">Paused</text>
+  <text x="200" y="244" text-anchor="middle" class="sublabel">soft limit hit</text>
+
+  <!-- Exhausted box -->
+  <rect x="320" y="205" width="160" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="228" text-anchor="middle" class="label">Exhausted</text>
+  <text x="400" y="244" text-anchor="middle" class="sublabel">balance depleted</text>
+
+  <!-- Disabled box -->
+  <rect x="520" y="205" width="160" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="600" y="228" text-anchor="middle" class="label">Disabled</text>
+  <text x="600" y="244" text-anchor="middle" class="sublabel">deleted</text>
+
+  <!-- Paused and Exhausted converge -->
+  <line x1="200" y1="255" x2="200" y2="310" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="400" y1="255" x2="400" y2="310" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="200" y1="310" x2="400" y2="310" stroke="#0A1636" stroke-width="1.5"/>
+
+  <!-- Step badge 4: top-up / resume -->
+  <rect x="291" y="296" width="18" height="18" fill="#0A1636"/>
+  <text x="300" y="309" text-anchor="middle" class="step-num">4</text>
+  <text x="300" y="332" text-anchor="middle" class="arrow-label">top-up / resume</text>
+
+  <!-- Down to Active (bottom) -->
+  <line x1="300" y1="310" x2="300" y2="345" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="300" y1="345" x2="400" y2="345" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="400" y1="345" x2="400" y2="370" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="395,370 400,380 405,370" fill="#0A1636"/>
+
+  <!-- Active box (bottom) -->
+  <rect x="320" y="380" width="160" height="40" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="405" text-anchor="middle" class="label">Active</text>
+</svg>

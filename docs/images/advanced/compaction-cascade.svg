@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 460" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+  <rect width="800" height="460" fill="#FFFFFF"/>
+
+  <!-- Step 1: Observation Masking -->
+  <rect x="200" y="20" width="260" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="330" y="42" text-anchor="middle" class="label">Observation Masking</text>
+  <text x="330" y="58" text-anchor="middle" class="sublabel">Replace old tool outputs</text>
+  <text x="330" y="74" text-anchor="middle" class="mono">Free, instant</text>
+
+  <!-- Step badge 1 on left -->
+  <rect x="176" y="38" width="18" height="18" fill="#0A1636"/>
+  <text x="185" y="51" text-anchor="middle" class="step-num">1</text>
+
+  <!-- Arrow down from step 1 to step 2 -->
+  <line x1="330" y1="92" x2="330" y2="128" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="325,128 330,138 335,128" fill="#0A1636"/>
+  <text x="345" y="115" class="arrow-label">still over budget?</text>
+
+  <!-- Dashed connector right from step 1 to "Done" -->
+  <line x1="460" y1="56" x2="560" y2="56" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <rect x="560" y="42" width="60" height="28" fill="#FFFFFF" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="590" y="61" text-anchor="middle" class="arrow-label">Done</text>
+  <text x="520" y="50" text-anchor="middle" class="mono">fits?</text>
+
+  <!-- Step 2: Native Compaction -->
+  <rect x="200" y="140" width="260" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="330" y="162" text-anchor="middle" class="label">Native Compaction</text>
+  <text x="330" y="178" text-anchor="middle" class="sublabel">Provider's compact endpoint</text>
+  <text x="330" y="194" text-anchor="middle" class="mono">If available</text>
+
+  <!-- Step badge 2 -->
+  <rect x="176" y="158" width="18" height="18" fill="#0A1636"/>
+  <text x="185" y="171" text-anchor="middle" class="step-num">2</text>
+
+  <!-- Arrow down from step 2 to step 3 -->
+  <line x1="330" y1="212" x2="330" y2="248" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="325,248 330,258 335,248" fill="#0A1636"/>
+  <text x="345" y="235" class="arrow-label">still over budget?</text>
+
+  <!-- Dashed connector right from step 2 to "Done" -->
+  <line x1="460" y1="176" x2="560" y2="176" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <rect x="560" y="162" width="60" height="28" fill="#FFFFFF" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="590" y="181" text-anchor="middle" class="arrow-label">Done</text>
+  <text x="520" y="170" text-anchor="middle" class="mono">fits?</text>
+
+  <!-- Step 3: Summarization -->
+  <rect x="200" y="260" width="260" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="330" y="282" text-anchor="middle" class="label">Summarization</text>
+  <text x="330" y="298" text-anchor="middle" class="sublabel">Summarize older turns</text>
+  <text x="330" y="314" text-anchor="middle" class="mono">LLM call</text>
+
+  <!-- Step badge 3 -->
+  <rect x="176" y="278" width="18" height="18" fill="#0A1636"/>
+  <text x="185" y="291" text-anchor="middle" class="step-num">3</text>
+
+  <!-- Arrow down from step 3 to step 4 -->
+  <line x1="330" y1="332" x2="330" y2="368" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="325,368 330,378 335,368" fill="#0A1636"/>
+  <text x="345" y="355" class="arrow-label">still over budget?</text>
+
+  <!-- Dashed connector right from step 3 to "Done" -->
+  <line x1="460" y1="296" x2="560" y2="296" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <rect x="560" y="282" width="60" height="28" fill="#FFFFFF" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="590" y="301" text-anchor="middle" class="arrow-label">Done</text>
+  <text x="520" y="290" text-anchor="middle" class="mono">fits?</text>
+
+  <!-- Step 4: Aggressive Trim -->
+  <rect x="200" y="380" width="260" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="330" y="402" text-anchor="middle" class="label">Aggressive Trim</text>
+  <text x="330" y="418" text-anchor="middle" class="sublabel">Drop oldest messages</text>
+  <text x="330" y="434" text-anchor="middle" class="mono">Last resort</text>
+
+  <!-- Step badge 4 -->
+  <rect x="176" y="398" width="18" height="18" fill="#0A1636"/>
+  <text x="185" y="411" text-anchor="middle" class="step-num">4</text>
+</svg>

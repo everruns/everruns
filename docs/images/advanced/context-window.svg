@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 250" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+  <rect width="800" height="250" fill="#FFFFFF"/>
+
+  <!-- Section header -->
+  <text x="400" y="30" text-anchor="middle" class="header-text">CONTEXT WINDOW</text>
+
+  <!-- Outer container box -->
+  <rect x="40" y="42" width="720" height="140" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+
+  <!-- Box 1: System Prompt (narrower, ~160px) -->
+  <rect x="60" y="62" width="160" height="100" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="140" y="102" text-anchor="middle" class="label">System Prompt</text>
+  <text x="140" y="122" text-anchor="middle" class="sublabel">always kept</text>
+
+  <!-- Box 2: Conversation Summary (medium, ~240px) -->
+  <rect x="240" y="62" width="240" height="100" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="360" y="102" text-anchor="middle" class="label">Conversation Summary</text>
+  <text x="360" y="122" text-anchor="middle" class="sublabel">cold tier replaced</text>
+
+  <!-- Box 3: Recent Messages (wider, ~220px) -->
+  <rect x="500" y="62" width="240" height="100" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="620" y="102" text-anchor="middle" class="label">Recent Messages</text>
+  <text x="620" y="122" text-anchor="middle" class="sublabel">hot tier verbatim</text>
+
+  <!-- Dashed line below boxes spanning full width -->
+  <line x1="80" y1="205" x2="720" y2="205" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <!-- Left arrowhead -->
+  <polygon points="80,200 70,205 80,210" fill="#A0A0A0"/>
+
+  <!-- Right arrowhead -->
+  <polygon points="720,200 730,205 720,210" fill="#A0A0A0"/>
+
+  <!-- Label centered on the dashed line -->
+  <text x="400" y="230" text-anchor="middle" class="arrow-label">Compaction fills this budget</text>
+</svg>

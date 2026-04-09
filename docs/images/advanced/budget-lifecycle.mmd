@@ -1,0 +1,7 @@
+stateDiagram-v2
+    [*] --> Active: create
+    Active --> Paused: soft_limit exceeded
+    Active --> Exhausted: balance ≤ 0
+    Active --> Disabled: deleted
+    Paused --> Active: top-up / resume
+    Exhausted --> Active: top-up / resume

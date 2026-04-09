@@ -1,0 +1,15 @@
+graph LR
+    App[Your Application] -->|everruns-sdk| Server[Everruns Server]
+    Server -->|Reason| LLM[LLM Provider]
+    LLM -->|Tool Calls| Server
+    Server -->|Act| Tools[Tool Execution]
+    Tools -->|Results| Server
+    Server -->|SSE Events| App
+
+    classDef app fill:#bde0fe,stroke:#3a86a8,color:#023047
+    classDef server fill:#ffd6a5,stroke:#e07b39,color:#5a3000
+    classDef external fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
+
+    class App app
+    class Server server
+    class LLM,Tools external

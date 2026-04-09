@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 430" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <rect width="800" height="430" fill="#FFFFFF"/>
+
+  <!-- === CLIENTS region === -->
+  <rect x="20" y="20" width="175" height="170" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="30" y="38" class="header-text">CLIENTS</text>
+
+  <rect x="35" y="50" width="140" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="105" y="70" text-anchor="middle" class="label">Your App</text>
+  <text x="105" y="84" text-anchor="middle" class="sublabel">everruns-sdk</text>
+
+  <rect x="35" y="120" width="140" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="105" y="140" text-anchor="middle" class="label">Web UI</text>
+  <text x="105" y="154" text-anchor="middle" class="sublabel">Management console</text>
+
+  <!-- === CONTROL PLANE region === -->
+  <rect x="230" y="20" width="340" height="260" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="240" y="38" class="header-text">CONTROL PLANE</text>
+
+  <rect x="250" y="50" width="130" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="315" y="70" text-anchor="middle" class="label">REST API</text>
+  <text x="315" y="84" text-anchor="middle" class="mono">:9301</text>
+
+  <rect x="420" y="50" width="130" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="485" y="70" text-anchor="middle" class="label">gRPC Server</text>
+  <text x="485" y="84" text-anchor="middle" class="mono">:9001</text>
+
+  <rect x="290" y="135" width="160" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="370" y="155" text-anchor="middle" class="label">Service Layer</text>
+  <text x="370" y="169" text-anchor="middle" class="sublabel">Business logic</text>
+
+  <rect x="290" y="218" width="160" height="45" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="370" y="238" text-anchor="middle" class="label">PostgreSQL</text>
+  <text x="370" y="252" text-anchor="middle" class="sublabel">State store</text>
+
+  <!-- === WORKERS region (below gRPC) === -->
+  <rect x="405" y="310" width="165" height="110" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="415" y="328" class="header-text">WORKERS</text>
+
+  <rect x="420" y="335" width="130" height="32" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="485" y="356" text-anchor="middle" class="label">Worker 1</text>
+
+  <rect x="420" y="378" width="130" height="32" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="485" y="399" text-anchor="middle" class="label">Worker 2</text>
+
+  <!-- === EXTERNAL region === -->
+  <rect x="610" y="310" width="170" height="110" fill="none" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="620" y="328" class="header-text">EXTERNAL</text>
+
+  <rect x="625" y="335" width="140" height="32" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="695" y="356" text-anchor="middle" class="label">OpenAI</text>
+
+  <rect x="625" y="378" width="140" height="32" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="695" y="399" text-anchor="middle" class="label">Anthropic</text>
+
+  <!-- === ARROWS === -->
+
+  <!-- Your App → REST API: HTTP -->
+  <line x1="175" y1="67" x2="245" y2="67" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="245,62 255,67 245,72" fill="#0A1636"/>
+  <text x="210" y="60" text-anchor="middle" class="arrow-label">HTTP</text>
+
+  <!-- Web UI → REST API: L-shape routed through gap -->
+  <line x1="175" y1="142" x2="212" y2="142" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="212" y1="142" x2="212" y2="82" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="212" y1="82" x2="245" y2="82" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="245,77 255,82 245,87" fill="#0A1636"/>
+  <text x="205" y="118" text-anchor="end" class="arrow-label">HTTP</text>
+
+  <!-- REST API → Service Layer -->
+  <line x1="315" y1="95" x2="340" y2="130" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="335,130 345,135 340,125" fill="#0A1636"/>
+
+  <!-- gRPC Server → Service Layer -->
+  <line x1="485" y1="95" x2="420" y2="130" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="415,130 425,125 420,135" fill="#0A1636"/>
+
+  <!-- Service Layer → PostgreSQL -->
+  <line x1="370" y1="180" x2="370" y2="213" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="365,213 370,223 375,213" fill="#0A1636"/>
+
+  <!-- Worker 1 → gRPC Server: vertical up (x=480, right of Service Layer/PostgreSQL) -->
+  <line x1="480" y1="335" x2="480" y2="100" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="475,100 480,90 485,100" fill="#0A1636"/>
+  <text x="470" y="295" text-anchor="end" class="arrow-label">gRPC</text>
+
+  <!-- Worker 2 → gRPC Server: vertical up (x=495) -->
+  <line x1="495" y1="378" x2="495" y2="100" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="490,100 495,90 500,100" fill="#0A1636"/>
+
+  <!-- Worker 1 → OpenAI (dashed) -->
+  <line x1="550" y1="351" x2="620" y2="351" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <polygon points="620,347 628,351 620,355" fill="#A0A0A0"/>
+
+  <!-- Worker 2 → Anthropic (dashed) -->
+  <line x1="550" y1="394" x2="620" y2="394" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <polygon points="620,390 628,394 620,398" fill="#A0A0A0"/>
+</svg>

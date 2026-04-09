@@ -279,12 +279,11 @@ The docs site must ship a single `sitemap.xml` file at the site root.
 
 ### Diagram Rendering
 
-Mermaid diagrams are used in hand-authored docs content and must render on the client in both local builds and deployed static output.
+Diagrams are hand-authored SVGs following `specs/diagrams.md`. Each SVG has a co-located `.mmd` (Mermaid) source-of-truth file.
 
-1. Mermaid source lives in markdown fenced code blocks using the `mermaid` language
-2. Astro/Starlight may emit Mermaid blocks as `pre[data-language="mermaid"]` via Expressive Code, so rendering must not depend on `code.language-mermaid` alone
-3. The docs app uses a custom `Head.astro` override to bundle Mermaid and render diagrams client-side
-4. Mermaid rendering must support theme changes by re-rendering when the site theme toggles between light and dark
+1. SVGs live in `docs/images/<category>/` and are embedded via `![alt](../images/...)` in markdown
+2. No client-side rendering library is needed — SVGs are static assets processed by Astro's image pipeline
+3. The Mermaid `.mmd` files are source-of-truth for diagram content but are not rendered at build time
 
 ### Future Enhancements
 

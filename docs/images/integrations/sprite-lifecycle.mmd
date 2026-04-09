@@ -1,0 +1,7 @@
+stateDiagram-v2
+    [*] --> Created
+    Created --> Running
+    Running --> Hibernating: idle timeout
+    Hibernating --> Running: next command
+    Running --> Deleted: explicit delete
+    Deleted --> [*]

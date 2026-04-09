@@ -89,7 +89,6 @@ export default defineConfig({
         { icon: "github", label: "GitHub", href: "https://github.com/everruns/everruns" },
       ],
       components: {
-        Head: "./src/components/Head.astro",
         Header: "./src/components/Header.astro",
       },
       customCss: ["./src/styles/custom.css"],

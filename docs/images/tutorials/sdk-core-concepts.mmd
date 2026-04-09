@@ -1,0 +1,21 @@
+graph TB
+    Harness["Harness<br/><small>Environment template</small>"]
+    Agent["Agent<br/><small>System prompt + capabilities</small>"]
+    Session["Session<br/><small>Conversation instance</small>"]
+    Capability["Capability<br/><small>Tools + prompt additions</small>"]
+    Turn["Turn<br/><small>Reason → Act loop</small>"]
+    Event["Event<br/><small>Immutable record</small>"]
+
+    Harness -->|configures| Agent
+    Agent -->|has| Capability
+    Agent -->|runs in| Session
+    Session -->|contains| Turn
+    Turn -->|emits| Event
+
+    classDef config fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
+    classDef runtime fill:#bde0fe,stroke:#3a86a8,color:#023047
+    classDef data fill:#ffd6a5,stroke:#e07b39,color:#5a3000
+
+    class Harness,Agent,Capability config
+    class Session,Turn runtime
+    class Event data

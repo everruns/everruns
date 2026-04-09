@@ -48,16 +48,7 @@ GET https://<signature-agent-fqdn>/.well-known/http-message-signatures-directory
 
 This returns a [JSON Web Key Set (JWKS)](https://www.rfc-editor.org/rfc/rfc7517#section-5) containing the bot's Ed25519 public keys. The target server uses the `kid` field to match the key against the `keyid` in the incoming signature.
 
-```
-┌──────────┐         ┌──────────────┐         ┌─────────────┐
-│  Agent   │──GET──►│ Target Server │         │  Bot's FQDN │
-│ (signed) │        │              │──GET──►│ /.well-known │
-│          │        │  1. extract  │        │ /http-msg-   │
-│          │        │     keyid    │◄──JWKS─│  sig-dir     │
-│          │        │  2. verify   │         │              │
-│          │        │     sig      │         │              │
-└──────────┘        └──────────────┘         └─────────────┘
-```
+![Request Signing Flow](../images/advanced/request-signing-flow.svg)
 
 ## How It Works in Everruns
 

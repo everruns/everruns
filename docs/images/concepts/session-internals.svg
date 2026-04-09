@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <!-- White background -->
+  <rect width="800" height="380" fill="#FFFFFF"/>
+
+  <!-- Session (left, large) -->
+  <rect x="30" y="60" width="160" height="60" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="110" y="86" class="label" text-anchor="middle">Session</text>
+  <text x="110" y="104" class="sublabel" text-anchor="middle">Working instance</text>
+
+  <!-- Turn (center-top) -->
+  <rect x="280" y="40" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="350" y="62" class="label" text-anchor="middle">Turn</text>
+  <text x="350" y="78" class="sublabel" text-anchor="middle">Reason → Act iteration</text>
+
+  <!-- Event (center) -->
+  <rect x="280" y="130" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="350" y="152" class="label" text-anchor="middle">Event</text>
+  <text x="350" y="168" class="sublabel" text-anchor="middle">Immutable record</text>
+
+  <!-- FileSystem (bottom-left) -->
+  <rect x="80" y="280" width="150" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="155" y="302" class="label" text-anchor="middle">FileSystem</text>
+  <text x="155" y="318" class="sublabel" text-anchor="middle">Isolated per-session</text>
+
+  <!-- KeyValueStore (bottom-right) -->
+  <rect x="290" y="280" width="150" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="365" y="302" class="label" text-anchor="middle">KeyValueStore</text>
+  <text x="365" y="318" class="sublabel" text-anchor="middle">Scoped storage</text>
+
+  <!-- Message (right-center) -->
+  <rect x="520" y="130" width="140" height="50" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="590" y="152" class="label" text-anchor="middle">Message</text>
+  <text x="590" y="168" class="sublabel" text-anchor="middle">Conversation entry</text>
+
+  <!-- ContentPart (far right) -->
+  <rect x="660" y="40" width="120" height="60" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="720" y="62" class="label" text-anchor="middle">ContentPart</text>
+  <text x="720" y="78" class="sublabel" text-anchor="middle">Text, image,</text>
+  <text x="720" y="90" class="sublabel" text-anchor="middle">tool_call</text>
+
+  <!-- Arrows -->
+
+  <!-- Session → Turn: "contains" -->
+  <line x1="190" y1="75" x2="276" y2="65" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="280,65 272,61 274,68" fill="#0A1636"/>
+  <text x="232" y="60" class="arrow-label" text-anchor="middle">contains</text>
+
+  <!-- Session → Event: "append-only log" -->
+  <line x1="190" y1="100" x2="276" y2="145" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="280,147 272,140 274,148" fill="#0A1636"/>
+  <text x="220" y="140" class="arrow-label" text-anchor="middle">append-only log</text>
+
+  <!-- Session → FileSystem: "isolated" -->
+  <line x1="110" y1="120" x2="110" y2="230" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="110" y1="230" x2="140" y2="230" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="140" y1="230" x2="140" y2="276" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="140,280 136,273 144,273" fill="#0A1636"/>
+  <text x="100" y="224" class="arrow-label" text-anchor="end">isolated</text>
+
+  <!-- Session → KeyValueStore: "isolated" -->
+  <line x1="150" y1="120" x2="150" y2="230" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="150" y1="230" x2="365" y2="230" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="365" y1="230" x2="365" y2="276" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="365,280 361,273 369,273" fill="#0A1636"/>
+  <text x="280" y="224" class="arrow-label" text-anchor="middle">isolated</text>
+
+  <!-- Turn → Event: "emits" -->
+  <line x1="350" y1="90" x2="350" y2="126" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="350,130 346,123 354,123" fill="#0A1636"/>
+  <text x="364" y="114" class="arrow-label">emits</text>
+
+  <!-- Event → Message: "reconstructs" -->
+  <line x1="420" y1="155" x2="516" y2="155" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="520,155 513,151 513,159" fill="#0A1636"/>
+  <text x="470" y="148" class="arrow-label" text-anchor="middle">reconstructs</text>
+
+  <!-- Message → ContentPart: "contains" -->
+  <line x1="590" y1="130" x2="590" y2="85" stroke="#0A1636" stroke-width="1.5"/>
+  <line x1="590" y1="85" x2="656" y2="75" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="660,74 652,70 654,78" fill="#0A1636"/>
+  <text x="612" y="108" class="arrow-label">contains</text>
+</svg>
