@@ -3,7 +3,7 @@
 //! Inherits from Generic. Adds the `daytona` capability for real filesystem,
 //! full process execution, and git integration. System prompt steers tool
 //! selection between workspace (VFS) and sandbox, establishes the edit-test-fix
-//! loop, and encodes coding best practices from state-of-art agents.
+//! loop, and encodes coding best practices from state-of-the-art agents.
 //!
 //! See `specs/coding-daytona-harness.md` for design rationale.
 

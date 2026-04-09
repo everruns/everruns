@@ -6,7 +6,7 @@ Built-in harness for coding agents using Daytona cloud sandboxes.
 
 **Name:** `coding-daytona`
 **Display Name:** Coding (Daytona)
-**Parent:** `generic` (inherits VFS, virtual_bash, web_fetch, session_storage, session, agent_instructions, skills, infinity_context, openai_tool_search, budgeting, compaction, tool_output_persistence)
+**Parent:** `generic` (inherits session_file_system, virtual_bash, web_fetch, session_storage, session, agent_instructions, skills, infinity_context, openai_tool_search, budgeting, compaction, tool_output_persistence)
 **Additional capability:** `daytona`
 **Roles:** None (not Base, Default, or Chat — opt-in harness)
 
@@ -21,7 +21,7 @@ The system prompt steers the LLM to use the right level for each task.
 
 ## System Prompt Design
 
-The system prompt follows patterns from state-of-art coding agents (Claude Code, Codex, Aider, Cursor). Key sections:
+The system prompt follows patterns from state-of-the-art coding agents (Claude Code, Codex, Aider, Cursor). Key sections:
 
 1. **Identity** — Expert software developer with sandbox access
 2. **Tool selection steering** — When to use sandbox tools vs. workspace tools (highest-impact section)
