@@ -33,13 +33,7 @@ function targetLabel(target?: EvalTarget, agentMap?: Map<string, string>): strin
   }
 }
 
-function EvalCard({
-  eval: ev,
-  agentMap,
-}: {
-  eval: Eval;
-  agentMap: Map<string, string>;
-}) {
+function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, string> }) {
   const label = targetLabel(ev.target, agentMap);
 
   return (

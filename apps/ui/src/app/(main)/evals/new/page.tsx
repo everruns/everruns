@@ -173,11 +173,7 @@ export default function NewEvalPage() {
 
                   <div className="space-y-2">
                     <Label>Model (optional)</Label>
-                    <ModelPicker
-                      value={modelId}
-                      onChange={setModelId}
-                      placeholder="Use default"
-                    />
+                    <ModelPicker value={modelId} onChange={setModelId} placeholder="Use default" />
                   </div>
 
                   <div className="space-y-2">
