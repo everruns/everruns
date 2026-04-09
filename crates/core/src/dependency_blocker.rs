@@ -51,8 +51,9 @@ pub async fn detect_dependency_blocker(
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
 ) -> Result<Option<DependencyBlocker>> {
-    match harness_store.get_harness(harness_id).await? {
-        Some(harness) => match harness.status {
+    let harness_chain = harness_store.get_harness_chain(harness_id).await?;
+    match harness_chain.last() {
+        Some(leaf) => match leaf.status {
             HarnessStatus::Active => {}
             HarnessStatus::Archived => return Ok(Some(DependencyBlocker::HarnessArchived)),
             HarnessStatus::Deleted => return Ok(Some(DependencyBlocker::HarnessDeleted)),

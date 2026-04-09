@@ -48,10 +48,18 @@ pub trait AgentStore: Send + Sync {
 /// Implementations can:
 /// - Load harnesses from a database
 /// - Keep harnesses in memory for testing
+///
+/// Returns the harness inheritance chain (root-to-leaf) so the caller
+/// can fold each harness as an `AgentConfigOverlay`. DB-backed stores
+/// return the raw chain; gRPC-backed stores may return a single
+/// pre-merged harness (functionally equivalent when folded).
 #[async_trait]
 pub trait HarnessStore: Send + Sync {
-    /// Get a harness by ID
-    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<Harness>>;
+    /// Get the harness inheritance chain, root-to-leaf.
+    ///
+    /// Returns `Ok(vec![])` if the harness does not exist.
+    /// A harness with no parent returns a single-element vec.
+    async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>>;
 }
 
 // ============================================================================

@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use everruns_core::{
     AgentCapabilityConfig, AgentLoopError, HarnessId, Result, StoreResultExt, from_json,
     harness::{Harness, HarnessStatus},
-    merge_harness,
     traits::HarnessStore,
 };
 use std::collections::HashSet;
@@ -39,7 +38,7 @@ impl DbHarnessStore {
 
 #[async_trait]
 impl HarnessStore for DbHarnessStore {
-    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<Harness>> {
+    async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>> {
         let mut visited = HashSet::new();
         let mut chain = Vec::new();
         let mut cursor = Some(harness_id);
@@ -58,7 +57,7 @@ impl HarnessStore for DbHarnessStore {
                 .store_err()?
             else {
                 if chain.is_empty() {
-                    return Ok(None);
+                    return Ok(vec![]);
                 }
                 return Err(AgentLoopError::store(
                     "Parent harness not found".to_string(),
@@ -100,14 +99,9 @@ impl HarnessStore for DbHarnessStore {
             });
         }
 
-        let Some(mut effective) = chain.pop() else {
-            return Ok(None);
-        };
-        while let Some(layer) = chain.pop() {
-            effective = merge_harness(&effective, &layer);
-        }
-
-        Ok(Some(effective))
+        // Chain is leaf-to-root; reverse to root-to-leaf for overlay folding
+        chain.reverse();
+        Ok(chain)
     }
 }
 

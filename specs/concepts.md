@@ -34,7 +34,7 @@ graph LR
 ```
 
 - **Solid arrows** — configuration ownership: Harness has Agents and Capabilities, Agent has Capabilities
-- **Dashed arrows** — runtime assembly: config merges into RuntimeAgent, which executes in a Session
+- **Dashed arrows** — runtime assembly: each entity produces an `AgentConfigOverlay`, overlays fold into a single effective config, which resolves into a RuntimeAgent (see [AgentConfigOverlay](#agentconfigoverlay))
 - **Purple** — deployment: App binds Harness + Agent to an external channel and creates sessions from incoming messages
 
 ### Harness
@@ -79,6 +79,47 @@ Modular, reusable configuration unit that extends harness, agent, or session beh
 - Built-in capabilities use `snake_case` IDs (e.g., `current_time`, `web_fetch`)
 - MCP servers appear as virtual capabilities with `mcp:{uuid}` IDs
 - Capabilities can depend on other capabilities, resolved in topological order
+
+### AgentConfigOverlay
+
+Composable configuration layer shared by Harness, Agent, and Session. Each entity produces an overlay via `From<&T>`; overlays fold bottom-up into a single effective config that `RuntimeAgentBuilder::from_overlay()` resolves into a RuntimeAgent.
+
+See `crates/core/src/config_layer.rs` for implementation.
+
+**Fields and merge semantics:**
+
+| Field | Merge rule |
+|-------|-----------|
+| `system_prompt` | Base first, overlay appended |
+| `capabilities` | Overlay overrides base by capability ID |
+| `initial_files` | Overlay overrides base by normalized path |
+| `network_access` | Allowed intersects, blocked unions (can only narrow) |
+| `default_model_id` | Overlay wins if set, else inherit base |
+| `tools` | Additive (deduplicated by name at build time) |
+| `max_iterations` | Overlay wins if set, else inherit base |
+
+**Overlay chain:**
+
+Harnesses support single-parent inheritance. `HarnessStore::get_harness_chain()` returns the full inheritance chain (root-to-leaf). Each harness in the chain becomes its own overlay, folded alongside the optional agent and session overlays.
+
+```
+ harness_root   harness_child   harness_leaf     agent       session
+      │               │               │            │             │
+      ▼               ▼               ▼            ▼             ▼
+   overlay ──► overlay ──► overlay ──► overlay ──► overlay
+                                                       │
+                                          AgentConfigOverlay::fold()
+                                                       │
+                                                       ▼
+                                              effective_overlay
+                                                       │
+                                        RuntimeAgentBuilder::from_overlay()
+                                                       │
+                                                       ▼
+                                                  RuntimeAgent
+```
+
+The fold is associative — a pre-merged harness chain (single overlay) produces the same RuntimeAgent as the full chain (N overlays). This lets gRPC-backed stores return a single pre-merged harness while DB-backed stores return the raw chain.
 
 ### Tool
 

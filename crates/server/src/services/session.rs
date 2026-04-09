@@ -20,6 +20,7 @@ use everruns_core::{
     AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry, HarnessId, InitialFile, ModelId,
     Permission, Policy, Rule, Session, SessionId, SessionStatus, SubagentStatus, TokenUsage,
     capabilities::{SystemPromptContext, collect_capabilities, compute_features},
+    merge_initial_files, normalize_initial_file_path,
 };
 use everruns_durable::UpdateField;
 use everruns_macros::policy;
@@ -355,47 +356,28 @@ impl SessionService {
         agent_id: Option<Uuid>,
         session_initial_files: &[InitialFile],
     ) -> Result<Vec<InitialFile>> {
-        let mut files = self
+        let harness_files = self
             .resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
             .await?
             .map(|harness| harness.initial_files)
             .unwrap_or_default();
 
-        if let Some(agent_id) = agent_id
+        let agent_files = if let Some(agent_id) = agent_id
             && let Some(row) = self
                 .db
                 .get_agent(org_id, AgentId::from_uuid(agent_id))
                 .await?
         {
-            for file in
-                serde_json::from_value::<Vec<InitialFile>>(row.initial_files).unwrap_or_default()
-            {
-                let normalized = normalize_initial_file_path(&file.path);
-                if let Some(existing) = files
-                    .iter_mut()
-                    .find(|existing| normalize_initial_file_path(&existing.path) == normalized)
-                {
-                    *existing = file;
-                } else {
-                    files.push(file);
-                }
-            }
-        }
+            serde_json::from_value::<Vec<InitialFile>>(row.initial_files).unwrap_or_default()
+        } else {
+            vec![]
+        };
 
-        // Session-level initial files layer on top (same additive logic)
-        for file in session_initial_files {
-            let normalized = normalize_initial_file_path(&file.path);
-            if let Some(existing) = files
-                .iter_mut()
-                .find(|existing| normalize_initial_file_path(&existing.path) == normalized)
-            {
-                *existing = file.clone();
-            } else {
-                files.push(file.clone());
-            }
-        }
+        // Fold: harness → agent → session (same merge semantics as AgentConfigOverlay)
+        let merged = merge_initial_files(&harness_files, &agent_files);
+        let merged = merge_initial_files(&merged, session_initial_files);
 
-        Ok(files)
+        Ok(merged)
     }
 
     async fn validate_model_id(
@@ -843,17 +825,7 @@ impl SessionService {
     }
 }
 
-fn normalize_initial_file_path(path: &str) -> String {
-    if path == "/workspace" {
-        "/".to_string()
-    } else if let Some(stripped) = path.strip_prefix("/workspace/") {
-        format!("/{}", stripped.trim_start_matches('/'))
-    } else if path.starts_with('/') {
-        path.to_string()
-    } else {
-        format!("/{}", path)
-    }
-}
+// normalize_initial_file_path is imported from everruns_core::config_layer
 
 #[cfg(test)]
 mod tests {

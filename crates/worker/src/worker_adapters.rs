@@ -392,10 +392,14 @@ impl<A: WorkerAdapters> everruns_core::traits::AgentStore for OrgAdapter<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::traits::HarnessStore for OrgAdapter<A> {
-    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<Harness>> {
-        self.adapters
+    async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>> {
+        // WorkerAdapters returns a pre-merged harness; wrap as single-element chain
+        Ok(self
+            .adapters
             .get_harness(self.org_id, harness_id.uuid())
-            .await
+            .await?
+            .into_iter()
+            .collect())
     }
 }
 
