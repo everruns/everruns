@@ -315,9 +315,7 @@ async fn handle_mcp(
     let response = match req.method.as_str() {
         "initialize" => handle_initialize(req.id),
         "tools/list" => handle_tools_list(req.id),
-        "tools/call" => {
-            handle_tools_call(req.id.clone(), req.params, &org, &state, &headers).await
-        }
+        "tools/call" => handle_tools_call(req.id.clone(), req.params, &org, &state, &headers).await,
         "ping" => JsonRpcResponse::success(req.id, json!({})),
         _ => JsonRpcResponse::method_not_found(req.id),
     };
@@ -366,11 +364,21 @@ async fn handle_tools_call(
         .cloned()
         .unwrap_or(Value::Object(Default::default()));
 
-    // Extract Bearer token from request to pass to scripted tool HTTP callbacks
+    // Extract Bearer token from request to pass to scripted tool HTTP callbacks.
+    // Parse case-insensitively per RFC 7235, matching extract_auth_user behavior.
     let bearer_token = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
+        .and_then(|s| {
+            let (scheme, token) = s.trim().split_once(char::is_whitespace)?;
+            if scheme.eq_ignore_ascii_case("Bearer") {
+                let token = token.trim();
+                if !token.is_empty() {
+                    return Some(token);
+                }
+            }
+            None
+        })
         .unwrap_or("")
         .to_string();
 

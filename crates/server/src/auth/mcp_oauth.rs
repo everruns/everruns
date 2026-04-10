@@ -10,6 +10,7 @@
 
 use super::{
     audit,
+    config::AuthMode,
     jwt::JwtService,
     middleware::{AuthError, AuthState, AuthUser},
 };
@@ -212,8 +213,6 @@ pub fn mcp_oauth_routes(state: McpOAuthState) -> Router {
 // Helpers
 // ============================================
 
-use super::config::AuthMode;
-
 /// Try to resolve an authenticated user from the cookie jar.
 /// Returns `None` when there is no valid session (no cookie or invalid token).
 /// In `AuthMode::None`, returns the anonymous user.
@@ -334,6 +333,7 @@ async fn oauth_register(
 /// after authentication.
 async fn oauth_authorize(
     State(state): State<McpOAuthState>,
+    original_uri: axum::extract::OriginalUri,
     headers: HeaderMap,
     jar: CookieJar,
     Query(query): Query<OAuthAuthorizeQuery>,
@@ -344,22 +344,17 @@ async fn oauth_authorize(
         Some(u) => u,
         None => {
             tracing::debug!("MCP OAuth: no session, redirecting to login");
-            // Build the full authorize URL to redirect back to after login
-            let authorize_url = format!(
-                "/oauth/authorize?response_type={}&client_id={}&redirect_uri={}&code_challenge={}&code_challenge_method={}&state={}&scope={}",
-                urlencoding::encode(&query.response_type),
-                urlencoding::encode(&query.client_id),
-                urlencoding::encode(&query.redirect_uri),
-                urlencoding::encode(&query.code_challenge),
-                urlencoding::encode(&query.code_challenge_method),
-                urlencoding::encode(&query.state),
-                urlencoding::encode(&query.scope),
-            );
+            // Preserve the full original URI (including `resource` and any other
+            // query params) so nothing is lost across the login redirect.
+            let authorize_path = original_uri
+                .path_and_query()
+                .map(|pq| pq.as_str())
+                .unwrap_or("/oauth/authorize");
             let frontend = state.frontend_url.trim_end_matches('/');
             let login_url = format!(
                 "{}/login?return_to={}",
                 frontend,
-                urlencoding::encode(&authorize_url)
+                urlencoding::encode(authorize_path)
             );
             return Ok(Redirect::temporary(&login_url).into_response());
         }
@@ -496,7 +491,9 @@ async fn oauth_token(
     };
     match &result {
         Ok(_) => tracing::info!(grant_type = %req.grant_type, "MCP OAuth: token grant succeeded"),
-        Err(e) => tracing::warn!(grant_type = %req.grant_type, error = %e.error, desc = ?e.error_description, "MCP OAuth: token grant failed"),
+        Err(e) => {
+            tracing::warn!(grant_type = %req.grant_type, error = %e.error, desc = ?e.error_description, "MCP OAuth: token grant failed")
+        }
     }
     result
 }

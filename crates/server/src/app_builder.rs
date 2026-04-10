@@ -837,6 +837,18 @@ impl ServerAppBuilder {
             root_routes = root_routes.merge(public_routes);
         }
 
+        // TM-DOS: Apply the same per-IP rate limiting to root routes (MCP, OAuth)
+        // as to API routes, to prevent brute-force and DoS on unthrottled endpoints.
+        let root_routes = if crate::auth::rate_limit::ApiRateLimiter::is_disabled() {
+            root_routes
+        } else {
+            let root_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env();
+            root_routes.layer(axum::middleware::from_fn(move |req, next| {
+                let limiter = root_rate_limiter.clone();
+                crate::auth::rate_limit::api_rate_limit_middleware(limiter, req, next)
+            }))
+        };
+
         // Main router
         let mut app = Router::new()
             .route("/health", get(health).with_state(health_state))

@@ -88,7 +88,7 @@ API_PREFIX=/api
 ```
 
 **Notes:**
-- `/health`, `/api-doc/openapi.json`, `/mcp`, and `/.well-known/*` stay at the server root
+- `/health`, `/api-doc/openapi.json`, `/mcp`, `/.well-known/*`, `/oauth/*`, and `/cli/login-success` stay at the server root
 - REST API routes including auth (`/v1/auth/*`) are mounted under this prefix
 - OAuth callback URLs use `AUTH_BASE_URL`, which should already include the API prefix
 - Override only if you need a non-`/api` REST prefix behind a reverse proxy or gateway

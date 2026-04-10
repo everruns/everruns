@@ -528,7 +528,7 @@ where
             }
             AuthMethod::Jwt => {
                 // Session auth: get org from everruns_org cookie
-                // Cookie is set via POST /v1/users/me/switch-org
+                // Cookie is set via the switch-org endpoint.
                 // Cookies work automatically with SSE (EventSource) unlike headers
                 let jar = CookieJar::from_headers(&parts.headers);
                 let cookie_org = jar.get(ORG_COOKIE_NAME).map(|c| c.value().to_string());

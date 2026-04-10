@@ -99,11 +99,11 @@ Account linking by email is supported (same email = same account).
 | `AUTH_DISABLE_SIGNUP` | Disable user registration | `false` |
 | `AUTH_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
 | `AUTH_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | - |
-| `AUTH_GOOGLE_REDIRECT_URI` | Google OAuth redirect URI | `{base_url}{api_prefix}/v1/auth/callback/google` |
+| `AUTH_GOOGLE_REDIRECT_URI` | Google OAuth redirect URI | `{AUTH_BASE_URL}/v1/auth/callback/google` |
 | `AUTH_GOOGLE_ALLOWED_DOMAINS` | Comma-separated allowed email domains | - |
 | `AUTH_GITHUB_CLIENT_ID` | GitHub OAuth client ID | - |
 | `AUTH_GITHUB_CLIENT_SECRET` | GitHub OAuth client secret | - |
-| `AUTH_GITHUB_REDIRECT_URI` | GitHub OAuth redirect URI | `{base_url}{api_prefix}/v1/auth/callback/github` |
+| `AUTH_GITHUB_REDIRECT_URI` | GitHub OAuth redirect URI | `{AUTH_BASE_URL}/v1/auth/callback/github` |
 | `GITHUB_CONNECTION_CLIENT_ID` | GitHub OAuth App client ID (for connections, NOT login) | - |
 | `GITHUB_CONNECTION_CLIENT_SECRET` | GitHub OAuth App client secret (for connections) | - |
 | `GITHUB_CONNECTION_REDIRECT_URI` | Callback URL for connections OAuth | `{AUTH_BASE_URL}/v1/user/connections/github/callback` |
