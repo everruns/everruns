@@ -47,6 +47,17 @@ fn build_api_key_cache() -> Cache<String, AuthUser> {
         .build()
 }
 
+fn root_url_from_api_base(api_base_url: &str) -> String {
+    let trimmed = api_base_url.trim_end_matches('/');
+    if let Ok(api_prefix) = std::env::var("API_PREFIX") {
+        let api_prefix = api_prefix.trim_end_matches('/');
+        if !api_prefix.is_empty() && trimmed.ends_with(api_prefix) {
+            return trimmed[..trimmed.len() - api_prefix.len()].to_string();
+        }
+    }
+    trimmed.strip_suffix("/api").unwrap_or(trimmed).to_string()
+}
+
 impl BuiltinAuthBackend {
     /// Create with in-memory rate limiting (per-instance).
     pub fn new(config: AuthConfig, db: Arc<StorageBackend>) -> Self {
@@ -232,23 +243,46 @@ impl AuthBackend for BuiltinAuthBackend {
         let auth_routes = routes::routes(self.clone());
         let auth_state =
             super::middleware::AuthState::new(self.config.clone(), Arc::new(self.clone()));
-        let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
-        let base_url = format!("{}{}", self.config.base_url, api_prefix);
+        let api_base_url = self.config.base_url.trim_end_matches('/').to_string();
         let cli_state = super::cli_auth::CliAuthState {
             db: self.db.clone(),
             auth: auth_state.clone(),
             frontend_url: self.config.frontend_url.clone(),
-            base_url: base_url.clone(),
+            base_url: api_base_url.clone(),
         };
-        let cli_routes = super::cli_auth::cli_auth_routes(cli_state);
+        let cli_routes = super::cli_auth::cli_auth_routes(cli_state.clone());
         let mcp_oauth_state = super::mcp_oauth::McpOAuthState {
             db: self.db.clone(),
             auth: auth_state,
             jwt_service: self.jwt_service.clone(),
-            base_url,
+            issuer_url: root_url_from_api_base(&api_base_url),
+            api_base_url,
         };
-        let mcp_oauth_routes = super::mcp_oauth::mcp_oauth_routes(mcp_oauth_state);
+        let mcp_oauth_routes = super::mcp_oauth::mcp_oauth_api_routes(mcp_oauth_state);
         Some(auth_routes.merge(cli_routes).merge(mcp_oauth_routes))
+    }
+
+    fn public_routes(&self) -> Option<Router> {
+        let auth_state =
+            super::middleware::AuthState::new(self.config.clone(), Arc::new(self.clone()));
+        let api_base_url = self.config.base_url.trim_end_matches('/').to_string();
+        let cli_state = super::cli_auth::CliAuthState {
+            db: self.db.clone(),
+            auth: auth_state.clone(),
+            frontend_url: self.config.frontend_url.clone(),
+            base_url: api_base_url.clone(),
+        };
+        let mcp_oauth_state = super::mcp_oauth::McpOAuthState {
+            db: self.db.clone(),
+            auth: auth_state,
+            jwt_service: self.jwt_service.clone(),
+            issuer_url: root_url_from_api_base(&api_base_url),
+            api_base_url,
+        };
+        Some(
+            super::cli_auth::cli_auth_public_routes(cli_state)
+                .merge(super::mcp_oauth::mcp_oauth_public_routes(mcp_oauth_state)),
+        )
     }
 
     fn auth_config_response(&self) -> AuthConfigResponse {

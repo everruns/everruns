@@ -158,8 +158,10 @@ pub struct McpOAuthState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
     pub jwt_service: Arc<JwtService>,
-    /// Full backend base URL including any path prefix (e.g. `https://app.example.com/api`).
-    pub base_url: String,
+    /// Public issuer URL without the API prefix (e.g. `https://app.example.com`).
+    pub issuer_url: String,
+    /// Full backend API base URL including any path prefix (e.g. `https://app.example.com/api`).
+    pub api_base_url: String,
 }
 
 impl FromRef<McpOAuthState> for AuthState {
@@ -172,13 +174,19 @@ impl FromRef<McpOAuthState> for AuthState {
 // Routes
 // ============================================
 
-/// Create MCP OAuth routes
-pub fn mcp_oauth_routes(state: McpOAuthState) -> Router {
+/// Create root-level MCP OAuth metadata routes.
+pub fn mcp_oauth_public_routes(state: McpOAuthState) -> Router {
     Router::new()
         .route(
             "/.well-known/oauth-authorization-server",
             get(oauth_server_metadata),
         )
+        .with_state(state)
+}
+
+/// Create MCP OAuth API routes mounted under the API prefix.
+pub fn mcp_oauth_api_routes(state: McpOAuthState) -> Router {
+    Router::new()
         .route("/v1/oauth/register", post(oauth_register))
         .route("/v1/oauth/authorize", get(oauth_authorize))
         .route("/v1/oauth/token", post(oauth_token))
@@ -191,12 +199,13 @@ pub fn mcp_oauth_routes(state: McpOAuthState) -> Router {
 
 /// GET /.well-known/oauth-authorization-server — Server metadata
 async fn oauth_server_metadata(State(state): State<McpOAuthState>) -> Json<OAuthServerMetadata> {
-    let base = state.base_url.trim_end_matches('/');
+    let issuer = state.issuer_url.trim_end_matches('/');
+    let api_base = state.api_base_url.trim_end_matches('/');
     Json(OAuthServerMetadata {
-        issuer: base.to_string(),
-        authorization_endpoint: format!("{base}/v1/oauth/authorize"),
-        token_endpoint: format!("{base}/v1/oauth/token"),
-        registration_endpoint: format!("{base}/v1/oauth/register"),
+        issuer: issuer.to_string(),
+        authorization_endpoint: format!("{api_base}/v1/oauth/authorize"),
+        token_endpoint: format!("{api_base}/v1/oauth/token"),
+        registration_endpoint: format!("{api_base}/v1/oauth/register"),
         response_types_supported: vec!["code".to_string()],
         grant_types_supported: vec![
             "authorization_code".to_string(),

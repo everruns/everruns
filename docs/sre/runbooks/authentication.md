@@ -171,8 +171,8 @@ DELETE FROM refresh_tokens WHERE user_id = 'user-uuid-here';
 ### OAuth Redirect Fails
 
 - Verify `AUTH_BASE_URL` matches the OAuth app configuration
-- Check that redirect URI in provider matches `{AUTH_BASE_URL}{API_PREFIX}/v1/auth/callback/{provider}`
-- If using `API_PREFIX`, ensure it's included in OAuth provider redirect URI configuration
+- Check that redirect URI in provider matches `{AUTH_BASE_URL}/v1/auth/callback/{provider}`
+- Ensure `AUTH_BASE_URL` already includes your REST API prefix (default: `/api`)
 - Ensure client ID and secret are correct
 
 ### Password Login Returns Unauthorized

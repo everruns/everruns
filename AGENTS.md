@@ -65,6 +65,7 @@ Always make sure you are working on top of latest main from remote.
 
 - `specs/concepts.md` - Core entities, relationships, and concept diagram
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
+- `specs/production-deployment.md` - Production deployment aggregation spec and reverse proxy contract
 - `specs/parallel-execution-1m.md` - Scaling to 1M concurrent agents (partitioning, sharding, LLM routing)
 - `specs/embedding.md` - Embedding contract and `PlatformDefinition`
 - `specs/code-organization.md` - Naming conventions, type flow, testing, error handling

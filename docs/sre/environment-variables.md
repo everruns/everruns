@@ -73,12 +73,12 @@ DEPLOYMENT_GRADE=prod ./target/debug/everruns-server
 
 ## API_PREFIX
 
-Optional prefix for all API routes.
+Path prefix for REST API routes.
 
 | Property | Value |
 |----------|-------|
 | **Required** | No |
-| **Default** | Empty (no prefix) |
+| **Default** | `/api` |
 
 **Example:**
 
@@ -88,10 +88,10 @@ API_PREFIX=/api
 ```
 
 **Notes:**
-- `/health` and `/api-doc/openapi.json` are not affected by this prefix
-- All API routes including auth (`/v1/auth/*`) are affected by this prefix
-- OAuth callback URLs automatically include this prefix when using defaults
-- Use when running behind a reverse proxy or API gateway that expects a path prefix
+- `/health`, `/api-doc/openapi.json`, `/mcp`, and `/.well-known/*` stay at the server root
+- REST API routes including auth (`/v1/auth/*`) are mounted under this prefix
+- OAuth callback URLs use `AUTH_BASE_URL`, which should already include the API prefix
+- Override only if you need a non-`/api` REST prefix behind a reverse proxy or gateway
 
 ## CORS_ALLOWED_ORIGINS
 
@@ -113,7 +113,7 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 ```
 
 **Notes:**
-- Not needed for local development (Caddy reverse proxy handles `/api/*` requests)
+- Not needed for local development (Caddy reverse proxy keeps UI and backend on one origin)
 - Not needed in production if using a reverse proxy on the same domain
 - If set, credentials are allowed (`Access-Control-Allow-Credentials: true`)
 - Wildcard (`*`) is not supported when using credentials
@@ -229,17 +229,18 @@ DEFAULT_GEMINI_API_KEY=AIza...
 
 ## UI API Proxy Architecture
 
-The UI makes all API requests (including SSE) to `/api/*` paths. Caddy reverse proxy strips `/api` and forwards to the backend.
+The UI makes all REST API requests (including SSE) to `/api/*` paths. The backend serves those routes under `/api` directly. Root-level backend routes like `/mcp` and `/.well-known/*` bypass the UI and are proxied straight to the backend.
 
 **Local Development:**
-- Caddy on `:9300` routes `/api/*` to backend at `:9301` (strips `/api` prefix)
-- Example: `/api/v1/agents` → `http://localhost:9301/v1/agents`
+- Caddy on `:9300` routes `/api/*`, `/mcp`, and `/.well-known/*` to backend at `:9301`
+- Example: `/api/v1/agents` → `http://localhost:9301/api/v1/agents`
+- Example: `/mcp` → `http://localhost:9301/mcp`
+- Example: `/.well-known/oauth-authorization-server` → `http://localhost:9301/.well-known/oauth-authorization-server`
 - SSE streaming works via `flush_interval -1` in Caddy config
 - No CORS needed (same-origin through Caddy)
 
 **Production:**
-- Configure your reverse proxy (nginx, Caddy, etc.) to route `/api/*` to the API server
-- Strip the `/api` prefix when forwarding
+- Configure your reverse proxy (nginx, Caddy, etc.) to route `/api/*`, `/mcp`, and `/.well-known/*` to the API server
 - Disable response buffering for SSE endpoints
 - Example Caddy config: see `local/Caddyfile`
 

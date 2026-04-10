@@ -19,7 +19,8 @@ use everruns_core::llm_models::LlmProvider;
 use everruns_core::{Agent, LlmModel, Session, SessionFile};
 use serde_json::{Value, json};
 
-const API_BASE_URL: &str = "http://localhost:9000";
+const SERVER_BASE_URL: &str = "http://localhost:9000";
+const API_BASE_URL: &str = "http://localhost:9000/api";
 // Note: With AUTH_MODE=none, org is derived from the anonymous user's default org.
 // No cookie or header needed for integration tests.
 
@@ -222,7 +223,7 @@ async fn test_health_endpoint() {
 
     println!("Testing health endpoint...");
     let response = client
-        .get(format!("{}/health", API_BASE_URL))
+        .get(format!("{}/health", SERVER_BASE_URL))
         .send()
         .await
         .expect("Failed to call health endpoint");
@@ -239,7 +240,7 @@ async fn test_openapi_spec() {
 
     println!("Testing OpenAPI spec endpoint...");
     let response = client
-        .get(format!("{}/api-doc/openapi.json", API_BASE_URL))
+        .get(format!("{}/api-doc/openapi.json", SERVER_BASE_URL))
         .send()
         .await
         .expect("Failed to get OpenAPI spec");

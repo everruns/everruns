@@ -105,7 +105,7 @@ fn tool_definitions() -> Value {
     json!([
         {
             "name": "agent_run",
-            "description": "Create a new session and send the first message to an agent. Returns the session ID and message ID. Use session_get_status to poll for the agent's response, or connect to the SSE stream at /v1/sessions/{session_id}/sse for real-time events.",
+            "description": "Create a new session and send the first message to an agent. Returns the session ID and message ID. Use session_get_status to poll for the agent's response, or connect to the SSE stream at /api/v1/sessions/{session_id}/sse for real-time events.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -546,7 +546,7 @@ async fn tool_agent_run(
         "session_id": session.id.to_string(),
         "message_id": message.id.to_string(),
         "status": session.status.to_string(),
-        "hint": "Use session_get_status to poll for the agent's response, or connect to SSE at /v1/sessions/{session_id}/sse"
+        "hint": "Use session_get_status to poll for the agent's response, or connect to SSE at /api/v1/sessions/{session_id}/sse"
     });
     if let Some(bid) = budget_id {
         result["budget_id"] = json!(bid);

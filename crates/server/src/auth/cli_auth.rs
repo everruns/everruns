@@ -128,6 +128,12 @@ pub fn cli_auth_routes(state: CliAuthState) -> Router {
         .route("/v1/auth/cli/start", post(cli_auth_start))
         .route("/v1/auth/cli/callback", get(cli_auth_callback))
         .route("/v1/auth/cli/exchange", post(cli_auth_exchange))
+        .with_state(state)
+}
+
+/// Create root-level CLI auth routes.
+pub fn cli_auth_public_routes(state: CliAuthState) -> Router {
+    Router::new()
         .route("/cli/login-success", get(cli_login_success))
         .with_state(state)
 }

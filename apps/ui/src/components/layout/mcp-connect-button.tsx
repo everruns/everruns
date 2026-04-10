@@ -12,7 +12,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const McpIcon = capabilityIconMap.mcp;
 
@@ -36,7 +40,11 @@ function CopySnippetButton({ value }: { value: string }) {
       className="absolute top-2 right-2 inline-flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
       aria-label={copied ? "Copied" : "Copy to clipboard"}
     >
-      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+      {copied ? (
+        <Check className="h-3.5 w-3.5 text-green-500" />
+      ) : (
+        <Copy className="h-3.5 w-3.5" />
+      )}
     </button>
   );
 }
@@ -48,7 +56,8 @@ export function McpConnectButton() {
     return null;
   }
 
-  const mcpUrl = typeof window !== "undefined" ? `${window.location.origin}/api/mcp` : "/api/mcp";
+  const mcpUrl =
+    typeof window !== "undefined" ? `${window.location.origin}/mcp` : "/mcp";
 
   const configSnippet = JSON.stringify(
     {
@@ -83,7 +92,8 @@ export function McpConnectButton() {
             Connect via MCP
           </DialogTitle>
           <DialogDescription>
-            Use Everruns from Claude Desktop, Cursor, VS Code, or any MCP-compatible client.
+            Use Everruns from Claude Desktop, Cursor, VS Code, or any
+            MCP-compatible client.
           </DialogDescription>
         </DialogHeader>
 
@@ -112,7 +122,8 @@ export function McpConnectButton() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Authentication is handled automatically via OAuth when connecting from an MCP client.
+            Authentication is handled automatically via OAuth when connecting
+            from an MCP client.
           </p>
         </div>
       </DialogContent>

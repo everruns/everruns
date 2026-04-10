@@ -106,7 +106,7 @@ Account linking by email is supported (same email = same account).
 | `AUTH_GITHUB_REDIRECT_URI` | GitHub OAuth redirect URI | `{base_url}{api_prefix}/v1/auth/callback/github` |
 | `GITHUB_CONNECTION_CLIENT_ID` | GitHub OAuth App client ID (for connections, NOT login) | - |
 | `GITHUB_CONNECTION_CLIENT_SECRET` | GitHub OAuth App client secret (for connections) | - |
-| `GITHUB_CONNECTION_REDIRECT_URI` | Callback URL for connections OAuth | `{AUTH_BASE_URL}{API_PREFIX}/v1/user/connections/github/callback` |
+| `GITHUB_CONNECTION_REDIRECT_URI` | Callback URL for connections OAuth | `{AUTH_BASE_URL}/v1/user/connections/github/callback` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated allowed CORS origins (only if cross-origin) | Not set |
 
 ### Database Schema

@@ -4,6 +4,12 @@
 
 Everruns exposes an MCP server endpoint (`/mcp`) so external MCP clients — Claude Desktop, Cursor, VS Code, etc. — can interact with Everruns agents and tools over the [Model Context Protocol](https://spec.modelcontextprotocol.io). Authentication uses the same mechanisms as other API routes (`ResolvedOrg` extractor — API keys, JWT/cookie sessions), including OAuth 2.1-issued JWTs with mandatory PKCE for MCP client registration flows.
 
+Routing is intentionally split:
+
+- REST API lives under `/api/*`
+- MCP lives at `/mcp`
+- OAuth discovery metadata lives at `/.well-known/oauth-authorization-server`
+
 Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`specs/mcp-servers.md`](mcp-servers.md).
 
 ## Protocol
@@ -61,14 +67,14 @@ External MCP clients authenticate via OAuth 2.1 with mandatory PKCE (S256). The 
 MCP Client → GET {issuer}/.well-known/oauth-authorization-server
            ← Server metadata (endpoints, PKCE support)
 
-MCP Client → POST /v1/oauth/register
+MCP Client → POST /api/v1/oauth/register
            ← client_id, client_secret (dynamic registration)
 
-MCP Client → GET /v1/oauth/authorize?client_id=...&code_challenge=...&state=...&redirect_uri=...
+MCP Client → GET /api/v1/oauth/authorize?client_id=...&code_challenge=...&state=...&redirect_uri=...
            → AuthUser extractor requires authenticated session (returns 401 if not)
            ← Redirect to redirect_uri with ?code=...&state=...
 
-MCP Client → POST /v1/oauth/token (grant_type=authorization_code, code=..., code_verifier=...)
+MCP Client → POST /api/v1/oauth/token (grant_type=authorization_code, code=..., code_verifier=...)
            ← { access_token, token_type, expires_in, refresh_token }
 
 MCP Client → POST /mcp (with Authorization: Bearer <access_token>)
@@ -81,12 +87,12 @@ MCP Client → POST /mcp (with Authorization: Bearer <access_token>)
 
 OAuth 2.0 Authorization Server Metadata (RFC 8414). No auth required.
 
-The `issuer` is the backend `base_url` (e.g. `https://app.example.com/api`). All endpoint URLs are constructed from this base.
+The `issuer` is the backend root URL (e.g. `https://app.example.com`). OAuth API endpoints still live under `/api/v1/...`.
 
 **Response:**
 ```json
 {
-  "issuer": "https://app.example.com/api",
+  "issuer": "https://app.example.com",
   "authorization_endpoint": "https://app.example.com/api/v1/oauth/authorize",
   "token_endpoint": "https://app.example.com/api/v1/oauth/token",
   "registration_endpoint": "https://app.example.com/api/v1/oauth/register",
@@ -98,7 +104,7 @@ The `issuer` is the backend `base_url` (e.g. `https://app.example.com/api`). All
 }
 ```
 
-#### POST /v1/oauth/register
+#### POST /api/v1/oauth/register
 
 Dynamic Client Registration (RFC 7591). No auth required.
 
@@ -120,7 +126,7 @@ Dynamic Client Registration (RFC 7591). No auth required.
 }
 ```
 
-#### GET /v1/oauth/authorize
+#### GET /api/v1/oauth/authorize
 
 Authorization endpoint. **Requires authenticated user** (via `AuthUser` extractor).
 
@@ -141,7 +147,7 @@ Authorization endpoint. **Requires authenticated user** (via `AuthUser` extracto
 
 Authorization codes: random 32-byte hex, 5-minute TTL, one-time use, stored with PKCE challenge.
 
-#### POST /v1/oauth/token
+#### POST /api/v1/oauth/token
 
 Token exchange. No cookie/session auth — uses client credentials.
 

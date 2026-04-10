@@ -69,6 +69,8 @@ This starts:
 |---------|-----|
 | **Web UI** | http://localhost:9300 |
 | **API** | http://localhost:9300/api/... |
+| **MCP** | http://localhost:9300/mcp |
+| **OAuth Metadata** | http://localhost:9300/.well-known/oauth-authorization-server |
 | **Health Check** | http://localhost:9300/health |
 
 ## Configuration

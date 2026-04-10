@@ -82,7 +82,7 @@ start_caddy_proxy() {
 admin :${CADDY_ADMIN_PORT}
 
 :${PROXY_PORT} {
-    handle_path /api/* {
+    handle /api/* {
         reverse_proxy localhost:${API_PORT} {
             flush_interval -1
             transport http {
@@ -102,7 +102,7 @@ EOF
 admin :${CADDY_ADMIN_PORT}
 
 :${PROXY_PORT} {
-    handle_path /api/* {
+    handle /api/* {
         reverse_proxy localhost:${API_PORT} {
             flush_interval -1
         }
