@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useAuthConfig, useLogin } from "@/hooks/use-auth";
-import { getOAuthUrl } from "@/lib/api/auth";
+import { getOAuthUrl, login } from "@/lib/api/auth";
 import { Loader2 } from "lucide-react";
 
 // Session storage key for preserving return_to across OAuth redirects
@@ -60,8 +60,18 @@ export default function LoginPage() {
     setError(null);
 
     try {
+      const target = getRedirectTarget();
+      // For backend redirects (e.g. /oauth/authorize), call login() directly
+      // and navigate immediately — don't go through the mutation's onSuccess
+      // which refetches auth state and can trigger React re-renders that
+      // race with the navigation.
+      if (target.startsWith("/oauth/") || target.startsWith("/api/")) {
+        await login({ email, password });
+        window.location.assign(target);
+        return;
+      }
       await loginMutation.mutateAsync({ email, password });
-      router.push(getRedirectTarget());
+      router.push(target);
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);

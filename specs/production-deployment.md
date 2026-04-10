@@ -86,9 +86,10 @@ Do not rewrite `/mcp` under `/api`. Do not rewrite `/.well-known/*` under `/api`
 ### Operational Notes
 
 - REST API base URL should stay under `/api`
+- MCP OAuth endpoints stay at root: `/oauth/*`
 - MCP endpoint stays at root: `/mcp`
 - OAuth discovery metadata stays at root: `/.well-known/oauth-authorization-server`
-- If the UI is deployed separately, it still must target the same public `/api` base and root-level `/mcp`
+- If the UI is deployed separately, it still must target the same public `/api` base and root-level `/oauth/*`, `/mcp`
 
 Canonical references:
 - [`specs/apis.md`](./apis.md)

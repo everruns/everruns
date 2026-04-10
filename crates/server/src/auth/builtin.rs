@@ -246,20 +246,12 @@ impl AuthBackend for BuiltinAuthBackend {
         let api_base_url = self.config.base_url.trim_end_matches('/').to_string();
         let cli_state = super::cli_auth::CliAuthState {
             db: self.db.clone(),
-            auth: auth_state.clone(),
-            frontend_url: self.config.frontend_url.clone(),
-            base_url: api_base_url.clone(),
-        };
-        let cli_routes = super::cli_auth::cli_auth_routes(cli_state.clone());
-        let mcp_oauth_state = super::mcp_oauth::McpOAuthState {
-            db: self.db.clone(),
             auth: auth_state,
-            jwt_service: self.jwt_service.clone(),
-            issuer_url: root_url_from_api_base(&api_base_url),
-            api_base_url,
+            frontend_url: self.config.frontend_url.clone(),
+            base_url: api_base_url,
         };
-        let mcp_oauth_routes = super::mcp_oauth::mcp_oauth_api_routes(mcp_oauth_state);
-        Some(auth_routes.merge(cli_routes).merge(mcp_oauth_routes))
+        let cli_routes = super::cli_auth::cli_auth_routes(cli_state);
+        Some(auth_routes.merge(cli_routes))
     }
 
     fn public_routes(&self) -> Option<Router> {
@@ -277,11 +269,11 @@ impl AuthBackend for BuiltinAuthBackend {
             auth: auth_state,
             jwt_service: self.jwt_service.clone(),
             issuer_url: root_url_from_api_base(&api_base_url),
-            api_base_url,
+            frontend_url: self.config.frontend_url.clone(),
         };
         Some(
             super::cli_auth::cli_auth_public_routes(cli_state)
-                .merge(super::mcp_oauth::mcp_oauth_public_routes(mcp_oauth_state)),
+                .merge(super::mcp_oauth::mcp_oauth_routes(mcp_oauth_state)),
         )
     }
 

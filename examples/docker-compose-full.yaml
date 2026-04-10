@@ -221,6 +221,7 @@ configs:
     content: |
       # Reverse proxy routes:
       #   /api/*     -> API
+      #   /oauth/*   -> API
       #   /mcp       -> API
       #   /.well-known/* -> API
       #   /api-doc/* -> API
@@ -236,6 +237,9 @@ configs:
             # Disable response buffering for SSE streaming
             flush_interval -1
           }
+        }
+        handle /oauth/* {
+          reverse_proxy server:9301
         }
         handle /mcp {
           reverse_proxy server:9301

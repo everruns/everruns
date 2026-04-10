@@ -89,6 +89,7 @@ image.workspace = true  # For image thumbnail generation
 tonic.workspace = true
 prost.workspace = true
 prost-types.workspace = true
+serde_urlencoded = "0.7.1"
 
 [dev-dependencies]
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }

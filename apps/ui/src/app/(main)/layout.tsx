@@ -69,7 +69,12 @@ function MainLayoutInner({ children }: MainLayoutProps) {
       const pendingReturnTo = sessionStorage.getItem("everruns_return_to");
       if (pendingReturnTo) {
         sessionStorage.removeItem("everruns_return_to");
-        router.replace(pendingReturnTo);
+        // Backend paths (e.g. /oauth/authorize) need a full page navigation
+        if (pendingReturnTo.startsWith("/oauth/") || pendingReturnTo.startsWith("/api/")) {
+          window.location.assign(pendingReturnTo);
+        } else {
+          router.replace(pendingReturnTo);
+        }
       }
     }
   }, [authLoading, authUnavailable, isAuthenticated, router]);

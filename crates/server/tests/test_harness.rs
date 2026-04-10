@@ -386,15 +386,6 @@ impl TestServer {
                     frontend_url: auth_config.frontend_url.clone(),
                     base_url: auth_config.base_url.clone(),
                 },
-            ))
-            .merge(auth::mcp_oauth::mcp_oauth_api_routes(
-                auth::mcp_oauth::McpOAuthState {
-                    db: db.clone(),
-                    auth: auth_state.clone(),
-                    jwt_service: auth_backend.jwt_service.clone(),
-                    issuer_url: auth_config.frontend_url.clone(),
-                    api_base_url: auth_config.base_url.clone(),
-                },
             ));
 
         if let Some(notifications_state) = notifications_state {
@@ -411,13 +402,13 @@ impl TestServer {
                     base_url: auth_config.base_url.clone(),
                 },
             ))
-            .merge(auth::mcp_oauth::mcp_oauth_public_routes(
+            .merge(auth::mcp_oauth::mcp_oauth_routes(
                 auth::mcp_oauth::McpOAuthState {
                     db: db.clone(),
                     auth: auth_state.clone(),
                     jwt_service: auth_backend.jwt_service.clone(),
                     issuer_url: auth_config.frontend_url.clone(),
-                    api_base_url: auth_config.base_url.clone(),
+                    frontend_url: auth_config.frontend_url.clone(),
                 },
             ));
 

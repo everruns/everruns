@@ -13,6 +13,7 @@
 #
 # Routes:
 #   /api/*     -> API server at :API_PORT
+#   /oauth/*   -> API server at :API_PORT
 #   /mcp       -> API server at :API_PORT
 #   /.well-known/* -> API server at :API_PORT
 #   /api-doc/* -> API server at :API_PORT
@@ -29,6 +30,9 @@
 			# Disable response buffering for SSE streaming
 			flush_interval -1
 		}
+	}
+	handle /oauth/* {
+		reverse_proxy localhost:{$API_PORT:9301}
 	}
 	handle /mcp {
 		reverse_proxy localhost:{$API_PORT:9301}

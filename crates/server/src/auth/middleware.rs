@@ -531,14 +531,25 @@ where
                 // Cookie is set via POST /v1/users/me/switch-org
                 // Cookies work automatically with SSE (EventSource) unlike headers
                 let jar = CookieJar::from_headers(&parts.headers);
-                let org_public_id = jar
-                    .get(ORG_COOKIE_NAME)
-                    .map(|c| c.value().to_string())
-                    .ok_or_else(|| {
-                        AuthError::unauthorized(
-                            "Missing organization cookie. Call POST /v1/users/me/switch-org first.",
-                        )
-                    })?;
+                let cookie_org = jar.get(ORG_COOKIE_NAME).map(|c| c.value().to_string());
+
+                // When no org cookie is present (e.g. MCP OAuth Bearer tokens),
+                // fall back to the user's first organization.
+                if cookie_org.is_none() {
+                    let org = user
+                        .organizations
+                        .first()
+                        .ok_or_else(|| AuthError::unauthorized("No organization available"))?;
+                    return Ok(ResolvedOrg {
+                        org_id: org.org_id,
+                        public_id: org.public_id.clone(),
+                        name: org.name.clone(),
+                        user_id: Some(user.id),
+                        role: org.role,
+                    });
+                }
+
+                let org_public_id = cookie_org.unwrap();
                 let org_public_id = org_public_id.as_str();
 
                 // Validate format

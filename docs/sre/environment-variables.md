@@ -229,18 +229,19 @@ DEFAULT_GEMINI_API_KEY=AIza...
 
 ## UI API Proxy Architecture
 
-The UI makes all REST API requests (including SSE) to `/api/*` paths. The backend serves those routes under `/api` directly. Root-level backend routes like `/mcp` and `/.well-known/*` bypass the UI and are proxied straight to the backend.
+The UI makes all REST API requests (including SSE) to `/api/*` paths. The backend serves those routes under `/api` directly. Root-level backend routes like `/oauth/*`, `/mcp`, and `/.well-known/*` bypass the UI and are proxied straight to the backend.
 
 **Local Development:**
-- Caddy on `:9300` routes `/api/*`, `/mcp`, and `/.well-known/*` to backend at `:9301`
+- Caddy on `:9300` routes `/api/*`, `/oauth/*`, `/mcp`, and `/.well-known/*` to backend at `:9301`
 - Example: `/api/v1/agents` → `http://localhost:9301/api/v1/agents`
+- Example: `/oauth/authorize?...` → `http://localhost:9301/oauth/authorize?...`
 - Example: `/mcp` → `http://localhost:9301/mcp`
 - Example: `/.well-known/oauth-authorization-server` → `http://localhost:9301/.well-known/oauth-authorization-server`
 - SSE streaming works via `flush_interval -1` in Caddy config
 - No CORS needed (same-origin through Caddy)
 
 **Production:**
-- Configure your reverse proxy (nginx, Caddy, etc.) to route `/api/*`, `/mcp`, and `/.well-known/*` to the API server
+- Configure your reverse proxy (nginx, Caddy, etc.) to route `/api/*`, `/oauth/*`, `/mcp`, and `/.well-known/*` to the API server
 - Disable response buffering for SSE endpoints
 - Example Caddy config: see `local/Caddyfile`
 

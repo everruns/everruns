@@ -8,9 +8,10 @@ This document defines the HTTP API endpoints for Everruns v0.2.0 (M2).
 
 ### Routing Layout
 
-The backend exposes three top-level route groups:
+The backend exposes four top-level route groups:
 
 - `/api/*` — REST API routes, including auth and SSE
+- `/oauth/*` — MCP OAuth 2.1 endpoints (authorize, token, register)
 - `/mcp` — MCP JSON-RPC endpoint
 - `/.well-known/*` — public metadata and discovery endpoints
 
@@ -28,6 +29,7 @@ REST endpoints are mounted under `/api`, so the public REST base URL is `/api/v1
 Production and local reverse proxies must preserve this route split:
 
 - forward `/api/*` to the backend unchanged
+- forward `/oauth/*` to the backend unchanged
 - forward `/mcp` to the backend unchanged
 - forward `/.well-known/*` to the backend unchanged
 - forward all other browser routes to the UI

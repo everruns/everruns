@@ -18,12 +18,13 @@ use crate::storage::models::{
     CreateOAuthAuthorizationCodeRow, CreateOAuthClientRow, CreateOAuthRefreshTokenRow,
 };
 use axum::{
-    Form, Json, Router,
+    Json, Router,
     extract::{FromRef, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
 };
+use axum_extra::extract::CookieJar;
 use chrono::{Duration, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -65,14 +66,14 @@ fn verify_pkce_s256(verifier: &str, challenge: &str) -> bool {
 // Request/Response types
 // ============================================
 
-/// POST /v1/oauth/register request
+/// POST /oauth/register request
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct OAuthRegisterRequest {
     pub client_name: String,
     pub redirect_uris: Vec<String>,
 }
 
-/// POST /v1/oauth/register response
+/// POST /oauth/register response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OAuthRegisterResponse {
     pub client_id: String,
@@ -81,7 +82,7 @@ pub struct OAuthRegisterResponse {
     pub redirect_uris: Vec<String>,
 }
 
-/// GET /v1/oauth/authorize query parameters
+/// GET /oauth/authorize query parameters
 #[derive(Debug, Deserialize)]
 pub struct OAuthAuthorizeQuery {
     pub client_id: String,
@@ -92,13 +93,17 @@ pub struct OAuthAuthorizeQuery {
     pub state: String,
     #[serde(default = "default_scope")]
     pub scope: String,
+    /// RFC 9728 resource indicator — ignored but accepted so clients like Cursor
+    /// don't get a deserialization error.
+    #[serde(default)]
+    pub resource: Option<String>,
 }
 
 fn default_scope() -> String {
     "mcp".to_string()
 }
 
-/// POST /v1/oauth/token request (form-encoded per OAuth spec)
+/// POST /oauth/token request (form-encoded per OAuth spec)
 #[derive(Debug, Deserialize)]
 pub struct OAuthTokenRequest {
     pub grant_type: String,
@@ -110,7 +115,7 @@ pub struct OAuthTokenRequest {
     pub refresh_token: Option<String>,
 }
 
-/// POST /v1/oauth/token response
+/// POST /oauth/token response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OAuthTokenResponse {
     pub access_token: String,
@@ -132,6 +137,14 @@ impl IntoResponse for OAuthErrorResponse {
     fn into_response(self) -> Response {
         (StatusCode::BAD_REQUEST, Json(self)).into_response()
     }
+}
+
+/// Protected resource metadata (RFC 9728 / MCP spec)
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OAuthProtectedResourceMetadata {
+    pub resource: String,
+    pub authorization_servers: Vec<String>,
+    pub bearer_methods_supported: Vec<String>,
 }
 
 /// Authorization server metadata (RFC 8414)
@@ -160,8 +173,8 @@ pub struct McpOAuthState {
     pub jwt_service: Arc<JwtService>,
     /// Public issuer URL without the API prefix (e.g. `https://app.example.com`).
     pub issuer_url: String,
-    /// Full backend API base URL including any path prefix (e.g. `https://app.example.com/api`).
-    pub api_base_url: String,
+    /// Frontend URL for login redirects (e.g. `http://localhost:9300`).
+    pub frontend_url: String,
 }
 
 impl FromRef<McpOAuthState> for AuthState {
@@ -174,54 +187,93 @@ impl FromRef<McpOAuthState> for AuthState {
 // Routes
 // ============================================
 
-/// Create root-level MCP OAuth metadata routes.
-pub fn mcp_oauth_public_routes(state: McpOAuthState) -> Router {
+/// Create root-level MCP OAuth routes (metadata + all OAuth endpoints).
+///
+/// All OAuth routes live at the server root — not under the API prefix —
+/// because the authorize endpoint is browser-facing and the MCP spec
+/// discovers them via `/.well-known/oauth-authorization-server`.
+pub fn mcp_oauth_routes(state: McpOAuthState) -> Router {
     Router::new()
+        .route(
+            "/.well-known/oauth-protected-resource",
+            get(oauth_protected_resource_metadata),
+        )
         .route(
             "/.well-known/oauth-authorization-server",
             get(oauth_server_metadata),
         )
+        .route("/oauth/register", post(oauth_register))
+        .route("/oauth/authorize", get(oauth_authorize))
+        .route("/oauth/token", post(oauth_token))
         .with_state(state)
 }
 
-/// Create MCP OAuth API routes mounted under the API prefix.
-pub fn mcp_oauth_api_routes(state: McpOAuthState) -> Router {
-    Router::new()
-        .route("/v1/oauth/register", post(oauth_register))
-        .route("/v1/oauth/authorize", get(oauth_authorize))
-        .route("/v1/oauth/token", post(oauth_token))
-        .with_state(state)
+// ============================================
+// Helpers
+// ============================================
+
+use super::config::AuthMode;
+
+/// Try to resolve an authenticated user from the cookie jar.
+/// Returns `None` when there is no valid session (no cookie or invalid token).
+/// In `AuthMode::None`, returns the anonymous user.
+async fn try_resolve_user(state: &McpOAuthState, jar: &CookieJar) -> Option<AuthUser> {
+    if state.auth.config.mode == AuthMode::None {
+        return Some(AuthUser::anonymous());
+    }
+    let token = jar.get("access_token")?.value().to_owned();
+    state.auth.backend.validate_token(&token).await.ok()
 }
 
 // ============================================
 // Handlers
 // ============================================
 
+/// GET /.well-known/oauth-protected-resource — Protected resource metadata (RFC 9728)
+///
+/// MCP clients fetch this first to discover which authorization server protects
+/// the resource. Points to the authorization server metadata URL.
+async fn oauth_protected_resource_metadata(
+    State(state): State<McpOAuthState>,
+) -> Json<OAuthProtectedResourceMetadata> {
+    tracing::debug!("MCP OAuth: protected resource metadata requested");
+    let issuer = state.issuer_url.trim_end_matches('/');
+    Json(OAuthProtectedResourceMetadata {
+        resource: format!("{issuer}/mcp"),
+        authorization_servers: vec![issuer.to_string()],
+        bearer_methods_supported: vec!["header".to_string()],
+    })
+}
+
 /// GET /.well-known/oauth-authorization-server — Server metadata
 async fn oauth_server_metadata(State(state): State<McpOAuthState>) -> Json<OAuthServerMetadata> {
+    tracing::debug!("MCP OAuth: authorization server metadata requested");
     let issuer = state.issuer_url.trim_end_matches('/');
-    let api_base = state.api_base_url.trim_end_matches('/');
     Json(OAuthServerMetadata {
         issuer: issuer.to_string(),
-        authorization_endpoint: format!("{api_base}/v1/oauth/authorize"),
-        token_endpoint: format!("{api_base}/v1/oauth/token"),
-        registration_endpoint: format!("{api_base}/v1/oauth/register"),
+        authorization_endpoint: format!("{issuer}/oauth/authorize"),
+        token_endpoint: format!("{issuer}/oauth/token"),
+        registration_endpoint: format!("{issuer}/oauth/register"),
         response_types_supported: vec!["code".to_string()],
         grant_types_supported: vec![
             "authorization_code".to_string(),
             "refresh_token".to_string(),
         ],
         code_challenge_methods_supported: vec!["S256".to_string()],
-        token_endpoint_auth_methods_supported: vec!["client_secret_post".to_string()],
+        token_endpoint_auth_methods_supported: vec![
+            "none".to_string(),
+            "client_secret_post".to_string(),
+        ],
         scopes_supported: vec!["mcp".to_string()],
     })
 }
 
-/// POST /v1/oauth/register — Dynamic Client Registration (RFC 7591)
+/// POST /oauth/register — Dynamic Client Registration (RFC 7591)
 async fn oauth_register(
     State(state): State<McpOAuthState>,
     Json(req): Json<OAuthRegisterRequest>,
 ) -> Result<(StatusCode, Json<OAuthRegisterResponse>), OAuthErrorResponse> {
+    tracing::info!(client_name = %req.client_name, "MCP OAuth: client registration");
     // Validate
     if req.client_name.is_empty() || req.client_name.len() > 255 {
         return Err(OAuthErrorResponse {
@@ -275,13 +327,43 @@ async fn oauth_register(
     ))
 }
 
-/// GET /v1/oauth/authorize — Authorization endpoint (requires authenticated user)
+/// GET /oauth/authorize — Authorization endpoint (requires authenticated user)
+///
+/// If the user has no valid session, redirect to the frontend login page with
+/// `return_to` pointing back here so the browser lands on the authorize flow
+/// after authentication.
 async fn oauth_authorize(
     State(state): State<McpOAuthState>,
     headers: HeaderMap,
-    user: AuthUser,
+    jar: CookieJar,
     Query(query): Query<OAuthAuthorizeQuery>,
 ) -> Result<Response, AuthError> {
+    tracing::debug!(client_id = %query.client_id, "MCP OAuth: authorize request");
+    // Try to resolve user from cookie session (browser flow)
+    let user = match try_resolve_user(&state, &jar).await {
+        Some(u) => u,
+        None => {
+            tracing::debug!("MCP OAuth: no session, redirecting to login");
+            // Build the full authorize URL to redirect back to after login
+            let authorize_url = format!(
+                "/oauth/authorize?response_type={}&client_id={}&redirect_uri={}&code_challenge={}&code_challenge_method={}&state={}&scope={}",
+                urlencoding::encode(&query.response_type),
+                urlencoding::encode(&query.client_id),
+                urlencoding::encode(&query.redirect_uri),
+                urlencoding::encode(&query.code_challenge),
+                urlencoding::encode(&query.code_challenge_method),
+                urlencoding::encode(&query.state),
+                urlencoding::encode(&query.scope),
+            );
+            let frontend = state.frontend_url.trim_end_matches('/');
+            let login_url = format!(
+                "{}/login?return_to={}",
+                frontend,
+                urlencoding::encode(&authorize_url)
+            );
+            return Ok(Redirect::temporary(&login_url).into_response());
+        }
+    };
     let ip = audit::client_ip(&headers);
 
     // Validate response_type
@@ -355,6 +437,7 @@ async fn oauth_authorize(
         serde_json::json!({"client_id": query.client_id}),
     );
 
+    tracing::info!(user_id = %user.id, client_id = %query.client_id, redirect_uri = %query.redirect_uri, "MCP OAuth: auth code issued, redirecting");
     // Redirect to client with code and state
     let redirect_url = format!(
         "{}?code={}&state={}",
@@ -366,22 +449,56 @@ async fn oauth_authorize(
     Ok(Redirect::to(&redirect_url).into_response())
 }
 
-/// POST /v1/oauth/token — Token exchange (authorization_code or refresh_token grant)
+/// POST /oauth/token — Token exchange (authorization_code or refresh_token grant)
+///
+/// Accepts both `application/x-www-form-urlencoded` (per OAuth spec) and
+/// `application/json` (sent by some MCP clients like Cursor).
 async fn oauth_token(
     State(state): State<McpOAuthState>,
     headers: HeaderMap,
-    Form(req): Form<OAuthTokenRequest>,
+    body: axum::body::Bytes,
 ) -> Result<Json<OAuthTokenResponse>, OAuthErrorResponse> {
+    let content_type = headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    tracing::debug!(content_type, "MCP OAuth: token request received");
+
+    let req: OAuthTokenRequest = if content_type.contains("application/json") {
+        serde_json::from_slice(&body).map_err(|e| {
+            tracing::warn!(%e, "Failed to parse JSON token request");
+            OAuthErrorResponse {
+                error: "invalid_request".to_string(),
+                error_description: Some(format!("Invalid JSON body: {e}")),
+            }
+        })?
+    } else {
+        serde_urlencoded::from_bytes(&body).map_err(|e| {
+            tracing::warn!(%e, "Failed to parse form token request");
+            OAuthErrorResponse {
+                error: "invalid_request".to_string(),
+                error_description: Some(format!("Invalid form body: {e}")),
+            }
+        })?
+    };
     let ip = audit::client_ip(&headers);
 
-    match req.grant_type.as_str() {
+    tracing::debug!(grant_type = %req.grant_type, "MCP OAuth: processing token grant");
+
+    let result = match req.grant_type.as_str() {
         "authorization_code" => handle_authorization_code_grant(&state, &req, ip).await,
         "refresh_token" => handle_refresh_token_grant(&state, &req, ip).await,
         _ => Err(OAuthErrorResponse {
             error: "unsupported_grant_type".to_string(),
             error_description: Some("Supported: authorization_code, refresh_token".to_string()),
         }),
+    };
+    match &result {
+        Ok(_) => tracing::info!(grant_type = %req.grant_type, "MCP OAuth: token grant succeeded"),
+        Err(e) => tracing::warn!(grant_type = %req.grant_type, error = %e.error, desc = ?e.error_description, "MCP OAuth: token grant failed"),
     }
+    result
 }
 
 async fn handle_authorization_code_grant(
@@ -397,13 +514,6 @@ async fn handle_authorization_code_grant(
         error: "invalid_request".to_string(),
         error_description: Some("client_id is required".to_string()),
     })?;
-    let client_secret = req
-        .client_secret
-        .as_deref()
-        .ok_or_else(|| OAuthErrorResponse {
-            error: "invalid_request".to_string(),
-            error_description: Some("client_secret is required".to_string()),
-        })?;
     let redirect_uri = req
         .redirect_uri
         .as_deref()
@@ -419,7 +529,7 @@ async fn handle_authorization_code_grant(
             error_description: Some("code_verifier is required".to_string()),
         })?;
 
-    // Validate client credentials
+    // Validate client exists
     let client = state
         .db
         .get_oauth_client_by_client_id(client_id)
@@ -433,13 +543,16 @@ async fn handle_authorization_code_grant(
             error_description: Some("Unknown client_id".to_string()),
         })?;
 
-    // Verify client secret
-    let secret_hash = hash_value(client_secret);
-    if secret_hash != client.client_secret_hash {
-        return Err(OAuthErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: Some("Invalid client_secret".to_string()),
-        });
+    // Verify client secret if provided (confidential client).
+    // Public clients (most MCP clients) rely on PKCE alone.
+    if let Some(client_secret) = req.client_secret.as_deref() {
+        let secret_hash = hash_value(client_secret);
+        if secret_hash != client.client_secret_hash {
+            return Err(OAuthErrorResponse {
+                error: "invalid_client".to_string(),
+                error_description: Some("Invalid client_secret".to_string()),
+            });
+        }
     }
 
     // Look up and consume authorization code
@@ -583,15 +696,7 @@ async fn handle_refresh_token_grant(
         error: "invalid_request".to_string(),
         error_description: Some("client_id is required".to_string()),
     })?;
-    let client_secret = req
-        .client_secret
-        .as_deref()
-        .ok_or_else(|| OAuthErrorResponse {
-            error: "invalid_request".to_string(),
-            error_description: Some("client_secret is required".to_string()),
-        })?;
-
-    // Validate client credentials
+    // Validate client exists
     let client = state
         .db
         .get_oauth_client_by_client_id(client_id)
@@ -605,12 +710,15 @@ async fn handle_refresh_token_grant(
             error_description: Some("Unknown client_id".to_string()),
         })?;
 
-    let secret_hash = hash_value(client_secret);
-    if secret_hash != client.client_secret_hash {
-        return Err(OAuthErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: Some("Invalid client_secret".to_string()),
-        });
+    // Verify client secret if provided (confidential client).
+    if let Some(client_secret) = req.client_secret.as_deref() {
+        let secret_hash = hash_value(client_secret);
+        if secret_hash != client.client_secret_hash {
+            return Err(OAuthErrorResponse {
+                error: "invalid_client".to_string(),
+                error_description: Some("Invalid client_secret".to_string()),
+            });
+        }
     }
 
     // Look up refresh token
