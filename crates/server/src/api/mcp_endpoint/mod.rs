@@ -301,6 +301,7 @@ pub fn routes(state: AppState) -> Router {
 async fn handle_mcp(
     org: ResolvedOrg,
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<JsonRpcRequest>,
 ) -> Json<JsonRpcResponse> {
     if req.jsonrpc != "2.0" {
@@ -314,7 +315,9 @@ async fn handle_mcp(
     let response = match req.method.as_str() {
         "initialize" => handle_initialize(req.id),
         "tools/list" => handle_tools_list(req.id),
-        "tools/call" => handle_tools_call(req.id.clone(), req.params, &org, &state).await,
+        "tools/call" => {
+            handle_tools_call(req.id.clone(), req.params, &org, &state, &headers).await
+        }
         "ping" => JsonRpcResponse::success(req.id, json!({})),
         _ => JsonRpcResponse::method_not_found(req.id),
     };
@@ -351,6 +354,7 @@ async fn handle_tools_call(
     params: Value,
     org: &ResolvedOrg,
     state: &AppState,
+    headers: &axum::http::HeaderMap,
 ) -> JsonRpcResponse {
     let tool_name = match params.get("name").and_then(|v| v.as_str()) {
         Some(name) => name,
@@ -362,12 +366,20 @@ async fn handle_tools_call(
         .cloned()
         .unwrap_or(Value::Object(Default::default()));
 
+    // Extract Bearer token from request to pass to scripted tool HTTP callbacks
+    let bearer_token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .unwrap_or("")
+        .to_string();
+
     let result = match tool_name {
         "agent_run" => tool_agent_run(&arguments, org, state).await,
         "session_send_message" => tool_session_send_message(&arguments, org, state).await,
         "session_get_status" => tool_session_get_status(&arguments, org, state).await,
-        "discover" => tool_discover(&arguments, org, state).await,
-        "execute" => tool_execute(&arguments, org, state).await,
+        "discover" => tool_discover(&arguments, org, state, &bearer_token).await,
+        "execute" => tool_execute(&arguments, org, state, &bearer_token).await,
         _ => Err(format!("Unknown tool: {tool_name}")),
     };
 
@@ -721,13 +733,14 @@ async fn tool_discover(
     args: &Value,
     org: &ResolvedOrg,
     state: &AppState,
+    bearer_token: &str,
 ) -> Result<String, String> {
     let query = args
         .get("query")
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: query")?;
 
-    let tool = build_scripted_tool(org, state);
+    let tool = build_scripted_tool(org, state, bearer_token);
     let script = format!("discover --search {}", shell_escape(query));
     execute_script(&tool, &script, 10_000).await
 }
@@ -736,7 +749,12 @@ async fn tool_discover(
 // Tier 2: execute — delegates to ScriptedTool
 // ============================================================================
 
-async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
+async fn tool_execute(
+    args: &Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+    bearer_token: &str,
+) -> Result<String, String> {
     let command = args
         .get("command")
         .and_then(|v| v.as_str())
@@ -748,7 +766,7 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
         .unwrap_or(30000)
         .min(60000);
 
-    let tool = build_scripted_tool(org, state);
+    let tool = build_scripted_tool(org, state, bearer_token);
     execute_script(&tool, command, timeout_ms).await
 }
 
@@ -757,9 +775,16 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
 // ============================================================================
 
 /// Build a ScriptedTool for the given org context.
-fn build_scripted_tool(org: &ResolvedOrg, state: &AppState) -> ScriptedTool {
-    let api_key = format!("org-{}", org.public_id);
-    catalog::build_scripted_tool(&state.api_base_url, &api_key)
+///
+/// Uses the caller's Bearer token for internal API calls so that MCP OAuth
+/// tokens (and API keys) are forwarded to the REST API.
+fn build_scripted_tool(org: &ResolvedOrg, state: &AppState, bearer_token: &str) -> ScriptedTool {
+    let auth_token = if bearer_token.is_empty() {
+        format!("org-{}", org.public_id)
+    } else {
+        bearer_token.to_string()
+    };
+    catalog::build_scripted_tool(&state.api_base_url, &auth_token)
 }
 
 /// Execute a script through a ScriptedTool and return formatted output.
