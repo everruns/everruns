@@ -1019,39 +1019,6 @@ async fn register_oauth_client(server: &TestServer) -> (String, String) {
     (client_id, client_secret)
 }
 
-/// Helper: complete the authorize flow and return an authorization code.
-/// Works in auth=none mode where the anonymous user is automatically resolved.
-async fn get_auth_code(server: &TestServer, client_id: &str) -> String {
-    let resp = server
-        .request_raw(
-            axum::http::Method::GET,
-            &format!(
-                "/oauth/authorize?response_type=code&client_id={}&redirect_uri={}&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=teststate&scope=mcp",
-                urlencoding::encode(client_id),
-                urlencoding::encode("http://localhost:9999/callback"),
-            ),
-            vec![],
-            vec![],
-        )
-        .await;
-    // Should be a redirect (302/307) to the callback URL with code param
-    assert!(
-        resp.status().is_redirection(),
-        "Expected redirect, got {}. Body: {}",
-        resp.status(),
-        resp.text()
-    );
-    let location = resp.text();
-    // Parse the code from the redirect location
-    // The response body for tower oneshot won't have Location header easily,
-    // but we can check from the body/status. Let's use request_raw more carefully.
-    // Actually, with our test harness, we need to extract from the Location header.
-    // The TestResponse doesn't expose headers, so let's parse the redirect URL
-    // from a known pattern. Since it's a redirect, we use a different approach.
-    // For simplicity, we'll use the token endpoint tests that don't need the code.
-    location
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_oauth_token_json_invalid_grant_type() {
     let server = TestServer::new().await;

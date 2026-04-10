@@ -35,10 +35,7 @@ async function tryRefreshToken(): Promise<boolean> {
   }
 }
 
-async function request<T>(
-  endpoint: string,
-  options: RequestInit = {},
-): Promise<{ data: T }> {
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<{ data: T }> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
@@ -127,8 +124,7 @@ export async function throwApiError(response: Response): Promise<never> {
     if (text) {
       try {
         const errorBody = JSON.parse(text);
-        errorMessage =
-          errorBody.error || errorBody.message || JSON.stringify(errorBody);
+        errorMessage = errorBody.error || errorBody.message || JSON.stringify(errorBody);
       } catch {
         // Not JSON — use the raw text as the error message
         errorMessage = text;
