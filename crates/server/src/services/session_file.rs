@@ -11,8 +11,8 @@ use crate::storage::{
 };
 use anyhow::{Result, anyhow};
 use everruns_core::{
-    FileInfo, FileStat, GrepMatch, GrepResult, MountEntry, MountPoint, MountSource, SessionFile,
-    SessionId,
+    FileInfo, FileStat, GrepMatch, GrepResult, MountAccess, MountEntry, MountPoint, MountSource,
+    SessionFile, SessionId,
 };
 use regex::Regex;
 use std::sync::Arc;
@@ -280,13 +280,18 @@ impl SessionFileService {
             && let Some(vf) = registry.read_file(&session_id, &path)
         {
             let now = chrono::Utc::now();
-            let (content, encoding) = SessionFile::encode_content(&vf.content);
+            let (content, encoding) = if vf.is_directory {
+                (None, "text".to_string())
+            } else {
+                let (c, e) = SessionFile::encode_content(&vf.content);
+                (Some(c), e)
+            };
             return Ok(Some(SessionFile {
                 id: uuid::Uuid::nil(),
                 session_id,
                 path: vf.path.clone(),
                 name: FileInfo::name_from_path(&vf.path),
-                content: Some(content),
+                content,
                 encoding,
                 is_directory: vf.is_directory,
                 is_readonly: true,
@@ -378,21 +383,28 @@ impl SessionFileService {
             let now = chrono::Utc::now();
             for vf in virtual_entries {
                 let name = FileInfo::name_from_path(&vf.path);
-                if !entries.iter().any(|e| e.name == name) {
-                    entries.push(FileInfo {
-                        id: uuid::Uuid::nil(),
-                        session_id,
-                        path: vf.path,
-                        name,
-                        is_directory: vf.is_directory,
-                        is_readonly: true,
-                        size_bytes: vf.content.len() as i64,
-                        created_at: now,
-                        updated_at: now,
-                    });
-                }
+                // Remove any DB entry with the same name so virtual wins
+                entries.retain(|e| e.name != name);
+                entries.push(FileInfo {
+                    id: uuid::Uuid::nil(),
+                    session_id,
+                    path: vf.path,
+                    name,
+                    is_directory: vf.is_directory,
+                    is_readonly: true,
+                    size_bytes: vf.size_bytes,
+                    created_at: now,
+                    updated_at: now,
+                });
             }
         }
+
+        // Sort to match DB ordering: directories first, then by path
+        entries.sort_by(|a, b| {
+            b.is_directory
+                .cmp(&a.is_directory)
+                .then_with(|| a.path.cmp(&b.path))
+        });
 
         Ok(entries)
     }
@@ -738,9 +750,21 @@ impl SessionFileService {
 
         // Virtual mounts are registered in-memory, not written to DB
         if let MountSource::Virtual { tree } = &mount.source {
+            if mount.access == MountAccess::ReadWrite {
+                return Err(anyhow!(
+                    "Virtual mounts are always read-only; mount at '{}' has ReadWrite access",
+                    mount.path
+                ));
+            }
             if let Some(registry) = &self.virtual_registry {
                 registry.register(session_id, path, tree.clone(), mount.capability_id.clone());
                 stats.files_created += tree.len();
+            } else {
+                return Err(anyhow!(
+                    "virtual mount at '{}' for capability '{}' cannot be applied: no virtual registry configured",
+                    mount.path,
+                    mount.capability_id
+                ));
             }
             return Ok(stats);
         }
@@ -781,8 +805,10 @@ impl SessionFileService {
                     }
                 }
                 MountSource::Virtual { .. } => {
-                    // Virtual mounts are handled in apply_single_mount, not here
-                    unreachable!("Virtual mounts should be handled before apply_mount_source");
+                    // Virtual mounts are only supported as top-level mount roots.
+                    return Err(anyhow!(
+                        "Virtual mounts are only supported at the mount root"
+                    ));
                 }
             }
             Ok(())
@@ -1118,5 +1144,137 @@ mod tests {
             .unwrap();
 
         assert!(updated.is_none());
+    }
+
+    // ===== Virtual mount tests =====
+
+    use crate::services::virtual_mount_registry::VirtualMountRegistry;
+    use everruns_core::capability_types::VirtualFileTree;
+
+    fn make_virtual_svc() -> (SessionFileService, Arc<VirtualMountRegistry>, Uuid) {
+        let db = StorageBackend::in_memory();
+        let registry = Arc::new(VirtualMountRegistry::new());
+        let svc = SessionFileService::new(Arc::new(db)).with_virtual_registry(registry.clone());
+        let sid = Uuid::new_v4();
+        (svc, registry, sid)
+    }
+
+    fn sample_tree() -> Arc<VirtualFileTree> {
+        let mut tree = VirtualFileTree::new();
+        tree.insert_text("/docs/readme.md", "# Hello");
+        tree.insert_text("/docs/guide.md", "Guide content");
+        Arc::new(tree)
+    }
+
+    #[tokio::test]
+    async fn virtual_read_file_returns_content() {
+        let (svc, registry, sid) = make_virtual_svc();
+        registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
+
+        let file = svc
+            .read_file(sid, "/docs/readme.md")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(file.content.as_deref(), Some("# Hello"));
+        assert!(file.is_readonly);
+        assert!(!file.is_directory);
+    }
+
+    #[tokio::test]
+    async fn virtual_read_directory_returns_none_content() {
+        let (svc, registry, sid) = make_virtual_svc();
+        registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
+
+        let dir = svc.read_file(sid, "/docs").await.unwrap().unwrap();
+        assert!(dir.is_directory);
+        assert!(dir.content.is_none());
+    }
+
+    #[tokio::test]
+    async fn virtual_stat_returns_metadata() {
+        let (svc, registry, sid) = make_virtual_svc();
+        registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
+
+        let stat = svc.stat(sid, "/docs/readme.md").await.unwrap().unwrap();
+        assert!(!stat.is_directory);
+        assert!(stat.is_readonly);
+        assert!(stat.size_bytes > 0);
+    }
+
+    #[tokio::test]
+    async fn virtual_list_directory_returns_entries() {
+        let (svc, registry, sid) = make_virtual_svc();
+        registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
+
+        let entries = svc.list_directory(sid, "/docs").await.unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"readme.md"));
+        assert!(names.contains(&"guide.md"));
+    }
+
+    #[tokio::test]
+    async fn virtual_list_directory_sorted_dirs_first() {
+        let (svc, registry, sid) = make_virtual_svc();
+        let mut tree = VirtualFileTree::new();
+        tree.insert_text("/mnt/file.txt", "content");
+        tree.insert_directory("/mnt/subdir");
+        registry.register(sid, "/mnt".into(), Arc::new(tree), "test_cap".into());
+
+        let entries = svc.list_directory(sid, "/mnt").await.unwrap();
+        assert!(entries[0].is_directory, "directories should come first");
+    }
+
+    #[tokio::test]
+    async fn virtual_wins_on_name_conflict() {
+        let (svc, registry, sid) = make_virtual_svc();
+
+        // Create a DB file at /docs/readme.md
+        svc.create_directory(
+            sid,
+            CreateDirectoryInput {
+                path: "/docs".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        let db_input = CreateFileInput {
+            path: "/docs/readme.md".to_string(),
+            content: Some("DB content".to_string()),
+            encoding: None,
+            is_readonly: Some(false),
+        };
+        svc.create_file(sid, db_input).await.unwrap();
+
+        // Register virtual mount with same path
+        registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
+
+        // Virtual should win in listing
+        let entries = svc.list_directory(sid, "/docs").await.unwrap();
+        let readme = entries.iter().find(|e| e.name == "readme.md").unwrap();
+        assert!(readme.is_readonly, "virtual entry should win (readonly)");
+    }
+
+    #[tokio::test]
+    async fn virtual_update_file_rejected() {
+        let (svc, registry, sid) = make_virtual_svc();
+        registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
+
+        let err = svc
+            .update_file(
+                sid,
+                "/docs/readme.md",
+                UpdateFileInput {
+                    content: Some("modified".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("readonly"),
+            "Expected readonly error, got: {err}"
+        );
     }
 }

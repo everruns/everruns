@@ -170,7 +170,7 @@ pub struct VirtualFileTree {
 }
 
 /// A single file in a virtual file tree.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VirtualFile {
     pub content: Vec<u8>,
     pub is_directory: bool,
@@ -270,7 +270,7 @@ impl Default for VirtualFileTree {
 
 impl PartialEq for VirtualFileTree {
     fn eq(&self, other: &Self) -> bool {
-        self.files.len() == other.files.len()
+        self.files == other.files
     }
 }
 
