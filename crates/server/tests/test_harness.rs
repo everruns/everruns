@@ -338,6 +338,12 @@ impl TestServer {
             feature_flags.notifications,
             everruns_server::EventDelivery::in_memory(),
         );
+        let mcp_capability_service =
+            std::sync::Arc::new(everruns_server::services::CapabilityService::with_registry(
+                db.clone(),
+                encryption.clone(),
+                platform_definition.capability_registry().clone(),
+            ));
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
             runner.clone(),
@@ -345,7 +351,12 @@ impl TestServer {
             &platform_definition,
             feature_flags.notifications,
             everruns_server::EventDelivery::in_memory(),
+<<<<<<< ours
             None, // No encryption in tests
+||||||| base
+=======
+            mcp_capability_service,
+>>>>>>> theirs
         );
 
         // Build API routes

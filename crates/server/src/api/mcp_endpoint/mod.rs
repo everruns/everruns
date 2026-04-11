@@ -19,10 +19,16 @@ mod handlers;
 
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
+<<<<<<< ours
 use crate::services::{
     AgentService, BudgetService, CapabilityService, EventService, McpServerService, MessageService,
     SessionService, SkillService,
 };
+||||||| base
+use crate::services::{EventService, MessageService, SessionService};
+=======
+use crate::services::{CapabilityService, EventService, MessageService, SessionService};
+>>>>>>> theirs
 use crate::storage::StorageBackend;
 use axum::{Json, Router, extract::State, routing::post};
 use bashkit::{ScriptedTool, Tool as ScriptedToolTrait};
@@ -322,16 +328,22 @@ pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
+<<<<<<< ours
     pub capability_service: Arc<CapabilityService>,
     pub mcp_server_service: Arc<McpServerService>,
     pub skill_service: Arc<SkillService>,
     pub budget_service: Arc<BudgetService>,
+||||||| base
+=======
+    pub capability_service: Arc<CapabilityService>,
+>>>>>>> theirs
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
     pub fallback_base_harness_name: Option<String>,
 }
 
 impl AppState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Arc<StorageBackend>,
         runner: Arc<dyn AgentRunner>,
@@ -339,7 +351,12 @@ impl AppState {
         platform_definition: &PlatformDefinition,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
+<<<<<<< ours
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+||||||| base
+=======
+        capability_service: Arc<CapabilityService>,
+>>>>>>> theirs
     ) -> Self {
         Self {
             agent_service: Arc::new(AgentService::new(db.clone())),
@@ -354,6 +371,7 @@ impl AppState {
                 event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
+<<<<<<< ours
             capability_service: Arc::new(CapabilityService::with_registry(
                 db.clone(),
                 encryption.clone(),
@@ -362,6 +380,10 @@ impl AppState {
             mcp_server_service: Arc::new(McpServerService::new(db.clone(), encryption)),
             skill_service: Arc::new(SkillService::new(db.clone())),
             budget_service: Arc::new(BudgetService::new(db.clone())),
+||||||| base
+=======
+            capability_service,
+>>>>>>> theirs
             db,
             runner,
             auth,
@@ -405,9 +427,17 @@ async fn handle_mcp(
     let response = match req.method.as_str() {
         "initialize" => handle_initialize(req.id),
         "tools/list" => handle_tools_list(req.id),
+<<<<<<< ours
         "tools/call" => {
             handle_tools_call(req.id.clone(), req.params, &auth_user, &org, &state).await
         }
+||||||| base
+        "tools/call" => handle_tools_call(req.id.clone(), req.params, &org, &state, &headers).await,
+=======
+        "tools/call" => handle_tools_call(req.id.clone(), req.params, &org, &state, &headers).await,
+        "resources/list" => handle_resources_list(req.id),
+        "resources/read" => handle_resources_read(req.id, req.params, &org, &state).await,
+>>>>>>> theirs
         "ping" => JsonRpcResponse::success(req.id, json!({})),
         _ => JsonRpcResponse::method_not_found(req.id),
     };
@@ -425,7 +455,8 @@ fn handle_initialize(id: Option<Value>) -> JsonRpcResponse {
         json!({
             "protocolVersion": MCP_PROTOCOL_VERSION,
             "capabilities": {
-                "tools": {}
+                "tools": {},
+                "resources": {}
             },
             "serverInfo": {
                 "name": MCP_SERVER_NAME,
@@ -437,6 +468,171 @@ fn handle_initialize(id: Option<Value>) -> JsonRpcResponse {
 
 fn handle_tools_list(id: Option<Value>) -> JsonRpcResponse {
     JsonRpcResponse::success(id, json!({ "tools": tool_definitions() }))
+}
+
+// ============================================================================
+// Resource handlers (MCP resources capability)
+// ============================================================================
+
+/// Static resource catalog — returned by resources/list.
+fn handle_resources_list(id: Option<Value>) -> JsonRpcResponse {
+    JsonRpcResponse::success(
+        id,
+        json!({
+            "resources": [
+                {
+                    "uri": "everruns://capabilities",
+                    "name": "Capabilities",
+                    "description": "Available capabilities (tools, sandboxes, integrations)",
+                    "mimeType": "application/json"
+                },
+                {
+                    "uri": "everruns://harnesses",
+                    "name": "Harnesses",
+                    "description": "Available harnesses (base environments for sessions)",
+                    "mimeType": "application/json"
+                },
+                {
+                    "uri": "everruns://models",
+                    "name": "LLM Models",
+                    "description": "Available LLM models and providers",
+                    "mimeType": "application/json"
+                },
+                {
+                    "uri": "everruns://agents",
+                    "name": "Agents",
+                    "description": "Agent summaries (id, name, description)",
+                    "mimeType": "application/json"
+                }
+            ]
+        }),
+    )
+}
+
+/// Read a resource by URI — fetches fresh data on each call.
+async fn handle_resources_read(
+    id: Option<Value>,
+    params: Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> JsonRpcResponse {
+    let uri = match params.get("uri").and_then(|v| v.as_str()) {
+        Some(uri) => uri,
+        None => return JsonRpcResponse::invalid_params(id, "Missing 'uri' in params"),
+    };
+
+    let result = match uri {
+        "everruns://capabilities" => read_capabilities(org, state).await,
+        "everruns://harnesses" => read_harnesses(org, state).await,
+        "everruns://models" => read_models(org, state).await,
+        "everruns://agents" => read_agents(org, state).await,
+        _ => Err(format!("Unknown resource URI: {uri}")),
+    };
+
+    match result {
+        Ok(text) => JsonRpcResponse::success(
+            id,
+            json!({
+                "contents": [{
+                    "uri": uri,
+                    "mimeType": "application/json",
+                    "text": text
+                }]
+            }),
+        ),
+        Err(msg) => JsonRpcResponse::error(id, -32602, &msg),
+    }
+}
+
+async fn read_capabilities(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
+    let capabilities = state
+        .capability_service
+        .list_all(org.org_id)
+        .await
+        .map_err(|e| format!("Failed to list capabilities: {e}"))?;
+
+    let summary: Vec<Value> = capabilities
+        .into_iter()
+        .map(|c| {
+            json!({
+                "id": c.id.as_str(),
+                "name": c.name,
+                "description": c.description,
+                "status": format!("{:?}", c.status),
+            })
+        })
+        .collect();
+
+    serde_json::to_string(&summary).map_err(|e| format!("Serialization error: {e}"))
+}
+
+async fn read_harnesses(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
+    let harnesses = state
+        .db
+        .list_harnesses(org.org_id, None, false)
+        .await
+        .map_err(|e| format!("Failed to list harnesses: {e}"))?;
+
+    let summary: Vec<Value> = harnesses
+        .into_iter()
+        .map(|h| {
+            json!({
+                "id": h.id.to_string(),
+                "name": h.name,
+                "description": h.description,
+                "status": h.status,
+            })
+        })
+        .collect();
+
+    serde_json::to_string(&summary).map_err(|e| format!("Serialization error: {e}"))
+}
+
+async fn read_models(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
+    let providers = state
+        .db
+        .list_llm_providers(org.org_id)
+        .await
+        .map_err(|e| format!("Failed to list providers: {e}"))?;
+
+    let summary: Vec<Value> = providers
+        .into_iter()
+        .map(|p| {
+            json!({
+                "id": p.id.to_string(),
+                "name": p.name,
+                "status": p.status,
+            })
+        })
+        .collect();
+
+    serde_json::to_string(&summary).map_err(|e| format!("Serialization error: {e}"))
+}
+
+async fn read_agents(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
+    let (agents, _total) = state
+        .db
+        .list_agents(
+            org.org_id,
+            None,
+            false,
+            crate::api::common::Pagination::new(0, 100),
+        )
+        .await
+        .map_err(|e| format!("Failed to list agents: {e}"))?;
+
+    let summary: Vec<Value> = agents
+        .into_iter()
+        .map(|a| {
+            json!({
+                "id": a.public_id,
+                "name": a.name,
+                "description": a.description,
+            })
+        })
+        .collect();
+
+    serde_json::to_string(&summary).map_err(|e| format!("Serialization error: {e}"))
 }
 
 async fn handle_tools_call(
