@@ -591,13 +591,7 @@ async fn test_mcp_execute_health_check() {
     );
 
     let result = tool_json(&resp);
-    assert!(
-        result["success"].as_bool().unwrap(),
-        "health_check should succeed"
-    );
-    let stdout: Value = serde_json::from_str(result["stdout"].as_str().unwrap())
-        .expect("stdout should be valid JSON");
-    assert_eq!(stdout["status"], "ok");
+    assert_eq!(result["status"], "ok");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -612,10 +606,7 @@ async fn test_mcp_execute_list_harnesses() {
     );
 
     let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
-    let stdout: Value = serde_json::from_str(result["stdout"].as_str().unwrap())
-        .expect("stdout should be valid JSON");
-    let harnesses = stdout["data"].as_array().expect("Expected harnesses array");
+    let harnesses = result["data"].as_array().expect("Expected harnesses array");
     assert!(!harnesses.is_empty(), "Should have seed harnesses");
 
     // Verify seed harnesses exist (Base and Generic are always seeded)
@@ -639,7 +630,7 @@ async fn test_mcp_execute_list_agents() {
     );
 
     let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
+    assert!(result["data"].is_array());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -661,9 +652,7 @@ async fn test_mcp_execute_create_and_get_agent() {
         tool_text(&resp)
     );
 
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
-    let created: Value = serde_json::from_str(result["stdout"].as_str().unwrap()).unwrap();
+    let created = tool_json(&resp);
     let agent_id = created["id"].as_str().unwrap();
     assert!(agent_id.starts_with("agent_"));
 
@@ -680,8 +669,7 @@ async fn test_mcp_execute_create_and_get_agent() {
         tool_text(&resp)
     );
 
-    let result = tool_json(&resp);
-    let fetched: Value = serde_json::from_str(result["stdout"].as_str().unwrap()).unwrap();
+    let fetched = tool_json(&resp);
     assert_eq!(fetched["name"], "mcp-execute-agent");
 }
 
@@ -695,9 +683,6 @@ async fn test_mcp_execute_list_models() {
         "execute list_models failed: {}",
         tool_text(&resp)
     );
-
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -710,9 +695,6 @@ async fn test_mcp_execute_list_capabilities() {
         "execute list_capabilities failed: {}",
         tool_text(&resp)
     );
-
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -725,9 +707,6 @@ async fn test_mcp_execute_list_mcp_servers() {
         "execute list_mcp_servers failed: {}",
         tool_text(&resp)
     );
-
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -756,9 +735,7 @@ async fn test_mcp_execute_create_mcp_server() {
         tool_text(&resp)
     );
 
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
-    let created: Value = serde_json::from_str(result["stdout"].as_str().unwrap()).unwrap();
+    let created = tool_json(&resp);
     assert_eq!(created["name"], unique_name);
     assert!(created["id"].as_str().unwrap().starts_with("mcp_"));
 }
@@ -776,9 +753,7 @@ async fn test_mcp_execute_bash_pipe() {
     .await;
     assert!(!tool_is_error(&resp), "pipe failed: {}", tool_text(&resp));
 
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
-    let count: i64 = result["stdout"].as_str().unwrap().trim().parse().unwrap();
+    let count: i64 = tool_text(&resp).trim().parse().unwrap();
     assert!(count >= 2, "Should have at least 2 harnesses, got {count}");
 }
 
@@ -799,9 +774,7 @@ async fn test_mcp_execute_bash_script() {
         tool_text(&resp)
     );
 
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
-    let count: i64 = result["stdout"].as_str().unwrap().trim().parse().unwrap();
+    let count: i64 = tool_text(&resp).trim().parse().unwrap();
     assert!(count >= 1, "Should have at least 1 agent after creation");
 }
 
@@ -815,9 +788,6 @@ async fn test_mcp_execute_list_providers() {
         "list_providers failed: {}",
         tool_text(&resp)
     );
-
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -830,9 +800,6 @@ async fn test_mcp_execute_list_orgs() {
         "list_orgs failed: {}",
         tool_text(&resp)
     );
-
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -851,13 +818,11 @@ async fn test_mcp_execute_discover_categories() {
         tool_text(&resp)
     );
 
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
-    let stdout = result["stdout"].as_str().unwrap();
-    assert!(stdout.contains("agents"), "Should list agents category");
-    assert!(stdout.contains("sessions"), "Should list sessions category");
+    let text = tool_text(&resp);
+    assert!(text.contains("agents"), "Should list agents category");
+    assert!(text.contains("sessions"), "Should list sessions category");
     assert!(
-        stdout.contains("harnesses"),
+        text.contains("harnesses"),
         "Should list harnesses category"
     );
 }
@@ -884,9 +849,7 @@ async fn test_mcp_execute_agent_crud_workflow() {
         "create_agent failed: {}",
         tool_text(&resp)
     );
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap(), "create failed");
-    let created: Value = serde_json::from_str(result["stdout"].as_str().unwrap()).unwrap();
+    let created = tool_json(&resp);
     let agent_id = created["id"].as_str().unwrap().to_string();
 
     // Update
@@ -903,9 +866,7 @@ async fn test_mcp_execute_agent_crud_workflow() {
         "update_agent failed: {}",
         tool_text(&resp)
     );
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap(), "update failed");
-    let updated: Value = serde_json::from_str(result["stdout"].as_str().unwrap()).unwrap();
+    let updated = tool_json(&resp);
     assert_eq!(updated["name"], "updated-crud-agent");
 
     // Delete (archive)
@@ -915,8 +876,11 @@ async fn test_mcp_execute_agent_crud_workflow() {
         json!({ "command": format!("delete_agent --id {agent_id}") }),
     )
     .await;
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap(), "delete failed");
+    assert!(
+        !tool_is_error(&resp),
+        "delete_agent failed: {}",
+        tool_text(&resp)
+    );
 }
 
 // ============================================================================

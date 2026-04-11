@@ -831,7 +831,12 @@ async fn execute_script(
                 } else {
                     format!("{}\n{}", response.stdout, response.stderr)
                 };
-                Err(combined.trim().to_string())
+                let trimmed = combined.trim();
+                if trimmed.is_empty() {
+                    Err(format!("Command failed with exit code {}", response.exit_code))
+                } else {
+                    Err(trimmed.to_string())
+                }
             }
         }
         Err(_) => Err(format!("Command timed out after {timeout_ms}ms")),
