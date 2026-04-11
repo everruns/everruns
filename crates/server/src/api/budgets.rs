@@ -17,7 +17,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
-use super::common::{ErrorResponse, impl_auth_state};
+use super::common::{ErrorResponse, UrlBuilder, WithUrls, impl_auth_state};
 
 type ApiError = (StatusCode, Json<ErrorResponse>);
 
@@ -159,7 +159,7 @@ async fn create_budget(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<CreateBudgetRequest>,
-) -> Result<(StatusCode, Json<Budget>), ApiError> {
+) -> Result<(StatusCode, Json<WithUrls<Budget>>), ApiError> {
     if !["session", "agent", "user", "org"].contains(&req.subject_type.as_str()) {
         return Err(err(StatusCode::BAD_REQUEST, "Invalid subject_type"));
     }
@@ -185,9 +185,10 @@ async fn create_budget(
         metadata: req.metadata,
     };
     let row = state.db.create_budget(input).await.map_err(internal)?;
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((
         StatusCode::CREATED,
-        Json(BudgetService::row_to_budget(&row)),
+        Json(urls.wrap(BudgetService::row_to_budget(&row))),
     ))
 }
 
@@ -195,7 +196,7 @@ async fn get_budget(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(budget_id): Path<String>,
-) -> Result<Json<Budget>, ApiError> {
+) -> Result<Json<WithUrls<Budget>>, ApiError> {
     let id = parse_budget_id(&budget_id)?;
     let row = state
         .db
@@ -203,14 +204,15 @@ async fn get_budget(
         .await
         .map_err(internal)?
         .ok_or_else(|| not_found("Budget"))?;
-    Ok(Json(BudgetService::row_to_budget(&row)))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(BudgetService::row_to_budget(&row))))
 }
 
 async fn list_budgets(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListBudgetsQuery>,
-) -> Result<Json<Vec<Budget>>, ApiError> {
+) -> Result<Json<Vec<WithUrls<Budget>>>, ApiError> {
     let rows = state
         .db
         .list_budgets(
@@ -220,9 +222,9 @@ async fn list_budgets(
         )
         .await
         .map_err(internal)?;
-    Ok(Json(
-        rows.iter().map(BudgetService::row_to_budget).collect(),
-    ))
+    let budgets: Vec<Budget> = rows.iter().map(BudgetService::row_to_budget).collect();
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap_vec(budgets)))
 }
 
 async fn update_budget(
@@ -230,7 +232,7 @@ async fn update_budget(
     State(state): State<AppState>,
     Path(budget_id): Path<String>,
     Json(req): Json<UpdateBudgetRequest>,
-) -> Result<Json<Budget>, ApiError> {
+) -> Result<Json<WithUrls<Budget>>, ApiError> {
     let id = parse_budget_id(&budget_id)?;
     let input = UpdateBudgetRow {
         limit: req.limit,
@@ -244,7 +246,8 @@ async fn update_budget(
         .await
         .map_err(internal)?
         .ok_or_else(|| not_found("Budget"))?;
-    Ok(Json(BudgetService::row_to_budget(&row)))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(BudgetService::row_to_budget(&row))))
 }
 
 async fn delete_budget(
@@ -270,7 +273,7 @@ async fn top_up(
     State(state): State<AppState>,
     Path(budget_id): Path<String>,
     Json(req): Json<TopUpRequest>,
-) -> Result<Json<Budget>, ApiError> {
+) -> Result<Json<WithUrls<Budget>>, ApiError> {
     if req.amount <= 0.0 {
         return Err(err(StatusCode::BAD_REQUEST, "Amount must be positive"));
     }
@@ -309,7 +312,8 @@ async fn top_up(
         .await
         .map_err(internal)?
         .unwrap();
-    Ok(Json(BudgetService::row_to_budget(&row)))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(BudgetService::row_to_budget(&row))))
 }
 
 async fn list_ledger(
@@ -370,15 +374,15 @@ async fn list_session_budgets(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<Json<Vec<Budget>>, ApiError> {
+) -> Result<Json<Vec<WithUrls<Budget>>>, ApiError> {
     let rows = state
         .db
         .list_budgets(org.org_id, Some("session"), Some(&session_id))
         .await
         .map_err(internal)?;
-    Ok(Json(
-        rows.iter().map(BudgetService::row_to_budget).collect(),
-    ))
+    let budgets: Vec<Budget> = rows.iter().map(BudgetService::row_to_budget).collect();
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap_vec(budgets)))
 }
 
 async fn check_session_budgets(

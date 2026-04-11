@@ -20,7 +20,8 @@ use everruns_core::{
 };
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
+    impl_auth_state,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -182,7 +183,7 @@ pub async fn mcp_server_config(
     path = "/v1/mcp-servers",
     request_body = CreateMcpServerRequest,
     responses(
-        (status = 201, description = "MCP server created successfully", body = McpServer),
+        (status = 201, description = "MCP server created successfully", body = WithUrls<McpServer>),
         (status = 400, description = "Invalid input or duplicate name", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -192,7 +193,7 @@ pub async fn create_mcp_server(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<CreateMcpServerRequest>,
-) -> Result<(StatusCode, Json<McpServer>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<McpServer>>), (StatusCode, Json<ErrorResponse>)> {
     // Validate name is not empty
     if req.name.trim().is_empty() {
         return Err(
@@ -218,7 +219,8 @@ pub async fn create_mcp_server(
         .await
         .map_policy_or_internal("create MCP server")?;
 
-    Ok((StatusCode::CREATED, Json(server)))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((StatusCode::CREATED, Json(urls.wrap(server))))
 }
 
 /// GET /v1/mcp-servers - List all MCP servers
@@ -226,7 +228,7 @@ pub async fn create_mcp_server(
     get,
     path = "/v1/mcp-servers",
     responses(
-        (status = 200, description = "List of MCP servers", body = ListResponse<McpServer>),
+        (status = 200, description = "List of MCP servers", body = ListResponse<WithUrls<McpServer>>),
         (status = 500, description = "Internal server error")
     ),
     params(ListMcpServersQuery),
@@ -236,7 +238,7 @@ pub async fn list_mcp_servers(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListMcpServersQuery>,
-) -> ApiResult<ListResponse<McpServer>> {
+) -> ApiResult<ListResponse<WithUrls<McpServer>>> {
     let caller = Caller::from(&org);
     let servers = state
         .service
@@ -248,7 +250,8 @@ pub async fn list_mcp_servers(
         .await
         .map_policy_or_internal("list MCP servers")?;
 
-    Ok(Json(ListResponse::new(servers)))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(ListResponse::new(servers).with_urls(&urls)))
 }
 
 /// GET /v1/mcp-servers/{server_id} - Get MCP server by ID
@@ -259,7 +262,7 @@ pub async fn list_mcp_servers(
         ("server_id" = String, Path, description = "MCP server ID (prefixed, e.g., mcp_...)")
     ),
     responses(
-        (status = 200, description = "MCP server found", body = McpServer),
+        (status = 200, description = "MCP server found", body = WithUrls<McpServer>),
         (status = 400, description = "Invalid server ID"),
         (status = 404, description = "MCP server not found"),
         (status = 500, description = "Internal server error")
@@ -270,7 +273,7 @@ pub async fn get_mcp_server(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(server_id): Path<String>,
-) -> ApiResult<McpServer> {
+) -> ApiResult<WithUrls<McpServer>> {
     let server_id: McpServerId = server_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -288,7 +291,8 @@ pub async fn get_mcp_server(
         .map_policy_or_internal("get MCP server")?
         .ok_or_not_found_json("MCP server")?;
 
-    Ok(Json(server))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(server)))
 }
 
 /// PATCH /v1/mcp-servers/{server_id} - Update MCP server
@@ -300,7 +304,7 @@ pub async fn get_mcp_server(
     ),
     request_body = UpdateMcpServerRequest,
     responses(
-        (status = 200, description = "MCP server updated successfully", body = McpServer),
+        (status = 200, description = "MCP server updated successfully", body = WithUrls<McpServer>),
         (status = 400, description = "Invalid server ID or input", body = ErrorResponse),
         (status = 404, description = "MCP server not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -312,7 +316,7 @@ pub async fn update_mcp_server(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
     Json(req): Json<UpdateMcpServerRequest>,
-) -> ApiResult<McpServer> {
+) -> ApiResult<WithUrls<McpServer>> {
     let server_id: McpServerId = server_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -352,7 +356,8 @@ pub async fn update_mcp_server(
         .map_policy_or_internal("update MCP server")?
         .ok_or_not_found_json("MCP server")?;
 
-    Ok(Json(server))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(server)))
 }
 
 /// DELETE /v1/mcp-servers/{server_id} - Delete MCP server

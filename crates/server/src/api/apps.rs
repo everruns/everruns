@@ -17,7 +17,7 @@ use everruns_core::{
 };
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse,
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
     deserialize_nullable_update_field, impl_auth_state,
 };
 use everruns_durable::UpdateField;
@@ -187,7 +187,7 @@ pub async fn app_config(
     path = "/v1/apps",
     request_body = CreateAppRequest,
     responses(
-        (status = 201, description = "App created successfully", body = App),
+        (status = 201, description = "App created successfully", body = WithUrls<App>),
         (status = 400, description = "Invalid input", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -197,7 +197,7 @@ pub async fn create_app(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<CreateAppRequest>,
-) -> Result<(StatusCode, Json<App>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<App>>), (StatusCode, Json<ErrorResponse>)> {
     let caller = Caller::from(&org);
     let app = state
         .service
@@ -205,7 +205,8 @@ pub async fn create_app(
         .await
         .map_policy_or_internal("create app")?;
 
-    Ok((StatusCode::CREATED, Json(app)))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((StatusCode::CREATED, Json(builder.wrap(app))))
 }
 
 /// GET /v1/apps - List all non-archived apps
@@ -213,7 +214,7 @@ pub async fn create_app(
     get,
     path = "/v1/apps",
     responses(
-        (status = 200, description = "List of apps", body = ListResponse<App>),
+        (status = 200, description = "List of apps", body = ListResponse<WithUrls<App>>),
         (status = 500, description = "Internal server error")
     ),
     params(ListAppsQuery),
@@ -223,7 +224,7 @@ pub async fn list_apps(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListAppsQuery>,
-) -> ApiResult<ListResponse<App>> {
+) -> ApiResult<ListResponse<WithUrls<App>>> {
     let caller = Caller::from(&org);
     let apps = state
         .service
@@ -235,7 +236,8 @@ pub async fn list_apps(
         .await
         .map_policy_or_internal("list apps")?;
 
-    Ok(Json(ListResponse::new(apps)))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(ListResponse::new(apps).with_urls(&builder)))
 }
 
 /// GET /v1/apps/{app_id} - Get app by ID
@@ -244,7 +246,7 @@ pub async fn list_apps(
     path = "/v1/apps/{app_id}",
     params(("app_id" = String, Path, description = "App ID")),
     responses(
-        (status = 200, description = "App found", body = App),
+        (status = 200, description = "App found", body = WithUrls<App>),
         (status = 400, description = "Invalid app ID"),
         (status = 404, description = "App not found"),
         (status = 500, description = "Internal server error")
@@ -255,7 +257,7 @@ pub async fn get_app(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(app_id): Path<String>,
-) -> ApiResult<App> {
+) -> ApiResult<WithUrls<App>> {
     let app_id: AppId = app_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -268,7 +270,8 @@ pub async fn get_app(
         .map_policy_or_internal("get app")?
         .ok_or_not_found_json("App")?;
 
-    Ok(Json(app))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(builder.wrap(app)))
 }
 
 /// PATCH /v1/apps/{app_id} - Update app
@@ -278,7 +281,7 @@ pub async fn get_app(
     params(("app_id" = String, Path, description = "App ID")),
     request_body = UpdateAppRequest,
     responses(
-        (status = 200, description = "App updated successfully", body = App),
+        (status = 200, description = "App updated successfully", body = WithUrls<App>),
         (status = 400, description = "Invalid app ID or input", body = ErrorResponse),
         (status = 404, description = "App not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -290,7 +293,7 @@ pub async fn update_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
     Json(req): Json<UpdateAppRequest>,
-) -> ApiResult<App> {
+) -> ApiResult<WithUrls<App>> {
     let app_id: AppId = app_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -303,7 +306,8 @@ pub async fn update_app(
         .map_policy_or_internal("update app")?
         .ok_or_not_found_json("App")?;
 
-    Ok(Json(app))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(builder.wrap(app)))
 }
 
 /// DELETE /v1/apps/{app_id} - Archive app
@@ -371,7 +375,7 @@ pub async fn destroy_app(
     path = "/v1/apps/{app_id}/publish",
     params(("app_id" = String, Path, description = "App ID")),
     responses(
-        (status = 200, description = "App published", body = App),
+        (status = 200, description = "App published", body = WithUrls<App>),
         (status = 400, description = "Invalid app ID"),
         (status = 404, description = "App not found"),
         (status = 500, description = "Internal server error")
@@ -382,7 +386,7 @@ pub async fn publish_app(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(app_id): Path<String>,
-) -> ApiResult<App> {
+) -> ApiResult<WithUrls<App>> {
     let app_id: AppId = app_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -395,7 +399,8 @@ pub async fn publish_app(
         .map_policy_or_internal("publish app")?
         .ok_or_not_found_json("App")?;
 
-    Ok(Json(app))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(builder.wrap(app)))
 }
 
 /// POST /v1/apps/{app_id}/unpublish - Unpublish app (stop accepting requests)
@@ -404,7 +409,7 @@ pub async fn publish_app(
     path = "/v1/apps/{app_id}/unpublish",
     params(("app_id" = String, Path, description = "App ID")),
     responses(
-        (status = 200, description = "App unpublished", body = App),
+        (status = 200, description = "App unpublished", body = WithUrls<App>),
         (status = 400, description = "Invalid app ID"),
         (status = 404, description = "App not found"),
         (status = 500, description = "Internal server error")
@@ -415,7 +420,7 @@ pub async fn unpublish_app(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(app_id): Path<String>,
-) -> ApiResult<App> {
+) -> ApiResult<WithUrls<App>> {
     let app_id: AppId = app_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -428,7 +433,8 @@ pub async fn unpublish_app(
         .map_policy_or_internal("unpublish app")?
         .ok_or_not_found_json("App")?;
 
-    Ok(Json(app))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(builder.wrap(app)))
 }
 
 // ============================================

@@ -5,7 +5,8 @@
 // Supports both SKILL.md text upload and ZIP archive upload.
 
 use crate::api::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
+    impl_auth_state,
 };
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::SkillService;
@@ -153,7 +154,7 @@ pub fn routes(state: AppState) -> Router {
     path = "/v1/skills",
     request_body = CreateSkillRequest,
     responses(
-        (status = 201, description = "Skill created", body = Skill),
+        (status = 201, description = "Skill created", body = WithUrls<Skill>),
         (status = 409, description = "Duplicate skill name", body = ErrorResponse),
         (status = 422, description = "Invalid SKILL.md", body = ErrorResponse),
     ),
@@ -163,7 +164,7 @@ pub async fn create_skill(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<CreateSkillRequest>,
-) -> Result<(StatusCode, Json<Skill>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<Skill>>), (StatusCode, Json<ErrorResponse>)> {
     let caller = Caller::from(&org);
     let skill = state.service.create(&caller, req).await.map_err(|e| {
         let msg = e.to_string();
@@ -177,7 +178,8 @@ pub async fn create_skill(
         }
     })?;
 
-    Ok((StatusCode::CREATED, Json(skill)))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((StatusCode::CREATED, Json(urls.wrap(skill))))
 }
 
 /// POST /v1/skills/upload - Create skill from ZIP archive
@@ -185,7 +187,7 @@ pub async fn create_skill(
     post,
     path = "/v1/skills/upload",
     responses(
-        (status = 201, description = "Skill created from archive", body = Skill),
+        (status = 201, description = "Skill created from archive", body = WithUrls<Skill>),
         (status = 409, description = "Duplicate skill name", body = ErrorResponse),
         (status = 413, description = "Archive too large", body = ErrorResponse),
         (status = 422, description = "Invalid archive or SKILL.md", body = ErrorResponse),
@@ -196,7 +198,7 @@ pub async fn upload_skill(
     org: ResolvedOrg,
     State(state): State<AppState>,
     mut multipart: Multipart,
-) -> Result<(StatusCode, Json<Skill>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<Skill>>), (StatusCode, Json<ErrorResponse>)> {
     let mut file_data: Option<Vec<u8>> = None;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
@@ -240,7 +242,8 @@ pub async fn upload_skill(
             }
         })?;
 
-    Ok((StatusCode::CREATED, Json(skill)))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((StatusCode::CREATED, Json(urls.wrap(skill))))
 }
 
 /// GET /v1/skills - List all skills
@@ -248,7 +251,7 @@ pub async fn upload_skill(
     get,
     path = "/v1/skills",
     responses(
-        (status = 200, description = "List of skills", body = ListResponse<Skill>),
+        (status = 200, description = "List of skills", body = ListResponse<WithUrls<Skill>>),
     ),
     params(ListSkillsQuery),
     tag = "skills"
@@ -257,7 +260,7 @@ pub async fn list_skills(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListSkillsQuery>,
-) -> ApiResult<ListResponse<Skill>> {
+) -> ApiResult<ListResponse<WithUrls<Skill>>> {
     let caller = Caller::from(&org);
     let skills = state
         .service
@@ -269,7 +272,8 @@ pub async fn list_skills(
         .await
         .map_policy_or_internal("list skills")?;
 
-    Ok(Json(ListResponse::new(skills)))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(ListResponse::new(skills).with_urls(&urls)))
 }
 
 /// GET /v1/skills/{skill_id} - Get skill by ID
@@ -280,7 +284,7 @@ pub async fn list_skills(
         ("skill_id" = String, Path, description = "Skill ID (prefixed, e.g., skill_...)")
     ),
     responses(
-        (status = 200, description = "Skill found", body = Skill),
+        (status = 200, description = "Skill found", body = WithUrls<Skill>),
         (status = 404, description = "Skill not found"),
     ),
     tag = "skills"
@@ -289,7 +293,7 @@ pub async fn get_skill(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
-) -> ApiResult<Skill> {
+) -> ApiResult<WithUrls<Skill>> {
     let skill_id: SkillId = skill_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -302,7 +306,8 @@ pub async fn get_skill(
         .map_policy_or_internal("get skill")?
         .ok_or_not_found_json("Skill")?;
 
-    Ok(Json(skill))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(skill)))
 }
 
 /// GET /v1/skills/{skill_id}/content - Get full skill content
@@ -344,7 +349,7 @@ pub async fn get_skill_content(
     path = "/v1/skills/{skill_id}",
     request_body = UpdateSkillRequest,
     responses(
-        (status = 200, description = "Skill updated", body = Skill),
+        (status = 200, description = "Skill updated", body = WithUrls<Skill>),
         (status = 404, description = "Skill not found"),
         (status = 409, description = "Duplicate skill name", body = ErrorResponse),
         (status = 422, description = "Invalid SKILL.md", body = ErrorResponse),
@@ -356,7 +361,7 @@ pub async fn update_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
     Json(req): Json<UpdateSkillRequest>,
-) -> ApiResult<Skill> {
+) -> ApiResult<WithUrls<Skill>> {
     let skill_id: SkillId = skill_id.parse().map_err(|e| {
         ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
     })?;
@@ -379,7 +384,8 @@ pub async fn update_skill(
         })?
         .ok_or_else(|| ErrorResponse::not_found("Skill"))?;
 
-    Ok(Json(skill))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(skill)))
 }
 
 /// DELETE /v1/skills/{skill_id} - Delete skill

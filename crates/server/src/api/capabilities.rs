@@ -17,7 +17,7 @@ use axum::{
 use everruns_core::{CapabilityId, CapabilityInfo};
 use serde::Deserialize;
 
-use super::common::{PaginatedResponse, impl_auth_state};
+use super::common::{PaginatedResponse, UrlBuilder, WithUrls, impl_auth_state};
 use std::sync::Arc;
 
 use crate::services::CapabilityService;
@@ -66,7 +66,7 @@ pub struct ListCapabilitiesQuery {
         ("limit" = Option<u32>, Query, description = "Page size (default: 20, max: 100)"),
     ),
     responses(
-        (status = 200, description = "Paginated list of capabilities", body = PaginatedResponse<CapabilityInfo>),
+        (status = 200, description = "Paginated list of capabilities", body = PaginatedResponse<WithUrls<CapabilityInfo>>),
     ),
     tag = "capabilities"
 )]
@@ -74,7 +74,7 @@ pub async fn list_capabilities(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListCapabilitiesQuery>,
-) -> Result<Json<PaginatedResponse<CapabilityInfo>>, StatusCode> {
+) -> Result<Json<PaginatedResponse<WithUrls<CapabilityInfo>>>, StatusCode> {
     let mut capabilities = state.service.list_all(org.org_id).await.map_err(|e| {
         tracing::error!("Failed to list capabilities: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -95,7 +95,10 @@ pub async fn list_capabilities(
         .take(limit as usize)
         .collect();
 
-    Ok(Json(PaginatedResponse::new(data, total, offset, limit)))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(
+        PaginatedResponse::new(data, total, offset, limit).with_urls(&builder),
+    ))
 }
 
 /// GET /v1/capabilities/{capability_id} - Get a specific capability
@@ -106,7 +109,7 @@ pub async fn list_capabilities(
         ("capability_id" = String, Path, description = "Capability ID")
     ),
     responses(
-        (status = 200, description = "Capability found", body = CapabilityInfo),
+        (status = 200, description = "Capability found", body = WithUrls<CapabilityInfo>),
         (status = 404, description = "Capability not found"),
     ),
     tag = "capabilities"
@@ -115,7 +118,7 @@ pub async fn get_capability(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(capability_id): Path<String>,
-) -> Result<Json<CapabilityInfo>, StatusCode> {
+) -> Result<Json<WithUrls<CapabilityInfo>>, StatusCode> {
     let cap_id = CapabilityId::new(&capability_id);
 
     let capability = state
@@ -128,5 +131,6 @@ pub async fn get_capability(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    Ok(Json(capability))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(builder.wrap(capability)))
 }
