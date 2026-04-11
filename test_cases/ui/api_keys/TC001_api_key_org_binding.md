@@ -37,12 +37,14 @@ Verify that an API key created **through the UI** after creating and switching t
 13. Click "Done"
 14. Verify the key `org-bound-key` appears in the API keys list with its prefix
 
-**API verification** (curl is fine for these read-only checks):
+**API verification** (curl is fine for these API checks; step 15 performs a write, while steps 16–18 are read-only verification):
 
-15. Create an agent via `POST /v1/agents` with header `Authorization: Bearer <key>`
-16. List agents via the API key: `GET /v1/agents` with `Authorization: Bearer <key>`
-17. List agents via session auth with the **default** org cookie (`everruns_org=org_000...001`)
-18. List agents via session auth with the **new** org cookie
+To obtain a session token for steps 17–18, call `POST /v1/auth/login` with the admin credentials and extract the `access_token` from the response. Pass it as `Authorization: Bearer <token>` alongside the org cookie.
+
+15. Create an agent via `POST /v1/agents` with header `Authorization: Bearer <api-key>`
+16. List agents via the API key: `GET /v1/agents` with `Authorization: Bearer <api-key>`
+17. List agents via session auth: `GET /v1/agents` with `Authorization: Bearer <session-token>` and `Cookie: everruns_org=org_00000000000000000000000000000001` (default org)
+18. List agents via session auth: `GET /v1/agents` with `Authorization: Bearer <session-token>` and `Cookie: everruns_org=<new-org-public-id>` (new org from step 4)
 
 ## Expected Result
 
