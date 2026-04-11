@@ -6,6 +6,7 @@
 //!
 //! Decision: External integration crate, auto-registered via inventory plugin system
 //! Decision: Experimental-only (gated behind DeploymentGrade::Dev)
+//! Decision: Gated behind FEATURE_DOCKER_CAPABILITY flag (disabled by default on all envs)
 //! Decision: Single container per session, named everruns-{session_id}
 //! Decision: Lazy start on first tool use, host networking
 //!
@@ -37,6 +38,7 @@ use tracing::{debug, error, info, warn};
 inventory::submit! {
     IntegrationPlugin {
         experimental_only: true,
+        feature_flag: Some("docker_capability"),
         factory: || Box::new(DockerContainerCapability),
     }
 }

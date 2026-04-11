@@ -21,6 +21,7 @@ use tools::{CheckPiTool, MessagePiTool, StartPiTool};
 inventory::submit! {
     IntegrationPlugin {
         experimental_only: false,
+        feature_flag: None,
         factory: || Box::new(PiCapability),
     }
 }

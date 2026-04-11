@@ -17,6 +17,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   notifications: false,
   mcp_endpoint: false,
   evals: false,
+  docker_capability: false,
 };
 
 export interface FeatureFlagsContextValue {

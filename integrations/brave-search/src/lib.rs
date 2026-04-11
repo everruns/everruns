@@ -25,6 +25,7 @@ use tools::BraveWebSearchTool;
 inventory::submit! {
     IntegrationPlugin {
         experimental_only: true,
+        feature_flag: None,
         factory: || Box::new(BraveSearchCapability),
     }
 }

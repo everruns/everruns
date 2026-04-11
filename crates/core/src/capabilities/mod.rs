@@ -49,6 +49,7 @@ use std::sync::Arc;
 /// inventory::submit! {
 ///     everruns_core::capabilities::IntegrationPlugin {
 ///         experimental_only: false,
+///         feature_flag: None,
 ///         factory: || Box::new(DaytonaCapability),
 ///     }
 /// }
@@ -56,6 +57,9 @@ use std::sync::Arc;
 pub struct IntegrationPlugin {
     /// If true, only registered when `DeploymentGrade::experimental_features_enabled()` is true.
     pub experimental_only: bool,
+    /// If set, only registered when the named feature flag is enabled.
+    /// Checked via `FeatureFlags::is_enabled()` at registry build time.
+    pub feature_flag: Option<&'static str>,
     /// Factory function that creates the capability instance.
     pub factory: fn() -> Box<dyn Capability>,
 }
@@ -669,8 +673,13 @@ impl CapabilityRegistry {
         registry.register(FakeFinancialCapability);
 
         // External integration plugins (registered via inventory::submit! in integration crates)
+        let feature_flags = crate::FeatureFlags::from_env(&grade);
         for plugin in inventory::iter::<IntegrationPlugin>() {
-            if !plugin.experimental_only || grade.experimental_features_enabled() {
+            if (!plugin.experimental_only || grade.experimental_features_enabled())
+                && plugin
+                    .feature_flag
+                    .is_none_or(|f| feature_flags.is_enabled(f))
+            {
                 registry.register_boxed((plugin.factory)());
             }
         }

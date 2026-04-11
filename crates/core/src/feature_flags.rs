@@ -27,6 +27,8 @@ pub struct FeatureFlags {
     pub mcp_endpoint: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
     pub evals: bool,
+    /// Docker container capability. Standard (disabled by default on all envs).
+    pub docker_capability: bool,
 }
 
 impl FeatureFlags {
@@ -38,6 +40,7 @@ impl FeatureFlags {
             notifications: standard_flag("FEATURE_NOTIFICATIONS", false),
             mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
             evals: experimental_flag("FEATURE_EVALS", grade),
+            docker_capability: standard_flag("FEATURE_DOCKER_CAPABILITY", false),
         }
     }
 
@@ -49,6 +52,7 @@ impl FeatureFlags {
             "notifications" => self.notifications,
             "mcp_endpoint" => self.mcp_endpoint,
             "evals" => self.evals,
+            "docker_capability" => self.docker_capability,
             _ => false,
         }
     }
@@ -62,6 +66,7 @@ impl FeatureFlags {
             notifications: true,
             mcp_endpoint: true,
             evals: true,
+            docker_capability: true,
         }
     }
 }
@@ -102,6 +107,7 @@ mod tests {
         assert!(!flags.global_chat);
         assert!(!flags.apps);
         assert!(!flags.notifications);
+        assert!(!flags.docker_capability);
     }
 
     // SAFETY: env var tests must run single-threaded (--test-threads=1).
@@ -157,12 +163,14 @@ mod tests {
             notifications: true,
             mcp_endpoint: true,
             evals: true,
+            docker_capability: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("apps"));
         assert!(flags.is_enabled("notifications"));
         assert!(flags.is_enabled("mcp_endpoint"));
         assert!(flags.is_enabled("evals"));
+        assert!(flags.is_enabled("docker_capability"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -174,6 +182,7 @@ mod tests {
             notifications: true,
             mcp_endpoint: true,
             evals: true,
+            docker_capability: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
@@ -210,5 +219,25 @@ mod tests {
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
         assert!(flags.notifications);
         unsafe { std::env::remove_var("FEATURE_NOTIFICATIONS") };
+    }
+
+    #[test]
+    fn test_docker_capability_flag_disabled_by_default_in_dev() {
+        let _lock = lock_env();
+        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
+        let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
+        assert!(
+            !flags.docker_capability,
+            "docker_capability should be disabled by default even in dev"
+        );
+    }
+
+    #[test]
+    fn test_docker_capability_flag_enabled_by_env_override() {
+        let _lock = lock_env();
+        unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
+        let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
+        assert!(flags.docker_capability);
+        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
     }
 }

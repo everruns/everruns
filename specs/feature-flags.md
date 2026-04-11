@@ -26,7 +26,16 @@ System-level feature flags that control feature availability across the platform
 
 ## Current Flags
 
-See `crates/core/src/feature_flags.rs` for the full `FeatureFlags` struct with all current flags and their resolution logic.
+| Flag | Type | Env Var | Description |
+|------|------|---------|-------------|
+| `global_chat` | Experimental | `FEATURE_GLOBAL_CHAT` | Per-user singleton chat session |
+| `apps` | Experimental | `FEATURE_APPS` | Agent deployment to distribution channels |
+| `notifications` | Standard | `FEATURE_NOTIFICATIONS` | In-app notifications (bell, toasts, SSE) |
+| `mcp_endpoint` | Experimental | `FEATURE_MCP_ENDPOINT` | POST /mcp endpoint (Everruns as MCP server) |
+| `evals` | Experimental | `FEATURE_EVALS` | User-facing behavioral evals for agents |
+| `docker_capability` | Standard | `FEATURE_DOCKER_CAPABILITY` | Docker container capability (disabled by default on all envs) |
+
+See `crates/core/src/feature_flags.rs` for the full `FeatureFlags` struct and resolution logic.
 
 ## Architecture
 
