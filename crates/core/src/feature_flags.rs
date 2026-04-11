@@ -28,6 +28,8 @@ pub struct FeatureFlags {
     /// Evals (user-facing behavioral evals for agents). Experimental.
     pub evals: bool,
     /// Docker container capability. Standard (disabled by default on all envs).
+    /// Internal-only — not exposed via API (skip serialization).
+    #[serde(skip)]
     pub docker_capability: bool,
 }
 
@@ -187,9 +189,17 @@ mod tests {
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
         assert!(json.contains("\"notifications\":true"));
+        // docker_capability is #[serde(skip)] — not in API response
+        assert!(!json.contains("docker_capability"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
-        assert_eq!(flags, parsed);
+        // Skipped fields default to false on deserialization
+        assert!(!parsed.docker_capability);
+        assert_eq!(parsed.global_chat, flags.global_chat);
+        assert_eq!(parsed.apps, flags.apps);
+        assert_eq!(parsed.notifications, flags.notifications);
+        assert_eq!(parsed.mcp_endpoint, flags.mcp_endpoint);
+        assert_eq!(parsed.evals, flags.evals);
     }
 
     #[test]
