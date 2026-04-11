@@ -49,19 +49,27 @@ Sysbox fills this gap: containers with VM-like isolation, running on infrastruct
 
 ## Proposed Integration Architecture
 
-### Capability: `sysbox`
+### Capability: `container_sandbox` (not `sysbox`)
 
-New integration crate at `integrations/sysbox/`, following the Daytona reference implementation pattern.
+Sysbox is an **infrastructure detail** — it's one value in a config field. The OSS capability is a generic self-hosted container sandbox that talks to Docker Engine REST API. The container runtime is configurable.
+
+| Layer | Responsibility | Repo |
+|-------|---------------|------|
+| **OSS capability** | `container_sandbox` — Docker Engine REST API client. Create, exec, read/write files, stop. Configurable runtime, network, limits. | `everruns/everruns` |
+| **SaaS infra** | Install Sysbox on sandbox VPS. Set `runtime: "sysbox-runc"` in Doppler/config. | `everruns/saas` |
+| **OSS fallback** | Works with plain `runc` (Docker default) — less isolation, but functional for self-hosted/dev. | No sysbox needed |
+
+New integration crate at `integrations/container-sandbox/`:
 
 ```
-integrations/sysbox/
+integrations/container-sandbox/
 ├── Cargo.toml
 ├── SPEC.md
 ├── src/
-│   ├── lib.rs          # SysboxCapability + IntegrationPlugin registration
-│   ├── runtime.rs      # Container lifecycle (create, start, stop, remove)
+│   ├── lib.rs          # ContainerSandboxCapability + IntegrationPlugin
+│   ├── client.rs       # Docker Engine REST API client (reqwest)
 │   ├── tools.rs        # Tool implementations
-│   └── config.rs       # SysboxContainerConfig
+│   └── config.rs       # ContainerSandboxConfig
 └── tests/
     ├── tool_integration.rs
     └── live_api_test.rs
@@ -102,8 +110,8 @@ Worker container                    Host
 | Phase | Trigger | Action |
 |-------|---------|--------|
 | Create | First tool call in session | `docker run --runtime=sysbox-runc -d --name everruns-sysbox-{session_id} ...` |
-| Execute | `sysbox_exec` tool | `docker exec` with timeout enforcement |
-| File I/O | `sysbox_read_file` / `sysbox_write_file` | `docker exec cat` / `docker cp` |
+| Execute | `sandbox_exec` tool | `docker exec` with timeout enforcement |
+| File I/O | `sandbox_read_file` / `sandbox_write_file` | `docker exec cat` / `docker cp` |
 | Heartbeat | Leased resource renewal | Refresh `lease_expires_at` while session active |
 | Stop | Session end or inactivity | `docker stop` + `docker rm` via leased resource cleanup |
 
@@ -111,31 +119,44 @@ Worker container                    Host
 
 | Tool | Description | Hints |
 |------|-------------|-------|
-| `sysbox_create` | Create sandbox from image, optional resource limits | `destructive: false` |
-| `sysbox_exec` | Execute command in sandbox, returns stdout/stderr/exit_code | `long_running: true`, `persist_output: true` |
-| `sysbox_read_file` | Read file from sandbox filesystem | `readonly: true` |
-| `sysbox_write_file` | Write content to file in sandbox filesystem | `destructive: false` |
-| `sysbox_upload` | Copy file from session VFS into sandbox | `destructive: false` |
-| `sysbox_download` | Copy file from sandbox into session VFS | `readonly: true` |
-| `sysbox_list` | List active sandboxes in session | `readonly: true` |
-| `sysbox_manage` | Stop/start/remove sandbox | `destructive: true` |
+| `sandbox_create` | Create sandbox from image, optional resource limits | `destructive: false` |
+| `sandbox_exec` | Execute command in sandbox, returns stdout/stderr/exit_code | `long_running: true`, `persist_output: true` |
+| `sandbox_read_file` | Read file from sandbox filesystem | `readonly: true` |
+| `sandbox_write_file` | Write content to file in sandbox filesystem | `destructive: false` |
+| `sandbox_upload` | Copy file from session VFS into sandbox | `destructive: false` |
+| `sandbox_download` | Copy file from sandbox into session VFS | `readonly: true` |
+| `sandbox_list` | List active sandboxes in session | `readonly: true` |
+| `sandbox_manage` | Stop/start/remove sandbox | `destructive: true` |
 
 ### Configuration
 
 ```json
 {
+  "docker_host": "http://10.0.0.3:2375",
+  "runtime": "sysbox-runc",
   "image": "ubuntu:24.04",
   "memory_limit": "2g",
-  "cpu_limit": "2",
+  "cpu_limit": "1",
+  "pids_limit": 256,
   "working_dir": "/workspace",
   "network_mode": "bridge",
   "auto_stop_minutes": 10,
-  "enable_docker_in_docker": false,
   "allowed_ports": [3000, 8080]
 }
 ```
 
-Capability config attached to agent definition, same pattern as Daytona/Docker.
+`docker_host` and `runtime` are typically set at the deployment level (env var / Doppler), not per-agent. The capability reads them from env with per-agent config override:
+
+| Field | Source priority | Default |
+|-------|---------------|---------|
+| `docker_host` | Env `CONTAINER_SANDBOX_DOCKER_HOST` → capability config | `unix:///var/run/docker.sock` |
+| `runtime` | Env `CONTAINER_SANDBOX_RUNTIME` → capability config | `""` (Docker default = runc) |
+| `image` | Capability config | `ubuntu:24.04` |
+| `memory_limit` | Capability config | `2g` |
+
+**OSS (no sysbox)**: `CONTAINER_SANDBOX_DOCKER_HOST` unset → uses local socket. `runtime` unset → standard runc. Works out of the box with just Docker installed.
+
+**SaaS**: `CONTAINER_SANDBOX_DOCKER_HOST=http://10.0.0.3:2375`, `CONTAINER_SANDBOX_RUNTIME=sysbox-runc` in Doppler. Workers call sandbox VPS with sysbox isolation.
 
 ### Network Isolation
 
@@ -166,11 +187,11 @@ These map to capability config fields and provide defense-in-depth against resou
 ### Capability Registration
 
 ```rust
-// integrations/sysbox/src/lib.rs
+// integrations/container-sandbox/src/lib.rs
 inventory::submit! {
     IntegrationPlugin {
-        experimental_only: false,  // Production-ready from day one
-        factory: || Box::new(SysboxCapability),
+        experimental_only: false,
+        factory: || Box::new(ContainerSandboxCapability),
     }
 }
 ```
@@ -180,9 +201,9 @@ inventory::submit! {
 Follow the Daytona pattern — register a lease on container creation, refresh on each tool call, cleanup via the durable scheduler:
 
 ```rust
-// On sysbox_create:
+// On sandbox_create:
 ctx.leased_resource_store().upsert_resource(LeasedResource {
-    provider: "sysbox",
+    provider: "container_sandbox",
     resource_type: "container",
     external_id: container_name,
     lease_expires_at: now + Duration::from_secs(auto_stop_minutes * 60),
@@ -193,18 +214,18 @@ ctx.leased_resource_store().upsert_resource(LeasedResource {
 
 Cleanup handler: `docker stop <name> && docker rm <name>`.
 
-### Harness: `coding-sysbox`
+### Harness: `coding-container`
 
 New built-in harness, parallel to `coding-daytona`:
 
 | Property | Value |
 |----------|-------|
-| Name | `coding-sysbox` |
-| Display Name | Coding (Self-Hosted) |
+| Name | `coding-container` |
+| Display Name | Coding (Container) |
 | Parent | `generic` |
-| Additional capability | `sysbox` |
+| Additional capability | `container_sandbox` |
 
-Same two-level architecture as `coding-daytona`: workspace VFS for lightweight ops, Sysbox sandbox for real builds/tests/services.
+Same two-level architecture as `coding-daytona`: workspace VFS for lightweight ops, container sandbox for real builds/tests/services. Whether the sandbox uses sysbox or plain runc is a deployment-time decision, invisible to the harness.
 
 ### Threat Model Additions
 
@@ -420,7 +441,7 @@ fn container_name(session_id: &SessionId) -> String {
 }
 ```
 
-Worker code never lists all containers or operates on foreign session_ids. The `sysbox_list` tool filters by session — `GET /containers/json?filters={"label":["session={session_id}"]}`.
+Worker code never lists all containers or operates on foreign session_ids. The `sandbox_list` tool filters by session — `GET /containers/json?filters={"label":["session={session_id}"]}`.
 
 #### Layer 2: Per-Sandbox Docker Network (Network Isolation)
 
@@ -707,7 +728,7 @@ No architectural change needed — just add Terraform resources and update `SYSB
 
 ### Phase 1: Core Integration (MVP)
 
-1. Create `integrations/sysbox/` crate with `SysboxCapability`
+1. Create `integrations/container-sandbox/` crate with `ContainerSandboxCapability`
 2. Implement container lifecycle: create, exec, read_file, write_file, stop
 3. Bridge networking with default-deny outbound (allow DNS + HTTPS)
 4. cgroup resource limits from capability config
@@ -717,7 +738,7 @@ No architectural change needed — just add Terraform resources and update `SYSB
 
 ### Phase 2: Harness & Polish
 
-8. `coding-sysbox` built-in harness (parent: `generic`)
+8. `coding-container` built-in harness (parent: `generic`)
 9. System prompt tuned for two-level execution (VFS + Sysbox)
 10. Connection provider for runtime detection (is Sysbox installed on this host?)
 11. Threat model section in `specs/threat-model.md`
@@ -759,7 +780,7 @@ No architectural change needed — just add Terraform resources and update `SYSB
 3. **Workspace sync strategy**: How to move files between session VFS and Sysbox container? Options:
    - `docker cp` (simplest, current Docker integration approach)
    - Volume mount from host (requires host filesystem, breaks VFS isolation)
-   - Agent-driven upload/download tools (proposed — `sysbox_upload` / `sysbox_download`)
+   - Agent-driven upload/download tools (proposed — `sandbox_upload` / `sandbox_download`)
    - Recommend: agent-driven tools for explicit control, `docker cp` as implementation.
 
 4. **Worker topology**: Should workers that support Sysbox be a separate pool, or should all workers have Sysbox? Recommend: capability-based worker routing — task metadata includes required capabilities, scheduler routes to capable workers.
@@ -773,11 +794,15 @@ No architectural change needed — just add Terraform resources and update `SYSB
 
 ## Decision
 
-Proceed with Sysbox integration as a new `integrations/sysbox/` crate. It fills the self-hosted strong-isolation gap between virtual bash (safe but limited) and cloud sandboxes (powerful but external). The integration follows established patterns (Daytona reference, inventory plugin, leased resources, capability trait) and adds a production-ready self-hosted execution option.
+Build a generic `container_sandbox` capability in OSS (`integrations/container-sandbox/`). The capability talks to Docker Engine REST API via `reqwest`. The container runtime (`sysbox-runc`, `runc`, `kata-runtime`, etc.) is a deployment-time config — not baked into the code.
 
 Key architectural choices:
+- **OSS is runtime-agnostic** — `container_sandbox` works with any OCI runtime. Sysbox is a SaaS infra choice, not an OSS dependency.
+- **Docker Engine REST API** (not CLI) — `reqwest` client, same pattern as Daytona
 - **Bridge networking** (not host) — isolated by default
 - **cgroup limits** — mandatory resource boundaries
+- **Per-sandbox Docker network** — cross-tenant L3 isolation
 - **Leased resources** — durable cleanup
 - **Admin-gated** (`RiskLevel::High`) — same as Daytona/E2B
-- **Phase 1 = single container per session** — match Docker integration simplicity, expand later
+- **Two-VPS split** — control plane and sandbox hosts on private network
+- **Phase 1 = single container per session** — expand later
