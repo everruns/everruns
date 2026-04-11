@@ -16,6 +16,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -156,6 +157,125 @@ impl From<String> for AgentCapabilityConfig {
 // Mount Point Types
 // ============================================================================
 
+// ============================================================================
+// Virtual File Tree
+// ============================================================================
+
+/// A read-only, path-indexed tree of file content. Built once at startup,
+/// shared across all sessions via `Arc`. Used by `MountSource::Virtual` to
+/// serve files from memory without writing rows to `session_files`.
+#[derive(Debug, Clone)]
+pub struct VirtualFileTree {
+    files: HashMap<String, VirtualFile>,
+}
+
+/// A single file in a virtual file tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VirtualFile {
+    pub content: Vec<u8>,
+    pub is_directory: bool,
+}
+
+impl VirtualFileTree {
+    pub fn new() -> Self {
+        Self {
+            files: HashMap::new(),
+        }
+    }
+
+    /// Insert a text file at the given path (must start with "/").
+    pub fn insert_text(&mut self, path: impl Into<String>, content: impl Into<String>) {
+        let path = path.into();
+        self.ensure_parent_dirs(&path);
+        self.files.insert(
+            path,
+            VirtualFile {
+                content: content.into().into_bytes(),
+                is_directory: false,
+            },
+        );
+    }
+
+    /// Insert a directory entry at the given path.
+    pub fn insert_directory(&mut self, path: impl Into<String>) {
+        self.files.insert(
+            path.into(),
+            VirtualFile {
+                content: Vec::new(),
+                is_directory: true,
+            },
+        );
+    }
+
+    /// Get a file by path.
+    pub fn get(&self, path: &str) -> Option<&VirtualFile> {
+        self.files.get(path)
+    }
+
+    /// List entries directly under the given directory path.
+    pub fn list_directory(&self, dir_path: &str) -> Vec<(String, &VirtualFile)> {
+        let prefix = if dir_path == "/" {
+            "/".to_string()
+        } else {
+            format!("{dir_path}/")
+        };
+        self.files
+            .iter()
+            .filter(|(p, _)| {
+                if let Some(rest) = p.strip_prefix(&prefix) {
+                    !rest.is_empty() && !rest.contains('/')
+                } else {
+                    false
+                }
+            })
+            .map(|(p, f)| (p.clone(), f))
+            .collect()
+    }
+
+    /// Iterate all files (non-directory entries) for grep.
+    pub fn all_files(&self) -> impl Iterator<Item = (&str, &VirtualFile)> {
+        self.files
+            .iter()
+            .filter(|(_, f)| !f.is_directory)
+            .map(|(p, f)| (p.as_str(), f))
+    }
+
+    /// Number of entries in the tree.
+    pub fn len(&self) -> usize {
+        self.files.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+
+    fn ensure_parent_dirs(&mut self, path: &str) {
+        let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+        let mut current = String::new();
+        for part in &parts[..parts.len().saturating_sub(1)] {
+            current = format!("{current}/{part}");
+            self.files.entry(current.clone()).or_insert(VirtualFile {
+                content: Vec::new(),
+                is_directory: true,
+            });
+        }
+    }
+}
+
+impl Default for VirtualFileTree {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PartialEq for VirtualFileTree {
+    fn eq(&self, other: &Self) -> bool {
+        self.files == other.files
+    }
+}
+
+impl Eq for VirtualFileTree {}
+
 /// Access mode for mounted files/directories
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -191,6 +311,9 @@ pub enum MountSource {
         /// Map of filename to mount entry
         entries: HashMap<String, MountEntry>,
     },
+    /// A virtual file tree served from memory. Read-only, shared across sessions via Arc.
+    /// No DB rows created — content is served directly from the in-memory tree.
+    Virtual { tree: Arc<VirtualFileTree> },
 }
 
 impl MountSource {
@@ -215,9 +338,14 @@ impl MountSource {
         Self::InlineDirectory { entries }
     }
 
+    /// Create a virtual mount source from a shared file tree
+    pub fn virtual_tree(tree: Arc<VirtualFileTree>) -> Self {
+        Self::Virtual { tree }
+    }
+
     /// Check if this source is a directory
     pub fn is_directory(&self) -> bool {
-        matches!(self, Self::InlineDirectory { .. })
+        matches!(self, Self::InlineDirectory { .. } | Self::Virtual { .. })
     }
 }
 
