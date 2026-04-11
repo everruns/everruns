@@ -835,18 +835,25 @@ async fn execute_script(
 
     match result {
         Ok(response) => {
-            let output = serde_json::to_string_pretty(&json!({
-                "stdout": response.stdout,
-                "stderr": response.stderr,
-                "exit_code": response.exit_code,
-                "success": response.exit_code == 0
-            }))
-            .unwrap();
-
             if response.exit_code == 0 {
-                Ok(output)
+                Ok(response.stdout)
             } else {
-                Err(output)
+                let combined = if response.stderr.is_empty() {
+                    response.stdout
+                } else if response.stdout.is_empty() {
+                    response.stderr
+                } else {
+                    format!("{}\n{}", response.stdout, response.stderr)
+                };
+                let trimmed = combined.trim();
+                if trimmed.is_empty() {
+                    Err(format!(
+                        "Command failed with exit code {}",
+                        response.exit_code
+                    ))
+                } else {
+                    Err(trimmed.to_string())
+                }
             }
         }
         Err(_) => Err(format!("Command timed out after {timeout_ms}ms")),
