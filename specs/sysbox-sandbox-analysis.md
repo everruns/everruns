@@ -213,7 +213,11 @@ Same two-level architecture as `coding-daytona`: workspace VFS for lightweight o
 | TM-SYSBOX-001 | Container escape via kernel vulnerability | High | Sysbox user-namespace remapping ensures root = unprivileged on host; kernel patching cadence | ACCEPTED |
 | TM-SYSBOX-002 | Resource exhaustion (CPU/memory/disk) | High | cgroup limits enforced via Docker flags; `--pids-limit` for fork bombs | MITIGATED |
 | TM-SYSBOX-003 | Network-based attacks from sandbox | High | Bridge networking with iptables rules; `network_access` policy integration; `none` mode available | MITIGATED |
-| TM-SYSBOX-004 | Cross-session container access | High | Container name includes session_id; Docker API access restricted to worker process | MITIGATED |
+| TM-SYSBOX-004 | Cross-session container access | High | Container name includes session_id; Docker API queries label-filtered; per-sandbox isolated network | MITIGATED |
+| TM-SYSBOX-009 | Cross-tenant sandbox access via Docker API | Critical | Tool code scopes by session_id from ToolContext; Docker API label filters; per-sandbox network prevents L3 reach | MITIGATED |
+| TM-SYSBOX-010 | Cross-tenant sandbox network reachability | High | Each sandbox on its own Docker bridge network; no shared bridge; private IP ranges blocked | MITIGATED |
+| TM-SYSBOX-011 | Tenant resource starvation | High | Per-sandbox cgroup limits + per-org max sandbox count enforced at create time | MITIGATED |
+| TM-SYSBOX-012 | Stale sandbox data leakage across tenants | High | Container + network removed on cleanup; no volume reuse; leased resource scheduler ensures cleanup | MITIGATED |
 | TM-SYSBOX-005 | Sysbox daemon compromise | Critical | Runs as root; host kernel attack surface; monitor daemon health; restrict host access | ACCEPTED |
 | TM-SYSBOX-006 | Image supply chain (malicious base images) | Medium | Curated image allowlist in config; image pull policy; registry restrictions | MITIGATED |
 | TM-SYSBOX-007 | Docker socket exposure inside sandbox | High | Docker-in-Docker uses Sysbox inner Docker (no socket mount); `enable_docker_in_docker` opt-in | MITIGATED |
@@ -296,9 +300,13 @@ spec:
     # Worker creates inner containers via Docker CLI
 ```
 
-## SaaS Infrastructure: How Sysbox Fits
+## SaaS Multi-Tenant Architecture
 
-### Current Production Topology (from `everruns/saas`)
+### Constraint: Multi-Tenant from Day One
+
+Even dev runs multiple tenants (PropelAuth, org-based isolation). This is the primary architectural constraint — not "how do workers reach Docker" but **"how do we prevent Tenant A's sandbox from seeing Tenant B's sandbox"**.
+
+### Current SaaS Topology (from `everruns/saas`)
 
 ```
           Cloudflare DNS (dns-only)
@@ -327,167 +335,215 @@ spec:
 **Secrets**: Doppler (CI project `everruns-dev`, runtime project `everruns`). Only `DOPPLER_TOKEN` on disk.
 **Systemd**: `everruns.service` runs `doppler run -- docker compose up` for reboot persistence.
 
-### How Tools Reach Sandboxes
+### Multi-Tenancy Trust Model for Sandboxes
 
-Two existing patterns in the codebase:
+**Existing isolation** (TM-TENANT-001 through TM-TENANT-008):
+- All DB queries include `WHERE org_id = $org_id`
+- Workers are cross-org by design — org-scoping enforced at API/service layer
+- Sessions scoped via agent FK → agent scoped to org
+- 404 (not 403) for cross-org access — no existence leakage
 
-| Integration | How tools talk to sandboxes | Worker needs |
-|-------------|---------------------------|--------------|
-| **Daytona** | HTTP REST (`reqwest`) → Daytona cloud API | Nothing special — just network access |
-| **Docker** (experimental) | `tokio::process::Command::new("docker")` → local Docker CLI | `docker` binary + Docker daemon access |
+**New isolation needed for Sysbox containers**:
 
-For Sysbox, the tool needs to call `docker run --runtime=sysbox-runc` and `docker exec`. Same as Docker integration — **process-level access to the Docker CLI and daemon**.
+| Threat | Description | Severity |
+|--------|-------------|----------|
+| TM-SYSBOX-009 | Tenant A's sandbox lists/execs into Tenant B's sandbox | Critical |
+| TM-SYSBOX-010 | Tenant A's sandbox reaches Tenant B's sandbox over network | High |
+| TM-SYSBOX-011 | Tenant A exhausts host resources, starving Tenant B | High |
+| TM-SYSBOX-012 | Stale sandbox from Tenant A leaks data to next Tenant B session | High |
 
-The worker doesn't "become" the sandbox. It creates and manages sandbox containers as external resources, same as Daytona manages remote sandboxes via HTTP.
+### How Existing Integrations Handle This
 
-### Problem: Containerized Workers Can't Reach Host Docker
+**Daytona**: Each sandbox created with a per-user API key. Daytona SaaS enforces tenant isolation externally. Everruns tools scope operations by session_id stored in session secrets. Worker can't cross-session — `ToolContext` provides the session_id, and the Daytona client is constructed per-call from session-scoped state.
 
-Workers currently run inside Docker Compose containers. A containerized worker can't call `docker run` on the host without either:
+**Docker (experimental)**: Container named `everruns-{session_id}`. Worker code only operates on that container. No API-level enforcement — trust is in the tool implementation. Dev-only, so acceptable.
 
-1. **Docker socket mount** (`/var/run/docker.sock`) — grants root-equivalent host access. Defeats Sysbox's isolation purpose.
-2. **Docker-in-Docker** — worker runs its own Docker daemon inside its container. But that inner daemon doesn't have Sysbox (Sysbox daemons run on the host, not inside containers).
+**For Sysbox in SaaS, we need defense-in-depth**: tool-level scoping (like Daytona) PLUS infrastructure-level isolation (network, resources).
 
-**This is the core infra constraint**: Sysbox daemons (`sysbox-runc`, `sysbox-fs`, `sysbox-mgr`) run as systemd services on the **host**. Only the host's Docker daemon can use `--runtime=sysbox-runc`. Workers must somehow reach that daemon.
-
-Additional constraints:
-- **Kernel**: Ubuntu 24.04 ships kernel 6.8+ — already satisfied.
-- **Resource headroom**: Each sandbox uses 150-500 MB RAM. Current `cpx21` (4 GB) is tight.
-
-### Deployment Options
-
-#### Option A: Docker Socket Proxy (Recommended for Dev)
-
-Use an off-the-shelf **docker-socket-proxy** to expose the host's Docker Engine REST API to worker containers over HTTP — no custom code needed. Workers call it with `reqwest` (same pattern as Daytona). The proxy restricts which Docker API endpoints are accessible.
-
-Existing projects:
-- [**Tecnativa/docker-socket-proxy**](https://github.com/Tecnativa/docker-socket-proxy) — HAProxy-based, widely used, env-var access control
-- [**Wollomatic/socket-proxy**](https://github.com/wollomatic/socket-proxy) — Go, zero dependencies, fine-grained path-based rules
+### Proposed Architecture
 
 ```
-Docker Compose (all services stay containerized):
-  ┌────────┐ ┌────┐ ┌──────┐ ┌──────┐
-  │ Caddy  │ │NATS│ │Server│ │  UI  │
-  └────────┘ └────┘ └──────┘ └──────┘
-  ┌────────────┐      ┌──────────────────┐
-  │ Workers ×3 │─HTTP→│ docker-socket-   │
-  └────────────┘      │ proxy :2375      │
-                      │ (restricts API)  │
-                      └────────┬─────────┘
-                               │ /var/run/docker.sock
-                     Host Docker daemon
-                         + Sysbox
-                               │
-                  ┌────────────┴────────────┐
-                  │ Sysbox containers       │
-                  │ (agent sandboxes)       │
-                  └─────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│ Hetzner VPS (cpx41: 8 vCPU, 16 GB)                 │
+│ Ubuntu 24.04 + Docker + Sysbox                      │
+│                                                     │
+│ Docker Compose:                                     │
+│  ┌───────┐ ┌────┐ ┌──────┐ ┌──────┐ ┌────┐         │
+│  │ Caddy │ │NATS│ │Server│ │  UI  │ │ VK │         │
+│  └───────┘ └────┘ └──────┘ └──────┘ └────┘         │
+│  ┌──────────┐                                       │
+│  │Workers ×3│                                       │
+│  └────┬─────┘                                       │
+│       │ reqwest (Docker Engine REST API)             │
+│  ┌────▼─────────────────────┐                       │
+│  │ docker-socket-proxy:2375 │ (endpoint filtering)  │
+│  └────┬─────────────────────┘                       │
+│       │ /var/run/docker.sock                        │
+│  ┌────▼──────────────────────────────────────┐      │
+│  │ Docker Engine + sysbox-runc               │      │
+│  │                                           │      │
+│  │ ┌───────────────────────────────────────┐ │      │
+│  │ │ net: sandbox-{org_a}-{session_1}      │ │      │
+│  │ │ ┌─────────────────────────────┐       │ │      │
+│  │ │ │ evr-{session_1}-sysbox     │       │ │      │
+│  │ │ │ --runtime=sysbox-runc      │       │ │      │
+│  │ │ │ --memory 2g --cpus 1       │       │ │      │
+│  │ │ │ --pids-limit 256           │       │ │      │
+│  │ │ │ label: org={org_a}         │       │ │      │
+│  │ │ │ label: session={session_1} │       │ │      │
+│  │ │ └─────────────────────────────┘       │ │      │
+│  │ └───────────────────────────────────────┘ │      │
+│  │                                           │      │
+│  │ ┌───────────────────────────────────────┐ │      │
+│  │ │ net: sandbox-{org_b}-{session_2}      │ │      │
+│  │ │ ┌─────────────────────────────────┐   │ │      │
+│  │ │ │ evr-{session_2}-sysbox         │   │ │      │
+│  │ │ │ (different org, isolated net)   │   │ │      │
+│  │ │ └─────────────────────────────────┘   │ │      │
+│  │ └───────────────────────────────────────┘ │      │
+│  └───────────────────────────────────────────┘      │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                 Neon Postgres
 ```
 
-**docker-compose.dev.yml** addition:
+### Isolation Layers (Defense-in-Depth)
+
+#### Layer 1: Tool-Level Scoping (Application)
+
+Same as Daytona. `ToolContext` provides `session_id` and `org_id`. Tool implementation only operates on containers matching `evr-{session_id}-sysbox`. Container name is derived from session_id, never from user input.
+
+```rust
+fn container_name(session_id: &SessionId) -> String {
+    format!("evr-{}-sysbox", session_id.uuid())
+}
+```
+
+Worker code never lists all containers or operates on foreign session_ids. The `sysbox_list` tool filters by session — `GET /containers/json?filters={"label":["session={session_id}"]}`.
+
+#### Layer 2: Per-Sandbox Docker Network (Network Isolation)
+
+Each sandbox gets its own Docker bridge network named `sandbox-{org_id}-{session_id}`. The sandbox container is the only member.
+
+```rust
+// On sysbox_create:
+// 1. Create isolated network
+POST /networks/create { "Name": "sandbox-{org}-{session}", "Driver": "bridge" }
+
+// 2. Create container on that network
+POST /containers/create {
+    "HostConfig": {
+        "Runtime": "sysbox-runc",
+        "NetworkMode": "sandbox-{org}-{session}",
+        ...
+    },
+    "Labels": {
+        "org": "{org_id}",
+        "session": "{session_id}",
+        "managed-by": "everruns"
+    }
+}
+```
+
+**Effect**: Sandbox A cannot reach Sandbox B at L3. No shared bridge. Even if an agent discovers another container's IP, packets are dropped because they're on different networks.
+
+**Cleanup**: Network removed with container via leased resource handler.
+
+#### Layer 3: Container Labels + Docker API Filtering
+
+All Sysbox-managed containers get labels: `org`, `session`, `managed-by=everruns`. Tool operations use label filters in Docker API calls:
+
+```
+GET /containers/json?filters={"label":["session={session_id}","managed-by=everruns"]}
+```
+
+This is defense-in-depth — even if tool code had a bug, the Docker API queries are label-scoped.
+
+#### Layer 4: Resource Limits (Per-Sandbox + Per-Org)
+
+**Per-sandbox** (cgroup enforcement via Docker):
+```json
+{
+  "Memory": 2147483648,
+  "NanoCpus": 2000000000,
+  "PidsLimit": 256
+}
+```
+
+**Per-org limits** (application-level, enforced in tool code):
+- Max concurrent sandboxes per org (e.g., 3 for free tier, 10 for paid)
+- Max total memory per org across all sandboxes
+- Checked at `sysbox_create` time via leased resource count query
+
+```rust
+// Before creating sandbox:
+let active = ctx.leased_resource_store()
+    .list_resources_by_org(org_id, "sysbox")
+    .await?;
+if active.len() >= org_sandbox_limit {
+    return ToolExecutionResult::tool_error(
+        "Sandbox limit reached for your organization"
+    );
+}
+```
+
+#### Layer 5: Outbound Network Policy (Egress Filtering)
+
+Per-sandbox iptables rules on the bridge, blocking:
+- Private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) — prevents internal network probing
+- Cloud metadata endpoints (169.254.169.254)
+- Allow: DNS (53/udp), HTTPS (443/tcp), HTTP (80/tcp)
+
+Applied as Docker network driver options or post-creation iptables rules. Mirrors fetchkit's private-IP blocking (TM-API-008) at the container level.
+
+#### Layer 6: Sysbox Kernel Isolation
+
+Provided by Sysbox itself — user-namespace, procfs/sysfs virtualization, mount immutability, seccomp. This is the last line of defense if everything above fails.
+
+### How Tools Reach Docker
+
+Workers run inside Docker Compose containers. They reach the host Docker daemon via a **docker-socket-proxy** (Tecnativa or Wollomatic):
 
 ```yaml
   docker-proxy:
     image: tecnativa/docker-socket-proxy
     restart: unless-stopped
     environment:
-      CONTAINERS: 1   # allow create/start/stop/remove/exec
-      POST: 1         # allow POST (create, exec)
-      IMAGES: 1       # allow pull
+      CONTAINERS: 1   # create/start/stop/remove/exec
+      POST: 1         # allow POST requests
+      IMAGES: 1       # allow image pull
+      NETWORKS: 1     # create/remove sandbox networks
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     expose:
       - "2375"
 ```
 
-Workers reach the proxy at `http://docker-proxy:2375`. The integration crate uses Docker Engine REST API directly via `reqwest`:
+Integration crate uses `reqwest` to call Docker Engine REST API at `http://docker-proxy:2375` — same pattern as Daytona's HTTP client. No `docker` CLI needed.
 
-```rust
-// No docker CLI needed — pure HTTP to Docker Engine API
-let resp = client.post("http://docker-proxy:2375/containers/create")
-    .json(&json!({
-        "Image": "ubuntu:24.04",
-        "HostConfig": {
-            "Runtime": "sysbox-runc",
-            "Memory": 2_147_483_648_u64,
-            "NanoCpus": 2_000_000_000_u64,
-            "PidsLimit": 256
-        }
-    }))
-    .send().await?;
-```
+### Concrete Infra Changes
 
-**Pros**: Zero custom code. Workers stay in Docker Compose. Proxy restricts API surface (e.g., disable image delete, network create). Well-tested OSS projects.
-**Cons**: Socket mount on the proxy container (single trust point — proxy is the only container with socket access, and it's read-only with restricted endpoints). Not as locked-down as a custom manager but good enough for dev.
-
-#### Option B: Docker Engine API over TCP (Production Alternative)
-
-Configure Docker daemon to listen on TCP (with TLS) instead of using a socket proxy. Workers call `https://host:2376/` directly. No socket mount anywhere.
-
-```json
-// /etc/docker/daemon.json on host
-{
-  "hosts": ["unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"],
-  "tls": true,
-  "tlscacert": "/etc/docker/ca.pem",
-  "tlscert": "/etc/docker/server-cert.pem",
-  "tlskey": "/etc/docker/server-key.pem",
-  "tlsverify": true,
-  "runtimes": { "sysbox-runc": { "path": "/usr/bin/sysbox-runc" } }
-}
-```
-
-**Pros**: No socket mount. TLS client cert auth. Docker-native, no proxy.
-**Cons**: Exposes full Docker API (no endpoint filtering). Requires TLS cert management.
-
-#### Option C: Dedicated Sandbox Host (Recommended for Production)
-
-Separate machine for sandboxes. Workers on control plane VPS call Docker Engine API on sandbox host over TLS (Option B pattern, cross-host).
-
-**Pros**: Blast radius isolation. Scale sandbox hosts independently.
-**Cons**: Two machines, TLS cert management, more Terraform.
-
-#### Option D: Sysbox Worker Container (Future / K8s)
-
-Worker itself runs in a Sysbox container with inner Docker daemon. K8s-native via RuntimeClass.
-
-**Pros**: Cleanest K8s-native architecture.
-**Cons**: Complex. Sysbox nesting unsupported — inner containers use runc.
-
-### Recommended Path
-
-| Phase | Option | Why | VPS |
-|-------|--------|-----|-----|
-| Dev/MVP | **A** (socket proxy) | Zero custom code, workers unchanged | `cpx31` (4 vCPU, 8 GB) |
-| Staging | **B+C** (TLS Docker API, dedicated host) | Blast radius isolation | `cpx31` + `cpx41` |
-| Production | **C** or **D** | Dedicated pool or K8s | Scale-out |
-
-### Concrete Changes for Option A (Dev MVP)
-
-**Terraform** — upgrade VPS for sandbox headroom:
+**Terraform** — upgrade VPS:
 
 ```hcl
 variable "server_type" {
-  default = "cpx31"  # was cpx21 (3 vCPU, 4 GB → 4 vCPU, 8 GB)
+  default = "cpx41"  # 8 vCPU, 16 GB (was cpx21: 3 vCPU, 4 GB)
 }
 ```
 
-**cloud-init.yaml additions:**
+**cloud-init.yaml** — install Sysbox:
 
 ```yaml
 runcmd:
   # ... existing Docker install ...
-
-  # Install Sysbox
   - wget -q https://downloads.nestybox.com/sysbox/releases/v0.7.0/sysbox-ce_0.7.0-0.linux_amd64.deb
   - apt-get install -y ./sysbox-ce_0.7.0-0.linux_amd64.deb
   - systemctl enable --now sysbox
   - rm sysbox-ce_0.7.0-0.linux_amd64.deb
-
-  # Verify Sysbox runtime registered with Docker
   - docker info --format '{{.Runtimes}}' | grep -q sysbox-runc
 ```
 
-**docker-compose.dev.yml additions:**
+**docker-compose.dev.yml** — add proxy + env:
 
 ```yaml
   docker-proxy:
@@ -497,6 +553,7 @@ runcmd:
       CONTAINERS: 1
       POST: 1
       IMAGES: 1
+      NETWORKS: 1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     expose:
@@ -504,25 +561,47 @@ runcmd:
 
   worker:
     environment:
-      - DOCKER_HOST=tcp://docker-proxy:2375
+      - SYSBOX_DOCKER_HOST=tcp://docker-proxy:2375
 ```
 
-### Resource Budget (Option A, cpx31: 4 vCPU, 8 GB RAM)
+**Doppler** — add config:
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `SYSBOX_ENABLED` | `true` | Feature flag for capability availability |
+| `SYSBOX_DEFAULT_IMAGE` | `ubuntu:24.04` | Default sandbox image |
+| `SYSBOX_MAX_SANDBOXES_PER_ORG` | `3` | Free tier limit |
+| `SYSBOX_MEMORY_LIMIT` | `2g` | Per-sandbox default |
+| `SYSBOX_CPU_LIMIT` | `1` | Per-sandbox default |
+
+### Resource Budget (cpx41: 8 vCPU, 16 GB RAM)
 
 | Component | RAM | CPU |
 |-----------|-----|-----|
-| Server | ~300 MB | 0.5 |
-| Workers ×3 | ~150 MB each = 450 MB | 0.3 each |
-| NATS | ~50 MB | 0.1 |
-| Caddy | ~30 MB | 0.05 |
-| UI | ~200 MB | 0.2 |
-| Sysbox daemons | ~100 MB | 0.1 |
-| Docker socket proxy | ~10 MB | 0.02 |
-| **Subtotal** | **~1.1 GB** | **~1.9** |
-| **Available for sandboxes** | **~6.5 GB** | **~2 vCPU** |
-| Sandboxes (2 GB each) | 3 concurrent | 1 CPU each |
+| Server + NATS + Caddy + UI | ~600 MB | 0.9 |
+| Workers ×3 | ~450 MB | 0.9 |
+| Sysbox daemons + proxy | ~120 MB | 0.15 |
+| **Subtotal** | **~1.2 GB** | **~2** |
+| **Available for sandboxes** | **~14 GB** | **~6 vCPU** |
+| Sandboxes (2 GB / 1 CPU each) | **7 concurrent** | across all tenants |
 
-With a `cpx31`, ~3 concurrent agent sandboxes. Upgrade to `cpx41` (8 vCPU, 16 GB) or split to Option C for more.
+### Production Scale-Out (Option C)
+
+For production multi-tenant with more headroom:
+
+```
+┌─────────────────────┐         ┌───────────────────────────┐
+│ Control Plane VPS   │         │ Sandbox Host(s) ×N        │
+│                     │         │                           │
+│ Server + UI + NATS  │  gRPC   │ Workers (native or Sysbox)│
+│ Caddy               │◄───────►│ Docker + Sysbox           │
+│                     │         │ Docker TCP API + TLS      │
+└──────────┬──────────┘         └───────────────────────────┘
+           │
+     Neon Postgres
+```
+
+Workers move to sandbox host(s). Control plane has zero Docker/Sysbox surface. Scale sandbox hosts per demand. Per-org routing possible (premium tenants get dedicated hosts).
 
 ## Implementation Plan
 
