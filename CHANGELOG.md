@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **⚠️ Important:** There is no automatic migration between versions. Each major/minor release requires a fresh database. Back up any data you need before upgrading.
+> **⚠️ Important:** Patch releases (e.g. 0.8.9 → 0.8.10) apply incremental migrations automatically. Major/minor releases may require a fresh database — check the Migration Notes for each version.
 
 ## [Unreleased]
 
@@ -60,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Migration Notes
 
-Migrations squashed: `011_evals_target.sql` + `012_evals_post.sql` → `011_v0.8.10.sql`. Requires fresh database (no in-place upgrade from 0.8.9).
+Migrations squashed: `011_evals_target.sql` + `012_evals_post.sql` → `011_v0.8.10.sql`. In-place upgrade from 0.8.9 works — the squashed migration applies on top of existing `010_v0.8.9` as a normal incremental migration.
 
 ## [0.8.9] - 2026-04-08
 
