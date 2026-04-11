@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Shared design system — single source of truth for CSS variables, theme tokens,
+   utilities, and animations. Downstream consumers (e.g. SaaS) import this file
+   directly instead of duplicating its contents. */
+@import "./design-system.css";
+
 /* Enable Tailwind to scan Streamdown for classes */
 @source "../node_modules/streamdown/dist/*.js";
 
@@ -7,8 +12,3 @@
    minified JS (negative margins, color/opacity variants). Without these, the
    code block toolbar positioning and background colors break. */
 @source inline("-mt-10 bg-sidebar/70 bg-sidebar/80 border-sidebar border-muted-foreground/30");
-
-/* Shared design system — single source of truth for CSS variables, theme tokens,
-   utilities, and animations. Downstream consumers (e.g. SaaS) import this file
-   directly instead of duplicating its contents. */
-@import "./design-system.css";
