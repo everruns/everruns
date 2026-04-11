@@ -120,59 +120,26 @@ export interface UpdateSessionScheduleRequest {
 }
 
 // ============================================
-// Session Resource types (unified registry)
+// Session Resource Registry types
 // ============================================
 
-export type LeasedResourceStatus = "active" | "cleaning" | "released" | "cleanup_failed";
+export type SessionResourceStatus = "active" | "completed" | "failed" | "released";
 
-export type SubagentStatus =
-  | "spawning"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "max_iterations_reached";
-
-export interface LeasedResource {
-  id: string;
-  session_id?: string;
-  provider: string;
-  resource_type: string;
-  external_id: string;
-  display_name?: string;
-  status: LeasedResourceStatus;
-  owner_user_id?: string;
-  lease_duration_seconds: number;
-  last_touched_at: string;
-  lease_expires_at: string;
-  cleanup_started_at?: string;
-  cleanup_completed_at?: string;
-  cleanup_attempts: number;
-  last_cleanup_error?: string;
+/** A resource registered in the session resource registry. */
+export interface SessionResourceEntry {
+  /** Caller-provided stable ID (unique per session). */
+  resource_id: string;
+  session_id: string;
+  /** Resource kind: "sandbox", "subagent", "browser_session", etc. */
+  kind: string;
+  /** Human-readable label. */
+  display_name: string;
+  status: SessionResourceStatus;
+  /** Kind-specific non-secret metadata. */
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
-
-/** Leased resource wrapped with kind discriminator */
-export interface LeasedSessionResource extends LeasedResource {
-  kind: "leased";
-}
-
-/** Subagent resource */
-export interface SubagentSessionResource {
-  kind: "subagent";
-  session_id: string;
-  name: string;
-  task?: string;
-  status: SubagentStatus;
-  blueprint_id?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-/** Unified session resource (tagged union) */
-export type SessionResource = LeasedSessionResource | SubagentSessionResource;
 
 // ============================================
 // Session Storage types (Key-Value & Secrets)

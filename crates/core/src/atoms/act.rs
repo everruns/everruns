@@ -172,6 +172,8 @@ where
     platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
     /// Optional leased resource store for provider lease tracking
     leased_resource_store: Option<Arc<dyn crate::traits::LeasedResourceStore>>,
+    /// Optional session resource registry
+    session_resource_registry: Option<Arc<dyn crate::traits::SessionResourceRegistry>>,
     /// Optional capability registry for blueprint lookups in subagent tools
     capability_registry: Option<crate::capabilities::CapabilityRegistry>,
     /// Optional memory store backend for persistent cross-session memory.
@@ -213,6 +215,7 @@ where
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            session_resource_registry: None,
             capability_registry: None,
             memory_store: None,
             org_id: None,
@@ -243,6 +246,7 @@ where
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            session_resource_registry: None,
             capability_registry: None,
             memory_store: None,
             org_id: None,
@@ -341,6 +345,15 @@ where
         store: Arc<dyn crate::traits::LeasedResourceStore>,
     ) -> Self {
         self.leased_resource_store = Some(store);
+        self
+    }
+
+    /// Set session resource registry.
+    pub fn with_session_resource_registry(
+        mut self,
+        registry: Arc<dyn crate::traits::SessionResourceRegistry>,
+    ) -> Self {
+        self.session_resource_registry = Some(registry);
         self
     }
 
@@ -807,6 +820,9 @@ where
         }
         if let Some(ref store) = self.leased_resource_store {
             tool_context.leased_resource_store = Some(store.clone());
+        }
+        if let Some(ref registry) = self.session_resource_registry {
+            tool_context.session_resource_registry = Some(registry.clone());
         }
         if let Some(ref registry) = self.capability_registry {
             tool_context.capability_registry = Some(registry.clone());

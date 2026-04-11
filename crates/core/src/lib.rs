@@ -139,8 +139,8 @@ pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use traits::{
     EventEmitter, HarnessStore, ImageResolver, KeyInfo, LeasedResourceStore, LlmProviderStore,
     ModelWithProvider, NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore,
-    SessionMutator, SessionSqlDbStoreRef, SessionStorageStore, SessionStore, ToolContext,
-    ToolExecutor, UserConnectionResolver,
+    SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef, SessionStorageStore,
+    SessionStore, ToolContext, ToolExecutor, UserConnectionResolver,
 };
 
 // Memory store re-exports
@@ -292,7 +292,9 @@ pub use organization::{
 };
 pub use session::{Session, SessionStatus, SubagentStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, InitialFile, SessionFile};
-pub use session_resource::SessionResource;
+pub use session_resource::{
+    RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
+};
 pub use session_sqldb::{
     ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult,
     SqlQueryResult, TableSchema,

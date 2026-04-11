@@ -22,6 +22,7 @@ pub mod models;
 pub mod password;
 pub mod repositories;
 pub mod session_file_store;
+pub mod session_resource_store;
 pub mod session_schedule_store;
 pub mod session_storage_store;
 pub mod session_store;
@@ -46,6 +47,7 @@ pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;
 pub use repositories::*;
 pub use session_file_store::{DbSessionFileStore, create_db_session_file_store};
+pub use session_resource_store::DbSessionResourceRegistry;
 pub use session_schedule_store::DbSessionScheduleStore;
 pub use session_storage_store::{
     DbSessionStorageStore, create_db_session_storage_store,

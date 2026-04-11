@@ -1396,6 +1396,33 @@ pub struct ReleaseLeasedResourceRow {
 }
 
 // ============================================
+// Session resource registry models
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionResourceRow {
+    pub id: Uuid,
+    pub session_id: SessionId,
+    pub resource_id: String,
+    pub kind: String,
+    pub display_name: String,
+    pub status: String,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpsertSessionResourceRow {
+    pub session_id: SessionId,
+    pub resource_id: String,
+    pub kind: String,
+    pub display_name: String,
+    pub status: String,
+    pub metadata: serde_json::Value,
+}
+
+// ============================================
 // Agent identity models (virtual principals)
 // ============================================
 

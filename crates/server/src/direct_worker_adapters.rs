@@ -1038,7 +1038,19 @@ impl WorkerAdapters for DirectWorkerAdapters {
     }
 
     fn leased_resource_store(&self) -> Arc<dyn everruns_core::traits::LeasedResourceStore> {
-        Arc::new(crate::storage::DbLeasedResourceStore::new(self.db.clone()))
+        let mut store = crate::storage::DbLeasedResourceStore::new(self.db.clone());
+        if let Some(registry) = self.session_resource_registry() {
+            store = store.with_registry(registry);
+        }
+        Arc::new(store)
+    }
+
+    fn session_resource_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::traits::SessionResourceRegistry>> {
+        Some(Arc::new(crate::storage::DbSessionResourceRegistry::new(
+            self.db.clone(),
+        )))
     }
 
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {

@@ -1,7 +1,7 @@
 // Session resource routes.
 //
-// Exposes a unified view of all resources active in a session — leased
-// resources (sandboxes, browsers) and subagents.
+// Exposes the session resource registry — a unified view of all resources
+// active in a session (sandboxes, subagents, browser sessions, etc.).
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::SessionResourceService;
@@ -10,7 +10,7 @@ use axum::{
     extract::{Path, State},
     routing::get,
 };
-use everruns_core::{SessionId, SessionResource};
+use everruns_core::{SessionId, SessionResourceEntry};
 use std::sync::Arc;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, impl_auth_state};
@@ -39,12 +39,12 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// List all resources for a session (leased resources + subagents).
+/// List all resources registered in the session resource registry.
 #[utoipa::path(
     get,
     path = "/v1/sessions/{session_id}/resources",
     responses(
-        (status = 200, description = "Session resources", body = Vec<SessionResource>),
+        (status = 200, description = "Session resources", body = Vec<SessionResourceEntry>),
         (status = 404, description = "Session not found"),
     ),
     tag = "session-resources"
@@ -53,7 +53,7 @@ pub async fn list_resources(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<SessionId>,
-) -> ApiResult<Vec<SessionResource>> {
+) -> ApiResult<Vec<SessionResourceEntry>> {
     let resources = state
         .session_resource_service
         .list_for_session(org.org_id, session_id)

@@ -1894,6 +1894,57 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Session Resource Registry
+    // ============================================
+
+    pub async fn upsert_session_resource(
+        &self,
+        input: UpsertSessionResourceRow,
+    ) -> Result<SessionResourceRow> {
+        dispatch!(self, upsert_session_resource, input)
+    }
+
+    pub async fn update_session_resource_status(
+        &self,
+        session_id: SessionId,
+        resource_id: &str,
+        status: &str,
+    ) -> Result<Option<SessionResourceRow>> {
+        dispatch!(
+            self,
+            update_session_resource_status,
+            session_id,
+            resource_id,
+            status
+        )
+    }
+
+    pub async fn get_session_resource(
+        &self,
+        session_id: SessionId,
+        resource_id: &str,
+    ) -> Result<Option<SessionResourceRow>> {
+        dispatch!(self, get_session_resource, session_id, resource_id)
+    }
+
+    pub async fn list_session_resources(
+        &self,
+        session_id: SessionId,
+        kind: Option<&str>,
+        status: Option<&str>,
+    ) -> Result<Vec<SessionResourceRow>> {
+        dispatch!(self, list_session_resources, session_id, kind, status)
+    }
+
+    pub async fn delete_session_resource(
+        &self,
+        session_id: SessionId,
+        resource_id: &str,
+    ) -> Result<bool> {
+        dispatch!(self, delete_session_resource, session_id, resource_id)
+    }
+
+    // ============================================
     // Audit Logs (TM-OBS-007, EVE-226)
     // ============================================
 

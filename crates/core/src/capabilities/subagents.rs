@@ -291,6 +291,23 @@ impl Tool for SpawnSubagentTool {
             Err(e) => return ToolExecutionResult::internal_error(e),
         };
 
+        // Register subagent in session resource registry.
+        if let Some(ref registry) = context.session_resource_registry {
+            let _ = registry
+                .register(crate::session_resource::RegisterSessionResource {
+                    session_id: context.session_id,
+                    resource_id: child_session.id.to_string(),
+                    kind: "subagent".to_string(),
+                    display_name: name.clone(),
+                    status: crate::session_resource::SessionResourceStatus::Active,
+                    metadata: json!({
+                        "task": &task,
+                        "blueprint_id": &blueprint_param,
+                    }),
+                })
+                .await;
+        }
+
         // Send the task as the first message
         if let Err(e) = store.send_message(child_session.id, &task).await {
             return ToolExecutionResult::internal_error(e);
@@ -300,6 +317,16 @@ impl Tool for SpawnSubagentTool {
         let status = match store.wait_for_idle(child_session.id, Some(300)).await {
             Ok(s) => s,
             Err(e) => {
+                // Mark as failed in registry.
+                if let Some(ref registry) = context.session_resource_registry {
+                    let _ = registry
+                        .update_status(
+                            context.session_id,
+                            &child_session.id.to_string(),
+                            crate::session_resource::SessionResourceStatus::Failed,
+                        )
+                        .await;
+                }
                 return ToolExecutionResult::success(json!({
                     "subagent_id": child_session.id.to_string(),
                     "name": name,
@@ -318,6 +345,18 @@ impl Tool for SpawnSubagentTool {
 
         let result_text = last_agent_message(&messages)
             .unwrap_or_else(|| format!("Subagent completed with status: {status}"));
+
+        // Update registry with terminal status.
+        if let Some(ref registry) = context.session_resource_registry {
+            let terminal = if status == "error" {
+                crate::session_resource::SessionResourceStatus::Failed
+            } else {
+                crate::session_resource::SessionResourceStatus::Completed
+            };
+            let _ = registry
+                .update_status(context.session_id, &child_session.id.to_string(), terminal)
+                .await;
+        }
 
         ToolExecutionResult::success(json!({
             "subagent_id": child_session.id.to_string(),
