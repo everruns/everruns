@@ -191,7 +191,14 @@ fn make_http_callback(
 }
 
 /// Summary fields kept in compact output mode.
-const SUMMARY_FIELDS: &[&str] = &["id", "name", "description", "status"];
+const SUMMARY_FIELDS: &[&str] = &[
+    "id",
+    "name",
+    "description",
+    "status",
+    "self_url",
+    "view_url",
+];
 
 /// Filter a JSON response to summary fields only.
 ///
