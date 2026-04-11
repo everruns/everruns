@@ -360,52 +360,53 @@ Even dev runs multiple tenants (PropelAuth, org-based isolation). This is the pr
 
 **For Sysbox in SaaS, we need defense-in-depth**: tool-level scoping (like Daytona) PLUS infrastructure-level isolation (network, resources).
 
-### Proposed Architecture
+### Proposed Architecture: Two-VPS Split
+
+Sandboxes run on a **dedicated VPS**, separate from the control plane. This is the right default for multi-tenant — even in dev:
+
+1. **Sandbox escape can't reach control plane** — no DB connection string, no Doppler token, no server process on the sandbox host.
+2. **Docker API exposure is sandbox-only** — worst case of a socket proxy bug: attacker sees other sandboxes, not the entire platform.
+3. **Resource isolation is physical** — sandboxes can't starve the API server.
+4. **Cost**: ~€8/mo extra (Hetzner cpx21 for control plane stays, add cpx31/cpx41 for sandboxes).
 
 ```
-┌─────────────────────────────────────────────────────┐
-│ Hetzner VPS (cpx41: 8 vCPU, 16 GB)                 │
-│ Ubuntu 24.04 + Docker + Sysbox                      │
-│                                                     │
-│ Docker Compose:                                     │
-│  ┌───────┐ ┌────┐ ┌──────┐ ┌──────┐ ┌────┐         │
-│  │ Caddy │ │NATS│ │Server│ │  UI  │ │ VK │         │
-│  └───────┘ └────┘ └──────┘ └──────┘ └────┘         │
-│  ┌──────────┐                                       │
-│  │Workers ×3│                                       │
-│  └────┬─────┘                                       │
-│       │ reqwest (Docker Engine REST API)             │
-│  ┌────▼─────────────────────┐                       │
-│  │ docker-socket-proxy:2375 │ (endpoint filtering)  │
-│  └────┬─────────────────────┘                       │
-│       │ /var/run/docker.sock                        │
-│  ┌────▼──────────────────────────────────────┐      │
-│  │ Docker Engine + sysbox-runc               │      │
-│  │                                           │      │
-│  │ ┌───────────────────────────────────────┐ │      │
-│  │ │ net: sandbox-{org_a}-{session_1}      │ │      │
-│  │ │ ┌─────────────────────────────┐       │ │      │
-│  │ │ │ evr-{session_1}-sysbox     │       │ │      │
-│  │ │ │ --runtime=sysbox-runc      │       │ │      │
-│  │ │ │ --memory 2g --cpus 1       │       │ │      │
-│  │ │ │ --pids-limit 256           │       │ │      │
-│  │ │ │ label: org={org_a}         │       │ │      │
-│  │ │ │ label: session={session_1} │       │ │      │
-│  │ │ └─────────────────────────────┘       │ │      │
-│  │ └───────────────────────────────────────┘ │      │
-│  │                                           │      │
-│  │ ┌───────────────────────────────────────┐ │      │
-│  │ │ net: sandbox-{org_b}-{session_2}      │ │      │
-│  │ │ ┌─────────────────────────────────┐   │ │      │
-│  │ │ │ evr-{session_2}-sysbox         │   │ │      │
-│  │ │ │ (different org, isolated net)   │   │ │      │
-│  │ │ └─────────────────────────────────┘   │ │      │
-│  │ └───────────────────────────────────────┘ │      │
-│  └───────────────────────────────────────────┘      │
-└──────────────────────┬──────────────────────────────┘
-                       │
-                 Neon Postgres
+ Hetzner Private Network (10.0.0.0/16)
+ ┌──────────────────────────┐    ┌──────────────────────────────────┐
+ │ Control Plane VPS        │    │ Sandbox VPS                      │
+ │ (cpx21, same as today)   │    │ (cpx31: 4 vCPU, 8 GB)           │
+ │ 10.0.0.2                 │    │ 10.0.0.3                         │
+ │                          │    │                                  │
+ │ Caddy (:80/:443)         │    │ Docker + Sysbox                  │
+ │ Server (:9000 + gRPC)    │    │ docker-socket-proxy (:2375)      │
+ │ Workers ×3               │    │                                  │
+ │ NATS                     │    │ ┌──────────────────────────────┐ │
+ │ UI                       │    │ │ net: sandbox-{org_a}-{s1}   │ │
+ │                          │    │ │ ┌──────────────────────────┐ │ │
+ │ Workers ───── reqwest ───────►│ │ │ evr-{s1}-sysbox         │ │ │
+ │              10.0.0.3:2375│   │ │ │ sysbox-runc, cgroup-ltd │ │ │
+ │                          │    │ │ └──────────────────────────┘ │ │
+ │                          │    │ └──────────────────────────────┘ │
+ │                          │    │ ┌──────────────────────────────┐ │
+ │                          │    │ │ net: sandbox-{org_b}-{s2}   │ │
+ │                          │    │ │ ┌──────────────────────────┐ │ │
+ │                          │    │ │ │ evr-{s2}-sysbox         │ │ │
+ │                          │    │ │ └──────────────────────────┘ │ │
+ │                          │    │ └──────────────────────────────┘ │
+ └────────────┬─────────────┘    └──────────────────────────────────┘
+              │
+        Neon Postgres
 ```
+
+**What lives where:**
+
+| Control Plane VPS (cpx21) | Sandbox VPS (cpx31+) |
+|---------------------------|---------------------|
+| Caddy, Server, Workers, NATS, UI | Docker daemon + Sysbox daemons |
+| DB credentials, Doppler secrets | docker-socket-proxy only |
+| No Docker daemon, no Sysbox | No DB creds, no server, no secrets |
+| Public internet (80/443) | Private network only (10.0.0.0/16) |
+
+**Workers stay on the control plane VPS.** They call Docker Engine REST API on the sandbox VPS over the Hetzner private network (`http://10.0.0.3:2375`). The sandbox VPS firewall blocks all public inbound — only the private network reaches port 2375.
 
 ### Isolation Layers (Defense-in-Depth)
 
@@ -521,87 +522,186 @@ Workers run inside Docker Compose containers. They reach the host Docker daemon 
 
 Integration crate uses `reqwest` to call Docker Engine REST API at `http://docker-proxy:2375` — same pattern as Daytona's HTTP client. No `docker` CLI needed.
 
-### Concrete Infra Changes
-
-**Terraform** — upgrade VPS:
+### Concrete Terraform Changes
 
 ```hcl
-variable "server_type" {
-  default = "cpx41"  # 8 vCPU, 16 GB (was cpx21: 3 vCPU, 4 GB)
+# --- Private Network ---
+
+resource "hcloud_network" "internal" {
+  name     = "everruns-dev-internal"
+  ip_range = "10.0.0.0/16"
+}
+
+resource "hcloud_network_subnet" "internal" {
+  network_id   = hcloud_network.internal.id
+  type         = "cloud"
+  network_zone = "us-east"
+  ip_range     = "10.0.0.0/24"
+}
+
+# --- Control Plane VPS (unchanged size) ---
+
+resource "hcloud_server" "dev" {
+  name        = "everruns-dev"
+  server_type = "cpx21"        # same as today
+  location    = var.server_location
+  image       = "ubuntu-24.04"
+  ssh_keys    = [hcloud_ssh_key.deploy.id]
+  firewall_ids = [hcloud_firewall.web.id]
+  # ... existing cloud-init ...
+
+  network {
+    network_id = hcloud_network.internal.id
+    ip         = "10.0.0.2"
+  }
+}
+
+# --- Sandbox VPS (new) ---
+
+resource "hcloud_firewall" "sandbox" {
+  name = "everruns-dev-sandbox"
+
+  rule {
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "22"
+    source_ips = ["0.0.0.0/0", "::/0"]
+  }
+  # No 80/443 — sandbox VPS has no public services.
+  # Docker API (2375) reachable only via private network.
+}
+
+resource "hcloud_server" "sandbox" {
+  name        = "everruns-dev-sandbox"
+  server_type = var.sandbox_server_type   # default "cpx31" (4 vCPU, 8 GB)
+  location    = var.server_location       # same DC as control plane
+  image       = "ubuntu-24.04"
+  ssh_keys    = [hcloud_ssh_key.deploy.id]
+  firewall_ids = [hcloud_firewall.sandbox.id]
+
+  user_data = templatefile("${path.module}/cloud-init-sandbox.yaml", {
+    ghcr_token    = var.ghcr_token
+    ghcr_username = var.ghcr_username
+  })
+
+  network {
+    network_id = hcloud_network.internal.id
+    ip         = "10.0.0.3"
+  }
+}
+
+variable "sandbox_server_type" {
+  description = "Hetzner server type for sandbox VPS"
+  type        = string
+  default     = "cpx31"   # 4 vCPU, 8 GB — upgrade to cpx41 for more headroom
 }
 ```
 
-**cloud-init.yaml** — install Sysbox:
+**cloud-init-sandbox.yaml** (new file):
 
 ```yaml
+#cloud-config
+# Sandbox VPS: Docker + Sysbox + socket proxy. No server, no UI, no secrets.
+
+package_update: true
+packages:
+  - curl
+  - iptables
+
 runcmd:
-  # ... existing Docker install ...
+  # Install Docker
+  - curl -fsSL https://get.docker.com | sh
+  - systemctl enable --now docker
+
+  # Install Sysbox
   - wget -q https://downloads.nestybox.com/sysbox/releases/v0.7.0/sysbox-ce_0.7.0-0.linux_amd64.deb
   - apt-get install -y ./sysbox-ce_0.7.0-0.linux_amd64.deb
   - systemctl enable --now sysbox
   - rm sysbox-ce_0.7.0-0.linux_amd64.deb
+
+  # Verify
   - docker info --format '{{.Runtimes}}' | grep -q sysbox-runc
+
+  # Login to GHCR (for pulling sandbox base images)
+  - echo "${ghcr_token}" | docker login ghcr.io -u "${ghcr_username}" --password-stdin
+
+  # Pre-pull default sandbox image
+  - docker pull ubuntu:24.04
+
+  # Start socket proxy (listens on 0.0.0.0:2375, reachable via private net)
+  - |
+    docker run -d --name docker-proxy --restart unless-stopped \
+      -e CONTAINERS=1 -e POST=1 -e IMAGES=1 -e NETWORKS=1 -e EXEC=1 \
+      -v /var/run/docker.sock:/var/run/docker.sock:ro \
+      -p 10.0.0.3:2375:2375 \
+      tecnativa/docker-socket-proxy
+
+  # Block docker-proxy from public interface (defense-in-depth)
+  - iptables -A INPUT -p tcp --dport 2375 -s 10.0.0.0/24 -j ACCEPT
+  - iptables -A INPUT -p tcp --dport 2375 -j DROP
 ```
 
-**docker-compose.dev.yml** — add proxy + env:
+**docker-compose.dev.yml** — add env to workers:
 
 ```yaml
-  docker-proxy:
-    image: tecnativa/docker-socket-proxy
-    restart: unless-stopped
-    environment:
-      CONTAINERS: 1
-      POST: 1
-      IMAGES: 1
-      NETWORKS: 1
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    expose:
-      - "2375"
-
   worker:
     environment:
-      - SYSBOX_DOCKER_HOST=tcp://docker-proxy:2375
+      # Sandbox VPS Docker API (via private network)
+      - SYSBOX_DOCKER_HOST=http://10.0.0.3:2375
 ```
 
 **Doppler** — add config:
 
 | Variable | Value | Purpose |
 |----------|-------|---------|
-| `SYSBOX_ENABLED` | `true` | Feature flag for capability availability |
+| `SYSBOX_DOCKER_HOST` | `http://10.0.0.3:2375` | Sandbox VPS Docker API |
+| `SYSBOX_ENABLED` | `true` | Feature flag |
 | `SYSBOX_DEFAULT_IMAGE` | `ubuntu:24.04` | Default sandbox image |
 | `SYSBOX_MAX_SANDBOXES_PER_ORG` | `3` | Free tier limit |
 | `SYSBOX_MEMORY_LIMIT` | `2g` | Per-sandbox default |
 | `SYSBOX_CPU_LIMIT` | `1` | Per-sandbox default |
 
-### Resource Budget (cpx41: 8 vCPU, 16 GB RAM)
+### Resource Budget
+
+**Control Plane VPS (cpx21: 3 vCPU, 4 GB)** — unchanged from today:
+
+| Component | RAM |
+|-----------|-----|
+| Server + NATS + Caddy + UI + Workers ×3 | ~1.1 GB |
+| Available headroom | ~2.9 GB |
+
+**Sandbox VPS (cpx31: 4 vCPU, 8 GB)**:
 
 | Component | RAM | CPU |
 |-----------|-----|-----|
-| Server + NATS + Caddy + UI | ~600 MB | 0.9 |
-| Workers ×3 | ~450 MB | 0.9 |
-| Sysbox daemons + proxy | ~120 MB | 0.15 |
-| **Subtotal** | **~1.2 GB** | **~2** |
-| **Available for sandboxes** | **~14 GB** | **~6 vCPU** |
-| Sandboxes (2 GB / 1 CPU each) | **7 concurrent** | across all tenants |
+| Docker daemon | ~100 MB | 0.1 |
+| Sysbox daemons | ~100 MB | 0.1 |
+| Socket proxy | ~10 MB | 0.02 |
+| **Available for sandboxes** | **~7.5 GB** | **~3.8 vCPU** |
+| Sandboxes (2 GB / 1 CPU each) | **3-4 concurrent** | across all tenants |
 
-### Production Scale-Out (Option C)
+Upgrade to `cpx41` (8 vCPU, 16 GB) for ~7 concurrent sandboxes. The control plane VPS doesn't need to change at all.
 
-For production multi-tenant with more headroom:
+### Monthly Cost
+
+| Component | Current | With Sandboxes |
+|-----------|---------|---------------|
+| Control plane (cpx21) | ~€8 | ~€8 (unchanged) |
+| Sandbox VPS (cpx31) | — | ~€11 |
+| Neon Postgres | ~$0 (free tier) | ~$0 |
+| **Total** | **~€8** | **~€19** |
+
+### Scale-Out Path
+
+Add more sandbox VPS instances. Workers route to a specific sandbox host via config or load balancer. Per-org routing possible (premium tenants → dedicated sandbox host).
 
 ```
-┌─────────────────────┐         ┌───────────────────────────┐
-│ Control Plane VPS   │         │ Sandbox Host(s) ×N        │
-│                     │         │                           │
-│ Server + UI + NATS  │  gRPC   │ Workers (native or Sysbox)│
-│ Caddy               │◄───────►│ Docker + Sysbox           │
-│                     │         │ Docker TCP API + TLS      │
-└──────────┬──────────┘         └───────────────────────────┘
-           │
-     Neon Postgres
+Control Plane ──► Sandbox VPS 1 (shared, free tier)
+              ──► Sandbox VPS 2 (dedicated, premium tenant)
+              ──► Sandbox VPS N ...
 ```
 
-Workers move to sandbox host(s). Control plane has zero Docker/Sysbox surface. Scale sandbox hosts per demand. Per-org routing possible (premium tenants get dedicated hosts).
+No architectural change needed — just add Terraform resources and update `SYSBOX_DOCKER_HOST` to a list or load balancer.
 
 ## Implementation Plan
 
