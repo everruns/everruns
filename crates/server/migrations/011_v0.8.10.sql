@@ -1,10 +1,8 @@
--- v0.8.10: Eval target refactor
--- Replace harness_id + agent_id on evals with JSONB target column.
--- Add target to eval_cases, eval_runs, eval_case_results.
--- Resolution: run.target → case.target → eval.target → org default harness.
+-- v0.8.10: Eval target refactor + post messages
+-- Squashed from: 011_evals_target.sql, 012_evals_post.sql
 
 -- ============================================
--- evals: replace agent_id/harness_id with target JSONB
+-- 011_evals_target: replace agent_id/harness_id with target JSONB
 -- ============================================
 
 -- Migrate existing data into target column
@@ -40,3 +38,9 @@ ALTER TABLE eval_runs ADD COLUMN target JSONB;
 
 ALTER TABLE eval_case_results ADD COLUMN target JSONB;
 ALTER TABLE eval_case_results ADD COLUMN target_snapshot JSONB;
+
+-- ============================================
+-- 012_evals_post: add post messages column to eval_cases
+-- ============================================
+
+ALTER TABLE eval_cases ADD COLUMN IF NOT EXISTS post JSONB;
