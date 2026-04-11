@@ -12,7 +12,6 @@ export interface FeatureFlags {
   notifications: boolean;
   mcp_endpoint: boolean;
   evals: boolean;
-  docker_capability: boolean;
 }
 
 export interface AuthConfigResponse {
