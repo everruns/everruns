@@ -819,12 +819,11 @@ impl ServerAppBuilder {
             api_routes = api_routes.merge(routes);
         }
 
-        // Pass the API router to MCP state for in-process routing (no HTTP loopback).
+        // Pass the unprefixed API router to MCP state for in-process routing
+        // (no HTTP loopback). MCP dispatch uses catalog operation paths like
+        // `/v1/...`, so this router must not be nested under `api_prefix`.
         // Clone before rate limiting — MCP endpoint has its own rate limiting.
-        mcp_endpoint_state.set_api_router(build_router_with_prefix(
-            api_routes.clone(),
-            &self.config.api_prefix,
-        ));
+        mcp_endpoint_state.set_api_router(api_routes.clone());
 
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.

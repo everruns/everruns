@@ -247,8 +247,9 @@ fn make_router_callback(
                     .body(body)
                     .map_err(|e| format!("Request build error: {e}"))?;
 
-                // Inject ResolvedOrg so the auth extractor picks it up
-                // without needing a real Bearer token.
+                // Inject auth context so extractors pick it up without
+                // needing a real Bearer token or JWT.
+                request.extensions_mut().insert(org.to_auth_user());
                 request.extensions_mut().insert(org);
 
                 let response = router
