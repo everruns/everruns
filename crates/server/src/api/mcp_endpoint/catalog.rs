@@ -128,7 +128,11 @@ fn make_http_callback(
         let params = &args.params;
 
         // Local --help: never hits the API
-        if params.get("help").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if params
+            .get("help")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             return Ok(format_help(op));
         }
 
