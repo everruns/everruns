@@ -1,6 +1,6 @@
 // API base URL configuration:
 // All API requests (including SSE) use /api prefix.
-// Caddy reverse proxy strips /api and forwards to backend in all environments.
+// The backend serves REST routes under /api directly.
 const API_BASE = "/api";
 
 // Org selection is handled via server-side cookie (everruns_org), set by

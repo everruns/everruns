@@ -11,7 +11,8 @@
 
 use serde_json::{Value, json};
 
-const API_BASE_URL: &str = "http://localhost:9000";
+const SERVER_BASE_URL: &str = "http://localhost:9000";
+const API_BASE_URL: &str = "http://localhost:9000/api";
 
 #[tokio::test]
 async fn test_cli_auth_start() {
@@ -63,7 +64,7 @@ async fn test_cli_login_success_page() {
     let client = reqwest::Client::new();
 
     let resp = match client
-        .get(format!("{}/cli/login-success", API_BASE_URL))
+        .get(format!("{}/cli/login-success", SERVER_BASE_URL))
         .send()
         .await
     {

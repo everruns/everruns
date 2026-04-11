@@ -220,7 +220,10 @@ configs:
   caddyfile:
     content: |
       # Reverse proxy routes:
-      #   /api/*     -> API (strips prefix)
+      #   /api/*     -> API
+      #   /oauth/*   -> API
+      #   /mcp       -> API
+      #   /.well-known/* -> API
       #   /api-doc/* -> API
       #   /health    -> API
       #   /*         -> UI
@@ -229,11 +232,20 @@ configs:
       # Server handles 5-min connection cycling with disconnecting events;
       # SDK reconnects transparently (no retry budget cost).
       :9300 {
-        handle_path /api/* {
+        handle /api/* {
           reverse_proxy server:9301 {
             # Disable response buffering for SSE streaming
             flush_interval -1
           }
+        }
+        handle /oauth/* {
+          reverse_proxy server:9301
+        }
+        handle /mcp {
+          reverse_proxy server:9301
+        }
+        handle /.well-known/* {
+          reverse_proxy server:9301
         }
         handle /api-doc/* {
           reverse_proxy server:9301

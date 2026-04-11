@@ -6,9 +6,35 @@ This document defines the HTTP API endpoints for Everruns v0.2.0 (M2).
 
 ## Requirements
 
+### Routing Layout
+
+The backend exposes four top-level route groups:
+
+- `/api/*` — REST API routes, including auth and SSE
+- `/oauth/*` — MCP OAuth 2.1 endpoints (authorize, token, register)
+- `/mcp` — MCP JSON-RPC endpoint
+- `/.well-known/*` — public metadata and discovery endpoints
+
+Operational endpoints stay at the server root:
+
+- `/health`
+- `/api-doc/openapi.json`
+
 ### Base URL
 
-All endpoints are prefixed with `/v1/`.
+REST endpoints are mounted under `/api`, so the public REST base URL is `/api/v1/`.
+
+### Reverse Proxy Contract
+
+Production and local reverse proxies must preserve this route split:
+
+- forward `/api/*` to the backend unchanged
+- forward `/oauth/*` to the backend unchanged
+- forward `/mcp` to the backend unchanged
+- forward `/.well-known/*` to the backend unchanged
+- forward all other browser routes to the UI
+
+SSE responses under `/api/*` must disable proxy buffering.
 
 ### Health
 
@@ -24,21 +50,28 @@ All endpoints are prefixed with `/v1/`.
 
 Exposes Everruns as an MCP server. Tier 1 tools (`agent_run`, `session_send_message`, `session_get_status`) handle the agent conversation loop via direct service calls. Tier 2 tools (`discover`, `execute`) are backed by a bashkit `ScriptedTool` with all API operations registered as builtins — run `discover --categories` to list them, or call them directly in bash scripts via `execute`. See `crates/server/src/api/mcp_endpoint/mod.rs` for implementation.
 
+### Well-Known Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/.well-known/oauth-authorization-server` | MCP OAuth authorization server metadata |
+| GET | `/.well-known/http-message-signatures-directory` | Bot auth signing key directory |
+
 ### Authentication
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/auth/config` | Get authentication configuration |
-| POST | `/v1/auth/login` | Login with email/password |
-| POST | `/v1/auth/register` | Register new user |
-| POST | `/v1/auth/refresh` | Refresh access token |
-| POST | `/v1/auth/logout` | Logout (clear cookies) |
-| GET | `/v1/auth/oauth/{provider}` | Redirect to OAuth provider |
-| GET | `/v1/auth/callback/{provider}` | OAuth callback |
-| GET | `/v1/auth/me` | Get current user info |
-| GET | `/v1/auth/api-keys` | List user's API keys |
-| POST | `/v1/auth/api-keys` | Create API key |
-| DELETE | `/v1/auth/api-keys/{key_id}` | Delete API key |
+| GET | `/api/v1/auth/config` | Get authentication configuration |
+| POST | `/api/v1/auth/login` | Login with email/password |
+| POST | `/api/v1/auth/register` | Register new user |
+| POST | `/api/v1/auth/refresh` | Refresh access token |
+| POST | `/api/v1/auth/logout` | Logout (clear cookies) |
+| GET | `/api/v1/auth/oauth/{provider}` | Redirect to OAuth provider |
+| GET | `/api/v1/auth/callback/{provider}` | OAuth callback |
+| GET | `/api/v1/auth/me` | Get current user info |
+| GET | `/api/v1/auth/api-keys` | List user's API keys |
+| POST | `/api/v1/auth/api-keys` | Create API key |
+| DELETE | `/api/v1/auth/api-keys/{key_id}` | Delete API key |
 
 See [authentication.md](authentication.md) for full authentication specification.
 

@@ -692,7 +692,10 @@ impl ServerAppBuilder {
             } else {
                 addr.to_string()
             };
-            format!("http://{host}")
+            format!(
+                "http://{host}{}",
+                self.config.api_prefix.trim_end_matches('/')
+            )
         });
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
@@ -799,12 +802,6 @@ impl ServerAppBuilder {
             tracing::info!("Evals disabled via feature flag");
         }
 
-        if feature_flags.mcp_endpoint {
-            api_routes = api_routes.merge(api::mcp_endpoint::routes(mcp_endpoint_state));
-        } else {
-            tracing::info!("MCP endpoint disabled via feature flag");
-        }
-
         // Auth-specific routes
         if let Some(auth_routes) = auth_backend.auth_routes() {
             api_routes = api_routes.merge(auth_routes);
@@ -828,6 +825,30 @@ impl ServerAppBuilder {
             }))
         };
 
+        let mut root_routes = Router::new();
+
+        if feature_flags.mcp_endpoint {
+            root_routes = root_routes.merge(api::mcp_endpoint::routes(mcp_endpoint_state));
+        } else {
+            tracing::info!("MCP endpoint disabled via feature flag");
+        }
+
+        if let Some(public_routes) = auth_backend.public_routes() {
+            root_routes = root_routes.merge(public_routes);
+        }
+
+        // TM-DOS: Apply the same per-IP rate limiting to root routes (MCP, OAuth)
+        // as to API routes, to prevent brute-force and DoS on unthrottled endpoints.
+        let root_routes = if crate::auth::rate_limit::ApiRateLimiter::is_disabled() {
+            root_routes
+        } else {
+            let root_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env();
+            root_routes.layer(axum::middleware::from_fn(move |req, next| {
+                let limiter = root_rate_limiter.clone();
+                crate::auth::rate_limit::api_rate_limit_middleware(limiter, req, next)
+            }))
+        };
+
         // Main router
         let mut app = Router::new()
             .route("/health", get(health).with_state(health_state))
@@ -836,6 +857,7 @@ impl ServerAppBuilder {
                 get(|| async { Json(ApiDoc::openapi()) }),
             )
             .merge(api::http_signing_keys::routes(http_signing_keys_state))
+            .merge(root_routes)
             .merge(build_router_with_prefix(
                 api_routes,
                 &self.config.api_prefix,

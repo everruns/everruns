@@ -25,7 +25,7 @@ The API will be available at `http://localhost:9301`
 
 ### 3. Access the API
 
-- **API**: http://localhost:9301/v1/...
+- **API**: http://localhost:9301/api/v1/...
 - **OpenAPI Spec**: http://localhost:9301/api-doc/openapi.json
 
 ## Examples
@@ -155,7 +155,7 @@ Default: `postgres://everruns:everruns@localhost:5432/everruns`
 ### Create an Agent
 
 ```bash
-curl -X POST http://localhost:9301/v1/agents \
+curl -X POST http://localhost:9301/api/v1/agents \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Test Agent",
@@ -166,7 +166,7 @@ curl -X POST http://localhost:9301/v1/agents \
 ### List Agents
 
 ```bash
-curl http://localhost:9301/v1/agents | jq
+curl http://localhost:9301/api/v1/agents | jq
 ```
 
 ## Troubleshooting

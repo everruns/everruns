@@ -161,9 +161,6 @@ impl AuthConfig {
         let frontend_url =
             std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:9300".to_string());
 
-        // API prefix for constructing OAuth callback URLs
-        let api_prefix = std::env::var("API_PREFIX").unwrap_or_default();
-
         // JWT configuration
         // TM-AUTH-002: Require AUTH_JWT_SECRET when authentication is enabled.
         // In AuthMode::None, generate a random secret (tokens are not validated).
@@ -220,7 +217,7 @@ impl AuthConfig {
                 if !client_id.is_empty() && !client_secret.is_empty() =>
             {
                 let redirect_uri = std::env::var("AUTH_GOOGLE_REDIRECT_URI").unwrap_or_else(|_| {
-                    format!("{}{}/v1/auth/callback/google", base_url, api_prefix)
+                    format!("{}/v1/auth/callback/google", base_url.trim_end_matches('/'))
                 });
                 let allowed_domains = std::env::var("AUTH_GOOGLE_ALLOWED_DOMAINS")
                     .ok()
@@ -246,7 +243,7 @@ impl AuthConfig {
                 if !client_id.is_empty() && !client_secret.is_empty() =>
             {
                 let redirect_uri = std::env::var("AUTH_GITHUB_REDIRECT_URI").unwrap_or_else(|_| {
-                    format!("{}{}/v1/auth/callback/github", base_url, api_prefix)
+                    format!("{}/v1/auth/callback/github", base_url.trim_end_matches('/'))
                 });
                 Some(GitHubOAuthConfig {
                     base: OAuthProviderConfig {
@@ -271,8 +268,8 @@ impl AuthConfig {
                     std::env::var("GITHUB_APP_SLUG").unwrap_or_else(|_| "everruns".to_string());
                 let setup_url = std::env::var("GITHUB_APP_SETUP_URL").unwrap_or_else(|_| {
                     format!(
-                        "{}{}/v1/user/connections/github/callback",
-                        base_url, api_prefix
+                        "{}/v1/user/connections/github/callback",
+                        base_url.trim_end_matches('/')
                     )
                 });
                 Some(GitHubConnectionConfig {

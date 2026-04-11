@@ -230,7 +230,7 @@ GitHub App installation callback. Receives `installation_id`, verifies it, store
 | `GITHUB_APP_ID` | GitHub App ID (numeric, from App settings page) |
 | `GITHUB_APP_PRIVATE_KEY` | PEM-encoded RSA private key for JWT signing |
 | `GITHUB_APP_SLUG` | App slug for installation URL (default: `everruns`) |
-| `GITHUB_APP_SETUP_URL` | Post-install callback URL (default: `{AUTH_BASE_URL}{API_PREFIX}/v1/user/connections/github/callback`) |
+| `GITHUB_APP_SETUP_URL` | Post-install callback URL (default: `{AUTH_BASE_URL}/v1/user/connections/github/callback`) |
 
 ### GitHub App Setup
 

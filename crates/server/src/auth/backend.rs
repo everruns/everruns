@@ -25,6 +25,14 @@ pub trait AuthBackend: Send + Sync + 'static {
     /// Returns `None` if auth is handled externally (e.g., PropelAuth hosted UI).
     fn auth_routes(&self) -> Option<Router>;
 
+    /// Return root-level public routes that must not be nested under the API prefix.
+    ///
+    /// Used for endpoints like `/.well-known/*` and other browser-facing pages that
+    /// share the backend origin but do not live under `/api`.
+    fn public_routes(&self) -> Option<Router> {
+        None
+    }
+
     /// Return the auth configuration for the `/v1/auth/config` endpoint.
     fn auth_config_response(&self) -> AuthConfigResponse;
 }

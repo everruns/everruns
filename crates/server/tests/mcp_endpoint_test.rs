@@ -996,3 +996,141 @@ async fn test_mcp_full_flow_agent_run_then_status() {
         "Expected more events after send_message (before={first_event_count}, after={second_event_count})"
     );
 }
+
+// ============================================================================
+// MCP OAuth token endpoint tests
+// ============================================================================
+
+/// Helper: register an OAuth client and return client_id + client_secret.
+async fn register_oauth_client(server: &TestServer) -> (String, String) {
+    let resp: Value = server
+        .post(
+            "/oauth/register",
+            json!({
+                "client_name": "test-client",
+                "redirect_uris": ["http://localhost:9999/callback"]
+            }),
+        )
+        .await
+        .assert_success()
+        .json();
+    let client_id = resp["client_id"].as_str().unwrap().to_string();
+    let client_secret = resp["client_secret"].as_str().unwrap().to_string();
+    (client_id, client_secret)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_token_json_invalid_grant_type() {
+    let server = TestServer::new().await;
+    let resp = server
+        .request_raw(
+            axum::http::Method::POST,
+            "/oauth/token",
+            vec![("content-type", "application/json")],
+            serde_json::to_vec(&json!({
+                "grant_type": "invalid_type",
+                "client_id": "nonexistent"
+            }))
+            .unwrap(),
+        )
+        .await;
+    assert_eq!(resp.status(), axum::http::StatusCode::BAD_REQUEST);
+    let body: Value = resp.json();
+    assert_eq!(body["error"], "unsupported_grant_type");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_token_form_encoded_invalid_grant_type() {
+    let server = TestServer::new().await;
+    let resp = server
+        .request_raw(
+            axum::http::Method::POST,
+            "/oauth/token",
+            vec![("content-type", "application/x-www-form-urlencoded")],
+            b"grant_type=invalid_type&client_id=nonexistent".to_vec(),
+        )
+        .await;
+    assert_eq!(resp.status(), axum::http::StatusCode::BAD_REQUEST);
+    let body: Value = resp.json();
+    assert_eq!(body["error"], "unsupported_grant_type");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_token_json_missing_code() {
+    let server = TestServer::new().await;
+    let (client_id, _) = register_oauth_client(&server).await;
+    let resp = server
+        .request_raw(
+            axum::http::Method::POST,
+            "/oauth/token",
+            vec![("content-type", "application/json")],
+            serde_json::to_vec(&json!({
+                "grant_type": "authorization_code",
+                "client_id": client_id
+            }))
+            .unwrap(),
+        )
+        .await;
+    assert_eq!(resp.status(), axum::http::StatusCode::BAD_REQUEST);
+    let body: Value = resp.json();
+    assert_eq!(body["error"], "invalid_request");
+    assert!(
+        body["error_description"]
+            .as_str()
+            .unwrap_or("")
+            .contains("code"),
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_token_invalid_content_type_falls_back_to_form() {
+    let server = TestServer::new().await;
+    // With a random content-type, it should try form parsing and fail gracefully
+    let resp = server
+        .request_raw(
+            axum::http::Method::POST,
+            "/oauth/token",
+            vec![("content-type", "text/plain")],
+            b"this is not valid form data at all {{{".to_vec(),
+        )
+        .await;
+    assert_eq!(resp.status(), axum::http::StatusCode::BAD_REQUEST);
+    let body: Value = resp.json();
+    assert_eq!(body["error"], "invalid_request");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_register_and_metadata() {
+    let server = TestServer::new().await;
+    // Test dynamic client registration
+    let (client_id, client_secret) = register_oauth_client(&server).await;
+    assert!(!client_id.is_empty());
+    assert!(!client_secret.is_empty());
+
+    // Test server metadata endpoint
+    let metadata: Value = server
+        .get("/.well-known/oauth-authorization-server")
+        .await
+        .assert_success()
+        .json();
+    assert!(
+        metadata["authorization_endpoint"]
+            .as_str()
+            .unwrap()
+            .ends_with("/oauth/authorize")
+    );
+    assert!(
+        metadata["token_endpoint"]
+            .as_str()
+            .unwrap()
+            .ends_with("/oauth/token")
+    );
+
+    // Test protected resource metadata endpoint
+    let resource: Value = server
+        .get("/.well-known/oauth-protected-resource")
+        .await
+        .assert_success()
+        .json();
+    assert!(resource["resource"].as_str().unwrap().ends_with("/mcp"));
+}

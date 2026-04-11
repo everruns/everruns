@@ -64,12 +64,12 @@ pub struct TestServer {
 impl TestServer {
     /// Create a new test server with PostgreSQL backend
     pub async fn new() -> Self {
-        Self::with_mode_and_url(TestMode::Postgres, "http://127.0.0.1:0".to_string()).await
+        Self::with_mode_and_url(TestMode::Postgres, "http://127.0.0.1:0/api".to_string()).await
     }
 
     /// Create a new test server in dev mode (in-memory storage)
     pub async fn in_memory() -> Self {
-        Self::with_mode_and_url(TestMode::InMemory, "http://127.0.0.1:0".to_string()).await
+        Self::with_mode_and_url(TestMode::InMemory, "http://127.0.0.1:0/api".to_string()).await
     }
 
     /// Create a test server backed by a real TCP listener.
@@ -85,7 +85,7 @@ impl TestServer {
         let addr = listener.local_addr().unwrap();
         let base_url = format!("http://{addr}");
 
-        let server = Self::with_mode_and_url(TestMode::Postgres, base_url.clone()).await;
+        let server = Self::with_mode_and_url(TestMode::Postgres, format!("{base_url}/api")).await;
         let router = server.router.clone();
 
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -107,6 +107,14 @@ impl TestServer {
         std::mem::forget((shutdown_tx, handle));
 
         (server, base_url)
+    }
+
+    fn normalize_uri(uri: &str) -> String {
+        if uri.starts_with("/v1/") {
+            format!("/api{uri}")
+        } else {
+            uri.to_string()
+        }
     }
 
     async fn with_mode_and_url(mode: TestMode, api_base_url: String) -> Self {
@@ -152,7 +160,14 @@ impl TestServer {
         ));
 
         // Create auth config and backend (no auth for tests)
-        let auth_config = auth::AuthConfig::default(); // mode: None is the default
+        let auth_config = auth::AuthConfig {
+            base_url: api_base_url.clone(),
+            frontend_url: api_base_url
+                .trim_end_matches("/api")
+                .trim_end_matches('/')
+                .to_string(),
+            ..auth::AuthConfig::default()
+        };
         let auth_backend = auth::BuiltinAuthBackend::new(auth_config.clone(), db.clone());
         let auth_state = auth::AuthState::new(auth_config.clone(), Arc::new(auth_backend.clone()));
 
@@ -363,12 +378,39 @@ impl TestServer {
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::slack_events::routes(slack_state))
-            .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
-            .merge(auth::routes(auth_backend));
+            .merge(auth::routes(auth_backend.clone()))
+            .merge(auth::cli_auth::cli_auth_routes(
+                auth::cli_auth::CliAuthState {
+                    db: db.clone(),
+                    auth: auth_state.clone(),
+                    frontend_url: auth_config.frontend_url.clone(),
+                    base_url: auth_config.base_url.clone(),
+                },
+            ));
 
         if let Some(notifications_state) = notifications_state {
             api_routes = api_routes.merge(api::notifications::routes(notifications_state));
         }
+
+        let root_routes = Router::new()
+            .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
+            .merge(auth::cli_auth::cli_auth_public_routes(
+                auth::cli_auth::CliAuthState {
+                    db: db.clone(),
+                    auth: auth_state.clone(),
+                    frontend_url: auth_config.frontend_url.clone(),
+                    base_url: auth_config.base_url.clone(),
+                },
+            ))
+            .merge(auth::mcp_oauth::mcp_oauth_routes(
+                auth::mcp_oauth::McpOAuthState {
+                    db: db.clone(),
+                    auth: auth_state.clone(),
+                    jwt_service: auth_backend.jwt_service.clone(),
+                    issuer_url: auth_config.frontend_url.clone(),
+                    frontend_url: auth_config.frontend_url.clone(),
+                },
+            ));
 
         // Build main router with health endpoint
         let router = Router::new()
@@ -376,7 +418,8 @@ impl TestServer {
                 "/health",
                 get(|| async { axum::Json(serde_json::json!({"status": "ok"})) }),
             )
-            .merge(api_routes);
+            .merge(root_routes)
+            .nest("/api", api_routes);
 
         Self { router, db, pool }
     }
@@ -414,7 +457,8 @@ impl TestServer {
         headers: Vec<(&str, &str)>,
         body: Vec<u8>,
     ) -> TestResponse {
-        let mut builder = Request::builder().method(method).uri(uri);
+        let normalized_uri = Self::normalize_uri(uri);
+        let mut builder = Request::builder().method(method).uri(&normalized_uri);
         for (key, value) in headers {
             builder = builder.header(key, value);
         }
@@ -450,9 +494,10 @@ impl TestServer {
         uri: &str,
         body: Option<T>,
     ) -> TestResponse {
+        let normalized_uri = Self::normalize_uri(uri);
         let request_builder = Request::builder()
             .method(method)
-            .uri(uri)
+            .uri(&normalized_uri)
             .header("content-type", "application/json");
 
         let request = if let Some(body) = body {

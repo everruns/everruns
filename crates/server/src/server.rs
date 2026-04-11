@@ -6,6 +6,8 @@ use axum::Router;
 use axum::http::HeaderValue;
 use everruns_config::{env_bool, env_list, env_or, env_string};
 
+pub const DEFAULT_API_PREFIX: &str = "/api";
+
 /// Configurable resource limits for orgs, members, API keys.
 ///
 /// Defaults are sane for self-hosted. SaaS overrides per plan.
@@ -55,7 +57,8 @@ impl ServerConfig {
         Self {
             dev_mode: env_bool("DEV_MODE", false),
             no_migrations: false,
-            api_prefix: std::env::var("API_PREFIX").unwrap_or_default(),
+            api_prefix: std::env::var("API_PREFIX")
+                .unwrap_or_else(|_| DEFAULT_API_PREFIX.to_string()),
             cors_origins: env_list::<String>("CORS_ALLOWED_ORIGINS")
                 .into_iter()
                 .filter_map(|s| s.parse::<HeaderValue>().ok())

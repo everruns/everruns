@@ -48,7 +48,7 @@ export function McpConnectButton() {
     return null;
   }
 
-  const mcpUrl = typeof window !== "undefined" ? `${window.location.origin}/api/mcp` : "/api/mcp";
+  const mcpUrl = typeof window !== "undefined" ? `${window.location.origin}/mcp` : "/mcp";
 
   const configSnippet = JSON.stringify(
     {
