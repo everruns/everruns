@@ -3,7 +3,7 @@
 // Org setup page — shown after org creation to confirm provisioning.
 // Extensible: future steps (e.g. LLM key configuration) can be added to SETUP_STEPS.
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, Check, CircleDot, Loader2, ArrowRight } from "lucide-react";
@@ -14,6 +14,7 @@ import { getOrganization } from "@/lib/api/organizations";
 import { listHarnesses } from "@/lib/api/harnesses";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
+import type { ApiError } from "@/lib/api/client";
 
 interface SetupStep {
   label: string;
@@ -51,32 +52,44 @@ const STEP_DELAY_MS = 400;
 export default function OrgSetupPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const router = useRouter();
-  const { setCurrentOrg } = useOrg();
+  const { currentOrg, organizations, setCurrentOrg, isSwitching } = useOrg();
 
   const {
     data: org,
     isLoading: orgLoading,
     isError: orgError,
+    error: orgErrorDetail,
   } = useQuery({
     queryKey: queryKeys.organizations.detail(orgId),
     queryFn: () => getOrganization(orgId),
     staleTime: 30_000,
-    refetchInterval: 5_000,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return data?.default_harness_id && data?.base_harness_id ? false : 5_000;
+    },
   });
+
+  // Gate harness query on org cookie being set for the correct org
+  const orgReady = currentOrg?.public_id === orgId && !isSwitching;
 
   const { data: harnesses = [] } = useQuery({
-    queryKey: queryKeys.harnesses.all,
+    queryKey: [...queryKeys.harnesses.all, orgId],
     queryFn: () => listHarnesses(),
+    enabled: orgReady,
     staleTime: 30_000,
-    refetchInterval: 5_000,
+    refetchInterval: (query) => {
+      const data = query.state.data ?? [];
+      return data.length > 0 ? false : 5_000;
+    },
   });
 
-  // Set current org once loaded
+  // Set current org once loaded — derive role from membership list when available
   useEffect(() => {
     if (org) {
-      setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
+      const membership = organizations.find((o) => o.public_id === org.id);
+      setCurrentOrg({ public_id: org.id, name: org.name, role: membership?.role ?? "owner" });
     }
-  }, [org, setCurrentOrg]);
+  }, [org, organizations, setCurrentOrg]);
 
   const stepContext: StepContext = {
     orgLoaded: !!org,
@@ -87,8 +100,16 @@ export default function OrgSetupPage() {
 
   const allReady = SETUP_STEPS.every((s) => s.check(stepContext));
 
-  // Animated step completion — reveal one at a time
+  // Animated step completion — reveal one at a time, with cleanup on unmount
   const [completedCount, setCompletedCount] = useState(0);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const id of timers) clearTimeout(id);
+    };
+  }, []);
 
   const animateSteps = useCallback(() => {
     let idx = 0;
@@ -96,10 +117,10 @@ export default function OrgSetupPage() {
       idx += 1;
       setCompletedCount(idx);
       if (idx < SETUP_STEPS.length) {
-        setTimeout(tick, STEP_DELAY_MS);
+        timersRef.current.push(setTimeout(tick, STEP_DELAY_MS));
       }
     };
-    setTimeout(tick, STEP_DELAY_MS);
+    timersRef.current.push(setTimeout(tick, STEP_DELAY_MS));
   }, []);
 
   // Trigger animation once all checks pass
@@ -135,6 +156,7 @@ export default function OrgSetupPage() {
 
   // --- Error state ---
   if (orgError) {
+    const is404 = (orgErrorDetail as ApiError)?.status === 404;
     return (
       <div className="flex min-h-[60vh] items-center justify-center p-4">
         <Card className="w-full max-w-lg p-8 text-center">
@@ -142,7 +164,12 @@ export default function OrgSetupPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
               <Building2 className="h-6 w-6 text-primary" />
             </div>
-            <h1 className="text-xl font-semibold">Organisation not found</h1>
+            <h1 className="text-xl font-semibold">
+              {is404 ? "Organisation not found" : "Failed to load organisation"}
+            </h1>
+            {!is404 && orgErrorDetail?.message && (
+              <p className="text-sm text-muted-foreground">{orgErrorDetail.message}</p>
+            )}
             <Button variant="outline" onClick={() => router.push("/dashboard")}>
               Go to dashboard
             </Button>
@@ -162,8 +189,7 @@ export default function OrgSetupPage() {
           </div>
           <h1 className="text-xl font-semibold">Setting up {org?.name}</h1>
           <p className="text-sm text-muted-foreground">
-            Your organisation is being configured with everything you need to
-            get started.
+            Your organisation is being configured with everything you need to get started.
           </p>
         </div>
 
@@ -181,9 +207,7 @@ export default function OrgSetupPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">{step.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {step.description}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{step.description}</p>
                   </div>
                 </div>
               );
@@ -198,9 +222,7 @@ export default function OrgSetupPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">{step.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {step.description}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{step.description}</p>
                   </div>
                 </div>
               );
@@ -208,18 +230,13 @@ export default function OrgSetupPage() {
 
             // Pending
             return (
-              <div
-                key={step.label}
-                className="flex items-center gap-3 opacity-40"
-              >
+              <div key={step.label} className="flex items-center gap-3 opacity-40">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center">
                   <CircleDot className="h-5 w-5 text-muted-foreground/50" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">{step.label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {step.description}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{step.description}</p>
                 </div>
               </div>
             );
