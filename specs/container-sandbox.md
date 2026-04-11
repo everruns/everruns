@@ -203,6 +203,10 @@ LeasedResource {
 
 Cleanup handler: stop container → remove container → remove network.
 
+## Crate Location
+
+`crates/container-sandbox/` — core execution crate, same pattern as `crates/session-sqldb/`. Not in `integrations/` because this is core infrastructure (Docker Engine on your own host), not an external service integration.
+
 ## Capability Registration
 
 ```rust
