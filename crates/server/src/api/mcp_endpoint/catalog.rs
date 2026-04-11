@@ -1289,10 +1289,11 @@ pub fn discover_all() -> String {
 /// Fuzzy-search the catalog by tokenizing the query and matching against
 /// name (split on `_`), description, and category.
 ///
-/// Returns results sorted by match score (descending), formatted as plain text.
+/// Results are sorted by score descending; when >5 results they are grouped
+/// by category (alphabetical), losing strict global score order.
 pub fn discover_search(query: &str) -> String {
     let tokens: Vec<String> = query
-        .split_whitespace()
+        .split(|c: char| c.is_whitespace() || c == '-' || c == '_')
         .map(|t| t.to_ascii_lowercase())
         .filter(|t| !t.is_empty())
         .collect();
@@ -1360,7 +1361,7 @@ fn match_score(op: &Operation, tokens: &[String]) -> usize {
         } else if name_parts.iter().any(|p| p.starts_with(token.as_str())) {
             score += 2;
         // Category match
-        } else if cat_lower == *token || cat_lower.starts_with(token.as_str()) {
+        } else if cat_lower == token.as_str() || cat_lower.starts_with(token.as_str()) {
             score += 2;
         // Substring in description
         } else if desc_lower.contains(token.as_str()) {

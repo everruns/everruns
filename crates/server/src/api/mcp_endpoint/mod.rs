@@ -188,7 +188,7 @@ fn tool_definitions() -> Value {
                 "Search the Everruns API catalog to find available operations. ",
                 "Returns matching operations with description and parameters.\n\n",
                 "Available resource types: agents, sessions, harnesses, capabilities, models, ",
-                "providers, mcp-servers, skills, budgets, schedules, files, events, messages, ",
+                "providers, mcp servers, skills, budgets, schedules, files, events, messages, ",
                 "images, organizations, users, databases, storage.\n\n",
                 "Example queries: 'create agent', 'list sessions', 'capabilities', 'mcp'\n\n",
                 "Use `all: true` to list every operation grouped by category.\n\n",
@@ -741,7 +741,7 @@ async fn tool_session_get_status(
 }
 
 // ============================================================================
-// Tier 2: discover — delegates to ScriptedTool's built-in `discover` command
+// Tier 2: discover — searches catalog directly via catalog::discover_all/search
 // ============================================================================
 
 async fn tool_discover(args: &Value) -> Result<String, String> {
