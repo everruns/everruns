@@ -15,11 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Highlights
 
-- **MCP In-Process Router** — Replace HTTP loopback with direct in-process dispatch for MCP built-in tools, improving performance and simplifying routing ([#1269](https://github.com/everruns/everruns/pull/1269))
-- **Eval Target Refactor** — Replace `harness_id`/`agent_id` with composable `EvalTarget` JSONB, add post messages for benchmark-style scoring ([#1239](https://github.com/everruns/everruns/pull/1239), [#1248](https://github.com/everruns/everruns/pull/1248))
+- **MCP Endpoint Improvements** — In-process router dispatch replaces HTTP loopback, fuzzy search in discover, pagination in list tools, local `--help`, cleaner execute output ([#1269](https://github.com/everruns/everruns/pull/1269), [#1255](https://github.com/everruns/everruns/pull/1255), [#1260](https://github.com/everruns/everruns/pull/1260), [#1264](https://github.com/everruns/everruns/pull/1264), [#1265](https://github.com/everruns/everruns/pull/1265))
+- **Evals Improvements** — Composable `EvalTarget` replaces fixed harness/agent pair, post messages for benchmark-style scoring, eval run workflow ([#1239](https://github.com/everruns/everruns/pull/1239), [#1248](https://github.com/everruns/everruns/pull/1248))
 - **Virtual Readonly Mounts** — Session filesystem gains readonly mount support for injecting host-side content ([#1249](https://github.com/everruns/everruns/pull/1249))
-- **Docker Capability Feature Flag** — Gate Docker capability behind feature flag for controlled rollout ([#1268](https://github.com/everruns/everruns/pull/1268))
-- **MCP UX Improvements** — Fuzzy search in discover, pagination in list tools, local `--help`, cleaner execute output ([#1255](https://github.com/everruns/everruns/pull/1255), [#1260](https://github.com/everruns/everruns/pull/1260), [#1264](https://github.com/everruns/everruns/pull/1264), [#1265](https://github.com/everruns/everruns/pull/1265))
 
 ### What's Changed
 
