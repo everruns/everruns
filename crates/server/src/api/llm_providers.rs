@@ -22,7 +22,8 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
+    impl_auth_state,
 };
 
 #[derive(Clone)]
@@ -120,7 +121,7 @@ pub struct UpdateLlmProviderRequest {
     path = "/v1/llm-providers",
     request_body = CreateLlmProviderRequest,
     responses(
-        (status = 201, description = "Provider created", body = LlmProvider),
+        (status = 201, description = "Provider created", body = WithUrls<LlmProvider>),
         (status = 400, description = "Invalid request"),
         (status = 500, description = "Internal error")
     ),
@@ -130,7 +131,7 @@ pub async fn create_provider(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<CreateLlmProviderRequest>,
-) -> Result<(StatusCode, Json<LlmProvider>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<LlmProvider>>), (StatusCode, Json<ErrorResponse>)> {
     let caller = Caller::from(&org);
     let provider = state
         .service
@@ -138,7 +139,8 @@ pub async fn create_provider(
         .await
         .map_policy_or_internal("create LLM provider")?;
 
-    Ok((StatusCode::CREATED, Json(provider)))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((StatusCode::CREATED, Json(builder.wrap(provider))))
 }
 
 /// List all LLM providers
@@ -146,14 +148,14 @@ pub async fn create_provider(
     get,
     path = "/v1/llm-providers",
     responses(
-        (status = 200, description = "List of providers", body = ListResponse<LlmProvider>)
+        (status = 200, description = "List of providers", body = ListResponse<WithUrls<LlmProvider>>)
     ),
     tag = "llm-providers"
 )]
 pub async fn list_providers(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> ApiResult<ListResponse<LlmProvider>> {
+) -> ApiResult<ListResponse<WithUrls<LlmProvider>>> {
     let caller = Caller::from(&org);
     let providers = state
         .service
@@ -161,7 +163,8 @@ pub async fn list_providers(
         .await
         .map_policy_or_internal("list LLM providers")?;
 
-    Ok(Json(ListResponse::new(providers)))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(ListResponse::new(providers).with_urls(&builder)))
 }
 
 /// Get a specific LLM provider
@@ -172,7 +175,7 @@ pub async fn list_providers(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
     responses(
-        (status = 200, description = "Provider found", body = LlmProvider),
+        (status = 200, description = "Provider found", body = WithUrls<LlmProvider>),
         (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found")
     ),
@@ -182,7 +185,7 @@ pub async fn get_provider(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> ApiResult<LlmProvider> {
+) -> ApiResult<WithUrls<LlmProvider>> {
     let provider_id: ProviderId = id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -200,7 +203,8 @@ pub async fn get_provider(
         .map_policy_or_internal("get LLM provider")?
         .ok_or_not_found_json("Provider")?;
 
-    Ok(Json(provider))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(builder.wrap(provider)))
 }
 
 /// Update an LLM provider
@@ -212,7 +216,7 @@ pub async fn get_provider(
     ),
     request_body = UpdateLlmProviderRequest,
     responses(
-        (status = 200, description = "Provider updated", body = LlmProvider),
+        (status = 200, description = "Provider updated", body = WithUrls<LlmProvider>),
         (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found")
     ),
@@ -223,7 +227,7 @@ pub async fn update_provider(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(req): Json<UpdateLlmProviderRequest>,
-) -> ApiResult<LlmProvider> {
+) -> ApiResult<WithUrls<LlmProvider>> {
     let provider_id: ProviderId = id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -241,7 +245,8 @@ pub async fn update_provider(
         .map_policy_or_internal("update LLM provider")?
         .ok_or_not_found_json("Provider")?;
 
-    Ok(Json(provider))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(builder.wrap(provider)))
 }
 
 /// Delete an LLM provider

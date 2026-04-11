@@ -20,7 +20,8 @@ use everruns_core::{
 };
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state,
+    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
+    impl_auth_state,
 };
 use super::validation::{
     validate_create_agent_input, validate_harness_name_strict, validate_update_agent_input,
@@ -275,7 +276,7 @@ pub async fn check_harness_name(
     path = "/v1/harnesses",
     request_body = CreateHarnessRequest,
     responses(
-        (status = 201, description = "Harness created", body = Harness),
+        (status = 201, description = "Harness created", body = WithUrls<Harness>),
         (status = 400, description = "Invalid input", body = ErrorResponse),
         (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -286,7 +287,7 @@ pub async fn create_harness(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<CreateHarnessRequest>,
-) -> Result<(StatusCode, Json<Harness>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<Harness>>), (StatusCode, Json<ErrorResponse>)> {
     validate_harness_name_strict(&req.name)?;
     // Reuse agent validation for display_name and other fields
     validate_create_agent_input(
@@ -305,7 +306,8 @@ pub async fn create_harness(
         .await
         .map_policy_or_internal("create harness")?;
 
-    Ok((StatusCode::CREATED, Json(harness)))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((StatusCode::CREATED, Json(urls.wrap(harness))))
 }
 
 /// GET /v1/harnesses
@@ -313,7 +315,7 @@ pub async fn create_harness(
     get,
     path = "/v1/harnesses",
     responses(
-        (status = 200, description = "List of harnesses", body = ListResponse<Harness>),
+        (status = 200, description = "List of harnesses", body = ListResponse<WithUrls<Harness>>),
         (status = 403, description = "Forbidden"),
         (status = 500, description = "Internal server error")
     ),
@@ -324,7 +326,7 @@ pub async fn list_harnesses(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListHarnessesQuery>,
-) -> ApiResult<ListResponse<Harness>> {
+) -> ApiResult<ListResponse<WithUrls<Harness>>> {
     let caller = Caller::from(&org);
     let harnesses = state
         .service
@@ -336,7 +338,8 @@ pub async fn list_harnesses(
         .await
         .map_policy_or_internal("list harnesses")?;
 
-    Ok(Json(ListResponse::new(harnesses)))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(ListResponse::new(harnesses).with_urls(&urls)))
 }
 
 /// GET /v1/harnesses/{harness_id}
@@ -351,7 +354,7 @@ pub async fn list_harnesses(
         ("harness_id" = String, Path, description = "Harness ID (prefixed) or name")
     ),
     responses(
-        (status = 200, description = "Harness found", body = Harness),
+        (status = 200, description = "Harness found", body = WithUrls<Harness>),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Harness not found"),
         (status = 500, description = "Internal server error")
@@ -362,8 +365,9 @@ pub async fn get_harness(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(harness_id_or_name): Path<String>,
-) -> ApiResult<Harness> {
+) -> ApiResult<WithUrls<Harness>> {
     let caller = Caller::from(&org);
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
 
     // Try parsing as a prefixed ID first; fall back to name lookup.
     if let Ok(harness_id) = harness_id_or_name.parse::<HarnessId>() {
@@ -373,7 +377,7 @@ pub async fn get_harness(
             .await
             .map_policy_or_internal("get harness")?
             .ok_or_not_found_json("Harness")?;
-        return Ok(Json(harness));
+        return Ok(Json(urls.wrap(harness)));
     }
 
     let harness = state
@@ -383,7 +387,7 @@ pub async fn get_harness(
         .map_policy_or_internal("get harness by name")?
         .ok_or_not_found_json("Harness")?;
 
-    Ok(Json(harness))
+    Ok(Json(urls.wrap(harness)))
 }
 
 /// PATCH /v1/harnesses/{harness_id}
@@ -395,7 +399,7 @@ pub async fn get_harness(
     ),
     request_body = UpdateHarnessRequest,
     responses(
-        (status = 200, description = "Harness updated", body = Harness),
+        (status = 200, description = "Harness updated", body = WithUrls<Harness>),
         (status = 400, description = "Invalid input", body = ErrorResponse),
         (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Harness not found", body = ErrorResponse),
@@ -408,7 +412,7 @@ pub async fn update_harness(
     State(state): State<AppState>,
     Path(harness_id): Path<String>,
     Json(req): Json<UpdateHarnessRequest>,
-) -> ApiResult<Harness> {
+) -> ApiResult<WithUrls<Harness>> {
     let harness_id: HarnessId = harness_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -438,7 +442,8 @@ pub async fn update_harness(
         .map_policy_or_internal("update harness")?
         .ok_or_not_found_json("Harness")?;
 
-    Ok(Json(harness))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(harness)))
 }
 
 /// DELETE /v1/harnesses/{harness_id}
@@ -534,7 +539,7 @@ pub async fn destroy_harness(
         ("harness_id" = String, Path, description = "Source harness ID to copy")
     ),
     responses(
-        (status = 201, description = "Harness copied successfully", body = Harness),
+        (status = 201, description = "Harness copied successfully", body = WithUrls<Harness>),
         (status = 400, description = "Invalid harness ID", body = ErrorResponse),
         (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Source harness not found", body = ErrorResponse),
@@ -546,7 +551,7 @@ pub async fn copy_harness(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(harness_id): Path<String>,
-) -> Result<(StatusCode, Json<Harness>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<Harness>>), (StatusCode, Json<ErrorResponse>)> {
     let harness_id: HarnessId = harness_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -564,7 +569,8 @@ pub async fn copy_harness(
         .map_policy_or_internal("copy harness")?
         .ok_or_not_found_json("Harness")?;
 
-    Ok((StatusCode::CREATED, Json(harness)))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((StatusCode::CREATED, Json(urls.wrap(harness))))
 }
 
 /// POST /v1/harnesses/preview

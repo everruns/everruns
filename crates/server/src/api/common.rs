@@ -336,6 +336,166 @@ impl Pagination {
     }
 }
 
+// ============================================================================
+// Resource URL enrichment
+// ============================================================================
+
+/// Builds absolute `url` (API) and `view_url` (UI) for resources.
+#[derive(Debug, Clone)]
+pub struct UrlBuilder {
+    api_base: String,
+    ui_base: String,
+}
+
+impl UrlBuilder {
+    pub fn new(api_base: &str, ui_base: &str) -> Self {
+        Self {
+            api_base: api_base.trim_end_matches('/').to_string(),
+            ui_base: ui_base.trim_end_matches('/').to_string(),
+        }
+    }
+
+    /// Create from an `AuthConfig`.
+    pub fn from_auth_config(config: &crate::auth::config::AuthConfig) -> Self {
+        Self::new(&config.base_url, &config.frontend_url)
+    }
+
+    /// Wrap a single resource with `self_url` and `view_url`.
+    pub fn wrap<T: ResourceUrlable + Serialize>(&self, item: T) -> WithUrls<T> {
+        let id = item.resource_id();
+        let api_path = T::api_path();
+        let ui_path = T::ui_path();
+        WithUrls {
+            self_url: format!("{}/{}/{}", self.api_base, api_path, id),
+            view_url: format!("{}/{}/{}", self.ui_base, ui_path, id),
+            inner: item,
+        }
+    }
+
+    /// Wrap a vec of resources.
+    pub fn wrap_vec<T: ResourceUrlable + Serialize>(&self, items: Vec<T>) -> Vec<WithUrls<T>> {
+        items.into_iter().map(|item| self.wrap(item)).collect()
+    }
+}
+
+/// Trait for resources that can have `url` and `view_url` generated.
+pub trait ResourceUrlable {
+    /// API path segment (e.g. `"v1/agents"`).
+    fn api_path() -> &'static str;
+    /// UI path segment (e.g. `"agents"`).
+    fn ui_path() -> &'static str;
+    /// The resource's public ID as a string.
+    fn resource_id(&self) -> String;
+}
+
+/// Wrapper that adds `self_url` and `view_url` to a serialized resource.
+///
+/// Uses `self_url` (not `url`) for the API link to avoid collision with
+/// resources that already have a `url` field (e.g. McpServer).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct WithUrls<T: Serialize> {
+    /// Full API endpoint URL for this resource.
+    pub self_url: String,
+    /// Full UI URL for viewing this resource.
+    pub view_url: String,
+    /// The resource itself (fields are flattened into the parent object).
+    #[serde(flatten)]
+    pub inner: T,
+}
+
+impl<T: ResourceUrlable + Serialize> PaginatedResponse<T> {
+    /// Map all items through `UrlBuilder::wrap`.
+    pub fn with_urls(self, builder: &UrlBuilder) -> PaginatedResponse<WithUrls<T>> {
+        PaginatedResponse {
+            data: builder.wrap_vec(self.data),
+            total: self.total,
+            offset: self.offset,
+            limit: self.limit,
+        }
+    }
+}
+
+impl<T: ResourceUrlable + Serialize> ListResponse<T> {
+    /// Map all items through `UrlBuilder::wrap`.
+    pub fn with_urls(self, builder: &UrlBuilder) -> ListResponse<WithUrls<T>> {
+        ListResponse {
+            data: builder.wrap_vec(self.data),
+        }
+    }
+}
+
+// ── ResourceUrlable implementations ──────────────────────────────────────────
+
+macro_rules! impl_resource_urlable {
+    ($ty:ty, $api:expr, $ui:expr, $id_field:ident) => {
+        impl ResourceUrlable for $ty {
+            fn api_path() -> &'static str {
+                $api
+            }
+            fn ui_path() -> &'static str {
+                $ui
+            }
+            fn resource_id(&self) -> String {
+                self.$id_field.to_string()
+            }
+        }
+    };
+}
+
+impl_resource_urlable!(everruns_core::Agent, "v1/agents", "agents", public_id);
+impl_resource_urlable!(everruns_core::Session, "v1/sessions", "sessions", id);
+impl_resource_urlable!(everruns_core::Harness, "v1/harnesses", "harnesses", id);
+impl_resource_urlable!(everruns_core::Skill, "v1/skills", "skills", id);
+impl_resource_urlable!(everruns_core::budget::Budget, "v1/budgets", "budgets", id);
+impl_resource_urlable!(
+    everruns_core::McpServer,
+    "v1/mcp-servers",
+    "mcp-servers",
+    id
+);
+impl_resource_urlable!(everruns_core::App, "v1/apps", "apps", public_id);
+impl_resource_urlable!(
+    everruns_core::llm_models::LlmProvider,
+    "v1/llm-providers",
+    "llm-providers",
+    id
+);
+impl_resource_urlable!(
+    everruns_core::llm_models::LlmModel,
+    "v1/llm-models",
+    "llm-models",
+    id
+);
+impl_resource_urlable!(
+    everruns_core::LlmModelWithProvider,
+    "v1/llm-models",
+    "llm-models",
+    id
+);
+impl ResourceUrlable for everruns_core::session_schedule::SessionSchedule {
+    fn api_path() -> &'static str {
+        "v1/sessions"
+    }
+    fn ui_path() -> &'static str {
+        "sessions"
+    }
+    fn resource_id(&self) -> String {
+        format!("{}/schedules/{}", self.session_id, self.id)
+    }
+}
+
+impl ResourceUrlable for everruns_core::CapabilityInfo {
+    fn api_path() -> &'static str {
+        "v1/capabilities"
+    }
+    fn ui_path() -> &'static str {
+        "capabilities"
+    }
+    fn resource_id(&self) -> String {
+        self.id.to_string()
+    }
+}
+
 /// Verify that a session belongs to the caller's organization.
 ///
 /// Returns Ok(()) if the session exists under org_id, or a 404 (StatusCode only)

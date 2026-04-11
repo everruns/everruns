@@ -12,7 +12,9 @@ use axum::{
 use everruns_core::session_schedule::SessionSchedule;
 use everruns_core::typed_id::{ScheduleId, SessionId};
 
-use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
+use super::common::{
+    ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, UrlBuilder, WithUrls, impl_auth_state,
+};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -77,7 +79,7 @@ pub fn routes(state: AppState) -> Router {
     get,
     path = "/v1/sessions/{session_id}/schedules",
     responses(
-        (status = 200, description = "List of schedules", body = Vec<SessionSchedule>),
+        (status = 200, description = "List of schedules", body = [WithUrls<SessionSchedule>]),
     ),
     tag = "session-schedules"
 )]
@@ -85,14 +87,15 @@ pub async fn list_schedules(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<SessionId>,
-) -> ApiResult<Vec<SessionSchedule>> {
+) -> ApiResult<Vec<WithUrls<SessionSchedule>>> {
     let schedules = state
         .schedule_service
         .list(org.org_id, session_id)
         .await
         .log_internal_error_json("list schedules")?;
 
-    Ok(Json(schedules))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap_vec(schedules)))
 }
 
 /// Get a specific schedule.
@@ -100,7 +103,7 @@ pub async fn list_schedules(
     get,
     path = "/v1/sessions/{session_id}/schedules/{schedule_id}",
     responses(
-        (status = 200, description = "Schedule details", body = SessionSchedule),
+        (status = 200, description = "Schedule details", body = WithUrls<SessionSchedule>),
         (status = 404, description = "Schedule not found"),
     ),
     tag = "session-schedules"
@@ -109,12 +112,13 @@ pub async fn get_schedule(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
-) -> ApiResult<SessionSchedule> {
+) -> ApiResult<WithUrls<SessionSchedule>> {
     let schedule =
         get_schedule_in_session(&state, org.org_id, session_id, schedule_id, "get schedule")
             .await?;
 
-    Ok(Json(schedule))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(schedule)))
 }
 
 /// Update a schedule (enable/disable).
@@ -123,7 +127,7 @@ pub async fn get_schedule(
     path = "/v1/sessions/{session_id}/schedules/{schedule_id}",
     request_body = UpdateScheduleRequest,
     responses(
-        (status = 200, description = "Updated schedule", body = SessionSchedule),
+        (status = 200, description = "Updated schedule", body = WithUrls<SessionSchedule>),
         (status = 404, description = "Schedule not found"),
     ),
     tag = "session-schedules"
@@ -133,7 +137,7 @@ pub async fn update_schedule(
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
     Json(req): Json<UpdateScheduleRequest>,
-) -> ApiResult<SessionSchedule> {
+) -> ApiResult<WithUrls<SessionSchedule>> {
     let enabled = req.enabled.unwrap_or(true);
     get_schedule_in_session(
         &state,
@@ -151,7 +155,8 @@ pub async fn update_schedule(
         .log_internal_error_json("update schedule")?
         .ok_or_not_found_json("Schedule")?;
 
-    Ok(Json(schedule))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(schedule)))
 }
 
 /// Delete a schedule.
@@ -201,7 +206,7 @@ pub async fn delete_schedule(
     post,
     path = "/v1/sessions/{session_id}/schedules/{schedule_id}/trigger",
     responses(
-        (status = 200, description = "Schedule triggered", body = SessionSchedule),
+        (status = 200, description = "Schedule triggered", body = WithUrls<SessionSchedule>),
         (status = 404, description = "Schedule not found"),
     ),
     tag = "session-schedules"
@@ -210,7 +215,7 @@ pub async fn trigger_schedule(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, schedule_id)): Path<(SessionId, ScheduleId)>,
-) -> ApiResult<SessionSchedule> {
+) -> ApiResult<WithUrls<SessionSchedule>> {
     get_schedule_in_session(
         &state,
         org.org_id,
@@ -227,7 +232,8 @@ pub async fn trigger_schedule(
         .log_internal_error_json("trigger schedule")?
         .ok_or_not_found_json("Schedule")?;
 
-    Ok(Json(schedule))
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap(schedule)))
 }
 
 async fn get_schedule_in_session(

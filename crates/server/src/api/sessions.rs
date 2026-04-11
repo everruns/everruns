@@ -26,7 +26,7 @@ use everruns_worker::AgentRunner;
 
 use super::common::{
     ApiOptionExt, ApiPolicyResultExt, ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse,
-    Pagination, deserialize_nullable_update_field, impl_auth_state,
+    Pagination, UrlBuilder, WithUrls, deserialize_nullable_update_field, impl_auth_state,
 };
 use super::validation::{self, normalize_locale};
 use everruns_durable::UpdateField;
@@ -298,7 +298,7 @@ pub async fn session_config(
     path = "/v1/sessions",
     request_body = CreateSessionRequest,
     responses(
-        (status = 201, description = "Session created successfully", body = Session),
+        (status = 201, description = "Session created successfully", body = WithUrls<Session>),
         (status = 404, description = "Harness, Agent, or Model not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -308,7 +308,7 @@ pub async fn create_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(mut req): Json<CreateSessionRequest>,
-) -> Result<(StatusCode, Json<Session>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
     req.locale = normalize_locale(req.locale)
         .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
 
@@ -415,6 +415,7 @@ pub async fn create_session(
             .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
     }
 
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let caller = Caller::from(&org);
     let session = state
         .session_service
@@ -428,7 +429,7 @@ pub async fn create_session(
         .await
         .map_policy_or_internal("create session")?;
 
-    Ok((StatusCode::CREATED, Json(session)))
+    Ok((StatusCode::CREATED, Json(urls.wrap(session))))
 }
 
 async fn resolve_session_harness_id(
@@ -470,7 +471,7 @@ async fn resolve_session_harness_id(
     path = "/v1/sessions/chat",
     request_body = Option<GetOrCreateChatSessionRequest>,
     responses(
-        (status = 200, description = "Chat session returned", body = Session),
+        (status = 200, description = "Chat session returned", body = WithUrls<Session>),
         (status = 401, description = "Authentication required"),
         (status = 500, description = "Internal server error")
     ),
@@ -480,7 +481,7 @@ pub async fn get_or_create_chat_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
     payload: Option<Json<GetOrCreateChatSessionRequest>>,
-) -> ApiResult<Session> {
+) -> ApiResult<WithUrls<Session>> {
     let locale = normalize_locale(payload.and_then(|Json(body)| body.locale))
         .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
 
@@ -497,6 +498,7 @@ pub async fn get_or_create_chat_session(
             .await
             .log_internal_error_json("resolve chat harness")?;
 
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let caller = Caller::from(&org);
     let session = state
         .session_service
@@ -513,7 +515,7 @@ pub async fn get_or_create_chat_session(
         .await
         .map_policy_or_internal("get or create chat session")?;
 
-    Ok(Json(session))
+    Ok(Json(urls.wrap(session)))
 }
 
 async fn resolve_named_built_in_harness_id(
@@ -537,7 +539,7 @@ async fn resolve_named_built_in_harness_id(
     path = "/v1/sessions",
     params(ListSessionsQuery),
     responses(
-        (status = 200, description = "Paginated list of sessions", body = PaginatedResponse<Session>),
+        (status = 200, description = "Paginated list of sessions", body = PaginatedResponse<WithUrls<Session>>),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -546,10 +548,11 @@ pub async fn list_sessions(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListSessionsQuery>,
-) -> ApiResult<PaginatedResponse<Session>> {
+) -> ApiResult<PaginatedResponse<WithUrls<Session>>> {
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
     let pagination = Pagination::new(offset, limit);
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
 
     // Resolve agent public_id to internal UUID if filtering by agent.
     // If agent_id is provided but not found, return empty results rather than
@@ -583,7 +586,9 @@ pub async fn list_sessions(
         .await
         .map_policy_or_internal("list sessions")?;
 
-    Ok(Json(PaginatedResponse::new(sessions, total, offset, limit)))
+    Ok(Json(
+        PaginatedResponse::new(sessions, total, offset, limit).with_urls(&urls),
+    ))
 }
 
 /// GET /v1/sessions/stats - Get session counts by status
@@ -624,7 +629,7 @@ pub async fn get_session_stats(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
     responses(
-        (status = 200, description = "Session found", body = Session),
+        (status = 200, description = "Session found", body = WithUrls<Session>),
         (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
@@ -635,7 +640,7 @@ pub async fn get_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> ApiResult<Session> {
+) -> ApiResult<WithUrls<Session>> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -645,6 +650,7 @@ pub async fn get_session(
         )
     })?;
 
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let caller = Caller::from(&org);
     let session = state
         .session_service
@@ -660,7 +666,7 @@ pub async fn get_session(
             )
         })?;
 
-    Ok(Json(session))
+    Ok(Json(urls.wrap(session)))
 }
 
 /// PATCH /v1/sessions/{session_id} - Update session
@@ -672,7 +678,7 @@ pub async fn get_session(
     ),
     request_body = UpdateSessionRequest,
     responses(
-        (status = 200, description = "Session updated successfully", body = Session),
+        (status = 200, description = "Session updated successfully", body = WithUrls<Session>),
         (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
@@ -684,7 +690,7 @@ pub async fn update_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     Json(mut req): Json<UpdateSessionRequest>,
-) -> ApiResult<Session> {
+) -> ApiResult<WithUrls<Session>> {
     req.locale = normalize_locale(req.locale)
         .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
 
@@ -697,6 +703,7 @@ pub async fn update_session(
         )
     })?;
 
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let caller = Caller::from(&org);
     let session = state
         .session_service
@@ -712,7 +719,7 @@ pub async fn update_session(
             )
         })?;
 
-    Ok(Json(session))
+    Ok(Json(urls.wrap(session)))
 }
 
 /// DELETE /v1/sessions/{session_id} - Delete session

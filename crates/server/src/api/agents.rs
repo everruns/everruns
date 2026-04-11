@@ -21,7 +21,7 @@ use everruns_core::{
 
 use super::common::{
     ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, PaginatedResponse, Pagination,
-    impl_auth_state,
+    UrlBuilder, WithUrls, impl_auth_state,
 };
 use super::validation::{
     validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
@@ -433,7 +433,7 @@ pub(crate) fn require_admin_for_high_risk(
     path = "/v1/agents",
     request_body = CreateAgentRequest,
     responses(
-        (status = 201, description = "Agent created successfully", body = Agent),
+        (status = 201, description = "Agent created successfully", body = WithUrls<Agent>),
         (status = 400, description = "Input exceeds allowed limits", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -443,7 +443,7 @@ pub async fn create_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
-) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
     // Validate slug name format
     validate_agent_name_format(&req.name)?;
 
@@ -477,7 +477,8 @@ pub async fn create_agent(
         }
     };
 
-    Ok((StatusCode::CREATED, Json(agent)))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
 }
 
 /// GET /v1/agents - List all active agents
@@ -486,7 +487,7 @@ pub async fn create_agent(
     path = "/v1/agents",
     params(ListAgentsQuery),
     responses(
-        (status = 200, description = "Paginated list of agents", body = PaginatedResponse<Agent>),
+        (status = 200, description = "Paginated list of agents", body = PaginatedResponse<WithUrls<Agent>>),
         (status = 500, description = "Internal server error")
     ),
     tag = "agents"
@@ -495,7 +496,7 @@ pub async fn list_agents(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListAgentsQuery>,
-) -> ApiResult<PaginatedResponse<Agent>> {
+) -> ApiResult<PaginatedResponse<WithUrls<Agent>>> {
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
     let pagination = Pagination::new(offset, limit);
@@ -512,7 +513,10 @@ pub async fn list_agents(
         .await
         .map_policy_or_internal("list agents")?;
 
-    Ok(Json(PaginatedResponse::new(agents, total, offset, limit)))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(
+        PaginatedResponse::new(agents, total, offset, limit).with_urls(&builder),
+    ))
 }
 
 /// GET /v1/agents/{agent_id} - Get agent by ID or name
@@ -526,7 +530,7 @@ pub async fn list_agents(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     responses(
-        (status = 200, description = "Agent found", body = Agent),
+        (status = 200, description = "Agent found", body = WithUrls<Agent>),
         (status = 400, description = "Invalid agent ID"),
         (status = 404, description = "Agent not found"),
         (status = 500, description = "Internal server error")
@@ -537,8 +541,9 @@ pub async fn get_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(agent_id_or_name): Path<String>,
-) -> ApiResult<Agent> {
+) -> ApiResult<WithUrls<Agent>> {
     let caller = Caller::from(&org);
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
 
     // Try parsing as a prefixed ID first; fall back to name lookup.
     if let Ok(agent_id) = agent_id_or_name.parse::<AgentId>() {
@@ -548,7 +553,7 @@ pub async fn get_agent(
             .await
             .map_policy_or_internal("get agent")?
             .ok_or_not_found_json("Agent")?;
-        return Ok(Json(agent));
+        return Ok(Json(builder.wrap(agent)));
     }
 
     let agent = state
@@ -558,7 +563,7 @@ pub async fn get_agent(
         .map_policy_or_internal("get agent by name")?
         .ok_or_not_found_json("Agent")?;
 
-    Ok(Json(agent))
+    Ok(Json(builder.wrap(agent)))
 }
 
 /// PATCH /v1/agents/{agent_id} - Update agent
@@ -570,7 +575,7 @@ pub async fn get_agent(
     ),
     request_body = UpdateAgentRequest,
     responses(
-        (status = 200, description = "Agent updated successfully", body = Agent),
+        (status = 200, description = "Agent updated successfully", body = WithUrls<Agent>),
         (status = 400, description = "Invalid agent ID or input exceeds allowed limits", body = ErrorResponse),
         (status = 404, description = "Agent not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -582,7 +587,7 @@ pub async fn update_agent(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
     Json(req): Json<UpdateAgentRequest>,
-) -> ApiResult<Agent> {
+) -> ApiResult<WithUrls<Agent>> {
     let agent_id: AgentId = agent_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -619,7 +624,8 @@ pub async fn update_agent(
         .map_policy_or_internal("update agent")?
         .ok_or_not_found_json("Agent")?;
 
-    Ok(Json(agent))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(builder.wrap(agent)))
 }
 
 /// DELETE /v1/agents/{agent_id} - Archive agent
@@ -714,7 +720,7 @@ pub async fn destroy_agent(
         ("agent_id" = String, Path, description = "Source agent ID to copy")
     ),
     responses(
-        (status = 201, description = "Agent copied successfully", body = Agent),
+        (status = 201, description = "Agent copied successfully", body = WithUrls<Agent>),
         (status = 400, description = "Invalid agent ID", body = ErrorResponse),
         (status = 404, description = "Source agent not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -725,7 +731,7 @@ pub async fn copy_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
-) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
     let agent_id: AgentId = agent_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -743,7 +749,8 @@ pub async fn copy_agent(
         .map_policy_or_internal("copy agent")?
         .ok_or_not_found_json("Agent")?;
 
-    Ok((StatusCode::CREATED, Json(agent)))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
 }
 
 /// PUT /v1/agents/{agent_id} - Create or update agent (upsert)
@@ -759,8 +766,8 @@ pub async fn copy_agent(
     ),
     request_body = CreateAgentRequest,
     responses(
-        (status = 200, description = "Agent updated", body = Agent),
-        (status = 201, description = "Agent created", body = Agent),
+        (status = 200, description = "Agent updated", body = WithUrls<Agent>),
+        (status = 201, description = "Agent created", body = WithUrls<Agent>),
         (status = 400, description = "Invalid input", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -771,7 +778,7 @@ pub async fn upsert_agent(
     State(state): State<AppState>,
     Path(agent_id_or_name): Path<String>,
     Json(req): Json<CreateAgentRequest>,
-) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
     // Validate name format
     validate_agent_name_format(&req.name)?;
 
@@ -820,7 +827,8 @@ pub async fn upsert_agent(
         StatusCode::OK
     };
 
-    Ok((status, Json(agent)))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((status, Json(builder.wrap(agent))))
 }
 
 /// GET /v1/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter
@@ -904,8 +912,8 @@ pub struct ImportAgentQuery {
     params(ImportAgentQuery),
     request_body(content = String, content_type = "text/plain"),
     responses(
-        (status = 200, description = "Agent updated via import", body = Agent),
-        (status = 201, description = "Agent imported successfully", body = Agent),
+        (status = 200, description = "Agent updated via import", body = WithUrls<Agent>),
+        (status = 201, description = "Agent imported successfully", body = WithUrls<Agent>),
         (status = 400, description = "Invalid format or input exceeds limits", body = ErrorResponse),
         (status = 404, description = "Example not found", body = ErrorResponse),
         (status = 403, description = "High-risk capabilities require admin role", body = ErrorResponse),
@@ -918,7 +926,7 @@ pub async fn import_agent(
     State(state): State<AppState>,
     Query(query): Query<ImportAgentQuery>,
     body: String,
-) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
     // Branch: import from built-in example
     if let Some(name) = query.from_example {
         return import_from_example(org, &state, &name).await;
@@ -933,7 +941,7 @@ async fn import_from_example(
     org: ResolvedOrg,
     state: &AppState,
     name: &str,
-) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
     use crate::seed::SEED_AGENTS;
 
     let seed = SEED_AGENTS
@@ -1032,7 +1040,8 @@ async fn import_from_example(
         .await
         .map_policy_or_internal("import agent from example")?;
 
-    Ok((StatusCode::CREATED, Json(agent)))
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
 }
 
 /// Import an agent from a file body (Markdown/YAML/JSON).
@@ -1040,7 +1049,7 @@ async fn import_from_file(
     org: ResolvedOrg,
     state: &AppState,
     body: String,
-) -> Result<(StatusCode, Json<Agent>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
     // Validate import file size (last-resort protection against abuse)
     validate_import_file_size(body.len())?;
 
@@ -1121,6 +1130,8 @@ async fn import_from_file(
 
     let caller = Caller::from(&org);
 
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+
     // If the file has an ID, upsert (create or update). Otherwise, always create.
     if let Some(ref id) = client_id {
         let (agent, was_created) = state
@@ -1135,7 +1146,7 @@ async fn import_from_file(
             StatusCode::OK
         };
 
-        Ok((status, Json(agent)))
+        Ok((status, Json(builder.wrap(agent))))
     } else {
         let agent = state
             .service
@@ -1146,7 +1157,7 @@ async fn import_from_file(
                 ErrorResponse::internal_error()
             })?;
 
-        Ok((StatusCode::CREATED, Json(agent)))
+        Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
     }
 }
 
