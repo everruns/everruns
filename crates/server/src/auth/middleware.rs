@@ -200,6 +200,12 @@ where
     type Rejection = AuthError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // Fast path: pre-resolved user injected by internal callers (e.g. MCP
+        // builtins routing through the API router in-process).
+        if let Some(user) = parts.extensions.get::<AuthUser>().cloned() {
+            return Ok(user);
+        }
+
         let auth_state = AuthState::from_ref(state);
         extract_auth_user(parts, &auth_state).await
     }
@@ -454,6 +460,27 @@ pub struct ResolvedOrg {
     pub role: OrgRole,
 }
 
+impl ResolvedOrg {
+    /// Build a minimal `AuthUser` for in-process routing (MCP builtins).
+    /// Carries enough context for API handlers that extract `AuthUser`.
+    pub fn to_auth_user(&self) -> AuthUser {
+        let user_id = self.user_id.unwrap_or(ANONYMOUS_USER_ID);
+        AuthUser {
+            id: user_id,
+            email: String::new(),
+            name: String::new(),
+            roles: vec![self.role.to_string()],
+            auth_method: AuthMethod::ApiKey,
+            organizations: vec![OrgMembership {
+                org_id: self.org_id,
+                public_id: self.public_id.clone(),
+                name: self.name.clone(),
+                role: self.role,
+            }],
+        }
+    }
+}
+
 impl From<&ResolvedOrg> for Caller {
     fn from(org: &ResolvedOrg) -> Self {
         Caller {
@@ -474,6 +501,12 @@ where
     type Rejection = AuthError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // Fast path: pre-resolved org injected by internal callers (e.g. MCP
+        // builtins routing through the API router in-process).  Skips full auth.
+        if let Some(org) = parts.extensions.get::<ResolvedOrg>().cloned() {
+            return Ok(org);
+        }
+
         // First extract the authenticated user
         let user = AuthUser::from_request_parts(parts, state).await?;
 

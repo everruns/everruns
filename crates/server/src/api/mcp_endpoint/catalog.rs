@@ -2,11 +2,16 @@
 //
 // Every Operation has a `name` used as the bash command name in the
 // ScriptedTool interpreter, plus enough metadata to generate the ToolDef
-// and the HTTP callback.
+// and the direct service callback.
 
+use crate::auth::middleware::ResolvedOrg;
+use axum::Router;
+use axum::body::Body;
+use axum::body::to_bytes;
 use bashkit::{ScriptedTool, ToolArgs, ToolDef};
 use serde_json::json;
 use std::collections::BTreeMap;
+use tower::ServiceExt;
 
 /// A single API operation in the catalog.
 pub struct Operation {
@@ -25,15 +30,9 @@ pub struct Param {
     pub description: &'static str,
 }
 
-/// Build a ScriptedTool with all catalog operations registered as builtins.
-///
-/// Each operation becomes a command callable from bash scripts.  The callback
-/// for each command makes an HTTP request to the local API.
-pub fn build_scripted_tool(api_base: &str, api_key: &str) -> ScriptedTool {
-    let mut builder = ScriptedTool::builder("everruns")
+fn tool_builder() -> bashkit::ScriptedToolBuilder {
+    ScriptedTool::builder("everruns")
         .short_description("Everruns API operations as bash builtins")
-        .env("EVERRUNS_API_BASE", api_base)
-        .env("EVERRUNS_API_KEY", api_key)
         .limits(
             bashkit::ExecutionLimits::new()
                 .max_commands(500)
@@ -42,7 +41,28 @@ pub fn build_scripted_tool(api_base: &str, api_key: &str) -> ScriptedTool {
                 .max_input_bytes(500_000)
                 .max_ast_depth(50)
                 .parser_timeout(std::time::Duration::from_secs(3)),
-        );
+        )
+}
+
+/// Build a ScriptedTool that routes operations through an in-process axum Router.
+/// No HTTP calls — requests are dispatched via `tower::ServiceExt::oneshot`.
+pub fn build_scripted_tool_direct(router: Router, org: ResolvedOrg) -> ScriptedTool {
+    let mut builder = tool_builder();
+
+    for op in CATALOG {
+        let def = op_to_def(op);
+        let callback = make_router_callback(op, router.clone(), org.clone());
+        builder = builder.tool(def, callback);
+    }
+
+    builder.build()
+}
+
+/// Build a ScriptedTool that routes operations via HTTP loopback (legacy fallback).
+pub fn build_scripted_tool_http(api_base: &str, api_key: &str) -> ScriptedTool {
+    let mut builder = tool_builder()
+        .env("EVERRUNS_API_BASE", api_base)
+        .env("EVERRUNS_API_KEY", api_key);
 
     for op in CATALOG {
         let def = op_to_def(op);
@@ -134,7 +154,130 @@ fn format_help(op: &Operation) -> String {
     out
 }
 
-/// Create an HTTP callback for an API operation.
+/// Check if a flag-like param is truthy (bool true or string "true").
+fn is_flag_set(params: &serde_json::Value, key: &str) -> bool {
+    params
+        .get(key)
+        .is_some_and(|v| v.as_bool().unwrap_or(false) || v.as_str().is_some_and(|s| s == "true"))
+}
+
+/// Create a callback that routes through an in-process axum Router.
+/// No HTTP calls — uses `tower::ServiceExt::oneshot` for direct dispatch.
+fn make_router_callback(
+    op: &'static Operation,
+    router: Router,
+    org: ResolvedOrg,
+) -> impl Fn(&ToolArgs) -> Result<String, String> + Send + Sync + 'static {
+    move |args: &ToolArgs| {
+        let params = &args.params;
+
+        if is_flag_set(params, "help") {
+            return Ok(format_help(op));
+        }
+
+        let wants_summary = is_flag_set(params, "summary");
+
+        let method = op.method;
+        let path_template = op.path;
+
+        // Substitute path parameters into the URL template
+        let mut path = path_template.to_string();
+        let mut body_params = serde_json::Map::new();
+        let mut query_parts = Vec::new();
+
+        if let Some(obj) = params.as_object() {
+            for (key, value) in obj {
+                // Skip client-side flags
+                if key == "help" || key == "summary" {
+                    continue;
+                }
+
+                let placeholder = format!("{{{key}}}");
+                if path.contains(&placeholder) {
+                    let val_str = value.as_str().unwrap_or(&value.to_string()).to_string();
+                    path = path.replace(&placeholder, &val_str);
+                } else if is_query_param(path_template, key)
+                    || method == "GET"
+                    || method == "DELETE"
+                {
+                    let val_str = value.as_str().unwrap_or(&value.to_string()).to_string();
+                    query_parts.push(format!("{}={}", key, urlencoding::encode(&val_str)));
+                } else {
+                    body_params.insert(key.clone(), value.clone());
+                }
+            }
+        }
+
+        let mut uri = path;
+        if !query_parts.is_empty() {
+            uri.push('?');
+            uri.push_str(&query_parts.join("&"));
+        }
+
+        let router = router.clone();
+        let org = org.clone();
+
+        tokio::task::block_in_place(|| {
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async {
+                let http_method = match method {
+                    "POST" => axum::http::Method::POST,
+                    "PUT" => axum::http::Method::PUT,
+                    "PATCH" => axum::http::Method::PATCH,
+                    "DELETE" => axum::http::Method::DELETE,
+                    _ => axum::http::Method::GET,
+                };
+
+                let mut req_builder = axum::http::Request::builder().method(http_method).uri(&uri);
+
+                if !body_params.is_empty() {
+                    req_builder =
+                        req_builder.header(axum::http::header::CONTENT_TYPE, "application/json");
+                }
+
+                let body: Body = if body_params.is_empty() {
+                    Body::empty()
+                } else {
+                    let json = serde_json::to_vec(&body_params)
+                        .map_err(|e| format!("JSON serialize error: {e}"))?;
+                    Body::from(json)
+                };
+
+                let mut request: axum::http::Request<Body> = req_builder
+                    .body(body)
+                    .map_err(|e| format!("Request build error: {e}"))?;
+
+                // Inject auth context so extractors pick it up without
+                // needing a real Bearer token or JWT.
+                request.extensions_mut().insert(org.to_auth_user());
+                request.extensions_mut().insert(org);
+
+                let response = router
+                    .oneshot(request)
+                    .await
+                    .map_err(|e| format!("Router error: {e}"))?;
+
+                let status = response.status();
+                let bytes = to_bytes(response.into_body(), 10 * 1024 * 1024)
+                    .await
+                    .map_err(|e| format!("Body read error: {e}"))?;
+                let body_text = String::from_utf8_lossy(&bytes).to_string();
+
+                if status.is_success() {
+                    if wants_summary {
+                        Ok(apply_summary_filter(&body_text))
+                    } else {
+                        Ok(body_text)
+                    }
+                } else {
+                    Err(format!("HTTP {status}: {body_text}"))
+                }
+            })
+        })
+    }
+}
+
+/// Create an HTTP callback for an API operation (legacy fallback).
 ///
 /// Intercepts `--help` locally; all other invocations make an HTTP request
 /// to the local API via `tokio::task::block_in_place`.

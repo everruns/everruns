@@ -264,6 +264,9 @@ pub struct AppState {
     pub auth: AuthState,
     pub api_base_url: String,
     pub fallback_base_harness_name: Option<String>,
+    /// API routes router for in-process routing (replaces HTTP loopback).
+    /// Set after construction via `set_api_router()`.
+    pub api_router: Option<Router>,
 }
 
 impl AppState {
@@ -295,7 +298,14 @@ impl AppState {
             fallback_base_harness_name: platform_definition
                 .harness_for_role(everruns_core::BuiltInHarnessRole::Base)
                 .map(|h| h.name.clone()),
+            api_router: None,
         }
+    }
+
+    /// Set the API routes router for in-process routing.
+    /// Called after the API router is fully constructed.
+    pub fn set_api_router(&mut self, router: Router) {
+        self.api_router = Some(router);
     }
 }
 
@@ -318,7 +328,6 @@ pub fn routes(state: AppState) -> Router {
 async fn handle_mcp(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
     Json(req): Json<JsonRpcRequest>,
 ) -> Json<JsonRpcResponse> {
     if req.jsonrpc != "2.0" {
@@ -332,7 +341,7 @@ async fn handle_mcp(
     let response = match req.method.as_str() {
         "initialize" => handle_initialize(req.id),
         "tools/list" => handle_tools_list(req.id),
-        "tools/call" => handle_tools_call(req.id.clone(), req.params, &org, &state, &headers).await,
+        "tools/call" => handle_tools_call(req.id.clone(), req.params, &org, &state).await,
         "ping" => JsonRpcResponse::success(req.id, json!({})),
         _ => JsonRpcResponse::method_not_found(req.id),
     };
@@ -369,7 +378,6 @@ async fn handle_tools_call(
     params: Value,
     org: &ResolvedOrg,
     state: &AppState,
-    headers: &axum::http::HeaderMap,
 ) -> JsonRpcResponse {
     let tool_name = match params.get("name").and_then(|v| v.as_str()) {
         Some(name) => name,
@@ -381,30 +389,12 @@ async fn handle_tools_call(
         .cloned()
         .unwrap_or(Value::Object(Default::default()));
 
-    // Extract Bearer token from request to pass to scripted tool HTTP callbacks.
-    // Parse case-insensitively per RFC 7235, matching extract_auth_user behavior.
-    let bearer_token = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| {
-            let (scheme, token) = s.trim().split_once(char::is_whitespace)?;
-            if scheme.eq_ignore_ascii_case("Bearer") {
-                let token = token.trim();
-                if !token.is_empty() {
-                    return Some(token);
-                }
-            }
-            None
-        })
-        .unwrap_or("")
-        .to_string();
-
     let result = match tool_name {
         "agent_run" => tool_agent_run(&arguments, org, state).await,
         "session_send_message" => tool_session_send_message(&arguments, org, state).await,
         "session_get_status" => tool_session_get_status(&arguments, org, state).await,
         "discover" => tool_discover(&arguments).await,
-        "execute" => tool_execute(&arguments, org, state, &bearer_token).await,
+        "execute" => tool_execute(&arguments, org, state).await,
         _ => Err(format!("Unknown tool: {tool_name}")),
     };
 
@@ -774,12 +764,7 @@ async fn tool_discover(args: &Value) -> Result<String, String> {
 // Tier 2: execute — delegates to ScriptedTool
 // ============================================================================
 
-async fn tool_execute(
-    args: &Value,
-    org: &ResolvedOrg,
-    state: &AppState,
-    bearer_token: &str,
-) -> Result<String, String> {
+async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
     let command = args
         .get("command")
         .and_then(|v| v.as_str())
@@ -798,7 +783,7 @@ async fn tool_execute(
         .unwrap_or(30000)
         .min(60000);
 
-    let tool = build_scripted_tool(org, state, bearer_token);
+    let tool = build_scripted_tool(org, state);
     execute_script(&tool, command, timeout_ms).await
 }
 
@@ -808,15 +793,16 @@ async fn tool_execute(
 
 /// Build a ScriptedTool for the given org context.
 ///
-/// Uses the caller's Bearer token for internal API calls so that MCP OAuth
-/// tokens (and API keys) are forwarded to the REST API.
-fn build_scripted_tool(org: &ResolvedOrg, state: &AppState, bearer_token: &str) -> ScriptedTool {
-    let auth_token = if bearer_token.is_empty() {
-        format!("org-{}", org.public_id)
+/// Routes catalog operations through the in-process API router (no HTTP).
+/// Falls back to HTTP loopback if api_router is not set.
+fn build_scripted_tool(org: &ResolvedOrg, state: &AppState) -> ScriptedTool {
+    if let Some(ref router) = state.api_router {
+        catalog::build_scripted_tool_direct(router.clone(), org.clone())
     } else {
-        bearer_token.to_string()
-    };
-    catalog::build_scripted_tool(&state.api_base_url, &auth_token)
+        // Fallback: HTTP loopback (for tests that don't set api_router)
+        let auth_token = format!("org-{}", org.public_id);
+        catalog::build_scripted_tool_http(&state.api_base_url, &auth_token)
+    }
 }
 
 /// Execute a script through a ScriptedTool and return formatted output.
