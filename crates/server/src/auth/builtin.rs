@@ -254,6 +254,10 @@ impl AuthBackend for BuiltinAuthBackend {
         Some(auth_routes.merge(cli_routes))
     }
 
+    fn on_api_key_deleted(&self) {
+        self.invalidate_all_api_key_cache();
+    }
+
     fn public_routes(&self) -> Option<Router> {
         let auth_state =
             super::middleware::AuthState::new(self.config.clone(), Arc::new(self.clone()));

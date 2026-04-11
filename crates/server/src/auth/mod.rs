@@ -4,6 +4,7 @@
 // Decision: Pluggable auth backend trait for external providers (SaaS)
 
 pub mod api_key;
+pub mod api_key_routes;
 pub mod audit;
 pub mod backend;
 pub mod builtin;
@@ -16,6 +17,7 @@ pub mod oauth;
 pub mod rate_limit;
 pub mod routes;
 
+pub use api_key_routes::{ApiKeyState, api_key_routes};
 pub use backend::AuthBackend;
 pub use builtin::BuiltinAuthBackend;
 pub use cli_auth::CliAuthState;
