@@ -5,8 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **⚠️ Important:** Patch releases (e.g. 0.8.9 → 0.8.10) apply incremental migrations automatically. Major/minor releases may require a fresh database — check the Migration Notes for each version.
-
 ## [Unreleased]
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
