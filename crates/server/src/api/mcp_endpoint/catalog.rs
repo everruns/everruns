@@ -989,7 +989,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "limit",
                 typ: "query",
-                description: "Page size (default: 20, max: 100)",
+                description: "Page size (default: 100, max: 200)",
             },
             Param {
                 name: "summary",

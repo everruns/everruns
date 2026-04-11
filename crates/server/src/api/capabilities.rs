@@ -45,8 +45,9 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-const DEFAULT_LIMIT: u32 = 20;
-const MAX_LIMIT: u32 = 100;
+// Capabilities are a bounded set (~30-50 items), so default to showing all.
+const DEFAULT_LIMIT: u32 = 100;
+const MAX_LIMIT: u32 = 200;
 
 #[derive(Debug, Default, Deserialize)]
 pub struct ListCapabilitiesQuery {
