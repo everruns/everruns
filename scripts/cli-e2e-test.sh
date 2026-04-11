@@ -46,8 +46,18 @@ detect_api_url() {
 }
 
 API_URL="$(detect_api_url)"
-CLI="./target/debug/everruns"
 SKIP_CHAT="${1:-}"
+
+# Resolve CLI binary: PATH > release build > debug build > build from source
+if command -v everruns >/dev/null 2>&1; then
+  CLI="$(command -v everruns)"
+elif [ -f "./target/release/everruns" ]; then
+  CLI="./target/release/everruns"
+elif [ -f "./target/debug/everruns" ]; then
+  CLI="./target/debug/everruns"
+else
+  CLI="./target/debug/everruns"
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -75,9 +85,10 @@ log_fail() {
 }
 
 # Check CLI is built
-if [ ! -f "$CLI" ]; then
+if [ ! -f "$CLI" ] && ! command -v everruns >/dev/null 2>&1; then
   echo "CLI not found at $CLI. Building..."
   cargo build -p everruns-cli
+  CLI="./target/debug/everruns"
 fi
 
 # Verify server is running
@@ -99,7 +110,7 @@ echo ""
 # Test: Capabilities
 # ========================================
 log_test "capabilities list"
-CAPS_OUTPUT=$($CLI --api-url "$API_URL" capabilities list --status all --output json 2>&1) || {
+CAPS_OUTPUT=$("$CLI" --api-url "$API_URL" capabilities list --status all --output json 2>&1) || {
   log_fail "capabilities list failed"
   echo "$CAPS_OUTPUT"
   exit 1
@@ -117,7 +128,7 @@ fi
 
 # Create agent
 log_test "agents create"
-AGENT_OUTPUT=$($CLI --api-url "$API_URL" agents create \
+AGENT_OUTPUT=$("$CLI" --api-url "$API_URL" agents create \
   --name "cli-test-agent" \
   --system-prompt "You are a test agent for CLI e2e testing." \
   --description "Test agent created by CLI e2e tests" \
@@ -138,7 +149,7 @@ fi
 
 # List agents
 log_test "agents list"
-LIST_OUTPUT=$($CLI --api-url "$API_URL" agents list --output json 2>&1) || {
+LIST_OUTPUT=$("$CLI" --api-url "$API_URL" agents list --output json 2>&1) || {
   log_fail "agents list failed"
   echo "$LIST_OUTPUT"
 }
@@ -152,7 +163,7 @@ fi
 
 # Get agent (uses prefixed ID directly)
 log_test "agents get"
-GET_OUTPUT=$($CLI --api-url "$API_URL" agents get "$AGENT_ID" --output json 2>&1) || {
+GET_OUTPUT=$("$CLI" --api-url "$API_URL" agents get "$AGENT_ID" --output json 2>&1) || {
   log_fail "agents get failed"
   echo "$GET_OUTPUT"
 }
@@ -188,7 +199,7 @@ fi
 
 # Create session (uses prefixed harness + agent IDs)
 log_test "sessions create"
-SESSION_OUTPUT=$($CLI --api-url "$API_URL" sessions create \
+SESSION_OUTPUT=$("$CLI" --api-url "$API_URL" sessions create \
   --harness "$HARNESS_ID" \
   --agent "$AGENT_ID" \
   --title "CLI E2E Test Session" \
@@ -209,7 +220,7 @@ fi
 
 # List sessions
 log_test "sessions list"
-LIST_SESSIONS_OUTPUT=$($CLI --api-url "$API_URL" sessions list --output json 2>&1) || {
+LIST_SESSIONS_OUTPUT=$("$CLI" --api-url "$API_URL" sessions list --output json 2>&1) || {
   log_fail "sessions list failed"
   echo "$LIST_SESSIONS_OUTPUT"
 }
@@ -223,7 +234,7 @@ fi
 
 # Get session (uses prefixed session ID directly)
 log_test "sessions get"
-GET_SESSION_OUTPUT=$($CLI --api-url "$API_URL" sessions get "$SESSION_ID" --output json 2>&1) || {
+GET_SESSION_OUTPUT=$("$CLI" --api-url "$API_URL" sessions get "$SESSION_ID" --output json 2>&1) || {
   log_fail "sessions get failed"
   echo "$GET_SESSION_OUTPUT"
 }
@@ -244,7 +255,7 @@ log_test "chat (SKIPPED - SDK pagination compatibility with events)"
 # Test: Delete agent (cleanup)
 # ========================================
 log_test "agents delete"
-DELETE_OUTPUT=$($CLI --api-url "$API_URL" agents delete "$AGENT_ID" --output json 2>&1) || {
+DELETE_OUTPUT=$("$CLI" --api-url "$API_URL" agents delete "$AGENT_ID" --output json 2>&1) || {
   log_fail "agents delete failed"
   echo "$DELETE_OUTPUT"
 }
@@ -252,7 +263,7 @@ log_pass "agents delete completed"
 
 # Verify agent is archived or inaccessible after delete
 log_test "agents get (verify archived)"
-if VERIFY_DELETE_OUTPUT=$($CLI --api-url "$API_URL" agents get "$AGENT_ID" --output json 2>&1); then
+if VERIFY_DELETE_OUTPUT=$("$CLI" --api-url "$API_URL" agents get "$AGENT_ID" --output json 2>&1); then
   AGENT_STATUS=$(echo "$VERIFY_DELETE_OUTPUT" | jq -r '.status // empty')
   if [ "$AGENT_STATUS" = "archived" ]; then
     log_pass "agents get returned archived status after delete"
