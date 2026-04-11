@@ -330,7 +330,7 @@ pub use url_validation::{UrlValidationError, validate_safe_url};
 pub use deployment::DeploymentGrade;
 
 // Feature flags
-pub use feature_flags::FeatureFlags;
+pub use feature_flags::{FeatureFlags, InternalFeatureFlags};
 
 // Observation backends
 pub use observation::{BraintrustConfig, BraintrustListener, OtelEventListener};

@@ -43,6 +43,7 @@ use tools::{
 inventory::submit! {
     IntegrationPlugin {
         experimental_only: false,
+        feature_flag: None,
         factory: || Box::new(BrowserlessCapability),
     }
 }
