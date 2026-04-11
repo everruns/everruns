@@ -274,7 +274,10 @@ describe("Sidebar with config", () => {
       { items: [{ name: "Home", href: "/home", icon: Settings }] },
     ];
     const extra: NavigationSection[] = [
-      { label: "Extra", items: [{ name: "Extra Item", href: "/extra", icon: Zap }] },
+      {
+        label: "Extra",
+        items: [{ name: "Extra Item", href: "/extra", icon: Zap }],
+      },
     ];
 
     render(<Sidebar config={{ navigation: customNav, extraSections: extra }} />);
@@ -302,7 +305,9 @@ describe("Sidebar with config", () => {
 
   it("renders sections without labels (unlabeled sections)", () => {
     const customNav: NavigationSection[] = [
-      { items: [{ name: "Unlabeled Item", href: "/unlabeled", icon: Settings }] },
+      {
+        items: [{ name: "Unlabeled Item", href: "/unlabeled", icon: Settings }],
+      },
     ];
 
     render(<Sidebar config={{ navigation: customNav }} />);
@@ -393,7 +398,7 @@ describe("Create Organisation dialog", () => {
         name: "New Org",
         role: "owner",
       });
-      expect(mockPush).toHaveBeenCalledWith("/dashboard");
+      expect(mockPush).toHaveBeenCalledWith("/orgs/org_new123/setup");
     });
   });
 

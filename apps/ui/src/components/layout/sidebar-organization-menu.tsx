@@ -52,7 +52,7 @@ function CreateOrganizationDialog({
     setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
     setName("");
     onOpenChange(false);
-    router.push("/dashboard");
+    router.push(`/orgs/${org.id}/setup`);
   };
 
   return (

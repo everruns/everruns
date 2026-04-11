@@ -94,11 +94,13 @@ export default function OrganisationPage() {
     e.preventDefault();
     if (!newOrgName.trim()) return;
 
-    const org = await createOrganization.mutateAsync({ name: newOrgName.trim() });
+    const org = await createOrganization.mutateAsync({
+      name: newOrgName.trim(),
+    });
     setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
     setNewOrgName("");
     setCreateDialogOpen(false);
-    router.push("/dashboard");
+    router.push(`/orgs/${org.id}/setup`);
   };
 
   if (error) {
