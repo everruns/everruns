@@ -5,11 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **⚠️ Important:** There is no automatic migration between versions. Each major/minor release requires a fresh database. Back up any data you need before upgrading.
-
 ## [Unreleased]
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
+
+## [0.8.10] - 2026-04-11
+
+### Highlights
+
+- **MCP Endpoint Improvements** — In-process router dispatch replaces HTTP loopback, fuzzy search in discover, pagination in list tools, local `--help`, cleaner execute output ([#1269](https://github.com/everruns/everruns/pull/1269), [#1255](https://github.com/everruns/everruns/pull/1255), [#1260](https://github.com/everruns/everruns/pull/1260), [#1264](https://github.com/everruns/everruns/pull/1264), [#1265](https://github.com/everruns/everruns/pull/1265))
+- **Evals Improvements** — Composable `EvalTarget` replaces fixed harness/agent pair, post messages for benchmark-style scoring, eval run workflow ([#1239](https://github.com/everruns/everruns/pull/1239), [#1248](https://github.com/everruns/everruns/pull/1248))
+- **Virtual Readonly Mounts** — Session filesystem gains readonly mount support for injecting host-side content ([#1249](https://github.com/everruns/everruns/pull/1249))
+
+### What's Changed
+
+- feat(capabilities): gate Docker capability behind feature flag ([#1268](https://github.com/everruns/everruns/pull/1268))
+- feat(mcp): replace HTTP loopback with in-process router dispatch ([#1269](https://github.com/everruns/everruns/pull/1269))
+- feat(fs): add virtual readonly mounts for session filesystem ([#1249](https://github.com/everruns/everruns/pull/1249))
+- feat(mcp): add local --help for all built-in commands ([#1265](https://github.com/everruns/everruns/pull/1265))
+- feat(mcp): preserve self_url and view_url in execute tool summary output ([#1262](https://github.com/everruns/everruns/pull/1262))
+- feat(mcp): simplify execute tool output to plain text ([#1264](https://github.com/everruns/everruns/pull/1264))
+- feat(api): add url and view_url fields to all resource API responses ([#1261](https://github.com/everruns/everruns/pull/1261))
+- feat(mcp): improve discover tool with fuzzy search, clean output, and --all flag ([#1260](https://github.com/everruns/everruns/pull/1260))
+- feat(mcp): improve execute tool description for LLM consumers ([#1263](https://github.com/everruns/everruns/pull/1263))
+- feat(mcp): add pagination and summary to all list built-in tools ([#1255](https://github.com/everruns/everruns/pull/1255))
+- feat(evals): add post messages and implement eval run workflow ([#1248](https://github.com/everruns/everruns/pull/1248))
+- feat(evals): replace harness_id/agent_id with EvalTarget ([#1239](https://github.com/everruns/everruns/pull/1239))
+- feat(server): restructure routing and fix MCP OAuth end-to-end ([#1250](https://github.com/everruns/everruns/pull/1250))
+- feat(harness): add coding-daytona built-in harness ([#1241](https://github.com/everruns/everruns/pull/1241))
+- feat(ui): add org setup page shown after org creation ([#1257](https://github.com/everruns/everruns/pull/1257))
+- feat(ui): add MCP connect button to sidebar header ([#1240](https://github.com/everruns/everruns/pull/1240))
+- feat(ui): align harness display_name with agent pattern ([#1246](https://github.com/everruns/everruns/pull/1246))
+- fix(auth): resolve org from DB instead of stale JWT in ResolvedOrg ([#1256](https://github.com/everruns/everruns/pull/1256))
+- fix(ci): repair SDK compat, CLI E2E tests and build gate ([#1266](https://github.com/everruns/everruns/pull/1266))
+- fix(ci): remove redundant version from generated Homebrew formula ([#1237](https://github.com/everruns/everruns/pull/1237))
+- fix(ci): wrap linux url/sha256 in CPU conditional ([#1238](https://github.com/everruns/everruns/pull/1238))
+- refactor(agents): use "import" verb and unify import endpoint ([#1243](https://github.com/everruns/everruns/pull/1243))
+- refactor(core): extract AgentConfigOverlay for composable config merging ([#1244](https://github.com/everruns/everruns/pull/1244))
+- refactor(auth): extract API key CRUD routes from auth_routes() ([#1253](https://github.com/everruns/everruns/pull/1253))
+- refactor(ui): extract design-system.css from globals.css ([#1254](https://github.com/everruns/everruns/pull/1254))
+- refactor(ui): redesign default tool result rendering ([#1245](https://github.com/everruns/everruns/pull/1245))
+- test(durable): add agent execution reliability tests ([#1252](https://github.com/everruns/everruns/pull/1252))
+- test(ui): add API key org binding test case ([#1258](https://github.com/everruns/everruns/pull/1258))
+- test(ui): update test cases for addressable naming ([#1242](https://github.com/everruns/everruns/pull/1242))
+- docs: redraw all diagrams as hand-authored SVGs per diagrams spec ([#1236](https://github.com/everruns/everruns/pull/1236))
+- chore(specs): document migrations approach ([#1267](https://github.com/everruns/everruns/pull/1267))
+- chore(specs): document eval post field and update run execution flow ([#1247](https://github.com/everruns/everruns/pull/1247))
+- chore(deps): bump the npm_and_yarn group across 2 directories with 3 updates ([#1251](https://github.com/everruns/everruns/pull/1251))
+- chore(deps): bump the npm_and_yarn group across 2 directories with 2 updates ([#1193](https://github.com/everruns/everruns/pull/1193))
+
+### Migration Notes
+
+Migrations squashed: `011_evals_target.sql` + `012_evals_post.sql` → `011_v0.8.10.sql`. In-place upgrade from 0.8.9 works — the squashed migration applies on top of existing `010_v0.8.9` as a normal incremental migration.
 
 ## [0.8.9] - 2026-04-08
 
