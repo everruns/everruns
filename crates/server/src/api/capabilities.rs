@@ -10,13 +10,14 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
 };
 use everruns_core::{CapabilityId, CapabilityInfo};
+use serde::Deserialize;
 
-use super::common::{ListResponse, impl_auth_state};
+use super::common::{PaginatedResponse, impl_auth_state};
 use std::sync::Arc;
 
 use crate::services::CapabilityService;
@@ -44,24 +45,57 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// GET /v1/capabilities - List all available capabilities
+// Capabilities are a bounded set (~30-50 items), so default to showing all.
+const DEFAULT_LIMIT: u32 = 100;
+const MAX_LIMIT: u32 = 200;
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ListCapabilitiesQuery {
+    pub search: Option<String>,
+    pub offset: Option<u32>,
+    pub limit: Option<u32>,
+}
+
+/// GET /v1/capabilities - List available capabilities with pagination
 #[utoipa::path(
     get,
     path = "/v1/capabilities",
+    params(
+        ("search" = Option<String>, Query, description = "Search by name/description"),
+        ("offset" = Option<u32>, Query, description = "Pagination offset (default: 0)"),
+        ("limit" = Option<u32>, Query, description = "Page size (default: 20, max: 100)"),
+    ),
     responses(
-        (status = 200, description = "List of available capabilities", body = ListResponse<CapabilityInfo>),
+        (status = 200, description = "Paginated list of capabilities", body = PaginatedResponse<CapabilityInfo>),
     ),
     tag = "capabilities"
 )]
 pub async fn list_capabilities(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> Result<Json<ListResponse<CapabilityInfo>>, StatusCode> {
-    let capabilities = state.service.list_all(org.org_id).await.map_err(|e| {
+    Query(query): Query<ListCapabilitiesQuery>,
+) -> Result<Json<PaginatedResponse<CapabilityInfo>>, StatusCode> {
+    let mut capabilities = state.service.list_all(org.org_id).await.map_err(|e| {
         tracing::error!("Failed to list capabilities: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    Ok(Json(ListResponse::new(capabilities)))
+
+    // Filter by search query
+    if let Some(ref search) = query.search {
+        capabilities.retain(|c| c.matches_search(search));
+    }
+
+    let total = capabilities.len() as u32;
+    let offset = query.offset.unwrap_or(0);
+    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+
+    let data: Vec<CapabilityInfo> = capabilities
+        .into_iter()
+        .skip(offset as usize)
+        .take(limit as usize)
+        .collect();
+
+    Ok(Json(PaginatedResponse::new(data, total, offset, limit)))
 }
 
 /// GET /v1/capabilities/{capability_id} - Get a specific capability
