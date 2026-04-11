@@ -6,6 +6,13 @@ use everruns_core::deployment::DeploymentGrade;
 // Force linker to include the integration crate's inventory submissions.
 use everruns_integrations_docker as _;
 
+// Env-var-mutating tests must not run in parallel.
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+    ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[test]
 fn test_docker_plugin_is_submitted() {
     let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
@@ -55,6 +62,7 @@ fn test_docker_plugin_has_feature_flag() {
 
 #[test]
 fn test_docker_not_registered_in_dev_without_flag() {
+    let _lock = lock_env();
     // Docker requires FEATURE_DOCKER_CAPABILITY=true even in dev
     unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
     let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
@@ -66,6 +74,7 @@ fn test_docker_not_registered_in_dev_without_flag() {
 
 #[test]
 fn test_docker_registered_in_dev_with_flag() {
+    let _lock = lock_env();
     unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
     let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
     assert!(
@@ -77,6 +86,7 @@ fn test_docker_registered_in_dev_with_flag() {
 
 #[test]
 fn test_docker_not_registered_in_prod_registry() {
+    let _lock = lock_env();
     unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
     let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
     assert!(
@@ -87,6 +97,7 @@ fn test_docker_not_registered_in_prod_registry() {
 
 #[test]
 fn test_docker_not_registered_in_prod_even_with_flag() {
+    let _lock = lock_env();
     // experimental_only still blocks prod (grade must also allow experimental)
     unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
     let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
@@ -99,6 +110,7 @@ fn test_docker_not_registered_in_prod_even_with_flag() {
 
 #[test]
 fn test_docker_capability_metadata() {
+    let _lock = lock_env();
     unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
     let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
     let cap = registry

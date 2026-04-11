@@ -57,8 +57,8 @@ use std::sync::Arc;
 pub struct IntegrationPlugin {
     /// If true, only registered when `DeploymentGrade::experimental_features_enabled()` is true.
     pub experimental_only: bool,
-    /// If set, only registered when the named feature flag is enabled.
-    /// Checked via `FeatureFlags::is_enabled()` at registry build time.
+    /// If set, only registered when the named internal feature flag is enabled.
+    /// Checked via `InternalFeatureFlags::is_enabled()` at registry build time.
     pub feature_flag: Option<&'static str>,
     /// Factory function that creates the capability instance.
     pub factory: fn() -> Box<dyn Capability>,

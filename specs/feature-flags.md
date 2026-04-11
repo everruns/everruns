@@ -59,7 +59,7 @@ Flags are computed once at server startup and served from memory.
 - **API client**: `apps/ui/src/lib/api/feature-flags.ts`
 - **Provider**: `apps/ui/src/providers/feature-flags-provider.tsx` — React context, fetches once
 - **Hooks**: `useFeatureFlags()` (all flags), `useFeatureFlag("flag_name")` (single flag)
-- **Types**: `FeatureFlags` in `apps/ui/src/lib/api/types.ts`
+- **Types**: `FeatureFlags` in `apps/ui/src/lib/api/types/auth-types.ts`
 
 ### Workers
 
