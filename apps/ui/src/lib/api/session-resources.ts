@@ -1,10 +1,10 @@
-// Session leased-resources API functions
+// Session resources API functions
 
 import { api } from "./client";
-import type { LeasedResource } from "./types";
+import type { SessionResource } from "./types";
 
-/** List lifecycle-managed resources for a session */
-export async function listSessionResources(sessionId: string): Promise<LeasedResource[]> {
-  const response = await api.get<LeasedResource[]>(`/v1/sessions/${sessionId}/resources`);
+/** List all resources for a session (leased resources + subagents) */
+export async function listSessionResources(sessionId: string): Promise<SessionResource[]> {
+  const response = await api.get<SessionResource[]>(`/v1/sessions/${sessionId}/resources`);
   return response.data;
 }

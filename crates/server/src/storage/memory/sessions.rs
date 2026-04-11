@@ -111,6 +111,21 @@ impl InMemoryDatabase {
         Ok((paginated, total))
     }
 
+    /// List child sessions (subagents) for a parent session.
+    pub async fn list_child_sessions(
+        &self,
+        parent_session_id: SessionId,
+    ) -> Result<Vec<SessionRow>> {
+        let sessions = self.sessions.read();
+        let mut result: Vec<_> = sessions
+            .values()
+            .filter(|s| s.parent_session_id == Some(parent_session_id))
+            .cloned()
+            .collect();
+        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(result)
+    }
+
     /// Count sessions grouped by status for an organization.
     pub async fn count_sessions_by_status(&self, org_id: i64) -> Result<Vec<(String, i64)>> {
         let sessions = self.sessions.read();

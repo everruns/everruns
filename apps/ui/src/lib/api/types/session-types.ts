@@ -120,10 +120,18 @@ export interface UpdateSessionScheduleRequest {
 }
 
 // ============================================
-// Session Leased Resource types
+// Session Resource types (unified registry)
 // ============================================
 
 export type LeasedResourceStatus = "active" | "cleaning" | "released" | "cleanup_failed";
+
+export type SubagentStatus =
+  | "spawning"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "max_iterations_reached";
 
 export interface LeasedResource {
   id: string;
@@ -145,6 +153,26 @@ export interface LeasedResource {
   created_at: string;
   updated_at: string;
 }
+
+/** Leased resource wrapped with kind discriminator */
+export interface LeasedSessionResource extends LeasedResource {
+  kind: "leased";
+}
+
+/** Subagent resource */
+export interface SubagentSessionResource {
+  kind: "subagent";
+  session_id: string;
+  name: string;
+  task?: string;
+  status: SubagentStatus;
+  blueprint_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Unified session resource (tagged union) */
+export type SessionResource = LeasedSessionResource | SubagentSessionResource;
 
 // ============================================
 // Session Storage types (Key-Value & Secrets)

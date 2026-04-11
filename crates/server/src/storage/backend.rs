@@ -515,6 +515,14 @@ impl StorageBackend {
         dispatch!(self, list_sessions, org_id, agent_id, search, pagination)
     }
 
+    /// List child sessions (subagents) for a parent session.
+    pub async fn list_child_sessions(
+        &self,
+        parent_session_id: SessionId,
+    ) -> Result<Vec<SessionRow>> {
+        dispatch!(self, list_child_sessions, parent_session_id)
+    }
+
     /// Count sessions grouped by status for an organization.
     pub async fn count_sessions_by_status(&self, org_id: i64) -> Result<Vec<(String, i64)>> {
         dispatch!(self, count_sessions_by_status, org_id)
