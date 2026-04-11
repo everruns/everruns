@@ -47,7 +47,7 @@ Always make sure you are working on top of latest main from remote.
 - Start by syncing: `git fetch origin main`
 - Branch or rebase onto `origin/main` before edits, especially before shipping
 - In worktrees, do not assume `HEAD` tracks a branch; verify with `git status --branch` or `git worktree list`
-- **After every rebase**, check `crates/server/migrations/` for duplicate version numbers. Migrations are the most common conflict source — multiple branches often add the next sequential number. Renumber your migration to the next available number if a conflict exists.
+- **After every rebase**, check `crates/server/migrations/` for duplicate version numbers. Migrations are the most common conflict source — multiple branches often add the next sequential number. Renumber your migration to the next available number if a conflict exists. See [`specs/migrations.md`](specs/migrations.md) for the full migration process.
 
 ### Principles
 
@@ -69,6 +69,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/parallel-execution-1m.md` - Scaling to 1M concurrent agents (partitioning, sharding, LLM routing)
 - `specs/embedding.md` - Embedding contract and `PlatformDefinition`
 - `specs/code-organization.md` - Naming conventions, type flow, testing, error handling
+- `specs/migrations.md` - Database migration naming, squashing, ordering, and conflict resolution
 - `specs/models.md` - Data models (Agent, Session, Message, etc.)
 - `specs/apis.md` - HTTP API endpoints, error handling
 - `specs/events.md` - Event types, SSE streaming
