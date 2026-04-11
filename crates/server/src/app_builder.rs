@@ -697,7 +697,7 @@ impl ServerAppBuilder {
                 self.config.api_prefix.trim_end_matches('/')
             )
         });
-        let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
+        let mut mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
             runner.clone(),
             auth_state.clone(),
@@ -818,6 +818,13 @@ impl ServerAppBuilder {
         for routes in self.extra_routes {
             api_routes = api_routes.merge(routes);
         }
+
+        // Pass the API router to MCP state for in-process routing (no HTTP loopback).
+        // Clone before rate limiting — MCP endpoint has its own rate limiting.
+        mcp_endpoint_state.set_api_router(build_router_with_prefix(
+            api_routes.clone(),
+            &self.config.api_prefix,
+        ));
 
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.

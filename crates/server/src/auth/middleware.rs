@@ -474,6 +474,12 @@ where
     type Rejection = AuthError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // Fast path: pre-resolved org injected by internal callers (e.g. MCP
+        // builtins routing through the API router in-process).  Skips full auth.
+        if let Some(org) = parts.extensions.get::<ResolvedOrg>().cloned() {
+            return Ok(org);
+        }
+
         // First extract the authenticated user
         let user = AuthUser::from_request_parts(parts, state).await?;
 
