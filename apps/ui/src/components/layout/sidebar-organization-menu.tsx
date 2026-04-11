@@ -52,7 +52,7 @@ function CreateOrganizationDialog({
     setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
     setName("");
     onOpenChange(false);
-    router.push("/dashboard");
+    router.push(`/orgs/${org.id}/setup`);
   };
 
   return (
@@ -61,7 +61,8 @@ function CreateOrganizationDialog({
         <DialogHeader>
           <DialogTitle>Create Organisation</DialogTitle>
           <DialogDescription>
-            Create a new organisation. You will be added as a member automatically.
+            Create a new organisation. You will be added as a member
+            automatically.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -81,10 +82,17 @@ function CreateOrganizationDialog({
             </p>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={createOrg.isPending || !name.trim()}>
+            <Button
+              type="submit"
+              disabled={createOrg.isPending || !name.trim()}
+            >
               {createOrg.isPending ? "Creating..." : "Create"}
             </Button>
           </DialogFooter>
@@ -153,7 +161,10 @@ export function SidebarOrganizationMenu({
       </div>
 
       {useDefaultCreateOrgDialog && (
-        <CreateOrganizationDialog open={createOrgOpen} onOpenChange={setCreateOrgOpen} />
+        <CreateOrganizationDialog
+          open={createOrgOpen}
+          onOpenChange={setCreateOrgOpen}
+        />
       )}
     </>
   );

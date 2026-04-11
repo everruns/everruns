@@ -58,8 +58,10 @@ export default function OrganisationPage() {
       return;
     }
 
-    const genericHarnessId = harnesses.find((h) => h.name === "Generic")?.id || "";
-    const baseHarnessFallbackId = harnesses.find((h) => h.name === "Base")?.id || "";
+    const genericHarnessId =
+      harnesses.find((h) => h.name === "Generic")?.id || "";
+    const baseHarnessFallbackId =
+      harnesses.find((h) => h.name === "Base")?.id || "";
 
     setName(organization.name);
     setDefaultHarnessId(organization.default_harness_id || genericHarnessId);
@@ -74,7 +76,8 @@ export default function OrganisationPage() {
   };
 
   const handleSave = async () => {
-    if (!hasChanges || !name.trim() || !defaultHarnessId || !baseHarnessId) return;
+    if (!hasChanges || !name.trim() || !defaultHarnessId || !baseHarnessId)
+      return;
 
     await updateOrganization.mutateAsync({
       name: name.trim(),
@@ -85,7 +88,13 @@ export default function OrganisationPage() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && hasChanges && name.trim() && defaultHarnessId && baseHarnessId) {
+    if (
+      e.key === "Enter" &&
+      hasChanges &&
+      name.trim() &&
+      defaultHarnessId &&
+      baseHarnessId
+    ) {
       handleSave();
     }
   };
@@ -94,11 +103,13 @@ export default function OrganisationPage() {
     e.preventDefault();
     if (!newOrgName.trim()) return;
 
-    const org = await createOrganization.mutateAsync({ name: newOrgName.trim() });
+    const org = await createOrganization.mutateAsync({
+      name: newOrgName.trim(),
+    });
     setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
     setNewOrgName("");
     setCreateDialogOpen(false);
-    router.push("/dashboard");
+    router.push(`/orgs/${org.id}/setup`);
   };
 
   if (error) {
@@ -107,11 +118,15 @@ export default function OrganisationPage() {
         <section>
           <div className="mb-4">
             <h2 className="text-xl font-semibold">Organisation</h2>
-            <p className="text-sm text-muted-foreground">Manage organisation settings.</p>
+            <p className="text-sm text-muted-foreground">
+              Manage organisation settings.
+            </p>
           </div>
           <Card className="p-8 text-center">
             <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
-            <h3 className="text-lg font-medium mb-2">Failed to load organisation</h3>
+            <h3 className="text-lg font-medium mb-2">
+              Failed to load organisation
+            </h3>
             <p className="text-muted-foreground">{error.message}</p>
           </Card>
         </section>
@@ -125,7 +140,9 @@ export default function OrganisationPage() {
       <section>
         <div className="mb-6">
           <h2 className="text-xl font-semibold">Organisation</h2>
-          <p className="text-sm text-muted-foreground">Manage organisation settings.</p>
+          <p className="text-sm text-muted-foreground">
+            Manage organisation settings.
+          </p>
         </div>
 
         {isLoading ? (
@@ -148,8 +165,12 @@ export default function OrganisationPage() {
                 <Building2 className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <h3 className="font-medium">{organization?.name || currentOrg?.name}</h3>
-                <p className="text-sm text-muted-foreground">Organisation settings</p>
+                <h3 className="font-medium">
+                  {organization?.name || currentOrg?.name}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Organisation settings
+                </p>
               </div>
             </div>
 
@@ -177,7 +198,8 @@ export default function OrganisationPage() {
                   placeholder="Select default harness"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Used as the normal starting harness in the UI. New orgs default this to Generic.
+                  Used as the normal starting harness in the UI. New orgs
+                  default this to Generic.
                 </p>
               </div>
 
@@ -192,8 +214,8 @@ export default function OrganisationPage() {
                   placeholder="Select base harness"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Used only when a session starts without an explicit harness. New orgs default this
-                  to Base.
+                  Used only when a session starts without an explicit harness.
+                  New orgs default this to Base.
                 </p>
               </div>
 
@@ -236,7 +258,9 @@ export default function OrganisationPage() {
                     readOnly
                     className="font-mono text-sm bg-muted"
                   />
-                  <CopyButton value={organization?.id || currentOrg?.public_id || ""} />
+                  <CopyButton
+                    value={organization?.id || currentOrg?.public_id || ""}
+                  />
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Use this ID when making API calls scoped to this organisation.
@@ -252,7 +276,9 @@ export default function OrganisationPage() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold">Your Organisations</h2>
-            <p className="text-sm text-muted-foreground">All organisations you are a member of.</p>
+            <p className="text-sm text-muted-foreground">
+              All organisations you are a member of.
+            </p>
           </div>
           <Button onClick={() => setCreateDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
@@ -269,14 +295,18 @@ export default function OrganisationPage() {
                 className={`p-4 flex items-center justify-between ${isCurrent ? "border-primary/50" : ""}`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${isCurrent ? "bg-primary/10" : "bg-muted"}`}>
+                  <div
+                    className={`p-2 rounded-lg ${isCurrent ? "bg-primary/10" : "bg-muted"}`}
+                  >
                     <Building2
                       className={`h-4 w-4 ${isCurrent ? "text-primary" : "text-muted-foreground"}`}
                     />
                   </div>
                   <div>
                     <p className="font-medium">{org.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{org.public_id}</p>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {org.public_id}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -286,7 +316,11 @@ export default function OrganisationPage() {
                       Current
                     </span>
                   ) : (
-                    <Button variant="outline" size="sm" onClick={() => setCurrentOrg(org)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentOrg(org)}
+                    >
                       Switch
                     </Button>
                   )}
@@ -303,7 +337,8 @@ export default function OrganisationPage() {
           <DialogHeader>
             <DialogTitle>Create Organisation</DialogTitle>
             <DialogDescription>
-              Create a new organisation. You will be added as a member automatically.
+              Create a new organisation. You will be added as a member
+              automatically.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateOrg} className="space-y-4">
@@ -323,10 +358,17 @@ export default function OrganisationPage() {
               </p>
             )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateDialogOpen(false)}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={createOrganization.isPending || !newOrgName.trim()}>
+              <Button
+                type="submit"
+                disabled={createOrganization.isPending || !newOrgName.trim()}
+              >
                 {createOrganization.isPending ? "Creating..." : "Create"}
               </Button>
             </DialogFooter>

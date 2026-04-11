@@ -1,6 +1,9 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Sidebar } from "@/components/layout/sidebar";
-import type { SidebarConfig, NavigationSection } from "@/components/layout/sidebar";
+import type {
+  SidebarConfig,
+  NavigationSection,
+} from "@/components/layout/sidebar";
 import { Settings, Zap } from "lucide-react";
 
 // Mock next/navigation
@@ -18,9 +21,19 @@ jest.mock("next/navigation", () => ({
 // Mock next/image
 jest.mock("next/image", () => ({
   __esModule: true,
-  default: (props: { src: string; alt: string; width: number; height: number }) => (
+  default: (props: {
+    src: string;
+    alt: string;
+    width: number;
+    height: number;
+  }) => (
     // eslint-disable-next-line nextjs/no-img-element
-    <img src={props.src} alt={props.alt} width={props.width} height={props.height} />
+    <img
+      src={props.src}
+      alt={props.alt}
+      width={props.width}
+      height={props.height}
+    />
   ),
 }));
 
@@ -157,10 +170,18 @@ describe("Sidebar", () => {
       .getAllByRole("link")
       .filter(
         (link) =>
-          link.getAttribute("href") !== "/dashboard" || link.textContent?.includes("Dashboard"),
+          link.getAttribute("href") !== "/dashboard" ||
+          link.textContent?.includes("Dashboard"),
       );
     // Filter to only nav items (Chat, Dashboard, Harnesses, Agents, Capabilities, Settings)
-    const navItems = ["Chat", "Dashboard", "Harnesses", "Agents", "Capabilities", "Settings"];
+    const navItems = [
+      "Chat",
+      "Dashboard",
+      "Harnesses",
+      "Agents",
+      "Capabilities",
+      "Settings",
+    ];
     const foundNavLinks = navLinks.filter((link) =>
       navItems.some((item) => link.textContent?.includes(item)),
     );
@@ -274,10 +295,15 @@ describe("Sidebar with config", () => {
       { items: [{ name: "Home", href: "/home", icon: Settings }] },
     ];
     const extra: NavigationSection[] = [
-      { label: "Extra", items: [{ name: "Extra Item", href: "/extra", icon: Zap }] },
+      {
+        label: "Extra",
+        items: [{ name: "Extra Item", href: "/extra", icon: Zap }],
+      },
     ];
 
-    render(<Sidebar config={{ navigation: customNav, extraSections: extra }} />);
+    render(
+      <Sidebar config={{ navigation: customNav, extraSections: extra }} />,
+    );
 
     expect(screen.getByText("Home")).toBeInTheDocument();
     expect(screen.getByText("Extra")).toBeInTheDocument();
@@ -295,14 +321,18 @@ describe("Sidebar with config", () => {
     render(<Sidebar config={config} />);
 
     // Dialog title should not be in the DOM when custom handler overrides default
-    expect(screen.queryByText("Create a new organisation")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Create a new organisation"),
+    ).not.toBeInTheDocument();
     // The org selector trigger should still render
     expect(screen.getByText("Test Org")).toBeInTheDocument();
   });
 
   it("renders sections without labels (unlabeled sections)", () => {
     const customNav: NavigationSection[] = [
-      { items: [{ name: "Unlabeled Item", href: "/unlabeled", icon: Settings }] },
+      {
+        items: [{ name: "Unlabeled Item", href: "/unlabeled", icon: Settings }],
+      },
     ];
 
     render(<Sidebar config={{ navigation: customNav }} />);
@@ -332,7 +362,9 @@ describe("Sidebar with config", () => {
     mockPathname.mockReturnValue("/custom/child");
     const customNav: NavigationSection[] = [
       {
-        items: [{ name: "Exact Only", href: "/custom", icon: Settings, exact: true }],
+        items: [
+          { name: "Exact Only", href: "/custom", icon: Settings, exact: true },
+        ],
       },
     ];
 
@@ -393,7 +425,7 @@ describe("Create Organisation dialog", () => {
         name: "New Org",
         role: "owner",
       });
-      expect(mockPush).toHaveBeenCalledWith("/dashboard");
+      expect(mockPush).toHaveBeenCalledWith("/orgs/org_new123/setup");
     });
   });
 
