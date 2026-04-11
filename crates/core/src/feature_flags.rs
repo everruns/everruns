@@ -4,6 +4,7 @@
 // Decision: Flags marked "experimental" auto-enable in dev (DeploymentGrade::Dev).
 // Decision: Explicit env var (FEATURE_<NAME>=true/false) always takes priority.
 // Decision: Struct-based for type safety; `is_enabled(&str)` for dynamic lookup.
+// Decision: Two visibility levels — API (serialized to JSON) and backend-only (#[serde(skip)]).
 // Decision: Future extensibility: per-org/per-user flags, external providers (LaunchDarkly).
 // Decision: No database storage needed yet — env vars + deployment grade suffice.
 
@@ -27,8 +28,8 @@ pub struct FeatureFlags {
     pub mcp_endpoint: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
     pub evals: bool,
-    /// Docker container capability. Standard (disabled by default on all envs).
-    /// Internal-only — not exposed via API (skip serialization).
+    /// Docker container capability. Standard, backend-only.
+    /// Disabled by default on all envs. Enable via `FEATURE_DOCKER_CAPABILITY=true`.
     #[serde(skip)]
     pub docker_capability: bool,
 }

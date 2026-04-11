@@ -24,16 +24,23 @@ System-level feature flags that control feature availability across the platform
 - **Experimental**: Auto-enabled in dev, disabled in prod. Use for features under active development.
 - **Standard**: Off by default everywhere. Enabled explicitly via env var.
 
+### Flag Visibility
+
+Flags have two visibility levels:
+
+- **API** (default): Included in `GET /v1/feature-flags` JSON response. Available to frontend via `useFeatureFlag()`. Use for flags that gate UI features or user-visible behavior.
+- **Backend-only**: Excluded from API response via `#[serde(skip)]`. Used purely for internal backend gating (capability registration, infrastructure behavior). Not added to frontend types.
+
 ## Current Flags
 
-| Flag | Type | Env Var | Description |
-|------|------|---------|-------------|
-| `global_chat` | Experimental | `FEATURE_GLOBAL_CHAT` | Per-user singleton chat session |
-| `apps` | Experimental | `FEATURE_APPS` | Agent deployment to distribution channels |
-| `notifications` | Standard | `FEATURE_NOTIFICATIONS` | In-app notifications (bell, toasts, SSE) |
-| `mcp_endpoint` | Experimental | `FEATURE_MCP_ENDPOINT` | POST /mcp endpoint (Everruns as MCP server) |
-| `evals` | Experimental | `FEATURE_EVALS` | User-facing behavioral evals for agents |
-| `docker_capability` | Standard | `FEATURE_DOCKER_CAPABILITY` | Docker container capability (disabled by default on all envs) |
+| Flag | Type | Visibility | Env Var | Description |
+|------|------|------------|---------|-------------|
+| `global_chat` | Experimental | API | `FEATURE_GLOBAL_CHAT` | Per-user singleton chat session |
+| `apps` | Experimental | API | `FEATURE_APPS` | Agent deployment to distribution channels |
+| `notifications` | Standard | API | `FEATURE_NOTIFICATIONS` | In-app notifications (bell, toasts, SSE) |
+| `mcp_endpoint` | Experimental | API | `FEATURE_MCP_ENDPOINT` | POST /mcp endpoint (Everruns as MCP server) |
+| `evals` | Experimental | API | `FEATURE_EVALS` | User-facing behavioral evals for agents |
+| `docker_capability` | Standard | Backend-only | `FEATURE_DOCKER_CAPABILITY` | Docker container capability (disabled by default on all envs) |
 
 See `crates/core/src/feature_flags.rs` for the full `FeatureFlags` struct and resolution logic.
 
@@ -42,7 +49,7 @@ See `crates/core/src/feature_flags.rs` for the full `FeatureFlags` struct and re
 ### Backend
 
 - **Core**: `crates/core/src/feature_flags.rs` — `FeatureFlags` struct, `from_env()`, resolution helpers
-- **API**: `GET /v1/feature-flags` — public endpoint, returns `FeatureFlags` as JSON
+- **API**: `GET /v1/feature-flags` — public endpoint, returns `FeatureFlags` as JSON (backend-only flags excluded via `#[serde(skip)]`)
 - **Server**: `crates/server/src/api/feature_flags.rs` — route handler
 
 Flags are computed once at server startup and served from memory.
@@ -61,13 +68,23 @@ passed via gRPC turn context.
 
 ## Adding a New Flag
 
+### API-visible flag (gates UI or user-visible behavior)
+
 1. Add field to `FeatureFlags` struct in `crates/core/src/feature_flags.rs`
 2. Add resolution in `from_env()` using `experimental_flag()` or `standard_flag()`
 3. Add to `is_enabled()` match arm
-4. Update `default()` and `all_enabled()`
-5. Add to `FeatureFlags` interface in `apps/ui/src/lib/api/types.ts`
+4. Update `all_enabled()`
+5. Add to `FeatureFlags` interface in `apps/ui/src/lib/api/types/auth-types.ts`
 6. Add to `DEFAULT_FLAGS` in `apps/ui/src/providers/feature-flags-provider.tsx`
 7. Use `useFeatureFlag("flag_name")` in UI components
+
+### Backend-only flag (gates internal behavior, not exposed to API/UI)
+
+1. Add field to `FeatureFlags` struct with `#[serde(skip)]` attribute
+2. Add resolution in `from_env()` using `experimental_flag()` or `standard_flag()`
+3. Add to `is_enabled()` match arm
+4. Update `all_enabled()`
+5. Do NOT add to frontend types or defaults
 
 ## UI Indication
 
