@@ -692,12 +692,8 @@ impl ServerAppBuilder {
             platform_definition.as_ref(),
             notifications_enabled,
             event_delivery.clone(),
-<<<<<<< ours
             encryption.clone(),
-||||||| base
-=======
             capability_service.clone(),
->>>>>>> theirs
         );
 
         let health_state = HealthState {
