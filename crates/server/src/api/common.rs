@@ -360,13 +360,13 @@ impl UrlBuilder {
         Self::new(&config.base_url, &config.frontend_url)
     }
 
-    /// Wrap a single resource with `url` and `view_url`.
+    /// Wrap a single resource with `self_url` and `view_url`.
     pub fn wrap<T: ResourceUrlable + Serialize>(&self, item: T) -> WithUrls<T> {
         let id = item.resource_id();
         let api_path = T::api_path();
         let ui_path = T::ui_path();
         WithUrls {
-            url: format!("{}/{}/{}", self.api_base, api_path, id),
+            self_url: format!("{}/{}/{}", self.api_base, api_path, id),
             view_url: format!("{}/{}/{}", self.ui_base, ui_path, id),
             inner: item,
         }
@@ -388,11 +388,14 @@ pub trait ResourceUrlable {
     fn resource_id(&self) -> String;
 }
 
-/// Wrapper that adds `url` and `view_url` to a serialized resource.
+/// Wrapper that adds `self_url` and `view_url` to a serialized resource.
+///
+/// Uses `self_url` (not `url`) for the API link to avoid collision with
+/// resources that already have a `url` field (e.g. McpServer).
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct WithUrls<T: Serialize> {
     /// Full API endpoint URL for this resource.
-    pub url: String,
+    pub self_url: String,
     /// Full UI URL for viewing this resource.
     pub view_url: String,
     /// The resource itself (fields are flattened into the parent object).
@@ -469,12 +472,17 @@ impl_resource_urlable!(
     "llm-models",
     id
 );
-impl_resource_urlable!(
-    everruns_core::session_schedule::SessionSchedule,
-    "v1/schedules",
-    "durable/schedules",
-    id
-);
+impl ResourceUrlable for everruns_core::session_schedule::SessionSchedule {
+    fn api_path() -> &'static str {
+        "v1/sessions"
+    }
+    fn ui_path() -> &'static str {
+        "sessions"
+    }
+    fn resource_id(&self) -> String {
+        format!("{}/schedules/{}", self.session_id, self.id)
+    }
+}
 
 impl ResourceUrlable for everruns_core::CapabilityInfo {
     fn api_path() -> &'static str {

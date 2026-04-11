@@ -9252,11 +9252,11 @@
                 {
                   "type": "object",
                   "required": [
-                    "url",
+                    "self_url",
                     "view_url"
                   ],
                   "properties": {
-                    "url": {
+                    "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
                     },
@@ -9267,7 +9267,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+              "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -9348,11 +9348,11 @@
                 {
                   "type": "object",
                   "required": [
-                    "url",
+                    "self_url",
                     "view_url"
                   ],
                   "properties": {
-                    "url": {
+                    "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
                     },
@@ -9363,7 +9363,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+              "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -9463,11 +9463,11 @@
                 {
                   "type": "object",
                   "required": [
-                    "url",
+                    "self_url",
                     "view_url"
                   ],
                   "properties": {
-                    "url": {
+                    "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
                     },
@@ -9478,7 +9478,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+              "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -9552,11 +9552,11 @@
                 {
                   "type": "object",
                   "required": [
-                    "url",
+                    "self_url",
                     "view_url"
                   ],
                   "properties": {
-                    "url": {
+                    "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
                     },
@@ -9567,7 +9567,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+              "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -9685,11 +9685,11 @@
                 {
                   "type": "object",
                   "required": [
-                    "url",
+                    "self_url",
                     "view_url"
                   ],
                   "properties": {
-                    "url": {
+                    "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
                     },
@@ -9700,7 +9700,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+              "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -9812,11 +9812,11 @@
                 {
                   "type": "object",
                   "required": [
-                    "url",
+                    "self_url",
                     "view_url"
                   ],
                   "properties": {
-                    "url": {
+                    "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
                     },
@@ -9827,7 +9827,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+              "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -11482,11 +11482,11 @@
                 {
                   "type": "object",
                   "required": [
-                    "url",
+                    "self_url",
                     "view_url"
                   ],
                   "properties": {
-                    "url": {
+                    "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
                     },
@@ -11497,7 +11497,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+              "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
             },
             "description": "Array of items returned by the list operation."
           },
@@ -11620,11 +11620,11 @@
                 {
                   "type": "object",
                   "required": [
-                    "url",
+                    "self_url",
                     "view_url"
                   ],
                   "properties": {
-                    "url": {
+                    "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
                     },
@@ -11635,7 +11635,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+              "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
             },
             "description": "Array of items returned by the list operation."
           },
@@ -11928,11 +11928,11 @@
                 {
                   "type": "object",
                   "required": [
-                    "url",
+                    "self_url",
                     "view_url"
                   ],
                   "properties": {
-                    "url": {
+                    "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
                     },
@@ -11943,7 +11943,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+              "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
             },
             "description": "Array of items returned by the list operation."
           },
@@ -14846,11 +14846,11 @@
           {
             "type": "object",
             "required": [
-              "url",
+              "self_url",
               "view_url"
             ],
             "properties": {
-              "url": {
+              "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
               },
@@ -14861,7 +14861,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+        "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
       },
       "WithUrls_CapabilityInfo": {
         "allOf": [
@@ -14950,11 +14950,11 @@
           {
             "type": "object",
             "required": [
-              "url",
+              "self_url",
               "view_url"
             ],
             "properties": {
-              "url": {
+              "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
               },
@@ -14965,7 +14965,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+        "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
       },
       "WithUrls_Harness": {
         "allOf": [
@@ -15095,11 +15095,11 @@
           {
             "type": "object",
             "required": [
-              "url",
+              "self_url",
               "view_url"
             ],
             "properties": {
-              "url": {
+              "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
               },
@@ -15110,7 +15110,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+        "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
       },
       "WithUrls_LlmModel": {
         "allOf": [
@@ -15178,11 +15178,11 @@
           {
             "type": "object",
             "required": [
-              "url",
+              "self_url",
               "view_url"
             ],
             "properties": {
-              "url": {
+              "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
               },
@@ -15193,7 +15193,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+        "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
       },
       "WithUrls_LlmModelWithProvider": {
         "allOf": [
@@ -15280,11 +15280,11 @@
           {
             "type": "object",
             "required": [
-              "url",
+              "self_url",
               "view_url"
             ],
             "properties": {
-              "url": {
+              "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
               },
@@ -15295,7 +15295,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+        "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
       },
       "WithUrls_LlmProvider": {
         "allOf": [
@@ -15356,11 +15356,11 @@
           {
             "type": "object",
             "required": [
-              "url",
+              "self_url",
               "view_url"
             ],
             "properties": {
-              "url": {
+              "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
               },
@@ -15371,7 +15371,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+        "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
       },
       "WithUrls_McpServer": {
         "allOf": [
@@ -15476,11 +15476,11 @@
           {
             "type": "object",
             "required": [
-              "url",
+              "self_url",
               "view_url"
             ],
             "properties": {
-              "url": {
+              "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
               },
@@ -15491,7 +15491,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+        "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
       },
       "WithUrls_Session": {
         "allOf": [
@@ -15750,11 +15750,11 @@
           {
             "type": "object",
             "required": [
-              "url",
+              "self_url",
               "view_url"
             ],
             "properties": {
-              "url": {
+              "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
               },
@@ -15765,7 +15765,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+        "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
       },
       "WithUrls_Skill": {
         "allOf": [
@@ -15864,11 +15864,11 @@
           {
             "type": "object",
             "required": [
-              "url",
+              "self_url",
               "view_url"
             ],
             "properties": {
-              "url": {
+              "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
               },
@@ -15879,7 +15879,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds `url` and `view_url` to a serialized resource."
+        "description": "Wrapper that adds `self_url` and `view_url` to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
       }
     }
   },
