@@ -673,12 +673,12 @@ impl CapabilityRegistry {
         registry.register(FakeFinancialCapability);
 
         // External integration plugins (registered via inventory::submit! in integration crates)
-        let feature_flags = crate::FeatureFlags::from_env(&grade);
+        let internal_flags = crate::InternalFeatureFlags::from_env();
         for plugin in inventory::iter::<IntegrationPlugin>() {
             if (!plugin.experimental_only || grade.experimental_features_enabled())
                 && plugin
                     .feature_flag
-                    .is_none_or(|f| feature_flags.is_enabled(f))
+                    .is_none_or(|f| internal_flags.is_enabled(f))
             {
                 registry.register_boxed((plugin.factory)());
             }

@@ -4,7 +4,7 @@
 // Decision: Flags marked "experimental" auto-enable in dev (DeploymentGrade::Dev).
 // Decision: Explicit env var (FEATURE_<NAME>=true/false) always takes priority.
 // Decision: Struct-based for type safety; `is_enabled(&str)` for dynamic lookup.
-// Decision: Two visibility levels — API (serialized to JSON) and backend-only (#[serde(skip)]).
+// Decision: Two structs — FeatureFlags (API-visible) and InternalFeatureFlags (backend-only).
 // Decision: Future extensibility: per-org/per-user flags, external providers (LaunchDarkly).
 // Decision: No database storage needed yet — env vars + deployment grade suffice.
 
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::deployment::DeploymentGrade;
 
-/// System-level feature flags.
+/// Feature flags exposed via `GET /v1/feature-flags` and consumed by the frontend.
 ///
 /// Currently backed by environment variables and deployment grade.
 /// Future: per-org flags, per-user flags, external providers.
@@ -28,10 +28,6 @@ pub struct FeatureFlags {
     pub mcp_endpoint: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
     pub evals: bool,
-    /// Docker container capability. Standard, backend-only.
-    /// Disabled by default on all envs. Enable via `FEATURE_DOCKER_CAPABILITY=true`.
-    #[serde(skip)]
-    pub docker_capability: bool,
 }
 
 impl FeatureFlags {
@@ -43,7 +39,6 @@ impl FeatureFlags {
             notifications: standard_flag("FEATURE_NOTIFICATIONS", false),
             mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
             evals: experimental_flag("FEATURE_EVALS", grade),
-            docker_capability: standard_flag("FEATURE_DOCKER_CAPABILITY", false),
         }
     }
 
@@ -55,7 +50,6 @@ impl FeatureFlags {
             "notifications" => self.notifications,
             "mcp_endpoint" => self.mcp_endpoint,
             "evals" => self.evals,
-            "docker_capability" => self.docker_capability,
             _ => false,
         }
     }
@@ -69,7 +63,33 @@ impl FeatureFlags {
             notifications: true,
             mcp_endpoint: true,
             evals: true,
-            docker_capability: true,
+        }
+    }
+}
+
+/// Backend-only feature flags. Not exposed via API or frontend.
+///
+/// Used for internal gating (capability registration, infrastructure behavior).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct InternalFeatureFlags {
+    /// Docker container capability. Disabled by default on all envs.
+    /// Enable via `FEATURE_DOCKER_CAPABILITY=true`.
+    pub docker_capability: bool,
+}
+
+impl InternalFeatureFlags {
+    /// Compute internal feature flags from environment variables.
+    pub fn from_env() -> Self {
+        Self {
+            docker_capability: standard_flag("FEATURE_DOCKER_CAPABILITY", false),
+        }
+    }
+
+    /// Look up a flag by name (for dynamic/string-based access).
+    pub fn is_enabled(&self, flag: &str) -> bool {
+        match flag {
+            "docker_capability" => self.docker_capability,
+            _ => false,
         }
     }
 }
@@ -110,7 +130,6 @@ mod tests {
         assert!(!flags.global_chat);
         assert!(!flags.apps);
         assert!(!flags.notifications);
-        assert!(!flags.docker_capability);
     }
 
     // SAFETY: env var tests must run single-threaded (--test-threads=1).
@@ -166,14 +185,12 @@ mod tests {
             notifications: true,
             mcp_endpoint: true,
             evals: true,
-            docker_capability: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("apps"));
         assert!(flags.is_enabled("notifications"));
         assert!(flags.is_enabled("mcp_endpoint"));
         assert!(flags.is_enabled("evals"));
-        assert!(flags.is_enabled("docker_capability"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -185,22 +202,13 @@ mod tests {
             notifications: true,
             mcp_endpoint: true,
             evals: true,
-            docker_capability: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
         assert!(json.contains("\"notifications\":true"));
-        // docker_capability is #[serde(skip)] — not in API response
-        assert!(!json.contains("docker_capability"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
-        // Skipped fields default to false on deserialization
-        assert!(!parsed.docker_capability);
-        assert_eq!(parsed.global_chat, flags.global_chat);
-        assert_eq!(parsed.apps, flags.apps);
-        assert_eq!(parsed.notifications, flags.notifications);
-        assert_eq!(parsed.mcp_endpoint, flags.mcp_endpoint);
-        assert_eq!(parsed.evals, flags.evals);
+        assert_eq!(flags, parsed);
     }
 
     #[test]
@@ -232,11 +240,21 @@ mod tests {
         unsafe { std::env::remove_var("FEATURE_NOTIFICATIONS") };
     }
 
+    // =========================================================================
+    // InternalFeatureFlags tests
+    // =========================================================================
+
+    #[test]
+    fn test_internal_default_flags() {
+        let flags = InternalFeatureFlags::default();
+        assert!(!flags.docker_capability);
+    }
+
     #[test]
     fn test_docker_capability_flag_disabled_by_default_in_dev() {
         let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-        let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
+        let flags = InternalFeatureFlags::from_env();
         assert!(
             !flags.docker_capability,
             "docker_capability should be disabled by default even in dev"
@@ -247,8 +265,17 @@ mod tests {
     fn test_docker_capability_flag_enabled_by_env_override() {
         let _lock = lock_env();
         unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
-        let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
+        let flags = InternalFeatureFlags::from_env();
         assert!(flags.docker_capability);
         unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
+    }
+
+    #[test]
+    fn test_internal_is_enabled_dynamic() {
+        let flags = InternalFeatureFlags {
+            docker_capability: true,
+        };
+        assert!(flags.is_enabled("docker_capability"));
+        assert!(!flags.is_enabled("nonexistent"));
     }
 }

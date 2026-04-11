@@ -26,10 +26,10 @@ System-level feature flags that control feature availability across the platform
 
 ### Flag Visibility
 
-Flags have two visibility levels:
+Flags have two visibility levels, modeled as separate structs:
 
-- **API** (default): Included in `GET /v1/feature-flags` JSON response. Available to frontend via `useFeatureFlag()`. Use for flags that gate UI features or user-visible behavior.
-- **Backend-only**: Excluded from API response via `#[serde(skip)]`. Used purely for internal backend gating (capability registration, infrastructure behavior). Not added to frontend types.
+- **`FeatureFlags`** (API-visible): Included in `GET /v1/feature-flags` JSON response. Available to frontend via `useFeatureFlag()`. Use for flags that gate UI features or user-visible behavior.
+- **`InternalFeatureFlags`** (backend-only): Not serialized, not exposed via API. Used purely for internal backend gating (capability registration, infrastructure behavior). Not added to frontend types.
 
 ## Current Flags
 
@@ -48,8 +48,8 @@ See `crates/core/src/feature_flags.rs` for the full `FeatureFlags` struct and re
 
 ### Backend
 
-- **Core**: `crates/core/src/feature_flags.rs` — `FeatureFlags` struct, `from_env()`, resolution helpers
-- **API**: `GET /v1/feature-flags` — public endpoint, returns `FeatureFlags` as JSON (backend-only flags excluded via `#[serde(skip)]`)
+- **Core**: `crates/core/src/feature_flags.rs` — `FeatureFlags` + `InternalFeatureFlags` structs, `from_env()`, resolution helpers
+- **API**: `GET /v1/feature-flags` — public endpoint, returns `FeatureFlags` as JSON
 - **Server**: `crates/server/src/api/feature_flags.rs` — route handler
 
 Flags are computed once at server startup and served from memory.
@@ -80,11 +80,10 @@ passed via gRPC turn context.
 
 ### Backend-only flag (gates internal behavior, not exposed to API/UI)
 
-1. Add field to `FeatureFlags` struct with `#[serde(skip)]` attribute
-2. Add resolution in `from_env()` using `experimental_flag()` or `standard_flag()`
-3. Add to `is_enabled()` match arm
-4. Update `all_enabled()`
-5. Do NOT add to frontend types or defaults
+1. Add field to `InternalFeatureFlags` struct in `crates/core/src/feature_flags.rs`
+2. Add resolution in `InternalFeatureFlags::from_env()` using `standard_flag()`
+3. Add to `InternalFeatureFlags::is_enabled()` match arm
+4. Do NOT add to frontend types or defaults
 
 ## UI Indication
 
