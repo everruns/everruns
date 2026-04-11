@@ -36,7 +36,8 @@ Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
 | Daytona | [`integrations/daytona/SPEC.md`](../integrations/daytona/SPEC.md) | Cloud sandbox environments via Daytona REST API. Multiple sandboxes per session. |
 | Deno | [`integrations/deno/SPEC.md`](../integrations/deno/SPEC.md) | Cloud sandbox environments via Deno websocket sandbox API. Multiple sandboxes per session. |
 | Sprites | [`integrations/sprites/SPEC.md`](../integrations/sprites/SPEC.md) | Persistent Firecracker microVMs via Sprites (Fly.io). Persistent filesystem, checkpoints, HTTP services. |
-| Docker | `integrations/docker/` | Container-based agent execution. Experimental (Dev only). No spec yet. |
+| Container Sandbox | [`specs/container-sandbox.md`](container-sandbox.md) | Self-hosted container sandbox via Docker Engine REST API. Configurable runtime (runc, sysbox, kata, gvisor). |
+| Docker | `integrations/docker/` | Container-based agent execution. Experimental (Dev only). No spec yet. Superseded by Container Sandbox. |
 
 ## Messaging Integrations (`crates/server/`)
 
