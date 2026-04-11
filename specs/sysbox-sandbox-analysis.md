@@ -305,6 +305,210 @@ spec:
     # Worker creates inner containers via Docker CLI
 ```
 
+## SaaS Infrastructure: How Sysbox Fits
+
+### Current Production Topology (from `everruns/saas`)
+
+```
+          Cloudflare DNS (dns-only)
+                  │
+          dev.everruns.com
+                  │
+       ┌──────────┴──────────┐
+       │ Hetzner VPS (cpx21) │  Ubuntu 24.04, 3 vCPU, 4 GB RAM, 80 GB disk
+       │                     │
+       │  Caddy (:80/:443)   │  auto-TLS, reverse proxy
+       │    ├─ /api/* → server:9000
+       │    └─ /*     → ui:3000
+       │                     │
+       │  saas-server        │  control plane (HTTP + gRPC)
+       │  saas-worker ×3     │  stateless executors (gRPC to server)
+       │  saas-ui            │  Next.js frontend
+       │  NATS               │  JetStream (ephemeral events)
+       └──────────┬──────────┘
+                  │
+          Neon Postgres
+          (managed, aws-us-east-1)
+```
+
+**IaC**: Terraform Cloud → Hetzner + Cloudflare + Neon providers.
+**Deploy**: GitHub Actions → build Docker images → push GHCR → SSH to VPS → `docker compose pull && up`.
+**Secrets**: Doppler (CI project `everruns-dev`, runtime project `everruns`). Only `DOPPLER_TOKEN` on disk.
+**Systemd**: `everruns.service` runs `doppler run -- docker compose up` for reboot persistence.
+
+### Problem: Sysbox on Current Setup
+
+The current `cpx21` VPS (3 vCPU, 4 GB RAM) is a shared-CPU Hetzner instance running **all services on one host**. Sysbox adds several constraints:
+
+1. **Sysbox daemons need root on the host** — `sysbox-runc`, `sysbox-fs`, `sysbox-mgr` run as systemd services alongside Docker.
+2. **Kernel 5.12+ required** — Ubuntu 24.04 ships kernel 6.8+, so this is already satisfied.
+3. **Workers need Docker CLI access** — workers must `docker run --runtime=sysbox-runc`, meaning they either run on the host (not in Docker) or need Docker-in-Docker (which needs Sysbox itself, circular).
+4. **Resource headroom** — each Sysbox sandbox uses 150-500 MB RAM + CPU share. On a 4 GB host already running server + 3 workers + NATS + Caddy, there's limited room.
+
+### Deployment Options
+
+#### Option A: Workers on Host (Recommended for Dev)
+
+Workers run as native processes on the VPS (not containerized), with direct access to Docker + Sysbox:
+
+```
+┌─────────────────────────────────────────────┐
+│ Hetzner VPS (Ubuntu 24.04)                  │
+│                                             │
+│  systemd services:                          │
+│    sysbox.service      (sysbox daemons)     │
+│    everruns.service     (docker compose)     │
+│                                             │
+│  Docker Compose (server + ui + nats):       │
+│    ┌────────┐ ┌────┐ ┌──────┐ ┌──────┐     │
+│    │ Caddy  │ │NATS│ │Server│ │  UI  │     │
+│    └────────┘ └────┘ └──────┘ └──────┘     │
+│                                             │
+│  Native worker processes:                   │
+│    everruns-worker ×N  (direct Docker CLI)  │
+│         │                                   │
+│         ▼                                   │
+│    docker run --runtime=sysbox-runc ...     │
+│    ┌──────────┐ ┌──────────┐               │
+│    │ Sandbox1 │ │ Sandbox2 │  ...          │
+│    │(session) │ │(session) │               │
+│    └──────────┘ └──────────┘               │
+└─────────────────────────────────────────────┘
+```
+
+**Pros**: Simple, no Docker-in-Docker. Workers call `docker run` directly.
+**Cons**: Workers not containerized (less uniform). Needs worker binary installed on host.
+
+**Terraform changes**: Add Sysbox install to `cloud-init.yaml`, download worker binary, create worker systemd units.
+
+#### Option B: Privileged Worker Container with Docker Socket (Not Recommended)
+
+Mount `/var/run/docker.sock` into worker containers. Workers create Sysbox containers on the host via the socket.
+
+**Pros**: Workers stay in Docker Compose.
+**Cons**: Docker socket mount = root-equivalent on host. Defeats the purpose of Sysbox isolation. If an agent escapes the worker container via the socket, they own the host.
+
+#### Option C: Dedicated Sandbox Host (Recommended for Production)
+
+Separate the sandbox execution onto a different machine. Workers still run in Docker Compose, but sandbox operations go over SSH/API to a Sysbox-enabled host:
+
+```
+┌──────────────────────┐      ┌──────────────────────────┐
+│ Control Plane VPS    │      │ Sandbox Host(s)          │
+│                      │      │                          │
+│ Caddy + Server + UI  │ gRPC │ Worker(s) (native)       │
+│ NATS                 │◄────►│ Docker + Sysbox          │
+│                      │      │ Agent sandboxes           │
+└──────────┬───────────┘      └──────────────────────────┘
+           │
+     Neon Postgres
+```
+
+**Pros**: Control plane isolated from sandbox blast radius. Scale sandbox hosts independently. Sandbox host can be a bigger machine (dedicated CPU, more RAM).
+**Cons**: Two machines, more Terraform, cross-host gRPC networking.
+
+**Terraform changes**: New `hcloud_server` resource for sandbox host(s). Workers deployed on sandbox host. Firewall: allow gRPC (9001) from sandbox host to control plane.
+
+#### Option D: Sysbox Worker Container (Future / K8s)
+
+Run the worker itself in a Sysbox container. The worker can then create inner containers (Docker-in-Docker) for agent sandboxes:
+
+```
+Sysbox container (worker):
+  └─ Docker daemon (inner)
+       └─ Agent sandbox container (inner, runc)
+```
+
+**Pros**: Cleanest architecture. Worker + sandboxes fully isolated.
+**Cons**: Requires K8s with Sysbox RuntimeClass, or a host running Sysbox where the worker image starts its own Docker daemon. More complex orchestration. Sysbox nesting is not supported, so inner containers use standard runc (still isolated by outer Sysbox user-namespace).
+
+### Recommended Path
+
+| Phase | Option | Environment | VPS Size |
+|-------|--------|-------------|----------|
+| Dev/MVP | **A** (workers on host) | `cpx31` (4 vCPU, 8 GB) | Single VPS |
+| Staging | **C** (dedicated sandbox host) | `cpx31` control + `cpx41` sandbox | Two VPS |
+| Production | **C** or **D** | Dedicated pool or K8s | Scale-out |
+
+### Concrete Terraform Changes for Option A (Dev MVP)
+
+```hcl
+# Upgrade VPS type for sandbox headroom
+variable "server_type" {
+  default = "cpx31"  # was cpx21 (3 vCPU, 4 GB → 4 vCPU, 8 GB)
+}
+```
+
+**cloud-init.yaml additions:**
+
+```yaml
+runcmd:
+  # ... existing Docker install ...
+
+  # Install Sysbox
+  - wget -q https://downloads.nestybox.com/sysbox/releases/v0.7.0/sysbox-ce_0.7.0-0.linux_amd64.deb
+  - apt-get install -y ./sysbox-ce_0.7.0-0.linux_amd64.deb
+  - systemctl enable --now sysbox
+  - rm sysbox-ce_0.7.0-0.linux_amd64.deb
+
+  # Verify Sysbox runtime is registered with Docker
+  - docker info --format '{{.Runtimes}}' | grep -q sysbox-runc
+
+  # Download worker binary (same version as server image)
+  - |
+    docker create --name tmp-worker ghcr.io/everruns/saas-server:development
+    docker cp tmp-worker:/usr/local/bin/everruns-worker /usr/local/bin/
+    docker rm tmp-worker
+```
+
+**New systemd unit** `everruns-worker@.service` (template for N workers):
+
+```ini
+[Unit]
+Description=Everruns Worker %i
+After=everruns.service docker.service sysbox.service
+Requires=docker.service sysbox.service
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/everruns/doppler.env
+ExecStart=/usr/local/bin/doppler run -- /usr/local/bin/everruns-worker
+Environment=WORKER_GRPC_ADDRESS=127.0.0.1:9001
+Environment=RUST_LOG=info
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable with `systemctl enable everruns-worker@{1..3}`.
+
+**docker-compose.dev.yml changes**: Remove the `worker` service (workers now run natively). Server gRPC port exposed on localhost:
+
+```yaml
+  server:
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"  # gRPC for native workers
+```
+
+### Resource Budget (Option A, cpx31: 4 vCPU, 8 GB RAM)
+
+| Component | RAM | CPU |
+|-----------|-----|-----|
+| Server | ~300 MB | 0.5 |
+| Workers ×3 | ~150 MB each = 450 MB | 0.3 each |
+| NATS | ~50 MB | 0.1 |
+| Caddy | ~30 MB | 0.05 |
+| UI | ~200 MB | 0.2 |
+| Sysbox daemons | ~100 MB | 0.1 |
+| **Subtotal** | **~1.1 GB** | **~1.9** |
+| **Available for sandboxes** | **~6.5 GB** | **~2 vCPU** |
+| Sandboxes (2 GB each) | 3 concurrent | 1 CPU each |
+
+With a `cpx31`, you can comfortably run ~3 concurrent agent sandboxes. For more, upgrade to `cpx41` (8 vCPU, 16 GB) or split to Option C.
+
 ## Implementation Plan
 
 ### Phase 1: Core Integration (MVP)
