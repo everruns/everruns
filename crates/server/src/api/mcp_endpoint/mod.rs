@@ -833,7 +833,10 @@ async fn execute_script(
                 };
                 let trimmed = combined.trim();
                 if trimmed.is_empty() {
-                    Err(format!("Command failed with exit code {}", response.exit_code))
+                    Err(format!(
+                        "Command failed with exit code {}",
+                        response.exit_code
+                    ))
                 } else {
                     Err(trimmed.to_string())
                 }

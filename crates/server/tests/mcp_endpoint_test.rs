@@ -821,10 +821,7 @@ async fn test_mcp_execute_discover_categories() {
     let text = tool_text(&resp);
     assert!(text.contains("agents"), "Should list agents category");
     assert!(text.contains("sessions"), "Should list sessions category");
-    assert!(
-        text.contains("harnesses"),
-        "Should list harnesses category"
-    );
+    assert!(text.contains("harnesses"), "Should list harnesses category");
 }
 
 // ============================================================================
