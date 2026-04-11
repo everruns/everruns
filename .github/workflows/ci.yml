@@ -566,6 +566,7 @@ jobs:
     env:
       DEV_MODE: "true"
       AUTH_MODE: none
+      API_PREFIX: ""
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       DEFAULT_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       DEFAULT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -650,6 +651,7 @@ jobs:
     env:
       DEV_MODE: "true"
       AUTH_MODE: none
+      API_PREFIX: ""
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       EVERRUNS_API_KEY: sdk-compat-test-key
       EVERRUNS_BASE_URL: http://localhost:9000
@@ -890,8 +892,9 @@ jobs:
     steps:
       - name: Verify all jobs passed
         run: |
-          echo "Job results: ${{ toJson(needs.*.result) }}"
-          if echo "${{ toJson(needs.*.result) }}" | grep -qE '"failure"|"cancelled"'; then
+          results='${{ toJson(needs.*.result) }}'
+          echo "Job results: $results"
+          if echo "$results" | grep -qE '"failure"|"cancelled"'; then
             echo "One or more CI jobs failed or were cancelled"
             exit 1
           fi

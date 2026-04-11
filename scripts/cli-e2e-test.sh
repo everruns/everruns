@@ -46,8 +46,18 @@ detect_api_url() {
 }
 
 API_URL="$(detect_api_url)"
-CLI="./target/debug/everruns"
 SKIP_CHAT="${1:-}"
+
+# Resolve CLI binary: PATH > release build > debug build > build from source
+if command -v everruns >/dev/null 2>&1; then
+  CLI="$(command -v everruns)"
+elif [ -f "./target/release/everruns" ]; then
+  CLI="./target/release/everruns"
+elif [ -f "./target/debug/everruns" ]; then
+  CLI="./target/debug/everruns"
+else
+  CLI="./target/debug/everruns"
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -75,9 +85,10 @@ log_fail() {
 }
 
 # Check CLI is built
-if [ ! -f "$CLI" ]; then
+if [ ! -f "$CLI" ] && ! command -v everruns >/dev/null 2>&1; then
   echo "CLI not found at $CLI. Building..."
   cargo build -p everruns-cli
+  CLI="./target/debug/everruns"
 fi
 
 # Verify server is running
