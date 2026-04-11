@@ -46,7 +46,7 @@ pub fn build_scripted_tool(api_base: &str, api_key: &str) -> ScriptedTool {
 
     for op in CATALOG {
         let def = op_to_def(op);
-        let callback = make_http_callback(op.method, op.path, api_base, api_key);
+        let callback = make_http_callback(op, api_base, api_key);
         builder = builder.tool(def, callback);
     }
 
@@ -87,12 +87,59 @@ fn op_to_def(op: &Operation) -> ToolDef {
         .with_category(op.category)
 }
 
+/// Map catalog param type to display type (same logic as op_to_def).
+fn display_type(typ: &str) -> &str {
+    match typ {
+        "array" => "array",
+        "object" => "object",
+        "integer" => "integer",
+        "boolean" => "boolean",
+        _ => "string", // path, query, string all display as string
+    }
+}
+
+/// Client-side flags that are never forwarded to the API.
+const CLIENT_FLAGS: &[&str] = &["summary", "help"];
+
+/// Generate local --help text for an operation.
+fn format_help(op: &Operation) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("{} — {}\n\n", op.name, op.description));
+    out.push_str(&format!("Usage: {} [OPTIONS]\n", op.name));
+    out.push_str(&format!("  API: {} {}\n\n", op.method, op.path));
+
+    let api_params: Vec<&Param> = op
+        .params
+        .iter()
+        .filter(|p| !CLIENT_FLAGS.contains(&p.name))
+        .collect();
+    if !api_params.is_empty() {
+        out.push_str("Options:\n");
+        for p in api_params {
+            let required = if p.typ == "path" { " (required)" } else { "" };
+            out.push_str(&format!(
+                "  --{:<24} {}  [{}{}]\n",
+                p.name,
+                p.description,
+                display_type(p.typ),
+                required
+            ));
+        }
+        out.push('\n');
+    }
+
+    out.push_str("Flags:\n");
+    out.push_str("  --help                     Show this help message\n");
+    out.push_str("  --summary                  Return only id, name, description, status fields\n");
+    out
+}
+
 /// Create an HTTP callback for an API operation.
 ///
-/// Uses `tokio::task::block_in_place` to bridge sync callback → async reqwest.
+/// Intercepts `--help` locally; all other invocations make an HTTP request
+/// to the local API via `tokio::task::block_in_place`.
 fn make_http_callback(
-    method: &'static str,
-    path_template: &'static str,
+    op: &'static Operation,
     api_base: &str,
     api_key: &str,
 ) -> impl Fn(&ToolArgs) -> Result<String, String> + Send + Sync + 'static {
@@ -102,6 +149,16 @@ fn make_http_callback(
     move |args: &ToolArgs| {
         let params = &args.params;
 
+        // Local --help: never hits the API
+        if params.get("help").is_some_and(|v| {
+            v.as_bool().unwrap_or(false) || v.as_str().is_some_and(|s| s == "true")
+        }) {
+            return Ok(format_help(op));
+        }
+
+        let method = op.method;
+        let path_template = op.path;
+
         // Substitute path parameters into the URL template
         let mut path = path_template.to_string();
         let mut body_params = serde_json::Map::new();
@@ -110,8 +167,10 @@ fn make_http_callback(
 
         if let Some(obj) = params.as_object() {
             for (key, value) in obj {
-                // Intercept summary — handled client-side via apply_summary_filter,
-                // never forwarded to the API.
+                // Skip client-side flags — never forwarded to the API.
+                if key == "help" {
+                    continue;
+                }
                 if key == "summary" {
                     wants_summary = value.as_bool().unwrap_or(false)
                         || value.as_str().is_some_and(|s| s == "true");
