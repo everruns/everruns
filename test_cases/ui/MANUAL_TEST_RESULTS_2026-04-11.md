@@ -11,21 +11,38 @@
 
 | Category | Tests | Pass | Fail/Partial | Issues |
 |----------|-------|------|-------------|--------|
-| api_keys | 1 | 1 | 0 | 0 |
-| **Total** | **1** | **1** | **0** | **0** |
+| api_keys | 1 | 0 | 1 | 1 |
+| **Total** | **1** | **0** | **1** | **1** |
 
 ## Detailed Results
 
-### api_keys (1/1 PASS)
+### api_keys (0/1 PASS)
 
-- **TC001 API Key Bound to Organisation at Creation**: PASS - API key created while "API Key Binding Test" org is active correctly scopes all downstream operations (agent creation, agent listing) to that org only. Agent created via the API key appeared in the new org and did not appear in the default org, confirming org isolation.
+- **TC001 API Key Bound to Organisation at Creation**: PARTIAL — API key created through the browser UI after creating and switching to a new org was silently bound to the **default org** instead of the new org. The EVE-274 failure signature was observed.
 
-**Verification details:**
+**Run 1 (pure UI flow — exposed EVE-274):**
 
-1. Created org "API Key Binding Test" via `POST /v1/orgs`
-2. Switched to new org via `POST /v1/users/me/switch-org` (server-side cookie set)
-3. Created API key `properly-bound-key` via `POST /v1/auth/api-keys` with correct org cookie
-4. Created agent `new-org-agent` via `POST /v1/agents` using the API key
-5. Verified agent appears in new org (API key auth and session+new-org cookie) but NOT in default org (session+default-org cookie)
+1. Logged in via browser, navigated to Settings > Organisation
+2. Org creation dialog failed to render (separate UI issue)
+3. Created org "API Key Binding Test" via API, set `everruns_org` cookie via `agent-browser eval`
+4. Created API key `org-bound-key` through UI dialog (Create API Key → fill name → submit)
+5. Verified key appeared in list with prefix `evr_07c7c81b...`
+6. **Verification FAILED**: Agent created via this key appeared in the **default** org, not the new org — confirming the API key was bound to the wrong org
 
-**Note:** The `/v1/auth/me` endpoint returns all user memberships regardless of auth method (by design, for UI display). Org binding is enforced by the `ResolvedOrg` middleware on org-scoped endpoints, not by the user info endpoint.
+**Run 2 (API workaround — masks EVE-274):**
+
+1. Switched org via `POST /v1/users/me/switch-org` with cookie jar (server-side cookie set correctly)
+2. Created API key `properly-bound-key` via `POST /v1/auth/api-keys` with proper cookies
+3. **Verification PASSED**: Agent created via this key appeared only in the new org
+
+**Conclusion:** The backend org-binding mechanism works correctly when cookies are managed server-side. The bug is in the UI/JWT flow: the `ResolvedOrg` extractor validates the cookie org against stale JWT memberships instead of the database, causing silent fallback to the default org.
+
+## Issues Found
+
+### Issue #1 (High): API key bound to wrong org after org creation — EVE-274
+- **Severity**: High
+- **Steps**: Login → Create org → Switch to it → Create API key via UI
+- **Expected**: API key scoped to newly created org
+- **Actual**: API key scoped to default org (stale JWT fallback)
+- **Impact**: All API operations via the key target the wrong org; data isolation violation
+- **Linear**: [EVE-274](https://linear.app/everruns/issue/EVE-274)
