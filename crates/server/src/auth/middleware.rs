@@ -560,7 +560,8 @@ where
                 // Check user membership against the database, not the JWT.
                 // The JWT may be stale (e.g. after creating a new org server-side,
                 // the client JWT won't include it until PropelAuth refreshes the token).
-                // This mirrors the fix in switch_org (see users.rs:294-296).
+                // This mirrors the fix in the `switch_org` endpoint
+                // (`crates/server/src/api/users.rs`).
                 let auth_state = AuthState::from_ref(state);
                 if let Some(db) = &auth_state.db
                     && let Ok(user_orgs) = db.list_user_organizations(user.id).await
@@ -1003,5 +1004,56 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(err.status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_jwt_falls_back_to_jwt_when_db_unavailable() {
+        // AuthState has no DB (db: None). Cookie points to org_a which IS in
+        // the JWT. Expected: falls back to JWT-based validation and succeeds.
+
+        let user_id = Uuid::new_v4();
+        let jwt_user = AuthUser {
+            id: user_id,
+            email: "test@example.com".to_string(),
+            name: "Test User".to_string(),
+            roles: vec!["user".to_string()],
+            auth_method: AuthMethod::Jwt,
+            organizations: vec![OrgMembership {
+                org_id: 1,
+                public_id: "org_00000000000000000000000000000001".to_string(),
+                name: "Org A".to_string(),
+                role: OrgRole::Owner,
+            }],
+        };
+
+        let backend: Arc<dyn AuthBackend> = Arc::new(JwtMockBackend::with_user(jwt_user));
+        let state = AuthState {
+            config: AuthConfig {
+                mode: AuthMode::Full,
+                ..AuthConfig::default()
+            },
+            backend,
+            permission_resolver: Arc::new(DefaultPermissionResolver),
+            db: None, // No DB — forces JWT fallback
+        };
+
+        let (mut parts, _body) = Request::builder()
+            .header(header::AUTHORIZATION, "Bearer fake-jwt-token")
+            .header(
+                header::COOKIE,
+                format!("{}=org_00000000000000000000000000000001", ORG_COOKIE_NAME),
+            )
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let resolved = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .expect("should fall back to JWT org list");
+
+        assert_eq!(resolved.public_id, "org_00000000000000000000000000000001");
+        assert_eq!(resolved.name, "Org A");
+        assert_eq!(resolved.user_id, Some(user_id));
+        assert_eq!(resolved.role, OrgRole::Owner);
     }
 }
