@@ -69,42 +69,33 @@ integrations/sysbox/
 
 ### Execution Model
 
+Worker tools communicate with the Docker Engine REST API (via socket proxy or TCP) using `reqwest` — same HTTP client pattern as Daytona. No `docker` CLI binary needed inside the worker container.
+
 ```
-┌─────────────────────────────────────────────────────────┐
-│ Everruns Worker Host                                    │
-│                                                         │
-│ ┌─────────────────────────────────────────────────────┐ │
-│ │ Worker Process                                      │ │
-│ │                                                     │ │
-│ │  Agent Loop → Tool Call → SysboxExecTool            │ │
-│ │                   │                                 │ │
-│ │                   ▼                                 │ │
-│ │  docker run --runtime=sysbox-runc                   │ │
-│ │  docker exec <container> <command>                  │ │
-│ └──────────────────┬──────────────────────────────────┘ │
-│                    │                                    │
-│ ┌──────────────────▼──────────────────────────────────┐ │
-│ │ Sysbox Runtime Layer                                │ │
-│ │  sysbox-runc  ·  sysbox-fs  ·  sysbox-mgr          │ │
-│ └──────────────────┬──────────────────────────────────┘ │
-│                    │                                    │
-│ ┌──────────────────▼──────────────────────────────────┐ │
-│ │ Per-Session Sysbox Container                        │ │
-│ │ ┌────────────────────────────────────────────────┐  │ │
-│ │ │ UID 0 → host UID 165536  (user-namespace)     │  │ │
-│ │ │ /proc, /sys virtualized  (sysbox-fs)          │  │ │
-│ │ │ Mounts immutable         (sysbox-runc)        │  │ │
-│ │ │                                                │  │ │
-│ │ │ Agent workspace at /workspace                  │  │ │
-│ │ │ Real bash, apt, pip, git, docker, systemd      │  │ │
-│ │ │ Network: bridge (isolated) or none             │  │ │
-│ │ │ Resources: cgroup-limited (CPU, memory, I/O)   │  │ │
-│ │ └────────────────────────────────────────────────┘  │ │
-│ └─────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────┘
+Worker container                    Host
+┌──────────────────┐     ┌──────────────────────────────┐
+│ Agent Loop       │     │ docker-socket-proxy :2375    │
+│  → SysboxExec    │     │  or Docker TCP API :2376     │
+│    → reqwest ────────►│                              │
+│      POST /exec  │     │  → Docker Engine daemon      │
+└──────────────────┘     │    → sysbox-runc runtime     │
+                         │                              │
+                         │ ┌──────────────────────────┐ │
+                         │ │ Sysbox Container         │ │
+                         │ │  UID 0 → host UID 165536 │ │
+                         │ │  /proc,/sys virtualized  │ │
+                         │ │  cgroup-limited           │ │
+                         │ │  bridge network           │ │
+                         │ └──────────────────────────┘ │
+                         └──────────────────────────────┘
 ```
 
-**Key difference from current Docker integration**: Sysbox containers use bridge networking (not host), mandatory user-namespace isolation, and resource limits. This makes them production-safe, not dev-only.
+**Key differences from current Docker integration**:
+- Uses Docker Engine REST API (`reqwest`) instead of Docker CLI (`Command::new("docker")`)
+- Sysbox runtime provides mandatory user-namespace isolation
+- Bridge networking (not host)
+- cgroup resource limits enforced
+- Production-safe, not dev-only
 
 ### Container Lifecycle
 
@@ -336,104 +327,145 @@ spec:
 **Secrets**: Doppler (CI project `everruns-dev`, runtime project `everruns`). Only `DOPPLER_TOKEN` on disk.
 **Systemd**: `everruns.service` runs `doppler run -- docker compose up` for reboot persistence.
 
-### Problem: Sysbox on Current Setup
+### How Tools Reach Sandboxes
 
-The current `cpx21` VPS (3 vCPU, 4 GB RAM) is a shared-CPU Hetzner instance running **all services on one host**. Sysbox adds several constraints:
+Two existing patterns in the codebase:
 
-1. **Sysbox daemons need root on the host** — `sysbox-runc`, `sysbox-fs`, `sysbox-mgr` run as systemd services alongside Docker.
-2. **Kernel 5.12+ required** — Ubuntu 24.04 ships kernel 6.8+, so this is already satisfied.
-3. **Workers need Docker CLI access** — workers must `docker run --runtime=sysbox-runc`, meaning they either run on the host (not in Docker) or need Docker-in-Docker (which needs Sysbox itself, circular).
-4. **Resource headroom** — each Sysbox sandbox uses 150-500 MB RAM + CPU share. On a 4 GB host already running server + 3 workers + NATS + Caddy, there's limited room.
+| Integration | How tools talk to sandboxes | Worker needs |
+|-------------|---------------------------|--------------|
+| **Daytona** | HTTP REST (`reqwest`) → Daytona cloud API | Nothing special — just network access |
+| **Docker** (experimental) | `tokio::process::Command::new("docker")` → local Docker CLI | `docker` binary + Docker daemon access |
+
+For Sysbox, the tool needs to call `docker run --runtime=sysbox-runc` and `docker exec`. Same as Docker integration — **process-level access to the Docker CLI and daemon**.
+
+The worker doesn't "become" the sandbox. It creates and manages sandbox containers as external resources, same as Daytona manages remote sandboxes via HTTP.
+
+### Problem: Containerized Workers Can't Reach Host Docker
+
+Workers currently run inside Docker Compose containers. A containerized worker can't call `docker run` on the host without either:
+
+1. **Docker socket mount** (`/var/run/docker.sock`) — grants root-equivalent host access. Defeats Sysbox's isolation purpose.
+2. **Docker-in-Docker** — worker runs its own Docker daemon inside its container. But that inner daemon doesn't have Sysbox (Sysbox daemons run on the host, not inside containers).
+
+**This is the core infra constraint**: Sysbox daemons (`sysbox-runc`, `sysbox-fs`, `sysbox-mgr`) run as systemd services on the **host**. Only the host's Docker daemon can use `--runtime=sysbox-runc`. Workers must somehow reach that daemon.
+
+Additional constraints:
+- **Kernel**: Ubuntu 24.04 ships kernel 6.8+ — already satisfied.
+- **Resource headroom**: Each sandbox uses 150-500 MB RAM. Current `cpx21` (4 GB) is tight.
 
 ### Deployment Options
 
-#### Option A: Workers on Host (Recommended for Dev)
+#### Option A: Docker Socket Proxy (Recommended for Dev)
 
-Workers run as native processes on the VPS (not containerized), with direct access to Docker + Sysbox:
+Use an off-the-shelf **docker-socket-proxy** to expose the host's Docker Engine REST API to worker containers over HTTP — no custom code needed. Workers call it with `reqwest` (same pattern as Daytona). The proxy restricts which Docker API endpoints are accessible.
+
+Existing projects:
+- [**Tecnativa/docker-socket-proxy**](https://github.com/Tecnativa/docker-socket-proxy) — HAProxy-based, widely used, env-var access control
+- [**Wollomatic/socket-proxy**](https://github.com/wollomatic/socket-proxy) — Go, zero dependencies, fine-grained path-based rules
 
 ```
-┌─────────────────────────────────────────────┐
-│ Hetzner VPS (Ubuntu 24.04)                  │
-│                                             │
-│  systemd services:                          │
-│    sysbox.service      (sysbox daemons)     │
-│    everruns.service     (docker compose)     │
-│                                             │
-│  Docker Compose (server + ui + nats):       │
-│    ┌────────┐ ┌────┐ ┌──────┐ ┌──────┐     │
-│    │ Caddy  │ │NATS│ │Server│ │  UI  │     │
-│    └────────┘ └────┘ └──────┘ └──────┘     │
-│                                             │
-│  Native worker processes:                   │
-│    everruns-worker ×N  (direct Docker CLI)  │
-│         │                                   │
-│         ▼                                   │
-│    docker run --runtime=sysbox-runc ...     │
-│    ┌──────────┐ ┌──────────┐               │
-│    │ Sandbox1 │ │ Sandbox2 │  ...          │
-│    │(session) │ │(session) │               │
-│    └──────────┘ └──────────┘               │
-└─────────────────────────────────────────────┘
+Docker Compose (all services stay containerized):
+  ┌────────┐ ┌────┐ ┌──────┐ ┌──────┐
+  │ Caddy  │ │NATS│ │Server│ │  UI  │
+  └────────┘ └────┘ └──────┘ └──────┘
+  ┌────────────┐      ┌──────────────────┐
+  │ Workers ×3 │─HTTP→│ docker-socket-   │
+  └────────────┘      │ proxy :2375      │
+                      │ (restricts API)  │
+                      └────────┬─────────┘
+                               │ /var/run/docker.sock
+                     Host Docker daemon
+                         + Sysbox
+                               │
+                  ┌────────────┴────────────┐
+                  │ Sysbox containers       │
+                  │ (agent sandboxes)       │
+                  └─────────────────────────┘
 ```
 
-**Pros**: Simple, no Docker-in-Docker. Workers call `docker run` directly.
-**Cons**: Workers not containerized (less uniform). Needs worker binary installed on host.
+**docker-compose.dev.yml** addition:
 
-**Terraform changes**: Add Sysbox install to `cloud-init.yaml`, download worker binary, create worker systemd units.
+```yaml
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1   # allow create/start/stop/remove/exec
+      POST: 1         # allow POST (create, exec)
+      IMAGES: 1       # allow pull
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "2375"
+```
 
-#### Option B: Privileged Worker Container with Docker Socket (Not Recommended)
+Workers reach the proxy at `http://docker-proxy:2375`. The integration crate uses Docker Engine REST API directly via `reqwest`:
 
-Mount `/var/run/docker.sock` into worker containers. Workers create Sysbox containers on the host via the socket.
+```rust
+// No docker CLI needed — pure HTTP to Docker Engine API
+let resp = client.post("http://docker-proxy:2375/containers/create")
+    .json(&json!({
+        "Image": "ubuntu:24.04",
+        "HostConfig": {
+            "Runtime": "sysbox-runc",
+            "Memory": 2_147_483_648_u64,
+            "NanoCpus": 2_000_000_000_u64,
+            "PidsLimit": 256
+        }
+    }))
+    .send().await?;
+```
 
-**Pros**: Workers stay in Docker Compose.
-**Cons**: Docker socket mount = root-equivalent on host. Defeats the purpose of Sysbox isolation. If an agent escapes the worker container via the socket, they own the host.
+**Pros**: Zero custom code. Workers stay in Docker Compose. Proxy restricts API surface (e.g., disable image delete, network create). Well-tested OSS projects.
+**Cons**: Socket mount on the proxy container (single trust point — proxy is the only container with socket access, and it's read-only with restricted endpoints). Not as locked-down as a custom manager but good enough for dev.
+
+#### Option B: Docker Engine API over TCP (Production Alternative)
+
+Configure Docker daemon to listen on TCP (with TLS) instead of using a socket proxy. Workers call `https://host:2376/` directly. No socket mount anywhere.
+
+```json
+// /etc/docker/daemon.json on host
+{
+  "hosts": ["unix:///var/run/docker.sock", "tcp://0.0.0.0:2376"],
+  "tls": true,
+  "tlscacert": "/etc/docker/ca.pem",
+  "tlscert": "/etc/docker/server-cert.pem",
+  "tlskey": "/etc/docker/server-key.pem",
+  "tlsverify": true,
+  "runtimes": { "sysbox-runc": { "path": "/usr/bin/sysbox-runc" } }
+}
+```
+
+**Pros**: No socket mount. TLS client cert auth. Docker-native, no proxy.
+**Cons**: Exposes full Docker API (no endpoint filtering). Requires TLS cert management.
 
 #### Option C: Dedicated Sandbox Host (Recommended for Production)
 
-Separate the sandbox execution onto a different machine. Workers still run in Docker Compose, but sandbox operations go over SSH/API to a Sysbox-enabled host:
+Separate machine for sandboxes. Workers on control plane VPS call Docker Engine API on sandbox host over TLS (Option B pattern, cross-host).
 
-```
-┌──────────────────────┐      ┌──────────────────────────┐
-│ Control Plane VPS    │      │ Sandbox Host(s)          │
-│                      │      │                          │
-│ Caddy + Server + UI  │ gRPC │ Worker(s) (native)       │
-│ NATS                 │◄────►│ Docker + Sysbox          │
-│                      │      │ Agent sandboxes           │
-└──────────┬───────────┘      └──────────────────────────┘
-           │
-     Neon Postgres
-```
-
-**Pros**: Control plane isolated from sandbox blast radius. Scale sandbox hosts independently. Sandbox host can be a bigger machine (dedicated CPU, more RAM).
-**Cons**: Two machines, more Terraform, cross-host gRPC networking.
-
-**Terraform changes**: New `hcloud_server` resource for sandbox host(s). Workers deployed on sandbox host. Firewall: allow gRPC (9001) from sandbox host to control plane.
+**Pros**: Blast radius isolation. Scale sandbox hosts independently.
+**Cons**: Two machines, TLS cert management, more Terraform.
 
 #### Option D: Sysbox Worker Container (Future / K8s)
 
-Run the worker itself in a Sysbox container. The worker can then create inner containers (Docker-in-Docker) for agent sandboxes:
+Worker itself runs in a Sysbox container with inner Docker daemon. K8s-native via RuntimeClass.
 
-```
-Sysbox container (worker):
-  └─ Docker daemon (inner)
-       └─ Agent sandbox container (inner, runc)
-```
-
-**Pros**: Cleanest architecture. Worker + sandboxes fully isolated.
-**Cons**: Requires K8s with Sysbox RuntimeClass, or a host running Sysbox where the worker image starts its own Docker daemon. More complex orchestration. Sysbox nesting is not supported, so inner containers use standard runc (still isolated by outer Sysbox user-namespace).
+**Pros**: Cleanest K8s-native architecture.
+**Cons**: Complex. Sysbox nesting unsupported — inner containers use runc.
 
 ### Recommended Path
 
-| Phase | Option | Environment | VPS Size |
-|-------|--------|-------------|----------|
-| Dev/MVP | **A** (workers on host) | `cpx31` (4 vCPU, 8 GB) | Single VPS |
-| Staging | **C** (dedicated sandbox host) | `cpx31` control + `cpx41` sandbox | Two VPS |
+| Phase | Option | Why | VPS |
+|-------|--------|-----|-----|
+| Dev/MVP | **A** (socket proxy) | Zero custom code, workers unchanged | `cpx31` (4 vCPU, 8 GB) |
+| Staging | **B+C** (TLS Docker API, dedicated host) | Blast radius isolation | `cpx31` + `cpx41` |
 | Production | **C** or **D** | Dedicated pool or K8s | Scale-out |
 
-### Concrete Terraform Changes for Option A (Dev MVP)
+### Concrete Changes for Option A (Dev MVP)
+
+**Terraform** — upgrade VPS for sandbox headroom:
 
 ```hcl
-# Upgrade VPS type for sandbox headroom
 variable "server_type" {
   default = "cpx31"  # was cpx21 (3 vCPU, 4 GB → 4 vCPU, 8 GB)
 }
@@ -451,46 +483,28 @@ runcmd:
   - systemctl enable --now sysbox
   - rm sysbox-ce_0.7.0-0.linux_amd64.deb
 
-  # Verify Sysbox runtime is registered with Docker
+  # Verify Sysbox runtime registered with Docker
   - docker info --format '{{.Runtimes}}' | grep -q sysbox-runc
-
-  # Download worker binary (same version as server image)
-  - |
-    docker create --name tmp-worker ghcr.io/everruns/saas-server:development
-    docker cp tmp-worker:/usr/local/bin/everruns-worker /usr/local/bin/
-    docker rm tmp-worker
 ```
 
-**New systemd unit** `everruns-worker@.service` (template for N workers):
-
-```ini
-[Unit]
-Description=Everruns Worker %i
-After=everruns.service docker.service sysbox.service
-Requires=docker.service sysbox.service
-
-[Service]
-Type=simple
-EnvironmentFile=/opt/everruns/doppler.env
-ExecStart=/usr/local/bin/doppler run -- /usr/local/bin/everruns-worker
-Environment=WORKER_GRPC_ADDRESS=127.0.0.1:9001
-Environment=RUST_LOG=info
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable with `systemctl enable everruns-worker@{1..3}`.
-
-**docker-compose.dev.yml changes**: Remove the `worker` service (workers now run natively). Server gRPC port exposed on localhost:
+**docker-compose.dev.yml additions:**
 
 ```yaml
-  server:
-    ports:
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"  # gRPC for native workers
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      POST: 1
+      IMAGES: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "2375"
+
+  worker:
+    environment:
+      - DOCKER_HOST=tcp://docker-proxy:2375
 ```
 
 ### Resource Budget (Option A, cpx31: 4 vCPU, 8 GB RAM)
@@ -503,11 +517,12 @@ Enable with `systemctl enable everruns-worker@{1..3}`.
 | Caddy | ~30 MB | 0.05 |
 | UI | ~200 MB | 0.2 |
 | Sysbox daemons | ~100 MB | 0.1 |
+| Docker socket proxy | ~10 MB | 0.02 |
 | **Subtotal** | **~1.1 GB** | **~1.9** |
 | **Available for sandboxes** | **~6.5 GB** | **~2 vCPU** |
 | Sandboxes (2 GB each) | 3 concurrent | 1 CPU each |
 
-With a `cpx31`, you can comfortably run ~3 concurrent agent sandboxes. For more, upgrade to `cpx41` (8 vCPU, 16 GB) or split to Option C.
+With a `cpx31`, ~3 concurrent agent sandboxes. Upgrade to `cpx41` (8 vCPU, 16 GB) or split to Option C for more.
 
 ## Implementation Plan
 
