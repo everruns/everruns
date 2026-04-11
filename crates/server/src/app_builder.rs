@@ -802,7 +802,14 @@ impl ServerAppBuilder {
             tracing::info!("Evals disabled via feature flag");
         }
 
-        // Auth-specific routes
+        // API key CRUD — auth-provider-agnostic, always mounted
+        api_routes = api_routes.merge(crate::auth::api_key_routes(crate::auth::ApiKeyState {
+            db: db.clone(),
+            auth: auth_state.clone(),
+            resource_limits: crate::server::ResourceLimitsConfig::from_env(),
+        }));
+
+        // Auth-specific routes (login, register, OAuth — provider-dependent)
         if let Some(auth_routes) = auth_backend.auth_routes() {
             api_routes = api_routes.merge(auth_routes);
         }

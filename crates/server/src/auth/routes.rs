@@ -9,7 +9,7 @@ use axum::{
     http::{HeaderMap, Request, StatusCode},
     middleware::{self, Next},
     response::{Redirect, Response},
-    routing::{delete, get, post},
+    routing::{get, post},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{Duration, Utc};
@@ -23,11 +23,10 @@ use super::audit;
 use super::rate_limit::extract_client_ip;
 
 use super::{
-    api_key::generate_api_key,
     builtin::{self, BuiltinAuthBackend},
     config::AuthMode,
     jwt::hash_token,
-    middleware::{AuthError, AuthMethod, AuthState, AuthUser, ORG_COOKIE_NAME, ResolvedOrg},
+    middleware::{AuthError, AuthMethod, AuthState, AuthUser, ORG_COOKIE_NAME},
     oauth::{GitHubOAuthService, GoogleOAuthService, OAuthProvider},
 };
 /// Enable AuthUser extractor when BuiltinAuthBackend is the route state.
@@ -38,9 +37,8 @@ impl FromRef<BuiltinAuthBackend> for AuthState {
     }
 }
 
-use crate::api::common::ListResponse;
 use crate::storage::{
-    models::{CreateApiKeyRow, CreateRefreshTokenRow, CreateUserRow},
+    models::{CreateRefreshTokenRow, CreateUserRow},
     password::{hash_password, verify_password},
 };
 
@@ -95,40 +93,6 @@ pub struct UserInfoResponse {
     /// Organizations the user belongs to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organizations: Option<Vec<OrgMembershipResponse>>,
-}
-
-/// API key response (shown only once at creation)
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ApiKeyResponse {
-    pub id: String,
-    pub name: String,
-    pub key: String,
-    pub key_prefix: String,
-    pub scopes: Vec<String>,
-    pub expires_at: Option<String>,
-    pub created_at: String,
-}
-
-/// API key list item (without full key)
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ApiKeyListItem {
-    pub id: String,
-    pub name: String,
-    pub key_prefix: String,
-    pub scopes: Vec<String>,
-    pub expires_at: Option<String>,
-    pub last_used_at: Option<String>,
-    pub created_at: String,
-}
-
-/// Create API key request
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateApiKeyRequest {
-    pub name: String,
-    #[serde(default)]
-    pub scopes: Vec<String>,
-    /// Expiration in days (optional)
-    pub expires_in_days: Option<i64>,
 }
 
 /// Refresh token request
@@ -226,11 +190,6 @@ pub fn routes(state: BuiltinAuthBackend) -> Router {
         .route("/v1/auth/callback/{provider}", get(oauth_callback))
         // Protected routes
         .route("/v1/auth/me", get(get_current_user))
-        .route(
-            "/v1/auth/api-keys",
-            get(list_api_keys).post(create_api_key_route),
-        )
-        .route("/v1/auth/api-keys/{key_id}", delete(delete_api_key_route))
         // Merge rate-limited routes
         .merge(login_route)
         .merge(register_route)
@@ -836,167 +795,6 @@ pub async fn oauth_callback(
     // Redirect to frontend (different origin in dev)
     let redirect_url = format!("{}/", state.config.frontend_url.trim_end_matches('/'));
     Ok((jar, Redirect::to(&redirect_url)))
-}
-
-/// GET /v1/auth/api-keys - List API keys for current user
-pub async fn list_api_keys(
-    State(state): State<BuiltinAuthBackend>,
-    user: AuthUser,
-) -> Result<Json<ListResponse<ApiKeyListItem>>, AuthError> {
-    let keys = state
-        .db
-        .list_api_keys_for_user(user.id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list API keys: {}", e);
-            AuthError::unauthorized("Failed to list API keys")
-        })?;
-
-    let items: Vec<ApiKeyListItem> = keys
-        .into_iter()
-        .map(|k| {
-            let scopes: Vec<String> = serde_json::from_value(k.scopes).unwrap_or_default();
-            ApiKeyListItem {
-                id: k.id.to_string(),
-                name: k.name,
-                key_prefix: k.key_prefix,
-                scopes,
-                expires_at: k.expires_at.map(|t| t.to_rfc3339()),
-                last_used_at: k.last_used_at.map(|t| t.to_rfc3339()),
-                created_at: k.created_at.to_rfc3339(),
-            }
-        })
-        .collect();
-
-    Ok(Json(ListResponse::new(items)))
-}
-
-/// POST /v1/auth/api-keys - Create a new API key
-///
-/// Organization is derived from the everruns_org cookie (set via /v1/users/me/switch-org).
-/// Cannot be called with API key authentication (must use session auth).
-pub async fn create_api_key_route(
-    State(state): State<BuiltinAuthBackend>,
-    headers: HeaderMap,
-    user: AuthUser,
-    org: ResolvedOrg,
-    Json(req): Json<CreateApiKeyRequest>,
-) -> Result<(StatusCode, Json<ApiKeyResponse>), AuthError> {
-    // Cannot create API key using API key auth
-    if user.auth_method == AuthMethod::ApiKey {
-        return Err(AuthError::forbidden(
-            "Cannot create API key using API key authentication",
-        ));
-    }
-
-    // Enforce API key limit per user per org
-    let key_count = state
-        .db
-        .count_api_keys_for_user_in_org(user.id, org.org_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to count API keys: {e}");
-            AuthError {
-                error: "Internal server error".to_string(),
-                status: StatusCode::INTERNAL_SERVER_ERROR,
-            }
-        })?;
-    if key_count >= state.resource_limits.max_api_keys_per_user_per_org {
-        return Err(AuthError {
-            error: format!(
-                "API key limit reached (max {})",
-                state.resource_limits.max_api_keys_per_user_per_org
-            ),
-            status: StatusCode::CONFLICT,
-        });
-    }
-
-    let generated = generate_api_key();
-
-    let scopes = if req.scopes.is_empty() {
-        vec!["*".to_string()]
-    } else {
-        req.scopes
-    };
-
-    let expires_at = req
-        .expires_in_days
-        .map(|days| Utc::now() + Duration::days(days));
-
-    let key_row = state
-        .db
-        .create_api_key(CreateApiKeyRow {
-            org_id: org.org_id,
-            user_id: user.id,
-            name: req.name.clone(),
-            key_hash: generated.key_hash.clone(),
-            key_prefix: generated.key_prefix.clone(),
-            scopes: scopes.clone(),
-            expires_at,
-            metadata: serde_json::json!({"source": "web_ui"}),
-        })
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to create API key: {}", e);
-            AuthError::unauthorized("Failed to create API key")
-        })?;
-
-    audit::emit(
-        state.db.clone(),
-        org.org_id,
-        Some(user.id),
-        "auth.api_key.created",
-        audit::client_ip(&headers),
-        serde_json::json!({"key_id": key_row.id.to_string(), "name": req.name}),
-    );
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiKeyResponse {
-            id: key_row.id.to_string(),
-            name: key_row.name,
-            key: generated.key, // Full key shown only once!
-            key_prefix: key_row.key_prefix,
-            scopes,
-            expires_at: key_row.expires_at.map(|t| t.to_rfc3339()),
-            created_at: key_row.created_at.to_rfc3339(),
-        }),
-    ))
-}
-
-/// DELETE /v1/auth/api-keys/:key_id - Delete an API key
-pub async fn delete_api_key_route(
-    State(state): State<BuiltinAuthBackend>,
-    headers: HeaderMap,
-    user: AuthUser,
-    Path(key_id): Path<Uuid>,
-) -> Result<StatusCode, AuthError> {
-    let deleted = state
-        .db
-        .delete_api_key(key_id, user.id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to delete API key: {}", e);
-            AuthError::unauthorized("Failed to delete API key")
-        })?;
-
-    if deleted {
-        // Invalidate entire API key auth cache — we don't have the key_hash here,
-        // only the key_id (UUID). Deletion is rare so full invalidation is fine.
-        state.invalidate_all_api_key_cache();
-
-        audit::emit(
-            state.db.clone(),
-            DEFAULT_ORG_ID,
-            Some(user.id),
-            "auth.api_key.deleted",
-            audit::client_ip(&headers),
-            serde_json::json!({"key_id": key_id.to_string()}),
-        );
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(AuthError::unauthorized("API key not found"))
-    }
 }
 
 /// Helper: Generate token response with cookies
