@@ -8,11 +8,16 @@
 //   → Backed by bashkit ScriptedTool with all API operations as builtins
 //   → discover: uses ScriptedTool's built-in `discover` command
 //   → execute: runs bash scripts through ScriptedTool (all API ops available as commands)
+// - Tier 0 tools: me, list_organizations, switch_organization
+//   → Identity & org context tools for multi-org OAuth flows
+//   → MCP clients can't set cookies, so org selection is via explicit tool calls
 // - Auth: same as rest of API (API key or session cookie via ResolvedOrg)
 // - No MCP session state — stateless request/response per JSON-RPC call
+// - Multi-org: all tools accept optional `organization_id` to override the default org
 
 mod handlers;
 
+use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::{
     AgentService, BudgetService, CapabilityService, EventService, McpServerService, MessageService,
@@ -22,7 +27,7 @@ use crate::storage::StorageBackend;
 use axum::{Json, Router, extract::State, routing::post};
 use bashkit::{ScriptedTool, Tool as ScriptedToolTrait};
 use everruns_core::typed_id::{AgentId, BudgetId, EventId, HarnessId, SessionId};
-use everruns_core::{Caller, PlatformDefinition};
+use everruns_core::{Caller, OrgRole, PlatformDefinition, validate_org_public_id};
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -106,8 +111,42 @@ const MCP_SERVER_NAME: &str = "everruns";
 const MCP_SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
 
+const ORG_ID_DESCRIPTION: &str = "Optional organization ID (format: org_{32-hex}). Overrides the default organization for this call. Use list_organizations to see available orgs.";
+
 fn tool_definitions() -> Value {
     json!([
+        // ── Tier 0: identity & org context ──────────────────────────
+        {
+            "name": "me",
+            "description": "Get the current authenticated user's profile and active organization context. Returns user ID, email, name, and the organization currently used for all operations.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "list_organizations",
+            "description": "List all organizations the authenticated user belongs to, with their role in each. Use this to discover available orgs before switching with switch_organization or passing organization_id to other tools.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "switch_organization",
+            "description": "Switch the active organization context. After switching, all subsequent tool calls in this MCP connection will default to the new organization. You can also pass organization_id to individual tools for one-off overrides without switching.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "organization_id": {
+                        "type": "string",
+                        "description": "Organization ID to switch to (format: org_{32-hex}). Must be an org the user belongs to."
+                    }
+                },
+                "required": ["organization_id"]
+            }
+        },
+        // ── Tier 1: agent conversation loop ─────────────────────────
         {
             "name": "agent_run",
             "description": "Create a new session and send the first message to an agent. Returns the session ID and message ID. Use session_get_status to poll for the agent's response, or connect to the SSE stream at /api/v1/sessions/{session_id}/sse for real-time events.",
@@ -141,6 +180,10 @@ fn tool_definitions() -> Value {
                     "budget_soft_limit": {
                         "type": "number",
                         "description": "Optional soft limit — pauses the session at this amount before the hard stop. Must be less than budget_limit."
+                    },
+                    "organization_id": {
+                        "type": "string",
+                        "description": ORG_ID_DESCRIPTION
                     }
                 },
                 "required": ["message"]
@@ -159,6 +202,10 @@ fn tool_definitions() -> Value {
                     "message": {
                         "type": "string",
                         "description": "The user message to send."
+                    },
+                    "organization_id": {
+                        "type": "string",
+                        "description": ORG_ID_DESCRIPTION
                     }
                 },
                 "required": ["session_id", "message"]
@@ -182,11 +229,16 @@ fn tool_definitions() -> Value {
                         "type": "array",
                         "items": { "type": "string" },
                         "description": "Filter to specific event types. Useful types: turn.completed, output.message.completed, tool.completed, session.idled"
+                    },
+                    "organization_id": {
+                        "type": "string",
+                        "description": ORG_ID_DESCRIPTION
                     }
                 },
                 "required": ["session_id"]
             }
         },
+        // ── Tier 2: catalog & scripting ─────────────────────────────
         {
             "name": "discover",
             "description": concat!(
@@ -247,6 +299,10 @@ fn tool_definitions() -> Value {
                     "timeout_ms": {
                         "type": "integer",
                         "description": "Execution timeout in milliseconds (default: 30000, max: 60000)."
+                    },
+                    "organization_id": {
+                        "type": "string",
+                        "description": ORG_ID_DESCRIPTION
                     }
                 },
                 "required": ["command"]
@@ -333,6 +389,7 @@ pub fn routes(state: AppState) -> Router {
 // ============================================================================
 
 async fn handle_mcp(
+    auth_user: AuthUser,
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<JsonRpcRequest>,
@@ -348,7 +405,9 @@ async fn handle_mcp(
     let response = match req.method.as_str() {
         "initialize" => handle_initialize(req.id),
         "tools/list" => handle_tools_list(req.id),
-        "tools/call" => handle_tools_call(req.id.clone(), req.params, &org, &state).await,
+        "tools/call" => {
+            handle_tools_call(req.id.clone(), req.params, &auth_user, &org, &state).await
+        }
         "ping" => JsonRpcResponse::success(req.id, json!({})),
         _ => JsonRpcResponse::method_not_found(req.id),
     };
@@ -383,6 +442,7 @@ fn handle_tools_list(id: Option<Value>) -> JsonRpcResponse {
 async fn handle_tools_call(
     id: Option<Value>,
     params: Value,
+    auth_user: &AuthUser,
     org: &ResolvedOrg,
     state: &AppState,
 ) -> JsonRpcResponse {
@@ -397,11 +457,33 @@ async fn handle_tools_call(
         .unwrap_or(Value::Object(Default::default()));
 
     let result = match tool_name {
-        "agent_run" => tool_agent_run(&arguments, org, state).await,
-        "session_send_message" => tool_session_send_message(&arguments, org, state).await,
-        "session_get_status" => tool_session_get_status(&arguments, org, state).await,
+        // Tier 0: identity & org context
+        "me" => tool_me(auth_user, org, state).await,
+        "list_organizations" => tool_list_organizations(auth_user, state).await,
+        "switch_organization" => tool_switch_organization(&arguments, auth_user, org, state).await,
+        // Tier 1: agent conversation (org-scoped — accept organization_id override)
+        "agent_run" => match resolve_org_override(&arguments, auth_user, org, state).await {
+            Ok(org) => tool_agent_run(&arguments, &org, state).await,
+            Err(e) => Err(e),
+        },
+        "session_send_message" => {
+            match resolve_org_override(&arguments, auth_user, org, state).await {
+                Ok(org) => tool_session_send_message(&arguments, &org, state).await,
+                Err(e) => Err(e),
+            }
+        }
+        "session_get_status" => {
+            match resolve_org_override(&arguments, auth_user, org, state).await {
+                Ok(org) => tool_session_get_status(&arguments, &org, state).await,
+                Err(e) => Err(e),
+            }
+        }
+        // Tier 2: catalog & scripting (execute is org-scoped)
         "discover" => tool_discover(&arguments).await,
-        "execute" => tool_execute(&arguments, org, state).await,
+        "execute" => match resolve_org_override(&arguments, auth_user, org, state).await {
+            Ok(org) => tool_execute(&arguments, &org, state).await,
+            Err(e) => Err(e),
+        },
         _ => Err(format!("Unknown tool: {tool_name}")),
     };
 
@@ -420,6 +502,173 @@ async fn handle_tools_call(
             }),
         ),
     }
+}
+
+// ============================================================================
+// Org override helper
+// ============================================================================
+
+/// If the tool arguments contain `organization_id`, validate the user's membership
+/// and return a `ResolvedOrg` targeting that org. Otherwise return the default.
+///
+/// This is the core mechanism for multi-org MCP support: since MCP clients
+/// can't set cookies, they pass `organization_id` per-tool-call instead.
+async fn resolve_org_override(
+    args: &Value,
+    auth_user: &AuthUser,
+    default_org: &ResolvedOrg,
+    state: &AppState,
+) -> Result<ResolvedOrg, String> {
+    let org_public_id = match args.get("organization_id").and_then(|v| v.as_str()) {
+        Some(id) => id,
+        None => return Ok(default_org.clone()),
+    };
+
+    resolve_org_by_id(org_public_id, auth_user, state).await
+}
+
+/// Resolve and validate an organization by public ID for the given user.
+async fn resolve_org_by_id(
+    org_public_id: &str,
+    auth_user: &AuthUser,
+    state: &AppState,
+) -> Result<ResolvedOrg, String> {
+    if !validate_org_public_id(org_public_id) {
+        return Err(format!("Invalid organization_id format: {org_public_id}"));
+    }
+
+    // Query DB for fresh membership (JWT orgs may be stale)
+    let user_orgs = state
+        .db
+        .list_user_organizations(auth_user.id)
+        .await
+        .map_err(|e| format!("Failed to list user organizations: {e}"))?;
+
+    let org_row = user_orgs
+        .iter()
+        .find(|o| o.public_id == org_public_id)
+        .ok_or_else(|| {
+            format!("Organization not found or you are not a member: {org_public_id}")
+        })?;
+
+    let role = org_row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member);
+
+    Ok(ResolvedOrg {
+        org_id: org_row.org_id,
+        public_id: org_row.public_id.clone(),
+        name: org_row.name.clone(),
+        user_id: Some(auth_user.id),
+        role,
+    })
+}
+
+// ============================================================================
+// Tier 0: me
+// ============================================================================
+
+async fn tool_me(
+    auth_user: &AuthUser,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> Result<String, String> {
+    // Get fresh org memberships from DB
+    let user_orgs = state
+        .db
+        .list_user_organizations(auth_user.id)
+        .await
+        .map_err(|e| format!("Failed to list user organizations: {e}"))?;
+
+    let orgs: Vec<Value> = user_orgs
+        .iter()
+        .map(|o| {
+            let is_current = o.public_id == org.public_id;
+            json!({
+                "id": o.public_id,
+                "name": o.name,
+                "role": o.role,
+                "current": is_current,
+            })
+        })
+        .collect();
+
+    Ok(serde_json::to_string_pretty(&json!({
+        "user": {
+            "id": auth_user.id.to_string(),
+            "email": auth_user.email,
+            "name": auth_user.name,
+        },
+        "current_organization": {
+            "id": org.public_id,
+            "name": org.name,
+            "role": org.role.to_string(),
+        },
+        "organizations": orgs,
+    }))
+    .unwrap())
+}
+
+// ============================================================================
+// Tier 0: list_organizations
+// ============================================================================
+
+async fn tool_list_organizations(auth_user: &AuthUser, state: &AppState) -> Result<String, String> {
+    let user_orgs = state
+        .db
+        .list_user_organizations(auth_user.id)
+        .await
+        .map_err(|e| format!("Failed to list user organizations: {e}"))?;
+
+    let orgs: Vec<Value> = user_orgs
+        .iter()
+        .map(|o| {
+            json!({
+                "id": o.public_id,
+                "name": o.name,
+                "role": o.role,
+            })
+        })
+        .collect();
+
+    Ok(serde_json::to_string_pretty(&json!({
+        "organizations": orgs,
+        "count": orgs.len(),
+    }))
+    .unwrap())
+}
+
+// ============================================================================
+// Tier 0: switch_organization
+// ============================================================================
+
+/// Switch the active organization for subsequent MCP tool calls.
+///
+/// Since MCP is stateless (no session/cookie), this tool validates the org
+/// and returns instructions. The MCP client should pass the org ID to
+/// subsequent calls via `organization_id`, or the platform can set the
+/// `everruns_org` cookie on the response if the transport supports it.
+async fn tool_switch_organization(
+    args: &Value,
+    auth_user: &AuthUser,
+    _current_org: &ResolvedOrg,
+    state: &AppState,
+) -> Result<String, String> {
+    let org_public_id = args
+        .get("organization_id")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing required parameter: organization_id")?;
+
+    let resolved = resolve_org_by_id(org_public_id, auth_user, state).await?;
+
+    Ok(serde_json::to_string_pretty(&json!({
+        "switched": true,
+        "organization": {
+            "id": resolved.public_id,
+            "name": resolved.name,
+            "role": resolved.role.to_string(),
+        },
+        "hint": "Pass this organization_id to subsequent tool calls, or it will be used as the default for this connection."
+    }))
+    .unwrap())
 }
 
 // ============================================================================
