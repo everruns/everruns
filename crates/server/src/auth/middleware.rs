@@ -139,9 +139,9 @@ pub struct AuthState {
     /// Downstream consumers can inject a custom resolver to enforce billing-tier rules,
     /// database-backed grants, or external RBAC decisions.
     pub permission_resolver: Arc<dyn PermissionResolver>,
-    /// Storage backend for org lookups in no-auth mode.
-    /// In AuthMethod::None, the anonymous user only carries the default org,
-    /// so ResolvedOrg needs DB access to resolve the org cookie.
+    /// Storage backend for org lookups in ResolvedOrg extraction.
+    /// Used in AuthMethod::None (anonymous user only carries default org)
+    /// and AuthMethod::Jwt (JWT may be stale after server-side org creation).
     pub db: Option<Arc<StorageBackend>>,
 }
 
@@ -183,7 +183,7 @@ impl AuthState {
         }
     }
 
-    /// Set the storage backend (for org resolution in no-auth mode).
+    /// Set the storage backend (for org resolution in ResolvedOrg extraction).
     pub fn with_db(mut self, db: Arc<StorageBackend>) -> Self {
         self.db = Some(db);
         self
@@ -557,13 +557,36 @@ where
                     return Err(AuthError::unauthorized("Invalid organization ID format"));
                 }
 
-                // Check user membership
-                let org = user.get_org(org_public_id).ok_or_else(|| {
-                    // Return 404 to prevent enumeration
-                    AuthError {
+                // Check user membership against the database, not the JWT.
+                // The JWT may be stale (e.g. after creating a new org server-side,
+                // the client JWT won't include it until PropelAuth refreshes the token).
+                // This mirrors the fix in switch_org (see users.rs:294-296).
+                let auth_state = AuthState::from_ref(state);
+                if let Some(db) = &auth_state.db
+                    && let Ok(user_orgs) = db.list_user_organizations(user.id).await
+                {
+                    if let Some(org_row) = user_orgs.iter().find(|o| o.public_id == org_public_id) {
+                        let role = org_row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member);
+                        return Ok(ResolvedOrg {
+                            org_id: org_row.org_id,
+                            public_id: org_row.public_id.clone(),
+                            name: org_row.name.clone(),
+                            user_id: Some(user.id),
+                            role,
+                        });
+                    }
+                    // DB available, user not a member → 404
+                    return Err(AuthError {
                         error: "Organization not found".to_string(),
                         status: StatusCode::NOT_FOUND,
-                    }
+                    });
+                }
+                // DB query failed — fall through to JWT-based validation
+
+                // Fallback: DB unavailable, validate against JWT org list
+                let org = user.get_org(org_public_id).ok_or_else(|| AuthError {
+                    error: "Organization not found".to_string(),
+                    status: StatusCode::NOT_FOUND,
                 })?;
 
                 Ok(ResolvedOrg {
@@ -818,5 +841,167 @@ mod tests {
             "lowercase apikey should route to validate_api_key"
         );
         assert_eq!(token, 0);
+    }
+
+    // --- ResolvedOrg JWT + DB tests ---
+
+    use crate::storage::{StorageBackend, models::CreateOrganizationRow};
+
+    /// Mock backend that returns a JWT user with only the specified orgs.
+    struct JwtMockBackend {
+        user: AuthUser,
+    }
+
+    impl JwtMockBackend {
+        fn with_user(user: AuthUser) -> Self {
+            Self { user }
+        }
+    }
+
+    #[async_trait]
+    impl AuthBackend for JwtMockBackend {
+        async fn validate_token(&self, _token: &str) -> Result<AuthUser, AuthError> {
+            Ok(self.user.clone())
+        }
+
+        async fn validate_api_key(&self, _key: &str) -> Result<AuthUser, AuthError> {
+            Err(AuthError::unauthorized("not supported"))
+        }
+
+        fn auth_routes(&self) -> Option<Router> {
+            None
+        }
+
+        fn auth_config_response(&self) -> AuthConfigResponse {
+            AuthConfigResponse {
+                mode: "full".into(),
+                password_auth_enabled: false,
+                oauth_providers: vec![],
+                signup_enabled: false,
+            }
+        }
+    }
+
+    /// Build an AuthState with a JWT mock backend and an in-memory DB.
+    fn jwt_auth_state_with_db(user: AuthUser) -> (AuthState, Arc<StorageBackend>) {
+        let db = Arc::new(StorageBackend::in_memory());
+        let backend: Arc<dyn AuthBackend> = Arc::new(JwtMockBackend::with_user(user));
+        let state = AuthState {
+            config: AuthConfig {
+                mode: AuthMode::Full,
+                ..AuthConfig::default()
+            },
+            backend,
+            permission_resolver: Arc::new(DefaultPermissionResolver),
+            db: Some(db.clone()),
+        };
+        (state, db)
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_jwt_uses_db_not_jwt_orgs() {
+        // User's JWT only knows about org_a. org_b exists in DB with membership
+        // but is NOT in the JWT. Cookie is set to org_b.
+        // Expected: ResolvedOrg resolves to org_b via DB lookup.
+
+        let user_id = Uuid::new_v4();
+        let jwt_user = AuthUser {
+            id: user_id,
+            email: "test@example.com".to_string(),
+            name: "Test User".to_string(),
+            roles: vec!["user".to_string()],
+            auth_method: AuthMethod::Jwt,
+            organizations: vec![OrgMembership {
+                org_id: 1,
+                public_id: "org_00000000000000000000000000000001".to_string(),
+                name: "Org A".to_string(),
+                role: OrgRole::Owner,
+            }],
+        };
+
+        let (state, db) = jwt_auth_state_with_db(jwt_user);
+
+        // Seed org_b in the DB and add user membership
+        let org_b = db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000002".to_string(),
+                name: "Org B".to_string(),
+                created_by: Some(user_id),
+            })
+            .await
+            .unwrap();
+        db.add_organization_member(org_b.org_id, user_id, "member")
+            .await
+            .unwrap();
+
+        // Build request with org cookie pointing to org_b and a Bearer token
+        let (mut parts, _body) = Request::builder()
+            .header(header::AUTHORIZATION, "Bearer fake-jwt-token")
+            .header(
+                header::COOKIE,
+                format!("{}=org_00000000000000000000000000000002", ORG_COOKIE_NAME),
+            )
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let resolved = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .expect("should resolve org_b from DB");
+
+        assert_eq!(resolved.public_id, "org_00000000000000000000000000000002");
+        assert_eq!(resolved.name, "Org B");
+        assert_eq!(resolved.org_id, org_b.org_id);
+        assert_eq!(resolved.user_id, Some(user_id));
+        assert_eq!(resolved.role, OrgRole::Member);
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_jwt_db_no_membership_returns_404() {
+        // User's JWT only knows about org_a. org_c exists in DB but user is NOT
+        // a member. Cookie is set to org_c.
+        // Expected: 404
+
+        let user_id = Uuid::new_v4();
+        let jwt_user = AuthUser {
+            id: user_id,
+            email: "test@example.com".to_string(),
+            name: "Test User".to_string(),
+            roles: vec!["user".to_string()],
+            auth_method: AuthMethod::Jwt,
+            organizations: vec![OrgMembership {
+                org_id: 1,
+                public_id: "org_00000000000000000000000000000001".to_string(),
+                name: "Org A".to_string(),
+                role: OrgRole::Owner,
+            }],
+        };
+
+        let (state, db) = jwt_auth_state_with_db(jwt_user);
+
+        // Seed org_c in the DB but do NOT add user membership
+        db.create_organization(CreateOrganizationRow {
+            public_id: "org_00000000000000000000000000000003".to_string(),
+            name: "Org C".to_string(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+
+        let (mut parts, _body) = Request::builder()
+            .header(header::AUTHORIZATION, "Bearer fake-jwt-token")
+            .header(
+                header::COOKIE,
+                format!("{}=org_00000000000000000000000000000003", ORG_COOKIE_NAME),
+            )
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let err = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.status, StatusCode::NOT_FOUND);
     }
 }
