@@ -297,7 +297,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "summary",
                 typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
+                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
     },
@@ -488,7 +488,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "summary",
                 typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
+                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
     },
@@ -841,7 +841,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "summary",
                 typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
+                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
     },
@@ -867,7 +867,7 @@ pub static CATALOG: &[Operation] = &[
         params: &[Param {
             name: "summary",
             typ: "query",
-            description: "Compact output: id, name, description, status only (default: false)",
+            description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
         }],
     },
     Operation {
@@ -892,7 +892,7 @@ pub static CATALOG: &[Operation] = &[
         params: &[Param {
             name: "summary",
             typ: "query",
-            description: "Compact output: id, name, description, status only (default: false)",
+            description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
         }],
     },
     Operation {
@@ -935,7 +935,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "summary",
                 typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
+                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
     },
@@ -1001,7 +1001,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "summary",
                 typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
+                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
     },
@@ -1033,7 +1033,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "summary",
                 typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
+                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
     },
@@ -1082,7 +1082,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "summary",
                 typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
+                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
     },
@@ -1108,7 +1108,7 @@ pub static CATALOG: &[Operation] = &[
         params: &[Param {
             name: "summary",
             typ: "query",
-            description: "Compact output: id, name, description, status only (default: false)",
+            description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
         }],
     },
     Operation {
@@ -1145,7 +1145,7 @@ pub static CATALOG: &[Operation] = &[
         params: &[Param {
             name: "summary",
             typ: "query",
-            description: "Compact output: id, name, description, status only (default: false)",
+            description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
         }],
     },
     Operation {
@@ -1176,7 +1176,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "summary",
                 typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
+                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
     },
