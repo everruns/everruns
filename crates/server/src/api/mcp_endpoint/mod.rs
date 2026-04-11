@@ -186,8 +186,12 @@ fn tool_definitions() -> Value {
             "name": "discover",
             "description": concat!(
                 "Search the Everruns API catalog to find available operations. ",
-                "Returns matching API operations with their description, parameters, and usage.\n\n",
-                "Example queries: 'list agents', 'create session', 'events', 'mcp servers', 'models'\n\n",
+                "Returns matching operations with description and parameters.\n\n",
+                "Available resource types: agents, sessions, harnesses, capabilities, models, ",
+                "providers, mcp servers, skills, budgets, schedules, files, events, messages, ",
+                "images, organizations, users, databases, storage.\n\n",
+                "Example queries: 'create agent', 'list sessions', 'capabilities', 'mcp'\n\n",
+                "Use `all: true` to list every operation grouped by category.\n\n",
                 "The discovered operations are available as bash builtins in the 'execute' tool."
             ),
             "inputSchema": {
@@ -195,10 +199,13 @@ fn tool_definitions() -> Value {
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search query to find API operations (e.g., 'list agents', 'session events', 'mcp')."
+                        "description": "Search query to find API operations (e.g., 'create agent', 'sessions', 'mcp'). Supports natural language — tokens are matched against names, descriptions, and categories."
+                    },
+                    "all": {
+                        "type": "boolean",
+                        "description": "List all available operations grouped by category. When true, query is ignored."
                     }
-                },
-                "required": ["query"]
+                }
             }
         },
         {
@@ -396,7 +403,7 @@ async fn handle_tools_call(
         "agent_run" => tool_agent_run(&arguments, org, state).await,
         "session_send_message" => tool_session_send_message(&arguments, org, state).await,
         "session_get_status" => tool_session_get_status(&arguments, org, state).await,
-        "discover" => tool_discover(&arguments, org, state, &bearer_token).await,
+        "discover" => tool_discover(&arguments).await,
         "execute" => tool_execute(&arguments, org, state, &bearer_token).await,
         _ => Err(format!("Unknown tool: {tool_name}")),
     };
@@ -744,23 +751,23 @@ async fn tool_session_get_status(
 }
 
 // ============================================================================
-// Tier 2: discover — delegates to ScriptedTool's built-in `discover` command
+// Tier 2: discover — searches catalog directly via catalog::discover_all/search
 // ============================================================================
 
-async fn tool_discover(
-    args: &Value,
-    org: &ResolvedOrg,
-    state: &AppState,
-    bearer_token: &str,
-) -> Result<String, String> {
-    let query = args
-        .get("query")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing required parameter: query")?;
+async fn tool_discover(args: &Value) -> Result<String, String> {
+    let show_all = args.get("all").and_then(|v| v.as_bool()).unwrap_or(false);
 
-    let tool = build_scripted_tool(org, state, bearer_token);
-    let script = format!("discover --search {}", shell_escape(query));
-    execute_script(&tool, &script, 10_000).await
+    if show_all {
+        return Ok(catalog::discover_all());
+    }
+
+    let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+
+    if query.is_empty() {
+        return Err("Provide a 'query' to search or set 'all: true' to list everything.".into());
+    }
+
+    Ok(catalog::discover_search(query))
 }
 
 // ============================================================================
@@ -777,6 +784,13 @@ async fn tool_execute(
         .get("command")
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: command")?;
+
+    // Normalize `discover --all` to bashkit's `discover --categories`.
+    let command = if command.trim() == "discover --all" {
+        "discover --categories"
+    } else {
+        command
+    };
 
     let timeout_ms = args
         .get("timeout_ms")
@@ -836,17 +850,6 @@ async fn execute_script(
             }
         }
         Err(_) => Err(format!("Command timed out after {timeout_ms}ms")),
-    }
-}
-
-/// Simple shell escaping for a single argument.
-fn shell_escape(s: &str) -> String {
-    if s.chars()
-        .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
-    {
-        s.to_string()
-    } else {
-        format!("'{}'", s.replace('\'', "'\\''"))
     }
 }
 

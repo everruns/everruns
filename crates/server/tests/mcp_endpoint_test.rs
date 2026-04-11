@@ -575,6 +575,67 @@ async fn test_mcp_discover_missing_query() {
     assert!(tool_is_error(&resp), "Expected error for missing query");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_discover_all() {
+    let server = TestServer::new().await;
+    let resp = mcp_tool_call(&server, "discover", json!({ "all": true })).await;
+
+    assert!(
+        !tool_is_error(&resp),
+        "discover --all failed: {}",
+        tool_text(&resp)
+    );
+    let text = tool_text(&resp);
+    assert!(
+        text.contains("## agents"),
+        "Should list agents category heading"
+    );
+    assert!(
+        text.contains("## sessions"),
+        "Should list sessions category heading"
+    );
+    assert!(text.contains("create_agent"), "Should include create_agent");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_discover_fuzzy_search() {
+    let server = TestServer::new().await;
+    // "create agent" should match "create_agent" via token matching
+    let resp = mcp_tool_call(&server, "discover", json!({ "query": "create agent" })).await;
+
+    assert!(
+        !tool_is_error(&resp),
+        "discover fuzzy search failed: {}",
+        tool_text(&resp)
+    );
+    let text = tool_text(&resp);
+    assert!(
+        text.contains("create_agent"),
+        "fuzzy search 'create agent' should find create_agent, got: {text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_discover_capabilities() {
+    let server = TestServer::new().await;
+    let resp = mcp_tool_call(&server, "discover", json!({ "query": "capabilities" })).await;
+
+    assert!(
+        !tool_is_error(&resp),
+        "discover capabilities failed: {}",
+        tool_text(&resp)
+    );
+    let text = tool_text(&resp);
+    assert!(
+        text.contains("list_capabilities"),
+        "Should find list_capabilities, got: {text}"
+    );
+    assert!(
+        text.contains("get_capability"),
+        "Should find get_capability, got: {text}"
+    );
+}
+
 // ============================================================================
 // Tier 2: execute — requires a real TCP server for HTTP callbacks
 // ============================================================================
@@ -860,6 +921,24 @@ async fn test_mcp_execute_discover_categories() {
         stdout.contains("harnesses"),
         "Should list harnesses category"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_execute_discover_all() {
+    let (_server, url) = TestServer::serving().await;
+
+    let resp = mcp_tool_call_http(&url, "execute", json!({ "command": "discover --all" })).await;
+    assert!(
+        !tool_is_error(&resp),
+        "discover --all failed: {}",
+        tool_text(&resp)
+    );
+
+    let result = tool_json(&resp);
+    assert!(result["success"].as_bool().unwrap());
+    let stdout = result["stdout"].as_str().unwrap();
+    assert!(stdout.contains("agents"), "Should list agents category");
+    assert!(stdout.contains("sessions"), "Should list sessions category");
 }
 
 // ============================================================================
