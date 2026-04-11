@@ -601,15 +601,48 @@
         "tags": [
           "capabilities"
         ],
-        "summary": "GET /v1/capabilities - List all available capabilities",
+        "summary": "GET /v1/capabilities - List available capabilities with pagination",
         "operationId": "list_capabilities",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name/description",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Pagination offset (default: 0)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size (default: 20, max: 100)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "List of available capabilities",
+            "description": "Paginated list of capabilities",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_CapabilityInfo"
+                  "$ref": "#/components/schemas/PaginatedResponse_CapabilityInfo"
                 }
               }
             }
@@ -10671,6 +10704,122 @@
                       "description": "Cumulative token usage across all sessions for this agent."
                     }
                   ]
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum number of items per page.",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Current offset (starting position).",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of items matching the query (across all pages).",
+            "minimum": 0
+          }
+        }
+      },
+      "PaginatedResponse_CapabilityInfo": {
+        "type": "object",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.",
+        "required": [
+          "data",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Public capability information (without internal details)\nThis is what gets returned from the API\nNamed CapabilityInfo to distinguish from the Capability trait",
+              "required": [
+                "id",
+                "name",
+                "description",
+                "status"
+              ],
+              "properties": {
+                "category": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Category for grouping in UI"
+                },
+                "dependencies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "IDs of capabilities that this capability depends on.\nWhen this capability is selected, its dependencies are automatically included."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Description of what this capability provides"
+                },
+                "features": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature."
+                },
+                "icon": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Icon name (for UI rendering)"
+                },
+                "id": {
+                  "type": "string",
+                  "description": "Unique capability identifier"
+                },
+                "is_mcp": {
+                  "type": "boolean",
+                  "description": "Whether this is an MCP server capability (for UI badge)"
+                },
+                "is_skill": {
+                  "type": "boolean",
+                  "description": "Whether this is an Agent Skill capability (for UI badge)"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Display name"
+                },
+                "risk_level": {
+                  "$ref": "#/components/schemas/RiskLevel",
+                  "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval."
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Current status"
+                },
+                "system_prompt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "System prompt addition contributed by this capability"
+                },
+                "tool_definitions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "description": "Tool definitions provided by this capability"
                 }
               }
             },

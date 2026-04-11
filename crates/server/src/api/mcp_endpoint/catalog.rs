@@ -109,11 +109,12 @@ fn make_http_callback(
 
         if let Some(obj) = params.as_object() {
             for (key, value) in obj {
-                // Intercept summary — handled client-side, not sent to API
-                // (except for endpoints that natively support it like /v1/capabilities)
+                // Intercept summary — handled client-side via apply_summary_filter,
+                // never forwarded to the API.
                 if key == "summary" {
                     wants_summary = value.as_bool().unwrap_or(false)
                         || value.as_str().is_some_and(|s| s == "true");
+                    continue;
                 }
 
                 let placeholder = format!("{{{key}}}");
@@ -823,22 +824,12 @@ pub static CATALOG: &[Operation] = &[
         method: "GET",
         path: "/v1/harnesses",
         category: "harnesses",
-        description: "List harnesses (base environments for sessions). Supports pagination (limit/offset) and --summary for compact output.",
+        description: "List harnesses (base environments for sessions). Supports --summary for compact output.",
         params: &[
             Param {
                 name: "include_archived",
                 typ: "query",
                 description: "Include archived (default: false)",
-            },
-            Param {
-                name: "offset",
-                typ: "query",
-                description: "Pagination offset (default: 0)",
-            },
-            Param {
-                name: "limit",
-                typ: "query",
-                description: "Page size (default: 20, max: 100)",
             },
             Param {
                 name: "summary",
@@ -865,24 +856,12 @@ pub static CATALOG: &[Operation] = &[
         method: "GET",
         path: "/v1/llm-models",
         category: "models",
-        description: "List all LLM models across all providers. Supports pagination (limit/offset) and --summary for compact output.",
-        params: &[
-            Param {
-                name: "offset",
-                typ: "query",
-                description: "Pagination offset (default: 0)",
-            },
-            Param {
-                name: "limit",
-                typ: "query",
-                description: "Page size (default: 20, max: 100)",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
-            },
-        ],
+        description: "List all LLM models across all providers. Supports --summary for compact output.",
+        params: &[Param {
+            name: "summary",
+            typ: "query",
+            description: "Compact output: id, name, description, status only (default: false)",
+        }],
     },
     Operation {
         name: "get_model",
@@ -902,24 +881,12 @@ pub static CATALOG: &[Operation] = &[
         method: "GET",
         path: "/v1/llm-providers",
         category: "providers",
-        description: "List configured LLM providers (OpenAI, Anthropic, etc.). Supports pagination (limit/offset) and --summary for compact output.",
-        params: &[
-            Param {
-                name: "offset",
-                typ: "query",
-                description: "Pagination offset (default: 0)",
-            },
-            Param {
-                name: "limit",
-                typ: "query",
-                description: "Page size (default: 20, max: 100)",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
-            },
-        ],
+        description: "List configured LLM providers (OpenAI, Anthropic, etc.). Supports --summary for compact output.",
+        params: &[Param {
+            name: "summary",
+            typ: "query",
+            description: "Compact output: id, name, description, status only (default: false)",
+        }],
     },
     Operation {
         name: "create_provider",
@@ -951,22 +918,12 @@ pub static CATALOG: &[Operation] = &[
         method: "GET",
         path: "/v1/mcp-servers",
         category: "mcp_servers",
-        description: "List registered MCP servers. Supports pagination (limit/offset) and --summary for compact output.",
+        description: "List registered MCP servers. Supports --summary for compact output.",
         params: &[
             Param {
                 name: "search",
                 typ: "query",
                 description: "Search by name",
-            },
-            Param {
-                name: "offset",
-                typ: "query",
-                description: "Pagination offset (default: 0)",
-            },
-            Param {
-                name: "limit",
-                typ: "query",
-                description: "Page size (default: 20, max: 100)",
             },
             Param {
                 name: "summary",
@@ -1059,22 +1016,12 @@ pub static CATALOG: &[Operation] = &[
         method: "GET",
         path: "/v1/skills",
         category: "skills",
-        description: "List registered skills. Supports pagination (limit/offset) and --summary for compact output.",
+        description: "List registered skills. Supports --summary for compact output.",
         params: &[
             Param {
                 name: "include_archived",
                 typ: "query",
                 description: "Include archived",
-            },
-            Param {
-                name: "offset",
-                typ: "query",
-                description: "Pagination offset (default: 0)",
-            },
-            Param {
-                name: "limit",
-                typ: "query",
-                description: "Page size (default: 20, max: 100)",
             },
             Param {
                 name: "summary",
@@ -1123,7 +1070,7 @@ pub static CATALOG: &[Operation] = &[
             Param {
                 name: "limit",
                 typ: "query",
-                description: "Page size (default: 20, max: 100)",
+                description: "Page size (default: 50, max: 100)",
             },
             Param {
                 name: "summary",
@@ -1150,24 +1097,12 @@ pub static CATALOG: &[Operation] = &[
         method: "GET",
         path: "/v1/schedules",
         category: "schedules",
-        description: "List durable scheduled tasks. Supports pagination (limit/offset) and --summary for compact output.",
-        params: &[
-            Param {
-                name: "offset",
-                typ: "query",
-                description: "Pagination offset (default: 0)",
-            },
-            Param {
-                name: "limit",
-                typ: "query",
-                description: "Page size (default: 20, max: 100)",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
-            },
-        ],
+        description: "List durable scheduled tasks. Supports --summary for compact output.",
+        params: &[Param {
+            name: "summary",
+            typ: "query",
+            description: "Compact output: id, name, description, status only (default: false)",
+        }],
     },
     Operation {
         name: "create_schedule",
@@ -1199,24 +1134,12 @@ pub static CATALOG: &[Operation] = &[
         method: "GET",
         path: "/v1/orgs",
         category: "organizations",
-        description: "List organizations for the current user. Supports pagination (limit/offset) and --summary for compact output.",
-        params: &[
-            Param {
-                name: "offset",
-                typ: "query",
-                description: "Pagination offset (default: 0)",
-            },
-            Param {
-                name: "limit",
-                typ: "query",
-                description: "Page size (default: 20, max: 100)",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status only (default: false)",
-            },
-        ],
+        description: "List organizations for the current user. Supports --summary for compact output.",
+        params: &[Param {
+            name: "summary",
+            typ: "query",
+            description: "Compact output: id, name, description, status only (default: false)",
+        }],
     },
     Operation {
         name: "get_org",
@@ -1236,17 +1159,12 @@ pub static CATALOG: &[Operation] = &[
         method: "GET",
         path: "/v1/users",
         category: "users",
-        description: "List users in the current organization. Supports pagination (limit/offset) and --summary for compact output.",
+        description: "List users in the current organization. Supports search filtering and --summary for compact output.",
         params: &[
             Param {
-                name: "offset",
+                name: "search",
                 typ: "query",
-                description: "Pagination offset (default: 0)",
-            },
-            Param {
-                name: "limit",
-                typ: "query",
-                description: "Page size (default: 20, max: 100)",
+                description: "Filter users by search term",
             },
             Param {
                 name: "summary",
