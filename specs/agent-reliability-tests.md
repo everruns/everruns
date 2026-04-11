@@ -21,7 +21,7 @@ End-to-end reliability tests that verify agent execution survives infrastructure
 
 ### Scenario 1: Worker Killed Mid-Task
 
-**What happens in production:** Worker process crashes (OOM, SIGKILL, panic) while executing an activity. Heartbeat stops. After `stale_threshold` (default 30s), control plane reclaims the task and marks it pending. Another worker claims and completes it. Workflow completes normally via event replay.
+**What happens in production:** Worker process crashes (OOM, SIGKILL, panic) while executing an activity. Heartbeat stops. After `stale_threshold` (default 60s), control plane reclaims the task and marks it pending. Another worker claims and completes it. Workflow completes normally via event replay.
 
 **Test approach:** Use the PostgreSQL store directly with the `WorkflowExecutor`. Start a multi-step workflow, simulate worker crash by abandoning a claimed task with stale heartbeat, trigger reclamation, have a second worker complete the task, and verify the workflow completes.
 

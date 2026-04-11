@@ -556,8 +556,9 @@ async fn create_test_store_no_reset() -> PostgresWorkflowEventStore {
 // ============================================
 
 /// Worker claims task, network dies during completion (complete_task fails).
-/// After recovery, late completion returns TaskNotOwned because task was
-/// already reclaimed and completed by another worker.
+/// The failpoint fires AFTER the DB update succeeds, so the task is actually
+/// completed in the database. A retry returns TaskNotOwned because the row's
+/// status is already 'completed' and no longer matches 'claimed'.
 #[tokio::test]
 async fn test_network_failure_during_task_completion() {
     let scenario = FailScenario::setup();
@@ -820,10 +821,12 @@ async fn test_db_failure_during_event_load_recovers() {
     scenario.teardown();
 }
 
-/// Brief DB blip during task enqueue. Task is actually persisted (failpoint
-/// fires after INSERT). Verify no duplicate on retry.
+/// Brief DB blip during task enqueue. Failpoint fires after INSERT succeeds,
+/// so the task is persisted but the caller sees an error. A naive retry
+/// creates a ghost duplicate. This test demonstrates the ghost task hazard
+/// and verifies both tasks are visible in the queue.
 #[tokio::test]
-async fn test_db_blip_during_enqueue_no_duplicate() {
+async fn test_db_blip_during_enqueue_creates_ghost_task() {
     let scenario = FailScenario::setup();
     let store = create_test_store().await;
 
@@ -965,11 +968,11 @@ async fn test_db_failure_during_reclamation() {
     scenario.teardown();
 }
 
-/// Circuit breaker opens under sustained DB failures, protecting the system
-/// from cascading failures.
+/// Circuit breaker opens under sustained failures, protecting the system
+/// from cascading failures. No failpoints needed — the breaker's own
+/// failure recording API drives state transitions.
 #[tokio::test]
-async fn test_circuit_breaker_opens_under_db_failure() {
-    let scenario = FailScenario::setup();
+async fn test_circuit_breaker_opens_under_sustained_failures() {
     let store = create_test_store().await;
     let store = Arc::new(store);
     let cb_key = format!("test_reliability_{}", Uuid::now_v7());
@@ -998,6 +1001,4 @@ async fn test_circuit_breaker_opens_under_db_failure() {
         .execute(store.pool())
         .await
         .ok();
-
-    scenario.teardown();
 }
