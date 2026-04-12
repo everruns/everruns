@@ -124,7 +124,7 @@ See the OpenAPI spec (`./scripts/export-openapi.sh`) for detailed request/respon
 7. **Exact replacement semantics:** `edit_file` supports single or batched exact replacements within one file. All replacements are matched against the original file content; ambiguous or overlapping matches are rejected.
 8. **Formatting preservation:** `edit_file` preserves UTF-8 BOM and the file's existing newline convention (`LF`, `CRLF`, or `CR`).
 9. **Bounded diff payloads:** `edit_file` returns a unified diff for transcript/UI rendering, but large diffs are truncated and flagged to avoid oversized tool payloads.
-10. **Capability mounts:** When a session is created, files from capability mount points are automatically populated (see `specs/capabilities.md` for details)
+10. **Capability mounts:** When a session is created, files from capability mount points are automatically populated. Inline mounts are written to the database; virtual mounts (`MountSource::Virtual`) are registered in an in-memory `VirtualMountRegistry` and served without DB writes. See `specs/capabilities.md` for details.
 11. **Starter files:** Agents and harnesses can declare starter files that are copied into each new session before use. Agent starter files override harness starter files when they target the same normalized path.
 
 ### Database Schema
