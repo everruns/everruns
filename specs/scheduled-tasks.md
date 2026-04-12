@@ -50,62 +50,15 @@ See `specs/localization.md` for how schedule timezone interacts with session and
 
 ### Schedule
 
-| Field | Type | Description |
-|-------|------|-------------|
-| id | UUID | Primary key (UUIDv7) |
-| name | TEXT | Human-readable name (unique) |
-| description | TEXT | Optional description |
-| cron_expression | TEXT | Standard cron expression (5 or 6 fields) |
-| timezone | TEXT | IANA timezone (default: UTC) |
-| target_type | TEXT | `workflow` or `activity` |
-| target_name | TEXT | Workflow type or activity type |
-| target_input | JSONB | Input payload for target |
-| enabled | BOOLEAN | Whether schedule is active |
-| max_concurrent | INTEGER | Max concurrent executions (NULL = unlimited) |
-| catch_up_missed | BOOLEAN | Run missed executions on restart (default: false) |
-| max_catch_up | INTEGER | Max catch-up runs (default: 1) |
-| retry_policy | JSONB | Retry configuration for failed executions |
-| last_triggered_at | TIMESTAMPTZ | Last trigger time |
-| next_trigger_at | TIMESTAMPTZ | Next scheduled trigger (indexed) |
-| created_at | TIMESTAMPTZ | Creation timestamp |
-| updated_at | TIMESTAMPTZ | Last update timestamp |
+See the `durable_schedules` migration for the full schema. Key fields: `id` (UUIDv7), `name` (unique), `cron_expression`, `timezone` (IANA, default UTC), `target_type` (workflow/activity), `target_name`, `target_input` (JSONB), `enabled`, `max_concurrent`, `catch_up_missed`, `retry_policy`, `next_trigger_at` (indexed for polling).
 
 ### ScheduleExecution
 
-| Field | Type | Description |
-|-------|------|-------------|
-| id | UUID | Primary key (UUIDv7) |
-| schedule_id | UUID | FK to durable_schedules |
-| scheduled_at | TIMESTAMPTZ | When it was supposed to run |
-| started_at | TIMESTAMPTZ | When execution started |
-| completed_at | TIMESTAMPTZ | When execution completed |
-| status | TEXT | `pending`, `running`, `completed`, `failed`, `skipped` |
-| workflow_id | UUID | Created workflow ID (if target_type = workflow) |
-| task_id | UUID | Created task ID (if target_type = activity) |
-| error | TEXT | Error message if failed |
-| duration_ms | INTEGER | Execution duration |
+See the `durable_schedule_executions` migration for the full schema. Tracks each trigger attempt with `schedule_id`, `scheduled_at`, `status` (pending/running/completed/failed/skipped), linked `workflow_id` or `task_id`, and `duration_ms`.
 
 ### Cron Expression Format
 
-Standard 5-field cron with optional 6th field for seconds:
-
-```
-┌───────────── second (0-59) [optional]
-│ ┌───────────── minute (0-59)
-│ │ ┌───────────── hour (0-23)
-│ │ │ ┌───────────── day of month (1-31)
-│ │ │ │ ┌───────────── month (1-12 or JAN-DEC)
-│ │ │ │ │ ┌───────────── day of week (0-6 or SUN-SAT)
-│ │ │ │ │ │
-│ │ │ │ │ │
-* * * * * *
-```
-
-Examples:
-- `*/30 * * * *` - Every 30 minutes
-- `0 */6 * * *` - Every 6 hours
-- `0 9 * * MON-FRI` - 9 AM on weekdays
-- `0 0 1 * *` - First day of each month at midnight
+Standard 5-field cron with optional 6th field for seconds. Parsed via the `cron` crate (v0.13). Examples: `*/30 * * * *` (every 30 min), `0 9 * * MON-FRI` (9 AM weekdays).
 
 ## Timezone Semantics
 
@@ -138,76 +91,7 @@ Examples:
 
 ### Request/Response Types
 
-```rust
-// Create schedule request
-#[derive(Deserialize, ToSchema)]
-pub struct CreateScheduleRequest {
-    pub name: String,
-    #[serde(default)]
-    pub description: Option<String>,
-    pub cron_expression: String,
-    #[serde(default = "default_timezone")]
-    pub timezone: String,
-    pub target: ScheduleTarget,
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-    #[serde(default)]
-    pub max_concurrent: Option<u32>,
-    #[serde(default)]
-    pub catch_up_missed: bool,
-    #[serde(default)]
-    pub retry_policy: Option<RetryPolicy>,
-}
-
-#[derive(Deserialize, Serialize, ToSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ScheduleTarget {
-    Workflow {
-        workflow_type: String,
-        input: serde_json::Value,
-    },
-    Activity {
-        activity_type: String,
-        input: serde_json::Value,
-    },
-}
-
-// Schedule response
-#[derive(Serialize, ToSchema)]
-pub struct ScheduleResponse {
-    pub id: Uuid,
-    pub name: String,
-    pub description: Option<String>,
-    pub cron_expression: String,
-    pub timezone: String,
-    pub target: ScheduleTarget,
-    pub enabled: bool,
-    pub max_concurrent: Option<u32>,
-    pub catch_up_missed: bool,
-    pub retry_policy: Option<RetryPolicy>,
-    pub last_triggered_at: Option<DateTime<Utc>>,
-    pub next_trigger_at: Option<DateTime<Utc>>,
-    pub stats: ScheduleStats,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct ScheduleStats {
-    pub total_executions: u64,
-    pub successful_executions: u64,
-    pub failed_executions: u64,
-    pub avg_duration_ms: Option<u64>,
-    pub last_execution_status: Option<String>,
-}
-
-// List response
-#[derive(Serialize, ToSchema)]
-pub struct ListSchedulesResponse {
-    pub data: Vec<ScheduleResponse>,
-    pub total: u64,
-}
-```
+For the complete request/response schemas (`CreateScheduleRequest`, `ScheduleTarget`, `ScheduleResponse`, `ScheduleStats`), run `./scripts/export-openapi.sh` or see the generated OpenAPI spec. Key design choices: `ScheduleTarget` is a tagged enum (`workflow` or `activity`) with type-specific input; responses include aggregated `ScheduleStats`.
 
 ## Scheduler Component
 
