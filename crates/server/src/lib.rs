@@ -4,6 +4,7 @@
 // Decision: App builder pattern (ServerAppBuilder) for composable server configurations
 
 // Force-link integration crates so inventory::submit! registrations are included
+extern crate everruns_container_sandbox;
 extern crate everruns_integrations_brave_search;
 extern crate everruns_integrations_browserless;
 extern crate everruns_integrations_daytona;
@@ -12,7 +13,6 @@ extern crate everruns_integrations_docker;
 extern crate everruns_integrations_duckduckgo;
 extern crate everruns_integrations_e2b;
 extern crate everruns_integrations_sprites;
-extern crate everruns_container_sandbox;
 
 // API routes and types (shared for OpenAPI generation)
 pub mod api;
