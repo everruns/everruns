@@ -1,0 +1,36 @@
+# Container Sandbox
+# Decision: Core crate (not integration) — self-hosted container execution via Docker Engine REST API.
+# Decision: Uses reqwest for HTTP/TCP Docker host connections. Unix socket support is a future enhancement.
+
+[package]
+name = "everruns-container-sandbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Self-hosted container sandbox capability for Everruns via Docker Engine REST API"
+
+[dependencies]
+# HTTP client for Docker Engine REST API
+reqwest = { workspace = true }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Tar archive encoding/decoding (Docker /archive endpoints)
+tar = "0.4"
+
+# URL encoding for query parameters
+urlencoding = "2"
+
+# Async
+tokio.workspace = true
+tracing.workspace = true
+
+[features]
+container-sandbox-live-tests = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"
