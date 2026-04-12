@@ -5,17 +5,77 @@
 //           write tools (manage_*) perform mutations. Session I/O split into three single-purpose tools.
 // Decision: All results include UI links via PlatformStore::base_url()
 // Decision: get_messages defaults to last 10; session_read_response defaults to 120s timeout
+// Decision: Platform docs (docs/) are embedded at compile time via include_dir! and mounted
+//           as a virtual readonly filesystem at /docs. This gives the platform chat agent
+//           access to Everruns documentation without DB writes per session.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityStatus, MountPoint};
+use crate::capability_types::{MountAccess, MountSource, VirtualFileTree};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
+use include_dir::{Dir, include_dir};
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 // =============================================================================
 // Capability
 // =============================================================================
+
+// =============================================================================
+// Embedded platform docs (virtual mount)
+// =============================================================================
+
+/// Docs directory embedded at compile time from the repo root `docs/`.
+static DOCS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../docs");
+
+fn dir_to_tree(dir: &Dir, base: &str) -> VirtualFileTree {
+    let mut tree = VirtualFileTree::new();
+    tree.insert_directory(base);
+    populate_tree(&mut tree, dir, base);
+    tree
+}
+
+fn populate_tree(tree: &mut VirtualFileTree, dir: &Dir, prefix: &str) {
+    for file in dir.files() {
+        let name = file
+            .path()
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        // Only include markdown content (skip images, JSON, etc.)
+        let ext = file
+            .path()
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        if !matches!(ext, "md" | "mdx") {
+            continue;
+        }
+        let path = format!("{prefix}/{name}");
+        let content = std::str::from_utf8(file.contents()).unwrap_or("");
+        tree.insert_text(&path, content);
+    }
+    for subdir in dir.dirs() {
+        let name = subdir
+            .path()
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        let path = format!("{prefix}/{name}");
+        tree.insert_directory(&path);
+        populate_tree(tree, subdir, &path);
+    }
+}
+
+/// Lazily-initialized shared tree (built once on first access).
+fn docs_tree() -> Arc<VirtualFileTree> {
+    use std::sync::OnceLock;
+    static TREE: OnceLock<Arc<VirtualFileTree>> = OnceLock::new();
+    TREE.get_or_init(|| Arc::new(dir_to_tree(&DOCS_DIR, "/docs")))
+        .clone()
+}
 
 pub struct PlatformManagementCapability;
 
@@ -46,7 +106,25 @@ impl Capability for PlatformManagementCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"Capabilities extend agent/harness functionality. Three types: built-in, MCP servers, and skills. Use `read_capabilities` to discover IDs before creating agents/harnesses. All results include UI links."#,
+            r#"Capabilities extend agent/harness functionality. Three types: built-in, MCP servers, and skills. Use `read_capabilities` to discover IDs before creating agents/harnesses. All results include UI links.
+
+<platform-docs>
+Platform documentation is available at /workspace/docs in the session filesystem.
+Use `read_file`, `list_directory`, or `grep` to browse and search it.
+Virtual bash commands like `cat /workspace/docs/...`, `ls /workspace/docs/`, and
+`grep -r "pattern" /workspace/docs/` also work.
+
+Key sections:
+- /workspace/docs/getting-started/ — Introduction, concepts, architecture, Docker setup
+- /workspace/docs/features/ — SDK, CLI, UI, events, harnesses, capabilities, apps, skills
+- /workspace/docs/capabilities/ — Per-capability reference (file-system, virtual-bash, web-fetch, etc.)
+- /workspace/docs/integrations/ — External integrations (Slack, Daytona, Browserless, etc.)
+- /workspace/docs/advanced/ — Budgets, compaction, embedding, network access, request signing
+- /workspace/docs/sre/ — Environment variables, admin container, runbooks
+
+When the user asks about Everruns features, configuration, or how things work,
+consult these docs before answering.
+</platform-docs>"#,
         )
     }
 
@@ -63,6 +141,19 @@ impl Capability for PlatformManagementCapability {
             Box::new(SessionReadMessagesTool),
             Box::new(SessionReadResponseTool),
         ]
+    }
+
+    fn mounts(&self) -> Vec<MountPoint> {
+        vec![MountPoint::new(
+            "/docs",
+            MountAccess::ReadOnly,
+            MountSource::Virtual { tree: docs_tree() },
+            self.id(),
+        )]
+    }
+
+    fn dependencies(&self) -> Vec<&'static str> {
+        vec!["session_file_system"]
     }
 }
 

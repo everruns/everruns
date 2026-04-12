@@ -93,7 +93,6 @@ mod noop;
 mod openai_tool_search;
 mod openui;
 pub mod persistent_memory;
-mod platform_docs;
 mod platform_management;
 mod research;
 mod sample_data;
@@ -172,7 +171,6 @@ pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
 pub use persistent_memory::{
     ForgetTool, MEMORY_CAPABILITY_ID, MemoryCapability, MemoryConfig, RecallTool, RememberTool,
 };
-pub use platform_docs::PlatformDocsCapability;
 pub use platform_management::{
     ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PlatformManagementCapability,
     ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool, ReadSessionsTool,
@@ -664,9 +662,6 @@ impl CapabilityRegistry {
 
         // OpenUI generative UI (all environments)
         registry.register(OpenUiCapability);
-
-        // Platform documentation (virtual mount, all environments)
-        registry.register(PlatformDocsCapability);
 
         // Demo capability with mount points (all environments)
         registry.register(SampleDataCapability);

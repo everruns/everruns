@@ -451,7 +451,7 @@ mod tests {
             .iter()
             .map(|cap| cap.capability_id.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(chat_cap_ids, vec!["platform_management", "platform_docs"]);
+        assert_eq!(chat_cap_ids, vec!["platform_management"]);
     }
 
     #[tokio::test]
