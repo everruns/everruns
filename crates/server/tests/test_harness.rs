@@ -20,7 +20,7 @@ use std::sync::Arc;
 use axum::{
     Router,
     body::Body,
-    http::{Method, Request, StatusCode, header::HeaderMap},
+    http::{HeaderMap, Method, Request, StatusCode},
     routing::get,
 };
 use http_body_util::BodyExt;
@@ -548,7 +548,7 @@ pub enum TestMode {
 /// Response from a test request
 pub struct TestResponse {
     status: StatusCode,
-    pub headers: HeaderMap,
+    headers: HeaderMap,
     body: Vec<u8>,
 }
 
@@ -556,6 +556,11 @@ impl TestResponse {
     /// Get the status code
     pub fn status(&self) -> StatusCode {
         self.status
+    }
+
+    /// Get the response headers
+    pub fn headers(&self) -> &HeaderMap {
+        &self.headers
     }
 
     /// Get the body as a string

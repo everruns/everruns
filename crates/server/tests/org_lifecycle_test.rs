@@ -302,10 +302,10 @@ async fn test_switch_org_cookie_has_secure_flag() {
         .assert_status(StatusCode::OK);
 
     let set_cookie_values: Vec<&str> = resp
-        .headers
+        .headers()
         .get_all(SET_COOKIE)
         .iter()
-        .map(|v| v.to_str().unwrap())
+        .map(|v| v.to_str().expect("Set-Cookie header must be valid ASCII/UTF-8"))
         .collect();
 
     let org_cookie = set_cookie_values
