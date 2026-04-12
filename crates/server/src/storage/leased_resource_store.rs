@@ -122,8 +122,8 @@ impl LeasedResourceStore for DbLeasedResourceStore {
         let resource = row_to_domain(&row)?;
 
         // Auto-register in session resource registry for agent visibility.
-        if let Some(ref registry) = self.registry {
-            let _ = registry
+        if let Some(ref registry) = self.registry
+            && let Err(err) = registry
                 .register(RegisterSessionResource {
                     session_id,
                     resource_id: resource.id.to_string(),
@@ -132,7 +132,13 @@ impl LeasedResourceStore for DbLeasedResourceStore {
                     status: SessionResourceStatus::Active,
                     metadata: registry_metadata,
                 })
-                .await;
+                .await
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                resource_id = %resource.id,
+                "Failed to auto-register leased resource in session registry: {err}"
+            );
         }
 
         Ok(resource)
@@ -171,14 +177,20 @@ impl LeasedResourceStore for DbLeasedResourceStore {
         let resource = row.as_ref().map(row_to_domain).transpose()?;
 
         // Update registry status to released.
-        if let (Some(registry), Some(res)) = (&self.registry, &resource) {
-            let _ = registry
+        if let (Some(registry), Some(res)) = (&self.registry, &resource)
+            && let Err(err) = registry
                 .update_status(
                     session_id,
                     &res.id.to_string(),
                     SessionResourceStatus::Released,
                 )
-                .await;
+                .await
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                resource_id = %res.id,
+                "Failed to update session registry status to released: {err}"
+            );
         }
 
         Ok(resource)

@@ -1855,11 +1855,12 @@ impl everruns_core::traits::SessionResourceRegistry for GrpcAdapter {
 
     async fn get(
         &self,
-        _session_id: SessionId,
-        _resource_id: &str,
+        session_id: SessionId,
+        resource_id: &str,
     ) -> Result<Option<everruns_core::SessionResourceEntry>> {
-        // get is not used by worker tools; only register/update_status/list matter.
-        Ok(None)
+        // Emulate via list — no dedicated GetSessionResource RPC yet.
+        let entries = self.list(session_id, None).await?;
+        Ok(entries.into_iter().find(|e| e.resource_id == resource_id))
     }
 
     async fn list(

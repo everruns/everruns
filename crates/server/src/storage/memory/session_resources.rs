@@ -16,6 +16,7 @@ impl InMemoryDatabase {
         let key = (input.session_id, input.resource_id.clone());
 
         if let Some(existing) = resources.get_mut(&key) {
+            existing.kind = input.kind;
             existing.display_name = input.display_name;
             existing.status = input.status;
             existing.metadata = input.metadata;

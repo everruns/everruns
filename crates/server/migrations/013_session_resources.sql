@@ -24,4 +24,4 @@ CREATE INDEX idx_session_resources_session_status
 CREATE TRIGGER update_session_resources_updated_at
     BEFORE UPDATE ON session_resources
     FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at();
+    EXECUTE FUNCTION update_updated_at_column();

@@ -15,6 +15,7 @@ impl Database {
             INSERT INTO session_resources (session_id, resource_id, kind, display_name, status, metadata)
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (session_id, resource_id) DO UPDATE SET
+                kind = EXCLUDED.kind,
                 display_name = EXCLUDED.display_name,
                 status = EXCLUDED.status,
                 metadata = EXCLUDED.metadata

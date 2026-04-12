@@ -21,11 +21,11 @@ Lives in `crates/core/src/traits.rs`. Available on `ToolContext` as
 `session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>`.
 
 ```
-register(entry)          — any capability registers a resource
-update_status(id, status) — mark completed/failed/released
-get(session_id, id)      — look up one resource
-list(session_id, filter?) — "what's running?"
-deregister(session_id, id) — remove from registry
+register(entry)                       — any capability registers a resource
+update_status(session_id, id, status) — mark completed/failed/released
+get(session_id, id)                   — look up one resource
+list(session_id, filter?)             — "what's running?"
+deregister(session_id, id)            — remove from registry
 ```
 
 ### Model — `SessionResourceEntry`
@@ -100,7 +100,7 @@ Infrastructure cleanup workers scan the registry to find stale resources.
 |--------|--------------------------------------------------|
 | Full   | PostgreSQL `session_resources` table              |
 | Dev    | In-memory HashMap                                 |
-| gRPC   | Follow-up: add `RegisterSessionResource` RPC     |
+| gRPC   | `RegisterSessionResource`, `UpdateSessionResourceStatus`, `ListSessionResources`, `DeregisterSessionResource` RPCs |
 
 ### Auto-registration from LeasedResourceStore
 
