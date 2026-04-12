@@ -707,6 +707,54 @@ mod tests {
         assert!(!result3.has_changes());
     }
 
+    /// Verify that calling initialize_org_harnesses on a fresh default org
+    /// (without full seed_all) creates harnesses and sets org settings.
+    /// This simulates the safety-net path in auth registration handlers.
+    #[tokio::test]
+    async fn test_initialize_without_prior_seed() {
+        let db = make_db();
+        // Only create the org row — skip full seeding (models, providers, etc.)
+        seed_default_org(&db).await;
+
+        // Before init, no harnesses exist
+        let before = db
+            .list_harnesses(DEFAULT_ORG_ID, None, false)
+            .await
+            .unwrap();
+        assert!(before.is_empty());
+
+        // Initialize harnesses (same call the registration handlers make)
+        let result = initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+        assert!(result.created > 0, "should create built-in harnesses");
+
+        // Harnesses exist
+        let after = db
+            .list_harnesses(DEFAULT_ORG_ID, None, false)
+            .await
+            .unwrap();
+        assert_eq!(after.len(), harnesses().len());
+
+        // Org settings have default and base harness IDs
+        let settings = db
+            .get_organization_settings(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .expect("org settings should exist");
+        assert!(
+            settings.default_harness_id.is_some(),
+            "default_harness_id should be set"
+        );
+        assert!(
+            settings.base_harness_id.is_some(),
+            "base_harness_id should be set"
+        );
+
+        // Second call is idempotent
+        let result2 = initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+        assert_eq!(result2.created, 0, "should be idempotent");
+        assert_eq!(result2.unchanged, harnesses().len());
+    }
+
     async fn seed_default_org(db: &StorageBackend) {
         use crate::storage::models::CreateOrganizationRow;
         use everruns_core::DEFAULT_ORG_PUBLIC_ID;

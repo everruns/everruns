@@ -205,7 +205,10 @@ async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedRe
 /// Seed anonymous user for auth=none mode.
 /// Uses ANONYMOUS_USER_ID so all code paths (org membership, API keys, etc.)
 /// work without special-casing a nil/missing user.
-async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+async fn seed_anonymous_user(
+    db: &StorageBackend,
+    harness_definitions: &[everruns_core::BuiltInHarnessDefinition],
+) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
     let input = CreateUserRow {
@@ -235,6 +238,10 @@ async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> 
     db.ensure_membership(ANONYMOUS_USER_ID, DEFAULT_ORG_ID, "owner")
         .await?;
 
+    // Ensure default org has built-in harnesses (same safety net as registration handlers)
+    org_init::initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, harness_definitions)
+        .await?;
+
     Ok(result)
 }
 
@@ -250,6 +257,7 @@ const ADMIN_USER_ID: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_0000000000
 async fn seed_admin_user(
     db: &StorageBackend,
     admin_config: &AdminConfig,
+    harness_definitions: &[everruns_core::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -292,6 +300,10 @@ async fn seed_admin_user(
 
     // Ensure admin user is owner of default org
     db.ensure_membership(user_id, DEFAULT_ORG_ID, "owner")
+        .await?;
+
+    // Ensure default org has built-in harnesses (same safety net as registration handlers)
+    org_init::initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, harness_definitions)
         .await?;
 
     Ok(result)
@@ -1896,10 +1908,10 @@ pub fn spawn_seed_task_with_platform_definition(
                     );
                 }
 
-                // After seed succeeds, reconcile harnesses for non-default orgs.
-                // This runs here (not as a separate task) so ordering is deterministic:
-                // the default org and its harnesses are guaranteed to exist.
-                reconcile_non_default_org_harnesses(&db, &platform_definition).await;
+                // After seed succeeds, reconcile built-in harnesses for ALL orgs.
+                // Runs inside the seed task (not a separate task) so the default
+                // org row is guaranteed to exist before harness init runs.
+                reconcile_org_harnesses(&db, &platform_definition).await;
             }
             Err(e) => {
                 tracing::warn!(
@@ -1911,17 +1923,14 @@ pub fn spawn_seed_task_with_platform_definition(
     });
 }
 
-/// Reconcile built-in harnesses for every non-default org.
+/// Reconcile built-in harnesses for every organization (including the default org).
 ///
-/// Called after seeding completes (inside the seed task) so the default org and
-/// its harnesses are guaranteed to exist. Each org is reconciled independently;
-/// a single failure is logged but does not prevent other orgs from updating.
-async fn reconcile_non_default_org_harnesses(
-    db: &StorageBackend,
-    platform_definition: &PlatformDefinition,
-) {
+/// Called after seeding completes (inside the seed task) so the default org row
+/// is guaranteed to exist. Each org is reconciled independently; a single failure
+/// is logged but does not prevent other orgs from updating.
+async fn reconcile_org_harnesses(db: &StorageBackend, platform_definition: &PlatformDefinition) {
     let harnesses = platform_definition.built_in_harnesses();
-    let mut orgs = match db.list_organizations().await {
+    let orgs = match db.list_organizations().await {
         Ok(orgs) => orgs,
         Err(e) => {
             tracing::warn!(error = %e, "Harness reconciliation: failed to list orgs (non-fatal)");
@@ -1929,11 +1938,8 @@ async fn reconcile_non_default_org_harnesses(
         }
     };
 
-    // Skip the default org — already handled synchronously during seed.
-    orgs.retain(|o| o.org_id != everruns_core::DEFAULT_ORG_ID);
-
     if orgs.is_empty() {
-        tracing::debug!("No non-default orgs to reconcile harnesses for");
+        tracing::debug!("No orgs to reconcile harnesses for");
         return;
     }
 
@@ -2031,8 +2037,10 @@ async fn run_seed_with_retry(
 }
 
 /// Run all seeders in order
-/// Order: organization → users → providers → models → mcp_servers → harnesses
-/// Organization must be seeded first (all resources have org_id FK)
+/// Order: organization → users (+ default-org harnesses) → providers → models → mcp_servers
+/// Organization must be seeded first (all resources have org_id FK).
+/// Default-org harnesses are initialized inline by seed_anonymous_user / seed_admin_user.
+/// Multi-org harness reconciliation runs post-seed via reconcile_org_harnesses.
 /// Note: Agents are NOT seeded; they live as examples and are adopted on demand.
 pub async fn seed_all(
     db: &StorageBackend,
@@ -2063,7 +2071,7 @@ pub async fn seed_all_with_platform_definition(
     result.merge(org_result);
 
     // Seed anonymous user (for auth=none mode, depends on default org)
-    let anon_result = seed_anonymous_user(db).await?;
+    let anon_result = seed_anonymous_user(db, platform_definition.built_in_harnesses()).await?;
     tracing::debug!(
         created = anon_result.created,
         updated = anon_result.updated,
@@ -2076,7 +2084,8 @@ pub async fn seed_all_with_platform_definition(
     if auth_ctx.mode == AuthMode::Admin
         && let Some(admin_config) = &auth_ctx.admin
     {
-        let admin_result = seed_admin_user(db, admin_config).await?;
+        let admin_result =
+            seed_admin_user(db, admin_config, platform_definition.built_in_harnesses()).await?;
         tracing::debug!(
             created = admin_result.created,
             updated = admin_result.updated,
@@ -2126,24 +2135,10 @@ pub async fn seed_all_with_platform_definition(
     );
     result.merge(mcp_result);
 
-    // Initialize built-in harnesses for the default org (fast, O(1)).
-    // Multi-org reconciliation runs as a separate background task
-    // (spawn_harness_reconciliation_task) so it does not block startup.
-    let harness_result = org_init::initialize_org_harnesses_with_definitions(
-        db,
-        DEFAULT_ORG_ID,
-        platform_definition.built_in_harnesses(),
-    )
-    .await?;
-    tracing::debug!(
-        created = harness_result.created,
-        updated = harness_result.updated,
-        unchanged = harness_result.unchanged,
-        "Default org built-in harnesses seeded"
-    );
-    result.created += harness_result.created;
-    result.updated += harness_result.updated;
-    result.unchanged += harness_result.unchanged;
+    // Default-org harnesses were initialized above by seed_anonymous_user / seed_admin_user.
+    // Multi-org reconciliation (reconcile_org_harnesses) runs post-seed to cover
+    // all orgs. Auth registration handlers also call initialize_org_harnesses as
+    // a safety net for the race between seed task and first user registration.
 
     // Seed agents are available as examples (GET /v1/agent-examples) and adopted
     // on demand via POST /v1/agent-examples/{slug}/use. No automatic seeding —
@@ -2419,6 +2414,11 @@ mod tests {
         assert!(result.created > 0, "first run should create items");
         assert_eq!(result.updated, 0, "first run should not update anything");
 
+        // seed_all creates default-org harnesses via seed_anonymous_user.
+        // Run reconciliation too, matching the full startup flow.
+        let pd = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
+        reconcile_org_harnesses(&db, &pd).await;
+
         let settings = db
             .get_organization_settings(DEFAULT_ORG_ID)
             .await
@@ -2579,11 +2579,13 @@ mod tests {
     // --- Harness upsert ---
 
     #[tokio::test]
-    async fn test_harness_seed_detects_description_change() {
+    async fn test_harness_reconcile_detects_description_change() {
         let db = make_db();
         let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
             .await
             .unwrap();
+        let pd = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
+        reconcile_org_harnesses(&db, &pd).await;
 
         // Mutate harness description via public API
         let built_in_harnesses = built_in_harnesses();
@@ -2606,7 +2608,8 @@ mod tests {
         .await
         .unwrap();
 
-        let result = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+        // Reconciliation should detect the stale description and update it
+        let result = org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
             .await
             .unwrap();
         assert!(
@@ -2667,11 +2670,11 @@ mod tests {
     // --- Multi-org harness reconciliation ---
 
     #[tokio::test]
-    async fn test_reconcile_non_default_org_harnesses() {
+    async fn test_reconcile_org_harnesses() {
         use crate::storage::models::CreateOrganizationRow;
 
         let db = make_db();
-        // Seed default org first (creates harnesses for DEFAULT_ORG_ID).
+        // Seed creates the org but no longer initialises harnesses inline.
         seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
             .await
             .unwrap();
@@ -2696,25 +2699,24 @@ mod tests {
             "second org should start with no harnesses"
         );
 
-        // Run reconciliation.
+        // Run reconciliation (covers ALL orgs, including default).
         let pd = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
-        reconcile_non_default_org_harnesses(&db, &pd).await;
+        reconcile_org_harnesses(&db, &pd).await;
 
-        // After reconciliation, second org should have the built-in harnesses.
-        let after = db
-            .list_harnesses(second_org.org_id, None, false)
-            .await
-            .unwrap();
-        assert!(
-            !after.is_empty(),
-            "second org should have harnesses after reconciliation"
-        );
-
-        // Default org harness count should match.
+        // After reconciliation, both orgs should have the built-in harnesses.
         let default_harnesses = db
             .list_harnesses(DEFAULT_ORG_ID, None, false)
             .await
             .unwrap();
-        assert_eq!(after.len(), default_harnesses.len());
+        assert!(
+            !default_harnesses.is_empty(),
+            "default org should have harnesses after reconciliation"
+        );
+
+        let second_harnesses = db
+            .list_harnesses(second_org.org_id, None, false)
+            .await
+            .unwrap();
+        assert_eq!(second_harnesses.len(), default_harnesses.len());
     }
 }
