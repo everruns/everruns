@@ -205,7 +205,10 @@ async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedRe
 /// Seed anonymous user for auth=none mode.
 /// Uses ANONYMOUS_USER_ID so all code paths (org membership, API keys, etc.)
 /// work without special-casing a nil/missing user.
-async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> {
+async fn seed_anonymous_user(
+    db: &StorageBackend,
+    harness_definitions: &[everruns_core::BuiltInHarnessDefinition],
+) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
     let input = CreateUserRow {
@@ -236,7 +239,8 @@ async fn seed_anonymous_user(db: &StorageBackend) -> anyhow::Result<SeedResult> 
         .await?;
 
     // Ensure default org has built-in harnesses (same safety net as registration handlers)
-    org_init::initialize_org_harnesses(db, DEFAULT_ORG_ID).await?;
+    org_init::initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, harness_definitions)
+        .await?;
 
     Ok(result)
 }
@@ -253,6 +257,7 @@ const ADMIN_USER_ID: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_0000000000
 async fn seed_admin_user(
     db: &StorageBackend,
     admin_config: &AdminConfig,
+    harness_definitions: &[everruns_core::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -298,7 +303,8 @@ async fn seed_admin_user(
         .await?;
 
     // Ensure default org has built-in harnesses (same safety net as registration handlers)
-    org_init::initialize_org_harnesses(db, DEFAULT_ORG_ID).await?;
+    org_init::initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, harness_definitions)
+        .await?;
 
     Ok(result)
 }
@@ -2031,9 +2037,10 @@ async fn run_seed_with_retry(
 }
 
 /// Run all seeders in order
-/// Order: organization → users → providers → models → mcp_servers
+/// Order: organization → users (+ default-org harnesses) → providers → models → mcp_servers
 /// Organization must be seeded first (all resources have org_id FK).
-/// Harnesses are initialized by reconcile_org_harnesses (post-seed).
+/// Default-org harnesses are initialized inline by seed_anonymous_user / seed_admin_user.
+/// Multi-org harness reconciliation runs post-seed via reconcile_org_harnesses.
 /// Note: Agents are NOT seeded; they live as examples and are adopted on demand.
 pub async fn seed_all(
     db: &StorageBackend,
@@ -2064,7 +2071,7 @@ pub async fn seed_all_with_platform_definition(
     result.merge(org_result);
 
     // Seed anonymous user (for auth=none mode, depends on default org)
-    let anon_result = seed_anonymous_user(db).await?;
+    let anon_result = seed_anonymous_user(db, platform_definition.built_in_harnesses()).await?;
     tracing::debug!(
         created = anon_result.created,
         updated = anon_result.updated,
@@ -2077,7 +2084,8 @@ pub async fn seed_all_with_platform_definition(
     if auth_ctx.mode == AuthMode::Admin
         && let Some(admin_config) = &auth_ctx.admin
     {
-        let admin_result = seed_admin_user(db, admin_config).await?;
+        let admin_result =
+            seed_admin_user(db, admin_config, platform_definition.built_in_harnesses()).await?;
         tracing::debug!(
             created = admin_result.created,
             updated = admin_result.updated,
@@ -2127,10 +2135,10 @@ pub async fn seed_all_with_platform_definition(
     );
     result.merge(mcp_result);
 
-    // Built-in harnesses are initialized for ALL orgs (including the default org)
-    // by reconcile_org_harnesses() which runs after seed_all completes.
-    // Auth registration handlers also call initialize_org_harnesses as a safety
-    // net, so harnesses are always present before a user interacts with an org.
+    // Default-org harnesses were initialized above by seed_anonymous_user / seed_admin_user.
+    // Multi-org reconciliation (reconcile_org_harnesses) runs post-seed to cover
+    // all orgs. Auth registration handlers also call initialize_org_harnesses as
+    // a safety net for the race between seed task and first user registration.
 
     // Seed agents are available as examples (GET /v1/agent-examples) and adopted
     // on demand via POST /v1/agent-examples/{slug}/use. No automatic seeding —
@@ -2406,8 +2414,8 @@ mod tests {
         assert!(result.created > 0, "first run should create items");
         assert_eq!(result.updated, 0, "first run should not update anything");
 
-        // Harnesses are created by reconcile_org_harnesses (post-seed), not seed_all.
-        // Simulate the full startup flow.
+        // seed_all creates default-org harnesses via seed_anonymous_user.
+        // Run reconciliation too, matching the full startup flow.
         let pd = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
         reconcile_org_harnesses(&db, &pd).await;
 
