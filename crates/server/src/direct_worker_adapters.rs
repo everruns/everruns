@@ -66,6 +66,7 @@ pub struct DirectWorkerAdapters {
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    virtual_registry: Option<Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>>,
 }
 
 impl DirectWorkerAdapters {
@@ -90,6 +91,7 @@ impl DirectWorkerAdapters {
             storage_store: None,
             connection_resolver: None,
             runner: None,
+            virtual_registry: None,
         }
     }
 
@@ -105,6 +107,15 @@ impl DirectWorkerAdapters {
         store: Arc<dyn everruns_core::traits::SessionStorageStore>,
     ) -> Self {
         self.storage_store = Some(store);
+        self
+    }
+
+    /// Set the virtual mount registry for serving files from memory
+    pub fn with_virtual_registry(
+        mut self,
+        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+    ) -> Self {
+        self.virtual_registry = Some(registry);
         self
     }
 
@@ -448,6 +459,32 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // =========================================================================
 
     async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
+        // Check virtual mounts first
+        if let Some(registry) = &self.virtual_registry
+            && let Some(vf) = registry.read_file(&session_id, path)
+        {
+            let now = chrono::Utc::now();
+            let (content, encoding) = if vf.is_directory {
+                (None, "text".to_string())
+            } else {
+                let (c, e) = SessionFile::encode_content(&vf.content);
+                (Some(c), e)
+            };
+            return Ok(Some(SessionFile {
+                id: uuid::Uuid::nil(),
+                session_id,
+                path: vf.path.clone(),
+                name: name_from_path(&vf.path),
+                content,
+                encoding,
+                is_directory: vf.is_directory,
+                is_readonly: true,
+                size_bytes: vf.content.len() as i64,
+                created_at: now,
+                updated_at: now,
+            }));
+        }
+
         let row = self
             .db
             .get_session_file(session_id, path)
@@ -494,6 +531,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
+        // Virtual files are readonly
+        if let Some(registry) = &self.virtual_registry
+            && registry.is_virtual_path(&session_id, path)
+        {
+            return Err(store_error(format!(
+                "Cannot modify readonly file: {}",
+                path
+            )));
+        }
         use crate::storage::models::{CreateSessionFileRow, UpdateSessionFile};
 
         let content_bytes = if encoding == "base64" {
@@ -593,6 +639,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
         content: &str,
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
+        if let Some(registry) = &self.virtual_registry
+            && registry.is_virtual_path(&session_id, path)
+        {
+            return Err(store_error(format!(
+                "Cannot modify readonly file: {}",
+                path
+            )));
+        }
         use crate::storage::models::UpdateSessionFile;
 
         let expected_bytes = SessionFile::decode_content(expected_content, expected_encoding)
@@ -641,6 +695,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
     }
 
     async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
+        if let Some(registry) = &self.virtual_registry
+            && registry.is_virtual_path(&session_id, path)
+        {
+            return Err(store_error(format!(
+                "Cannot delete readonly file: {}",
+                path
+            )));
+        }
         if recursive {
             let count = self
                 .db
@@ -677,7 +739,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to list directory")
             })?;
 
-        Ok(rows
+        let mut entries: Vec<FileInfo> = rows
             .into_iter()
             .map(|r| FileInfo {
                 id: r.id,
@@ -690,10 +752,53 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 created_at: r.created_at,
                 updated_at: r.updated_at,
             })
-            .collect())
+            .collect();
+
+        // Merge virtual entries (virtual wins on name conflict)
+        if let Some(registry) = &self.virtual_registry {
+            let virtual_entries = registry.list_directory(&session_id, path);
+            let now = chrono::Utc::now();
+            for vf in virtual_entries {
+                let name = name_from_path(&vf.path);
+                entries.retain(|e| e.name != name);
+                entries.push(FileInfo {
+                    id: uuid::Uuid::nil(),
+                    session_id,
+                    path: vf.path,
+                    name,
+                    is_directory: vf.is_directory,
+                    is_readonly: true,
+                    size_bytes: vf.size_bytes,
+                    created_at: now,
+                    updated_at: now,
+                });
+            }
+            entries.sort_by(|a, b| {
+                b.is_directory
+                    .cmp(&a.is_directory)
+                    .then_with(|| a.path.cmp(&b.path))
+            });
+        }
+
+        Ok(entries)
     }
 
     async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
+        // Check virtual mounts first
+        if let Some(registry) = &self.virtual_registry
+            && let Some(vf) = registry.read_file(&session_id, path)
+        {
+            return Ok(Some(FileStat {
+                path: vf.path.clone(),
+                name: name_from_path(&vf.path),
+                is_directory: vf.is_directory,
+                is_readonly: true,
+                size_bytes: vf.content.len() as i64,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }));
+        }
+
         let row = self
             .db
             .get_session_file(session_id, path)
@@ -732,7 +837,30 @@ impl WorkerAdapters for DirectWorkerAdapters {
             store_error(format!("Failed to grep files: {}", e))
         })?;
 
-        Ok(results.into_iter().flat_map(|r| r.matches).collect())
+        let mut matches: Vec<GrepMatch> = results.into_iter().flat_map(|r| r.matches).collect();
+
+        // Also search virtual mounts (use regex path filtering to match DB semantics)
+        if let Some(registry) = &self.virtual_registry
+            && let Ok(regex) = regex::Regex::new(pattern)
+        {
+            let path_regex = path_pattern
+                .map(regex::Regex::new)
+                .transpose()
+                .unwrap_or(None);
+            let virtual_matches = registry.grep(&session_id, &regex, None);
+            matches.extend(
+                virtual_matches
+                    .into_iter()
+                    .filter(|vm| path_regex.as_ref().is_none_or(|re| re.is_match(&vm.path)))
+                    .map(|vm| GrepMatch {
+                        path: vm.path,
+                        line_number: vm.line_number,
+                        line: vm.line,
+                    }),
+            );
+        }
+
+        Ok(matches)
     }
 
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {

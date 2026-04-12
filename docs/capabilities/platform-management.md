@@ -8,9 +8,23 @@ description: Programmatic management of harnesses, agents, and sessions from wit
 | **ID** | `platform_management` |
 | **Category** | Platform |
 | **Features** | None |
-| **Dependencies** | None |
+| **Dependencies** | `session_file_system` |
 
 Tools to manage Everruns entities programmatically. Read, create, update, and delete harnesses, agents, and sessions — and interact with sessions by sending messages.
+
+## Platform Documentation
+
+This capability mounts the Everruns platform documentation at `/workspace/docs` as a virtual read-only filesystem. The documentation is embedded at compile time from the repository `docs/` directory (markdown files only) and served from memory — no database writes per session.
+
+Agents can browse and search the docs using standard file tools (`read_file`, `list_directory`, `grep`) and virtual bash commands (`cat`, `ls`, `grep`).
+
+Key sections:
+- `/workspace/docs/getting-started/` — Introduction, concepts, architecture
+- `/workspace/docs/features/` — SDK, CLI, UI, events, harnesses, capabilities
+- `/workspace/docs/capabilities/` — Per-capability reference
+- `/workspace/docs/integrations/` — External integrations (Slack, Daytona, etc.)
+- `/workspace/docs/advanced/` — Budgets, compaction, embedding, network access
+- `/workspace/docs/sre/` — Environment variables, runbooks
 
 ## Tools
 

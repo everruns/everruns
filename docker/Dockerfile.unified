@@ -49,6 +49,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 COPY integrations integrations
+COPY docs docs
 
 # ============================================================================
 # Stage 2: Build all Rust binaries in a single invocation

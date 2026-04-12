@@ -470,12 +470,25 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 5: API state construction
         // =====================================================================
-        let sessions_state = api::sessions::AppState::with_platform_definition(
+
+        // Shared virtual mount registry — serves capability-mounted content
+        // from memory without DB writes. Threaded into all file-reading paths.
+        let virtual_registry =
+            Arc::new(crate::services::virtual_mount_registry::VirtualMountRegistry::new());
+
+        let mut sessions_state = api::sessions::AppState::with_platform_definition(
             db.clone(),
             runner.clone(),
             auth_state.clone(),
             platform_definition.as_ref(),
             event_delivery.clone(),
+        );
+        sessions_state.session_service = Arc::new(
+            services::SessionService::with_registry(
+                db.clone(),
+                platform_definition.capability_registry().clone(),
+            )
+            .with_virtual_registry(virtual_registry.clone()),
         );
         let messages_state = api::messages::AppState::new(
             db.clone(),
@@ -505,10 +518,13 @@ impl ServerAppBuilder {
         };
 
         let events_state = api::events::AppState {
-            session_service: Arc::new(services::SessionService::with_registry(
-                db.clone(),
-                platform_definition.capability_registry().clone(),
-            )),
+            session_service: Arc::new(
+                services::SessionService::with_registry(
+                    db.clone(),
+                    platform_definition.capability_registry().clone(),
+                )
+                .with_virtual_registry(virtual_registry.clone()),
+            ),
             event_service: event_service.clone(),
             sse_tracker: sse_tracker.clone(),
             event_broadcaster,
@@ -580,7 +596,10 @@ impl ServerAppBuilder {
             api::apps::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
         let eval_run_ctx = Arc::new(services::eval_runner::EvalRunContext {
             db: db.clone(),
-            session_service: Arc::new(services::SessionService::new(db.clone())),
+            session_service: Arc::new(
+                services::SessionService::new(db.clone())
+                    .with_virtual_registry(virtual_registry.clone()),
+            ),
             message_service: Arc::new(services::MessageService::new(
                 db.clone(),
                 runner.clone(),
@@ -602,7 +621,8 @@ impl ServerAppBuilder {
             db.clone(),
             event_service.clone(),
             auth_state.clone(),
-        );
+        )
+        .with_virtual_registry(virtual_registry.clone());
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
@@ -958,14 +978,16 @@ impl ServerAppBuilder {
             let grpc_platform_definition = platform_definition.clone();
 
             let grpc_task_broadcaster = task_broadcaster.clone();
+            let grpc_virtual_registry = virtual_registry.clone();
 
             tokio::spawn(async move {
-                let mut grpc_svc = grpc_service::WorkerServiceImpl::new(
+                let mut grpc_svc = grpc_service::WorkerServiceImpl::with_virtual_registry(
                     (*grpc_event_service).clone(),
                     grpc_db,
                     grpc_encryption,
                     Some(grpc_runner),
                     grpc_platform_definition.as_ref().clone(),
+                    Some(grpc_virtual_registry),
                 );
                 if let Some(broadcaster) = grpc_task_broadcaster {
                     grpc_svc.set_task_broadcaster(broadcaster);
@@ -1177,6 +1199,7 @@ impl ServerAppBuilder {
                     platform_definition.driver_registry().clone(),
                     sqldb_store.clone(),
                 )
+                .with_virtual_registry(virtual_registry.clone())
                 .with_storage_store(session_storage_store)
                 .with_runner(runner.clone());
 

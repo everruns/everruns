@@ -156,6 +156,15 @@ impl AppState {
             auth,
         }
     }
+
+    pub fn with_virtual_registry(
+        mut self,
+        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+    ) -> Self {
+        self.file_service =
+            Arc::new(SessionFileService::new(self.db.clone()).with_virtual_registry(registry));
+        self
+    }
 }
 
 impl_auth_state!(AppState);

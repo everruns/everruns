@@ -367,12 +367,42 @@ impl WorkerServiceImpl {
         runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
         platform_definition: PlatformDefinition,
     ) -> Self {
+        Self::with_virtual_registry(
+            event_service,
+            db,
+            encryption,
+            runner,
+            platform_definition,
+            None,
+        )
+    }
+
+    pub fn with_virtual_registry(
+        event_service: EventService,
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
+        runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+        platform_definition: PlatformDefinition,
+        virtual_registry: Option<
+            Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+        >,
+    ) -> Self {
         let agent_service = AgentService::new(db.clone());
         let harness_service = HarnessService::new(db.clone());
         let capability_registry = platform_definition.capability_registry().clone();
-        let session_service =
-            SessionService::with_registry(db.clone(), capability_registry.clone());
-        let session_file_service = SessionFileService::new(db.clone());
+        let session_service = {
+            let svc = SessionService::with_registry(db.clone(), capability_registry.clone());
+            if let Some(ref reg) = virtual_registry {
+                svc.with_virtual_registry(reg.clone())
+            } else {
+                svc
+            }
+        };
+        let session_file_service = if let Some(ref reg) = virtual_registry {
+            SessionFileService::new(db.clone()).with_virtual_registry(reg.clone())
+        } else {
+            SessionFileService::new(db.clone())
+        };
         let llm_resolver_service = LlmResolverService::new(db.clone(), encryption.clone());
         let mcp_server_service = McpServerService::new(db.clone(), encryption.clone());
         let capability_service =

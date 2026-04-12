@@ -638,16 +638,29 @@ See `crates/core/src/capability_types.rs` for `MountPoint`, `MountAccess`, `Moun
 
 Key concepts:
 - `MountAccess`: `ReadOnly` or `ReadWrite`
-- `MountSource`: `InlineFile` (content + encoding) or `InlineDirectory` (HashMap of entries)
+- `MountSource`: `InlineFile` (content + encoding), `InlineDirectory` (HashMap of entries), or `Virtual` (in-memory `VirtualFileTree` via `Arc`)
 - Capabilities declare mounts via the `mounts()` trait method
+
+#### Virtual Mounts
+
+Virtual mounts (`MountSource::Virtual`) serve content from an in-memory `VirtualFileTree` without writing rows to the `session_files` table. Content is typically embedded at compile time via `include_dir!` and shared across sessions via `Arc`. Virtual mounts are always read-only.
+
+- **Registration**: During `apply_capability_mounts()`, virtual mounts are registered in the `VirtualMountRegistry` (per-session, in-memory) instead of being written to the database.
+- **Read path**: `SessionFileService`, `DirectWorkerAdapters`, and virtual bash all check the virtual registry before querying the database. Virtual files win on path conflicts.
+- **Merge semantics**: `list_directory` merges virtual and DB entries (virtual wins on name conflict, sorted dirs-first then by path). `grep` searches both sources and concatenates results.
+- **Write protection**: Writes/deletes to virtual paths return a readonly error.
+- **Eviction**: Virtual mount entries for a session are evicted from the registry on session delete.
+- **Lazy reconstruction**: Content is deterministic (compiled in), so the registry can be reconstructed from session capabilities on server restart.
+- **Implementation**: See `crates/server/src/services/virtual_mount_registry.rs` for `VirtualMountRegistry` and `crates/core/src/capability_types.rs` for `VirtualFileTree`.
 
 #### Mount Application Flow
 
 1. Session is created via POST `/v1/sessions` (with `agent_id` in body)
 2. SessionService fetches agent's capabilities
 3. Mounts are collected from all enabled capabilities
-4. Files and directories are created in session filesystem
-5. Files from readonly mounts are marked `is_readonly = true`
+4. Inline mounts: files and directories are created in session filesystem
+5. Virtual mounts: registered in `VirtualMountRegistry` (no DB writes)
+6. Files from readonly mounts are marked `is_readonly = true`
 
 #### Built-in Capabilities with Mounts
 
@@ -670,7 +683,8 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
 - **Status**: Available
 - **ID**: `platform_management`
 - **Purpose**: Programmatic management of Everruns entities (harnesses, agents, sessions) via tool calls
-- **System Prompt**: Describes available management tools and common workflows
+- **System Prompt**: Describes available management tools, common workflows, and platform docs availability
+- **Mounts**: `/docs` — Everruns platform documentation (virtual, readonly). The stored/normalized mount path is `/docs`; agents/tools access it as `/workspace/docs`. Embedded at compile time via `include_dir!` from the repo `docs/` directory. Only markdown files (`.md`, `.mdx`) are included in the virtual tree. See `crates/core/src/capabilities/platform_management.rs`.
 - **Lifecycle Parity**: Must enforce the same archive/delete, assignment, and read-only rules as the public API and UI. Agents using these tools may not bypass lifecycle restrictions.
 - **Tools** (read/write split — read tools return single item by ID or filtered list):
   - `read_capabilities` - Discover available capabilities (built-in, MCP servers, skills)
