@@ -346,7 +346,7 @@ impl TestServer {
             feature_flags.notifications,
             everruns_server::EventDelivery::in_memory(),
             None, // No encryption in tests
-            mcp_capability_service,
+            capability_service.clone(),
         );
 
         // Build API routes
