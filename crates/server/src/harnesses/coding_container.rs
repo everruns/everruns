@@ -88,8 +88,8 @@ Do not use workspace tools (`read_file`, `write_file`, `edit_file`, `exec`) for 
 
 ## Sandbox lifecycle
 
-- Sandboxes auto-stop after 10 minutes of inactivity. Set `auto_stop_minutes` higher for long builds.
-- Always delete sandboxes when done (`sandbox_manage` with action \"remove\").
+- Sandboxes use a fixed lease duration (about 20 minutes) and may be cleaned up automatically when that lease expires.
+- Always remove sandboxes when done (`sandbox_manage` with action \"remove\").
 - Use `sandbox_list` to check active sandboxes before creating new ones.
 
 ## Instruction hierarchy
