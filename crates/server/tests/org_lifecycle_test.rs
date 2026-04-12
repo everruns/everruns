@@ -305,7 +305,10 @@ async fn test_switch_org_cookie_has_secure_flag() {
         .headers()
         .get_all(SET_COOKIE)
         .iter()
-        .map(|v| v.to_str().expect("Set-Cookie header must be valid ASCII/UTF-8"))
+        .map(|v| {
+            v.to_str()
+                .expect("Set-Cookie header must be valid ASCII/UTF-8")
+        })
         .collect();
 
     let org_cookie = set_cookie_values
