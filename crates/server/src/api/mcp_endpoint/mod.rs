@@ -661,12 +661,10 @@ async fn tool_switch_organization(
 
     Ok(serde_json::to_string_pretty(&json!({
         "switched": true,
-        "organization": {
-            "id": resolved.public_id,
-            "name": resolved.name,
-            "role": resolved.role.to_string(),
-        },
-        "hint": "Pass this organization_id to subsequent tool calls, or it will be used as the default for this connection."
+        "organization_id": resolved.public_id,
+        "name": resolved.name,
+        "role": resolved.role.to_string(),
+        "hint": "Pass this organization_id on subsequent tool calls to operate in this org's context."
     }))
     .unwrap())
 }
