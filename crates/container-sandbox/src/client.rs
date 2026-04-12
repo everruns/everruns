@@ -121,7 +121,7 @@ pub struct ExecInspect {
 
 /// Result of exec start (captured output).
 pub struct ExecOutput {
-    pub stdout: String,
+    pub output: String,
     pub exit_code: i64,
 }
 
@@ -145,23 +145,31 @@ impl DockerClient {
         let base_url = docker_host
             .map(String::from)
             .or_else(|| std::env::var(DOCKER_HOST_ENV).ok())
-            .unwrap_or_else(|| DEFAULT_DOCKER_HOST.to_string());
+            .unwrap_or_else(|| DEFAULT_DOCKER_HOST.to_string())
+            .trim_end_matches('/')
+            .to_string();
 
         debug!(base_url = %base_url, "DockerClient initialized");
 
-        Self {
-            http: reqwest::Client::new(),
-            base_url,
-        }
+        let http = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .expect("failed to build reqwest client");
+
+        Self { http, base_url }
     }
 
     /// For tests: create with explicit base URL.
     #[cfg(test)]
     pub fn with_base_url(base_url: String) -> Self {
-        Self {
-            http: reqwest::Client::new(),
-            base_url,
-        }
+        let base_url = base_url.trim_end_matches('/').to_string();
+        let http = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .expect("failed to build reqwest client");
+        Self { http, base_url }
     }
 
     fn url(&self, path: &str) -> String {
@@ -344,9 +352,10 @@ impl DockerClient {
         debug!(name = %name, image = %config.image, "Creating container");
         let body =
             serde_json::to_value(config).map_err(|e| format!("Failed to serialize config: {e}"))?;
+        let encoded_name = urlencoding::encode(name);
         self.request_typed(
             reqwest::Method::POST,
-            &format!("/containers/create?name={name}"),
+            &format!("/containers/create?name={encoded_name}"),
             Some(body),
         )
         .await
@@ -494,6 +503,10 @@ impl DockerClient {
     }
 
     /// Execute a command and return combined output + exit code.
+    ///
+    /// After `exec_start` returns (which blocks until the command finishes),
+    /// `exec_inspect` should report the exit code. In rare cases the exit code
+    /// may not yet be populated, so we retry up to 3 times with a brief delay.
     pub async fn exec(
         &self,
         container_id: &str,
@@ -501,11 +514,25 @@ impl DockerClient {
         working_dir: Option<&str>,
     ) -> Result<ExecOutput, String> {
         let exec_id = self.exec_create(container_id, cmd, working_dir).await?;
-        let stdout = self.exec_start(&exec_id).await?;
-        let inspect = self.exec_inspect(&exec_id).await?;
+        let output = self.exec_start(&exec_id).await?;
+
+        // Retry inspect up to 3 times to handle rare race where exit_code is not yet set.
+        let mut exit_code: Option<i64> = None;
+        for attempt in 0..3 {
+            let inspect = self.exec_inspect(&exec_id).await?;
+            if let Some(code) = inspect.exit_code {
+                exit_code = Some(code);
+                break;
+            }
+            if attempt < 2 {
+                debug!(exec_id = %exec_id, attempt = attempt + 1, "exec_inspect returned no exit_code, retrying");
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+
         Ok(ExecOutput {
-            stdout,
-            exit_code: inspect.exit_code.unwrap_or(-1),
+            output,
+            exit_code: exit_code.unwrap_or(-1),
         })
     }
 
@@ -537,6 +564,7 @@ impl DockerClient {
         filename: &str,
         content: &[u8],
     ) -> Result<(), String> {
+        sanitize_filename(filename)?;
         debug!(container_id = %container_id, dir_path = %dir_path, filename = %filename, "Writing file to container");
         let tar_bytes = create_tar_with_file(filename, content)?;
         let encoded_path = urlencoding::encode(dir_path);
@@ -569,6 +597,28 @@ impl DockerClient {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/// Validate that a filename is safe for use inside a tar archive.
+/// Rejects path traversal (`..`), absolute paths (`/`), and backslash separators.
+fn sanitize_filename(filename: &str) -> Result<(), String> {
+    if filename.is_empty() {
+        return Err("Filename must not be empty".to_string());
+    }
+    if filename.contains("..") {
+        return Err(format!("Filename contains path traversal (..): {filename}"));
+    }
+    if filename.contains('/') {
+        return Err(format!(
+            "Filename contains directory separator (/): {filename}"
+        ));
+    }
+    if filename.contains('\\') {
+        return Err(format!(
+            "Filename contains backslash separator (\\): {filename}"
+        ));
+    }
+    Ok(())
+}
 
 /// Map Docker API HTTP errors to human-readable messages.
 fn map_docker_error(status: u16, body: &str) -> String {
@@ -628,23 +678,28 @@ fn demux_docker_stream(raw: &[u8]) -> String {
     output
 }
 
-/// Extract the first file's content from a tar archive (Docker GET /archive response).
+/// Extract the first regular file's content from a tar archive (Docker GET /archive response).
+/// Skips directory entries to find the actual file content.
 fn extract_file_from_tar(tar_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let mut archive = tar::Archive::new(tar_bytes);
-    let mut entries = archive
+    let entries = archive
         .entries()
         .map_err(|e| format!("Failed to read tar archive: {e}"))?;
 
-    if let Some(entry_result) = entries.next() {
+    for entry_result in entries {
         let mut entry = entry_result.map_err(|e| format!("Failed to read tar entry: {e}"))?;
+        let entry_type = entry.header().entry_type();
+        if entry_type.is_dir() {
+            continue;
+        }
         let mut content = Vec::new();
         entry
             .read_to_end(&mut content)
             .map_err(|e| format!("Failed to read file from tar: {e}"))?;
-        Ok(content)
-    } else {
-        Err("Empty tar archive — file not found in container".to_string())
+        return Ok(content);
     }
+
+    Err("No regular file found in tar archive".to_string())
 }
 
 /// Create a tar archive containing a single file.
@@ -783,5 +838,80 @@ mod tests {
         let json = serde_json::to_string(&filters).unwrap();
         assert!(json.contains("managed-by=everruns"));
         assert!(json.contains("session=abc123"));
+    }
+
+    #[test]
+    fn test_url_trailing_slash_trimmed() {
+        let client = DockerClient::with_base_url("http://10.0.0.3:2375/".to_string());
+        assert_eq!(
+            client.url("/containers/json"),
+            "http://10.0.0.3:2375/v1.47/containers/json"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_filename_rejects_dot_dot() {
+        let err = sanitize_filename("../etc/passwd").unwrap_err();
+        assert!(err.contains("path traversal"));
+    }
+
+    #[test]
+    fn test_sanitize_filename_rejects_embedded_dot_dot() {
+        let err = sanitize_filename("foo/../bar").unwrap_err();
+        assert!(err.contains("path traversal"));
+    }
+
+    #[test]
+    fn test_sanitize_filename_rejects_slash() {
+        let err = sanitize_filename("subdir/file.txt").unwrap_err();
+        assert!(err.contains("directory separator"));
+    }
+
+    #[test]
+    fn test_sanitize_filename_rejects_backslash() {
+        let err = sanitize_filename("subdir\\file.txt").unwrap_err();
+        assert!(err.contains("backslash"));
+    }
+
+    #[test]
+    fn test_sanitize_filename_rejects_empty() {
+        let err = sanitize_filename("").unwrap_err();
+        assert!(err.contains("empty"));
+    }
+
+    #[test]
+    fn test_sanitize_filename_accepts_valid() {
+        assert!(sanitize_filename("hello.txt").is_ok());
+        assert!(sanitize_filename("my-file_v2.tar.gz").is_ok());
+    }
+
+    #[test]
+    fn test_extract_tar_skips_directories() {
+        // Build a tar with a directory entry followed by a regular file.
+        let mut builder = tar::Builder::new(Vec::new());
+
+        // Add a directory entry
+        let mut dir_header = tar::Header::new_gnu();
+        dir_header.set_entry_type(tar::EntryType::Directory);
+        dir_header.set_size(0);
+        dir_header.set_mode(0o755);
+        dir_header.set_cksum();
+        builder
+            .append_data(&mut dir_header, "mydir/", &[] as &[u8])
+            .unwrap();
+
+        // Add a regular file
+        let content = b"file content";
+        let mut file_header = tar::Header::new_gnu();
+        file_header.set_size(content.len() as u64);
+        file_header.set_mode(0o644);
+        file_header.set_cksum();
+        builder
+            .append_data(&mut file_header, "mydir/file.txt", &content[..])
+            .unwrap();
+
+        let tar_bytes = builder.into_inner().unwrap();
+        let extracted = extract_file_from_tar(&tar_bytes).unwrap();
+        assert_eq!(extracted, content);
     }
 }

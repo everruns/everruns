@@ -5,6 +5,6 @@
 //!
 //! Decision: Docker Engine REST API directly, no `docker` CLI binary dependency.
 //! Workers can be containerized themselves — talking to the Docker Engine API
-//! over TCP/Unix socket removes the need for Docker-in-Docker.
+//! over HTTP/TCP removes the need for Docker-in-Docker.
 
 pub mod client;

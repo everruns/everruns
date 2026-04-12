@@ -1569,10 +1569,6 @@ dependencies = [
 name = "everruns-container-sandbox"
 version = "0.8.10"
 dependencies = [
- "async-trait",
- "chrono",
- "everruns-core",
- "inventory",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
