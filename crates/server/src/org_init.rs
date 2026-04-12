@@ -22,6 +22,7 @@ mod harness_ids {
     pub const GENERIC: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
     pub const CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
     pub const CODING_DAYTONA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000604);
+    pub const CODING_CONTAINER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000605);
 }
 
 /// Well-known UUID for the Generic harness (org default harness for new orgs)
@@ -35,6 +36,9 @@ pub const CHAT_HARNESS_ID: Uuid = harness_ids::CHAT;
 
 /// Well-known UUID for the Coding (Daytona) harness
 pub const CODING_DAYTONA_HARNESS_ID: Uuid = harness_ids::CODING_DAYTONA;
+
+/// Well-known UUID for the Coding (Container) harness
+pub const CODING_CONTAINER_HARNESS_ID: Uuid = harness_ids::CODING_CONTAINER;
 
 pub(crate) fn default_harness_definitions() -> Vec<BuiltInHarnessDefinition> {
     crate::platform::oss_built_in_harnesses()
