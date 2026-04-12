@@ -297,6 +297,9 @@ async fn seed_admin_user(
     db.ensure_membership(user_id, DEFAULT_ORG_ID, "owner")
         .await?;
 
+    // Ensure default org has built-in harnesses (same safety net as registration handlers)
+    org_init::initialize_org_harnesses(db, DEFAULT_ORG_ID).await?;
+
     Ok(result)
 }
 
