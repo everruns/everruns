@@ -366,6 +366,7 @@ pub type GrpcEventEmitter = GrpcAdapter;
 pub type GrpcSessionStorageStore = GrpcAdapter;
 pub type GrpcConnectionResolver = GrpcAdapter;
 pub type GrpcLeasedResourceStore = GrpcAdapter;
+pub type GrpcSessionResourceRegistry = GrpcAdapter;
 pub type GrpcSessionSqlDbStore = GrpcAdapter;
 
 pub type GrpcAgentStore = GrpcOrgAdapter;
@@ -1776,6 +1777,125 @@ impl LeasedResourceStore for GrpcAdapter {
             .into_iter()
             .map(proto_leased_resource_to_schema)
             .collect()
+    }
+}
+
+// ============================================================================
+// GrpcSessionResourceRegistry - SessionResourceRegistry over gRPC
+// ============================================================================
+
+fn proto_session_resource_to_schema(
+    e: proto::SessionResourceEntryProto,
+) -> Result<everruns_core::SessionResourceEntry> {
+    let session_id = proto_uuid_to_uuid(e.session_id.as_ref())?;
+    Ok(everruns_core::SessionResourceEntry {
+        resource_id: e.resource_id,
+        session_id: SessionId::from_uuid(session_id),
+        kind: e.kind,
+        display_name: e.display_name,
+        status: everruns_core::SessionResourceStatus::from(e.status.as_str()),
+        metadata: e
+            .metadata
+            .as_ref()
+            .map(proto_struct_to_json)
+            .unwrap_or_else(|| serde_json::json!({})),
+        created_at: proto_timestamp_or_now(e.created_at.as_ref()),
+        updated_at: proto_timestamp_or_now(e.updated_at.as_ref()),
+    })
+}
+
+#[async_trait]
+impl everruns_core::traits::SessionResourceRegistry for GrpcAdapter {
+    async fn register(
+        &self,
+        entry: everruns_core::RegisterSessionResource,
+    ) -> Result<everruns_core::SessionResourceEntry> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .register_session_resource(proto::RegisterSessionResourceRequest {
+                session_id: Some(uuid_to_proto(entry.session_id.uuid())),
+                resource_id: entry.resource_id,
+                kind: entry.kind,
+                display_name: entry.display_name,
+                status: entry.status.to_string(),
+                metadata: Some(json_to_proto_struct(&entry.metadata)),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        let entry = response
+            .into_inner()
+            .entry
+            .ok_or_else(|| grpc_missing_field("No entry in register response"))?;
+        proto_session_resource_to_schema(entry)
+    }
+
+    async fn update_status(
+        &self,
+        session_id: SessionId,
+        resource_id: &str,
+        status: everruns_core::SessionResourceStatus,
+    ) -> Result<Option<everruns_core::SessionResourceEntry>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .update_session_resource_status(proto::UpdateSessionResourceStatusRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                resource_id: resource_id.to_string(),
+                status: status.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        response
+            .into_inner()
+            .entry
+            .map(proto_session_resource_to_schema)
+            .transpose()
+    }
+
+    async fn get(
+        &self,
+        _session_id: SessionId,
+        _resource_id: &str,
+    ) -> Result<Option<everruns_core::SessionResourceEntry>> {
+        // get is not used by worker tools; only register/update_status/list matter.
+        Ok(None)
+    }
+
+    async fn list(
+        &self,
+        session_id: SessionId,
+        filter: Option<&everruns_core::SessionResourceFilter>,
+    ) -> Result<Vec<everruns_core::SessionResourceEntry>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .list_session_resources(proto::ListSessionResourcesRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                kind: filter.and_then(|f| f.kind.clone()),
+                status: filter.and_then(|f| f.status.map(|s| s.to_string())),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        response
+            .into_inner()
+            .entries
+            .into_iter()
+            .map(proto_session_resource_to_schema)
+            .collect()
+    }
+
+    async fn deregister(&self, session_id: SessionId, resource_id: &str) -> Result<bool> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .deregister_session_resource(proto::DeregisterSessionResourceRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                resource_id: resource_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        Ok(response.into_inner().removed)
     }
 }
 

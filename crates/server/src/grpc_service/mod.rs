@@ -60,6 +60,9 @@ use everruns_internal_protocol::proto::{
     CreateSessionScheduleResponse,
     DeregisterDurableWorkerRequest,
     DeregisterDurableWorkerResponse,
+    // Session resource registry
+    DeregisterSessionResourceRequest,
+    DeregisterSessionResourceResponse,
     DurableWorkflowSignal as ProtoDurableWorkflowSignal,
     DurableWorkflowStatus,
     EmitEventRequest,
@@ -101,6 +104,8 @@ use everruns_internal_protocol::proto::{
     HeartbeatDurableWorkerResponse,
     ListSessionLeasedResourcesRequest,
     ListSessionLeasedResourcesResponse,
+    ListSessionResourcesRequest,
+    ListSessionResourcesResponse,
     ListSessionSchedulesRequest,
     ListSessionSchedulesResponse,
     LoadMessagesRequest,
@@ -153,6 +158,8 @@ use everruns_internal_protocol::proto::{
     RecordCircuitBreakerSuccessResponse,
     RegisterDurableWorkerRequest,
     RegisterDurableWorkerResponse,
+    RegisterSessionResourceRequest,
+    RegisterSessionResourceResponse,
     ReleaseLeasedResourceRequest,
     ReleaseLeasedResourceResponse,
     ResolveImageRequest,
@@ -217,6 +224,8 @@ use everruns_internal_protocol::proto::{
     TaskNotificationType,
     UpdateDurableWorkflowStatusRequest,
     UpdateDurableWorkflowStatusResponse,
+    UpdateSessionResourceStatusRequest,
+    UpdateSessionResourceStatusResponse,
     UpsertLeasedResourceRequest,
     UpsertLeasedResourceResponse,
 };
@@ -527,9 +536,19 @@ impl WorkerServiceImpl {
             .ok_or_else(|| Status::unavailable("Connection resolver not available (no encryption)"))
     }
 
+    /// Create the session resource registry used by tools over gRPC.
+    fn session_resource_registry(&self) -> Arc<dyn everruns_core::traits::SessionResourceRegistry> {
+        Arc::new(crate::storage::DbSessionResourceRegistry::new(
+            self.db.clone(),
+        ))
+    }
+
     /// Create the leased-resource store used by tools over gRPC.
     fn leased_resource_store(&self) -> Arc<dyn everruns_core::traits::LeasedResourceStore> {
-        Arc::new(crate::storage::DbLeasedResourceStore::new(self.db.clone()))
+        let registry = self.session_resource_registry();
+        Arc::new(
+            crate::storage::DbLeasedResourceStore::new(self.db.clone()).with_registry(registry),
+        )
     }
 
     /// Create schedule store scoped to the given org_id, or return unavailable if no pool.
@@ -712,6 +731,28 @@ fn session_schedule_to_proto(
         trigger_count: s.trigger_count as i32,
         created_at: Some(datetime_to_proto_timestamp(s.created_at)),
         updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
+    }
+}
+
+/// Convert a session resource entry to proto representation.
+fn session_resource_entry_to_proto(
+    e: &everruns_core::SessionResourceEntry,
+) -> proto::SessionResourceEntryProto {
+    use everruns_internal_protocol::datetime_to_proto_timestamp;
+
+    proto::SessionResourceEntryProto {
+        resource_id: e.resource_id.clone(),
+        session_id: Some(proto::Uuid {
+            value: e.session_id.uuid().to_string(),
+        }),
+        kind: e.kind.clone(),
+        display_name: e.display_name.clone(),
+        status: e.status.to_string(),
+        metadata: Some(everruns_internal_protocol::json_to_proto_struct(
+            &e.metadata,
+        )),
+        created_at: Some(datetime_to_proto_timestamp(e.created_at)),
+        updated_at: Some(datetime_to_proto_timestamp(e.updated_at)),
     }
 }
 

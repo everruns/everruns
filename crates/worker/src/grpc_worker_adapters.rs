@@ -395,6 +395,14 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Arc::new(GrpcLeasedResourceStore::new(self.client.clone()))
     }
 
+    fn session_resource_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::traits::SessionResourceRegistry>> {
+        Some(Arc::new(
+            crate::grpc_adapters::GrpcSessionResourceRegistry::new(self.client.clone()),
+        ))
+    }
+
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
         Arc::new(crate::grpc_adapters::GrpcScheduleStore::new(
             self.client.clone(),
