@@ -12,6 +12,7 @@
 mod test_harness;
 
 use axum::http::StatusCode;
+use axum::http::header::SET_COOKIE;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -276,4 +277,47 @@ async fn test_get_created_org_by_id() {
         .json();
     assert_eq!(fetched["name"], "Get By ID");
     assert_eq!(fetched["id"], org_id);
+}
+
+// ============================================
+// Bug regression: switch-org cookie must have Secure flag
+// ============================================
+
+#[tokio::test]
+async fn test_switch_org_cookie_has_secure_flag() {
+    let server = TestServer::in_memory().await;
+
+    // Create a new org to switch to
+    let created: Value = server
+        .post("/v1/orgs", json!({"name": "Secure Cookie Test"}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let new_org_id = created["id"].as_str().expect("org id");
+
+    // Switch to new org and inspect Set-Cookie header
+    let resp = server
+        .post("/v1/users/me/switch-org", json!({"org_id": new_org_id}))
+        .await
+        .assert_status(StatusCode::OK);
+
+    let set_cookie_values: Vec<&str> = resp
+        .headers()
+        .get_all(SET_COOKIE)
+        .iter()
+        .map(|v| {
+            v.to_str()
+                .expect("Set-Cookie header must be valid ASCII/UTF-8")
+        })
+        .collect();
+
+    let org_cookie = set_cookie_values
+        .iter()
+        .find(|c| c.contains("everruns_org="))
+        .expect("everruns_org cookie must be set");
+
+    assert!(
+        org_cookie.contains("Secure"),
+        "everruns_org cookie must have Secure flag, got: {org_cookie}"
+    );
 }
