@@ -134,7 +134,7 @@ fn tool_definitions() -> Value {
         },
         {
             "name": "switch_organization",
-            "description": "Switch the active organization context. After switching, all subsequent tool calls in this MCP connection will default to the new organization. You can also pass organization_id to individual tools for one-off overrides without switching.",
+            "description": "Validate and select an organization. Returns the validated organization details. Pass the returned organization_id to subsequent tool calls to operate in that org's context. You can also pass organization_id directly to individual tools without calling this first.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
