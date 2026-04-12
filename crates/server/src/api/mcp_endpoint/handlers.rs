@@ -305,38 +305,92 @@ pub async fn cancel_session(params: &Value, ctx: &CatalogContext) -> Result<Stri
 }
 
 // ============================================================================
-// Budgets
-// TODO: Storage Row types need Serialize derive to support direct serialization.
-// For now, budget check (which uses BudgetService) works; CRUD operations
-// delegate to not_implemented until Row types are updated.
+// Budgets (direct DB)
 // ============================================================================
 
-pub async fn create_budget(_params: &Value, _ctx: &CatalogContext) -> Result<String, String> {
-    not_implemented(_params, _ctx).await
+pub async fn create_budget(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let input = serde_json::from_value(params.clone()).map_err(err)?;
+    let budget = ctx.db.create_budget(input).await.map_err(err)?;
+    to_json(&budget)
 }
-pub async fn list_budgets(_params: &Value, _ctx: &CatalogContext) -> Result<String, String> {
-    not_implemented(_params, _ctx).await
+
+pub async fn list_budgets(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let subject_type = param_str(params, "subject_type");
+    let subject_id = param_str(params, "subject_id");
+    let budgets = ctx
+        .db
+        .list_budgets(ctx.org_id, subject_type.as_deref(), subject_id.as_deref())
+        .await
+        .map_err(err)?;
+    to_list(&budgets)
 }
-pub async fn get_budget(_params: &Value, _ctx: &CatalogContext) -> Result<String, String> {
-    not_implemented(_params, _ctx).await
+
+pub async fn get_budget(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let id: uuid::Uuid = require_str(params, "budget_id")?
+        .parse()
+        .map_err(|e| format!("Invalid budget ID: {e}"))?;
+    let budget = ctx
+        .db
+        .get_budget(ctx.org_id, id)
+        .await
+        .map_err(err)?
+        .ok_or("Budget not found")?;
+    to_json(&budget)
 }
-pub async fn update_budget(_params: &Value, _ctx: &CatalogContext) -> Result<String, String> {
-    not_implemented(_params, _ctx).await
+
+pub async fn update_budget(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let id: uuid::Uuid = require_str(params, "budget_id")?
+        .parse()
+        .map_err(|e| format!("Invalid budget ID: {e}"))?;
+    let input = serde_json::from_value(params.clone()).map_err(err)?;
+    let budget = ctx
+        .db
+        .update_budget(ctx.org_id, id, input)
+        .await
+        .map_err(err)?
+        .ok_or("Budget not found")?;
+    to_json(&budget)
 }
-pub async fn delete_budget(_params: &Value, _ctx: &CatalogContext) -> Result<String, String> {
-    not_implemented(_params, _ctx).await
+
+pub async fn delete_budget(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let id: uuid::Uuid = require_str(params, "budget_id")?
+        .parse()
+        .map_err(|e| format!("Invalid budget ID: {e}"))?;
+    ctx.db.delete_budget(ctx.org_id, id).await.map_err(err)?;
+    to_json(&json!({"deleted": true}))
 }
-pub async fn top_up_budget(_params: &Value, _ctx: &CatalogContext) -> Result<String, String> {
-    not_implemented(_params, _ctx).await
+
+pub async fn top_up_budget(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let input = serde_json::from_value(params.clone()).map_err(err)?;
+    let (entry, budget) = ctx
+        .db
+        .create_budget_ledger_entry(input)
+        .await
+        .map_err(err)?;
+    to_json(&json!({"entry": entry, "budget": budget}))
 }
-pub async fn check_budget(_params: &Value, _ctx: &CatalogContext) -> Result<String, String> {
-    not_implemented(_params, _ctx).await
+
+pub async fn check_budget(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let id: uuid::Uuid = require_str(params, "budget_id")?
+        .parse()
+        .map_err(|e| format!("Invalid budget ID: {e}"))?;
+    let budget = ctx
+        .db
+        .get_budget(ctx.org_id, id)
+        .await
+        .map_err(err)?
+        .ok_or("Budget not found")?;
+    to_json(&budget)
 }
-pub async fn list_session_budgets(
-    _params: &Value,
-    _ctx: &CatalogContext,
-) -> Result<String, String> {
-    not_implemented(_params, _ctx).await
+
+pub async fn list_session_budgets(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let session_id = require_str(params, "session_id")?;
+    let budgets = ctx
+        .db
+        .list_budgets(ctx.org_id, Some("session"), Some(&session_id))
+        .await
+        .map_err(err)?;
+    to_list(&budgets)
 }
 pub async fn check_session_budgets(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let session_id = require_str(params, "session_id")?;
@@ -417,27 +471,71 @@ pub async fn stream_sse(_params: &Value, _ctx: &CatalogContext) -> Result<String
 }
 
 // ============================================================================
-// Harnesses, Models, Providers
-// TODO: Storage Row types need Serialize derive. Stubbed for now.
+// Harnesses (direct DB)
 // ============================================================================
 
-pub async fn list_harnesses(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+pub async fn list_harnesses(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let include_archived = param_bool(params, "include_archived");
+    let harnesses = ctx
+        .db
+        .list_harnesses(ctx.org_id, None, include_archived)
+        .await
+        .map_err(err)?;
+    to_list(&harnesses)
 }
-pub async fn get_harness(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+pub async fn get_harness(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let id = require_str(params, "id")?
+        .parse::<HarnessId>()
+        .map_err(|e| format!("Invalid harness ID: {e}"))?;
+    let harness = ctx
+        .db
+        .get_harness(ctx.org_id, id)
+        .await
+        .map_err(err)?
+        .ok_or("Harness not found")?;
+    to_json(&harness)
 }
-pub async fn list_models(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+// ============================================================================
+// Models (direct DB)
+// ============================================================================
+
+pub async fn list_models(_params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let models = ctx.db.list_all_llm_models(ctx.org_id).await.map_err(err)?;
+    to_list(&models)
 }
-pub async fn get_model(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+pub async fn get_model(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let id: uuid::Uuid = require_str(params, "id")?
+        .parse()
+        .map_err(|e| format!("Invalid model ID: {e}"))?;
+    let model = ctx
+        .db
+        .get_llm_model(ctx.org_id, id)
+        .await
+        .map_err(err)?
+        .ok_or("Model not found")?;
+    to_json(&model)
 }
-pub async fn list_providers(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+// ============================================================================
+// Providers (direct DB)
+// ============================================================================
+
+pub async fn list_providers(_params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let providers = ctx.db.list_llm_providers(ctx.org_id).await.map_err(err)?;
+    to_list(&providers)
 }
-pub async fn create_provider(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+pub async fn create_provider(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let row = serde_json::from_value(params.clone()).map_err(err)?;
+    let provider = ctx
+        .db
+        .create_llm_provider(ctx.org_id, row)
+        .await
+        .map_err(err)?;
+    to_json(&provider)
 }
 
 // ============================================================================
@@ -549,39 +647,96 @@ pub async fn create_skill(params: &Value, ctx: &CatalogContext) -> Result<String
 // Need to add Serialize to Row types or create service layer methods.
 // ============================================================================
 
-pub async fn list_images(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+pub async fn list_images(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let offset = param_u32(params, "offset").unwrap_or(0) as i64;
+    let limit = param_u32(params, "limit").unwrap_or(50).min(100) as i64;
+    let images = ctx
+        .db
+        .list_images(ctx.org_id, limit, offset)
+        .await
+        .map_err(err)?;
+    to_list(&images)
 }
-pub async fn get_image(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+pub async fn get_image(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let id: uuid::Uuid = require_str(params, "id")?
+        .parse()
+        .map_err(|e| format!("Invalid image ID: {e}"))?;
+    let image = ctx
+        .db
+        .get_image(ctx.org_id, id)
+        .await
+        .map_err(err)?
+        .ok_or("Image not found")?;
+    to_json(&image)
 }
+
 pub async fn list_schedules(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
     not_implemented(_p, _c).await
 }
+
 pub async fn create_schedule(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
     not_implemented(_p, _c).await
 }
-pub async fn list_orgs(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+pub async fn list_orgs(_params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let org = ctx
+        .db
+        .get_organization(ctx.org_id)
+        .await
+        .map_err(err)?
+        .ok_or("Organization not found")?;
+    to_list(&[org])
 }
-pub async fn get_org(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+pub async fn get_org(_params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let org = ctx
+        .db
+        .get_organization(ctx.org_id)
+        .await
+        .map_err(err)?
+        .ok_or("Organization not found")?;
+    to_json(&org)
 }
-pub async fn list_users(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+pub async fn list_users(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let search = param_str(params, "search");
+    let users = ctx.db.list_users(search.as_deref()).await.map_err(err)?;
+    to_list(&users)
 }
-pub async fn list_session_files(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+pub async fn list_session_files(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let session_id = parse_session_id(&require_str(params, "session_id")?)?;
+    let files = ctx
+        .db
+        .list_session_files(session_id, "/")
+        .await
+        .map_err(err)?;
+    to_list(&files)
 }
-pub async fn get_session_file(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+pub async fn get_session_file(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let session_id = parse_session_id(&require_str(params, "session_id")?)?;
+    let path = require_str(params, "path")?;
+    let file = ctx
+        .db
+        .get_session_file(session_id, &path)
+        .await
+        .map_err(err)?
+        .ok_or("File not found")?;
+    to_json(&file)
 }
+
 pub async fn list_session_databases(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
     not_implemented(_p, _c).await
 }
-pub async fn list_session_storage(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
+
+pub async fn list_session_storage(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
+    let session_id = parse_session_id(&require_str(params, "session_id")?)?;
+    let keys = ctx.db.list_session_keys(session_id).await.map_err(err)?;
+    to_list(&keys)
 }
+
 pub async fn submit_tool_results(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
     not_implemented(_p, _c).await
 }
