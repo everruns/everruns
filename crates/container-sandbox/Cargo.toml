@@ -11,6 +11,9 @@ authors.workspace = true
 description = "Self-hosted container sandbox capability for Everruns via Docker Engine REST API"
 
 [dependencies]
+everruns-core = { path = "../core" }
+inventory.workspace = true
+
 # HTTP client for Docker Engine REST API
 reqwest = { workspace = true }
 
@@ -24,8 +27,13 @@ tar = "0.4"
 # URL encoding for query parameters
 urlencoding = "2"
 
+# Base64 encoding for binary file transfers
+base64.workspace = true
+
 # Async
+async-trait.workspace = true
 tokio.workspace = true
+chrono.workspace = true
 tracing.workspace = true
 
 [features]
