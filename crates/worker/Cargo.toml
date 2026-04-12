@@ -24,6 +24,7 @@ everruns-integrations-deno = { path = "../../integrations/deno" }
 everruns-integrations-browserless = { path = "../../integrations/browserless" }
 everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
+everruns-container-sandbox = { path = "../container-sandbox" }
 everruns-integrations-pi = { path = "../../integrations/pi" }
 everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }
