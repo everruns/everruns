@@ -685,26 +685,14 @@ impl ServerAppBuilder {
             api::session_resources::AppState::new(leased_resource_service, auth_state.clone());
 
         // MCP endpoint: derive API base URL from addr config or MCP_API_BASE_URL env var
-        let mcp_api_base_url = std::env::var("MCP_API_BASE_URL").unwrap_or_else(|_| {
-            let addr = &self.config.addr;
-            let host = if addr.starts_with("0.0.0.0") {
-                addr.replacen("0.0.0.0", "127.0.0.1", 1)
-            } else {
-                addr.to_string()
-            };
-            format!(
-                "http://{host}{}",
-                self.config.api_prefix.trim_end_matches('/')
-            )
-        });
-        let mut mcp_endpoint_state = api::mcp_endpoint::AppState::new(
+        let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
             runner.clone(),
             auth_state.clone(),
             platform_definition.as_ref(),
             notifications_enabled,
-            mcp_api_base_url,
             event_delivery.clone(),
+            encryption.clone(),
         );
 
         let health_state = HealthState {
@@ -818,12 +806,6 @@ impl ServerAppBuilder {
         for routes in self.extra_routes {
             api_routes = api_routes.merge(routes);
         }
-
-        // Pass the unprefixed API router to MCP state for in-process routing
-        // (no HTTP loopback). MCP dispatch uses catalog operation paths like
-        // `/v1/...`, so this router must not be nested under `api_prefix`.
-        // Clone before rate limiting — MCP endpoint has its own rate limiting.
-        mcp_endpoint_state.set_api_router(api_routes.clone());
 
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.

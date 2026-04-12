@@ -11,8 +11,13 @@
 // - Auth: same as rest of API (API key or session cookie via ResolvedOrg)
 // - No MCP session state — stateless request/response per JSON-RPC call
 
+mod handlers;
+
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::{EventService, MessageService, SessionService};
+use crate::services::{
+    AgentService, BudgetService, CapabilityService, EventService, McpServerService, MessageService,
+    SessionService, SkillService,
+};
 use crate::storage::StorageBackend;
 use axum::{Json, Router, extract::State, routing::post};
 use bashkit::{ScriptedTool, Tool as ScriptedToolTrait};
@@ -257,16 +262,17 @@ fn tool_definitions() -> Value {
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
+    pub agent_service: Arc<AgentService>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
+    pub capability_service: Arc<CapabilityService>,
+    pub mcp_server_service: Arc<McpServerService>,
+    pub skill_service: Arc<SkillService>,
+    pub budget_service: Arc<BudgetService>,
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
-    pub api_base_url: String,
     pub fallback_base_harness_name: Option<String>,
-    /// API routes router for in-process routing (replaces HTTP loopback).
-    /// Set after construction via `set_api_router()`.
-    pub api_router: Option<Router>,
 }
 
 impl AppState {
@@ -276,10 +282,11 @@ impl AppState {
         auth: AuthState,
         platform_definition: &PlatformDefinition,
         notifications_enabled: bool,
-        api_base_url: String,
         event_delivery: crate::event_delivery::EventDelivery,
+        encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
     ) -> Self {
         Self {
+            agent_service: Arc::new(AgentService::new(db.clone())),
             session_service: Arc::new(SessionService::with_registry(
                 db.clone(),
                 platform_definition.capability_registry().clone(),
@@ -291,21 +298,21 @@ impl AppState {
                 event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
+            capability_service: Arc::new(CapabilityService::with_registry(
+                db.clone(),
+                encryption.clone(),
+                platform_definition.capability_registry().clone(),
+            )),
+            mcp_server_service: Arc::new(McpServerService::new(db.clone(), encryption)),
+            skill_service: Arc::new(SkillService::new(db.clone())),
+            budget_service: Arc::new(BudgetService::new(db.clone())),
             db,
             runner,
             auth,
-            api_base_url,
             fallback_base_harness_name: platform_definition
                 .harness_for_role(everruns_core::BuiltInHarnessRole::Base)
                 .map(|h| h.name.clone()),
-            api_router: None,
         }
-    }
-
-    /// Set the API routes router for in-process routing.
-    /// Called after the API router is fully constructed.
-    pub fn set_api_router(&mut self, router: Router) {
-        self.api_router = Some(router);
     }
 }
 
@@ -792,17 +799,25 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
 // ============================================================================
 
 /// Build a ScriptedTool for the given org context.
-///
-/// Routes catalog operations through the in-process API router (no HTTP).
-/// Falls back to HTTP loopback if api_router is not set.
+/// All catalog operations are direct service calls — no HTTP.
 fn build_scripted_tool(org: &ResolvedOrg, state: &AppState) -> ScriptedTool {
-    if let Some(ref router) = state.api_router {
-        catalog::build_scripted_tool_direct(router.clone(), org.clone())
-    } else {
-        // Fallback: HTTP loopback (for tests that don't set api_router)
-        let auth_token = format!("org-{}", org.public_id);
-        catalog::build_scripted_tool_http(&state.api_base_url, &auth_token)
-    }
+    let ctx = catalog::CatalogContext {
+        caller: Caller::from(org),
+        org_id: org.org_id,
+        user_id: org.user_id,
+        db: state.db.clone(),
+        agent_service: state.agent_service.clone(),
+        session_service: state.session_service.clone(),
+        message_service: state.message_service.clone(),
+        event_service: state.event_service.clone(),
+        capability_service: state.capability_service.clone(),
+        mcp_server_service: state.mcp_server_service.clone(),
+        skill_service: state.skill_service.clone(),
+        budget_service: state.budget_service.clone(),
+        runner: state.runner.clone(),
+        fallback_base_harness_name: state.fallback_base_harness_name.clone(),
+    };
+    catalog::build_scripted_tool(ctx)
 }
 
 /// Execute a script through a ScriptedTool and return formatted output.

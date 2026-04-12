@@ -4,14 +4,13 @@
 // ScriptedTool interpreter, plus enough metadata to generate the ToolDef
 // and the direct service callback.
 
-use crate::auth::middleware::ResolvedOrg;
-use axum::Router;
-use axum::body::Body;
-use axum::body::to_bytes;
+use super::handlers;
 use bashkit::{ScriptedTool, ToolArgs, ToolDef};
 use serde_json::json;
 use std::collections::BTreeMap;
-use tower::ServiceExt;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 /// A single API operation in the catalog.
 pub struct Operation {
@@ -30,6 +29,31 @@ pub struct Param {
     pub description: &'static str,
 }
 
+/// Shared context for direct service calls from catalog operations.
+#[derive(Clone)]
+pub struct CatalogContext {
+    pub caller: everruns_core::permissions::Caller,
+    pub org_id: i64,
+    pub user_id: Option<uuid::Uuid>,
+    pub db: Arc<crate::storage::StorageBackend>,
+    pub agent_service: Arc<crate::services::AgentService>,
+    pub session_service: Arc<crate::services::SessionService>,
+    pub message_service: Arc<crate::services::MessageService>,
+    pub event_service: Arc<crate::services::EventService>,
+    pub capability_service: Arc<crate::services::CapabilityService>,
+    pub mcp_server_service: Arc<crate::services::McpServerService>,
+    pub skill_service: Arc<crate::services::SkillService>,
+    pub budget_service: Arc<crate::services::BudgetService>,
+    pub runner: Arc<dyn everruns_worker::AgentRunner>,
+    pub fallback_base_harness_name: Option<String>,
+}
+
+/// Handler function type for catalog operations.
+type Handler = for<'a> fn(
+    &'a serde_json::Value,
+    &'a CatalogContext,
+) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
+
 fn tool_builder() -> bashkit::ScriptedToolBuilder {
     ScriptedTool::builder("everruns")
         .short_description("Everruns API operations as bash builtins")
@@ -44,33 +68,130 @@ fn tool_builder() -> bashkit::ScriptedToolBuilder {
         )
 }
 
-/// Build a ScriptedTool that routes operations through an in-process axum Router.
-/// No HTTP calls — requests are dispatched via `tower::ServiceExt::oneshot`.
-pub fn build_scripted_tool_direct(router: Router, org: ResolvedOrg) -> ScriptedTool {
+/// Build a ScriptedTool with direct service calls for all catalog operations.
+pub fn build_scripted_tool(ctx: CatalogContext) -> ScriptedTool {
     let mut builder = tool_builder();
 
     for op in CATALOG {
         let def = op_to_def(op);
-        let callback = make_router_callback(op, router.clone(), org.clone());
+        let handler = resolve_handler(op.name);
+        let callback = make_direct_callback(op, ctx.clone(), handler);
         builder = builder.tool(def, callback);
     }
 
     builder.build()
 }
 
-/// Build a ScriptedTool that routes operations via HTTP loopback (legacy fallback).
-pub fn build_scripted_tool_http(api_base: &str, api_key: &str) -> ScriptedTool {
-    let mut builder = tool_builder()
-        .env("EVERRUNS_API_BASE", api_base)
-        .env("EVERRUNS_API_KEY", api_key);
-
-    for op in CATALOG {
-        let def = op_to_def(op);
-        let callback = make_http_callback(op, api_base, api_key);
-        builder = builder.tool(def, callback);
+/// Resolve a handler function for an operation by name.
+fn resolve_handler(name: &str) -> Handler {
+    match name {
+        // System
+        "health_check" => |p, c| Box::pin(handlers::health_check(p, c)),
+        // Agents
+        "create_agent" => |p, c| Box::pin(handlers::create_agent(p, c)),
+        "list_agents" => |p, c| Box::pin(handlers::list_agents(p, c)),
+        "get_agent" => |p, c| Box::pin(handlers::get_agent(p, c)),
+        "update_agent" => |p, c| Box::pin(handlers::update_agent(p, c)),
+        "delete_agent" => |p, c| Box::pin(handlers::delete_agent(p, c)),
+        "upsert_agent" => |p, c| Box::pin(handlers::upsert_agent(p, c)),
+        "copy_agent" => |p, c| Box::pin(handlers::copy_agent(p, c)),
+        "export_agent" => |p, c| Box::pin(handlers::export_agent(p, c)),
+        "import_agent" => |p, c| Box::pin(handlers::import_agent(p, c)),
+        "preview_agent" => |p, c| Box::pin(handlers::preview_agent(p, c)),
+        // Sessions
+        "create_session" => |p, c| Box::pin(handlers::create_session(p, c)),
+        "list_sessions" => |p, c| Box::pin(handlers::list_sessions(p, c)),
+        "get_session" => |p, c| Box::pin(handlers::get_session(p, c)),
+        "update_session" => |p, c| Box::pin(handlers::update_session(p, c)),
+        "delete_session" => |p, c| Box::pin(handlers::delete_session(p, c)),
+        "cancel_session" => |p, c| Box::pin(handlers::cancel_session(p, c)),
+        // Budgets
+        "create_budget" => |p, c| Box::pin(handlers::create_budget(p, c)),
+        "list_budgets" => |p, c| Box::pin(handlers::list_budgets(p, c)),
+        "get_budget" => |p, c| Box::pin(handlers::get_budget(p, c)),
+        "update_budget" => |p, c| Box::pin(handlers::update_budget(p, c)),
+        "delete_budget" => |p, c| Box::pin(handlers::delete_budget(p, c)),
+        "top_up_budget" => |p, c| Box::pin(handlers::top_up_budget(p, c)),
+        "check_budget" => |p, c| Box::pin(handlers::check_budget(p, c)),
+        "list_session_budgets" => |p, c| Box::pin(handlers::list_session_budgets(p, c)),
+        "check_session_budgets" => |p, c| Box::pin(handlers::check_session_budgets(p, c)),
+        // Messages
+        "create_message" => |p, c| Box::pin(handlers::create_message(p, c)),
+        "list_messages" => |p, c| Box::pin(handlers::list_messages(p, c)),
+        // Events
+        "list_events" => |p, c| Box::pin(handlers::list_events(p, c)),
+        "stream_sse" => |p, c| Box::pin(handlers::stream_sse(p, c)),
+        // Harnesses
+        "list_harnesses" => |p, c| Box::pin(handlers::list_harnesses(p, c)),
+        "get_harness" => |p, c| Box::pin(handlers::get_harness(p, c)),
+        // Models
+        "list_models" => |p, c| Box::pin(handlers::list_models(p, c)),
+        "get_model" => |p, c| Box::pin(handlers::get_model(p, c)),
+        // Providers
+        "list_providers" => |p, c| Box::pin(handlers::list_providers(p, c)),
+        "create_provider" => |p, c| Box::pin(handlers::create_provider(p, c)),
+        // MCP Servers
+        "list_mcp_servers" => |p, c| Box::pin(handlers::list_mcp_servers(p, c)),
+        "create_mcp_server" => |p, c| Box::pin(handlers::create_mcp_server(p, c)),
+        "get_mcp_server" => |p, c| Box::pin(handlers::get_mcp_server(p, c)),
+        // Capabilities
+        "list_capabilities" => |p, c| Box::pin(handlers::list_capabilities(p, c)),
+        "get_capability" => |p, c| Box::pin(handlers::get_capability(p, c)),
+        // Skills
+        "list_skills" => |p, c| Box::pin(handlers::list_skills(p, c)),
+        "create_skill" => |p, c| Box::pin(handlers::create_skill(p, c)),
+        // Images
+        "list_images" => |p, c| Box::pin(handlers::list_images(p, c)),
+        "get_image" => |p, c| Box::pin(handlers::get_image(p, c)),
+        // Schedules
+        "list_schedules" => |p, c| Box::pin(handlers::list_schedules(p, c)),
+        "create_schedule" => |p, c| Box::pin(handlers::create_schedule(p, c)),
+        // Organizations
+        "list_orgs" => |p, c| Box::pin(handlers::list_orgs(p, c)),
+        "get_org" => |p, c| Box::pin(handlers::get_org(p, c)),
+        // Users
+        "list_users" => |p, c| Box::pin(handlers::list_users(p, c)),
+        // Files
+        "list_session_files" => |p, c| Box::pin(handlers::list_session_files(p, c)),
+        "get_session_file" => |p, c| Box::pin(handlers::get_session_file(p, c)),
+        // Databases
+        "list_session_databases" => |p, c| Box::pin(handlers::list_session_databases(p, c)),
+        // Storage
+        "list_session_storage" => |p, c| Box::pin(handlers::list_session_storage(p, c)),
+        // Tool Results
+        "submit_tool_results" => |p, c| Box::pin(handlers::submit_tool_results(p, c)),
+        // Fallback
+        _ => |p, c| Box::pin(handlers::not_implemented(p, c)),
     }
+}
 
-    builder.build()
+/// Create a callback that calls a handler function directly via service layer.
+fn make_direct_callback(
+    op: &'static Operation,
+    ctx: CatalogContext,
+    handler: Handler,
+) -> impl Fn(&ToolArgs) -> Result<String, String> + Send + Sync + 'static {
+    move |args: &ToolArgs| {
+        let params = &args.params;
+
+        if is_flag_set(params, "help") {
+            return Ok(format_help(op));
+        }
+
+        let wants_summary = is_flag_set(params, "summary");
+
+        tokio::task::block_in_place(|| {
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async {
+                let result = handler(params, &ctx).await?;
+                if wants_summary {
+                    Ok(apply_summary_filter(&result))
+                } else {
+                    Ok(result)
+                }
+            })
+        })
+    }
 }
 
 /// Convert an Operation to a bashkit ToolDef.
@@ -161,238 +282,6 @@ fn is_flag_set(params: &serde_json::Value, key: &str) -> bool {
         .is_some_and(|v| v.as_bool().unwrap_or(false) || v.as_str().is_some_and(|s| s == "true"))
 }
 
-/// Create a callback that routes through an in-process axum Router.
-/// No HTTP calls — uses `tower::ServiceExt::oneshot` for direct dispatch.
-fn make_router_callback(
-    op: &'static Operation,
-    router: Router,
-    org: ResolvedOrg,
-) -> impl Fn(&ToolArgs) -> Result<String, String> + Send + Sync + 'static {
-    move |args: &ToolArgs| {
-        let params = &args.params;
-
-        if is_flag_set(params, "help") {
-            return Ok(format_help(op));
-        }
-
-        let wants_summary = is_flag_set(params, "summary");
-
-        let method = op.method;
-        let path_template = op.path;
-
-        // Substitute path parameters into the URL template
-        let mut path = path_template.to_string();
-        let mut body_params = serde_json::Map::new();
-        let mut query_parts = Vec::new();
-
-        if let Some(obj) = params.as_object() {
-            for (key, value) in obj {
-                // Skip client-side flags
-                if key == "help" || key == "summary" {
-                    continue;
-                }
-
-                let placeholder = format!("{{{key}}}");
-                if path.contains(&placeholder) {
-                    let val_str = value.as_str().unwrap_or(&value.to_string()).to_string();
-                    path = path.replace(&placeholder, &val_str);
-                } else if is_query_param(path_template, key)
-                    || method == "GET"
-                    || method == "DELETE"
-                {
-                    let val_str = value.as_str().unwrap_or(&value.to_string()).to_string();
-                    query_parts.push(format!("{}={}", key, urlencoding::encode(&val_str)));
-                } else {
-                    body_params.insert(key.clone(), value.clone());
-                }
-            }
-        }
-
-        let mut uri = path;
-        if !query_parts.is_empty() {
-            uri.push('?');
-            uri.push_str(&query_parts.join("&"));
-        }
-
-        let router = router.clone();
-        let org = org.clone();
-
-        tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async {
-                let http_method = match method {
-                    "POST" => axum::http::Method::POST,
-                    "PUT" => axum::http::Method::PUT,
-                    "PATCH" => axum::http::Method::PATCH,
-                    "DELETE" => axum::http::Method::DELETE,
-                    _ => axum::http::Method::GET,
-                };
-
-                let mut req_builder = axum::http::Request::builder().method(http_method).uri(&uri);
-
-                if !body_params.is_empty() {
-                    req_builder =
-                        req_builder.header(axum::http::header::CONTENT_TYPE, "application/json");
-                }
-
-                let body: Body = if body_params.is_empty() {
-                    Body::empty()
-                } else {
-                    let json = serde_json::to_vec(&body_params)
-                        .map_err(|e| format!("JSON serialize error: {e}"))?;
-                    Body::from(json)
-                };
-
-                let mut request: axum::http::Request<Body> = req_builder
-                    .body(body)
-                    .map_err(|e| format!("Request build error: {e}"))?;
-
-                // Inject auth context so extractors pick it up without
-                // needing a real Bearer token or JWT.
-                request.extensions_mut().insert(org.to_auth_user());
-                request.extensions_mut().insert(org);
-
-                let response = router
-                    .oneshot(request)
-                    .await
-                    .map_err(|e| format!("Router error: {e}"))?;
-
-                let status = response.status();
-                let bytes = to_bytes(response.into_body(), 10 * 1024 * 1024)
-                    .await
-                    .map_err(|e| format!("Body read error: {e}"))?;
-                let body_text = String::from_utf8_lossy(&bytes).to_string();
-
-                if status.is_success() {
-                    if wants_summary {
-                        Ok(apply_summary_filter(&body_text))
-                    } else {
-                        Ok(body_text)
-                    }
-                } else {
-                    Err(format!("HTTP {status}: {body_text}"))
-                }
-            })
-        })
-    }
-}
-
-/// Create an HTTP callback for an API operation (legacy fallback).
-///
-/// Intercepts `--help` locally; all other invocations make an HTTP request
-/// to the local API via `tokio::task::block_in_place`.
-fn make_http_callback(
-    op: &'static Operation,
-    api_base: &str,
-    api_key: &str,
-) -> impl Fn(&ToolArgs) -> Result<String, String> + Send + Sync + 'static {
-    let api_base = api_base.to_string();
-    let api_key = api_key.to_string();
-
-    move |args: &ToolArgs| {
-        let params = &args.params;
-
-        // Local --help: never hits the API
-        if params.get("help").is_some_and(|v| {
-            v.as_bool().unwrap_or(false) || v.as_str().is_some_and(|s| s == "true")
-        }) {
-            return Ok(format_help(op));
-        }
-
-        let method = op.method;
-        let path_template = op.path;
-
-        // Substitute path parameters into the URL template
-        let mut path = path_template.to_string();
-        let mut body_params = serde_json::Map::new();
-        let mut query_parts = Vec::new();
-        let mut wants_summary = false;
-
-        if let Some(obj) = params.as_object() {
-            for (key, value) in obj {
-                // Skip client-side flags — never forwarded to the API.
-                if key == "help" {
-                    continue;
-                }
-                if key == "summary" {
-                    wants_summary = value.as_bool().unwrap_or(false)
-                        || value.as_str().is_some_and(|s| s == "true");
-                    continue;
-                }
-
-                let placeholder = format!("{{{key}}}");
-                if path.contains(&placeholder) {
-                    // Path parameter — substitute into URL
-                    let val_str = value.as_str().unwrap_or(&value.to_string()).to_string();
-                    path = path.replace(&placeholder, &val_str);
-                } else if is_query_param(path_template, key)
-                    || method == "GET"
-                    || method == "DELETE"
-                {
-                    // Query parameter
-                    let val_str = value.as_str().unwrap_or(&value.to_string()).to_string();
-                    query_parts.push(format!("{}={}", key, urlencoding::encode(&val_str)));
-                } else {
-                    // Body parameter
-                    body_params.insert(key.clone(), value.clone());
-                }
-            }
-        }
-
-        let mut url = format!("{api_base}{path}");
-        if !query_parts.is_empty() {
-            url.push('?');
-            url.push_str(&query_parts.join("&"));
-        }
-
-        // Make the HTTP request (sync bridge)
-        let api_key = api_key.clone();
-        tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async {
-                let client = reqwest::Client::new();
-                let mut req = match method {
-                    "POST" => client.post(&url),
-                    "PUT" => client.put(&url),
-                    "PATCH" => client.patch(&url),
-                    "DELETE" => client.delete(&url),
-                    _ => client.get(&url),
-                };
-
-                req = req.header("Authorization", format!("Bearer {api_key}"));
-
-                if !body_params.is_empty() {
-                    req = req
-                        .header("Content-Type", "application/json")
-                        .json(&body_params);
-                }
-
-                let resp = req
-                    .timeout(std::time::Duration::from_secs(30))
-                    .send()
-                    .await
-                    .map_err(|e| format!("HTTP error: {e}"))?;
-
-                let status = resp.status();
-                let body = resp
-                    .text()
-                    .await
-                    .map_err(|e| format!("Failed to read response: {e}"))?;
-
-                if status.is_success() {
-                    if wants_summary {
-                        Ok(apply_summary_filter(&body))
-                    } else {
-                        Ok(body)
-                    }
-                } else {
-                    Err(format!("HTTP {status}: {body}"))
-                }
-            })
-        })
-    }
-}
-
 /// Summary fields kept in compact output mode.
 const SUMMARY_FIELDS: &[&str] = &[
     "id",
@@ -422,17 +311,6 @@ fn apply_summary_filter(body: &str) -> String {
     }
 
     serde_json::to_string(&parsed).unwrap_or_else(|_| body.to_string())
-}
-
-/// Check if a param name maps to a query-typed parameter in the catalog.
-fn is_query_param(path_template: &str, param_name: &str) -> bool {
-    CATALOG.iter().any(|op| {
-        op.path == path_template
-            && op
-                .params
-                .iter()
-                .any(|p| p.name == param_name && p.typ == "query")
-    })
 }
 
 // ============================================================================

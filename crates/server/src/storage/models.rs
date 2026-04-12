@@ -14,7 +14,7 @@ use uuid::Uuid;
 // ============================================
 
 /// Organization row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct OrganizationRow {
     pub org_id: i64,
     pub public_id: String,
@@ -102,7 +102,7 @@ pub struct CreateOrganizationMemberRow {
 // ============================================
 
 /// User row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct UserRow {
     pub id: Uuid,
     pub email: String,
@@ -397,7 +397,7 @@ pub struct UpdateAgent {
 // Harness models (base configuration for sessions)
 // ============================================
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct HarnessRow {
     pub id: HarnessId,
     pub org_id: i64,
@@ -621,7 +621,7 @@ pub struct CreateEventRow {
 // LLM Provider types
 // ============================================
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct LlmProviderRow {
     pub id: ProviderId,
     pub org_id: i64,
@@ -638,7 +638,7 @@ pub struct LlmProviderRow {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct LlmModelRow {
     pub id: ModelId,
     pub org_id: i64,
@@ -661,7 +661,7 @@ pub struct LlmModelRow {
 }
 
 /// Model with provider info joined
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct LlmModelWithProviderRow {
     pub id: ModelId,
     pub org_id: i64,
@@ -697,7 +697,7 @@ pub struct LlmProviderWithApiKey {
     pub settings: serde_json::Value,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct CreateLlmProviderRow {
     pub name: String,
     pub provider_type: String,
@@ -776,7 +776,7 @@ pub struct CreateAgentCapabilityRow {
 // ============================================
 
 /// Session file row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct SessionFileRow {
     pub id: Uuid,
     pub session_id: SessionId,
@@ -807,7 +807,7 @@ pub struct UpdateSessionFile {
 }
 
 /// Lightweight file info for listing (without content)
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct SessionFileInfoRow {
     pub id: Uuid,
     pub session_id: SessionId,
@@ -919,7 +919,7 @@ pub struct UpdateMcpServer {
 // ============================================
 
 /// Image row from database
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct ImageRow {
     pub id: ImageId,
     pub org_id: i64,
@@ -934,7 +934,7 @@ pub struct ImageRow {
 }
 
 /// Image info without binary data (for listing)
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct ImageInfoRow {
     pub id: ImageId,
     pub org_id: i64,
@@ -1096,7 +1096,7 @@ pub struct UpsertSessionKeyValue {
 }
 
 /// Lightweight key info for listing (without value)
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct SessionKeyInfoRow {
     pub key: String,
     pub created_at: DateTime<Utc>,
@@ -1127,7 +1127,7 @@ pub struct UpsertSessionSecret {
 }
 
 /// Lightweight secret info for listing (without encrypted value)
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct SessionSecretInfoRow {
     pub name: String,
     pub created_at: DateTime<Utc>,
@@ -1307,7 +1307,7 @@ pub struct CreateAgentIdentityConnectionRow {
 // Session Schedule models
 // ============================================
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct SessionScheduleRow {
     pub id: ScheduleId,
     pub public_id: String,
@@ -1706,7 +1706,7 @@ pub struct UpdateEvalCaseResultRow {
 // ============================================================================
 
 /// Budget row (maps to `budgets` table).
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct BudgetRow {
     pub id: Uuid,
     pub org_id: i64,
@@ -1724,7 +1724,7 @@ pub struct BudgetRow {
 }
 
 /// Input for creating a budget.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct CreateBudgetRow {
     pub org_id: i64,
     pub subject_type: String,
@@ -1737,7 +1737,7 @@ pub struct CreateBudgetRow {
 }
 
 /// Input for updating a budget.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct UpdateBudgetRow {
     pub limit: Option<f64>,
     pub soft_limit: Option<Option<f64>>,
@@ -1746,7 +1746,7 @@ pub struct UpdateBudgetRow {
 }
 
 /// Budget ledger entry row (maps to `budget_ledger` table).
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct BudgetLedgerRow {
     pub id: Uuid,
     pub budget_id: Uuid,
@@ -1760,7 +1760,7 @@ pub struct BudgetLedgerRow {
 }
 
 /// Input for creating a ledger entry.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct CreateBudgetLedgerRow {
     pub budget_id: Uuid,
     pub amount: f64,

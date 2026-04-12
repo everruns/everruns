@@ -344,8 +344,8 @@ impl TestServer {
             auth_state.clone(),
             &platform_definition,
             feature_flags.notifications,
-            api_base_url,
             everruns_server::EventDelivery::in_memory(),
+            None, // No encryption in tests
         );
 
         // Build API routes
