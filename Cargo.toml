@@ -15,6 +15,7 @@ members = [
     "crates/config",
     "crates/openui",
     "crates/session-sqldb",
+    "crates/container-sandbox",
     "integrations/docker",
     "integrations/daytona",
     "integrations/deno",
