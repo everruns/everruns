@@ -1570,6 +1570,7 @@ name = "everruns-container-sandbox"
 version = "0.8.10"
 dependencies = [
  "async-trait",
+ "base64",
  "chrono",
  "everruns-core",
  "inventory",
@@ -1940,6 +1941,7 @@ dependencies = [
  "cron",
  "dotenvy",
  "everruns-config",
+ "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",
  "everruns-integrations-brave-search",
@@ -2030,6 +2032,7 @@ dependencies = [
  "chrono",
  "everruns-anthropic",
  "everruns-config",
+ "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",
  "everruns-gemini",

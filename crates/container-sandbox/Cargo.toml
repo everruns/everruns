@@ -27,6 +27,9 @@ tar = "0.4"
 # URL encoding for query parameters
 urlencoding = "2"
 
+# Base64 encoding for binary file transfers
+base64.workspace = true
+
 # Async
 async-trait.workspace = true
 tokio.workspace = true
