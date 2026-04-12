@@ -684,7 +684,7 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
 - **ID**: `platform_management`
 - **Purpose**: Programmatic management of Everruns entities (harnesses, agents, sessions) via tool calls
 - **System Prompt**: Describes available management tools, common workflows, and platform docs availability
-- **Mounts**: `/docs` — Everruns platform documentation (virtual, readonly). Embedded at compile time via `include_dir!` from the repo `docs/` directory. Only markdown files (`.md`, `.mdx`) are included. See `crates/core/src/capabilities/platform_management.rs`.
+- **Mounts**: `/docs` — Everruns platform documentation (virtual, readonly). The stored/normalized mount path is `/docs`; agents/tools access it as `/workspace/docs`. Embedded at compile time via `include_dir!` from the repo `docs/` directory. Only markdown files (`.md`, `.mdx`) are included in the virtual tree. See `crates/core/src/capabilities/platform_management.rs`.
 - **Lifecycle Parity**: Must enforce the same archive/delete, assignment, and read-only rules as the public API and UI. Agents using these tools may not bypass lifecycle restrictions.
 - **Tools** (read/write split — read tools return single item by ID or filtered list):
   - `read_capabilities` - Discover available capabilities (built-in, MCP servers, skills)

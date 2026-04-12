@@ -531,6 +531,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
+        // Virtual files are readonly
+        if let Some(registry) = &self.virtual_registry
+            && registry.is_virtual_path(&session_id, path)
+        {
+            return Err(store_error(format!(
+                "Cannot modify readonly file: {}",
+                path
+            )));
+        }
         use crate::storage::models::{CreateSessionFileRow, UpdateSessionFile};
 
         let content_bytes = if encoding == "base64" {
@@ -630,6 +639,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
         content: &str,
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
+        if let Some(registry) = &self.virtual_registry
+            && registry.is_virtual_path(&session_id, path)
+        {
+            return Err(store_error(format!(
+                "Cannot modify readonly file: {}",
+                path
+            )));
+        }
         use crate::storage::models::UpdateSessionFile;
 
         let expected_bytes = SessionFile::decode_content(expected_content, expected_encoding)
@@ -678,6 +695,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
     }
 
     async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
+        if let Some(registry) = &self.virtual_registry
+            && registry.is_virtual_path(&session_id, path)
+        {
+            return Err(store_error(format!(
+                "Cannot delete readonly file: {}",
+                path
+            )));
+        }
         if recursive {
             let count = self
                 .db
@@ -814,16 +839,25 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         let mut matches: Vec<GrepMatch> = results.into_iter().flat_map(|r| r.matches).collect();
 
-        // Also search virtual mounts
+        // Also search virtual mounts (use regex path filtering to match DB semantics)
         if let Some(registry) = &self.virtual_registry
             && let Ok(regex) = regex::Regex::new(pattern)
         {
-            let virtual_matches = registry.grep(&session_id, &regex, path_pattern);
-            matches.extend(virtual_matches.into_iter().map(|vm| GrepMatch {
-                path: vm.path,
-                line_number: vm.line_number,
-                line: vm.line,
-            }));
+            let path_regex = path_pattern
+                .map(regex::Regex::new)
+                .transpose()
+                .unwrap_or(None);
+            let virtual_matches = registry.grep(&session_id, &regex, None);
+            matches.extend(
+                virtual_matches
+                    .into_iter()
+                    .filter(|vm| path_regex.as_ref().is_none_or(|re| re.is_match(&vm.path)))
+                    .map(|vm| GrepMatch {
+                        path: vm.path,
+                        line_number: vm.line_number,
+                        line: vm.line,
+                    }),
+            );
         }
 
         Ok(matches)

@@ -648,11 +648,16 @@ impl SessionService {
 
     #[policy(SESSION_MANAGE)]
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
-        // Evict virtual mounts before deleting the session row
-        self.session_file_service.evict_virtual_mounts(id);
-        self.db
+        let deleted = self
+            .db
             .delete_session(caller.org_id, SessionId::from_uuid(id))
-            .await
+            .await?;
+
+        if deleted {
+            self.session_file_service.evict_virtual_mounts(id);
+        }
+
+        Ok(deleted)
     }
 
     /// Pin a session for a user

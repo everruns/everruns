@@ -645,8 +645,13 @@ impl SessionFileService {
         // Also search virtual mounts
         if let Some(registry) = &self.virtual_registry {
             let regex = Regex::new(&req.pattern)?;
-            let virtual_matches = registry.grep(&session_id, &regex, req.path_pattern.as_deref());
-            for vm in virtual_matches {
+            let path_regex = req.path_pattern.as_deref().map(Regex::new).transpose()?;
+            // Pass None for path filter — we apply regex filtering below to match DB semantics
+            let virtual_matches = registry.grep(&session_id, &regex, None);
+            for vm in virtual_matches
+                .into_iter()
+                .filter(|vm| path_regex.as_ref().is_none_or(|re| re.is_match(&vm.path)))
+            {
                 // Group by file path into GrepResult entries
                 if let Some(existing) = results.iter_mut().find(|r| r.path == vm.path) {
                     existing.matches.push(GrepMatch {
