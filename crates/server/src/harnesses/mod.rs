@@ -5,6 +5,7 @@
 //! into the ordered list consumed by `oss_built_in_harnesses()` in platform.rs.
 
 mod base;
+mod coding_container;
 mod coding_daytona;
 mod generic;
 mod platform_chat;
@@ -17,6 +18,7 @@ pub fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
         base::definition(),
         generic::definition(),
         coding_daytona::definition(),
+        coding_container::definition(),
         platform_chat::definition(),
     ]
 }

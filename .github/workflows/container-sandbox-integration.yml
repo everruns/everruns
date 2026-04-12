@@ -1,0 +1,68 @@
+name: Container Sandbox Integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/container-sandbox/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/container-sandbox/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  unit-test:
+    name: Container Sandbox Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "container-sandbox-integration"
+
+      - name: Run unit tests
+        run: cargo test -p everruns-container-sandbox
+
+  live-test:
+    name: Container Sandbox Live API Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    timeout-minutes: 10
+
+    services:
+      docker:
+        image: docker:dind
+        options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "container-sandbox-integration"
+
+      - name: Run live integration tests
+        run: cargo test -p everruns-container-sandbox --features container-sandbox-live-tests --test live_api_test -- --test-threads=1
