@@ -1,0 +1,100 @@
+# Everruns Dev Deployment — Docker Compose
+#
+# SaaS dev environment running on Hetzner control plane VPS.
+# Secrets injected via Doppler: `doppler run -- docker compose -f docker-compose.dev.yml up -d`
+#
+# Requires:
+#   - PostgreSQL running on the host or as a managed service
+#   - Doppler project "everruns", config "dev"
+#   - Sandbox VPS reachable at 10.0.0.3 (private network)
+
+services:
+  # ==========================================================================
+  # Server (Control Plane) - HTTP API + gRPC server
+  # ==========================================================================
+  server:
+    image: ghcr.io/everruns/everruns-server:${EVERRUNS_TAG:-latest}
+    environment:
+      - DATABASE_URL
+      - VALKEY_URL
+      - NATS_URL
+      - SECRETS_ENCRYPTION_KEY
+      - DEFAULT_OPENAI_API_KEY
+      - DEFAULT_ANTHROPIC_API_KEY
+      - DEFAULT_GEMINI_API_KEY
+      - WORKER_GRPC_AUTH_TOKEN
+      - OTEL_EXPORTER_OTLP_ENDPOINT
+      - ADDR=0.0.0.0:9301
+      - RUST_LOG=info
+    ports:
+      - "9301:9301"
+      - "9001:9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/everruns-server", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==========================================================================
+  # Worker
+  # ==========================================================================
+  worker:
+    image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
+    environment:
+      - WORKER_GRPC_ADDRESS=server:9001
+      - WORKER_GRPC_AUTH_TOKEN
+      - OTEL_EXPORTER_OTLP_ENDPOINT
+      - RUST_LOG=info
+      # Container sandbox (sandbox VPS via private network)
+      - CONTAINER_SANDBOX_DOCKER_HOST
+      - CONTAINER_SANDBOX_RUNTIME
+      - CONTAINER_SANDBOX_MAX_PER_ORG
+      - CONTAINER_SANDBOX_MEMORY_LIMIT
+      - CONTAINER_SANDBOX_CPU_LIMIT
+      - CONTAINER_SANDBOX_DEFAULT_IMAGE
+    depends_on:
+      server:
+        condition: service_started
+    restart: unless-stopped
+
+  # ==========================================================================
+  # UI (Next.js dashboard)
+  # ==========================================================================
+  ui:
+    image: ghcr.io/everruns/everruns-ui:${EVERRUNS_TAG:-latest}
+    environment:
+      PORT: "9305"
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      server:
+        condition: service_started
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Caddy Reverse Proxy
+  # ==========================================================================
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    depends_on:
+      - server
+      - ui
+    restart: unless-stopped
+
+configs:
+  caddyfile:
+    file: ./Caddyfile.dev
+
+volumes:
+  caddy_data:
+  caddy_config:
