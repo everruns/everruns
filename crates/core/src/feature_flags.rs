@@ -22,7 +22,7 @@ pub struct FeatureFlags {
     pub global_chat: bool,
     /// Apps (agent deployment to distribution channels). Experimental.
     pub apps: bool,
-    /// In-app notifications (bell, toasts, notification SSE). Standard.
+    /// In-app notifications (bell, toasts, notification SSE). Experimental.
     pub notifications: bool,
     /// MCP endpoint (POST /mcp — Everruns as an MCP server). Experimental.
     pub mcp_endpoint: bool,
@@ -36,7 +36,7 @@ impl FeatureFlags {
         Self {
             global_chat: experimental_flag("FEATURE_GLOBAL_CHAT", grade),
             apps: experimental_flag("FEATURE_APPS", grade),
-            notifications: standard_flag("FEATURE_NOTIFICATIONS", false),
+            notifications: experimental_flag("FEATURE_NOTIFICATIONS", grade),
             mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
             evals: experimental_flag("FEATURE_EVALS", grade),
         }
@@ -224,15 +224,23 @@ mod tests {
     }
 
     #[test]
-    fn test_standard_notifications_flag_defaults_off() {
+    fn test_notifications_enabled_in_dev() {
         let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_NOTIFICATIONS") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
+        assert!(flags.notifications);
+    }
+
+    #[test]
+    fn test_notifications_disabled_in_prod() {
+        let _lock = lock_env();
+        unsafe { std::env::remove_var("FEATURE_NOTIFICATIONS") };
+        let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
         assert!(!flags.notifications);
     }
 
     #[test]
-    fn test_standard_notifications_flag_respects_env_override() {
+    fn test_notifications_respects_env_override() {
         let _lock = lock_env();
         unsafe { std::env::set_var("FEATURE_NOTIFICATIONS", "true") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
