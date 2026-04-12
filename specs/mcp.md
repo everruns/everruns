@@ -290,6 +290,36 @@ External backends only need to ensure their login page handles `redirect_to` que
 
 See `specs/threat-model.md` for the full threat model.
 
+## Multi-Organization Support
+
+MCP clients authenticate via OAuth 2.1 Bearer tokens, which don't carry org context (unlike browser sessions that use the `everruns_org` cookie). Three mechanisms enable multi-org access:
+
+### Tier 0 Tools
+
+| Tool | Description |
+|------|-------------|
+| `me` | Returns current user profile and active organization context |
+| `list_organizations` | Lists all orgs the user belongs to, with roles |
+| `switch_organization` | Validates org membership; instructs client to pass `organization_id` |
+
+### Per-Call `organization_id` Override
+
+All org-scoped tools (`agent_run`, `session_send_message`, `session_get_status`, `execute`) accept an optional `organization_id` parameter (format: `org_{32-hex}`). When provided:
+
+1. User membership is validated against the database (not stale JWT claims)
+2. A `ResolvedOrg` is constructed for the target org
+3. The tool executes in that org's context
+
+When omitted, the default org is used (first org from the user's membership list).
+
+### Design Decisions
+
+1. **Stateless per-call override** — no session state needed. Each tool call independently targets an org.
+2. **DB-validated membership** — JWT org claims may be stale; always check DB for fresh membership.
+3. **`discover` is org-agnostic** — catalog search doesn't depend on org context.
+4. **`switch_organization` is advisory** — returns the validated org for the client to use in subsequent calls. The MCP transport is stateless, so there's no server-side "current org" to switch.
+
 ## Implementation
 
 See `crates/server/src/auth/mcp_oauth.rs` for the OAuth implementation.
+See `crates/server/src/api/mcp_endpoint/mod.rs` for the MCP endpoint and multi-org tool handlers.
