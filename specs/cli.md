@@ -233,14 +233,6 @@ Uses existing session filesystem REST API:
 
 Binary detection: same as server — null bytes in first 8KB → base64.
 
-### Future Enhancements
-
-1. **Server-side file change events** via SSE (`file.created`, `file.updated`, `file.deleted`) to eliminate remote polling
-2. **Delta sync** using content-defined chunking for large files
-3. **Multi-session sync** (fan-out from one local dir to multiple sessions)
-4. **Selective path sync** (`everruns files sync --session ses_xxx ./src` to sync only `src/`)
-5. **Integration with `everruns chat`** — auto-sync while chatting
-
 ### Dependencies (new for CLI crate)
 
 - `notify` — cross-platform filesystem watcher

@@ -70,47 +70,7 @@ cluster-level values, aggregate across instances:
 
 ## Metrics
 
-All prefixed `everruns_`.
-
-### Gauges (from DB via MetricsCollector bridge, 10s refresh)
-
-| Metric | Description |
-|--------|-------------|
-| `everruns_workflows_running` | Running workflow count |
-| `everruns_workflows_pending` | Pending workflow count |
-| `everruns_tasks_pending` | Pending task count |
-| `everruns_tasks_claimed` | Claimed task count |
-| `everruns_workers_active` | Active worker count |
-| `everruns_load_ratio` | System load ratio (0.0-1.0) |
-| `everruns_dlq_size` | Dead letter queue size |
-| `everruns_tasks_completed` | DB cumulative completed tasks |
-| `everruns_tasks_failed` | DB cumulative failed tasks |
-| `everruns_tasks_started` | DB cumulative started tasks |
-| `everruns_workflows_completed` | DB cumulative completed workflows |
-| `everruns_workflows_failed` | DB cumulative failed workflows |
-| `everruns_workflows_started` | DB cumulative started workflows |
-
-### Counters (per-instance, from local events)
-
-| Metric | Labels | Source |
-|--------|--------|--------|
-| `everruns_http_requests_total` | method, path, status | HTTP middleware |
-| `everruns_llm_requests_total` | provider, model | EventListener (llm.generation) |
-| `everruns_tool_executions_total` | tool | EventListener (tool.completed) |
-
-### Histograms (per-instance, from local observations)
-
-| Metric | Labels | Source |
-|--------|--------|--------|
-| `everruns_http_request_duration_seconds` | method, path, status | Axum route_layer middleware |
-| `everruns_llm_request_duration_seconds` | provider, model | EventListener (llm.generation) |
-| `everruns_tool_execution_duration_seconds` | tool | EventListener (tool.completed) |
-
-### Scheduled Tasks (future, wire when scheduler lands)
-
-`everruns_schedule_triggers_total{status}`, `everruns_schedule_executions_total{status}`,
-`everruns_schedules_active`, `everruns_schedule_trigger_latency_seconds`,
-`everruns_schedule_execution_duration_seconds{activity_type}`
+All metrics are prefixed `everruns_`. For the complete metric list, see the `PrometheusMetricsListener` implementation in `crates/server/src/api/prometheus.rs` and the gauge bridge in the metrics collector.
 
 ## Architecture
 

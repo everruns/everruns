@@ -30,20 +30,7 @@ deregister(session_id, id)            — remove from registry
 
 ### Model — `SessionResourceEntry`
 
-Lives in `crates/core/src/session_resource.rs`.
-
-| Field          | Type                    | Description                                             |
-|----------------|-------------------------|---------------------------------------------------------|
-| resource_id    | String                  | Caller-provided stable ID (leased resource ID, session ID, etc.) |
-| session_id     | SessionId               | Parent session                                          |
-| kind           | String                  | Extensible: `"sandbox"`, `"subagent"`, `"browser_session"`, … |
-| display_name   | String                  | Human-readable label                                    |
-| status         | SessionResourceStatus   | Active / Completed / Failed / Released                  |
-| metadata       | JSON                    | Kind-specific non-secret data                           |
-| created_at     | DateTime                | When registered                                         |
-| updated_at     | DateTime                | Last status change                                      |
-
-`SessionResourceStatus`: `Active`, `Completed`, `Failed`, `Released`.
+See `crates/core/src/session_resource.rs` for the full `SessionResourceEntry` struct and `SessionResourceStatus` enum.
 
 `resource_id` is unique per session — repeated calls with the same ID update
 rather than duplicate.
@@ -60,27 +47,9 @@ rather than duplicate.
 
 ### Storage
 
-Table `session_resources`:
-```sql
-CREATE TABLE session_resources (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    resource_id TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    display_name TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'active',
-    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(session_id, resource_id)
-);
-```
+See `crates/server/migrations/` for the `session_resources` table DDL.
 
-Index: `idx_session_resources_session_status` on `(session_id, status)`.
-
-`ON DELETE CASCADE` — when the session is removed, registry entries go with it.
-For leased resources, the `leased_resources` table (which has `ON DELETE SET NULL`)
-continues cleanup independently.
+Key constraints: `UNIQUE(session_id, resource_id)`, `ON DELETE CASCADE` from sessions (registry entries removed with session; leased resources table continues cleanup independently).
 
 In-memory: `HashMap<SessionId, HashMap<String, SessionResourceEntry>>`.
 

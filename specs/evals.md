@@ -334,20 +334,3 @@ Fields: name, description, tags, messages (textarea per message, add more button
 
 Scorers section: add scorer dropdown → type-specific config form. Each scorer shows a card with type, config, weight, remove button.
 
-## Phases
-
-| Phase | Scope | Entities |
-|-------|-------|----------|
-| **1** | Core entities, deterministic scorers, API, basic UI, eval runner workflow | Eval, EvalCase, EvalRun, EvalCaseResult |
-| **2** | `llm_judge` scorer, run comparison UI, tag-based partial runs, "create case from session" | — |
-| **3** | Scheduled eval runs (cron integration), App publish gates, cost estimation | — |
-
-This spec covers Phase 1. Phase 2 and 3 are outlined for direction but not specified in detail.
-
-## Non-Goals
-
-- **Dataset management** — Evals are small curated collections, not large datasets
-- **Fine-tuning loops** — Evals measure, they don't auto-fix
-- **Cross-org benchmarking** — No public leaderboard or shared evals
-- **Provider benchmarking** — Internal concern, not user-facing
-- **Eval marketplace** — No sharing evals across organizations

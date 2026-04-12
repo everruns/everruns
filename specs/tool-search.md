@@ -4,15 +4,15 @@
 
 Tool search enables deferred tool loading — instead of sending all tool definitions (with full JSON schemas) to the LLM on every request, only tool names and descriptions are sent upfront. Full schemas are loaded on-demand when the model decides it needs a tool. This reduces token usage, cost, and latency for agents with many capabilities.
 
-Inspired by OpenAI's GPT-5.4 `tool_search` feature, but designed as a provider-agnostic capability within the everruns architecture.
+Inspired by OpenAI's `tool_search` feature, but designed as a provider-agnostic capability within the everruns architecture.
 
 ## Motivation
 
-Current flow: all capability tools → `RuntimeAgent.tools` → `LlmCallConfig.tools` → full JSON schemas sent to every LLM call. With 30+ capabilities and MCP servers, tool definitions can consume 5K-15K tokens per request.
+Current flow: all capability tools -> `RuntimeAgent.tools` -> `LlmCallConfig.tools` -> full JSON schemas sent to every LLM call. With 30+ capabilities and MCP servers, tool definitions can consume 5K-15K tokens per request.
 
-GPT-5.4's `tool_search` demonstrated 47% token reduction on 250-tool workloads at same accuracy. We want similar benefits, ideally across all providers.
+Native tool_search demonstrated ~47% token reduction on large tool sets at same accuracy. We want similar benefits, ideally across all providers.
 
-## How GPT-5.4 tool_search Works
+## How OpenAI tool_search Works
 
 OpenAI's implementation has two modes:
 
@@ -51,7 +51,7 @@ Model emits `tool_search_call` → client responds with `tool_search_output` con
 
 ### Decision: Model Profile Flag
 
-Add `tool_search: bool` to `LlmModelProfile`. Only models that natively support `tool_search` (currently GPT-5.4+) get the optimized path. Other models continue receiving full tool definitions.
+Add `tool_search: bool` to `LlmModelProfile`. Only models that natively support `tool_search` get the optimized path. Other models continue receiving full tool definitions.
 
 ```rust
 pub struct LlmModelProfile {
@@ -159,119 +159,13 @@ let use_tool_search = profile.tool_search && config.tools.len() >= TOOL_SEARCH_T
 
 ## Model Profile Updates
 
-### GPT-5.4 Family
-
-```rust
-"gpt-5.4" => Some(LlmModelProfile {
-    // ... existing fields ...
-    tool_search: true,  // NEW
-}),
-
-"gpt-5.4-pro" => Some(LlmModelProfile {
-    // ... existing fields ...
-    tool_search: true,  // NEW
-}),
-```
-
-### All Other Models
-
-```rust
-tool_search: false,  // Default for all existing models
-```
-
-When other providers adopt similar features (Anthropic, Gemini), flip the flag per model.
+Set `tool_search: true` for models that support it. Default `false` for all others. See `crates/core/src/model_profiles.rs` for current profile definitions.
 
 ## OpenAI Driver Changes
 
-### ResponsesTool Enum Extension
+The OpenAI driver extends `ResponsesTool` with `Namespace` and `ToolSearch` variants and adds `convert_tools_with_search()` to handle namespace grouping and defer_loading. See `crates/openai/src/driver.rs` for the implementation.
 
-```rust
-enum ResponsesTool {
-    Function {
-        r#type: String,
-        name: String,
-        description: String,
-        parameters: Value,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        defer_loading: Option<bool>,
-    },
-    Namespace {
-        r#type: String,
-        name: String,
-        description: String,
-        tools: Vec<ResponsesTool>,
-    },
-    ToolSearch {
-        r#type: String,
-    },
-}
-```
-
-### convert_tools with tool_search
-
-```rust
-fn convert_tools_with_search(
-    tools: &[ToolDefinition],
-    threshold: usize,
-) -> Vec<ResponsesTool> {
-    if tools.len() < threshold {
-        return Self::convert_tools(tools);  // existing path
-    }
-
-    let mut namespaces: HashMap<String, Vec<ResponsesTool>> = HashMap::new();
-    let mut ungrouped = vec![];
-
-    for tool in tools {
-        let func = ResponsesTool::Function {
-            r#type: "function".into(),
-            name: tool.name().into(),
-            description: tool.description().into(),
-            parameters: tool.parameters().clone(),
-            defer_loading: Some(true),
-        };
-
-        match tool.category() {
-            Some(cat) => namespaces.entry(cat.into()).or_default().push(func),
-            None => ungrouped.push(func),
-        }
-    }
-
-    let mut result: Vec<ResponsesTool> = namespaces
-        .into_iter()
-        .map(|(name, tools)| ResponsesTool::Namespace {
-            r#type: "namespace".into(),
-            name,
-            description: format!("Tools for {}", name),
-            tools,
-        })
-        .collect();
-
-    result.extend(ungrouped);
-    result.push(ResponsesTool::ToolSearch { r#type: "tool_search".into() });
-    result
-}
-```
-
-## Provider Abstraction
-
-### Non-OpenAI Providers
-
-For Anthropic and Gemini (no native tool_search):
-
-1. **Short-term**: Send full tool definitions (current behavior). `tool_search: false` in profile.
-2. **Medium-term**: Implement client-side tool search as a pre-processing step in the driver — send only names + descriptions as a summary tool, handle tool discovery in the agent loop.
-3. **Long-term**: When providers adopt similar features, use their native APIs.
-
-### Client-Side Tool Search (Future)
-
-For providers without native tool_search, we could implement it ourselves:
-
-1. Send tool names + descriptions in system prompt (not as tool definitions)
-2. Add a synthetic `_discover_tools` tool that the model calls with a query
-3. Match query against tool descriptions using simple TF-IDF or embedding similarity
-4. Inject matched tool definitions into the next turn
-
-This is a significant effort and should wait until we validate the value of tool_search with OpenAI models first.
+Non-OpenAI providers (Anthropic, Gemini) send full tool definitions (current behavior) with `tool_search: false` in their profiles. When providers adopt similar features, flip the flag per model.
 
 ## LlmCallConfig Changes
 
@@ -310,20 +204,6 @@ Track tool_search effectiveness via existing metadata:
 9. Compare token usage with/without tool_search in staging
 10. Tune `TOOL_SEARCH_THRESHOLD` based on real workloads
 11. Identify tools that should never be deferred
-
-### Phase 3: Cross-Provider (Future)
-
-12. Client-side tool search for Anthropic/Gemini
-13. Namespace discovery for MCP servers
-14. Per-agent tool_search configuration override
-
-## Open Questions
-
-1. **Should tool_search be configurable per-agent?** Could add `tool_search: Option<bool>` to agent config, overriding model profile default. Useful for agents that always need all tools loaded (e.g., short deterministic workflows).
-
-2. **How does tool_search interact with infinity context?** If we're already compacting context, deferred tools add complexity to the compaction logic. The compacted state may not include tool search results.
-
-3. **MCP server tool discovery latency.** MCP tools are already lazily cached (24h TTL). With tool_search, the model might request tools from an MCP server that hasn't been polled recently. Need to handle stale cache gracefully.
 
 ## References
 

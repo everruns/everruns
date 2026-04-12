@@ -5259,7 +5259,7 @@ async fn test_events_api_contract() {
 
     // If there are events, verify each has required contract fields
     for event in events {
-        // Required fields per specs/events-contract.md
+        // Required fields per specs/events.md
         assert!(event["id"].is_string(), "Event must have 'id' string");
         assert!(event["type"].is_string(), "Event must have 'type' string");
         assert!(event["ts"].is_string(), "Event must have 'ts' string");

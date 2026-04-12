@@ -33,16 +33,7 @@ Flags have two visibility levels, modeled as separate structs:
 
 ## Current Flags
 
-| Flag | Type | Visibility | Env Var | Description |
-|------|------|------------|---------|-------------|
-| `global_chat` | Experimental | API | `FEATURE_GLOBAL_CHAT` | Per-user singleton chat session |
-| `apps` | Experimental | API | `FEATURE_APPS` | Agent deployment to distribution channels |
-| `notifications` | Standard | API | `FEATURE_NOTIFICATIONS` | In-app notifications (bell, toasts, SSE) |
-| `mcp_endpoint` | Experimental | API | `FEATURE_MCP_ENDPOINT` | POST /mcp endpoint (Everruns as MCP server) |
-| `evals` | Experimental | API | `FEATURE_EVALS` | User-facing behavioral evals for agents |
-| `docker_capability` | Standard | Backend-only | `FEATURE_DOCKER_CAPABILITY` | Docker container capability (disabled by default on all envs) |
-
-See `crates/core/src/feature_flags.rs` for the full `FeatureFlags` struct and resolution logic.
+See `crates/core/src/feature_flags.rs` for the complete list of flags and their resolution logic.
 
 ## Architecture
 

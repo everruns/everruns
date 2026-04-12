@@ -31,38 +31,12 @@ The capability encapsulates all AGENTS.md logic: reading from the session filesy
 formatting, size limiting, and XML wrapping. It uses the `system_prompt_contribution()`
 async method (via `SystemPromptContext`) to access the session filesystem.
 
-```rust
-pub struct AgentInstructionsCapability;
-
-#[async_trait]
-impl Capability for AgentInstructionsCapability {
-    fn id(&self) -> &str { "agent_instructions" }
-    fn name(&self) -> &str { "AGENTS.md" }
-    fn status(&self) -> CapabilityStatus { CapabilityStatus::Available }
-    fn icon(&self) -> Option<&str> { Some("file-text") }
-    fn category(&self) -> Option<&str> { Some("Configuration") }
-
-    // No static system_prompt_addition — content is dynamic
-
-    async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> {
-        // Reads /AGENTS.md from ctx.file_store
-        // Formats with <agent-instructions> XML wrapping
-        // Returns None if file missing or empty
-    }
-}
-```
+See `crates/core/src/capabilities/agent_instructions.rs` for the `AgentInstructionsCapability` implementation.
 
 ## SystemPromptContext
 
 Capabilities that need dynamic system prompt content receive a `SystemPromptContext`
-with access to session-specific resources:
-
-```rust
-pub struct SystemPromptContext {
-    pub session_id: SessionId,
-    pub file_store: Option<Arc<dyn SessionFileStore>>,
-}
-```
+with access to session-specific resources. See `crates/core/src/capabilities/mod.rs` for the `SystemPromptContext` struct.
 
 The context is constructed in `ReasonAtom` and passed through the async builder
 methods (`with_harness_async`, `with_agent_async`, `with_capabilities_async`).
@@ -95,37 +69,11 @@ XML tags provide clear boundaries between sections. See `specs/xml-prompt-format
 
 ## ReasonAtom Changes
 
-ReasonAtom holds an optional `SessionFileStore` that is passed to capabilities
-via `SystemPromptContext`:
-
-```rust
-pub struct ReasonAtom<A, S, M, P, E> {
-    // ... existing fields ...
-    file_store: Option<Arc<dyn SessionFileStore>>,
-}
-```
-
-With builder method:
-
-```rust
-pub fn with_file_store(mut self, file_store: Arc<dyn SessionFileStore>) -> Self {
-    self.file_store = Some(file_store);
-    self
-}
-```
+ReasonAtom holds an optional `SessionFileStore` that is passed to capabilities via `SystemPromptContext`. See `crates/core/src/atoms/reason.rs` for the `with_file_store` builder method.
 
 ## Constants
 
-```rust
-/// Maximum size of AGENTS.md content (32 KiB)
-pub const MAX_AGENTS_MD_SIZE: usize = 32_768;
-
-/// File path in the session filesystem
-pub const AGENTS_MD_PATH: &str = "/AGENTS.md";
-
-/// Capability ID
-pub const AGENT_INSTRUCTIONS_CAPABILITY_ID: &str = "agent_instructions";
-```
+See `crates/core/src/capabilities/agent_instructions.rs` for `MAX_AGENTS_MD_SIZE` (32 KiB), `AGENTS_MD_PATH`, and `AGENT_INSTRUCTIONS_CAPABILITY_ID`.
 
 ## API
 

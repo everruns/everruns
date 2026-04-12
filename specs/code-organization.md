@@ -2,47 +2,7 @@
 
 ## Abstract
 
-Conventions for code organization, naming, type flow, testing, and error handling.
-
-## Layer Separation
-
-See `specs/architecture.md` for full layer diagrams. Summary:
-
-```
-Transport (HTTP/gRPC) → Services (Business Logic) → Storage (Database)
-```
-
-**Rules:**
-- Transport handlers delegate ALL logic to services
-- Services own validation, conversion, orchestration
-- Storage does raw database operations only
-- No direct DB access from transport layer
-
-## Naming Conventions
-
-| Layer | Pattern | Example |
-|-------|---------|---------|
-| Storage Row | `{Entity}Row` | `AgentRow`, `EventRow` |
-| Storage Create | `Create{Entity}Row` | `CreateEventRow` |
-| Storage Update | `Update{Entity}` | `UpdateAgent` |
-| Core Domain | `{Entity}` | `Message`, `ContentPart` |
-| API Input | `Input{Entity}` | `InputMessage`, `InputContentPart` |
-| API Request | `{Action}{Entity}Request` | `CreateMessageRequest` |
-| Service | `{Entity}Service` | `AgentService`, `SessionService` |
-
-## Type Flow
-
-```
-HTTP:  Controller → Service → Repository → Database
-gRPC:  Handler    → Service → Repository → Database
-                      ↓
-               Core types shared
-```
-
-- API receives request DTOs
-- Service converts to storage types
-- Service returns domain types
-- Transport converts to response format
+Developer conventions for formatting, testing, error handling, and UI patterns. For architecture, layer separation, naming conventions, and type flow, see `specs/architecture.md`.
 
 ## Formatting
 
@@ -366,29 +326,6 @@ Uses `Swatinem/rust-cache@v2` with shared keys for cross-job cache reuse:
 | `release` | build-binaries, build, openapi-check | Release builds |
 
 **Artifact sharing:** `build-binaries` uploads server/worker/cli binaries as GitHub artifacts. E2E jobs download pre-built binaries instead of rebuilding (~5 min saved per job).
-
-## Content Types
-
-`ContentPart` enum across all layers:
-- `InputContentPart` - user input (text, image only)
-- `ContentPart` - full enum (text, image, tool_call, tool_result)
-- `From<InputContentPart> for ContentPart` - safe conversion
-
-## File Organization
-
-**Collocation principle:** Keep related code together.
-
-- API contracts (DTOs) live with their route handlers
-- Services in `server/src/services/` (control plane)
-- Storage in `server/src/storage/` (control plane)
-- Core types in `core/src/`
-
-## OpenAPI Support
-
-Types needing OpenAPI schema:
-```rust
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-```
 
 ## UI Patterns
 

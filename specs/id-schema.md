@@ -86,24 +86,7 @@ IDs are serialized as strings in JSON:
 
 ### Well-Known IDs
 
-Certain entities have well-known IDs for seeding and testing:
-
-**Default Organization:**
-```
-org_00000000000000000000000000000001
-```
-
-**Seeded Providers:**
-| Provider | ID |
-|----------|-----|
-| OpenAI | `provider_01933b5a00007000800000000001` |
-| Anthropic | `provider_01933b5a00007000800000000002` |
-
-**Seeded Models (range allocation):**
-- `0x001-0x0FF`: LLM Providers
-- `0x100-0x1FF`: Seed Agents
-- `0x200-0x2FF`: OpenAI Models
-- `0x300-0x3FF`: Anthropic Models
+For the full list of well-known IDs and range allocations, see `crates/core/src/typed_id.rs` and `crates/server/src/seed.rs`.
 
 ## Design Decisions
 

@@ -232,7 +232,7 @@ Delta events are batched (~100ms) to reduce volume while maintaining real-time f
 
 ## Forward Compatibility
 
-Events follow semantic versioning. The contract is defined in `specs/events-contract.md`.
+Events follow semantic versioning. The contract is defined in `specs/events.md`.
 
 ### What Won't Break
 
@@ -252,4 +252,4 @@ All events in API responses are well-defined types. The server filters out any i
 
 - [Event Reference](/event-reference/) - Complete reference for all event types
 - [specs/events.md](https://github.com/everruns/everruns/blob/main/specs/events.md) - Internal specification
-- [specs/events-contract.md](https://github.com/everruns/everruns/blob/main/specs/events-contract.md) - Contract specification
+- [specs/events.md](https://github.com/everruns/everruns/blob/main/specs/events.md) - Specification (includes contract & compatibility)

@@ -17,28 +17,7 @@ Two audit domains cover complementary surfaces:
 
 ## Core Types
 
-See `crates/core/src/audit.rs` for full definitions.
-
-- `AuditDomain` — enum: `Management`, `Agent`
-- `AuditAction` — typed action per domain (e.g. `MemberInvited`, `AgentRunStarted`)
-- `AuditTarget` — `{ target_type, target_id }` identifying the affected resource
-- `AuditEvent` — full event: domain, action, actor, org, target, details (JSON), timestamp, IP
-- `AuditLogger` trait — `async fn log_event(&self, event: AuditEvent) -> Result<()>`
-
-### Domain-Specific Builders
-
-Type-safe builders prevent mixing domains:
-
-```rust
-AuditEvent::management(ManagementAction::MemberInvited, org_id, Some(user_id))
-    .target("member", target_user_id)
-    .detail("role", "admin")
-    .build()
-
-AuditEvent::agent(AgentAction::RunStarted, org_id, None)
-    .target("session", session_id)
-    .build()
-```
+See `crates/core/src/audit.rs` for full type definitions (`AuditDomain`, `AuditAction`, `AuditTarget`, `AuditEvent`, `AuditLogger` trait) and domain-specific builders.
 
 ## AOP: `#[audit]` Proc Macro
 
@@ -70,18 +49,7 @@ pub async fn invite(&self, caller: &Caller, req: Req) -> Result<Member> { ... }
 
 ### Migration
 
-Adds columns to existing `audit_logs` table (migration 010):
-
-```sql
-ALTER TABLE audit_logs
-    ADD COLUMN domain TEXT NOT NULL DEFAULT 'management',
-    ADD COLUMN action TEXT NOT NULL DEFAULT '',
-    ADD COLUMN target_type TEXT,
-    ADD COLUMN target_id TEXT;
-
-CREATE INDEX idx_audit_logs_org_domain_created
-    ON audit_logs (org_id, domain, created_at DESC);
-```
+See `crates/server/migrations/` for the audit_logs schema (migration 010 adds domain, action, target columns and index).
 
 ### PostgreSQL Implementation
 

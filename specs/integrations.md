@@ -59,6 +59,5 @@ Embedded in the server crate.
 
 | Integration | Spec | Summary |
 |---|---|---|
-| Braintrust | [`specs/braintrust-integration.md`](braintrust-integration.md) | LLM observability — sends agentic loop events to Braintrust project logs. |
-| OpenTelemetry | [`specs/otel-observability.md`](otel-observability.md) | Gen-AI semantic convention tracing for full agentic execution lifecycle. |
+| Braintrust + OpenTelemetry | [`specs/observability.md`](observability.md) | Observability providers — OTel Gen-AI tracing and Braintrust event forwarding. |
 

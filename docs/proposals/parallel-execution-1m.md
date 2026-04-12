@@ -1099,7 +1099,7 @@ Add to the durable overview page (`apps/ui/src/app/(main)/durable/`):
 - `specs/parallel-execution-1m.md` — this section ✓
 - `AGENTS.md` — update Local Dev section: mention `start-all` starts NATS,
   `NATS_URL` controls event delivery backend
-- `specs/events.md` or `specs/events-contract.md` — note ephemeral event classification
+- `specs/events.md` — note ephemeral event classification
   and that deltas skip PG when NATS is active
 
 #### Implementation order

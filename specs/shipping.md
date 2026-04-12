@@ -24,7 +24,7 @@ Shipping work should optimize for these outcomes:
 Relevant references:
 - [`specs/release-process.md`](./release-process.md)
 - [`specs/threat-model.md`](./threat-model.md)
-- [`specs/code-organization.md`](./code-organization.md)
+- [`specs/architecture.md`](./architecture.md)
 - [`specs/commands.md`](./commands.md)
 - [`specs/skills-registry.md`](./skills-registry.md)
 

@@ -1049,8 +1049,7 @@ Session A cannot access Session B's container:
 - `specs/llm-drivers.md` — LLM provider abstraction
 - `specs/durable-execution-engine.md` — Workflow engine and worker communication
 - `specs/scheduled-tasks.md` — Cron-based task scheduling
-- `specs/otel-observability.md` — OpenTelemetry tracing
-- `specs/braintrust-integration.md` — Braintrust event forwarding
+- `specs/observability.md` — OpenTelemetry and Braintrust observability providers
 - `specs/apis.md` — HTTP API endpoints and error handling
 - `specs/capabilities.md` — Agent capabilities system
 - `specs/bashkit-requirements.md` — Bashkit integration requirements

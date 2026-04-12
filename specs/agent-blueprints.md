@@ -19,35 +19,17 @@ Agent Blueprints are pre-built agent definitions contributed by capabilities. Un
 
 Inspired by Claude Code's built-in subagents (Explore, Plan, Claude Code Guide) and AmpCode's Librarian pattern.
 
-## Motivation
+## Motivation and Design Principles
 
-Current subagents inherit parent's `harness_id` + `agent_id`. In `reason_activity`, the child builds the same RuntimeAgent as the parent:
+Current subagents inherit parent's tools, model, and prompt. Blueprints solve specialist delegation where the child needs different tools, a cheaper model, specialist instructions, or tool privacy.
 
-```
-RuntimeAgentBuilder::new()
-    .with_harness(parent_harness, ...)
-    .with_agent(parent_agent, ...)
-    .build()
-```
-
-This works for "do the same kind of work in parallel" (run tests, process files). It fails for specialist delegation where the child needs:
-- **Different tools** — GitHub search tools the host doesn't have
-- **Different model** — Haiku for cheap lookup work, not the host's Opus
-- **Different prompt** — specialist instructions unrelated to the host's agent prompt
-- **Tool privacy** — host shouldn't see or be tempted to call the specialist's internal tools
-
-Blueprints solve this by providing an alternative RuntimeAgent assembly path.
-
-## Design Principles
-
-| Principle | Rationale |
-|-----------|-----------|
-| Blueprints are capabilities, not a new DB entity | Contributed via `Capability` trait. No new table. Session gains `blueprint_id` field to signal alternate assembly. |
-| Same durable execution infrastructure | Same agentic loop (InputAtom → ReasonAtom → ActAtom). Same PostgreSQL workflows. Same event stream. Only RuntimeAgent assembly differs. |
-| Private tools | Blueprint tools never appear in the host's tool list. They exist only in the child session's RuntimeAgent. |
-| Fixed model is first-class | Cheap work should not burn expensive models. Blueprint author decides. |
-| Narrow config surface | Host passes structured config validated against JSON Schema. Cannot override prompt or tools. |
-| Discovery via system prompt | Available blueprints listed upfront so LLM delegates during reasoning, not via a discovery tool call. |
+Key design principles:
+- **Blueprints are capabilities, not a new DB entity** -- contributed via `Capability` trait; session gains `blueprint_id` to signal alternate assembly
+- **Same durable execution infrastructure** -- same agentic loop and event stream; only RuntimeAgent assembly differs
+- **Private tools** -- blueprint tools never appear in the host's tool list
+- **Fixed model is first-class** -- cheap work should not burn expensive models
+- **Narrow config surface** -- host passes structured JSON Schema config; cannot override prompt or tools
+- **Discovery via system prompt** -- available blueprints listed upfront for LLM delegation
 
 ## Data Model
 
@@ -426,18 +408,3 @@ Branch on `session.blueprint_id`:
 3. Register via `inventory::submit!`
 4. Add to Generic harness capabilities
 
-### Phase 3: Maturation
-
-- Blueprint-scoped MCP servers
-- Filesystem access modes (none / read-only parent / isolated)
-- More blueprints: CodeReviewer, TestRunner, DocWriter
-
-## Open Questions
-
-1. **Filesystem access** — GitHubScout doesn't need it. CodeReviewer would want read-only access to the parent's session filesystem. Add `filesystem_access: FilesystemAccess` field (None/ReadOnly/ReadWrite) to AgentBlueprint in Phase 3.
-
-2. **`get_subagents` response** — include `blueprint_id` in the response so the host knows which specialist it's talking to.
-
-3. **Can a capability contribute both host tools AND a blueprint?** Yes. A `github` capability could give the host `create_github_issue` directly AND contribute a GitHubScout blueprint for research. Separate namespaces.
-
-4. **Blueprint model resolution for `Inherit`** — needs the parent session's model. `reason_activity` can load the parent session via `parent_session_id` to resolve this.

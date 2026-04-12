@@ -3,7 +3,7 @@
 // This listener sends agentic loop events to Braintrust for observability.
 // Braintrust provides tracing, logging, and evaluation capabilities for LLM applications.
 //
-// See specs/braintrust-integration.md for full specification.
+// See specs/observability.md for full specification.
 //
 // API Documentation:
 // - Braintrust Docs: https://www.braintrust.dev/docs

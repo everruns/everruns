@@ -125,3 +125,7 @@ cargo test -p everruns-durable --test failure_injection_test test_append_events_
 **Decision**: `tests/failure_injection_test.rs` separate from integration tests.
 
 **Rationale**: Different feature requirements. Cleaner separation of concerns.
+
+## Related Testing Specs
+
+See also: [agent-reliability-tests.md](agent-reliability-tests.md) (E2E reliability), [load-testing.md](load-testing.md) (performance), [test-cases.md](test-cases.md) (manual tests), [evals.md](evals.md) (behavioral evals)

@@ -72,26 +72,7 @@ draft → published → draft → archived → deleted
 
 ## Data Model
 
-See `crates/core/src/app.rs` for full struct definition.
-
-Key fields:
-- `id` / `public_id`: Dual-ID pattern (see `specs/id-schema.md`)
-- `name`: Display name
-- `description`: Optional
-- `harness_id`: Required FK to harness
-- `agent_id`: Required FK to agent
-- `channels`: Vec of `AppChannel` (loaded from `app_channels` table)
-- `status`: `draft` | `published` | `archived` | `deleted`
-- `archived_at`, `deleted_at`: Lifecycle timestamps
-- `published_at`: Timestamp when last published
-- `created_at`, `updated_at`: Standard timestamps
-
-AppChannel fields:
-- `id` / `public_id`: Dual-ID pattern, prefix `appchan_`
-- `channel_type`: Enum string (`slack`, etc.)
-- `channel_config`: JSONB with channel-specific settings
-- `enabled`: Whether the channel is active
-- `created_at`, `updated_at`: Standard timestamps
+See `crates/core/src/app.rs` for the complete `App` and `AppChannel` definitions.
 
 ## API
 

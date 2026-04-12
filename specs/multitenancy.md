@@ -472,75 +472,7 @@ ApiError::NotFound("Organization not found")
 ApiError::Forbidden("You don't have access to this agent")
 ```
 
-## Implementation Phases
-
-### Phase 1: Schema & Core Types ✅
-- [x] Add `organizations` table
-- [x] Add `organization_members` table
-- [x] Add `org_id` FK to `agents`, `llm_providers`, `llm_models`, `api_keys`
-- [x] Create core `Organization` and `OrganizationMember` types
-- [x] Implement `OrgId` newtype with `public_id` generation
-
-### Phase 2: Storage Layer ✅
-- [x] Create `OrganizationRepository`
-- [x] Create `OrganizationMemberRepository`
-- [x] Update `AgentRepository` to require `org_id`
-- [x] Update `SessionRepository` to validate org via agent
-- [x] Update `EventRepository` to validate org via session→agent
-- [x] Update `LlmProviderRepository` to require `org_id`
-- [x] Update `LlmModelRepository` to require `org_id`
-- [x] Update `ApiKeyRepository` to require `org_id`
-- [x] Update InMemory storage with same changes
-
-### Phase 3: Auth & Extractors ✅
-- [x] Enhance `AuthUser` with `organizations` list
-- [x] Create `OrgContext` extractor
-- [x] Update API key auth to include org context
-- [x] Update anonymous auth to use default org
-
-### Phase 4: API Routes ✅
-- [x] Add org CRUD endpoints (`/v1/orgs`)
-- [x] ~~Migrate all routes to `/v1/orgs/{org}/...`~~ (superseded)
-- [x] Remove org from API paths - use ResolvedOrg extractor instead
-- [x] All routes now at `/v1/agents`, `/v1/sessions`, `/v1/llm-providers`, etc.
-- [x] Org derived from auth context (API key or cookie)
-- [x] Update OpenAPI spec
-
-### Phase 5: Seeds ✅
-- [x] Update seed system to create default org first
-- [x] Update provider seeds with `org_id`
-- [x] Update model seeds with `org_id`
-- [x] Update agent seeds with `org_id`
-
-### Phase 6: Worker Integration ✅
-- [x] Update gRPC protocol with `org_id`
-- [x] Update worker context validation
-- [x] Update durable execution with org context
-
-### Phase 7: UI ✅
-- [x] Add organization selector component (sidebar dropdown)
-- [x] Update all API calls with org path
-- [x] Add OrgProvider context with useOrg() hook
-- [x] Persist selected org in localStorage
-- [x] Add "Create Organisation" button in org dropdown
-- [x] Add org creation dialog (sidebar + settings page)
-- [x] Add organisation management section in settings (list all orgs, switch, create)
-
-### Phase 8: Usage & Cleanup ✅
-- [x] Add `org_id` to usage tracking
-- [x] Update usage aggregation queries
-- [x] Remove any remaining global resource access
-- [x] Security audit for org isolation
-
 ## Implementation Notes
-
-### ResolvedOrg Extractor
-The `ResolvedOrg` extractor (`server/src/auth/middleware.rs`) derives org from the authentication context:
-- **API key auth:** The API key's `org_id` is used directly (API keys have a 1:1 relationship with orgs)
-- **Session auth (JWT):** Org from `everruns_org` cookie (set via `POST /v1/users/me/switch-org`)
-- **Anonymous auth (None):** Uses the default org automatically
-
-This approach eliminates redundancy (no need to specify org when API key already implies it) and provides cleaner URLs. The cookie-based approach for session auth works seamlessly with SSE (EventSource) since cookies are automatically sent with all requests.
 
 ### Anonymous Auth Mode (AUTH_MODE=none)
 When auth is disabled, the system uses the default organization:

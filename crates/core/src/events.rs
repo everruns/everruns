@@ -3,7 +3,7 @@
 // ==========================================================================
 //
 // This module defines the Everruns event protocol - a PUBLIC API CONTRACT.
-// Changes must follow the compatibility guidelines in specs/events-contract.md.
+// Changes must follow the compatibility guidelines in specs/events.md.
 //
 // STABILITY: Stable (v1)
 // - Event structure (id, type, ts, session_id, context, data) is frozen
@@ -11,7 +11,7 @@
 // - New optional fields are non-breaking
 // - Unsupported events are filtered before API responses
 //
-// See: specs/events-contract.md for full contract specification.
+// See: specs/events.md for full contract specification.
 // ==========================================================================
 //
 // All events follow a consistent structure: id, type, ts, context, data.
@@ -2669,7 +2669,7 @@ mod tests {
 // Contract Tests
 // ============================================================================
 //
-// These tests validate the event protocol contract defined in specs/events-contract.md.
+// These tests validate the event protocol contract defined in specs/events.md.
 // Snapshot tests ensure JSON structure doesn't change accidentally.
 // Forward compatibility tests verify unknown fields are handled correctly.
 

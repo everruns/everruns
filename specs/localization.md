@@ -114,84 +114,39 @@ The resolved values should be attached to turn-scoped tracing metadata and may b
 
 ## Resolution Rules
 
-### Interactive Turn
+Execution context resolution follows a single precedence chain. The first non-null value wins. Subagents inherit parent session defaults on spawn.
 
-#### Locale precedence
+### Locale Precedence
 
-1. `message.controls.locale`
-2. `message.metadata.locale`
-3. explicit request locale
-4. `session.locale`
-5. `user.locale`
-6. locale seeded from `Accept-Language`
-7. system default `en`
+| Priority | Interactive Turn | Scheduled Turn | Background Turn |
+|----------|-----------------|----------------|-----------------|
+| 1 | `message.controls.locale` | injected message metadata locale | turn/message override |
+| 2 | `message.metadata.locale` | `session.locale` | `session.locale` |
+| 3 | explicit request locale | `user.locale` | `user.locale` |
+| 4 | `session.locale` | system default `en` | system default `en` |
+| 5 | `user.locale` | | |
+| 6 | seeded from `Accept-Language` | | |
+| 7 | system default `en` | | |
 
-#### Timezone precedence
+### Timezone Precedence
 
-1. `message.metadata.timezone`
-2. explicit browser/request timezone
-3. `session.timezone`
-4. `user.timezone`
-5. integration/channel timezone if available
-6. system default `UTC`
+| Priority | Interactive Turn | Scheduled Turn | Background Turn |
+|----------|-----------------|----------------|-----------------|
+| 1 | `message.metadata.timezone` | injected message metadata timezone | turn/message override |
+| 2 | explicit browser/request timezone | `schedule.timezone` | `session.timezone` |
+| 3 | `session.timezone` | `session.timezone` | `user.timezone` |
+| 4 | `user.timezone` | `user.timezone` | integration/channel timezone |
+| 5 | integration/channel timezone | system default `UTC` | system default `UTC` |
+| 6 | system default `UTC` | | |
 
-#### Session refresh rule
+### Session Refresh Rule
 
-When an authenticated interactive request supplies a browser timezone:
-- use it for the current turn immediately
-- update `session.timezone` to that value as the latest known durable timezone
+When an authenticated interactive request supplies a browser timezone, use it for the current turn immediately and update `session.timezone` so future unattended turns follow the most recently observed user timezone.
 
-This makes future unattended turns follow the most recently observed user timezone without blocking the current request on inference.
+### Design Rules
 
-### Scheduled Turn
-
-#### Locale precedence
-
-1. injected message metadata locale
-2. `session.locale`
-3. `user.locale`
-4. system default `en`
-
-#### Timezone precedence
-
-1. injected message metadata timezone
-2. `schedule.timezone`
-3. `session.timezone`
-4. `user.timezone`
-5. system default `UTC`
-
-Design rule:
-- scheduled turns should not depend on live browser context
-
-### Other Background Turn
-
-Examples:
-- resumed durable work
-- subagents
-- platform-managed background invocations
-
-#### Locale precedence
-
-1. turn/message override
-2. `session.locale`
-3. `user.locale`
-4. system default `en`
-
-#### Timezone precedence
-
-1. turn/message override
-2. `session.timezone`
-3. `user.timezone`
-4. integration/channel timezone if available
-5. system default `UTC`
-
-### Subagents
-
-Subagents inherit parent session defaults on spawn:
-- `session.locale`
-- `session.timezone`
-
-The child may still receive per-turn overrides from later messages.
+- Scheduled turns should not depend on live browser context
+- Subagents inherit `session.locale` and `session.timezone` from parent on spawn; per-turn overrides still apply
 
 ## Backend Localization
 
@@ -335,7 +290,4 @@ This is important for debugging disagreements between browser, session, schedule
 
 ## Implementation Notes
 
-- Resolve execution context once per turn, then pass it through the worker pipeline
-- Keep resolution logic centralized; do not duplicate precedence rules in handlers, tools, and schedulers
-- Schedule timezone remains separate even when session timezone exists
-- UI localization can later reuse the same user/session preference fields, but the backend contract should not depend on that future work
+- Resolve execution context once per turn, then pass it through the worker pipeline -- keep resolution logic centralized
