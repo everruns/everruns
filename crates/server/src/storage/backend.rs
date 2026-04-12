@@ -515,6 +515,14 @@ impl StorageBackend {
         dispatch!(self, list_sessions, org_id, agent_id, search, pagination)
     }
 
+    /// List child sessions (subagents) for a parent session.
+    pub async fn list_child_sessions(
+        &self,
+        parent_session_id: SessionId,
+    ) -> Result<Vec<SessionRow>> {
+        dispatch!(self, list_child_sessions, parent_session_id)
+    }
+
     /// Count sessions grouped by status for an organization.
     pub async fn count_sessions_by_status(&self, org_id: i64) -> Result<Vec<(String, i64)>> {
         dispatch!(self, count_sessions_by_status, org_id)
@@ -1883,6 +1891,57 @@ impl StorageBackend {
             retry_after_seconds,
             error
         )
+    }
+
+    // ============================================
+    // Session Resource Registry
+    // ============================================
+
+    pub async fn upsert_session_resource(
+        &self,
+        input: UpsertSessionResourceRow,
+    ) -> Result<SessionResourceRow> {
+        dispatch!(self, upsert_session_resource, input)
+    }
+
+    pub async fn update_session_resource_status(
+        &self,
+        session_id: SessionId,
+        resource_id: &str,
+        status: &str,
+    ) -> Result<Option<SessionResourceRow>> {
+        dispatch!(
+            self,
+            update_session_resource_status,
+            session_id,
+            resource_id,
+            status
+        )
+    }
+
+    pub async fn get_session_resource(
+        &self,
+        session_id: SessionId,
+        resource_id: &str,
+    ) -> Result<Option<SessionResourceRow>> {
+        dispatch!(self, get_session_resource, session_id, resource_id)
+    }
+
+    pub async fn list_session_resources(
+        &self,
+        session_id: SessionId,
+        kind: Option<&str>,
+        status: Option<&str>,
+    ) -> Result<Vec<SessionResourceRow>> {
+        dispatch!(self, list_session_resources, session_id, kind, status)
+    }
+
+    pub async fn delete_session_resource(
+        &self,
+        session_id: SessionId,
+        resource_id: &str,
+    ) -> Result<bool> {
+        dispatch!(self, delete_session_resource, session_id, resource_id)
     }
 
     // ============================================

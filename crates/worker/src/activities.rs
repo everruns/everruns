@@ -24,7 +24,8 @@ use crate::grpc_adapters::{
     GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcConnectionResolver, GrpcEventEmitter,
     GrpcHarnessStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore,
     GrpcMessageRetriever, GrpcPlatformStore, GrpcScheduleStore, GrpcSessionFileStore,
-    GrpcSessionMutator, GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
+    GrpcSessionMutator, GrpcSessionResourceRegistry, GrpcSessionSqlDbStore,
+    GrpcSessionStorageStore, GrpcSessionStore,
 };
 
 // Re-export atom types for activity callers
@@ -438,6 +439,8 @@ pub async fn act_activity(
         Arc::new(GrpcSessionSqlDbStore::new(grpc_client.clone()));
     let leased_resource_store: Arc<dyn everruns_core::traits::LeasedResourceStore> =
         Arc::new(GrpcLeasedResourceStore::new(grpc_client.clone()));
+    let session_resource_registry: Arc<dyn everruns_core::traits::SessionResourceRegistry> =
+        Arc::new(GrpcSessionResourceRegistry::new(grpc_client.clone()));
     let schedule_store: Arc<dyn everruns_core::traits::SessionScheduleStore> =
         Arc::new(GrpcScheduleStore::new(grpc_client.clone(), org_id));
     let platform_store: Arc<dyn everruns_core::platform_store::PlatformStore> =
@@ -455,6 +458,7 @@ pub async fn act_activity(
         .with_agent_store(agent_store)
         .with_sqldb_store(sqldb_store)
         .with_leased_resource_store(leased_resource_store)
+        .with_session_resource_registry(session_resource_registry)
         .with_schedule_store(schedule_store)
         .with_platform_store(platform_store)
         .with_budget_checker(budget_checker)

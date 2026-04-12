@@ -8,7 +8,8 @@
 
 use async_trait::async_trait;
 use chrono::{TimeDelta, Utc};
-use everruns_core::traits::LeasedResourceStore;
+use everruns_core::session_resource::{RegisterSessionResource, SessionResourceStatus};
+use everruns_core::traits::{LeasedResourceStore, SessionResourceRegistry};
 use everruns_core::{
     AgentLoopError, LeasedResource, LeasedResourceStatus, Result, SessionId, UpsertLeasedResource,
 };
@@ -57,14 +58,23 @@ pub fn row_to_domain(row: &LeasedResourceRow) -> Result<LeasedResource> {
 ///
 /// This adapter is injected into tool execution contexts so any capability that
 /// creates remote state can opt into the same leased-resource cleanup model.
+/// When a session resource registry is provided, upsert/release automatically
+/// register or update the resource in the registry for agent visibility.
 #[derive(Clone)]
 pub struct DbLeasedResourceStore {
     db: Arc<StorageBackend>,
+    registry: Option<Arc<dyn SessionResourceRegistry>>,
 }
 
 impl DbLeasedResourceStore {
     pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self { db }
+        Self { db, registry: None }
+    }
+
+    /// Set an optional session resource registry for auto-registration.
+    pub fn with_registry(mut self, registry: Arc<dyn SessionResourceRegistry>) -> Self {
+        self.registry = Some(registry);
+        self
     }
 }
 
@@ -83,6 +93,15 @@ impl LeasedResourceStore for DbLeasedResourceStore {
         let lease_expires_at =
             Utc::now() + TimeDelta::seconds(i64::from(input.lease_duration_seconds));
 
+        // Capture values for registry before moving into upsert row.
+        let session_id = input.session_id;
+        let registry_kind = input.resource_type.clone();
+        let registry_display = input
+            .display_name
+            .clone()
+            .unwrap_or_else(|| input.external_id.clone());
+        let registry_metadata = input.metadata.clone();
+
         let row = self
             .db
             .upsert_leased_resource(UpsertLeasedResourceRow {
@@ -100,7 +119,29 @@ impl LeasedResourceStore for DbLeasedResourceStore {
             .await
             .map_err(|e| AgentLoopError::store(format!("Failed to upsert leased resource: {e}")))?;
 
-        row_to_domain(&row)
+        let resource = row_to_domain(&row)?;
+
+        // Auto-register in session resource registry for agent visibility.
+        if let Some(ref registry) = self.registry
+            && let Err(err) = registry
+                .register(RegisterSessionResource {
+                    session_id,
+                    resource_id: resource.id.to_string(),
+                    kind: registry_kind,
+                    display_name: registry_display,
+                    status: SessionResourceStatus::Active,
+                    metadata: registry_metadata,
+                })
+                .await
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                resource_id = %resource.id,
+                "Failed to auto-register leased resource in session registry: {err}"
+            );
+        }
+
+        Ok(resource)
     }
 
     async fn release_resource(
@@ -133,7 +174,26 @@ impl LeasedResourceStore for DbLeasedResourceStore {
                 AgentLoopError::store(format!("Failed to release leased resource: {e}"))
             })?;
 
-        row.as_ref().map(row_to_domain).transpose()
+        let resource = row.as_ref().map(row_to_domain).transpose()?;
+
+        // Update registry status to released.
+        if let (Some(registry), Some(res)) = (&self.registry, &resource)
+            && let Err(err) = registry
+                .update_status(
+                    session_id,
+                    &res.id.to_string(),
+                    SessionResourceStatus::Released,
+                )
+                .await
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                resource_id = %res.id,
+                "Failed to update session registry status to released: {err}"
+            );
+        }
+
+        Ok(resource)
     }
 
     async fn list_resources(&self, session_id: SessionId) -> Result<Vec<LeasedResource>> {

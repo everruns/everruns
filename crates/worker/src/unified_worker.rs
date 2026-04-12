@@ -812,6 +812,9 @@ async fn execute_act_activity<A: WorkerAdapters>(
         .with_leased_resource_store(adapters.leased_resource_store())
         .with_schedule_store(adapters.schedule_store(org_id))
         .with_platform_store(adapters.platform_store(org_id));
+    if let Some(registry) = adapters.session_resource_registry() {
+        atom = atom.with_session_resource_registry(registry);
+    }
 
     let result = atom.execute(input.clone()).await?;
 

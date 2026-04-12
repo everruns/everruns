@@ -147,6 +147,28 @@ impl Database {
         Ok((rows, total.0 as u32))
     }
 
+    /// List child sessions (subagents) for a parent session.
+    pub async fn list_child_sessions(
+        &self,
+        parent_session_id: SessionId,
+    ) -> Result<Vec<SessionRow>> {
+        let rows = sqlx::query_as::<_, SessionRow>(
+            r#"
+            SELECT id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   blueprint_id, blueprint_config
+            FROM sessions
+            WHERE parent_session_id = $1
+            ORDER BY created_at ASC
+            "#,
+        )
+        .bind(parent_session_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
     /// Count sessions grouped by status for an organization.
     pub async fn count_sessions_by_status(&self, org_id: i64) -> Result<Vec<(String, i64)>> {
         let rows: Vec<(String, i64)> = sqlx::query_as(

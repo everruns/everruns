@@ -277,6 +277,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get the leased-resource store for tool-side registration/touch/release.
     fn leased_resource_store(&self) -> Arc<dyn LeasedResourceStore>;
 
+    /// Get the session resource registry for generic resource tracking.
+    /// Returns None when the registry is not available (e.g. gRPC workers
+    /// without the registry RPC — follow-up work).
+    fn session_resource_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::traits::SessionResourceRegistry>> {
+        None
+    }
+
     /// Get the session schedule store for scheduling tools.
     /// Takes org_id so the store is scoped to the current session's organization.
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore>;

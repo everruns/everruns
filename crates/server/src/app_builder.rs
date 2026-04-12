@@ -699,10 +699,10 @@ impl ServerAppBuilder {
             session_schedule_service.clone(),
             auth_state.clone(),
         );
-        let leased_resource_service =
-            Arc::new(crate::services::LeasedResourceService::new(db.clone()));
+        let session_resource_service =
+            Arc::new(crate::services::SessionResourceService::new(db.clone()));
         let session_resources_state =
-            api::session_resources::AppState::new(leased_resource_service, auth_state.clone());
+            api::session_resources::AppState::new(session_resource_service, auth_state.clone());
 
         // MCP endpoint: derive API base URL from addr config or MCP_API_BASE_URL env var
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(

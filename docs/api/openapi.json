@@ -4480,17 +4480,17 @@
         "tags": [
           "session-resources"
         ],
-        "summary": "List lifecycle-managed resources for a session.",
+        "summary": "List all resources registered in the session resource registry.",
         "operationId": "list_resources",
         "responses": {
           "200": {
-            "description": "Session leased resources",
+            "description": "Session resources",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/LeasedResource"
+                    "$ref": "#/components/schemas/SessionResourceEntry"
                   }
                 }
               }
@@ -12967,6 +12967,62 @@
             ]
           }
         }
+      },
+      "SessionResourceEntry": {
+        "type": "object",
+        "description": "A resource registered in the session resource registry.",
+        "required": [
+          "resource_id",
+          "session_id",
+          "kind",
+          "display_name",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable label."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Resource kind: \"sandbox\", \"subagent\", \"browser_session\", etc."
+          },
+          "metadata": {
+            "description": "Kind-specific non-secret metadata."
+          },
+          "resource_id": {
+            "type": "string",
+            "description": "Caller-provided stable ID (unique per session)."
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Parent session."
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionResourceStatus",
+            "description": "Lifecycle status."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SessionResourceStatus": {
+        "type": "string",
+        "description": "Status of a resource in the session resource registry.",
+        "enum": [
+          "active",
+          "completed",
+          "failed",
+          "released"
+        ]
       },
       "SessionStartedData": {
         "type": "object",

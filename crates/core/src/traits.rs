@@ -389,6 +389,49 @@ pub trait SessionScheduleStore: Send + Sync {
 }
 
 // ============================================================================
+// SessionResourceRegistry - Generic session-scoped resource registry
+// ============================================================================
+
+/// Generic registry of resources active alongside a session.
+///
+/// Capabilities register resources here (sandboxes, subagents, browser sessions).
+/// Agents query it ("what's running?"), infrastructure scans it for cleanup.
+/// See `specs/session-resources.md`.
+#[async_trait]
+pub trait SessionResourceRegistry: Send + Sync {
+    /// Register a resource (or update if resource_id already exists for this session).
+    async fn register(
+        &self,
+        entry: crate::session_resource::RegisterSessionResource,
+    ) -> Result<crate::session_resource::SessionResourceEntry>;
+
+    /// Update the status of a registered resource.
+    async fn update_status(
+        &self,
+        session_id: SessionId,
+        resource_id: &str,
+        status: crate::session_resource::SessionResourceStatus,
+    ) -> Result<Option<crate::session_resource::SessionResourceEntry>>;
+
+    /// Get a specific resource by ID.
+    async fn get(
+        &self,
+        session_id: SessionId,
+        resource_id: &str,
+    ) -> Result<Option<crate::session_resource::SessionResourceEntry>>;
+
+    /// List resources for a session, optionally filtered.
+    async fn list(
+        &self,
+        session_id: SessionId,
+        filter: Option<&crate::session_resource::SessionResourceFilter>,
+    ) -> Result<Vec<crate::session_resource::SessionResourceEntry>>;
+
+    /// Remove a resource from the registry.
+    async fn deregister(&self, session_id: SessionId, resource_id: &str) -> Result<bool>;
+}
+
+// ============================================================================
 // LeasedResourceStore - For lifecycle-managed external resources
 // ============================================================================
 
@@ -542,6 +585,9 @@ pub struct ToolContext {
     /// Optional leased resource store for lifecycle-managed provider resources.
     pub leased_resource_store: Option<Arc<dyn LeasedResourceStore>>,
 
+    /// Optional session resource registry — generic registry of active resources.
+    pub session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>,
+
     /// Optional event emitter for tools that need to stream progress updates.
     /// When set, tools can emit `tool.progress` events during execution.
     pub event_emitter: Option<Arc<dyn EventEmitter>>,
@@ -591,6 +637,7 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            session_resource_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
@@ -618,6 +665,7 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            session_resource_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
@@ -648,6 +696,7 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            session_resource_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
@@ -679,6 +728,7 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             leased_resource_store: None,
+            session_resource_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
@@ -748,6 +798,15 @@ impl ToolContext {
     /// Add a leased resource store to this context.
     pub fn with_leased_resource_store(mut self, store: Arc<dyn LeasedResourceStore>) -> Self {
         self.leased_resource_store = Some(store);
+        self
+    }
+
+    /// Add a session resource registry to this context.
+    pub fn with_session_resource_registry(
+        mut self,
+        registry: Arc<dyn SessionResourceRegistry>,
+    ) -> Self {
+        self.session_resource_registry = Some(registry);
         self
     }
 

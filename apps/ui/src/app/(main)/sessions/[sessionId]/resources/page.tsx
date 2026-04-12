@@ -1,71 +1,66 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Clock3, RefreshCcw, ServerCrash, Wrench } from "lucide-react";
+import { AlertCircle, Bot, CheckCircle2, Clock3, ServerCrash, Wrench, XCircle } from "lucide-react";
 import { useSessionResources } from "@/hooks/use-session-resources";
 import { useSessionContext } from "../session-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRelativeTime } from "@/lib/formatting";
-import type { LeasedResource } from "@/lib/api/types";
+import type { SessionResourceEntry } from "@/lib/api/types";
 
-function statusBadge(resource: LeasedResource) {
-  switch (resource.status) {
+function statusBadge(status: string) {
+  switch (status) {
     case "active":
       return <Badge variant="default">Active</Badge>;
-    case "cleaning":
-      return <Badge variant="secondary">Cleaning</Badge>;
+    case "completed":
+      return <Badge variant="outline">Completed</Badge>;
+    case "failed":
+      return <Badge variant="destructive">Failed</Badge>;
     case "released":
-      return <Badge variant="outline">Released</Badge>;
-    case "cleanup_failed":
-      return <Badge variant="destructive">Cleanup Failed</Badge>;
+      return <Badge variant="secondary">Released</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
   }
 }
 
-function statusIcon(resource: LeasedResource) {
-  switch (resource.status) {
+function statusIcon(status: string) {
+  switch (status) {
     case "active":
       return <Clock3 className="h-4 w-4 text-muted-foreground" />;
-    case "cleaning":
-      return <RefreshCcw className="h-4 w-4 text-muted-foreground" />;
-    case "released":
+    case "completed":
       return <CheckCircle2 className="h-4 w-4 text-muted-foreground" />;
-    case "cleanup_failed":
-      return <ServerCrash className="h-4 w-4 text-destructive" />;
+    case "failed":
+      return <XCircle className="h-4 w-4 text-destructive" />;
+    case "released":
+      return <ServerCrash className="h-4 w-4 text-muted-foreground" />;
+    default:
+      return <Wrench className="h-4 w-4 text-muted-foreground" />;
   }
 }
 
-function ResourceCard({ resource }: { resource: LeasedResource }) {
+function ResourceCard({ resource }: { resource: SessionResourceEntry }) {
   return (
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            {statusIcon(resource)}
+            {statusIcon(resource.status)}
             <div>
               <CardTitle className="text-base">
-                {resource.display_name ?? resource.external_id}
+                {resource.display_name || resource.resource_id}
               </CardTitle>
-              <CardDescription>
-                {resource.provider} / {resource.resource_type}
-              </CardDescription>
+              <CardDescription>{resource.kind}</CardDescription>
             </div>
           </div>
-          {statusBadge(resource)}
+          {statusBadge(resource.status)}
         </div>
       </CardHeader>
       <CardContent className="space-y-2 text-sm text-muted-foreground">
         <div className="grid gap-1">
-          <div>Last touched: {formatRelativeTime(resource.last_touched_at)}</div>
-          <div>Lease expires: {formatRelativeTime(resource.lease_expires_at)}</div>
-          <div>Cleanup attempts: {resource.cleanup_attempts}</div>
-          <div className="truncate">External ID: {resource.external_id}</div>
+          <div>Registered: {formatRelativeTime(resource.created_at)}</div>
+          <div className="truncate">ID: {resource.resource_id}</div>
         </div>
-        {resource.last_cleanup_error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive">
-            {resource.last_cleanup_error}
-          </div>
-        )}
       </CardContent>
     </Card>
   );
@@ -99,10 +94,10 @@ export default function ResourcesPage() {
     return (
       <div className="flex-1 p-6">
         <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-          <Wrench className="h-12 w-12 mb-4 opacity-50" />
-          <p className="text-lg font-medium">No leased resources</p>
+          <Bot className="h-12 w-12 mb-4 opacity-50" />
+          <p className="text-lg font-medium">No active resources</p>
           <p className="text-sm mt-1">
-            Provider-managed resources that require cleanup will appear here.
+            Sandboxes, subagents, and other session resources will appear here.
           </p>
         </div>
       </div>
@@ -112,7 +107,7 @@ export default function ResourcesPage() {
   return (
     <div className="flex-1 p-6 space-y-4">
       {resources.map((resource) => (
-        <ResourceCard key={resource.id} resource={resource} />
+        <ResourceCard key={resource.resource_id} resource={resource} />
       ))}
     </div>
   );
