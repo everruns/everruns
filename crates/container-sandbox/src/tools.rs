@@ -97,13 +97,16 @@ impl Tool for SandboxCreateTool {
         let labels = sandbox_labels(&session_id);
         let client = docker_client(&config);
 
-        // Create network
-        let network_id = match client.create_network(&n_name, labels.clone()).await {
-            Ok(id) => id,
+        // Create network (track whether we created it vs reused an existing one)
+        let (network_id, network_created) = match client
+            .create_network(&n_name, labels.clone())
+            .await
+        {
+            Ok(id) => (id, true),
             Err(e) if e.contains("already exists") || e.contains("Conflict") => {
                 // Network exists, that's fine — reuse
                 debug!(name = %n_name, "Network already exists, reusing");
-                n_name.clone()
+                (n_name.clone(), false)
             }
             Err(e) => {
                 return ToolExecutionResult::tool_error(format!("Failed to create network: {e}"));
@@ -133,8 +136,11 @@ impl Tool for SandboxCreateTool {
         let container = match client.create_container(&c_name, &create_config).await {
             Ok(c) => c,
             Err(e) => {
-                // Clean up network on failure
-                let _ = client.remove_network(&network_id).await;
+                // Only remove network if we just created it
+                // TODO: idempotent create (409/name conflict) is a follow-up
+                if network_created {
+                    let _ = client.remove_network(&network_id).await;
+                }
                 return ToolExecutionResult::tool_error(format!("Failed to create container: {e}"));
             }
         };
@@ -142,7 +148,9 @@ impl Tool for SandboxCreateTool {
         // Start container
         if let Err(e) = client.start_container(&container.id).await {
             let _ = client.remove_container(&container.id).await;
-            let _ = client.remove_network(&network_id).await;
+            if network_created {
+                let _ = client.remove_network(&network_id).await;
+            }
             return ToolExecutionResult::tool_error(format!("Failed to start container: {e}"));
         }
 
@@ -207,7 +215,7 @@ impl Tool for SandboxExecTool {
                     "type": "string",
                     "description": "Working directory (default: /workspace)"
                 },
-                "output_mode": everruns_core::tool_output_sanitizer::output_verbosity_schema()
+                "output": everruns_core::tool_output_sanitizer::output_verbosity_schema()
             },
             "required": ["command"],
             "additionalProperties": false
@@ -218,6 +226,7 @@ impl Tool for SandboxExecTool {
         ToolHints::default()
             .with_open_world(true)
             .with_long_running(true)
+            .with_persist_output(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -237,9 +246,9 @@ impl Tool for SandboxExecTool {
         };
 
         let output_mode = arguments
-            .get("output_mode")
+            .get("output")
             .and_then(|v| v.as_str())
-            .unwrap_or("normal");
+            .unwrap_or("concise");
 
         let state = match get_sandbox_state(context).await {
             Ok(s) => s,
@@ -427,6 +436,12 @@ impl Tool for SandboxWriteFileTool {
             Some((d, f)) if !d.is_empty() => (d.to_string(), f.to_string()),
             _ => ("/".to_string(), path.trim_start_matches('/').to_string()),
         };
+
+        if filename.is_empty() {
+            return ToolExecutionResult::tool_error(
+                "Invalid path: filename is empty (trailing slash?)",
+            );
+        }
 
         match client
             .put_archive(&state.container_id, &dir, &filename, content.as_bytes())
@@ -680,7 +695,14 @@ impl Tool for SandboxUploadTool {
         // Decode content (text or base64)
         let content_str = file.content.unwrap_or_default();
         let bytes = if file.encoding == "base64" {
-            BASE64.decode(&content_str).unwrap_or_default()
+            match BASE64.decode(&content_str) {
+                Ok(b) => b,
+                Err(e) => {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Failed to decode base64 content from session file {session_path}: {e}"
+                    ));
+                }
+            }
         } else {
             content_str.as_bytes().to_vec()
         };
@@ -695,6 +717,12 @@ impl Tool for SandboxUploadTool {
                 container_path.trim_start_matches('/').to_string(),
             ),
         };
+
+        if filename.is_empty() {
+            return ToolExecutionResult::tool_error(
+                "Invalid container_path: filename is empty (trailing slash?)",
+            );
+        }
 
         match client
             .put_archive(&state.container_id, &dir, &filename, &bytes)

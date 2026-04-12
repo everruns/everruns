@@ -21,7 +21,7 @@ const DEFAULT_AUTO_STOP_MINUTES: u64 = 10;
 /// Configuration for the container sandbox capability.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerSandboxConfig {
-    /// Docker Engine host URL (env → config → "http://localhost:2375")
+    /// Docker Engine host URL (config → env → "http://localhost:2375")
     #[serde(default)]
     pub docker_host: Option<String>,
     /// Container runtime (e.g., "sysbox-runc"). Empty for default runc.
@@ -43,9 +43,11 @@ pub struct ContainerSandboxConfig {
     #[serde(default = "default_working_dir")]
     pub working_dir: String,
     /// Network mode (e.g., "bridge" or a custom network name).
+    /// TODO: will be wired into container creation in a follow-up.
     #[serde(default = "default_network_mode")]
     pub network_mode: String,
     /// Auto-stop timeout in minutes (for lease duration).
+    /// TODO: will be wired into lease duration calculation in a follow-up.
     #[serde(default = "default_auto_stop")]
     pub auto_stop_minutes: u64,
 }

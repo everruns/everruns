@@ -156,9 +156,9 @@ pub async fn touch_sandbox_lease(
             owner_user_id: None,
             lease_duration_seconds: SANDBOX_LEASE_DURATION_SECONDS,
             metadata: json!({
-                "image": state.image,
-                "working_dir": state.working_dir,
-                "started_at": state.started_at,
+                "image": &state.image,
+                "working_dir": &state.working_dir,
+                "started_at": &state.started_at,
             }),
         })
         .await
