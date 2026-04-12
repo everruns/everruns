@@ -252,7 +252,7 @@ impl TestServer {
         );
         let agents_state = api::agents::AppState::new(
             db.clone(),
-            capability_service,
+            capability_service.clone(),
             auth_state.clone(),
             grade,
             platform_definition.clone(),
@@ -346,6 +346,7 @@ impl TestServer {
             feature_flags.notifications,
             everruns_server::EventDelivery::in_memory(),
             None, // No encryption in tests
+            capability_service.clone(),
         );
 
         // Build API routes

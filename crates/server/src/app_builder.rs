@@ -563,7 +563,7 @@ impl ServerAppBuilder {
         };
         let agents_state = api::agents::AppState::new(
             db.clone(),
-            capability_service,
+            capability_service.clone(),
             auth_state.clone(),
             grade,
             platform_definition.clone(),
@@ -693,6 +693,7 @@ impl ServerAppBuilder {
             notifications_enabled,
             event_delivery.clone(),
             encryption.clone(),
+            capability_service.clone(),
         );
 
         let health_state = HealthState {
