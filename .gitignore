@@ -45,10 +45,3 @@ build/
 
 # Tools
 .sqlx.envrc
-
-# Terraform
-**/.terraform/
-*.tfstate
-*.tfstate.backup
-*.tfvars
-!*.tfvars.example
