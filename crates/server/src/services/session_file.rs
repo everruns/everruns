@@ -634,13 +634,40 @@ impl SessionFileService {
 
     /// Search files using grep-like pattern matching (delegates to shared helper).
     pub async fn grep(&self, session_id: Uuid, req: GrepInput) -> Result<Vec<GrepResult>> {
-        grep_session_files(
+        let mut results = grep_session_files(
             &self.db,
             session_id,
             &req.pattern,
             req.path_pattern.as_deref(),
         )
-        .await
+        .await?;
+
+        // Also search virtual mounts
+        if let Some(registry) = &self.virtual_registry {
+            let regex = Regex::new(&req.pattern)?;
+            let virtual_matches = registry.grep(&session_id, &regex, req.path_pattern.as_deref());
+            for vm in virtual_matches {
+                // Group by file path into GrepResult entries
+                if let Some(existing) = results.iter_mut().find(|r| r.path == vm.path) {
+                    existing.matches.push(GrepMatch {
+                        path: vm.path,
+                        line_number: vm.line_number,
+                        line: vm.line,
+                    });
+                } else {
+                    results.push(GrepResult {
+                        path: vm.path.clone(),
+                        matches: vec![GrepMatch {
+                            path: vm.path,
+                            line_number: vm.line_number,
+                            line: vm.line,
+                        }],
+                    });
+                }
+            }
+        }
+
+        Ok(results)
     }
 
     fn row_to_session_file(row: SessionFileRow) -> SessionFile {
@@ -692,6 +719,20 @@ impl SessionFileService {
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
+    }
+
+    /// Evict virtual mount entries for a session (call on session delete).
+    pub fn evict_virtual_mounts(&self, session_id: Uuid) {
+        if let Some(registry) = &self.virtual_registry {
+            registry.evict(&session_id);
+        }
+    }
+
+    /// Get a reference to the virtual mount registry (if configured).
+    pub fn virtual_registry(
+        &self,
+    ) -> Option<&Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>> {
+        self.virtual_registry.as_ref()
     }
 
     // =========================================================================

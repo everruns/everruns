@@ -15,7 +15,10 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_parent_name("generic")
     .with_tags(["chat", "built-in"])
     .with_roles([BuiltInHarnessRole::Chat])
-    .with_capabilities([BuiltInCapabilityDefinition::new("platform_management")])
+    .with_capabilities([
+        BuiltInCapabilityDefinition::new("platform_management"),
+        BuiltInCapabilityDefinition::new("platform_docs"),
+    ])
 }
 
 const SYSTEM_PROMPT: &str = "\

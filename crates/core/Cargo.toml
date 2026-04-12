@@ -99,6 +99,9 @@ llmsim = "0.2.1"
 # OpenUI component definitions and prompt generator
 everruns-openui = { path = "../openui" }
 
+# Compile-time directory embedding for virtual mounts (platform docs)
+include_dir = "0.7"
+
 [features]
 default = ["llm-tests"]
 openapi = ["utoipa"]
