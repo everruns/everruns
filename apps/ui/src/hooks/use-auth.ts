@@ -11,6 +11,7 @@ import {
   deleteApiKey,
 } from "@/lib/api/auth";
 import { updateProfile } from "@/lib/api/users";
+import { useOrg } from "@/providers/org-provider";
 import { ORG_STORAGE_KEY } from "@/lib/constants";
 import type {
   LoginRequest,
@@ -24,7 +25,8 @@ export const authKeys = {
   all: ["auth"] as const,
   config: () => [...authKeys.all, "config"] as const,
   user: () => [...authKeys.all, "user"] as const,
-  apiKeys: () => [...authKeys.all, "api-keys"] as const,
+  apiKeys: (org?: string) =>
+    org ? ([...authKeys.all, "api-keys", org] as const) : ([...authKeys.all, "api-keys"] as const),
 };
 
 /**
@@ -105,14 +107,23 @@ export function useLogout() {
 }
 
 /**
- * Hook to list API keys
+ * Hook to list API keys (scoped per org to avoid stale cache after org switch)
  */
 export function useApiKeys() {
-  return useQuery({
-    queryKey: authKeys.apiKeys(),
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: authKeys.apiKeys(org),
     queryFn: listApiKeys,
+    enabled: !!org,
     retry: false,
   });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
 }
 
 /**
@@ -120,11 +131,13 @@ export function useApiKeys() {
  */
 export function useCreateApiKey() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: (request: CreateApiKeyRequest) => createApiKey(request),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: authKeys.apiKeys() });
+      queryClient.invalidateQueries({ queryKey: authKeys.apiKeys(org) });
     },
   });
 }
@@ -134,11 +147,13 @@ export function useCreateApiKey() {
  */
 export function useDeleteApiKey() {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
 
   return useMutation({
     mutationFn: (keyId: string) => deleteApiKey(keyId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: authKeys.apiKeys() });
+      queryClient.invalidateQueries({ queryKey: authKeys.apiKeys(org) });
     },
   });
 }
