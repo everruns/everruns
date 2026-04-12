@@ -903,6 +903,47 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-LLM-008 | Search result prompt injection | Medium | Results returned as `tool_result` role; inherent LLM limitation (same as TM-TOOL-005) | **ACCEPTED** |
 | TM-LLM-009 | Search query privacy | Low | Queries sent to Brave Search (third party); caller responsibility to assess data classification | **CALLER RISK** |
 
+## 20. Container Sandbox (TM-SANDBOX)
+
+Self-hosted container sandboxes via Docker Engine REST API. Agents create, exec, and manage containers per-session. Containers run on the same infrastructure as the server/worker, unlike cloud sandboxes (Daytona, E2B, Deno) which run on third-party infrastructure.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-SANDBOX-001 | Container escape via kernel vulnerability | High | Configurable runtime: default `runc`, production `sysbox-runc` (user namespaces + procfs virtualization); operator chooses isolation level | **ACCEPTED** |
+| TM-SANDBOX-002 | Resource exhaustion (memory/CPU/PIDs) | High | cgroup limits enforced via Docker create flags (`memory_limit`, `cpu_limit`, `pids_limit`); defaults: 2 GiB, 1 CPU, 256 PIDs | MITIGATED |
+| TM-SANDBOX-003 | Network attacks from sandbox | High | Per-sandbox isolated Docker bridge network; egress filtering blocks private IPs and cloud metadata (169.254.0.0/16) | MITIGATED |
+| TM-SANDBOX-004 | Cross-session container access | Critical | Container names include `session_id`; all Docker API queries filtered by `session` + `managed-by` labels; sandbox state stored in session-scoped secrets | MITIGATED |
+| TM-SANDBOX-005 | Image supply chain attack | Medium | Image allowlist in capability config; only pre-approved images can be pulled | MITIGATED |
+| TM-SANDBOX-006 | Docker socket exposure inside sandbox | High | Docker socket never mounted into containers; no `--privileged` flag | MITIGATED |
+| TM-SANDBOX-007 | Stale container not cleaned up | Medium | Leased resource scheduler with 20-minute lease duration; system prompt instructs agent to remove when done | MITIGATED |
+| TM-SANDBOX-008 | Cross-tenant sandbox access | Critical | Tool scoping via `ToolContext.session_id` + per-sandbox network + Docker label filters; container names derived from session UUID, never user input | MITIGATED |
+| TM-SANDBOX-009 | Cross-tenant network reachability | High | Each sandbox gets its own isolated Docker bridge network (`sandbox-{org}-{session}`); sole member is the sandbox container | MITIGATED |
+| TM-SANDBOX-010 | Tenant resource starvation | High | Per-sandbox cgroups + per-org concurrent sandbox limits via leased resources | MITIGATED |
+
+### Mitigation Details
+
+**TM-SANDBOX-001 — Container Escape (ACCEPTED):**
+Container isolation depends on the kernel and runtime. Default `runc` provides namespace + cgroup isolation but shares the host kernel. For production multi-tenant deployments, operators should configure `sysbox-runc` (adds user namespaces, procfs/sysfs virtualization) or `kata`/`gvisor` for stronger isolation. The runtime is a deployment-time config field (`CONTAINER_SANDBOX_RUNTIME`), not baked into code.
+
+**TM-SANDBOX-004 — Cross-Session Isolation:**
+```
+Session A creates: sandbox-{org}-{session_a} → container + network
+Session B creates: sandbox-{org}-{session_b} → container + network
+
+Session A cannot access Session B's container:
+  - Docker API queries include label filter: session={session_a}
+  - Container name includes session_a UUID
+  - Sandbox state stored in session-scoped secrets
+```
+
+**TM-SANDBOX-008 — Cross-Tenant Isolation (6 layers):**
+1. Tool scoping: container name derived from `ToolContext.session_id`, never user input
+2. Per-sandbox Docker network: `sandbox-{org}-{session}`, sole member = the sandbox
+3. Label-filtered API calls: all queries include `session` + `managed-by` labels
+4. Per-org limits: max concurrent sandboxes checked at create time via leased resources
+5. Egress filtering: block private IPs + cloud metadata from sandbox bridges
+6. Runtime isolation: configurable (sysbox adds user-ns + procfs virtualization)
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)
@@ -950,6 +991,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-DAYTONA-001 | Git token on sandbox disk | Same trust boundary as exec; `/tmp` cleared on stop; short-lived token |
 | TM-DENO-004 | Network probing from Deno sandbox | Same residual risk as other remote execution capabilities; requires Admin + operator egress controls |
 | TM-E2B-005 | Full-network sandbox misuse | Same residual risk class as other cloud sandboxes; require deployment egress isolation where needed |
+| TM-SANDBOX-001 | Container escape via kernel vulnerability | Configurable runtime; operator chooses isolation level (sysbox/kata/gvisor for production) |
 
 ### Caller Responsibilities
 
