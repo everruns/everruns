@@ -50,15 +50,15 @@ See `specs/localization.md` for how schedule timezone interacts with session and
 
 ### Schedule
 
-See the `durable_schedules` migration for the full schema. Key fields: `id` (UUIDv7), `name` (unique), `cron_expression`, `timezone` (IANA, default UTC), `target_type` (workflow/activity), `target_name`, `target_input` (JSONB), `enabled`, `max_concurrent`, `catch_up_missed`, `retry_policy`, `next_trigger_at` (indexed for polling).
+See `crates/server/migrations/002_durable_execution.sql` for the full schema. Key fields: `id` (UUIDv7), `name` (unique), `cron_expression`, `timezone` (IANA, default UTC), `target_type` (workflow/activity), `target_name`, `target_input` (JSONB), `enabled`, `max_concurrent`, `catch_up_missed`, `retry_policy`, `next_trigger_at` (indexed for polling).
 
 ### ScheduleExecution
 
-See the `durable_schedule_executions` migration for the full schema. Tracks each trigger attempt with `schedule_id`, `scheduled_at`, `status` (pending/running/completed/failed/skipped), linked `workflow_id` or `task_id`, and `duration_ms`.
+See `crates/server/migrations/002_durable_execution.sql` for the full schema. Tracks each trigger attempt with `schedule_id`, `scheduled_at`, `status` (pending/running/completed/failed/skipped), linked `workflow_id` or `task_id`, and `duration_ms`.
 
 ### Cron Expression Format
 
-Standard 5-field cron with optional 6th field for seconds. Parsed via the `cron` crate (v0.13). Examples: `*/30 * * * *` (every 30 min), `0 9 * * MON-FRI` (9 AM weekdays).
+Standard 5-field cron with optional 6th field for seconds. Parsed via the `cron` crate. Examples: `*/30 * * * *` (every 30 min), `0 9 * * MON-FRI` (9 AM weekdays).
 
 ## Timezone Semantics
 
@@ -113,7 +113,7 @@ The `WorkflowEventStore` trait is extended with schedule CRUD, scheduler claimin
 
 ## Database Schema
 
-See the scheduled_tasks migration in `crates/server/migrations/` for the full DDL. Key tables: `durable_schedules` (schedule definitions with polling index on `next_trigger_at`), `durable_schedule_executions` (execution history with indexes for schedule listing and running-count queries), and `durable_scheduler_instances` (heartbeat-based instance registration for horizontal scaling). Note: no `org_id` — multi-tenancy will be added to the entire durable engine in a future PR.
+See `crates/server/migrations/002_durable_execution.sql` for the full DDL. Key tables: `durable_schedules` (schedule definitions with polling index on `next_trigger_at`), `durable_schedule_executions` (execution history with indexes for schedule listing and running-count queries), and `durable_scheduler_instances` (heartbeat-based instance registration for horizontal scaling). Note: no `org_id` — multi-tenancy will be added to the entire durable engine in a future PR.
 
 ## UI Design
 
@@ -137,11 +137,11 @@ See the scheduled_tasks migration in `crates/server/migrations/` for the full DD
 
 ### Components
 
-UI components live in `apps/ui/src/components/schedules/` (schedule-list, schedule-card, schedule-form, schedule-stats, execution-list, cron-builder, cron-preview).
+UI components live under `apps/ui/src/app/(main)/durable/schedules/`.
 
 ### API Client and Hooks
 
-See `apps/ui/src/lib/api/schedules.ts` for the TypeScript API client and `apps/ui/src/hooks/use-schedules.ts` for React Query hooks. Standard CRUD + trigger/pause/resume operations with query cache invalidation and SSE integration.
+See `apps/ui/src/lib/api/session-schedules.ts` for the TypeScript API client and `apps/ui/src/hooks/use-session-schedules.ts` for React Query hooks.
 
 ## SSE Integration
 
@@ -298,7 +298,6 @@ Smoke test script at `.claude/skills/smoke-test/smoke-test-schedules.sh` covers:
 ## Dependencies
 
 - **Rust**: `cron` (cron expression parsing), `chrono-tz` (timezone handling)
-- **npm**: `cronstrue` (human-readable cron descriptions), `cron-parser` (next-run preview)
 
 ## Decisions
 

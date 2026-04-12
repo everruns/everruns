@@ -159,11 +159,11 @@ let use_tool_search = profile.tool_search && config.tools.len() >= TOOL_SEARCH_T
 
 ## Model Profile Updates
 
-Set `tool_search: true` for models that support it. Default `false` for all others. See `crates/core/src/model_profiles.rs` for current profile definitions.
+Set `tool_search: true` for models that support it. Default `false` for all others. See `crates/core/src/llm_model_profiles.rs` for current profile definitions.
 
 ## OpenAI Driver Changes
 
-The OpenAI driver extends `ResponsesTool` with `Namespace` and `ToolSearch` variants and adds `convert_tools_with_search()` to handle namespace grouping and defer_loading. See `crates/openai/src/driver.rs` for the implementation.
+The OpenAI driver extends `ResponsesTool` with `Namespace` and `ToolSearch` variants and adds `convert_tools_with_search()` to handle namespace grouping and defer_loading. See `crates/core/src/openresponses_protocol.rs` for the implementation.
 
 Non-OpenAI providers (Anthropic, Gemini) send full tool definitions (current behavior) with `tool_search: false` in their profiles. When providers adopt similar features, flip the flag per model.
 

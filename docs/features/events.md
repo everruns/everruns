@@ -251,5 +251,4 @@ All events in API responses are well-defined types. The server filters out any i
 ## Related Resources
 
 - [Event Reference](/event-reference/) - Complete reference for all event types
-- [specs/events.md](https://github.com/everruns/everruns/blob/main/specs/events.md) - Internal specification
-- [specs/events.md](https://github.com/everruns/everruns/blob/main/specs/events.md) - Specification (includes contract & compatibility)
+- [specs/events.md](https://github.com/everruns/everruns/blob/main/specs/events.md) - Internal specification (includes contract & compatibility)

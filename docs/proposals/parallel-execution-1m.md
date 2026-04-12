@@ -1096,7 +1096,7 @@ Add to the durable overview page (`apps/ui/src/app/(main)/durable/`):
 #### G. Update specs and AGENTS.md
 
 - `specs/architecture.md` — already has EventDelivery section ✓
-- `specs/parallel-execution-1m.md` — this section ✓
+- `docs/proposals/parallel-execution-1m.md` — this section ✓
 - `AGENTS.md` — update Local Dev section: mention `start-all` starts NATS,
   `NATS_URL` controls event delivery backend
 - `specs/events.md` — note ephemeral event classification
