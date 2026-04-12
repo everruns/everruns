@@ -317,7 +317,8 @@ pub async fn switch_org(
     // Build the org cookie
     let org_cookie = Cookie::build((ORG_COOKIE_NAME, req.org_id.clone()))
         .path("/")
-        .http_only(true)
+        .http_only(false) // Allow JS to read for UI state
+        .secure(true)
         .same_site(SameSite::Lax)
         .build();
 
