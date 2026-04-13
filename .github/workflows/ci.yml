@@ -122,7 +122,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "clippy"
+          shared-key: "debug"
 
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
@@ -144,7 +144,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Run pure unit tests
         run: |
@@ -175,7 +175,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Run Daytona live integration tests
         run: doppler run -- cargo test -p everruns-integrations-daytona --features daytona-live-tests --test live_api_test -- --test-threads=1
@@ -200,7 +200,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Run Browserless live integration tests
         run: doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests --test live_api -- --test-threads=1
@@ -225,7 +225,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Run E2B live integration tests
         run: doppler run -- cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test -- --test-threads=1
@@ -250,7 +250,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Run Deno live integration tests
         run: doppler run -- cargo test -p everruns-integrations-deno --features deno-live-tests --test live_api_test -- --test-threads=1
@@ -294,7 +294,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Cache cargo binaries
         uses: actions/cache@v4
@@ -425,7 +425,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Cache cargo binaries
         uses: actions/cache@v4

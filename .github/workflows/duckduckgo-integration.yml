@@ -37,7 +37,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration"
+          shared-key: "debug"
 
       - name: Run integration tests
         run: cargo test -p everruns-integrations-duckduckgo --features integration

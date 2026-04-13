@@ -37,7 +37,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration"
+          shared-key: "debug"
 
       - name: Run unit tests
         run: cargo test -p everruns-container-sandbox
@@ -62,7 +62,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "integration"
+          shared-key: "debug"
 
       - name: Run live integration tests
         run: cargo test -p everruns-container-sandbox --features container-sandbox-live-tests --test live_api_test -- --test-threads=1
