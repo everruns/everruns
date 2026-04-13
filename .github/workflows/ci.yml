@@ -166,35 +166,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for Doppler token
-        id: check-key
-        run: |
-          if [ -z "$DOPPLER_TOKEN" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "⏭️ DOPPLER_TOKEN not configured, skipping live tests"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install Doppler CLI
-        if: steps.check-key.outputs.skip != 'true'
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        if: steps.check-key.outputs.skip != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "test"
 
       - name: Run Daytona live integration tests
-        if: steps.check-key.outputs.skip != 'true'
         run: doppler run -- cargo test -p everruns-integrations-daytona --features daytona-live-tests --test live_api_test -- --test-threads=1
 
-  # Live Browserless API tests — only when integrations/browserless/** changes and secret exists
+  # Live Browserless API tests — only when integrations/browserless/** changes
   browserless-live-test:
     name: Browserless Live API Tests
     runs-on: ubuntu-latest
@@ -205,35 +191,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for Doppler token
-        id: check-key
-        run: |
-          if [ -z "$DOPPLER_TOKEN" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "⏭️ DOPPLER_TOKEN not configured, skipping live tests"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install Doppler CLI
-        if: steps.check-key.outputs.skip != 'true'
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        if: steps.check-key.outputs.skip != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "test"
 
       - name: Run Browserless live integration tests
-        if: steps.check-key.outputs.skip != 'true'
         run: doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests --test live_api -- --test-threads=1
 
-  # Live E2B API tests — only when integrations/e2b/** changes and secret exists
+  # Live E2B API tests — only when integrations/e2b/** changes
   e2b-live-test:
     name: E2B Live API Tests
     runs-on: ubuntu-latest
@@ -244,35 +216,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for Doppler token
-        id: check-key
-        run: |
-          if [ -z "$DOPPLER_TOKEN" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "⏭️ DOPPLER_TOKEN not configured, skipping live tests"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install Doppler CLI
-        if: steps.check-key.outputs.skip != 'true'
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        if: steps.check-key.outputs.skip != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "test"
 
       - name: Run E2B live integration tests
-        if: steps.check-key.outputs.skip != 'true'
         run: doppler run -- cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test -- --test-threads=1
 
-  # Live Deno API tests — only when integrations/deno/** changes and secret exists
+  # Live Deno API tests — only when integrations/deno/** changes
   deno-live-test:
     name: Deno Live API Tests
     runs-on: ubuntu-latest
@@ -283,32 +241,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for Doppler token
-        id: check-key
-        run: |
-          if [ -z "$DOPPLER_TOKEN" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "⏭️ DOPPLER_TOKEN not configured, skipping live tests"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install Doppler CLI
-        if: steps.check-key.outputs.skip != 'true'
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        if: steps.check-key.outputs.skip != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "test"
 
       - name: Run Deno live integration tests
-        if: steps.check-key.outputs.skip != 'true'
         run: doppler run -- cargo test -p everruns-integrations-deno --features deno-live-tests --test live_api_test -- --test-threads=1
 
   # Integration tests requiring PostgreSQL

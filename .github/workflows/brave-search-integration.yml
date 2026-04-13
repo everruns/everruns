@@ -38,17 +38,13 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "brave-search-integration"
+          shared-key: "integration"
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
 
       - name: Fetch Brave Search API key from Doppler
         run: |
-          if [ -z "$DOPPLER_TOKEN" ]; then
-            echo "::error::DOPPLER_TOKEN secret is not set"
-            exit 1
-          fi
-          if ! command -v doppler &>/dev/null; then
-            curl -sLf --retry 3 https://cli.doppler.com/install.sh | sudo sh >/dev/null 2>&1
-          fi
           echo "BRAVE_SEARCH_API_KEY=$(doppler secrets get BRAVE_SEARCH_API_KEY --plain)" >> "$GITHUB_ENV"
 
       - name: Run integration tests
