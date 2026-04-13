@@ -117,83 +117,18 @@ When `reasoning_effort` is configured, drivers emit additional stream events:
 - `ThinkingDelta(String)` - Incremental thinking/reasoning content
 - `ThinkingSignature(String)` - Opaque token for multi-turn context preservation
 
-The `ThinkingSignature` event serves the same purpose across providers but with different semantics:
-- **Anthropic**: Cryptographic signature for thinking content
-- **OpenAI**: Encrypted reasoning content (`encrypted_content` from `ReasoningItem`)
+#### Multi-turn Thinking Contract
 
-#### Multi-turn Thinking Requirements
+Both providers require preserved thinking context for multi-turn conversations. Every assistant message with thinking MUST include both `thinking` (content text) and `thinking_signature` (opaque token). The signature MUST be sent back in subsequent API calls to preserve reasoning context.
 
-Both providers require preserved thinking context for multi-turn conversations:
-
-| Field | Anthropic | OpenAI |
-|-------|-----------|--------|
+| Field | Anthropic | OpenAI (o-series) |
+|-------|-----------|-------------------|
 | `thinking` | Chain-of-thought text | Reasoning summary text |
-| `thinking_signature` | Cryptographic signature | Encrypted content token |
+| `thinking_signature` | Cryptographic signature | `encrypted_content` token |
 
-When sending conversation history with thinking enabled:
-- Every assistant message with thinking MUST include both fields
-- The signature/token MUST be sent back to preserve reasoning context
-
-#### Anthropic-Specific Requirements
-
-1. **Beta Header for Tool Use**: When extended thinking is enabled AND tools are present, include:
-   ```
-   anthropic-beta: interleaved-thinking-2025-05-14
-   ```
-   This enables interleaved thinking where Claude can reason between tool calls.
-
-2. **Thinking Signature**: Anthropic returns a cryptographic signature with thinking content via `content_block_stop` events. This signature MUST be:
-   - Captured from the stream response
-   - Stored with the assistant message
-   - Sent back with the thinking content in subsequent API calls
-
-3. **Message Ordering**: Thinking block MUST appear before `tool_use` blocks in message content.
-   Without proper signatures, Anthropic returns: `"Expected 'thinking' or 'redacted_thinking', but found 'tool_use'"`
-
-4. **Budget Tokens**: The thinking budget is derived from `reasoning_effort`:
-   - `low`: 1,024 tokens
-   - `medium`: 4,096 tokens
-   - `high`: 16,384 tokens
-   - `xhigh`: 32,768 tokens
-
-#### OpenAI-Specific Requirements (Responses API)
-
-1. **Reasoning Config**: The `reasoning` request parameter requires TWO fields:
-   - `effort`: Reasoning depth (`none`, `low`, `medium`, `high`, `xhigh`)
-   - `summary`: Must be `"detailed"` to receive reasoning tokens in the stream. Without this, reasoning happens internally but tokens are NOT exposed to the caller.
-
-2. **Reasoning Events**: OpenAI emits reasoning via streaming events:
-   - `response.reasoning.delta` - Incremental reasoning text (o-series models, opaque)
-   - `response.reasoning_summary_text.delta` - Summary reasoning text (GPT-5.x, readable)
-   - `response.output_item.done` with `reasoning` type - Contains `encrypted_content`
-
-   Both delta event types map to `LlmStreamEvent::ThinkingDelta`.
-
-3. **Provider Differences (o-series vs GPT-5.x)**:
-
-   | Behavior | o-series (o1, o3) | GPT-5.x |
-   |----------|-------------------|---------|
-   | Reasoning event | `response.reasoning.delta` | `response.reasoning_summary_text.delta` |
-   | Content type | Opaque/encrypted | Readable summary |
-   | `encrypted_content` | Yes (in `OutputItem::Reasoning`) | No |
-   | `thinking_signature` | Set from `encrypted_content` | Not used |
-   | Reasoning trigger | Always (when effort > none) | Model decides based on question complexity |
-
-4. **Encrypted Content**: OpenAI returns `encrypted_content` in `OutputItem::Reasoning` when the reasoning item completes (o-series models only). This MUST be:
-   - Captured from the `response.output_item.done` event
-   - Stored in `thinking_signature` field
-   - Sent back as a `ReasoningItem` with `encrypted_content` in subsequent API calls
-
-5. **Reasoning Item in Requests**: When sending conversation history with thinking:
-   - Include a `Reasoning` input item BEFORE the assistant message
-   - The `encrypted_content` field contains the preserved reasoning context
-
-6. **Reasoning Effort Levels**: Supported values:
-   - `none`: No reasoning
-   - `low`: Minimal reasoning
-   - `medium`: Moderate reasoning
-   - `high`: Extensive reasoning
-   - `xhigh`: Maximum reasoning
+Provider-specific wire format details live in the driver implementations:
+- `crates/anthropic/src/driver.rs` -- beta headers, signature capture, message ordering, budget tokens
+- `crates/openai/src/driver.rs` -- reasoning config, encrypted content, reasoning item format
 
 #### Reasoning Guard Logic
 

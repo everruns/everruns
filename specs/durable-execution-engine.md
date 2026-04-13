@@ -88,26 +88,11 @@ See `crates/durable/src/engine/executor.rs` for `load_workflow_state()` and `con
 
 ### Task Claiming
 
-Critical for scalability at 1000+ workers:
+Workers claim tasks partitioned by `activity_type`. See `crates/durable/src/persistence/store.rs` for implementation.
 
-- `SELECT FOR UPDATE SKIP LOCKED` - Workers don't block each other
-- Partition by `activity_type` - Reduces row scanning
-- Batch claiming - Fewer round trips
-- Partial index on `status = 'pending'` - Smaller index
+### Task Notifications
 
-### Task Notifications (Push-Based)
-
-Low-latency task distribution via PostgreSQL NOTIFY:
-
-- **Trigger**: `notify_task_available()` fires on task INSERT with `status = 'pending'`
-- **Channel**: `task_available` with activity_type as payload
-- **Broadcaster**: Control-plane listens via `PgListener`, pushes to workers via gRPC streaming
-- **Worker subscription**: `SubscribeTaskNotifications` gRPC stream
-- **Fallback**: Workers poll with 10s interval if stream disconnects
-
-Latency improvement:
-- Polling (100ms): P50=~100ms, P99=~110ms
-- Push notifications: P50=~4ms, P99=~10ms (~96% improvement)
+Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by PostgreSQL NOTIFY or NATS. Falls back to polling (10s) on disconnect.
 
 ### Generic Queue (Standalone Tasks)
 
@@ -156,118 +141,29 @@ See `crates/durable/src/persistence/store.rs` for `TaskDefinition` and `crates/s
 
 ### Metrics Dashboard
 
-Real-time metrics charts on the durable overview page, powered by SSE streaming and a server-side `MetricsCollector`. The UI always shows the **last 15 minutes**, zero-backfilled when data is missing (server just started or idle).
-
-1. **Workflow Status** — stacked area (running + pending) with completed/failed rate lines
-2. **Task Status** — stacked area (pending + claimed) with completed/failed rate lines
-3. **Throughput** — line chart: completed/failed tasks per interval (delta rates)
-4. **System Load** — dual-axis line chart: load % (0-100 left axis), workers + DLQ (right axis)
-
-**Architecture**: Background `tokio::spawn` task samples `SystemHealth` + worker stats every 10 seconds into a `VecDeque<MetricsPoint>` ring buffer (max 360 = 1 hour). Data is:
-- Included in global durable SSE `snapshot` events as `metrics_history` field
-- Available via REST `GET /v1/durable/metrics/timeseries`
-- Rendered with `recharts` (React charting library)
-- Frontend slices to 15-minute window (90 points at 10s resolution) and zero-fills gaps
-
-**MetricsPoint fields** (see `crates/server/src/api/durable.rs`):
-- Gauges: `running_workflows`, `pending_workflows`, `pending_tasks`, `claimed_tasks`, `active_workers`, `load_percentage`, `dlq_size`
-- Cumulative totals (for delta rates): `tasks_completed_total`, `tasks_failed_total`, `workflows_completed_total`, `workflows_failed_total`
+Real-time metrics on the durable overview page via SSE streaming. Shows last 15 minutes, zero-backfilled. Four chart panels: Workflow Status, Task Status, Throughput, System Load. See `crates/server/src/api/durable.rs` for `MetricsPoint` fields and the ring-buffer collector.
 
 ### Worker Heartbeat & Stale Worker Handling
 
-Workers send heartbeats every 5 seconds. The `WORKER_HEARTBEAT_TIMEOUT_SECS` constant (60s, defined in `crates/durable/src/persistence/store.rs`) is the single source of truth for stale detection:
-
-- **`get_system_health`** — only counts workers with heartbeat within threshold as active
-- **`list_workers`** — only returns workers with heartbeat within threshold
-- **`reclaim_stale_tasks`** — marks workers with stale heartbeats as `stopped` (cleans up workers that crashed without calling `deregister_worker`)
-
-Works in both dev mode (in-memory store) and full mode (PostgreSQL).
+Workers heartbeat every 5s. `WORKER_HEARTBEAT_TIMEOUT_SECS` (60s, in `crates/durable/src/persistence/store.rs`) is the single source of truth for stale detection, used by `get_system_health`, `list_workers`, and `reclaim_stale_tasks`.
 
 ## Decisions
 
 ### Partitioning Strategy
 
-**Decision**: No custom partitioning in v1.
-
-**Rationale**: PostgreSQL with proper indexes handles 10,000+ tasks/second. `SKIP LOCKED` eliminates contention. Activity-type-based claiming naturally partitions work. Can add PostgreSQL native partitioning later if needed.
-
-### Workflow Versioning
-
-**Decision**: Not in v1.
-
-**Rationale**: Running workflows complete with original code. New workflows use new code. Replay-based migration can be added when needed.
-
-### Signals
-
-**Decision**: Yes, implement signals.
-
-**Use cases**: Cancel workflow, graceful shutdown, external events affecting workflow behavior.
+**Decision**: No custom partitioning in v1. PostgreSQL with proper indexes and `SKIP LOCKED` handles the target load. Activity-type-based claiming naturally partitions work.
 
 ### Task Ownership Verification
 
-**Decision**: Verify ownership on task completion.
-
-**Rationale**: Prevents duplicate activity scheduling when a worker's heartbeat times out and task is reclaimed by another worker. Late-finishing worker gets `TaskNotOwned` error.
+**Decision**: Verify ownership on task completion. Prevents duplicate activity scheduling when a worker's heartbeat times out and task is reclaimed. Late-finishing worker gets `TaskNotOwned` error.
 
 ### Worker Communication
 
-**Decision**: Workers communicate via gRPC only, no direct database access.
-
-**Rationale**: Clear separation between control-plane (owns state) and workers (stateless executors). Workers don't need database credentials.
-
-**Task Distribution**: Push-based via gRPC streaming. Workers subscribe to `SubscribeTaskNotifications` and receive immediate notifications when tasks are enqueued. Falls back to polling (10s interval) if stream disconnects.
-
-**Startup**: Workers retry connecting to control-plane for up to 5 seconds with exponential backoff (100ms → 1s). This handles startup race conditions when both services restart simultaneously.
+**Decision**: Workers communicate via gRPC only, no direct database access. Clear separation between control-plane (owns state) and workers (stateless executors).
 
 **Authentication**: Two layered mechanisms (see `specs/threat-model.md` TM-DURABLE-002):
-1. Bearer token (`WORKER_GRPC_AUTH_TOKEN`) — required in production, server panics if unset
-2. Mutual TLS (`WORKER_GRPC_TLS_*`) — optional, provides transport encryption + mutual identity verification
+1. Bearer token (`WORKER_GRPC_AUTH_TOKEN`) -- required in production
+2. Mutual TLS (`WORKER_GRPC_TLS_*`) -- optional transport encryption
 
-**Design decision**: Workers are intentionally cross-org. They are stateless task executors that process work from any organization's queue. Org-scoping is enforced at the HTTP API layer, not the gRPC transport.
+**Design decision**: Workers are intentionally cross-org. Org-scoping is enforced at the HTTP API layer, not the gRPC transport.
 
-## Benchmarks
-
-Load tests for validating performance and scalability. Located in `crates/durable/benches/`.
-
-### In-Memory Benchmarks
-
-Fast iteration without database overhead:
-
-| Benchmark | Purpose |
-|-----------|---------|
-| `concurrent_workers` | Task claiming with SKIP LOCKED at various worker counts |
-| `workflow_throughput` | Multi-step workflow execution throughput |
-| `cold_start_latency` | Time from task enqueue to worker pickup |
-
-### PostgreSQL Benchmarks
-
-Real database performance with actual I/O:
-
-| Benchmark | Purpose |
-|-----------|---------|
-| `db_concurrent_workers` | Task claiming with real PostgreSQL |
-| `db_workflow_throughput` | Multi-step workflows with persistence |
-| `db_cold_start_latency` | Cold-start latency: polling vs push notifications |
-
-### Running Benchmarks
-
-```bash
-# In-memory benchmarks (fast)
-just durable-bench
-
-# PostgreSQL benchmarks (auto-starts Docker)
-just durable-bench-db
-
-# With checkpointing for historical comparison
-just durable-bench --save
-just durable-bench-db --save ci-4cpu-8gb
-```
-
-### Benchmark Framework
-
-Custom framework in `crates/durable/src/bench/`:
-
-- `runner.rs` - Scenario execution with warmup
-- `metrics.rs` - Latency histograms, throughput tracking
-- `checkpoint.rs` - JSON checkpoints for comparison
-- `report.rs` - Markdown report generation

@@ -56,7 +56,7 @@ See:
 - [`specs/authentication.md`](./authentication.md)
 - [`specs/encryption.md`](./encryption.md)
 - [`specs/prometheus-metrics.md`](./prometheus-metrics.md)
-- [`specs/otel-observability.md`](./otel-observability.md)
+- [`specs/observability.md`](./observability.md)
 - [`specs/threat-model.md`](./threat-model.md)
 
 ## Production Reverse Proxy Setup

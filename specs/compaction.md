@@ -39,26 +39,6 @@ Context compaction manages conversations that exceed LLM context windows. Users 
 | No TS types for `LlmCompactionInfo` | Frontend can't render compaction data |
 | `supports_compact()` not exposed | Users can't see what their provider supports |
 
-## State of the Art (March 2026)
-
-### Industry
-
-| Product | Strategy | User Control |
-|---------|----------|-------------|
-| **Claude Code** | LLM summarization + `/compact` command + PreCompact hooks. `clear_tool_uses` strips old tool outputs. | `/compact <instructions>`, hooks |
-| **Cursor** | Auto-summarization at 100% using flash model. `/compress` command. | `/compress` manual trigger |
-| **OpenAI Codex** | `/responses/compact` — opaque encrypted blobs, 99.3% compression | None — automatic |
-| **Google ADK** | Built-in sliding-window summarization | Framework config |
-| **Anthropic API** | Server-side compaction on Opus 4.6 with configurable trigger threshold | API parameter |
-
-### Research
-
-| Source | Key Finding |
-|--------|-------------|
-| **JetBrains (NeurIPS 2025)** | Observation masking (strip tool outputs) matches LLM summarization at half cost. Summarization causes "trajectory elongation" — agents don't realize they're stuck. Hybrid (mask + summarize) saves 7-11% more. |
-| **LLMLingua (Microsoft, ACL 2024)** | Token-level perplexity pruning. 2-20x compression. LLMLingua-2 reframes as classification, 3-6x faster. |
-| **NAACL 2025 Survey** | Comprehensive prompt compression taxonomy. No single best approach — hybrid wins. |
-
 ## Compaction Strategies
 
 ### Strategy Enum
@@ -343,32 +323,7 @@ The existing `llm-history-viewer.tsx` component should display compaction info w
 
 ## Observation Masking
 
-### Algorithm
-
-```python
-def mask_observations(messages, config):
-    """Replace old tool outputs with one-line summaries."""
-    tool_output_indices = [
-        i for i, m in enumerate(messages)
-        if m.role == "tool"
-    ]
-
-    # Keep the N most recent tool outputs verbatim
-    to_mask = tool_output_indices[:-config.keep_recent_tool_outputs]
-
-    for i in to_mask:
-        msg = messages[i]
-        # Find the corresponding tool call to get the tool name + args
-        call = find_tool_call(messages, msg.tool_call_id)
-
-        if config.summary_format == OneLine:
-            msg.content = f"[{call.name}({truncate(call.args, 60)}) → OK]"
-        elif config.summary_format == HeadTail:
-            lines = msg.content.split("\n")
-            msg.content = "\n".join(lines[:3] + ["..."] + lines[-3:])
-
-    return messages
-```
+Replaces old tool outputs with one-line summaries, keeping the N most recent verbatim. See `crates/core/src/capabilities/compaction.rs` for the masking algorithm.
 
 ### Tool-Aware Masking (Tier 3)
 
@@ -515,13 +470,6 @@ Displayed in session detail view and session list (as a subtle indicator when co
 2. Wire cold tier to Infinity Context's `query_history` when both capabilities enabled
 3. Add `SessionCompactionMetrics` tracking
 4. Display metrics in session UI
-
-## Open Questions
-
-1. **Compaction instructions at runtime?** Support something like Claude Code's `/compact Focus on API changes` as a session-level override? Likely yes — add to session API.
-2. **Cross-session compaction?** Should summaries persist across session restarts? Probably no — sessions are independent contexts.
-3. **Compaction during streaming?** Finish current turn first, then compact before next turn. Don't interrupt mid-stream.
-4. **Native compaction for Anthropic?** Anthropic's API now has server-side compaction on Opus 4.6. Add `supports_compact()` to `AnthropicLlmDriver` when stable.
 
 ## References
 

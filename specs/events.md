@@ -4,19 +4,70 @@
 
 Events are the core communication protocol in Everruns. They provide observability into session execution, enable SSE streaming, and serve as the source of truth for conversation data. All events follow a standard schema and are persisted to the events table.
 
-## Public Contract
+## Contract & Compatibility
 
-Events are a **public API contract**. See [specs/events-contract.md](events-contract.md) for:
-- Forward compatibility guarantees (what changes are breaking vs non-breaking)
-- Consumer guidelines for handling events
-- Server responsibilities for filtering unsupported events
+Events are a **public API contract**. Consumers can rely on the guarantees defined here when building integrations. The server is responsible for ensuring only well-defined events reach consumers.
 
-**Key points:**
-- Unknown event types are handled internally as `EventData::Unsupported` and filtered before API responses
-- New optional fields may be added to events without breaking consumers
-- New event types may be added without breaking consumers
+### Compatibility Guarantees
+
+#### Non-Breaking Changes
+
+These changes are safe and may happen in any release:
+
+- **Adding new event types** - New event types may be added. Server filters unknown types internally.
+- **Adding optional fields** - New optional fields may be added to existing event data types.
+- **Adding enum values** - New values may be added to string enums (e.g., new status values).
+- **Relaxing validation** - Required fields may become optional.
+
+#### Breaking Changes
+
+These changes require a major version bump:
+
+- **Removing event types** - Existing event types will not be removed without major version.
+- **Removing fields** - Existing fields will not be removed without major version.
+- **Renaming fields** - Field names are stable.
+- **Changing field types** - Field types are stable (e.g., string stays string).
+- **Making optional fields required** - Optional fields will not become required.
+- **Changing field semantics** - The meaning of fields is stable.
+
+### Server Responsibilities
+
+The server ensures consumers receive only well-defined events:
+
+1. **Filter unsupported events** - Events with unknown types are filtered before API responses (handled internally as `EventData::Unsupported`).
+2. **Log warnings** - Unknown event types trigger warning logs for debugging.
+3. **Emit only defined types** - API responses contain only documented event types.
+4. **Validate on emission** - Events are validated before storage and transmission.
+
+### Consumer Guidelines
+
+Consumers should follow these practices for robust integrations:
+
+1. **No unknown type handling needed** - All events in API responses have documented types.
+2. **Ignore unknown fields** - Deserialize with `#[serde(deny_unknown_fields)]` disabled.
+3. **Handle optional fields** - Check for presence before accessing optional fields.
+4. **Don't rely on field ordering** - JSON field order is not guaranteed.
+
+### Versioning
+
+Events follow semantic versioning aligned with the API version:
+
+- **Patch** (0.0.x): Bug fixes, no schema changes
+- **Minor** (0.x.0): New event types, new optional fields
+- **Major** (x.0.0): Breaking changes (removals, type changes)
+
+### Contract Testing
+
+Contract tests validate these guarantees:
+
+1. **Snapshot tests** - JSON structure for each event type
+2. **Round-trip tests** - Serialize/deserialize equality
+3. **Forward compatibility** - Unknown fields are ignored
+4. **API filtering** - Unsupported events never reach consumers
 
 ## Standard Event Schema
+
+The core event structure is **frozen** — the top-level fields (`id`, `type`, `ts`, `session_id`, `sequence`, `context`, `data`) will not change. The `data` field follows per-type schemas documented below.
 
 Every event MUST conform to this schema:
 
@@ -57,16 +108,16 @@ Every event MUST conform to this schema:
 
 ### Context Object
 
-The context provides correlation data for tracing and filtering:
+The context provides correlation data for tracing and filtering. All existing context fields are **stable** — they will not be removed, renamed, or have their types changed without a major version bump. New optional fields may be added.
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `turn_id` | UUID | No | Turn identifier (for turn-scoped events) |
-| `input_message_id` | UUID | No | User message that triggered this turn |
-| `exec_id` | UUID | No | Atom execution identifier |
-| `trace_id` | string | No | OTel-style trace ID (typically the turn_id string) |
-| `span_id` | string | No | OTel-style span ID for this event |
-| `parent_span_id` | string | No | Parent span ID for hierarchical linking |
+| Field | Type | Required | Stability | Description |
+|-------|------|----------|-----------|-------------|
+| `turn_id` | UUID | No | Stable | Turn identifier (for turn-scoped events) |
+| `input_message_id` | UUID | No | Stable | User message that triggered this turn |
+| `exec_id` | UUID | No | Stable | Atom execution identifier |
+| `trace_id` | string | No | Stable | OTel-style trace ID (typically the turn_id string) |
+| `span_id` | string | No | Stable | OTel-style span ID for this event |
+| `parent_span_id` | string | No | Stable | Parent span ID for hierarchical linking |
 
 ### Hierarchical Tracing (OTel-Style)
 

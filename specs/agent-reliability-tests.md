@@ -109,3 +109,7 @@ cargo test -p everruns-durable --test agent_reliability_test worker_crash --feat
 **Decision:** Use `WorkflowExecutor` with test workflow types to test full workflow lifecycle.
 
 **Rationale:** Existing failure tests only test individual store operations. Reliability tests need to verify that workflows *complete* despite failures — that requires driving the full executor→store→claim→complete→process cycle.
+
+## Related Testing Specs
+
+See also: [fail-rs-testing.md](fail-rs-testing.md) (failure injection), [load-testing.md](load-testing.md) (performance), [test-cases.md](test-cases.md) (manual tests), [evals.md](evals.md) (behavioral evals)

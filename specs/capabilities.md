@@ -508,20 +508,6 @@ mcp_{server_name}__{tool_name}
 | `microsoft_learn` | `search` | `mcp_microsoft_learn__search` |
 | `atlassian_jira` | `create_issue` | `mcp_atlassian_jira__create_issue` |
 
-#### MCP Capability Properties
-
-When an MCP server is converted to a capability:
-
-| Property | Source |
-|----------|--------|
-| `id` | `mcp:{server.id}` |
-| `name` | Server name (display name) |
-| `description` | Server description |
-| `is_mcp` | `true` |
-| `icon` | `plug` (hardcoded) |
-| `category` | `MCP Servers` |
-| `status` | `available` if server active, else excluded |
-
 #### Key Differences from Built-in Capabilities
 
 | Aspect | Built-in | MCP |
@@ -684,81 +670,9 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
 - **ID**: `platform_management`
 - **Purpose**: Programmatic management of Everruns entities (harnesses, agents, sessions) via tool calls
 - **System Prompt**: Describes available management tools, common workflows, and platform docs availability
-- **Mounts**: `/docs` — Everruns platform documentation (virtual, readonly). The stored/normalized mount path is `/docs`; agents/tools access it as `/workspace/docs`. Embedded at compile time via `include_dir!` from the repo `docs/` directory. Only markdown files (`.md`, `.mdx`) are included in the virtual tree. See `crates/core/src/capabilities/platform_management.rs`.
+- **Mounts**: `/docs` — Everruns platform documentation (virtual, readonly). The stored/normalized mount path is `/docs`; agents/tools access it as `/workspace/docs`. Embedded at compile time via `include_dir!` from the repo `docs/` directory. Only markdown files (`.md`, `.mdx`) are included in the virtual tree.
 - **Lifecycle Parity**: Must enforce the same archive/delete, assignment, and read-only rules as the public API and UI. Agents using these tools may not bypass lifecycle restrictions.
-- **Tools** (read/write split — read tools return single item by ID or filtered list):
-  - `read_capabilities` - Discover available capabilities (built-in, MCP servers, skills)
-    - Parameters:
-      - `id`: string - Optional capability ID to get a single capability
-      - `search`: string - Optional case-insensitive filter by name, description, category, or ID
-    - Returns: Single capability (when `id` given) or array of capabilities with id, name, description, type (builtin/mcp_server/skill), tools, dependencies
-    - Policy: Auto
-  - `read_harnesses` - Read harnesses by ID or list/filter
-    - Parameters:
-      - `id`: string - Optional harness ID to get a single harness (returns full detail incl. system_prompt)
-    - Returns: Single harness (when `id` given) or array of harness summaries with `ui_link`
-    - Policy: Auto
-  - `manage_harnesses` - Harness mutations: create, update, delete, copy
-    - Parameters:
-      - `operation`: enum (create, update, delete, copy) - The operation to perform
-      - `harness_id`: string - Required for update, delete, copy
-      - `name`: string - Required for create, optional for update/copy
-      - `system_prompt`: string - Required for create, optional for update
-      - `description`: string - Optional for create/update
-      - `capabilities`: string[] - Optional for create
-    - Returns: Harness data with `ui_link`
-    - Policy: Auto
-  - `read_agents` - Read agents by ID or list/filter
-    - Parameters:
-      - `id`: string - Optional agent ID to get a single agent (returns full detail incl. system_prompt)
-    - Returns: Single agent (when `id` given) or array of agent summaries with `ui_link`
-    - Policy: Auto
-  - `manage_agents` - Agent mutations: create, update, delete
-    - Parameters:
-      - `operation`: enum (create, update, delete) - The operation to perform
-      - `agent_id`: string - Required for update, delete
-      - `name`: string - Required for create, optional for update
-      - `system_prompt`: string - Required for create, optional for update
-      - `description`: string - Optional for create/update
-      - `capabilities`: string[] - Optional for create
-    - Returns: Agent data with `ui_link`
-    - Policy: Auto
-  - `read_sessions` - Read sessions by ID or list/filter
-    - Parameters:
-      - `id`: string - Optional session ID to get a single session
-      - `agent_id`: string - Optional filter by agent
-      - `limit`: integer - Optional max results for list (default: 20)
-    - Returns: Single session (when `id` given) or array of session summaries with `ui_link`
-    - Policy: Auto
-  - `manage_sessions` - Session mutations: create, delete
-    - Parameters:
-      - `operation`: enum (create, delete) - The operation to perform
-      - `session_id`: string - Required for delete
-      - `harness_id`: string - Optional for create (defaults to built-in Generic harness when omitted)
-      - `agent_id`: string - Optional for create
-      - `title`: string - Optional for create
-    - Returns: Session data with `ui_link`
-    - Policy: Auto
-  - `session_send_message` - Send a user message to a session, triggering a turn
-    - Parameters:
-      - `session_id`: string - Target session ID
-      - `content`: string - Message content
-    - Returns: Confirmation with `ui_link`
-    - Policy: Auto
-  - `session_read_messages` - Read messages from a session
-    - Parameters:
-      - `session_id`: string - Target session ID
-      - `limit`: integer - Optional max messages (default: 10)
-    - Returns: Array of messages with role, content, created_at
-    - Policy: Auto
-  - `session_read_response` - Wait for session to finish processing and return the response
-    - Parameters:
-      - `session_id`: string - Target session ID
-      - `timeout_secs`: integer - Optional timeout (default: 120). Set to 0 to check status without waiting.
-    - Returns: Session status (session_id, status, ui_link)
-    - Policy: Auto
-- **Icon**: "settings"
-- **Category**: "Management"
+- **Tools**: Read/write split — read tools (`read_capabilities`, `read_harnesses`, `read_agents`, `read_sessions`, `session_read_messages`, `session_read_response`) return single item by ID or filtered list; write tools (`manage_harnesses`, `manage_agents`, `manage_sessions`, `session_send_message`) perform mutations. See `crates/core/src/capabilities/platform_management.rs` for full tool parameter definitions.
 
 Lifecycle rules for platform management:
 - `delete` archives.
@@ -834,21 +748,9 @@ Capabilities can contribute message filters that modify how messages are retriev
 4. **DB Mapping**: Most filters map directly to SQL WHERE clauses for efficiency
 5. **In-Memory Fallback**: Custom predicates use Rust closures for complex filtering
 
-#### MessageFilter Types
+#### MessageFilter Types and Provider Trait
 
-| Filter | Description | SQL Mapping |
-|--------|-------------|-------------|
-| `TimeRange { from, to }` | Filter by timestamp range | `WHERE created_at >= $from AND created_at <= $to` |
-| `EventTypes(Vec<String>)` | Whitelist event types | `WHERE event_type = ANY($types)` |
-| `ToolName(String)` | Filter tool results by name | `WHERE event_type = 'tool.completed' AND data->>'tool_name' = $name` |
-| `Search(String)` | Full-text search in content | `WHERE search_vector @@ plainto_tsquery('english', $query)` |
-| `ExcludeIds(Vec<Uuid>)` | Exclude specific message IDs | `WHERE id != ALL($ids)` |
-| `IncludeIds(Vec<Uuid>)` | Include only specific IDs | `WHERE id = ANY($ids)` |
-| `Custom(Arc<dyn Fn(&Message) -> bool>)` | In-memory predicate | Applied after DB query |
-
-#### MessageFilterProvider Trait
-
-See `crates/core/src/message_filter.rs` for `MessageFilterProvider`, `MessageFilter`, `MessageQuery`, `InjectedMessage`, and `InjectionPosition` types.
+For the full `MessageFilter` enum variants (TimeRange, EventTypes, ToolName, Search, ExcludeIds, IncludeIds, Custom) and `MessageFilterProvider` trait, see `crates/core/src/message_filter.rs`. Most filters map directly to SQL WHERE clauses; `Custom` uses in-memory predicates applied after DB query.
 
 #### Message Injection
 

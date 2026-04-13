@@ -14,48 +14,13 @@ See `crates/core/src/permissions.rs` for the full `Permission` enum with all var
 
 ### Rule
 
-Single predicate that evaluates to true/false given an auth context.
+Single predicate that evaluates to true/false given an auth context. Hardcoded enum variants (no dynamic rules). Rules are **additive within a policy** — all rules must pass (AND logic).
 
-Hardcoded enum variants (no dynamic rules):
-
-| Rule | Description |
-|------|-------------|
-| `UserHasPermission(perm)` | User's role grants the permission |
-| `UserHasRole(role)` | User has at least this OrgRole |
-| `IsPlatformUser` | Caller is in platform user allowlist |
-| `UserIsResourceOwner` | User created the resource (future) |
-
-Rules are **additive within a policy** — all rules must pass (AND logic).
-
-### Policy
-
-Named set of rules. Attached to service operations. All rules must pass for access.
-
-```rust
-Policy {
-    id: "harness.manage",
-    rules: [UserHasPermission("org:harnesses:manage")],
-}
-
-Policy {
-    id: "harness.dangerous",
-    rules: [
-        UserHasPermission("org:harnesses:manage"),
-        UserHasPermission("org:harnesses:dangerous"),
-    ],
-}
-
-Policy {
-    id: "durable.access",
-    rules: [IsPlatformUser],
-}
-```
+See `crates/core/src/permissions.rs` for the `Rule` enum variants and `Policy` struct definitions.
 
 ## Role → Permission Mapping
 
-Default OSS mapping is hardcoded in `DefaultPermissionResolver`. No DB storage (phase 1). Owner inherits all Admin permissions. Admin inherits all Member permissions.
-
-See `crates/core/src/permissions.rs` for the full role-to-permission mapping.
+Default OSS mapping is hardcoded in `DefaultPermissionResolver`. No DB storage (phase 1). Owner inherits all Admin permissions. Admin inherits all Member permissions. See `crates/core/src/permissions.rs` for the full role-to-permission mapping.
 
 **Default role:** `Owner` (phase 1). All users get full permissions by default. Future phases will assign roles via invitation/admin UI.
 
@@ -93,27 +58,11 @@ The `#[policy]` macro continues to call `Policy::evaluate()`, which uses `Defaul
 
 ### Service Layer
 
-Services receive a `Caller` context (replacing raw `org_id`). Policy checks happen at the start of each service method.
-
-```rust
-/// Auth context passed from API handler to service.
-pub struct Caller {
-    pub org_id: i64,
-    pub org_public_id: String,
-    pub user_id: Option<Uuid>,
-    pub role: OrgRole,
-}
-
-impl From<&ResolvedOrg> for Caller {
-    fn from(org: &ResolvedOrg) -> Self { ... }
-}
-```
+Services receive a `Caller` context (replacing raw `org_id`). Policy checks happen at the start of each service method. See `crates/core/src/permissions.rs` for the `Caller` struct definition.
 
 ### Policy Evaluation
 
-See `crates/core/src/permissions.rs` for `Policy`, `Rule`, `Caller`, and evaluation logic. Policies support both default and custom resolvers via `evaluate()` / `evaluate_with()`.
-
-Config endpoints can use `evaluate_policies_with(resolver, caller, policies)` when they need policy results derived from a custom resolver instead of the default role map.
+See `crates/core/src/permissions.rs` for evaluation logic. Policies support both default and custom resolvers via `evaluate()` / `evaluate_with()`. Config endpoints can use `evaluate_policies_with(resolver, caller, policies)` when they need policy results derived from a custom resolver instead of the default role map.
 
 ### Declarative Enforcement via `#[policy]` Macro
 
@@ -127,16 +76,7 @@ The `#[policy(...)]` attribute macro (in `crates/macros/src/lib.rs`) injects `PO
 
 ### Error Mapping
 
-`PolicyError` maps to HTTP 403 at the API layer.
-
-```rust
-pub struct PolicyError {
-    pub policy_id: String,
-    pub message: String,
-}
-```
-
-API handler converts via `impl IntoResponse for PolicyError` or the existing error pipeline.
+`PolicyError` maps to HTTP 403 at the API layer. See `crates/core/src/permissions.rs` for the `PolicyError` type.
 
 ## UI: Policy Results API
 

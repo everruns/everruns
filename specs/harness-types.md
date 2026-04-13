@@ -35,7 +35,6 @@ The empty harness. No capabilities, no opinions. Intended as a blank canvas for 
 |----------|-------|
 | Name | `base` |
 | Display Name | Base |
-| Seed ID | `harness_01933b5a000070008000000000000601` |
 | System Prompt | "You are a helpful assistant." |
 | Capabilities | _(none)_ |
 | Tags | `base`, `built-in` |
@@ -53,26 +52,10 @@ The recommended default harness. Bundles the core capabilities needed for genera
 |----------|-------|
 | Name | `generic` |
 | Display Name | Generic |
-| Seed ID | `harness_01933b5a000070008000000000000602` |
 | System Prompt | "You are a helpful assistant." |
 | Tags | `generic`, `default`, `built-in` |
 
-**Capabilities:**
-
-| Capability ID | Name | Purpose | Config |
-|---------------|------|---------|--------|
-| `session_file_system` | File System | Read, write, list, grep, delete files in `/workspace` | |
-| `virtual_bash` | Virtual Bash | Sandboxed bash shell for code execution and scripting | |
-| `web_fetch` | Web Fetch | Fetch web content with file download support | `{"enable_file_download": true}` |
-| `session_storage` | Storage | Key/value store and encrypted secret storage | |
-| `session` | Session | Session info access and title management | |
-| `agent_instructions` | AGENTS.md | Reads AGENTS.md from workspace and injects into system prompt | |
-| `skills` | Agent Skills | Discover and activate skills from `/.agents/skills/` in session filesystem | |
-| `infinity_context` | Infinity Context | Trims older messages from the live prompt while exposing `query_history` for long sessions | |
-| `openai_tool_search` | OpenAI Tool Search | Defers tool schema loading on supported OpenAI models | |
-| `budgeting` | Budgeting | Budget-aware behavior: system prompt hints and `check_budget` tool | |
-| `compaction` | Context Compaction | Auto-compacts context at 85% budget via cascading strategies | `{"strategy": "auto", "proactive": true, "budget_percent": 0.85}` |
-| `tool_output_persistence` | Tool Output Persistence | Persists full exec tool output to `/.outputs/` (stdout + stderr separately) before truncation; injects `full_output`, `total_lines`, and `output_files` into result | |
+**Capabilities:** See `crates/server/src/seed.rs` for the full Generic harness capability list and configuration.
 
 **Use cases:**
 - Default harness for most agents
@@ -88,18 +71,11 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 |----------|-------|
 | Name | `platform-chat` |
 | Display Name | Platform Chat |
-| Seed ID | `harness_01933b5a000070008000000000000603` |
 | Parent | `generic` |
 | System Prompt | See `crates/server/src/seed.rs` (CHAT_HARNESS) for full prompt |
 | Tags | `chat`, `built-in` |
 
-**Local capabilities:** `platform_management`
-
-| Capability ID | Name | Purpose | Config |
-|---------------|------|---------|--------|
-| `platform_management` | Platform Management | Manage harnesses, agents, and sessions via tools | |
-
-**Effective capabilities:** Generic capabilities plus `platform_management`
+**Effective capabilities:** Generic capabilities plus `platform_management`. See `crates/server/src/seed.rs` for details.
 
 **System prompt guidance includes:**
 - "Run agent" workflow: create session → send message → wait for idle → get results
@@ -140,13 +116,7 @@ Built-in harnesses are managed by `crates/server/src/org_init.rs`:
 
 ### UUID Allocation (Default Org Only)
 
-Harness seed UUIDs occupy the `0x600-0x6FF` range. These fixed UUIDs are only used for the default org; other orgs get auto-generated UUIDs.
-
-| Harness | UUID (hex) |
-|---------|-----------|
-| Base | `0x01933b5a_0000_7000_8000_000000000601` |
-| Generic | `0x01933b5a_0000_7000_8000_000000000602` |
-| Chat | `0x01933b5a_0000_7000_8000_000000000603` |
+Harness seed UUIDs occupy the `0x600-0x6FF` range. These fixed UUIDs are only used for the default org; other orgs get auto-generated UUIDs. See `crates/server/src/seed.rs` for seed harness definitions and capability assignments.
 
 ## Future Harness Types
 

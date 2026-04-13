@@ -51,3 +51,7 @@ Examples:
 ### When to Create
 
 New features should have corresponding test cases documenting expected behavior and acceptance criteria.
+
+## Related Testing Specs
+
+See also: [fail-rs-testing.md](fail-rs-testing.md) (failure injection), [agent-reliability-tests.md](agent-reliability-tests.md) (E2E reliability), [load-testing.md](load-testing.md) (performance), [evals.md](evals.md) (behavioral evals)

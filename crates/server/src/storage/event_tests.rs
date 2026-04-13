@@ -174,7 +174,7 @@ fn test_event_api_contract_structure() {
 
     let json = serde_json::to_value(&event).unwrap();
 
-    // Verify required fields per specs/events-contract.md
+    // Verify required fields per specs/events.md
     assert!(json["id"].is_string(), "Event must have 'id' field");
     assert!(json["type"].is_string(), "Event must have 'type' field");
     assert!(json["ts"].is_string(), "Event must have 'ts' field");

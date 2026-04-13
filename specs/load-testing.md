@@ -174,3 +174,7 @@ Load tests always use the `llmsim-latency` seed model, which simulates realistic
 - **TBT (Time Between Tokens)**: Sampled from `LatencyProfile::fast()` between each streamed word
 
 This measures end-to-end server performance under conditions closer to real LLM usage, where streaming responses arrive over time rather than instantly. The llmsim driver detects the `-latency` suffix in the model name and enables latency simulation automatically.
+
+## Related Testing Specs
+
+See also: [fail-rs-testing.md](fail-rs-testing.md) (failure injection), [agent-reliability-tests.md](agent-reliability-tests.md) (E2E reliability), [test-cases.md](test-cases.md) (manual tests), [evals.md](evals.md) (behavioral evals)

@@ -66,13 +66,12 @@ Always make sure you are working on top of latest main from remote.
 - `specs/concepts.md` - Core entities, relationships, and concept diagram
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
 - `specs/production-deployment.md` - Production deployment aggregation spec and reverse proxy contract
-- `specs/parallel-execution-1m.md` - Scaling to 1M concurrent agents (partitioning, sharding, LLM routing)
 - `specs/embedding.md` - Embedding contract and `PlatformDefinition`
-- `specs/code-organization.md` - Naming conventions, type flow, testing, error handling
+- `specs/code-organization.md` - Developer conventions: formatting, testing, error handling, UI patterns
 - `specs/migrations.md` - Database migration naming, squashing, ordering, and conflict resolution
 - `specs/models.md` - Data models (Agent, Session, Message, etc.)
 - `specs/apis.md` - HTTP API endpoints, error handling
-- `specs/events.md` - Event types, SSE streaming
+- `specs/events.md` - Event types, SSE streaming, contract and compatibility guarantees
 - `specs/execution-phases.md` - Execution phases (Commentary/FinalAnswer) for multi-step tool flows
 - `specs/markdown-messages.md` - Chat message markdown rendering with llm-ui
 - `specs/tool-execution.md` - Tool types and execution flow
@@ -87,8 +86,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/agent-reliability-tests.md` - Agent execution reliability tests (worker crash, CP restart, network partitions)
 - `specs/authentication.md` - Authentication modes and OAuth
 - `specs/integrations.md` - **Integration specs index** (links to specs co-located with their crates)
-- `specs/braintrust-integration.md` - Braintrust observability
-- `specs/otel-observability.md` - OpenTelemetry Gen-AI semantic convention tracing
+- `specs/observability.md` - Observability providers (OpenTelemetry Gen-AI tracing, Braintrust)
 - `specs/prometheus-metrics.md` - Prometheus `/metrics` endpoint and scrape configuration
 - `specs/evals.md` - User-facing behavioral evals for agents (cases, scorers, runs)
 - `specs/encryption.md` - Envelope encryption for sensitive data
@@ -109,7 +107,6 @@ Always make sure you are working on top of latest main from remote.
 - `specs/session-sqldb.md` - Session-scoped SQL databases (SQLite over PostgreSQL VFS)
 - `specs/threat-model.md` - Security threat model with stable IDs and mitigations
 - `specs/bashkit-requirements.md` - Bash sandbox capabilities and requirements
-- `specs/events-contract.md` - SSE event format contract
 - `specs/maintenance.md` - Goal-oriented maintenance and release-readiness guidance
 - `specs/memory.md` - Persistent cross-session memory (multi-store, capacity limits, multicontent recall)
 - `specs/shipping.md` - Goal-oriented shipping and merge-readiness guidance
@@ -129,7 +126,6 @@ Always make sure you are working on top of latest main from remote.
 - `specs/tool-search.md` - OpenAI tool_search deferred tool loading capability
 - `specs/subagents.md` - Subagent orchestration (spawn, message, cancel child sessions)
 - `specs/session-resources.md` - Session resource registry (sandboxes, subagents, background work)
-- `specs/subagent-architecture-analysis.md` - Subagent architecture analysis across top coding agents
 - `specs/toolkit-library-contract.md` - Convention for external toolkit libraries (bashkit, fetchkit, etc.)
 - `specs/localization.md` - Locale/timezone resolution and backend localization rules
 - `specs/session-export.md` - Session export to JSONL (messages, API, UI)

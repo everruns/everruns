@@ -108,37 +108,7 @@ New organizations initialize these to the built-in `Generic` and `Base` harnesse
 
 #### Agent Preview
 
-The preview endpoint computes the final agent shape without persisting anything. Useful for UI to show users what their agent will look like at runtime.
-
-**Request:**
-```json
-POST /v1/agents/preview
-{
-  "system_prompt": "You are a helpful assistant.",
-  "capabilities": [
-    { "ref": "current_time" },
-    { "ref": "mcp:01234567-89ab-cdef-0123-456789abcdef" }
-  ]
-}
-```
-
-**Response:**
-```json
-{
-  "system_prompt": "## Current Time\nYou have access to...\n\nYou are a helpful assistant.",
-  "tools": [
-    {
-      "name": "get_current_time",
-      "description": "Get the current date and time",
-      "parameters": { ... }
-    }
-  ]
-}
-```
-
-The response shows:
-- `system_prompt`: Final prompt with capability additions prepended
-- `tools`: All tool definitions from enabled capabilities (including MCP servers)
+The preview endpoint computes the final agent shape without persisting anything. Useful for UI to show users what their agent will look like at runtime. Returns `system_prompt` (with capability additions prepended) and `tools` (all tool definitions from enabled capabilities including MCP servers).
 
 **Input Validation:**
 
@@ -192,59 +162,15 @@ See `specs/localization.md` for locale/timezone precedence and execution-context
 
 #### Create Session
 
-**Request:**
-```json
-POST /v1/sessions
-{
-  "harness_id": "harness_01234567-...",
-  "agent_id": "agent_01234567-...",
-  "title": "Optional title",
-  "locale": "uk-UA",
-  "tags": ["optional", "tags"],
-  "model_id": "optional-model-override",
-  "capabilities": [
-    { "ref": "current_time" },
-    { "ref": "web_fetch", "config": { "timeout_ms": 30000 } }
-  ],
-  "hints": {
-    "setup_connection": true,
-    "rich_media": true
-  }
-}
-```
+For the complete request/response schemas, run `./scripts/export-openapi.sh` or see the generated OpenAPI spec.
 
-The `harness_id` field is optional. When omitted, the server uses the organization's `base_harness_id`. New organizations default that setting to the built-in `Base` harness.
+Key design decisions for session creation:
 
-The `agent_id` field is optional and specifies which agent will work in this session when present.
-
-The optional `locale` field sets the session's default locale for agent responses and regional formatting. It is persisted on the session and reused across worker turns.
-The session API should also support an optional `timezone` field with an IANA timezone value. This is the durable fallback for unattended execution and scheduled/background turns.
-
-**Session Capabilities:**
-
-The optional `capabilities` field allows setting session-level capabilities that are **additive** to the agent's capabilities. When building the RuntimeAgent:
-1. Agent capabilities are applied first
-2. Session capabilities are applied after (additive)
-
-This enables temporarily extending an agent's capabilities for specific sessions without modifying the agent configuration.
-
-**Client Hints:**
-
-The optional `hints` field sets session-level **client hints** — generic key-value pairs that tell the server what the client can handle. Unlike capabilities (agent-scoped feature flags for tools), hints are client-scoped signals that influence server behavior without coupling to a fixed schema.
-
-- Any key-value pair is valid; unknown keys are ignored by the server.
-- Session hints are defaults for every turn in this session.
-- Per-message `controls.hints` override session hints key-by-key (shallow merge).
-- Resolution: `effective_hints = session.hints ∪ message.controls.hints` (message wins).
-
-Examples of hint keys:
-
-| Key | Value | Meaning |
-| --- | ----- | ------- |
-| `setup_connection` | `true` | Client can handle inline connection setup flow |
-| `rich_media` | `true` | Client can render images, audio, etc. |
-| `file_upload` | `true` | Client supports file upload tool calls |
-| `max_image_width` | `1024` | Client display constraint |
+- `harness_id` optional — defaults to the organization's `base_harness_id` (built-in `Base` harness for new orgs).
+- `agent_id` optional — specifies which agent works in this session.
+- `locale` / `timezone` — persisted on the session; `locale` for agent responses and regional formatting, `timezone` (IANA) as durable fallback for unattended/scheduled turns.
+- `capabilities` — **additive** to agent capabilities (agent applied first, session applied after). Enables temporarily extending an agent without modifying its configuration.
+- `hints` — session-level client hints (generic key-value pairs). Unknown keys ignored. Per-message `controls.hints` override session hints key-by-key (shallow merge). Resolution: `effective_hints = session.hints ∪ message.controls.hints` (message wins). See [client-hints.md](client-hints.md).
 
 Session creation and any other assignment flow must reject archived or deleted harnesses/agents with a client error. Existing sessions are preserved when dependencies are archived or deleted, but the next execution atom must fail gracefully with a user-visible explanation.
 
@@ -307,49 +233,14 @@ Org-scoped image storage for message attachments. Images are stored with optiona
 | GET | `/v1/images/{id}/thumbnail` | Get thumbnail (200x200 max) |
 | DELETE | `/v1/images/{id}` | Delete image |
 
-**Upload Request (multipart/form-data):**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `file` | file | Yes | Image file (PNG, JPEG, GIF, WebP) |
-| `session_id` | string | No | Optional session ID for metadata |
-
-**Upload Response:**
-
-```json
-{
-  "id": "01933b5a-0000-7000-8000-000000000001",
-  "filename": "screenshot.png",
-  "content_type": "image/png",
-  "size_bytes": 102400,
-  "has_thumbnail": true,
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
+For the complete request/response schemas, run `./scripts/export-openapi.sh` or see the generated OpenAPI spec.
 
 **Constraints:**
-- Maximum file size: 100MB
-- Request body limit: 101MB (100MB file + 1MB multipart overhead)
+- Maximum file size: 100MB (request body limit: 101MB including multipart overhead)
 - Allowed types: image/png, image/jpeg, image/gif, image/webp
 - Thumbnails generated automatically (max 200x200 pixels)
 
-**Usage in Messages:**
-
-Images can be attached to messages using the `image_file` content part type:
-
-```json
-POST /v1/sessions/{session_id}/messages
-{
-  "message": {
-    "content": [
-      { "type": "text", "text": "What's in this image?" },
-      { "type": "image_file", "image_id": "01933b5a-...", "filename": "photo.png" }
-    ]
-  }
-}
-```
-
-Images are sent to the LLM when processing messages. The system automatically resolves `image_file` references and converts them to the provider-specific format (OpenAI Vision or Anthropic Vision).
+**Usage in Messages:** Images can be attached using the `image_file` content part type. The system automatically resolves `image_file` references and converts them to the provider-specific format (OpenAI Vision or Anthropic Vision).
 
 ### Session Filesystem
 
@@ -421,31 +312,7 @@ When `limit` is provided:
 
 #### Model Sync
 
-The sync endpoint discovers available models from a provider's API:
-
-**Request:**
-```
-POST /v1/llm-providers/{id}/sync-models
-```
-
-**Response (success):**
-```json
-{
-  "status": "success",
-  "created": 5,
-  "updated": 10,
-  "stale": 2
-}
-```
-
-**Response (not supported):**
-```json
-{
-  "status": "not_supported"
-}
-```
-
-Providers with custom base URLs or providers that don't support model listing return `not_supported`.
+The sync endpoint discovers available models from a provider's API. Returns `"status": "success"` with created/updated/stale counts, or `"status": "not_supported"` for providers with custom base URLs or providers that don't support model listing.
 
 #### List Models Query Parameters
 
@@ -494,54 +361,7 @@ Capabilities are modular functionality units that can be enabled on agents. They
 - **System prompt additions**: Context injected into the agent's prompt
 - **Documentation**: User-facing descriptions of what the capability provides
 
-#### Response Format
-
-```json
-{
-  "items": [
-    {
-      "id": "current_time",
-      "name": "Current Time",
-      "description": "Tool to get current date and time",
-      "status": "available",
-      "icon": "clock",
-      "category": "Utilities"
-    }
-  ],
-  "total": 5
-}
-```
-
-Create agent with capabilities:
-```json
-POST /v1/agents
-{
-  "name": "Research Assistant",
-  "system_prompt": "You are a helpful research assistant.",
-  "capabilities": ["current_time", "web_fetch"]
-}
-```
-
-Update agent capabilities:
-```json
-PATCH /v1/agents/{agent_id}
-{
-  "capabilities": ["current_time", "web_fetch", "session_file_system"]
-}
-```
-
-Agent response includes capabilities:
-```json
-GET /v1/agents/{agent_id}
-{
-  "id": "...",
-  "name": "Research Assistant",
-  "system_prompt": "You are a helpful research assistant.",
-  "capabilities": ["current_time", "web_fetch"],
-  "status": "active",
-  ...
-}
-```
+For the complete request/response schemas, run `./scripts/export-openapi.sh` or see the generated OpenAPI spec. Note: the `/v1/capabilities` endpoint uses `items` instead of `data` for historical reasons.
 
 ### API Documentation
 
@@ -572,31 +392,7 @@ The binary is useful for:
 
 #### Implementation
 
-The spec is defined in `crates/server/src/openapi.rs`:
-
-```rust
-use utoipa::OpenApi;
-
-#[derive(OpenApi)]
-#[openapi(
-    paths(
-        api::agents::create_agent,
-        api::agents::list_agents,
-        // ... all API endpoints
-    ),
-    components(schemas(...)),
-    tags(...)
-)]
-pub struct ApiDoc;
-
-impl ApiDoc {
-    pub fn to_json() -> String {
-        Self::openapi()
-            .to_pretty_json()
-            .expect("Failed to serialize OpenAPI spec")
-    }
-}
-```
+The spec is defined in `crates/server/src/openapi.rs` using `utoipa` derive macros on the `ApiDoc` struct.
 
 ### Durable Execution Admin
 
@@ -629,23 +425,7 @@ Endpoints that return lists support pagination via query parameters:
 | `offset` | integer | 0 | - | Number of items to skip |
 | `limit` | integer | 20 | 100 | Maximum items to return |
 
-**Paginated Response Format:**
-
-```json
-{
-  "data": [...],
-  "total": 150,
-  "offset": 0,
-  "limit": 20
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `data` | array | Items for the current page |
-| `total` | integer | Total count across all pages |
-| `offset` | integer | Current offset (echoed from request) |
-| `limit` | integer | Current limit (echoed from request) |
+**Paginated Response Format:** `{ "data": [...], "total": N, "offset": N, "limit": N }`
 
 **Endpoints with Pagination:**
 
@@ -672,18 +452,6 @@ These endpoints return all items wrapped in `{"data": [...], "total": N}`:
 
 **Exception:** The `/v1/capabilities` endpoint uses `items` instead of `data` for historical reasons.
 
-**Example Usage:**
-
-```bash
-# First page (default)
-GET /v1/agents/{id}/sessions
-
-# Second page
-GET /v1/agents/{id}/sessions?offset=20&limit=20
-
-# Custom page size
-GET /v1/agents/{id}/sessions?limit=10
-```
 
 ### Search
 
@@ -728,17 +496,7 @@ GET /v1/{resource}/config → ResourceConfigResponse
 | `GET /v1/llm-models/config` | LLM model policies |
 | `GET /v1/skills/config` | Skill policies |
 
-**Response:**
-```json
-{
-  "policies": {
-    "harness.manage": true,
-    "harness.dangerous": false
-  }
-}
-```
-
-See `specs/permissions.md` for the full policy model and `ResourceConfigResponse` details.
+See `specs/permissions.md` for the full policy model, `ResourceConfigResponse` details, and response format.
 
 ### Rate Limiting
 
@@ -789,11 +547,3 @@ Standard HTTP status codes:
 - **Never expose internal error details.** Return generic `500 Internal Server Error` with "Internal server error".
 - **Always log server-side:** `tracing::error!()` before returning generic response.
 - Only return safe, user-facing messages: "Not found", "Invalid request", "Internal server error".
-
-Example:
-```rust
-let result = state.db.some_operation().await.map_err(|e| {
-    tracing::error!("Failed to perform operation: {}", e);
-    StatusCode::INTERNAL_SERVER_ERROR
-})?;
-```

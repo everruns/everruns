@@ -78,27 +78,7 @@ hero: ../images/section/visual.png  # Optional: hero image for social card
 
 ### Design Requirements
 
-Design follows the brand guidelines defined in [specs/brand.md](brand.md).
-
-#### Color Scheme
-
-| Theme | Background | Text | Accent |
-|-------|------------|------|--------|
-| Light | White/Smoke | Obsidian | Navy links, Gold hover |
-| Dark | Navy | White | Gold links |
-
-#### Typography
-
-- **Font**: Geist Sans (body), Geist Mono (code)
-- **Headings**: Weight 600 for H1-H3, 500 for H4-H6
-- **Body**: Weight 400, line-height 1.6
-
-#### Design Principles
-
-1. **Simple and clean** — grayscale dominant
-2. **Content-first** — minimal visual distraction
-3. **Generous whitespace** — let content breathe
-4. **Fast** — minimal external dependencies
+Design follows the brand guidelines defined in [specs/brand.md](brand.md) (colors, typography, visual principles).
 
 ### Build & Deployment
 
@@ -285,8 +265,3 @@ Diagrams are hand-authored SVGs following `specs/diagrams.md`. Each SVG has a co
 2. No client-side rendering library is needed — SVGs are static assets processed by Astro's image pipeline
 3. The Mermaid `.mmd` files are source-of-truth for diagram content but are not rendered at build time
 
-### Future Enhancements
-
-1. **Versioned Documentation**: Support for multiple documentation versions
-2. **Search Analytics**: Track popular search queries to improve docs
-3. **Changelog**: Auto-generate from GitHub releases

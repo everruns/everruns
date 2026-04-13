@@ -40,15 +40,7 @@ Contract:
 
 **Input Validation Limits:**
 
-Last-resort validation limits to guard against abuse. API returns generic `400 Bad Request` with message "Input exceeds allowed limits" when violated.
-
-| Field | Max Size | Notes |
-|-------|----------|-------|
-| `name` | 2 KB | Display name |
-| `description` | 10 KB | Optional description |
-| `system_prompt` | 1 MB | Allows large prompts with embedded context |
-| `capabilities` | 250 items | Maximum capabilities per agent |
-| Import file | 3 MB | Maximum size for `/v1/agents/import` body |
+Last-resort validation limits to guard against abuse. API returns generic `400 Bad Request` with message "Input exceeds allowed limits" when violated. See `crates/server/src/services/` for the current limit constants.
 
 ### Session
 
@@ -198,7 +190,7 @@ Key design points:
 1. **Database** (priority): Encrypted in `llm_providers.api_key_encrypted`
 2. **Environment Variable** (fallback): `DEFAULT_OPENAI_API_KEY` or `DEFAULT_ANTHROPIC_API_KEY`
 
-Default providers and models seeded on startup via `crates/server/src/seed.rs` (idempotent, well-known UUIDs).
+Default providers and models seeded on startup. See `crates/server/src/seed.rs` for default model configurations (idempotent, well-known UUIDs).
 
 ### LLM Model
 
@@ -206,7 +198,7 @@ Configuration for a specific model within a provider. See `crates/core/src/llm_m
 
 Key design points:
 - `source` enum: `manual` (user-added), `discovered` (from provider API), `predefined` (seeded)
-- `installed` flag: only installed models appear in UI model pickers (Chat UI). All models remain available via API regardless of installed status. Default installed models: GPT-5.4, Opus 4.6, Sonnet 4.6, Haiku 4.6.
+- `installed` flag: only installed models appear in UI model pickers (Chat UI). All models remain available via API regardless of installed status. See `crates/server/src/seed.rs` for default installed models.
 - Organization default model: stored in `organization_settings.default_model_id` (not on the model itself). Auto-elects a new default from installed models if the current default is uninstalled or deleted.
 - Stale model detection: `last_seen_at < provider.last_synced_at` means model no longer returned by provider API. Stale models kept (not deleted) to preserve customizations.
 
