@@ -296,16 +296,20 @@ jobs:
         with:
           shared-key: "test"
 
-      - name: Cache sqlx-cli
+      - name: Cache cargo binaries
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/bin/sqlx
-          key: ${{ runner.os }}-sqlx-cli-0.8
+          path: |
+            ~/.cargo/bin/cargo-binstall
+            ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-cargo-bins-sqlx-0.8
 
       - name: Install sqlx-cli
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
-            curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+            if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
+              curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+            fi
             cargo binstall sqlx-cli --no-confirm --version '~0.8'
           fi
 
@@ -423,16 +427,20 @@ jobs:
         with:
           shared-key: "test"
 
-      - name: Cache sqlx-cli
+      - name: Cache cargo binaries
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/bin/sqlx
-          key: ${{ runner.os }}-sqlx-cli-0.8
+          path: |
+            ~/.cargo/bin/cargo-binstall
+            ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-cargo-bins-sqlx-0.8
 
       - name: Install sqlx-cli
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
-            curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+            if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
+              curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+            fi
             cargo binstall sqlx-cli --no-confirm --version '~0.8'
           fi
 
