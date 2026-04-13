@@ -1,8 +1,11 @@
--- v0.8.11
---
+-- v0.8.11: Session resource registry
+-- Squashed from: 012_session_resources.sql
+
+-- ============================================
 -- 012_session_resources: Session resource registry
 -- Generic, session-scoped registry of active resources (sandboxes, subagents,
 -- browser sessions, etc.). See specs/session-resources.md.
+-- ============================================
 
 CREATE TABLE session_resources (
     id UUID PRIMARY KEY DEFAULT uuidv7(),

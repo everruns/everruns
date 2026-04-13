@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Migration Notes
 
-Migration squashed: `012_session_resources.sql` → `012_v0.8.11.sql`. Fresh database required (consistent with all prior squash releases).
+Migration squashed: `012_session_resources.sql` → `012_v0.8.11.sql`. In-place upgrade from 0.8.10 works — the squashed migration applies on top of existing `011_v0.8.10` as a normal incremental migration.
 
 ## [0.8.10] - 2026-04-11
 
