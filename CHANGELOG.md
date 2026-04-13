@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.11] - 2026-04-13
+
+### Highlights
+
+- **Container Sandbox** — Built-in `coding-container` harness with Docker Engine client, capability/tools scaffold, threat model, docs, and full integration parity ([#1276](https://github.com/everruns/everruns/pull/1276), [#1278](https://github.com/everruns/everruns/pull/1278), [#1279](https://github.com/everruns/everruns/pull/1279))
+- **MCP Resources & Multi-Org** — `resources/list` and `resources/read` methods, multi-org OAuth support, direct service call dispatch ([#1259](https://github.com/everruns/everruns/pull/1259), [#1271](https://github.com/everruns/everruns/pull/1271), [#1272](https://github.com/everruns/everruns/pull/1272))
+- **Session Resource Registry** — Generic session-scoped resource tracking for sandboxes, subagents, and background work ([#1274](https://github.com/everruns/everruns/pull/1274))
+- **Auth Hardening** — Scoped API key cache per org, Secure cookie flag, default org harness init ([#1282](https://github.com/everruns/everruns/pull/1282), [#1284](https://github.com/everruns/everruns/pull/1284), [#1275](https://github.com/everruns/everruns/pull/1275))
+
+### What's Changed
+
+- feat(mcp): replace HTTP/router dispatch with direct service calls ([#1272](https://github.com/everruns/everruns/pull/1272))
+- feat(mcp): add multi-org support for OAuth MCP clients ([#1271](https://github.com/everruns/everruns/pull/1271))
+- feat(mcp): implement resources/list and resources/read methods ([#1259](https://github.com/everruns/everruns/pull/1259))
+- feat(container-sandbox): add Docker Engine REST API client ([#1276](https://github.com/everruns/everruns/pull/1276))
+- feat(container-sandbox): add capability, tools, and crate scaffold ([#1278](https://github.com/everruns/everruns/pull/1278))
+- feat(container-sandbox): harness, threat model, docs, and integration parity ([#1279](https://github.com/everruns/everruns/pull/1279))
+- feat(capabilities): mount platform docs in chat via virtual filesystem ([#1273](https://github.com/everruns/everruns/pull/1273))
+- feat(api): session resource registry ([#1274](https://github.com/everruns/everruns/pull/1274))
+- feat(flags): enable notifications feature flag in dev ([#1283](https://github.com/everruns/everruns/pull/1283))
+- fix(auth): ensure default org gets harnesses via init_org ([#1275](https://github.com/everruns/everruns/pull/1275))
+- fix(auth): add missing Secure flag to switch-org cookie ([#1282](https://github.com/everruns/everruns/pull/1282))
+- fix(auth): scope API key query cache per org ([#1284](https://github.com/everruns/everruns/pull/1284))
+- revert(infra): remove sandbox VPS infra (belongs in SaaS repo) ([#1281](https://github.com/everruns/everruns/pull/1281))
+- chore(specs): simplify specs - remove duplication and trim code-mirroring content ([#1285](https://github.com/everruns/everruns/pull/1285))
+
 ## [0.8.10] - 2026-04-11
 
 ### Highlights
