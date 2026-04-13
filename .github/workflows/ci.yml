@@ -305,7 +305,8 @@ jobs:
       - name: Install sqlx-cli
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
-            cargo install sqlx-cli --no-default-features --features postgres
+            curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+            cargo binstall sqlx-cli --no-confirm --version '~0.8'
           fi
 
       - name: Run migrations
@@ -431,7 +432,8 @@ jobs:
       - name: Install sqlx-cli
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
-            cargo install sqlx-cli --no-default-features --features postgres
+            curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+            cargo binstall sqlx-cli --no-confirm --version '~0.8'
           fi
 
       - name: Run migrations
