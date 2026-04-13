@@ -1,5 +1,6 @@
--- Session resource registry
+-- v0.8.11
 --
+-- 012_session_resources: Session resource registry
 -- Generic, session-scoped registry of active resources (sandboxes, subagents,
 -- browser sessions, etc.). See specs/session-resources.md.
 
