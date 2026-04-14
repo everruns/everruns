@@ -3,7 +3,7 @@
 //! Verifies that:
 //! - Models can be enabled/disabled independently
 //! - Organization settings control the default model
-//! - Uninstalling the org default model elects a new one
+//! - Disabling the org default model elects a new one
 //!
 //! Uses in-memory backend (no PostgreSQL required).
 //!
@@ -126,7 +126,7 @@ async fn test_update_installed_flag() {
         .expect("model-a exists");
     assert!(updated.enabled);
 
-    // Uninstall
+    // Disable
     let updated2 = db
         .update_llm_model(
             TEST_ORG_ID,
