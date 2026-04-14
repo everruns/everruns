@@ -114,6 +114,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/xml-prompt-formatting.md` - XML tags for system prompt structure
 - `specs/skills-registry.md` - Agent Skills registry (agentskills.io format)
 - `specs/commands.md` - Slash commands system (system + skill commands)
+- `specs/domains.md` - Domain modules: Command trait, feature-oriented structure, MCP catalog generation
 - `specs/issue-tracking.md` - Issue tracking (Linear, OSS project)
 - `specs/harness-types.md` - Built-in harness types (Base, Generic)
 - `specs/client-side-tools.md` - Client-side tools for API/SDK consumers

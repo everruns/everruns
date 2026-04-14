@@ -24,6 +24,9 @@ pub use auth::{AuthBackend, BuiltinAuthBackend};
 // Shared application errors
 pub mod errors;
 
+// Domain modules (feature-oriented: commands + queries + types)
+pub mod domains;
+
 // Services layer
 pub mod services;
 pub use services::CapabilityService;
