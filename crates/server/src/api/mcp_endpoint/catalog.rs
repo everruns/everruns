@@ -79,18 +79,9 @@ fn make_direct_callback(
             return Ok(format_help(op));
         }
 
-        let wants_summary = is_flag_set(params, "summary");
-
         tokio::task::block_in_place(|| {
             let handle = tokio::runtime::Handle::current();
-            handle.block_on(async {
-                let result = (op.handler)(params, &ctx).await?;
-                if wants_summary {
-                    Ok(apply_summary_filter(&result))
-                } else {
-                    Ok(result)
-                }
-            })
+            handle.block_on(async { (op.handler)(params, &ctx).await })
         })
     }
 }
@@ -141,7 +132,7 @@ fn display_type(typ: &str) -> &str {
 }
 
 /// Client-side flags that are never forwarded to the API.
-const CLIENT_FLAGS: &[&str] = &["summary", "help"];
+const CLIENT_FLAGS: &[&str] = &["help"];
 
 /// Generate local --help text for an operation.
 fn format_help(op: &Operation) -> String {
@@ -171,7 +162,6 @@ fn format_help(op: &Operation) -> String {
 
     out.push_str("Flags:\n");
     out.push_str("  --help                     Show this help message\n");
-    out.push_str("  --summary                  Return only id, name, description, status fields\n");
     out
 }
 
@@ -180,37 +170,6 @@ fn is_flag_set(params: &serde_json::Value, key: &str) -> bool {
     params
         .get(key)
         .is_some_and(|v| v.as_bool().unwrap_or(false) || v.as_str().is_some_and(|s| s == "true"))
-}
-
-/// Summary fields kept in compact output mode.
-const SUMMARY_FIELDS: &[&str] = &[
-    "id",
-    "name",
-    "description",
-    "status",
-    "self_url",
-    "view_url",
-];
-
-/// Filter a JSON response to summary fields only.
-///
-/// Expects a response with a `data` array. Each item in the array is stripped to
-/// only contain the fields in `SUMMARY_FIELDS`. If the response doesn't have a
-/// `data` array, returns the original body unchanged.
-fn apply_summary_filter(body: &str) -> String {
-    let Ok(mut parsed) = serde_json::from_str::<serde_json::Value>(body) else {
-        return body.to_string();
-    };
-
-    if let Some(data) = parsed.get_mut("data").and_then(|d| d.as_array_mut()) {
-        for item in data.iter_mut() {
-            if let Some(obj) = item.as_object_mut() {
-                obj.retain(|key, _| SUMMARY_FIELDS.contains(&key.as_str()));
-            }
-        }
-    }
-
-    serde_json::to_string(&parsed).unwrap_or_else(|_| body.to_string())
 }
 
 // ============================================================================
@@ -250,7 +209,7 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_agents",
         category: "agents",
-        description: "List all active agents. Use search for name search, include_archived=true to include archived. Supports pagination (limit/offset) and --summary for compact output.",
+        description: "List all active agents. Use search for name search, include_archived=true to include archived. Supports pagination (limit/offset).",
         params: &[
             Param {
                 name: "search",
@@ -271,11 +230,6 @@ pub static CATALOG: &[Operation] = &[
                 name: "limit",
                 typ: "query",
                 description: "Page size (default: 20, max: 100)",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
         handler: |p, c| Box::pin(handlers::list_agents(p, c)),
@@ -431,7 +385,7 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_sessions",
         category: "sessions",
-        description: "List sessions. Filter by agent_id, search by title. Supports pagination (limit/offset) and --summary for compact output.",
+        description: "List sessions. Filter by agent_id, search by title. Supports pagination (limit/offset).",
         params: &[
             Param {
                 name: "agent_id",
@@ -452,11 +406,6 @@ pub static CATALOG: &[Operation] = &[
                 name: "limit",
                 typ: "query",
                 description: "Page size (default: 20, max: 100)",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
         handler: |p, c| Box::pin(handlers::list_sessions(p, c)),
@@ -781,19 +730,12 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_harnesses",
         category: "harnesses",
-        description: "List harnesses (base environments for sessions). Supports --summary for compact output.",
-        params: &[
-            Param {
-                name: "include_archived",
-                typ: "query",
-                description: "Include archived (default: false)",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
-            },
-        ],
+        description: "List harnesses (base environments for sessions).",
+        params: &[Param {
+            name: "include_archived",
+            typ: "query",
+            description: "Include archived (default: false)",
+        }],
         handler: |p, c| Box::pin(handlers::list_harnesses(p, c)),
     },
     Operation {
@@ -811,12 +753,8 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_models",
         category: "models",
-        description: "List all LLM models across all providers. Supports --summary for compact output.",
-        params: &[Param {
-            name: "summary",
-            typ: "query",
-            description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
-        }],
+        description: "List all LLM models across all providers.",
+        params: &[],
         handler: |p, c| Box::pin(handlers::list_models(p, c)),
     },
     Operation {
@@ -834,12 +772,8 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_providers",
         category: "providers",
-        description: "List configured LLM providers (OpenAI, Anthropic, etc.). Supports --summary for compact output.",
-        params: &[Param {
-            name: "summary",
-            typ: "query",
-            description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
-        }],
+        description: "List configured LLM providers (OpenAI, Anthropic, etc.).",
+        params: &[],
         handler: |p, c| Box::pin(handlers::list_providers(p, c)),
     },
     Operation {
@@ -869,19 +803,12 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_mcp_servers",
         category: "mcp_servers",
-        description: "List registered MCP servers. Supports --summary for compact output.",
-        params: &[
-            Param {
-                name: "search",
-                typ: "query",
-                description: "Search by name",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
-            },
-        ],
+        description: "List registered MCP servers.",
+        params: &[Param {
+            name: "search",
+            typ: "query",
+            description: "Search by name",
+        }],
         handler: |p, c| Box::pin(handlers::list_mcp_servers(p, c)),
     },
     Operation {
@@ -922,7 +849,7 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_capabilities",
         category: "capabilities",
-        description: "List available capabilities (virtual bash, web fetch, MCP, etc.). Supports search, pagination (limit/offset), and --summary for compact output.",
+        description: "List available capabilities (virtual bash, web fetch, MCP, etc.). Supports search and pagination (limit/offset).",
         params: &[
             Param {
                 name: "search",
@@ -938,11 +865,6 @@ pub static CATALOG: &[Operation] = &[
                 name: "limit",
                 typ: "query",
                 description: "Page size (default: 100, max: 200)",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
         handler: |p, c| Box::pin(handlers::list_capabilities(p, c)),
@@ -962,19 +884,12 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_skills",
         category: "skills",
-        description: "List registered skills. Supports --summary for compact output.",
-        params: &[
-            Param {
-                name: "include_archived",
-                typ: "query",
-                description: "Include archived",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
-            },
-        ],
+        description: "List registered skills.",
+        params: &[Param {
+            name: "include_archived",
+            typ: "query",
+            description: "Include archived",
+        }],
         handler: |p, c| Box::pin(handlers::list_skills(p, c)),
     },
     Operation {
@@ -1004,7 +919,7 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_images",
         category: "images",
-        description: "List uploaded images. Supports pagination (limit/offset) and --summary for compact output.",
+        description: "List uploaded images. Supports pagination (limit/offset).",
         params: &[
             Param {
                 name: "offset",
@@ -1015,11 +930,6 @@ pub static CATALOG: &[Operation] = &[
                 name: "limit",
                 typ: "query",
                 description: "Page size (default: 50, max: 100)",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
         handler: |p, c| Box::pin(handlers::list_images(p, c)),
@@ -1039,12 +949,8 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_schedules",
         category: "schedules",
-        description: "List durable scheduled tasks. Supports --summary for compact output.",
-        params: &[Param {
-            name: "summary",
-            typ: "query",
-            description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
-        }],
+        description: "List durable scheduled tasks.",
+        params: &[],
         handler: |p, c| Box::pin(handlers::list_schedules(p, c)),
     },
     Operation {
@@ -1074,12 +980,8 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_orgs",
         category: "organizations",
-        description: "List organizations for the current user. Supports --summary for compact output.",
-        params: &[Param {
-            name: "summary",
-            typ: "query",
-            description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
-        }],
+        description: "List organizations for the current user.",
+        params: &[],
         handler: |p, c| Box::pin(handlers::list_orgs(p, c)),
     },
     Operation {
@@ -1097,19 +999,12 @@ pub static CATALOG: &[Operation] = &[
     Operation {
         name: "list_users",
         category: "users",
-        description: "List users in the current organization. Supports search filtering and --summary for compact output.",
-        params: &[
-            Param {
-                name: "search",
-                typ: "query",
-                description: "Filter users by search term",
-            },
-            Param {
-                name: "summary",
-                typ: "query",
-                description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
-            },
-        ],
+        description: "List users in the current organization. Supports search filtering.",
+        params: &[Param {
+            name: "search",
+            typ: "query",
+            description: "Filter users by search term",
+        }],
         handler: |p, c| Box::pin(handlers::list_users(p, c)),
     },
     // ── Session Files ───────────────────────────────────────────────────
