@@ -3,7 +3,7 @@ title: Generic Harness
 description: The recommended default harness bundling core capabilities for general-purpose agent sessions.
 ---
 
-The **Generic** harness is the recommended default for most use cases. It bundles 11 core capabilities that cover file operations, command execution, web access, memory, and context management.
+The **Generic** harness is the recommended default for most use cases. It bundles 12 core capabilities that cover file operations, command execution, web access, memory, budgeting, and context management.
 
 ## When to Use
 
@@ -34,6 +34,7 @@ The **Generic** harness is the recommended default for most use cases. It bundle
 | [Infinity Context](/capabilities/infinity-context/) | Trims older messages from the live prompt while exposing earlier history via `query_history` |
 | [OpenAI Tool Search](/capabilities/openai-tool-search/) | Defers tool schema loading on supported models to reduce prompt size |
 | [Context Compaction](/advanced/compaction/) | Auto-compacts context at 85% budget via cascading strategies |
+| [Budgeting](/capabilities/budgeting/) | Token budget enforcement with configurable meters and rules |
 | Tool Output Persistence | Persists full tool output to `/.outputs/` before truncation for lossless retrieval |
 
 Infinity Context and Context Compaction work together to keep long sessions unbounded. See [Context Compaction](/advanced/compaction/#generic-harness-defaults) for details.

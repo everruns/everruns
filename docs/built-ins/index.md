@@ -12,7 +12,7 @@ A harness defines the base environment for sessions — system prompt, default m
 | Harness | Description | Capabilities |
 |---------|-------------|-------------|
 | [Base](/built-ins/harnesses/base/) | Empty harness, full control | None |
-| [Generic](/built-ins/harnesses/generic/) | Recommended default with core tools | 11 bundled |
+| [Generic](/built-ins/harnesses/generic/) | Recommended default with core tools | 12 bundled |
 | [Platform Chat](/built-ins/harnesses/platform-chat/) | Extends Generic for global chat | Generic + Platform Management |
 
 See the [Harnesses feature guide](/features/harnesses/) for harness selection, API management, and the prompt stack model.
