@@ -642,8 +642,11 @@ async fn handle_tools_call(
                 Err(e) => Err(e),
             }
         }
-        // Tier 2: catalog & scripting (execute is org-scoped)
-        "discover" => tool_discover(&arguments).await,
+        // Tier 2: catalog & scripting (org-scoped)
+        "discover" => match resolve_org_override(&arguments, auth_user, org, state).await {
+            Ok(org) => tool_discover(&arguments, &org, state).await,
+            Err(e) => Err(e),
+        },
         "execute" => match resolve_org_override(&arguments, auth_user, org, state).await {
             Ok(org) => tool_execute(&arguments, &org, state).await,
             Err(e) => Err(e),
@@ -1038,23 +1041,30 @@ async fn tool_session_get_status(
 }
 
 // ============================================================================
-// Tier 2: discover — searches catalog directly via catalog::discover_all/search
+// Tier 2: discover — delegates to ScriptedTool's built-in discover command
 // ============================================================================
 
-async fn tool_discover(args: &Value) -> Result<String, String> {
+async fn tool_discover(
+    args: &Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> Result<String, String> {
     let show_all = args.get("all").and_then(|v| v.as_bool()).unwrap_or(false);
 
-    if show_all {
-        return Ok(catalog::discover_all());
-    }
+    let command = if show_all {
+        "discover --categories".to_string()
+    } else {
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        if query.is_empty() {
+            return Err(
+                "Provide a 'query' to search or set 'all: true' to list everything.".into(),
+            );
+        }
+        format!("discover --search {query}")
+    };
 
-    let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-
-    if query.is_empty() {
-        return Err("Provide a 'query' to search or set 'all: true' to list everything.".into());
-    }
-
-    Ok(catalog::discover_search(query))
+    let tool = build_scripted_tool(org, state);
+    execute_script(&tool, &command, 10_000).await
 }
 
 // ============================================================================
@@ -1066,13 +1076,6 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
         .get("command")
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: command")?;
-
-    // Normalize `discover --all` to bashkit's `discover --categories`.
-    let command = if command.trim() == "discover --all" {
-        "discover --categories"
-    } else {
-        command
-    };
 
     let timeout_ms = args
         .get("timeout_ms")
