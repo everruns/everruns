@@ -97,7 +97,8 @@ function CreateApiKeyDialog({
         <DialogHeader>
           <DialogTitle>Create API Key</DialogTitle>
           <DialogDescription>
-            Create a new API key for programmatic access to the Everruns API.
+            Create a personal API key for programmatic access. This key will have access to all
+            organizations and resources available to your account.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -240,13 +241,24 @@ export default function ApiKeysPage() {
           <div>
             <h2 className="text-xl font-semibold">API Keys</h2>
             <p className="text-sm text-muted-foreground">
-              Manage your API keys for programmatic access.
+              Manage your personal API keys for programmatic access.
             </p>
           </div>
           <Button onClick={() => setCreateApiKeyOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Create API Key
           </Button>
+        </div>
+
+        <div className="flex items-start gap-3 p-3 mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
+          <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-500 mt-0.5 shrink-0" />
+          <div className="text-sm">
+            <p className="font-medium text-amber-800 dark:text-amber-400">Full account access</p>
+            <p className="text-amber-700 dark:text-amber-500/80 mt-0.5">
+              API keys grant access to all organizations and resources available to your account.
+              Treat them like passwords &mdash; do not share or commit them to source control.
+            </p>
+          </div>
         </div>
 
         <QueryStateWrapper

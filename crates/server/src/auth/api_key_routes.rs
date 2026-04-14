@@ -10,7 +10,6 @@ use axum::{
     routing::{delete, get},
 };
 use chrono::{Duration, Utc};
-use everruns_core::DEFAULT_ORG_ID;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -18,7 +17,7 @@ use uuid::Uuid;
 
 use super::api_key::generate_api_key;
 use super::audit;
-use super::middleware::{AuthError, AuthMethod, AuthState, AuthUser, ResolvedOrg};
+use super::middleware::{AuthError, AuthMethod, AuthState, AuthUser};
 use crate::api::common::ListResponse;
 use crate::server::ResourceLimitsConfig;
 use crate::storage::StorageBackend;
@@ -118,13 +117,14 @@ async fn list_api_keys(
 
 /// POST /v1/auth/api-keys - Create a new API key
 ///
-/// Organization is derived from the everruns_org cookie (set via /v1/users/me/switch-org).
+/// API keys are user-scoped (not org-scoped). The key inherits access to all
+/// organizations the user belongs to. Org context is resolved per-request via
+/// `X-Org-Id` header or `everruns_org` cookie.
 /// Cannot be called with API key authentication (must use session auth).
 async fn create_api_key(
     State(state): State<ApiKeyState>,
     headers: HeaderMap,
     user: AuthUser,
-    org: ResolvedOrg,
     Json(req): Json<CreateApiKeyRequest>,
 ) -> Result<(StatusCode, Json<ApiKeyResponse>), AuthError> {
     // Cannot create API key using API key auth
@@ -134,10 +134,10 @@ async fn create_api_key(
         ));
     }
 
-    // Enforce API key limit per user per org
+    // Enforce API key limit per user
     let key_count = state
         .db
-        .count_api_keys_for_user_in_org(user.id, org.org_id)
+        .count_api_keys_for_user(user.id)
         .await
         .map_err(|e| {
             tracing::error!("Failed to count API keys: {e}");
@@ -146,11 +146,11 @@ async fn create_api_key(
                 status: StatusCode::INTERNAL_SERVER_ERROR,
             }
         })?;
-    if key_count >= state.resource_limits.max_api_keys_per_user_per_org {
+    if key_count >= state.resource_limits.max_api_keys_per_user {
         return Err(AuthError {
             error: format!(
                 "API key limit reached (max {})",
-                state.resource_limits.max_api_keys_per_user_per_org
+                state.resource_limits.max_api_keys_per_user
             ),
             status: StatusCode::CONFLICT,
         });
@@ -171,7 +171,6 @@ async fn create_api_key(
     let key_row = state
         .db
         .create_api_key(CreateApiKeyRow {
-            org_id: org.org_id,
             user_id: user.id,
             name: req.name.clone(),
             key_hash: generated.key_hash.clone(),
@@ -186,9 +185,16 @@ async fn create_api_key(
             AuthError::unauthorized("Failed to create API key")
         })?;
 
+    // Use the user's first org for audit context (API key CRUD is user-level,
+    // not org-scoped, but audit logs are org-partitioned).
+    let audit_org_id = user
+        .organizations
+        .first()
+        .map(|o| o.org_id)
+        .unwrap_or(everruns_core::DEFAULT_ORG_ID);
     audit::emit(
         state.db.clone(),
-        org.org_id,
+        audit_org_id,
         Some(user.id),
         "auth.api_key.created",
         audit::client_ip(&headers),
@@ -229,9 +235,14 @@ async fn delete_api_key(
         // Notify the auth backend so it can invalidate caches.
         state.auth.backend.on_api_key_deleted();
 
+        let audit_org_id = user
+            .organizations
+            .first()
+            .map(|o| o.org_id)
+            .unwrap_or(everruns_core::DEFAULT_ORG_ID);
         audit::emit(
             state.db.clone(),
-            DEFAULT_ORG_ID,
+            audit_org_id,
             Some(user.id),
             "auth.api_key.deleted",
             audit::client_ip(&headers),

@@ -301,7 +301,7 @@ async fn cli_auth_exchange(
         })?
         .ok_or_else(|| AuthError::unauthorized("User not found"))?;
 
-    // Fetch user's organizations
+    // Fetch user's organizations (for response, not for key creation)
     let orgs = state
         .db
         .list_user_organizations(user_id)
@@ -311,16 +311,7 @@ async fn cli_auth_exchange(
             AuthError::unauthorized("Failed to fetch organizations")
         })?;
 
-    // Require at least one org — don't silently fall back to DEFAULT_ORG_ID
-    let org_id = orgs.first().map(|o| o.org_id).ok_or_else(|| {
-        tracing::warn!(user_id = %user_id, "CLI login: user has no organizations");
-        AuthError {
-            error: "You must create an organization before using the CLI. Log in to the web UI to create one.".to_string(),
-            status: StatusCode::UNPROCESSABLE_ENTITY,
-        }
-    })?;
-
-    // Generate API key with CLI metadata
+    // Generate API key with CLI metadata (user-scoped, no org)
     let generated = generate_api_key();
     let hostname = req.hostname.unwrap_or_else(|| "unknown".to_string());
     let os = req.os.unwrap_or_else(|| "unknown".to_string());
@@ -336,7 +327,6 @@ async fn cli_auth_exchange(
     state
         .db
         .create_api_key(CreateApiKeyRow {
-            org_id,
             user_id,
             name: format!("CLI login ({})", hostname),
             key_hash: generated.key_hash.clone(),
@@ -354,9 +344,13 @@ async fn cli_auth_exchange(
     // Delete the used session (one-time use)
     let _ = state.db.delete_expired_cli_auth_sessions().await;
 
+    let audit_org_id = orgs
+        .first()
+        .map(|o| o.org_id)
+        .unwrap_or(everruns_core::DEFAULT_ORG_ID);
     audit::emit(
         state.db.clone(),
-        org_id,
+        audit_org_id,
         Some(user_id),
         "auth.cli.exchange",
         ip,
