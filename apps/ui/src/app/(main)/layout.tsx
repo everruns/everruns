@@ -9,6 +9,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CommandPaletteContext, useCommandPaletteState } from "@/hooks/use-command-palette";
+import { getLoginRedirectPath } from "@/lib/auth-redirect";
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 import { NotificationsProvider } from "@/providers/notifications-provider";
@@ -55,11 +56,7 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   // Redirect to login if auth is required but user is not authenticated
   useEffect(() => {
     if (!authLoading && !authUnavailable && requiresAuth && !isAuthenticated) {
-      // Preserve current location so login can redirect back
-      const currentUrl = pathname + (searchParams.toString() ? `?${searchParams.toString()}` : "");
-      const returnTo =
-        currentUrl !== "/dashboard" ? `?return_to=${encodeURIComponent(currentUrl)}` : "";
-      router.replace(`/login${returnTo}`);
+      router.replace(getLoginRedirectPath(pathname, searchParams));
     }
   }, [authLoading, authUnavailable, requiresAuth, isAuthenticated, router, pathname, searchParams]);
 
