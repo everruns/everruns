@@ -5,7 +5,7 @@
 // and the direct service callback.
 
 use super::handlers;
-use bashkit::{ScriptedTool, ToolArgs, ToolDef};
+use bashkit::{ScriptingToolSet, ToolArgs, ToolDef};
 use serde_json::json;
 use std::future::Future;
 use std::pin::Pin;
@@ -40,8 +40,9 @@ pub struct CatalogContext {
     pub user_id: Option<uuid::Uuid>,
 }
 
-fn tool_builder() -> bashkit::ScriptedToolBuilder {
-    ScriptedTool::builder("everruns")
+/// Build a ScriptingToolSet with direct service calls for all catalog operations.
+pub fn build_toolset(ctx: CatalogContext) -> ScriptingToolSet {
+    let mut builder = ScriptingToolSet::builder("everruns")
         .short_description("Everruns API operations as bash builtins")
         .limits(
             bashkit::ExecutionLimits::new()
@@ -51,12 +52,7 @@ fn tool_builder() -> bashkit::ScriptedToolBuilder {
                 .max_input_bytes(500_000)
                 .max_ast_depth(50)
                 .parser_timeout(std::time::Duration::from_secs(3)),
-        )
-}
-
-/// Build a ScriptedTool with direct service calls for all catalog operations.
-pub fn build_scripted_tool(ctx: CatalogContext) -> ScriptedTool {
-    let mut builder = tool_builder();
+        );
 
     for op in CATALOG {
         let def = op_to_def(op);

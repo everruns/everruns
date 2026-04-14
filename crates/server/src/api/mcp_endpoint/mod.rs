@@ -25,7 +25,7 @@ use crate::services::{
 };
 use crate::storage::StorageBackend;
 use axum::{Json, Router, extract::State, routing::post};
-use bashkit::{ScriptedTool, Tool as _};
+use bashkit::ScriptingToolSet;
 use everruns_core::{Caller, OrgRole, PlatformDefinition, validate_org_public_id};
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
@@ -289,7 +289,7 @@ fn tool_definitions() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "command": {
+                    "commands": {
                         "type": "string",
                         "description": "Bash script to execute. API operations are available as built-in commands."
                     },
@@ -302,7 +302,7 @@ fn tool_definitions() -> Value {
                         "description": ORG_ID_DESCRIPTION
                     }
                 },
-                "required": ["command"]
+                "required": ["commands"]
             }
         }
     ])
@@ -1063,8 +1063,8 @@ async fn tool_discover(
         format!("discover --search {query}")
     };
 
-    let tool = build_scripted_tool(org, state);
-    execute_script(&tool, &command, 10_000).await
+    let toolset = build_toolset(org, state);
+    execute_script(&toolset, &command, 10_000).await
 }
 
 // ============================================================================
@@ -1073,9 +1073,9 @@ async fn tool_discover(
 
 async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
     let command = args
-        .get("command")
+        .get("commands")
         .and_then(|v| v.as_str())
-        .ok_or("Missing required parameter: command")?;
+        .ok_or("Missing required parameter: commands")?;
 
     let timeout_ms = args
         .get("timeout_ms")
@@ -1083,12 +1083,12 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
         .unwrap_or(30000)
         .min(60000);
 
-    let tool = build_scripted_tool(org, state);
-    execute_script(&tool, command, timeout_ms).await
+    let toolset = build_toolset(org, state);
+    execute_script(&toolset, command, timeout_ms).await
 }
 
 // ============================================================================
-// ScriptedTool helpers
+// ScriptingToolSet helpers
 // ============================================================================
 
 /// Build a CatalogContext for the given org.
@@ -1101,18 +1101,22 @@ fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::CatalogConte
     }
 }
 
-/// Build a ScriptedTool for the given org context.
+/// Build a ScriptingToolSet for the given org context.
 /// All catalog operations are direct service calls — no HTTP.
-fn build_scripted_tool(org: &ResolvedOrg, state: &AppState) -> ScriptedTool {
-    catalog::build_scripted_tool(catalog_context(org, state))
+fn build_toolset(org: &ResolvedOrg, state: &AppState) -> ScriptingToolSet {
+    catalog::build_toolset(catalog_context(org, state))
 }
 
-/// Execute a script through a ScriptedTool and return formatted output.
+/// Execute a script through a ScriptingToolSet and return formatted output.
 async fn execute_script(
-    tool: &ScriptedTool,
+    toolset: &ScriptingToolSet,
     command: &str,
     timeout_ms: u64,
 ) -> Result<String, String> {
+    let tools = toolset.tools();
+    let tool = tools
+        .first()
+        .ok_or_else(|| "No tools registered in toolset".to_string())?;
     let request = bashkit::ToolRequest::new(command);
 
     let result = tokio::time::timeout(
