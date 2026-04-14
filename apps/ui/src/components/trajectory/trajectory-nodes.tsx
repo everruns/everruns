@@ -27,14 +27,14 @@ export const TurnGroupNode = memo(function TurnGroupNode({
   const failed = d.failed;
   return (
     <div
-      className={`w-full h-full rounded-xl border-2 ${
+      className={`w-full h-full border-2 ${
         failed
           ? "border-red-300 bg-red-50/50 dark:border-red-700 dark:bg-red-950/30"
           : "border-border bg-muted/20 dark:bg-muted/10"
       }`}
     >
       <div
-        className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-t-[10px] ${
+        className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold ${
           failed
             ? "text-red-700 bg-red-100/60 dark:text-red-300 dark:bg-red-900/30"
             : "text-foreground/80 bg-muted/40"
@@ -70,7 +70,7 @@ export const UserMessageNode = memo(function UserMessageNode({
 }: NodeProps & { data: UserMessageNodeData }) {
   const d = data as UserMessageNodeData;
   return (
-    <div className="w-[308px] rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-800 dark:bg-blue-950">
+    <div className="w-[308px] border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-800 dark:bg-blue-950">
       <div className="flex items-center gap-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 mb-0.5">
         <User className="w-3 h-3" />
         User
@@ -93,7 +93,7 @@ export const AgentMessageNode = memo(function AgentMessageNode({
 }: NodeProps & { data: AgentMessageNodeData }) {
   const d = data as AgentMessageNodeData;
   return (
-    <div className="w-[308px] rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 dark:border-violet-800 dark:bg-violet-950">
+    <div className="w-[308px] border border-violet-200 bg-violet-50 px-3 py-2 dark:border-violet-800 dark:bg-violet-950">
       <div className="flex items-center gap-1.5 text-xs font-medium text-violet-700 dark:text-violet-300 mb-0.5">
         <Bot className="w-3 h-3" />
         Agent
@@ -121,7 +121,7 @@ export const ReasoningNode = memo(function ReasoningNode({
 }: NodeProps & { data: ReasoningNodeData }) {
   const d = data as ReasoningNodeData;
   return (
-    <div className="w-[308px] rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 dark:border-amber-800 dark:bg-amber-950">
+    <div className="w-[308px] border border-amber-200 bg-amber-50 px-2.5 py-1.5 dark:border-amber-800 dark:bg-amber-950">
       <div className="flex items-center gap-2 text-xs">
         <Brain className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
         <span className="font-medium text-amber-700 dark:text-amber-300">{d.label}</span>
@@ -151,7 +151,7 @@ export const ToolGroupNode = memo(function ToolGroupNode({
   const hasErrors = d.errorCount > 0;
   return (
     <div
-      className={`w-[308px] rounded-lg border px-2.5 py-2 ${
+      className={`w-[308px] border px-2.5 py-2 ${
         hasErrors
           ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950"
           : "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950"
@@ -174,7 +174,7 @@ export const ToolGroupNode = memo(function ToolGroupNode({
         {d.tools.map((tool) => (
           <span
             key={tool.id}
-            className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md ${
+            className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 ${
               tool.status === "error" || !tool.success
                 ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
                 : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"

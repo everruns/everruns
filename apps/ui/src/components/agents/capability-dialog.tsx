@@ -169,7 +169,7 @@ export function CapabilityDialog({
                             <label
                               key={cap.id}
                               className={cn(
-                                "flex items-start gap-3 p-2 rounded-md cursor-pointer transition-colors",
+                                "flex items-start gap-3 p-2 cursor-pointer transition-colors",
                                 isSelected
                                   ? "bg-primary/10 border border-primary/20"
                                   : "hover:bg-muted/50",

@@ -140,7 +140,7 @@ export default function OrgSetupPage() {
       <div className="flex min-h-[60vh] items-center justify-center p-4">
         <Card className="w-full max-w-lg p-8">
           <div className="flex flex-col items-center gap-4">
-            <Skeleton className="h-12 w-12 rounded-xl" />
+            <Skeleton className="h-12 w-12" />
             <Skeleton className="h-6 w-48" />
             <Skeleton className="h-4 w-64" />
           </div>
@@ -161,7 +161,7 @@ export default function OrgSetupPage() {
       <div className="flex min-h-[60vh] items-center justify-center p-4">
         <Card className="w-full max-w-lg p-8 text-center">
           <div className="flex flex-col items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+            <div className="flex h-12 w-12 items-center justify-center bg-primary/10">
               <Building2 className="h-6 w-6 text-primary" />
             </div>
             <h1 className="text-xl font-semibold">
@@ -184,7 +184,7 @@ export default function OrgSetupPage() {
     <div className="flex min-h-[60vh] items-center justify-center p-4">
       <Card className="w-full max-w-lg p-8">
         <div className="flex flex-col items-center gap-2 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+          <div className="flex h-12 w-12 items-center justify-center bg-primary/10">
             <Building2 className="h-6 w-6 text-primary" />
           </div>
           <h1 className="text-xl font-semibold">Setting up {org?.name}</h1>

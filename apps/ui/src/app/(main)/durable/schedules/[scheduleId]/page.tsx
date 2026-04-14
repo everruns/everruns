@@ -549,23 +549,23 @@ export default function ScheduleDetailPage() {
               </div>
             ) : stats ? (
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted">
                   <p className="text-2xl font-bold">{stats.total_executions}</p>
                   <p className="text-sm text-muted-foreground">Total Executions</p>
                 </div>
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted">
                   <p className="text-2xl font-bold text-green-500">{stats.successful_executions}</p>
                   <p className="text-sm text-muted-foreground">Successful</p>
                 </div>
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted">
                   <p className="text-2xl font-bold text-red-500">{stats.failed_executions}</p>
                   <p className="text-sm text-muted-foreground">Failed</p>
                 </div>
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted">
                   <p className="text-2xl font-bold text-yellow-500">{stats.skipped_executions}</p>
                   <p className="text-sm text-muted-foreground">Skipped</p>
                 </div>
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted">
                   <p className="text-2xl font-bold">
                     {stats.avg_duration_ms ? `${stats.avg_duration_ms}ms` : "-"}
                   </p>
@@ -610,7 +610,7 @@ export default function ScheduleDetailPage() {
             {executionsLoading ? (
               <Skeleton className="h-48" />
             ) : executions.length > 0 ? (
-              <div className="rounded-md border">
+              <div className="border">
                 <Table>
                   <TableHeader>
                     <TableRow>

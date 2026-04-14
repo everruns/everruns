@@ -63,7 +63,7 @@ function ConnectionRow({
   };
 
   return (
-    <div className="flex items-center justify-between p-4 border rounded-lg">
+    <div className="flex items-center justify-between p-4 border">
       <div className="flex items-center gap-3">
         <ProviderIcon iconName={icon} className="h-5 w-5" />
         <div>
@@ -135,7 +135,7 @@ function AvailableProviderRow({
   };
 
   return (
-    <div className="flex items-center justify-between p-4 border rounded-lg">
+    <div className="flex items-center justify-between p-4 border">
       <div className="flex items-center gap-3">
         <ProviderIcon iconName={provider.icon} className="h-5 w-5" />
         <div>
@@ -198,7 +198,7 @@ export default function ConnectionsPage() {
     <div className="space-y-8">
       {/* Success banner */}
       {successMessage && (
-        <div className="flex items-center gap-2 bg-green-500/10 text-green-700 dark:text-green-400 p-3 rounded-lg text-sm">
+        <div className="flex items-center gap-2 bg-green-500/10 text-green-700 dark:text-green-400 p-3 text-sm">
           <Check className="h-4 w-4" />
           {successMessage}
         </div>
@@ -214,7 +214,7 @@ export default function ConnectionsPage() {
         </div>
 
         {error && (
-          <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-4">
+          <div className="bg-destructive/10 text-destructive p-4 mb-4">
             Failed to load connections: {error.message}
           </div>
         )}

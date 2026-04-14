@@ -85,7 +85,7 @@ export default function StoragePage() {
           ) : (
             <div className="space-y-3">
               {keyValues.map((kv) => (
-                <div key={kv.key} className="border rounded-lg p-3 space-y-2">
+                <div key={kv.key} className="border p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <Badge variant="outline" className="font-mono">
                       {kv.key}
@@ -124,7 +124,7 @@ export default function StoragePage() {
               {secrets.map((secret) => (
                 <div
                   key={secret.name}
-                  className="border rounded-lg p-3 flex items-center justify-between"
+                  className="border p-3 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary" className="font-mono">

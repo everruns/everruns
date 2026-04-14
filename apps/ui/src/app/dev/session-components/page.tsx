@@ -39,7 +39,7 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
-      <div className="border rounded-lg p-4 bg-background">{children}</div>
+      <div className="border p-4 bg-background">{children}</div>
     </div>
   );
 }
@@ -83,7 +83,7 @@ function TokenUsageCard({ usage, title }: { usage: TokenUsage; title: string }) 
         <CardTitle className="text-sm">{title}</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/50">
+        <div className="flex items-center gap-2 p-2 border bg-muted/50">
           <Zap className="w-4 h-4 text-yellow-500" />
           <div className="flex-1">
             <p className="text-sm font-medium">{formatTokens(totalTokens(usage))} total</p>
@@ -178,7 +178,7 @@ export default function DevSessionComponentsPage() {
               </ShowcaseItem>
 
               <ShowcaseItem label="Session Header with Usage">
-                <div className="border rounded-lg p-4">
+                <div className="border p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-bold">Example Session</h2>
@@ -244,7 +244,7 @@ export default function DevSessionComponentsPage() {
               description="Different configurations of session headers"
             >
               <ShowcaseItem label="Minimal Header">
-                <div className="border rounded-lg p-4">
+                <div className="border p-4">
                   <div className="flex items-center justify-between">
                     <h2 className="text-lg font-semibold">Session #1234</h2>
                     <Badge variant="secondary">pending</Badge>
@@ -253,7 +253,7 @@ export default function DevSessionComponentsPage() {
               </ShowcaseItem>
 
               <ShowcaseItem label="Full Header with All Metadata">
-                <div className="border rounded-lg p-4">
+                <div className="border p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-bold">Production Debug Session</h2>

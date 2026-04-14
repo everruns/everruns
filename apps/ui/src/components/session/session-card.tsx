@@ -159,7 +159,7 @@ export function SessionCard({
   return (
     <Link
       href={sessionUrl}
-      className="flex items-start justify-between p-3 rounded-md border hover:bg-muted transition-colors group"
+      className="flex items-start justify-between p-3 border hover:bg-muted transition-colors group"
     >
       <div className="flex items-start gap-3 flex-1 min-w-0">
         <div className="flex-shrink-0 mt-0.5">

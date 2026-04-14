@@ -42,7 +42,7 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
-      <div className="border rounded-lg p-4 bg-background">{children}</div>
+      <div className="border p-4 bg-background">{children}</div>
     </div>
   );
 }
@@ -80,7 +80,7 @@ function ModelList() {
             {favoriteModels.map((model) => (
               <div
                 key={model.id}
-                className="flex items-center gap-3 p-2 rounded-md border bg-muted/30"
+                className="flex items-center gap-3 p-2 border bg-muted/30"
               >
                 <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
                 <div className="flex-1">
@@ -106,7 +106,7 @@ function ModelList() {
           <h4 className="text-sm font-medium text-muted-foreground">Other Models</h4>
           <div className="space-y-1">
             {otherModels.map((model) => (
-              <div key={model.id} className="flex items-center gap-3 p-2 rounded-md border">
+              <div key={model.id} className="flex items-center gap-3 p-2 border">
                 <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
                 <div className="flex-1">
                   <div className="font-medium text-sm">{model.display_name}</div>
@@ -222,7 +222,7 @@ export default function DevModelPickerPage() {
               description="How to use the ModelPicker in your components"
             >
               <ShowcaseItem label="Code Example">
-                <pre className="text-sm bg-muted p-4 rounded-md overflow-x-auto">
+                <pre className="text-sm bg-muted p-4 overflow-x-auto">
                   {`import { ModelPicker } from "@/components/models/model-picker";
 
 function MyComponent() {
@@ -240,7 +240,7 @@ function MyComponent() {
               </ShowcaseItem>
 
               <ShowcaseItem label="FavoriteToggle Example">
-                <pre className="text-sm bg-muted p-4 rounded-md overflow-x-auto">
+                <pre className="text-sm bg-muted p-4 overflow-x-auto">
                   {`import { FavoriteToggle } from "@/components/models/model-picker";
 
 function ModelRow({ model }) {

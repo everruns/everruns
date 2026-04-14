@@ -53,7 +53,7 @@ export default function FilesPage() {
 
       {/* Drag overlay */}
       {isDragging && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary/50 rounded-lg pointer-events-none">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary/50 pointer-events-none">
           <div className="flex flex-col items-center gap-3 text-primary">
             <Upload className="size-12" />
             <p className="text-lg font-medium">Drop files to upload</p>
@@ -64,7 +64,7 @@ export default function FilesPage() {
 
       {/* Upload progress toast */}
       {uploads.length > 0 && (
-        <div className="absolute bottom-4 right-4 z-50 w-72 bg-card border rounded-lg shadow-lg p-3 space-y-2">
+        <div className="absolute bottom-4 right-4 z-50 w-72 bg-card border shadow-lg p-3 space-y-2">
           <p className="text-sm font-medium">
             {isUploading ? "Uploading files..." : "Upload complete"}
           </p>

@@ -169,7 +169,7 @@ export default function EventsPage() {
           </div>
 
           {/* Events table */}
-          <div className="border rounded-lg">
+          <div className="border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -274,7 +274,7 @@ export default function EventsPage() {
           if (!open) setSelectedGeneration(null);
         }}
       >
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col overflow-hidden rounded-lg">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
             <DialogTitle>LLM Generation Details</DialogTitle>
           </DialogHeader>

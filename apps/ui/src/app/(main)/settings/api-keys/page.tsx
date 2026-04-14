@@ -34,7 +34,7 @@ function ApiKeyRow({
   };
 
   return (
-    <div className="flex items-center justify-between p-3 border rounded-lg">
+    <div className="flex items-center justify-between p-3 border">
       <div className="flex items-center gap-3">
         <Key className="h-5 w-5 text-muted-foreground" />
         <div>
@@ -168,7 +168,7 @@ function ShowApiKeyDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-2">
-          <div className="bg-muted p-3 rounded-md font-mono text-sm flex-1 min-w-0 max-w-full whitespace-nowrap overflow-x-auto">
+          <div className="bg-muted p-3 font-mono text-sm flex-1 min-w-0 max-w-full whitespace-nowrap overflow-x-auto">
             {apiKey}
           </div>
           <Button

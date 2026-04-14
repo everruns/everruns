@@ -39,7 +39,7 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
-      <div className="border rounded-lg p-4 bg-background">{children}</div>
+      <div className="border p-4 bg-background">{children}</div>
     </div>
   );
 }
@@ -142,7 +142,7 @@ export function Feature({ title, enabled = true }: FeatureProps) {
   const [isActive, setIsActive] = useState(enabled);
 
   return (
-    <div className="p-4 border rounded-lg">
+    <div className="p-4 border">
       <h3 className="text-lg font-medium">{title}</h3>
       <button onClick={() => setIsActive(!isActive)}>
         {isActive ? 'Disable' : 'Enable'}
@@ -201,19 +201,19 @@ function StreamingDemo() {
         <button
           onClick={startStreaming}
           disabled={isStreaming}
-          className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md disabled:opacity-50"
+          className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground disabled:opacity-50"
         >
           {isStreaming ? "Streaming..." : "Start Streaming Demo"}
         </button>
         <button
           onClick={reset}
-          className="px-4 py-2 text-sm font-medium border rounded-md hover:bg-muted"
+          className="px-4 py-2 text-sm font-medium border hover:bg-muted"
         >
           Reset
         </button>
       </div>
 
-      <div className="border rounded-lg p-4 min-h-[400px] bg-background">
+      <div className="border p-4 min-h-[400px] bg-background">
         {streamedText ? (
           isStreaming ? (
             <StreamingMessage text={streamedText} />
@@ -405,13 +405,13 @@ export default function DevMarkdownPage() {
             description="How to use the StreamdownMessage components"
           >
             <ShowcaseItem label="Import">
-              <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+              <pre className="bg-muted p-4 text-sm overflow-x-auto">
                 {`import { StreamdownMessage, InlineStreamdownMessage } from "@/components/chat/streamdown-message";`}
               </pre>
             </ShowcaseItem>
 
             <ShowcaseItem label="Streaming Message">
-              <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+              <pre className="bg-muted p-4 text-sm overflow-x-auto">
                 {`<StreamdownMessage isAnimating={true}>
   {streamingText}
 </StreamdownMessage>`}
@@ -419,7 +419,7 @@ export default function DevMarkdownPage() {
             </ShowcaseItem>
 
             <ShowcaseItem label="Completed Message">
-              <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+              <pre className="bg-muted p-4 text-sm overflow-x-auto">
                 {`<StreamdownMessage isAnimating={false}>
   {messageContent}
 </StreamdownMessage>`}
@@ -427,7 +427,7 @@ export default function DevMarkdownPage() {
             </ShowcaseItem>
 
             <ShowcaseItem label="Inline for Descriptions">
-              <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+              <pre className="bg-muted p-4 text-sm overflow-x-auto">
                 {`<InlineStreamdownMessage className="text-muted-foreground">
   {description}
 </InlineStreamdownMessage>`}

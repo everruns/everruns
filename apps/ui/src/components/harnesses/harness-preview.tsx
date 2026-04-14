@@ -97,7 +97,7 @@ export function HarnessPreview({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[400px] rounded-md border p-4 bg-muted/50">
+          <ScrollArea className="h-[400px] border p-4 bg-muted/50">
             <pre className="text-sm whitespace-pre-wrap font-mono">{preview.system_prompt}</pre>
           </ScrollArea>
         </CardContent>
@@ -136,7 +136,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="border rounded-lg p-4 bg-card">
+    <div className="border p-4 bg-card">
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <h4 className="font-semibold text-sm font-mono">{tool.name}</h4>
@@ -159,7 +159,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
         </button>
         {isExpanded && (
           <ScrollArea className="mt-2 max-h-[200px]">
-            <pre className="text-xs p-2 bg-muted rounded-md overflow-x-auto font-mono">
+            <pre className="text-xs p-2 bg-muted overflow-x-auto font-mono">
               {JSON.stringify(tool.parameters, null, 2)}
             </pre>
           </ScrollArea>

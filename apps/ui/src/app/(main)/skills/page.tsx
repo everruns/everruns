@@ -46,7 +46,7 @@ function SkillCard({
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+          <div className="flex h-9 w-9 items-center justify-center bg-primary/10">
             {skill.source_type === "archive" ? (
               <Archive className="h-5 w-5 text-primary" />
             ) : (
@@ -194,7 +194,7 @@ function UploadSkillDialog({
               type="file"
               accept=".zip"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+              className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
             />
             <p className="text-xs text-muted-foreground">Maximum archive size: 10 MB</p>
           </div>
@@ -217,7 +217,7 @@ function SkillCardSkeleton() {
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center gap-3">
-          <Skeleton className="h-9 w-9 rounded-lg" />
+          <Skeleton className="h-9 w-9" />
           <div className="space-y-2">
             <Skeleton className="h-5 w-32" />
             <Skeleton className="h-4 w-48" />

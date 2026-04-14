@@ -242,7 +242,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                       {hasMoreSessions && (
                         <Link
                           href={`/agents/${agentId}/sessions`}
-                          className="flex items-center justify-center p-3 rounded-md border border-dashed hover:bg-muted transition-colors text-muted-foreground"
+                          className="flex items-center justify-center p-3 border border-dashed hover:bg-muted transition-colors text-muted-foreground"
                         >
                           View all {totalSessions} sessions
                         </Link>
@@ -279,7 +279,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                         return (
                           <div
                             key={capConfig.ref}
-                            className="flex items-center gap-2 p-2 rounded-md border bg-muted/50"
+                            className="flex items-center gap-2 p-2 border bg-muted/50"
                           >
                             <IconComponent className="w-4 h-4" />
                             <div className="flex-1">
@@ -334,7 +334,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                   {agent.usage && (
                     <div>
                       <p className="text-sm font-medium mb-2">Token Usage</p>
-                      <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/50">
+                      <div className="flex items-center gap-2 p-2 border bg-muted/50">
                         <Zap className="w-4 h-4 text-yellow-500" />
                         <div className="flex-1">
                           <p className="text-sm font-medium">

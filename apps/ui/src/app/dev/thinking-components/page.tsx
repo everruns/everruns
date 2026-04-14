@@ -70,10 +70,10 @@ export default function ThinkingComponentsPage() {
         <p className="text-sm text-muted-foreground">
           Example of how thinking appears in a chat conversation.
         </p>
-        <div className="border rounded-lg p-4 space-y-4 bg-background">
+        <div className="border p-4 space-y-4 bg-background">
           {/* User message */}
           <div className="flex justify-end">
-            <div className="bg-primary text-primary-foreground rounded-lg px-4 py-2 max-w-[80%]">
+            <div className="bg-primary text-primary-foreground px-4 py-2 max-w-[80%]">
               Why is the sky blue?
             </div>
           </div>

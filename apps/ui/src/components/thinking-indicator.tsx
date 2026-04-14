@@ -27,7 +27,7 @@ export function ThinkingIndicator({ className, model }: ThinkingIndicatorProps) 
         {BAR_DELAYS.map((delay, i) => (
           <span
             key={delay}
-            className={`loading-wave-bar w-[3px] rounded-[1px] loading-wave-bar-${i}`}
+            className={`loading-wave-bar w-[3px] loading-wave-bar-${i}`}
             style={{
               animationDelay: `${delay}ms`,
               animationDuration: "0.7s",

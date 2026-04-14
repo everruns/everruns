@@ -45,7 +45,7 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
-      <div className="border rounded-lg overflow-hidden bg-background h-[300px]">{children}</div>
+      <div className="border overflow-hidden bg-background h-[300px]">{children}</div>
     </div>
   );
 }
@@ -454,7 +454,7 @@ export default function DevFilePreviewsPage() {
               </div>
               <div>
                 <div className="font-medium mb-2">Usage</div>
-                <pre className="bg-muted p-4 rounded-md text-xs overflow-x-auto">
+                <pre className="bg-muted p-4 text-xs overflow-x-auto">
                   {`import { FilePreview, canPreview } from "@/components/files";
 
 // Check if preview is available

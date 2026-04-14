@@ -95,7 +95,7 @@ export function ProviderCardSkeleton() {
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center gap-3">
-          <Skeleton className="h-9 w-9 rounded-lg" />
+          <Skeleton className="h-9 w-9" />
           <div className="space-y-2">
             <Skeleton className="h-5 w-32" />
             <Skeleton className="h-4 w-24" />

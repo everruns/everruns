@@ -56,7 +56,7 @@ function McpServerCard({
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+          <div className="flex h-9 w-9 items-center justify-center bg-primary/10">
             <Plug className="h-5 w-5 text-primary" />
           </div>
           <div>
@@ -347,7 +347,7 @@ function McpServerCardSkeleton() {
     <Card>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center gap-3">
-          <Skeleton className="h-9 w-9 rounded-lg" />
+          <Skeleton className="h-9 w-9" />
           <div className="space-y-2">
             <Skeleton className="h-5 w-32" />
             <Skeleton className="h-4 w-24" />

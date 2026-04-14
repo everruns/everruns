@@ -29,7 +29,7 @@ export function StreamingThinking({
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
 
   return (
-    <div className={cn("border border-muted-foreground/20 rounded-lg overflow-hidden", className)}>
+    <div className={cn("border border-muted-foreground/20 overflow-hidden", className)}>
       {/* Header - clickable to toggle collapse */}
       <button
         type="button"

@@ -204,9 +204,9 @@ export const ChatMessageList = memo(function ChatMessageList({
   if (eventsLoading) {
     return (
       <div className="space-y-4">
-        <div className="ml-auto h-20 w-3/4 animate-pulse rounded-md bg-muted" />
-        <div className="h-20 w-3/4 animate-pulse rounded-md bg-muted" />
-        <div className="h-20 w-2/3 animate-pulse rounded-md bg-muted" />
+        <div className="ml-auto h-20 w-3/4 animate-pulse bg-muted" />
+        <div className="h-20 w-3/4 animate-pulse bg-muted" />
+        <div className="h-20 w-2/3 animate-pulse bg-muted" />
       </div>
     );
   }

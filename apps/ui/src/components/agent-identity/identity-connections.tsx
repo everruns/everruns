@@ -53,7 +53,7 @@ function ConnectionRow({
   };
 
   return (
-    <div className="flex items-center justify-between p-4 border rounded-lg">
+    <div className="flex items-center justify-between p-4 border">
       <div className="flex items-center gap-3">
         <ProviderIcon iconName={icon} className="h-5 w-5" />
         <div>
@@ -120,7 +120,7 @@ function AvailableProviderRow({
   if (provider.connection_type !== "api_key") return null;
 
   return (
-    <div className="flex items-center justify-between p-4 border rounded-lg">
+    <div className="flex items-center justify-between p-4 border">
       <div className="flex items-center gap-3">
         <ProviderIcon iconName={provider.icon} className="h-5 w-5" />
         <div>
@@ -161,7 +161,7 @@ export function IdentityConnections({ identityId }: { identityId: string }) {
   return (
     <div className="space-y-4">
       {error && (
-        <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
+        <div className="bg-destructive/10 text-destructive p-4">
           Failed to load connections: {error.message}
         </div>
       )}
@@ -169,7 +169,7 @@ export function IdentityConnections({ identityId }: { identityId: string }) {
       {isLoading ? (
         <Skeleton className="h-[72px] w-full" />
       ) : connections.length === 0 && availableProviders.length === 0 ? (
-        <div className="p-6 text-center border rounded-lg">
+        <div className="p-6 text-center border">
           <LinkIcon className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
           <p className="text-muted-foreground text-sm">No connection providers available.</p>
         </div>

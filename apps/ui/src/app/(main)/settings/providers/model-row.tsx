@@ -45,7 +45,7 @@ export function ModelRow({
   const profile = model.profile;
 
   return (
-    <div className="border rounded-lg overflow-hidden">
+    <div className="border overflow-hidden">
       <div className="flex items-center justify-between p-3">
         <div className="flex items-center gap-3">
           <ProviderIcon
