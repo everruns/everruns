@@ -174,7 +174,7 @@ Re-encryption CLI tool implemented at `crates/server/src/bin/reencrypt_secrets.r
 | TM-TENANT-001 | Cross-org resource access | Critical | All DB queries include `WHERE org_id = $org_id`; enforced at repository layer | MITIGATED |
 | TM-TENANT-002 | Org enumeration via error codes | Medium | 404 returned for cross-org access (not 403); prevents existence discovery | MITIGATED |
 | TM-TENANT-003 | Org cookie manipulation | High | Cookie value is `public_id`; server validates user membership against DB | MITIGATED |
-| TM-TENANT-004 | API key scope escalation | High | API keys 1:1 with org; key lookup returns org directly; org validated in auth middleware | MITIGATED |
+| TM-TENANT-004 | API key cross-org access | High | API keys are user-scoped; org resolved per-request via `X-Org-Id` header or cookie, validated against user's org memberships loaded from DB | MITIGATED |
 | TM-TENANT-005 | Internal org_id exposure | Medium | `org_id` (BIGINT) never in APIs, URLs, logs, or error messages; only `public_id` exposed | MITIGATED |
 | TM-TENANT-006 | Session inherits wrong org | Medium | Sessions scoped via agent FK; agent scoped to org; query joins enforce chain | MITIGATED |
 | TM-TENANT-007 | Durable tasks cross-org | Medium | gRPC `GetTurnContext` validates org_id in request matches record in DB | MITIGATED |
