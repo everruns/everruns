@@ -165,9 +165,7 @@ describe("ApiKeysPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(
-        screen.getByText(
-          /Create a personal API key for programmatic access/,
-        ),
+        screen.getByText(/Create a personal API key for programmatic access/),
       ).toBeInTheDocument();
     });
   });
