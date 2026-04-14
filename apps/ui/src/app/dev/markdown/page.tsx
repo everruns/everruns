@@ -205,10 +205,7 @@ function StreamingDemo() {
         >
           {isStreaming ? "Streaming..." : "Start Streaming Demo"}
         </button>
-        <button
-          onClick={reset}
-          className="px-4 py-2 text-sm font-medium border hover:bg-muted"
-        >
+        <button onClick={reset} className="px-4 py-2 text-sm font-medium border hover:bg-muted">
           Reset
         </button>
       </div>

@@ -161,11 +161,7 @@ export default function LoginPage() {
         {/* Email/Password Form */}
         {hasPasswordAuth && (
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-destructive/10 text-destructive text-sm p-3">
-                {error}
-              </div>
-            )}
+            {error && <div className="bg-destructive/10 text-destructive text-sm p-3">{error}</div>}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input

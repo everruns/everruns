@@ -412,10 +412,7 @@ export default function DurableDashboardPage() {
               <CardContent>
                 <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-4">
                   {Object.entries(health.queue_depth_by_type).map(([type, count]) => (
-                    <div
-                      key={type}
-                      className="flex items-center justify-between p-3 bg-muted/50"
-                    >
+                    <div key={type} className="flex items-center justify-between p-3 bg-muted/50">
                       <span className="text-sm font-medium">{type}</span>
                       <Badge variant="outline">{count}</Badge>
                     </div>

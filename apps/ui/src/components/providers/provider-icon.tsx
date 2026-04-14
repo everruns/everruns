@@ -96,10 +96,7 @@ export function ProviderIcon({
   }
 
   return (
-    <div
-      className={cn(showBackground && "bg-primary/10", container, className)}
-      title={label}
-    >
+    <div className={cn(showBackground && "bg-primary/10", container, className)} title={label}>
       <IconComponent size={iconSize} />
     </div>
   );

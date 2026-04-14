@@ -78,10 +78,7 @@ function ModelList() {
           </h4>
           <div className="space-y-1">
             {favoriteModels.map((model) => (
-              <div
-                key={model.id}
-                className="flex items-center gap-3 p-2 border bg-muted/30"
-              >
+              <div key={model.id} className="flex items-center gap-3 p-2 border bg-muted/30">
                 <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
                 <div className="flex-1">
                   <div className="font-medium text-sm">{model.display_name}</div>

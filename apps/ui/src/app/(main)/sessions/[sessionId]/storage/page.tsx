@@ -122,10 +122,7 @@ export default function StoragePage() {
           ) : (
             <div className="space-y-3">
               {secrets.map((secret) => (
-                <div
-                  key={secret.name}
-                  className="border p-3 flex items-center justify-between"
-                >
+                <div key={secret.name} className="border p-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary" className="font-mono">
                       {secret.name}
