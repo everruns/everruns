@@ -79,7 +79,9 @@ describe("ApiKeysPage", () => {
     render(<ApiKeysPage />, { wrapper });
 
     expect(screen.getByText("API Keys")).toBeInTheDocument();
-    expect(screen.getByText("Manage your API keys for programmatic access.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Manage your personal API keys for programmatic access."),
+    ).toBeInTheDocument();
   });
 
   it("renders API key rows with correct data", () => {
@@ -163,7 +165,9 @@ describe("ApiKeysPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
       expect(
-        screen.getByText("Create a new API key for programmatic access to the Everruns API."),
+        screen.getByText(
+          /Create a personal API key for programmatic access/,
+        ),
       ).toBeInTheDocument();
     });
   });
