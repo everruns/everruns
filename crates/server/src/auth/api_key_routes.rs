@@ -185,9 +185,16 @@ async fn create_api_key(
             AuthError::unauthorized("Failed to create API key")
         })?;
 
+    // Use the user's first org for audit context (API key CRUD is user-level,
+    // not org-scoped, but audit logs are org-partitioned).
+    let audit_org_id = user
+        .organizations
+        .first()
+        .map(|o| o.org_id)
+        .unwrap_or(everruns_core::DEFAULT_ORG_ID);
     audit::emit(
         state.db.clone(),
-        everruns_core::DEFAULT_ORG_ID,
+        audit_org_id,
         Some(user.id),
         "auth.api_key.created",
         audit::client_ip(&headers),
@@ -228,9 +235,14 @@ async fn delete_api_key(
         // Notify the auth backend so it can invalidate caches.
         state.auth.backend.on_api_key_deleted();
 
+        let audit_org_id = user
+            .organizations
+            .first()
+            .map(|o| o.org_id)
+            .unwrap_or(everruns_core::DEFAULT_ORG_ID);
         audit::emit(
             state.db.clone(),
-            everruns_core::DEFAULT_ORG_ID,
+            audit_org_id,
             Some(user.id),
             "auth.api_key.deleted",
             audit::client_ip(&headers),

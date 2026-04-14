@@ -1094,4 +1094,197 @@ mod tests {
         assert_eq!(resolved.user_id, Some(user_id));
         assert_eq!(resolved.role, OrgRole::Owner);
     }
+
+    // --- ResolvedOrg API key auth tests ---
+
+    /// Mock backend that returns an API-key-authenticated user.
+    struct ApiKeyMockBackend {
+        user: AuthUser,
+    }
+
+    impl ApiKeyMockBackend {
+        fn with_user(user: AuthUser) -> Self {
+            Self { user }
+        }
+    }
+
+    #[async_trait]
+    impl AuthBackend for ApiKeyMockBackend {
+        async fn validate_token(&self, _token: &str) -> Result<AuthUser, AuthError> {
+            Err(AuthError::unauthorized("not supported"))
+        }
+
+        async fn validate_api_key(&self, _key: &str) -> Result<AuthUser, AuthError> {
+            Ok(self.user.clone())
+        }
+
+        fn auth_routes(&self) -> Option<Router> {
+            None
+        }
+
+        fn auth_config_response(&self) -> AuthConfigResponse {
+            AuthConfigResponse {
+                mode: "full".into(),
+                password_auth_enabled: false,
+                oauth_providers: vec![],
+                signup_enabled: false,
+            }
+        }
+    }
+
+    fn api_key_auth_state(user: AuthUser) -> AuthState {
+        let backend: Arc<dyn AuthBackend> = Arc::new(ApiKeyMockBackend::with_user(user));
+        AuthState {
+            config: AuthConfig {
+                mode: AuthMode::Full,
+                ..AuthConfig::default()
+            },
+            backend,
+            permission_resolver: Arc::new(DefaultPermissionResolver),
+            db: None,
+        }
+    }
+
+    fn multi_org_api_key_user() -> (Uuid, AuthUser) {
+        let user_id = Uuid::new_v4();
+        let user = AuthUser {
+            id: user_id,
+            email: "apiuser@example.com".to_string(),
+            name: "API User".to_string(),
+            roles: vec!["user".to_string()],
+            auth_method: AuthMethod::ApiKey,
+            organizations: vec![
+                OrgMembership {
+                    org_id: 1,
+                    public_id: "org_00000000000000000000000000000001".to_string(),
+                    name: "Org A".to_string(),
+                    role: OrgRole::Owner,
+                },
+                OrgMembership {
+                    org_id: 2,
+                    public_id: "org_00000000000000000000000000000002".to_string(),
+                    name: "Org B".to_string(),
+                    role: OrgRole::Member,
+                },
+            ],
+        };
+        (user_id, user)
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_api_key_single_org_auto_resolves() {
+        let user_id = Uuid::new_v4();
+        let user = AuthUser {
+            id: user_id,
+            email: "apiuser@example.com".to_string(),
+            name: "API User".to_string(),
+            roles: vec!["user".to_string()],
+            auth_method: AuthMethod::ApiKey,
+            organizations: vec![OrgMembership {
+                org_id: 1,
+                public_id: "org_00000000000000000000000000000001".to_string(),
+                name: "Org A".to_string(),
+                role: OrgRole::Owner,
+            }],
+        };
+
+        let state = api_key_auth_state(user);
+
+        let (mut parts, _body) = Request::builder()
+            .header(header::AUTHORIZATION, "Bearer evr_testkey123")
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let resolved = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .expect("single-org user should auto-resolve");
+
+        assert_eq!(resolved.public_id, "org_00000000000000000000000000000001");
+        assert_eq!(resolved.name, "Org A");
+        assert_eq!(resolved.user_id, Some(user_id));
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_api_key_multi_org_no_selection_returns_400() {
+        let (_user_id, user) = multi_org_api_key_user();
+        let state = api_key_auth_state(user);
+
+        // No X-Org-Id header, no cookie
+        let (mut parts, _body) = Request::builder()
+            .header(header::AUTHORIZATION, "Bearer evr_testkey123")
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let err = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert!(err.error.contains("Multiple organizations"));
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_api_key_x_org_id_header_selects_org() {
+        let (user_id, user) = multi_org_api_key_user();
+        let state = api_key_auth_state(user);
+
+        let (mut parts, _body) = Request::builder()
+            .header(header::AUTHORIZATION, "Bearer evr_testkey123")
+            .header("x-org-id", "org_00000000000000000000000000000002")
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let resolved = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .expect("should resolve org from X-Org-Id header");
+
+        assert_eq!(resolved.public_id, "org_00000000000000000000000000000002");
+        assert_eq!(resolved.name, "Org B");
+        assert_eq!(resolved.user_id, Some(user_id));
+        assert_eq!(resolved.role, OrgRole::Member);
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_api_key_non_member_org_returns_404() {
+        let (_user_id, user) = multi_org_api_key_user();
+        let state = api_key_auth_state(user);
+
+        // Request org the user is NOT a member of
+        let (mut parts, _body) = Request::builder()
+            .header(header::AUTHORIZATION, "Bearer evr_testkey123")
+            .header("x-org-id", "org_00000000000000000000000000000099")
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let err = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_api_key_invalid_format_returns_401() {
+        let (_user_id, user) = multi_org_api_key_user();
+        let state = api_key_auth_state(user);
+
+        // Invalid org ID format
+        let (mut parts, _body) = Request::builder()
+            .header(header::AUTHORIZATION, "Bearer evr_testkey123")
+            .header("x-org-id", "not-a-valid-org-id")
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let err = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.status, StatusCode::UNAUTHORIZED);
+        assert!(err.error.contains("Invalid organization ID format"));
+    }
 }
