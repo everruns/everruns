@@ -504,7 +504,7 @@ Global per-IP rate limiting applies to all `/v1` API routes (excluding `/health`
 
 | Scope | Default Limit | Env Var |
 |-------|---------------|---------|
-| Global API | 120 req/min per IP | `RATE_LIMIT_API_REQUESTS_PER_MINUTE` |
+| Global API | 1200 req/min per IP | `RATE_LIMIT_API_REQUESTS_PER_MINUTE` |
 | Login | 10 req/min per IP | — |
 | Register | 5 req/min per IP | — |
 | Token refresh | 30 req/min per IP | — |
