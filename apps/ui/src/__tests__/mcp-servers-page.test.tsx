@@ -150,4 +150,22 @@ describe("McpServersPage", () => {
 
     expect(mockMutateAsync).toHaveBeenCalledWith({ status: "archived" });
   });
+
+  it("shows a validation error for invalid MCP server URLs", async () => {
+    const mockMutateAsync = jest.fn().mockResolvedValue({});
+    mockUseCreateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+    });
+
+    render(<McpServersPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Server" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "atlassian" } });
+    fireEvent.change(screen.getByLabelText("URL"), { target: { value: "not-a-url" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Server" }));
+
+    expect(await screen.findByText("URL must be a valid absolute URL")).toBeInTheDocument();
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
 });

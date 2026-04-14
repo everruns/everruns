@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Combobox } from "@/components/ui/combobox";
+import { agentIdentityFormSchema, getFieldErrors, type FieldErrors } from "@/lib/form-validation";
 import { LOCALE_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/locale-data";
 
 export default function NewAgentIdentityPage() {
@@ -20,14 +21,26 @@ export default function NewAgentIdentityPage() {
   const [description, setDescription] = useState("");
   const [locale, setLocale] = useState("");
   const [timezone, setTimezone] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const identity = await createIdentity.mutateAsync({
+    const parsed = agentIdentityFormSchema.safeParse({
       name,
-      description: description || undefined,
-      locale: locale || undefined,
-      timezone: timezone || undefined,
+      description,
+      locale,
+      timezone,
+    });
+    if (!parsed.success) {
+      setFieldErrors(getFieldErrors(parsed.error));
+      return;
+    }
+
+    const identity = await createIdentity.mutateAsync({
+      name: parsed.data.name,
+      description: parsed.data.description,
+      locale: parsed.data.locale,
+      timezone: parsed.data.timezone,
     });
     router.push(`/agent-identities/${identity.id}`);
   }
@@ -49,16 +62,32 @@ export default function NewAgentIdentityPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label>Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} required />
+              <Input
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, name: undefined }));
+                }}
+                aria-invalid={!!fieldErrors.name}
+                required
+              />
+              {fieldErrors.name && <p className="text-xs text-destructive">{fieldErrors.name}</p>}
             </div>
             <div className="space-y-2">
               <Label>Description</Label>
               <Textarea
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, description: undefined }));
+                }}
+                aria-invalid={!!fieldErrors.description}
                 placeholder="Describe this identity..."
                 rows={3}
               />
+              {fieldErrors.description && (
+                <p className="text-xs text-destructive">{fieldErrors.description}</p>
+              )}
               <p className="text-xs text-muted-foreground">Supports Markdown</p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -67,20 +96,32 @@ export default function NewAgentIdentityPage() {
                 <Combobox
                   options={LOCALE_OPTIONS}
                   value={locale}
-                  onValueChange={setLocale}
+                  onValueChange={(value) => {
+                    setLocale(value);
+                    setFieldErrors((prev) => ({ ...prev, locale: undefined }));
+                  }}
                   placeholder="Select locale..."
                   searchPlaceholder="Search locales..."
                 />
+                {fieldErrors.locale && (
+                  <p className="text-xs text-destructive">{fieldErrors.locale}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Timezone</Label>
                 <Combobox
                   options={TIMEZONE_OPTIONS}
                   value={timezone}
-                  onValueChange={setTimezone}
+                  onValueChange={(value) => {
+                    setTimezone(value);
+                    setFieldErrors((prev) => ({ ...prev, timezone: undefined }));
+                  }}
                   placeholder="Select timezone..."
                   searchPlaceholder="Search timezones..."
                 />
+                {fieldErrors.timezone && (
+                  <p className="text-xs text-destructive">{fieldErrors.timezone}</p>
+                )}
               </div>
             </div>
             <div className="flex gap-3">

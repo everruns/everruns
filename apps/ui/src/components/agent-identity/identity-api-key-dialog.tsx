@@ -17,6 +17,11 @@ import { AlertCircle } from "lucide-react";
 import type { ConnectionProvider } from "@/lib/api/types";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { ProviderIcon } from "@/components/connections/provider-icon";
+import {
+  createConnectionFormSchema,
+  getFieldErrors,
+  type FieldErrors,
+} from "@/lib/form-validation";
 
 interface IdentityApiKeyDialogProps {
   identityId: string;
@@ -33,31 +38,37 @@ export function IdentityApiKeyDialog({
 }: IdentityApiKeyDialogProps) {
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const createConnection = useCreateIdentityApiKeyConnection(identityId);
 
   useEffect(() => {
     if (open) {
       setFormValues({});
       setError(null);
+      setFieldErrors({});
     }
   }, [open]);
 
-  if (!provider?.form_schema) return null;
+  const formSchema = provider?.form_schema;
+  if (!provider || !formSchema) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setFieldErrors({});
 
-    const apiKey = formValues["api_key"] ?? "";
-    if (!apiKey.trim()) {
-      setError("API key is required");
+    const parsed = createConnectionFormSchema(formSchema.fields).safeParse(formValues);
+    if (!parsed.success) {
+      setFieldErrors(getFieldErrors(parsed.error));
       return;
     }
 
+    const apiKey = parsed.data["api_key"] as string;
+
     // Collect extra fields (everything except api_key)
     const extraFields: Record<string, string> = {};
-    for (const [key, value] of Object.entries(formValues)) {
-      if (key !== "api_key" && value.trim()) {
+    for (const [key, value] of Object.entries(parsed.data)) {
+      if (key !== "api_key" && typeof value === "string" && value.trim()) {
         extraFields[key] = value;
       }
     }
@@ -89,11 +100,11 @@ export function IdentityApiKeyDialog({
 
         <form onSubmit={handleSubmit}>
           <InlineStreamdownMessage className="text-sm text-muted-foreground mb-4 leading-relaxed">
-            {provider.form_schema.instructions_markdown}
+            {formSchema.instructions_markdown}
           </InlineStreamdownMessage>
 
           <div className="space-y-4 mb-4">
-            {provider.form_schema.fields.map((field) => (
+            {formSchema.fields.map((field) => (
               <div key={field.name} className="space-y-2">
                 <Label htmlFor={field.name}>{field.label}</Label>
                 <Input
@@ -102,14 +113,22 @@ export function IdentityApiKeyDialog({
                   required={field.required}
                   placeholder={field.placeholder}
                   value={formValues[field.name] ?? ""}
-                  onChange={(e) =>
+                  aria-invalid={!!fieldErrors[field.name]}
+                  onChange={(e) => {
                     setFormValues((prev) => ({
                       ...prev,
                       [field.name]: e.target.value,
-                    }))
-                  }
+                    }));
+                    setFieldErrors((prev) => {
+                      if (!prev[field.name]) return prev;
+                      return { ...prev, [field.name]: undefined };
+                    });
+                  }}
                   autoComplete="off"
                 />
+                {fieldErrors[field.name] && (
+                  <p className="text-xs text-destructive">{fieldErrors[field.name]}</p>
+                )}
                 {field.help_text && (
                   <p className="text-xs text-muted-foreground">{field.help_text}</p>
                 )}

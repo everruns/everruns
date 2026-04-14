@@ -33,6 +33,12 @@ import { AgentPreview } from "@/components/agents/agent-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
+import {
+  agentFormSchema,
+  getFieldErrors,
+  type FieldErrors,
+  parseTagList,
+} from "@/lib/form-validation";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
@@ -62,6 +68,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   // Tab state
   const [activeTab, setActiveTab] = useState<string>("edit");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   // Form state - track user changes separately from initial values
   const [formChanges, setFormChanges] = useState<Partial<FormData>>({});
@@ -96,6 +103,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
 
   const handleFormChange = useCallback((field: keyof FormData, value: string) => {
     setFormChanges((prev) => ({ ...prev, [field]: value }));
+    setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
   }, []);
 
   // Only check availability when name has been changed from original
@@ -122,13 +130,15 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   // Submit handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const parsed = agentFormSchema.safeParse(formData);
+    if (!parsed.success) {
+      setFieldErrors(getFieldErrors(parsed.error));
+      return;
+    }
 
     try {
       // Parse tags
-      const tags = formData.tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
+      const tags = parseTagList(parsed.data.tags);
 
       // Get capabilities to save (already full AgentCapabilityConfig format)
       const capabilitiesToSave = localCapabilities ?? initialCapabilities;
@@ -142,12 +152,12 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
       await updateAgent.mutateAsync({
         agentId,
         request: {
-          name: formData.name,
-          display_name: formData.display_name || undefined,
-          description: formData.description || undefined,
-          system_prompt: formData.system_prompt,
+          name: parsed.data.name,
+          display_name: parsed.data.display_name,
+          description: parsed.data.description,
+          system_prompt: parsed.data.system_prompt,
           tags,
-          default_model_id: formData.default_model_id || undefined,
+          default_model_id: parsed.data.default_model_id,
           // Only include capabilities if they changed
           ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
           ...(initialFilesChanged && { initial_files: initialFilesToSave }),
@@ -257,9 +267,13 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         placeholder="customer-support"
                         value={formData.name}
                         onChange={(e) => handleFormChange("name", e.target.value)}
+                        aria-invalid={!!fieldErrors.name}
                         disabled={isSaving || isReadOnly}
                         required
                       />
+                      {fieldErrors.name && (
+                        <p className="text-xs text-destructive">{fieldErrors.name}</p>
+                      )}
                       {nameChanged && formData.name.length >= 2 && (
                         <div className="flex items-center gap-1.5 text-xs">
                           {nameAvailability.isChecking ? (
@@ -349,6 +363,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         disabled={isSaving || isReadOnly}
                         required
                       />
+                      {fieldErrors.system_prompt && (
+                        <p className="text-xs text-destructive">{fieldErrors.system_prompt}</p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         Instructions for the AI model (supports Markdown)
                       </p>

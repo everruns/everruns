@@ -35,6 +35,12 @@ import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
+import {
+  getFieldErrors,
+  harnessFormSchema,
+  type FieldErrors,
+  parseTagList,
+} from "@/lib/form-validation";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
@@ -64,6 +70,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
   const [activeTab, setActiveTab] = useState<string>("edit");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [formChanges, setFormChanges] = useState<Partial<FormData>>({});
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const initialFormData = useMemo((): FormData => {
     if (!harness) {
@@ -106,6 +113,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
 
   const handleFormChange = useCallback((field: keyof FormData, value: string) => {
     setFormChanges((prev) => ({ ...prev, [field]: value }));
+    setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
   }, []);
 
   const initialCapabilities = useMemo(() => {
@@ -124,12 +132,14 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const parsed = harnessFormSchema.safeParse(formData);
+    if (!parsed.success) {
+      setFieldErrors(getFieldErrors(parsed.error));
+      return;
+    }
 
     try {
-      const tags = formData.tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
+      const tags = parseTagList(parsed.data.tags);
 
       const capabilitiesToSave = localCapabilities ?? initialCapabilities;
       const capabilitiesChanged =
@@ -141,13 +151,13 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
       await updateHarness.mutateAsync({
         harnessId,
         request: {
-          name: formData.name,
-          display_name: formData.display_name || undefined,
-          description: formData.description || undefined,
-          system_prompt: formData.system_prompt,
-          parent_harness_id: formData.parent_harness_id || null,
+          name: parsed.data.name,
+          display_name: parsed.data.display_name,
+          description: parsed.data.description,
+          system_prompt: parsed.data.system_prompt,
+          parent_harness_id: parsed.data.parent_harness_id || null,
           tags,
-          default_model_id: formData.default_model_id || undefined,
+          default_model_id: parsed.data.default_model_id,
           ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
           ...(initialFilesChanged && { initial_files: initialFilesToSave }),
         },
@@ -259,9 +269,13 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                         placeholder="my-harness"
                         value={formData.name}
                         onChange={(e) => handleFormChange("name", e.target.value)}
+                        aria-invalid={!!fieldErrors.name}
                         disabled={isSaving || isReadOnly}
                         required
                       />
+                      {fieldErrors.name && (
+                        <p className="text-xs text-destructive">{fieldErrors.name}</p>
+                      )}
                       {nameChanged && formData.name.length >= 2 && (
                         <div className="flex items-center gap-1.5 text-xs">
                           {nameAvailability.isChecking ? (
@@ -364,6 +378,9 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                         disabled={isSaving || isReadOnly}
                         required
                       />
+                      {fieldErrors.system_prompt && (
+                        <p className="text-xs text-destructive">{fieldErrors.system_prompt}</p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         Instructions for the AI model (supports Markdown)
                       </p>
