@@ -451,9 +451,7 @@ pub async fn update_organization(
         if !model.enabled {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new(
-                    "Default model must be an enabled model",
-                )),
+                Json(ErrorResponse::new("Default model must be an enabled model")),
             ));
         }
     }

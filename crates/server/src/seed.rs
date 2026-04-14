@@ -1290,7 +1290,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.4",
         display_name: "GPT-5.4",
-        enabled: true,   // Enabled by default
+        enabled: true,     // Enabled by default
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1569,7 +1569,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-opus-4-6",
         display_name: "Claude Opus 4.6",
-        enabled: true,   // Enabled by default
+        enabled: true,     // Enabled by default
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1577,7 +1577,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-sonnet-4-6",
         display_name: "Claude Sonnet 4.6",
-        enabled: true,   // Enabled by default
+        enabled: true,     // Enabled by default
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1585,7 +1585,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-haiku-4-6-20260301",
         display_name: "Claude Haiku 4.6",
-        enabled: true,   // Enabled by default
+        enabled: true,     // Enabled by default
         is_favorite: true, // Favorite model
     },
     // Anthropic Claude 4.5 series

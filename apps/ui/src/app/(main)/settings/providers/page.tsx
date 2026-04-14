@@ -264,8 +264,8 @@ export default function ProvidersPage() {
                   <SelectTrigger className="w-full max-w-md" id="default-model">
                     <span>
                       {org?.default_model_id
-                        ? (enabledModels.find((m) => m.id === org.default_model_id)
-                            ?.display_name ?? "Unknown model")
+                        ? (enabledModels.find((m) => m.id === org.default_model_id)?.display_name ??
+                          "Unknown model")
                         : "No default model"}
                     </span>
                   </SelectTrigger>
