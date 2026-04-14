@@ -55,7 +55,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "${{ matrix.binary }}-${{ matrix.target }}"
+          shared-key: "server-worker-${{ matrix.target }}"
 
       - name: Build binary
         run: cargo build --release --target ${{ matrix.target }} -p ${{ matrix.package }} --bin ${{ matrix.binary }}

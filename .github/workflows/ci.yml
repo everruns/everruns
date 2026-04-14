@@ -66,7 +66,6 @@ jobs:
               - '.github/workflows/ci.yml'
             docs:
               - 'apps/docs/**'
-              - '.github/workflows/ci.yml'
             docker:
               - 'docker/**'
               - 'crates/**'
@@ -122,7 +121,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "clippy"
+          shared-key: "debug"
 
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
@@ -144,7 +143,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Run pure unit tests
         run: |
@@ -166,35 +165,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for Doppler token
-        id: check-key
-        run: |
-          if [ -z "$DOPPLER_TOKEN" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "⏭️ DOPPLER_TOKEN not configured, skipping live tests"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install Doppler CLI
-        if: steps.check-key.outputs.skip != 'true'
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        if: steps.check-key.outputs.skip != 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Run Daytona live integration tests
-        if: steps.check-key.outputs.skip != 'true'
         run: doppler run -- cargo test -p everruns-integrations-daytona --features daytona-live-tests --test live_api_test -- --test-threads=1
 
-  # Live Browserless API tests — only when integrations/browserless/** changes and secret exists
+  # Live Browserless API tests — only when integrations/browserless/** changes
   browserless-live-test:
     name: Browserless Live API Tests
     runs-on: ubuntu-latest
@@ -205,35 +190,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for Doppler token
-        id: check-key
-        run: |
-          if [ -z "$DOPPLER_TOKEN" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "⏭️ DOPPLER_TOKEN not configured, skipping live tests"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install Doppler CLI
-        if: steps.check-key.outputs.skip != 'true'
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        if: steps.check-key.outputs.skip != 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Run Browserless live integration tests
-        if: steps.check-key.outputs.skip != 'true'
         run: doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests --test live_api -- --test-threads=1
 
-  # Live E2B API tests — only when integrations/e2b/** changes and secret exists
+  # Live E2B API tests — only when integrations/e2b/** changes
   e2b-live-test:
     name: E2B Live API Tests
     runs-on: ubuntu-latest
@@ -244,35 +215,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for Doppler token
-        id: check-key
-        run: |
-          if [ -z "$DOPPLER_TOKEN" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "⏭️ DOPPLER_TOKEN not configured, skipping live tests"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install Doppler CLI
-        if: steps.check-key.outputs.skip != 'true'
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        if: steps.check-key.outputs.skip != 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Run E2B live integration tests
-        if: steps.check-key.outputs.skip != 'true'
         run: doppler run -- cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test -- --test-threads=1
 
-  # Live Deno API tests — only when integrations/deno/** changes and secret exists
+  # Live Deno API tests — only when integrations/deno/** changes
   deno-live-test:
     name: Deno Live API Tests
     runs-on: ubuntu-latest
@@ -283,32 +240,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check for Doppler token
-        id: check-key
-        run: |
-          if [ -z "$DOPPLER_TOKEN" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "⏭️ DOPPLER_TOKEN not configured, skipping live tests"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install Doppler CLI
-        if: steps.check-key.outputs.skip != 'true'
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        if: steps.check-key.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        if: steps.check-key.outputs.skip != 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
       - name: Run Deno live integration tests
-        if: steps.check-key.outputs.skip != 'true'
         run: doppler run -- cargo test -p everruns-integrations-deno --features deno-live-tests --test live_api_test -- --test-threads=1
 
   # Integration tests requiring PostgreSQL
@@ -350,18 +293,23 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
-      - name: Cache sqlx-cli
+      - name: Cache cargo binaries
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/bin/sqlx
-          key: ${{ runner.os }}-sqlx-cli-0.8
+          path: |
+            ~/.cargo/bin/cargo-binstall
+            ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-cargo-bins-sqlx-0.8
 
       - name: Install sqlx-cli
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
-            cargo install sqlx-cli --no-default-features --features postgres
+            if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
+              curl -L --proto '=https' --tlsv1.2 -sSf --retry 3 https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+            fi
+            cargo binstall sqlx-cli --no-confirm --version '~0.8'
           fi
 
       - name: Run migrations
@@ -476,18 +424,23 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "test"
+          shared-key: "debug"
 
-      - name: Cache sqlx-cli
+      - name: Cache cargo binaries
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/bin/sqlx
-          key: ${{ runner.os }}-sqlx-cli-0.8
+          path: |
+            ~/.cargo/bin/cargo-binstall
+            ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-cargo-bins-sqlx-0.8
 
       - name: Install sqlx-cli
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
-            cargo install sqlx-cli --no-default-features --features postgres
+            if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
+              curl -L --proto '=https' --tlsv1.2 -sSf --retry 3 https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+            fi
+            cargo binstall sqlx-cli --no-confirm --version '~0.8'
           fi
 
       - name: Run migrations

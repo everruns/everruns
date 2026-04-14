@@ -3,8 +3,22 @@ name: License Check
 on:
   push:
     branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      - 'integrations/**'
+      - 'deny.toml'
+      - '.github/workflows/licenses.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      - 'integrations/**'
+      - 'deny.toml'
+      - '.github/workflows/licenses.yml'
 
 permissions:
   contents: read

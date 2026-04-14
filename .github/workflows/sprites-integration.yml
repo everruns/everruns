@@ -38,7 +38,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "sprites-integration"
+          shared-key: "debug"
 
       - name: Run unit tests
         run: cargo test -p everruns-integrations-sprites
@@ -62,7 +62,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "sprites-integration"
+          shared-key: "debug"
 
       - name: Run Sprites live integration tests
         run: doppler run -- cargo test -p everruns-integrations-sprites --features sprites-live-tests --test live_api_test -- --test-threads=1

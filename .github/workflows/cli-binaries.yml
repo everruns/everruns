@@ -44,7 +44,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "cli-${{ matrix.target }}"
+          shared-key: "cli"
 
       - name: Build CLI binary
         run: cargo build --release --target ${{ matrix.target }} -p everruns-cli

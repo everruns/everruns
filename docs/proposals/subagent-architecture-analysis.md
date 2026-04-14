@@ -1,3 +1,7 @@
+---
+title: Subagent Architecture Analysis
+---
+
 # Subagent Architecture Analysis
 
 Analysis of how top coding agents implement subagents/child agents, compared to everruns' current architecture, with recommendations.
