@@ -15,7 +15,6 @@ impl InMemoryDatabase {
         let id = Uuid::now_v7();
         let row = ApiKeyRow {
             id,
-            org_id: input.org_id,
             user_id: input.user_id,
             name: input.name,
             key_hash: input.key_hash,
@@ -39,12 +38,9 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn count_api_keys_for_user_in_org(&self, user_id: Uuid, org_id: i64) -> Result<i64> {
+    pub async fn count_api_keys_for_user(&self, user_id: Uuid) -> Result<i64> {
         let keys = self.api_keys.read();
-        let count = keys
-            .values()
-            .filter(|k| k.user_id == user_id && k.org_id == org_id)
-            .count();
+        let count = keys.values().filter(|k| k.user_id == user_id).count();
         Ok(count as i64)
     }
 

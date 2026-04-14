@@ -14,7 +14,7 @@ This document defines the multitenancy model for Everruns, enabling organization
 | API org identifier | Auth-derived (cookie or API key) | Cleaner URLs, org derived from auth context |
 | Org ID format | BIGINT internal + TEXT public_id | Performance + security |
 | Resource sharing | No cross-org sharing | Isolation by default |
-| API keys | Org-scoped (1:1 with org) | Limited blast radius; org derived from key |
+| API keys | User-scoped | Org resolved per-request via header/cookie |
 | Session org selection | Cookie-based | Consistent for all requests including SSE |
 | InMemory storage | Supports multitenancy | Consistency across modes |
 | Default org | Seeded on startup | No "first boot" concept |
@@ -25,15 +25,14 @@ This document defines the multitenancy model for Everruns, enabling organization
 **Previous approach:** `/v1/orgs/{org}/agents` - org was explicit in every API path.
 
 **Current approach:** `/v1/agents` - org is derived from authentication context:
-- **API key auth:** Org derived directly from API key (1:1 relationship)
+- **API key auth:** Org from `X-Org-Id` header, `everruns_org` cookie, or single-org auto-resolve
 - **Session auth (UI):** Org stored in `everruns_org` cookie
 
 **Rationale:**
-1. **Redundancy eliminated** - API keys are org-scoped, so requiring both org AND API key was redundant
-2. **Cleaner URLs** - Paths like `/v1/agents` are simpler than `/v1/orgs/{org}/agents`
-3. **Better DX** - API users only need their API key, not also the org ID
-4. **Security** - Org is always validated against auth context, preventing org enumeration
-5. **Consistency** - Cookie works uniformly for all requests including SSE (EventSource)
+1. **Cleaner URLs** - Paths like `/v1/agents` are simpler than `/v1/orgs/{org}/agents`
+2. **Better DX** - Single-org users need no extra headers; multi-org users set `X-Org-Id`
+3. **Security** - Org is always validated against user membership, preventing org enumeration
+4. **Consistency** - Cookie works uniformly for all requests including SSE (EventSource)
 
 ### Cookie-Based Org Selection (Session Auth)
 
@@ -68,9 +67,9 @@ Set-Cookie: everruns_org=org_xxx; Path=/; HttpOnly; SameSite=Lax
 - HttpOnly prevents XSS attacks from reading org context
 
 **Server resolution order:**
-1. API key auth → use org from API key
+1. API key auth → read `X-Org-Id` header or `everruns_org` cookie; single-org users auto-resolve
 2. Session auth → read `everruns_org` cookie
-3. No org found → return 401 (Missing organization context)
+3. No org found → return 400 (for multi-org API key) or 401 (missing auth)
 
 ## Requirements
 
@@ -118,7 +117,7 @@ Set-Cookie: everruns_org=org_xxx; Path=/; HttpOnly; SameSite=Lax
 | Messages/Events | Inherits from Session | No direct FK; scoped via session→agent join |
 | LLM Provider | Per-org | `org_id` FK on `llm_providers` table |
 | LLM Model | Per-org | `org_id` FK on `llm_models` table |
-| API Key | Per-org | `org_id` FK on `api_keys` table |
+| API Key | Per-user | `user_id` FK on `api_keys` table (org resolved per-request) |
 | Capabilities | Global | No `org_id`; system-defined |
 | MCP Servers | Per-org | `org_id` FK (future) |
 | Usage Tracking | Per-org | Aggregated by `org_id` |
@@ -165,7 +164,7 @@ ALTER TABLE api_keys ADD COLUMN org_id BIGINT NOT NULL REFERENCES organizations(
 CREATE INDEX idx_agents_org_id ON agents(org_id);
 CREATE INDEX idx_llm_providers_org_id ON llm_providers(org_id);
 CREATE INDEX idx_llm_models_org_id ON llm_models(org_id);
-CREATE INDEX idx_api_keys_org_id ON api_keys(org_id);
+CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
 ```
 
 ### API Design
@@ -184,7 +183,7 @@ CREATE INDEX idx_api_keys_org_id ON api_keys(org_id);
 ```
 
 **Org Resolution:**
-- **API key auth:** Org looked up from `api_keys.org_id` (no cookie/header needed)
+- **API key auth:** Org from `X-Org-Id` header, `everruns_org` cookie, or single-org auto-resolve
 - **Session auth:** Org read from `everruns_org` cookie
 
 **Global Endpoints (no org scope):**
@@ -240,7 +239,7 @@ pub struct OrgMembership {
 **ResolvedOrg Extractor:**
 ```rust
 /// Extracts organization from authentication context.
-/// - API key auth: uses org_id from the API key (1:1 relationship)
+/// - API key auth: X-Org-Id header, everruns_org cookie, or single-org auto-resolve
 /// - Session auth: reads everruns_org cookie
 /// Returns 401/404 if org not found or user is not a member.
 pub struct ResolvedOrg {
@@ -251,7 +250,7 @@ pub struct ResolvedOrg {
 
 impl<S> FromRequestParts<S> for ResolvedOrg {
     // 1. Extract AuthUser from request
-    // 2. For API key auth: use single org from AuthUser.organizations
+    // 2. For API key auth: X-Org-Id header, cookie, or single-org fallback
     // 3. For session auth: read org from everruns_org cookie
     // 4. Validate user is member of requested org
     // 5. Return ResolvedOrg or error
@@ -260,10 +259,9 @@ impl<S> FromRequestParts<S> for ResolvedOrg {
 
 **API Key Context:**
 ```rust
-// API keys are org-scoped; key lookup returns org context directly
+// API keys are user-scoped; org resolved per-request via header/cookie
 pub struct ApiKeyContext {
     pub user_id: Uuid,
-    pub org_id: i64,
     pub scopes: Vec<String>,
 }
 ```

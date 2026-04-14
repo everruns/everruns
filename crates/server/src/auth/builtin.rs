@@ -117,7 +117,6 @@ impl BuiltinAuthBackend {
         let validated_key = ValidatedApiKey {
             key_id: api_key_row.id,
             user_id: api_key_row.user_id,
-            org_id: api_key_row.org_id,
             name: api_key_row.name.clone(),
             scopes: serde_json::from_value(api_key_row.scopes.clone()).unwrap_or_default(),
             expires_at: api_key_row.expires_at,
@@ -147,27 +146,25 @@ impl BuiltinAuthBackend {
 
         let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
-        // Fetch org for the API key (API key is scoped to single org)
-        let org = self
+        // Fetch all user's organizations (same as JWT auth)
+        let user_orgs = self
             .db
-            .get_organization(api_key_row.org_id)
+            .list_user_organizations(user.id)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to fetch org for API key: {}", e);
+                tracing::error!("Failed to fetch orgs for API key user: {}", e);
                 AuthError::unauthorized("Failed to validate API key")
-            })?
-            .ok_or_else(|| AuthError::unauthorized("Organization not found for API key"))?;
+            })?;
 
-        // Get the user's role in this org (default to member for API key auth)
-        let member_row = self
-            .db
-            .get_organization_member(org.org_id, user.id)
-            .await
-            .ok()
-            .flatten();
-        let role = member_row
-            .and_then(|m| m.role.parse::<OrgRole>().ok())
-            .unwrap_or(OrgRole::Member);
+        let organizations: Vec<OrgMembership> = user_orgs
+            .into_iter()
+            .map(|o| OrgMembership {
+                org_id: o.org_id,
+                public_id: o.public_id,
+                name: o.name,
+                role: o.role.parse::<OrgRole>().unwrap_or(OrgRole::Member),
+            })
+            .collect();
 
         Ok(AuthUser {
             id: user.id,
@@ -175,12 +172,7 @@ impl BuiltinAuthBackend {
             name: user.name,
             roles,
             auth_method: AuthMethod::ApiKey,
-            organizations: vec![OrgMembership {
-                org_id: org.org_id,
-                public_id: org.public_id,
-                name: org.name,
-                role,
-            }],
+            organizations,
         })
     }
 }

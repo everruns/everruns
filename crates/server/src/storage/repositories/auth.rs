@@ -17,7 +17,7 @@ impl Database {
             r#"
             INSERT INTO api_keys (user_id, name, key_hash, key_prefix, scopes, expires_at, metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, org_id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at, metadata
+            RETURNING id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at, metadata
             "#,
         )
         .bind(input.user_id)
@@ -36,7 +36,7 @@ impl Database {
     pub async fn get_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKeyRow>> {
         let row = sqlx::query_as::<_, ApiKeyRow>(
             r#"
-            SELECT id, org_id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at, metadata
+            SELECT id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at, metadata
             FROM api_keys
             WHERE key_hash = $1
             "#,
@@ -48,21 +48,19 @@ impl Database {
         Ok(row)
     }
 
-    /// Count API keys for a user within a specific org (for resource limits).
-    pub async fn count_api_keys_for_user_in_org(&self, user_id: Uuid, org_id: i64) -> Result<i64> {
-        let row: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND org_id = $2")
-                .bind(user_id)
-                .bind(org_id)
-                .fetch_one(&self.pool)
-                .await?;
+    /// Count API keys for a user (for resource limits).
+    pub async fn count_api_keys_for_user(&self, user_id: Uuid) -> Result<i64> {
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_keys WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_one(&self.pool)
+            .await?;
         Ok(row.0)
     }
 
     pub async fn list_api_keys_for_user(&self, user_id: Uuid) -> Result<Vec<ApiKeyRow>> {
         let rows = sqlx::query_as::<_, ApiKeyRow>(
             r#"
-            SELECT id, org_id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at, metadata
+            SELECT id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at, metadata
             FROM api_keys
             WHERE user_id = $1
             ORDER BY created_at DESC

@@ -134,7 +134,6 @@ pub struct AuthSessionRow {
 #[derive(Debug, Clone, FromRow)]
 pub struct ApiKeyRow {
     pub id: Uuid,
-    pub org_id: i64,
     pub user_id: Uuid,
     pub name: String,
     pub key_hash: String,
@@ -192,7 +191,6 @@ pub struct CreateAuthSessionRow {
 /// Input for creating an API key
 #[derive(Debug, Clone)]
 pub struct CreateApiKeyRow {
-    pub org_id: i64,
     pub user_id: Uuid,
     pub name: String,
     pub key_hash: String,

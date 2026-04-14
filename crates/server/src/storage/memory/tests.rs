@@ -2296,7 +2296,6 @@ async fn test_delete_user_account() {
 
     // Create API key for user
     db.create_api_key(CreateApiKeyRow {
-        org_id: DEFAULT_ORG_ID,
         user_id: user.id,
         name: "test-key".to_string(),
         key_hash: "hash123".to_string(),
@@ -2370,7 +2369,6 @@ async fn test_export_user_data() {
 
     // Create API key
     db.create_api_key(CreateApiKeyRow {
-        org_id: DEFAULT_ORG_ID,
         user_id: user.id,
         name: "my-key".to_string(),
         key_hash: "hash456".to_string(),

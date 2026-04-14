@@ -38,6 +38,8 @@ Authorization: Bearer <access_token>
 Authorization: Bearer <api_key>
 ```
 
+- API keys are **user-scoped** (not org-scoped). A key inherits access to all organizations the user belongs to.
+- Organization context is resolved per-request via `X-Org-Id` header, `everruns_org` cookie, or single-org convenience fallback — same mechanism as session (JWT) auth.
 - API keys prefixed with `evr_` for identification — the `evr_` prefix distinguishes API keys from JWTs within the `Bearer` scheme
 - Auth scheme matching is case-insensitive per RFC 7235 (`bearer`, `BEARER`, `Bearer` all accepted)
 - Full key shown only at creation, stored hashed (SHA-256)

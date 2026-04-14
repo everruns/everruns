@@ -426,7 +426,8 @@ pub const ORG_COOKIE_NAME: &str = "everruns_org";
 ///
 /// Unlike OrgContext which extracts org from URL path, ResolvedOrg derives
 /// the organization from the authentication context:
-/// - API key auth: org comes from API key (single org in AuthUser.organizations)
+/// - API key auth: org from `X-Org-Id` header or `everruns_org` cookie, validated against membership.
+///   If user has exactly one org, it is used as a convenience default.
 /// - Session auth (JWT/None): org from everruns_org cookie, validated against user membership
 ///
 /// The cookie is set via POST /v1/users/me/switch-org endpoint.
@@ -479,17 +480,54 @@ where
 
         match user.auth_method {
             AuthMethod::ApiKey => {
-                // API key auth: user has exactly one org (from API key)
-                let org = user
-                    .organizations
-                    .first()
-                    .ok_or_else(|| AuthError::unauthorized("No organization available"))?;
-                Ok(ResolvedOrg {
-                    org_id: org.org_id,
-                    public_id: org.public_id.clone(),
-                    name: org.name.clone(),
-                    user_id: Some(user.id),
-                    role: org.role,
+                // API key auth: org resolved from X-Org-Id header, everruns_org cookie,
+                // or single-org convenience fallback.
+                let jar = CookieJar::from_headers(&parts.headers);
+                let header_org = parts
+                    .headers
+                    .get("x-org-id")
+                    .and_then(|v| v.to_str().ok())
+                    .map(String::from);
+                let cookie_org = jar.get(ORG_COOKIE_NAME).map(|c| c.value().to_string());
+                let explicit_org = header_org.or(cookie_org);
+
+                if let Some(org_public_id) = &explicit_org {
+                    if !validate_org_public_id(org_public_id) {
+                        return Err(AuthError::unauthorized("Invalid organization ID format"));
+                    }
+                    // Validate against user's org memberships (already loaded in AuthUser)
+                    let org = user.get_org(org_public_id).ok_or_else(|| AuthError {
+                        error: "Organization not found".to_string(),
+                        status: StatusCode::NOT_FOUND,
+                    })?;
+                    return Ok(ResolvedOrg {
+                        org_id: org.org_id,
+                        public_id: org.public_id.clone(),
+                        name: org.name.clone(),
+                        user_id: Some(user.id),
+                        role: org.role,
+                    });
+                }
+
+                // No explicit org — convenience: if user has exactly one org, use it
+                if user.organizations.len() == 1 {
+                    let org = &user.organizations[0];
+                    return Ok(ResolvedOrg {
+                        org_id: org.org_id,
+                        public_id: org.public_id.clone(),
+                        name: org.name.clone(),
+                        user_id: Some(user.id),
+                        role: org.role,
+                    });
+                }
+
+                // Multiple orgs, no explicit selection
+                if user.organizations.is_empty() {
+                    return Err(AuthError::unauthorized("No organization available"));
+                }
+                Err(AuthError {
+                    error: "Multiple organizations available. Specify the target organization via the X-Org-Id header.".to_string(),
+                    status: StatusCode::BAD_REQUEST,
                 })
             }
             AuthMethod::None => {
