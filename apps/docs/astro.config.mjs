@@ -127,10 +127,14 @@ export default defineConfig({
               ],
             },
             {
-              label: "Capabilities",
-              link: "/capabilities/",
+              label: "Built-ins",
+              link: "/built-ins/",
               icon: "puzzle",
               items: [
+                {
+                  label: "Harnesses",
+                  autogenerate: { directory: "built-ins/harnesses" },
+                },
                 {
                   label: "Capabilities",
                   autogenerate: { directory: "capabilities" },
