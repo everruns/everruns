@@ -6,8 +6,59 @@
 
 use super::catalog::CatalogContext;
 use crate::api::common::Pagination;
+use crate::api::validation::{self, ValidationError};
+use everruns_core::OrgRole;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use serde_json::{Value, json};
+
+// ============================================================================
+// Validation helpers (bridge HTTP-typed validation to Result<(), String>)
+// ============================================================================
+
+fn validate_name_format(name: &str) -> Result<(), String> {
+    validation::validate_agent_name_format(name).map_err(|(_, e)| e.0.error)
+}
+
+fn validate_create_input(req: &crate::api::agents::CreateAgentRequest) -> Result<(), String> {
+    validation::validate_create_agent_input(
+        &req.name,
+        req.display_name.as_deref(),
+        req.description.as_deref(),
+        &req.system_prompt,
+        req.capabilities.len(),
+        &req.initial_files,
+    )
+    .map_err(|_: ValidationError| validation::VALIDATION_ERROR_MESSAGE.to_string())
+}
+
+fn validate_update_input(req: &crate::api::agents::UpdateAgentRequest) -> Result<(), String> {
+    validation::validate_update_agent_input(
+        req.display_name.as_deref(),
+        req.description.as_deref(),
+        req.system_prompt.as_deref(),
+        req.capabilities.as_ref().map(|c| c.len()),
+        req.initial_files.as_deref(),
+    )
+    .map_err(|_: ValidationError| validation::VALIDATION_ERROR_MESSAGE.to_string())
+}
+
+fn require_admin_for_high_risk(
+    ctx: &CatalogContext,
+    caps: &[everruns_core::AgentCapabilityConfig],
+) -> Result<(), String> {
+    if caps.is_empty() || ctx.caller.role.has_permission(OrgRole::Admin) {
+        return Ok(());
+    }
+    let refs: Vec<&str> = caps.iter().map(|c| c.capability_ref.as_str()).collect();
+    let high = ctx.state.capability_service.high_risk_ids(&refs);
+    if !high.is_empty() {
+        return Err(format!(
+            "Admin role required to assign high-risk capabilities: {}",
+            high.join(", ")
+        ));
+    }
+    Ok(())
+}
 
 // ============================================================================
 // Param helpers
@@ -85,8 +136,13 @@ pub async fn health_check(_params: &Value, _ctx: &CatalogContext) -> Result<Stri
 // ============================================================================
 
 pub async fn create_agent(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
-    let req = serde_json::from_value(params.clone()).map_err(err)?;
+    let req: crate::api::agents::CreateAgentRequest =
+        serde_json::from_value(params.clone()).map_err(err)?;
+    validate_name_format(&req.name)?;
+    validate_create_input(&req)?;
+    require_admin_for_high_risk(ctx, &req.capabilities)?;
     let agent = ctx
+        .state
         .agent_service
         .create(&ctx.caller, None, req)
         .await
@@ -99,6 +155,7 @@ pub async fn list_agents(params: &Value, ctx: &CatalogContext) -> Result<String,
     let include_archived = param_bool(params, "include_archived");
     let pg = pagination(params);
     let (agents, total) = ctx
+        .state
         .agent_service
         .list(&ctx.caller, search.as_deref(), include_archived, pg)
         .await
@@ -110,12 +167,14 @@ pub async fn get_agent(params: &Value, ctx: &CatalogContext) -> Result<String, S
     let id = require_str(params, "id")?;
     // Try as typed ID first, fall back to name lookup
     let agent = if let Ok(agent_id) = id.parse::<AgentId>() {
-        ctx.agent_service
+        ctx.state
+            .agent_service
             .get_by_public_id(&ctx.caller, &agent_id.to_string())
             .await
             .map_err(err)?
     } else {
-        ctx.agent_service
+        ctx.state
+            .agent_service
             .get_by_name(&ctx.caller, &id)
             .await
             .map_err(err)?
@@ -125,8 +184,17 @@ pub async fn get_agent(params: &Value, ctx: &CatalogContext) -> Result<String, S
 
 pub async fn update_agent(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let id = require_str(params, "id")?;
-    let req = serde_json::from_value(params.clone()).map_err(err)?;
+    let req: crate::api::agents::UpdateAgentRequest =
+        serde_json::from_value(params.clone()).map_err(err)?;
+    if let Some(ref name) = req.name {
+        validate_name_format(name)?;
+    }
+    validate_update_input(&req)?;
+    if let Some(ref caps) = req.capabilities {
+        require_admin_for_high_risk(ctx, caps)?;
+    }
     let agent = ctx
+        .state
         .agent_service
         .update(&ctx.caller, &id, req)
         .await
@@ -137,7 +205,8 @@ pub async fn update_agent(params: &Value, ctx: &CatalogContext) -> Result<String
 
 pub async fn delete_agent(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let id = require_str(params, "id")?;
-    ctx.agent_service
+    ctx.state
+        .agent_service
         .delete(&ctx.caller, &id)
         .await
         .map_err(err)?;
@@ -148,6 +217,7 @@ pub async fn upsert_agent(params: &Value, ctx: &CatalogContext) -> Result<String
     let id = require_str(params, "id")?;
     let req = serde_json::from_value(params.clone()).map_err(err)?;
     let (agent, _created) = ctx
+        .state
         .agent_service
         .upsert(&ctx.caller, &id, req)
         .await
@@ -158,6 +228,7 @@ pub async fn upsert_agent(params: &Value, ctx: &CatalogContext) -> Result<String
 pub async fn copy_agent(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let id = require_str(params, "id")?;
     let agent = ctx
+        .state
         .agent_service
         .copy(&ctx.caller, &id)
         .await
@@ -169,6 +240,7 @@ pub async fn copy_agent(params: &Value, ctx: &CatalogContext) -> Result<String, 
 pub async fn export_agent(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let id = require_str(params, "id")?;
     let agent = ctx
+        .state
         .agent_service
         .get_by_public_id(&ctx.caller, &id)
         .await
@@ -182,6 +254,7 @@ pub async fn import_agent(params: &Value, ctx: &CatalogContext) -> Result<String
     // import_agent expects a full agent definition as JSON
     let req = serde_json::from_value(params.clone()).map_err(err)?;
     let agent = ctx
+        .state
         .agent_service
         .create(&ctx.caller, None, req)
         .await
@@ -197,6 +270,7 @@ pub async fn preview_agent(params: &Value, ctx: &CatalogContext) -> Result<Strin
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
     let (prompt, tools) = ctx
+        .state
         .capability_service
         .preview(ctx.org_id, &system_prompt, &capabilities)
         .await
@@ -217,8 +291,9 @@ pub async fn create_session(params: &Value, ctx: &CatalogContext) -> Result<Stri
             .parse::<HarnessId>()
             .map_err(|e| format!("Invalid harness ID: {e}"))?
             .uuid()
-    } else if let Some(ref name) = ctx.fallback_base_harness_name {
+    } else if let Some(ref name) = ctx.state.fallback_base_harness_name {
         let row = ctx
+            .state
             .db
             .get_harness_by_name(ctx.org_id, name)
             .await
@@ -236,6 +311,7 @@ pub async fn create_session(params: &Value, ctx: &CatalogContext) -> Result<Stri
         .map_err(|e| format!("Invalid agent ID: {e}"))?;
 
     let session = ctx
+        .state
         .session_service
         .create(&ctx.caller, harness_uuid, None, agent_public_id, req)
         .await
@@ -251,6 +327,7 @@ pub async fn list_sessions(params: &Value, ctx: &CatalogContext) -> Result<Strin
         .map_err(|e| format!("Invalid agent ID: {e}"))?;
     let pg = pagination(params);
     let (sessions, total) = ctx
+        .state
         .session_service
         .list(
             &ctx.caller,
@@ -267,6 +344,7 @@ pub async fn list_sessions(params: &Value, ctx: &CatalogContext) -> Result<Strin
 pub async fn get_session(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let id = parse_session_id(&require_str(params, "session_id")?)?;
     let session = ctx
+        .state
         .session_service
         .get(&ctx.caller, id, ctx.user_id)
         .await
@@ -279,6 +357,7 @@ pub async fn update_session(params: &Value, ctx: &CatalogContext) -> Result<Stri
     let id = parse_session_id(&require_str(params, "session_id")?)?;
     let req = serde_json::from_value(params.clone()).map_err(err)?;
     let session = ctx
+        .state
         .session_service
         .update(&ctx.caller, id, req)
         .await
@@ -289,7 +368,8 @@ pub async fn update_session(params: &Value, ctx: &CatalogContext) -> Result<Stri
 
 pub async fn delete_session(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let id = parse_session_id(&require_str(params, "session_id")?)?;
-    ctx.session_service
+    ctx.state
+        .session_service
         .delete(&ctx.caller, id)
         .await
         .map_err(err)?;
@@ -300,7 +380,7 @@ pub async fn cancel_session(params: &Value, ctx: &CatalogContext) -> Result<Stri
     let id: SessionId = require_str(params, "session_id")?
         .parse()
         .map_err(|e| format!("Invalid session ID: {e}"))?;
-    ctx.runner.cancel_run(id).await.map_err(err)?;
+    ctx.state.runner.cancel_run(id).await.map_err(err)?;
     to_json(&json!({"cancelled": true}))
 }
 
@@ -309,8 +389,13 @@ pub async fn cancel_session(params: &Value, ctx: &CatalogContext) -> Result<Stri
 // ============================================================================
 
 pub async fn create_budget(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
-    let input = serde_json::from_value(params.clone()).map_err(err)?;
-    let budget = ctx.db.create_budget(input).await.map_err(err)?;
+    // Inject org_id from context — callers should not supply it directly
+    let mut params = params.clone();
+    if let Some(obj) = params.as_object_mut() {
+        obj.insert("org_id".to_string(), json!(ctx.org_id));
+    }
+    let input = serde_json::from_value(params).map_err(err)?;
+    let budget = ctx.state.db.create_budget(input).await.map_err(err)?;
     to_json(&budget)
 }
 
@@ -318,6 +403,7 @@ pub async fn list_budgets(params: &Value, ctx: &CatalogContext) -> Result<String
     let subject_type = param_str(params, "subject_type");
     let subject_id = param_str(params, "subject_id");
     let budgets = ctx
+        .state
         .db
         .list_budgets(ctx.org_id, subject_type.as_deref(), subject_id.as_deref())
         .await
@@ -330,6 +416,7 @@ pub async fn get_budget(params: &Value, ctx: &CatalogContext) -> Result<String, 
         .parse()
         .map_err(|e| format!("Invalid budget ID: {e}"))?;
     let budget = ctx
+        .state
         .db
         .get_budget(ctx.org_id, id)
         .await
@@ -344,6 +431,7 @@ pub async fn update_budget(params: &Value, ctx: &CatalogContext) -> Result<Strin
         .map_err(|e| format!("Invalid budget ID: {e}"))?;
     let input = serde_json::from_value(params.clone()).map_err(err)?;
     let budget = ctx
+        .state
         .db
         .update_budget(ctx.org_id, id, input)
         .await
@@ -356,13 +444,18 @@ pub async fn delete_budget(params: &Value, ctx: &CatalogContext) -> Result<Strin
     let id: uuid::Uuid = require_str(params, "budget_id")?
         .parse()
         .map_err(|e| format!("Invalid budget ID: {e}"))?;
-    ctx.db.delete_budget(ctx.org_id, id).await.map_err(err)?;
+    ctx.state
+        .db
+        .delete_budget(ctx.org_id, id)
+        .await
+        .map_err(err)?;
     to_json(&json!({"deleted": true}))
 }
 
 pub async fn top_up_budget(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let input = serde_json::from_value(params.clone()).map_err(err)?;
     let (entry, budget) = ctx
+        .state
         .db
         .create_budget_ledger_entry(input)
         .await
@@ -375,6 +468,7 @@ pub async fn check_budget(params: &Value, ctx: &CatalogContext) -> Result<String
         .parse()
         .map_err(|e| format!("Invalid budget ID: {e}"))?;
     let budget = ctx
+        .state
         .db
         .get_budget(ctx.org_id, id)
         .await
@@ -386,6 +480,7 @@ pub async fn check_budget(params: &Value, ctx: &CatalogContext) -> Result<String
 pub async fn list_session_budgets(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let session_id = require_str(params, "session_id")?;
     let budgets = ctx
+        .state
         .db
         .list_budgets(ctx.org_id, Some("session"), Some(&session_id))
         .await
@@ -395,6 +490,7 @@ pub async fn list_session_budgets(params: &Value, ctx: &CatalogContext) -> Resul
 pub async fn check_session_budgets(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let session_id = require_str(params, "session_id")?;
     let result = ctx
+        .state
         .budget_service
         .check_budgets_for_session(ctx.org_id, &session_id, None)
         .await;
@@ -410,6 +506,7 @@ pub async fn create_message(params: &Value, ctx: &CatalogContext) -> Result<Stri
 
     // Get session to resolve harness/agent context
     let session = ctx
+        .state
         .session_service
         .get(&ctx.caller, session_id, ctx.user_id)
         .await
@@ -427,6 +524,7 @@ pub async fn create_message(params: &Value, ctx: &CatalogContext) -> Result<Stri
 
     let req = serde_json::from_value(params.clone()).map_err(err)?;
     let message = ctx
+        .state
         .message_service
         .create(msg_ctx, req)
         .await
@@ -436,7 +534,12 @@ pub async fn create_message(params: &Value, ctx: &CatalogContext) -> Result<Stri
 
 pub async fn list_messages(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let session_id = parse_session_id(&require_str(params, "session_id")?)?;
-    let messages = ctx.message_service.list(session_id).await.map_err(err)?;
+    let messages = ctx
+        .state
+        .message_service
+        .list(session_id)
+        .await
+        .map_err(err)?;
     to_list(&messages)
 }
 
@@ -447,9 +550,14 @@ pub async fn list_messages(params: &Value, ctx: &CatalogContext) -> Result<Strin
 pub async fn list_events(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let session_id = parse_session_id(&require_str(params, "session_id")?)?;
     let since_id = param_str(params, "since_id")
-        .map(|s| s.parse::<uuid::Uuid>())
-        .transpose()
-        .map_err(|e| format!("Invalid since_id: {e}"))?;
+        .map(|s| {
+            // Accept both typed EventId (event_...) and raw UUID
+            s.parse::<everruns_core::typed_id::EventId>()
+                .map(|id| id.uuid())
+                .or_else(|_| s.parse::<uuid::Uuid>())
+                .map_err(|e| format!("Invalid since_id: {e}"))
+        })
+        .transpose()?;
     let types: Vec<String> = param_str(params, "types")
         .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
         .unwrap_or_default();
@@ -459,6 +567,7 @@ pub async fn list_events(params: &Value, ctx: &CatalogContext) -> Result<String,
     let limit = param_i64(params, "limit").map(|n| n as i32);
 
     let events = ctx
+        .state
         .event_service
         .list(session_id, None, since_id, &types, &exclude, None, limit)
         .await
@@ -477,6 +586,7 @@ pub async fn stream_sse(_params: &Value, _ctx: &CatalogContext) -> Result<String
 pub async fn list_harnesses(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let include_archived = param_bool(params, "include_archived");
     let harnesses = ctx
+        .state
         .db
         .list_harnesses(ctx.org_id, None, include_archived)
         .await
@@ -489,6 +599,7 @@ pub async fn get_harness(params: &Value, ctx: &CatalogContext) -> Result<String,
         .parse::<HarnessId>()
         .map_err(|e| format!("Invalid harness ID: {e}"))?;
     let harness = ctx
+        .state
         .db
         .get_harness(ctx.org_id, id)
         .await
@@ -502,7 +613,12 @@ pub async fn get_harness(params: &Value, ctx: &CatalogContext) -> Result<String,
 // ============================================================================
 
 pub async fn list_models(_params: &Value, ctx: &CatalogContext) -> Result<String, String> {
-    let models = ctx.db.list_all_llm_models(ctx.org_id).await.map_err(err)?;
+    let models = ctx
+        .state
+        .db
+        .list_all_llm_models(ctx.org_id)
+        .await
+        .map_err(err)?;
     to_list(&models)
 }
 
@@ -511,6 +627,7 @@ pub async fn get_model(params: &Value, ctx: &CatalogContext) -> Result<String, S
         .parse()
         .map_err(|e| format!("Invalid model ID: {e}"))?;
     let model = ctx
+        .state
         .db
         .get_llm_model(ctx.org_id, id)
         .await
@@ -524,13 +641,19 @@ pub async fn get_model(params: &Value, ctx: &CatalogContext) -> Result<String, S
 // ============================================================================
 
 pub async fn list_providers(_params: &Value, ctx: &CatalogContext) -> Result<String, String> {
-    let providers = ctx.db.list_llm_providers(ctx.org_id).await.map_err(err)?;
+    let providers = ctx
+        .state
+        .db
+        .list_llm_providers(ctx.org_id)
+        .await
+        .map_err(err)?;
     to_list(&providers)
 }
 
 pub async fn create_provider(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let row = serde_json::from_value(params.clone()).map_err(err)?;
     let provider = ctx
+        .state
         .db
         .create_llm_provider(ctx.org_id, row)
         .await
@@ -544,6 +667,7 @@ pub async fn create_provider(params: &Value, ctx: &CatalogContext) -> Result<Str
 
 pub async fn list_mcp_servers(_params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let servers = ctx
+        .state
         .mcp_server_service
         .list_active(&ctx.caller)
         .await
@@ -554,6 +678,7 @@ pub async fn list_mcp_servers(_params: &Value, ctx: &CatalogContext) -> Result<S
 pub async fn create_mcp_server(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let req = serde_json::from_value(params.clone()).map_err(err)?;
     let server = ctx
+        .state
         .mcp_server_service
         .create(&ctx.caller, req)
         .await
@@ -566,6 +691,7 @@ pub async fn get_mcp_server(params: &Value, ctx: &CatalogContext) -> Result<Stri
         .parse()
         .map_err(|e| format!("Invalid MCP server ID: {e}"))?;
     let server = ctx
+        .state
         .mcp_server_service
         .get(&ctx.caller, id)
         .await
@@ -580,6 +706,7 @@ pub async fn get_mcp_server(params: &Value, ctx: &CatalogContext) -> Result<Stri
 
 pub async fn list_capabilities(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let mut all = ctx
+        .state
         .capability_service
         .list_all(ctx.org_id)
         .await
@@ -608,6 +735,7 @@ pub async fn get_capability(params: &Value, ctx: &CatalogContext) -> Result<Stri
         .parse()
         .map_err(|e| format!("Invalid capability ID: {e}"))?;
     let cap = ctx
+        .state
         .capability_service
         .get(ctx.org_id, &cap_id)
         .await
@@ -623,6 +751,7 @@ pub async fn get_capability(params: &Value, ctx: &CatalogContext) -> Result<Stri
 pub async fn list_skills(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let include_archived = param_bool(params, "include_archived");
     let skills = ctx
+        .state
         .skill_service
         .list(&ctx.caller, None, include_archived)
         .await
@@ -633,6 +762,7 @@ pub async fn list_skills(params: &Value, ctx: &CatalogContext) -> Result<String,
 pub async fn create_skill(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let req = serde_json::from_value(params.clone()).map_err(err)?;
     let skill = ctx
+        .state
         .skill_service
         .create(&ctx.caller, req)
         .await
@@ -651,6 +781,7 @@ pub async fn list_images(params: &Value, ctx: &CatalogContext) -> Result<String,
     let offset = param_u32(params, "offset").unwrap_or(0) as i64;
     let limit = param_u32(params, "limit").unwrap_or(50).min(100) as i64;
     let images = ctx
+        .state
         .db
         .list_images(ctx.org_id, limit, offset)
         .await
@@ -663,6 +794,7 @@ pub async fn get_image(params: &Value, ctx: &CatalogContext) -> Result<String, S
         .parse()
         .map_err(|e| format!("Invalid image ID: {e}"))?;
     let image = ctx
+        .state
         .db
         .get_image(ctx.org_id, id)
         .await
@@ -681,6 +813,7 @@ pub async fn create_schedule(_p: &Value, _c: &CatalogContext) -> Result<String, 
 
 pub async fn list_orgs(_params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let org = ctx
+        .state
         .db
         .get_organization(ctx.org_id)
         .await
@@ -691,6 +824,7 @@ pub async fn list_orgs(_params: &Value, ctx: &CatalogContext) -> Result<String, 
 
 pub async fn get_org(_params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let org = ctx
+        .state
         .db
         .get_organization(ctx.org_id)
         .await
@@ -701,13 +835,19 @@ pub async fn get_org(_params: &Value, ctx: &CatalogContext) -> Result<String, St
 
 pub async fn list_users(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let search = param_str(params, "search");
-    let users = ctx.db.list_users(search.as_deref()).await.map_err(err)?;
+    let users = ctx
+        .state
+        .db
+        .list_users(search.as_deref())
+        .await
+        .map_err(err)?;
     to_list(&users)
 }
 
 pub async fn list_session_files(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let session_id = parse_session_id(&require_str(params, "session_id")?)?;
     let files = ctx
+        .state
         .db
         .list_session_files(session_id, "/")
         .await
@@ -719,6 +859,7 @@ pub async fn get_session_file(params: &Value, ctx: &CatalogContext) -> Result<St
     let session_id = parse_session_id(&require_str(params, "session_id")?)?;
     let path = require_str(params, "path")?;
     let file = ctx
+        .state
         .db
         .get_session_file(session_id, &path)
         .await
@@ -733,7 +874,12 @@ pub async fn list_session_databases(_p: &Value, _c: &CatalogContext) -> Result<S
 
 pub async fn list_session_storage(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let session_id = parse_session_id(&require_str(params, "session_id")?)?;
-    let keys = ctx.db.list_session_keys(session_id).await.map_err(err)?;
+    let keys = ctx
+        .state
+        .db
+        .list_session_keys(session_id)
+        .await
+        .map_err(err)?;
     to_list(&keys)
 }
 
