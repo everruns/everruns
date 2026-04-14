@@ -10,16 +10,19 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+/// Handler function type for catalog operations.
+pub type Handler = for<'a> fn(
+    &'a serde_json::Value,
+    &'a CatalogContext,
+) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
 
 /// A single API operation in the catalog.
 pub struct Operation {
     pub name: &'static str,
-    pub method: &'static str,
-    pub path: &'static str,
     pub category: &'static str,
     pub description: &'static str,
     pub params: &'static [Param],
+    pub handler: Handler,
 }
 
 /// A parameter for an API operation.
@@ -32,27 +35,11 @@ pub struct Param {
 /// Shared context for direct service calls from catalog operations.
 #[derive(Clone)]
 pub struct CatalogContext {
+    pub state: super::AppState,
     pub caller: everruns_core::permissions::Caller,
     pub org_id: i64,
     pub user_id: Option<uuid::Uuid>,
-    pub db: Arc<crate::storage::StorageBackend>,
-    pub agent_service: Arc<crate::services::AgentService>,
-    pub session_service: Arc<crate::services::SessionService>,
-    pub message_service: Arc<crate::services::MessageService>,
-    pub event_service: Arc<crate::services::EventService>,
-    pub capability_service: Arc<crate::services::CapabilityService>,
-    pub mcp_server_service: Arc<crate::services::McpServerService>,
-    pub skill_service: Arc<crate::services::SkillService>,
-    pub budget_service: Arc<crate::services::BudgetService>,
-    pub runner: Arc<dyn everruns_worker::AgentRunner>,
-    pub fallback_base_harness_name: Option<String>,
 }
-
-/// Handler function type for catalog operations.
-type Handler = for<'a> fn(
-    &'a serde_json::Value,
-    &'a CatalogContext,
-) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
 
 fn tool_builder() -> bashkit::ScriptedToolBuilder {
     ScriptedTool::builder("everruns")
@@ -74,102 +61,17 @@ pub fn build_scripted_tool(ctx: CatalogContext) -> ScriptedTool {
 
     for op in CATALOG {
         let def = op_to_def(op);
-        let handler = resolve_handler(op.name);
-        let callback = make_direct_callback(op, ctx.clone(), handler);
+        let callback = make_direct_callback(op, ctx.clone());
         builder = builder.tool(def, callback);
     }
 
     builder.build()
 }
 
-/// Resolve a handler function for an operation by name.
-fn resolve_handler(name: &str) -> Handler {
-    match name {
-        // System
-        "health_check" => |p, c| Box::pin(handlers::health_check(p, c)),
-        // Agents
-        "create_agent" => |p, c| Box::pin(handlers::create_agent(p, c)),
-        "list_agents" => |p, c| Box::pin(handlers::list_agents(p, c)),
-        "get_agent" => |p, c| Box::pin(handlers::get_agent(p, c)),
-        "update_agent" => |p, c| Box::pin(handlers::update_agent(p, c)),
-        "delete_agent" => |p, c| Box::pin(handlers::delete_agent(p, c)),
-        "upsert_agent" => |p, c| Box::pin(handlers::upsert_agent(p, c)),
-        "copy_agent" => |p, c| Box::pin(handlers::copy_agent(p, c)),
-        "export_agent" => |p, c| Box::pin(handlers::export_agent(p, c)),
-        "import_agent" => |p, c| Box::pin(handlers::import_agent(p, c)),
-        "preview_agent" => |p, c| Box::pin(handlers::preview_agent(p, c)),
-        // Sessions
-        "create_session" => |p, c| Box::pin(handlers::create_session(p, c)),
-        "list_sessions" => |p, c| Box::pin(handlers::list_sessions(p, c)),
-        "get_session" => |p, c| Box::pin(handlers::get_session(p, c)),
-        "update_session" => |p, c| Box::pin(handlers::update_session(p, c)),
-        "delete_session" => |p, c| Box::pin(handlers::delete_session(p, c)),
-        "cancel_session" => |p, c| Box::pin(handlers::cancel_session(p, c)),
-        // Budgets
-        "create_budget" => |p, c| Box::pin(handlers::create_budget(p, c)),
-        "list_budgets" => |p, c| Box::pin(handlers::list_budgets(p, c)),
-        "get_budget" => |p, c| Box::pin(handlers::get_budget(p, c)),
-        "update_budget" => |p, c| Box::pin(handlers::update_budget(p, c)),
-        "delete_budget" => |p, c| Box::pin(handlers::delete_budget(p, c)),
-        "top_up_budget" => |p, c| Box::pin(handlers::top_up_budget(p, c)),
-        "check_budget" => |p, c| Box::pin(handlers::check_budget(p, c)),
-        "list_session_budgets" => |p, c| Box::pin(handlers::list_session_budgets(p, c)),
-        "check_session_budgets" => |p, c| Box::pin(handlers::check_session_budgets(p, c)),
-        // Messages
-        "create_message" => |p, c| Box::pin(handlers::create_message(p, c)),
-        "list_messages" => |p, c| Box::pin(handlers::list_messages(p, c)),
-        // Events
-        "list_events" => |p, c| Box::pin(handlers::list_events(p, c)),
-        "stream_sse" => |p, c| Box::pin(handlers::stream_sse(p, c)),
-        // Harnesses
-        "list_harnesses" => |p, c| Box::pin(handlers::list_harnesses(p, c)),
-        "get_harness" => |p, c| Box::pin(handlers::get_harness(p, c)),
-        // Models
-        "list_models" => |p, c| Box::pin(handlers::list_models(p, c)),
-        "get_model" => |p, c| Box::pin(handlers::get_model(p, c)),
-        // Providers
-        "list_providers" => |p, c| Box::pin(handlers::list_providers(p, c)),
-        "create_provider" => |p, c| Box::pin(handlers::create_provider(p, c)),
-        // MCP Servers
-        "list_mcp_servers" => |p, c| Box::pin(handlers::list_mcp_servers(p, c)),
-        "create_mcp_server" => |p, c| Box::pin(handlers::create_mcp_server(p, c)),
-        "get_mcp_server" => |p, c| Box::pin(handlers::get_mcp_server(p, c)),
-        // Capabilities
-        "list_capabilities" => |p, c| Box::pin(handlers::list_capabilities(p, c)),
-        "get_capability" => |p, c| Box::pin(handlers::get_capability(p, c)),
-        // Skills
-        "list_skills" => |p, c| Box::pin(handlers::list_skills(p, c)),
-        "create_skill" => |p, c| Box::pin(handlers::create_skill(p, c)),
-        // Images
-        "list_images" => |p, c| Box::pin(handlers::list_images(p, c)),
-        "get_image" => |p, c| Box::pin(handlers::get_image(p, c)),
-        // Schedules
-        "list_schedules" => |p, c| Box::pin(handlers::list_schedules(p, c)),
-        "create_schedule" => |p, c| Box::pin(handlers::create_schedule(p, c)),
-        // Organizations
-        "list_orgs" => |p, c| Box::pin(handlers::list_orgs(p, c)),
-        "get_org" => |p, c| Box::pin(handlers::get_org(p, c)),
-        // Users
-        "list_users" => |p, c| Box::pin(handlers::list_users(p, c)),
-        // Files
-        "list_session_files" => |p, c| Box::pin(handlers::list_session_files(p, c)),
-        "get_session_file" => |p, c| Box::pin(handlers::get_session_file(p, c)),
-        // Databases
-        "list_session_databases" => |p, c| Box::pin(handlers::list_session_databases(p, c)),
-        // Storage
-        "list_session_storage" => |p, c| Box::pin(handlers::list_session_storage(p, c)),
-        // Tool Results
-        "submit_tool_results" => |p, c| Box::pin(handlers::submit_tool_results(p, c)),
-        // Fallback
-        _ => |p, c| Box::pin(handlers::not_implemented(p, c)),
-    }
-}
-
 /// Create a callback that calls a handler function directly via service layer.
 fn make_direct_callback(
     op: &'static Operation,
     ctx: CatalogContext,
-    handler: Handler,
 ) -> impl Fn(&ToolArgs) -> Result<String, String> + Send + Sync + 'static {
     move |args: &ToolArgs| {
         let params = &args.params;
@@ -183,7 +85,7 @@ fn make_direct_callback(
         tokio::task::block_in_place(|| {
             let handle = tokio::runtime::Handle::current();
             handle.block_on(async {
-                let result = handler(params, &ctx).await?;
+                let result = (op.handler)(params, &ctx).await?;
                 if wants_summary {
                     Ok(apply_summary_filter(&result))
                 } else {
@@ -246,8 +148,7 @@ const CLIENT_FLAGS: &[&str] = &["summary", "help"];
 fn format_help(op: &Operation) -> String {
     let mut out = String::new();
     out.push_str(&format!("{} — {}\n\n", op.name, op.description));
-    out.push_str(&format!("Usage: {} [OPTIONS]\n", op.name));
-    out.push_str(&format!("  API: {} {}\n\n", op.method, op.path));
+    out.push_str(&format!("Usage: {} [OPTIONS]\n\n", op.name));
 
     let api_params: Vec<&Param> = op
         .params
@@ -321,8 +222,6 @@ pub static CATALOG: &[Operation] = &[
     // ── Agents ──────────────────────────────────────────────────────────
     Operation {
         name: "create_agent",
-        method: "POST",
-        path: "/v1/agents",
         category: "agents",
         description: "Create a new agent with a name, system prompt, and optional capabilities.",
         params: &[
@@ -347,11 +246,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Default model ID",
             },
         ],
+        handler: |p, c| Box::pin(handlers::create_agent(p, c)),
     },
     Operation {
         name: "list_agents",
-        method: "GET",
-        path: "/v1/agents",
         category: "agents",
         description: "List all active agents. Use search for name search, include_archived=true to include archived. Supports pagination (limit/offset) and --summary for compact output.",
         params: &[
@@ -381,11 +279,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
+        handler: |p, c| Box::pin(handlers::list_agents(p, c)),
     },
     Operation {
         name: "get_agent",
-        method: "GET",
-        path: "/v1/agents/{id}",
         category: "agents",
         description: "Get a single agent by ID.",
         params: &[Param {
@@ -393,11 +290,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Agent ID (format: agent_{32-hex})",
         }],
+        handler: |p, c| Box::pin(handlers::get_agent(p, c)),
     },
     Operation {
         name: "update_agent",
-        method: "PATCH",
-        path: "/v1/agents/{id}",
         category: "agents",
         description: "Update an agent. Only provided fields are changed.",
         params: &[
@@ -417,11 +313,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "New system prompt",
             },
         ],
+        handler: |p, c| Box::pin(handlers::update_agent(p, c)),
     },
     Operation {
         name: "delete_agent",
-        method: "DELETE",
-        path: "/v1/agents/{id}",
         category: "agents",
         description: "Archive an agent (soft delete). Can be restored.",
         params: &[Param {
@@ -429,11 +324,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Agent ID",
         }],
+        handler: |p, c| Box::pin(handlers::delete_agent(p, c)),
     },
     Operation {
         name: "upsert_agent",
-        method: "PUT",
-        path: "/v1/agents/{id}",
         category: "agents",
         description: "Upsert agent — create (201) or update (200) by ID.",
         params: &[
@@ -453,11 +347,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "System prompt",
             },
         ],
+        handler: |p, c| Box::pin(handlers::upsert_agent(p, c)),
     },
     Operation {
         name: "copy_agent",
-        method: "POST",
-        path: "/v1/agents/{id}/copy",
         category: "agents",
         description: "Copy an agent with a new ID and '{name} (copy)' name.",
         params: &[Param {
@@ -465,11 +358,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Source agent ID",
         }],
+        handler: |p, c| Box::pin(handlers::copy_agent(p, c)),
     },
     Operation {
         name: "export_agent",
-        method: "GET",
-        path: "/v1/agents/{id}/export",
         category: "agents",
         description: "Export agent definition as Markdown.",
         params: &[Param {
@@ -477,11 +369,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Agent ID",
         }],
+        handler: |p, c| Box::pin(handlers::export_agent(p, c)),
     },
     Operation {
         name: "import_agent",
-        method: "POST",
-        path: "/v1/agents/import",
         category: "agents",
         description: "Import agent from Markdown file content.",
         params: &[Param {
@@ -489,11 +380,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "string",
             description: "Markdown content to import",
         }],
+        handler: |p, c| Box::pin(handlers::import_agent(p, c)),
     },
     Operation {
         name: "preview_agent",
-        method: "POST",
-        path: "/v1/agents/preview",
         category: "agents",
         description: "Preview final agent shape (system prompt + tools) without persisting.",
         params: &[
@@ -508,12 +398,11 @@ pub static CATALOG: &[Operation] = &[
                 description: "Capability configs",
             },
         ],
+        handler: |p, c| Box::pin(handlers::preview_agent(p, c)),
     },
     // ── Sessions ────────────────────────────────────────────────────────
     Operation {
         name: "create_session",
-        method: "POST",
-        path: "/v1/sessions",
         category: "sessions",
         description: "Create a new session. Optionally assign an agent and harness.",
         params: &[
@@ -538,11 +427,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Model override",
             },
         ],
+        handler: |p, c| Box::pin(handlers::create_session(p, c)),
     },
     Operation {
         name: "list_sessions",
-        method: "GET",
-        path: "/v1/sessions",
         category: "sessions",
         description: "List sessions. Filter by agent_id, search by title. Supports pagination (limit/offset) and --summary for compact output.",
         params: &[
@@ -572,11 +460,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
+        handler: |p, c| Box::pin(handlers::list_sessions(p, c)),
     },
     Operation {
         name: "get_session",
-        method: "GET",
-        path: "/v1/sessions/{session_id}",
         category: "sessions",
         description: "Get session details including status, agent, harness, and model.",
         params: &[Param {
@@ -584,11 +471,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Session ID",
         }],
+        handler: |p, c| Box::pin(handlers::get_session(p, c)),
     },
     Operation {
         name: "update_session",
-        method: "PATCH",
-        path: "/v1/sessions/{session_id}",
         category: "sessions",
         description: "Update session title, tags, or locale.",
         params: &[
@@ -608,11 +494,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "New tags",
             },
         ],
+        handler: |p, c| Box::pin(handlers::update_session(p, c)),
     },
     Operation {
         name: "delete_session",
-        method: "DELETE",
-        path: "/v1/sessions/{session_id}",
         category: "sessions",
         description: "Delete a session.",
         params: &[Param {
@@ -620,11 +505,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Session ID",
         }],
+        handler: |p, c| Box::pin(handlers::delete_session(p, c)),
     },
     Operation {
         name: "cancel_session",
-        method: "POST",
-        path: "/v1/sessions/{session_id}/cancel",
         category: "sessions",
         description: "Cancel the currently executing turn in a session.",
         params: &[Param {
@@ -632,12 +516,11 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Session ID",
         }],
+        handler: |p, c| Box::pin(handlers::cancel_session(p, c)),
     },
     // ── Budgets ─────────────────────────────────────────────────────────
     Operation {
         name: "create_budget",
-        method: "POST",
-        path: "/v1/budgets",
         category: "budgets",
         description: "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
         params: &[
@@ -677,11 +560,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Optional metadata as JSON",
             },
         ],
+        handler: |p, c| Box::pin(handlers::create_budget(p, c)),
     },
     Operation {
         name: "list_budgets",
-        method: "GET",
-        path: "/v1/budgets",
         category: "budgets",
         description: "List budgets. Filter by subject_type and subject_id.",
         params: &[
@@ -696,11 +578,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Filter by subject ID (optional)",
             },
         ],
+        handler: |p, c| Box::pin(handlers::list_budgets(p, c)),
     },
     Operation {
         name: "get_budget",
-        method: "GET",
-        path: "/v1/budgets/{budget_id}",
         category: "budgets",
         description: "Get a budget with current balance.",
         params: &[Param {
@@ -708,11 +589,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Budget ID",
         }],
+        handler: |p, c| Box::pin(handlers::get_budget(p, c)),
     },
     Operation {
         name: "update_budget",
-        method: "PATCH",
-        path: "/v1/budgets/{budget_id}",
         category: "budgets",
         description: "Update a budget's limit, soft_limit, or status.",
         params: &[
@@ -742,11 +622,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Optional metadata as JSON",
             },
         ],
+        handler: |p, c| Box::pin(handlers::update_budget(p, c)),
     },
     Operation {
         name: "delete_budget",
-        method: "DELETE",
-        path: "/v1/budgets/{budget_id}",
         category: "budgets",
         description: "Soft-delete a budget (sets status to disabled).",
         params: &[Param {
@@ -754,11 +633,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Budget ID",
         }],
+        handler: |p, c| Box::pin(handlers::delete_budget(p, c)),
     },
     Operation {
         name: "top_up_budget",
-        method: "POST",
-        path: "/v1/budgets/{budget_id}/top-up",
         category: "budgets",
         description: "Add credits to a budget. Reactivates exhausted/paused budgets if balance becomes positive.",
         params: &[
@@ -778,11 +656,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Optional description for the top-up",
             },
         ],
+        handler: |p, c| Box::pin(handlers::top_up_budget(p, c)),
     },
     Operation {
         name: "check_budget",
-        method: "GET",
-        path: "/v1/budgets/{budget_id}/check",
         category: "budgets",
         description: "Check budget status and remaining balance.",
         params: &[Param {
@@ -790,11 +667,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Budget ID",
         }],
+        handler: |p, c| Box::pin(handlers::check_budget(p, c)),
     },
     Operation {
         name: "list_session_budgets",
-        method: "GET",
-        path: "/v1/sessions/{session_id}/budgets",
         category: "budgets",
         description: "List all budgets for a session.",
         params: &[Param {
@@ -802,11 +678,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Session ID",
         }],
+        handler: |p, c| Box::pin(handlers::list_session_budgets(p, c)),
     },
     Operation {
         name: "check_session_budgets",
-        method: "GET",
-        path: "/v1/sessions/{session_id}/budget-check",
         category: "budgets",
         description: "Check all budgets for a session (currently includes session and agent scopes).",
         params: &[Param {
@@ -814,12 +689,11 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Session ID",
         }],
+        handler: |p, c| Box::pin(handlers::check_session_budgets(p, c)),
     },
     // ── Messages ────────────────────────────────────────────────────────
     Operation {
         name: "create_message",
-        method: "POST",
-        path: "/v1/sessions/{session_id}/messages",
         category: "messages",
         description: "Create a user message in a session. Triggers the agent workflow.",
         params: &[
@@ -834,11 +708,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "{\"role\": \"user\", \"content\": [{\"type\": \"text\", \"text\": \"...\"}]}",
             },
         ],
+        handler: |p, c| Box::pin(handlers::create_message(p, c)),
     },
     Operation {
         name: "list_messages",
-        method: "GET",
-        path: "/v1/sessions/{session_id}/messages",
         category: "messages",
         description: "List all messages in a session (user and agent messages).",
         params: &[Param {
@@ -846,12 +719,11 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Session ID",
         }],
+        handler: |p, c| Box::pin(handlers::list_messages(p, c)),
     },
     // ── Events ──────────────────────────────────────────────────────────
     Operation {
         name: "list_events",
-        method: "GET",
-        path: "/v1/sessions/{session_id}/events",
         category: "events",
         description: "List events for a session (JSON). Supports filtering by type and pagination.",
         params: &[
@@ -881,11 +753,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Max events (1-1000)",
             },
         ],
+        handler: |p, c| Box::pin(handlers::list_events(p, c)),
     },
     Operation {
         name: "stream_sse",
-        method: "GET",
-        path: "/v1/sessions/{session_id}/sse",
         category: "events",
         description: "Stream events via SSE (Server-Sent Events). Real-time event streaming.",
         params: &[
@@ -905,12 +776,11 @@ pub static CATALOG: &[Operation] = &[
                 description: "Filter by event types",
             },
         ],
+        handler: |p, c| Box::pin(handlers::stream_sse(p, c)),
     },
     // ── Harnesses ───────────────────────────────────────────────────────
     Operation {
         name: "list_harnesses",
-        method: "GET",
-        path: "/v1/harnesses",
         category: "harnesses",
         description: "List harnesses (base environments for sessions). Supports --summary for compact output.",
         params: &[
@@ -925,11 +795,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
+        handler: |p, c| Box::pin(handlers::list_harnesses(p, c)),
     },
     Operation {
         name: "get_harness",
-        method: "GET",
-        path: "/v1/harnesses/{id}",
         category: "harnesses",
         description: "Get a harness by ID.",
         params: &[Param {
@@ -937,12 +806,11 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Harness ID",
         }],
+        handler: |p, c| Box::pin(handlers::get_harness(p, c)),
     },
     // ── LLM Models ──────────────────────────────────────────────────────
     Operation {
         name: "list_models",
-        method: "GET",
-        path: "/v1/llm-models",
         category: "models",
         description: "List all LLM models across all providers. Supports --summary for compact output.",
         params: &[Param {
@@ -950,11 +818,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "query",
             description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
         }],
+        handler: |p, c| Box::pin(handlers::list_models(p, c)),
     },
     Operation {
         name: "get_model",
-        method: "GET",
-        path: "/v1/llm-models/{id}",
         category: "models",
         description: "Get a single LLM model by ID.",
         params: &[Param {
@@ -962,12 +829,11 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Model ID",
         }],
+        handler: |p, c| Box::pin(handlers::get_model(p, c)),
     },
     // ── LLM Providers ───────────────────────────────────────────────────
     Operation {
         name: "list_providers",
-        method: "GET",
-        path: "/v1/llm-providers",
         category: "providers",
         description: "List configured LLM providers (OpenAI, Anthropic, etc.). Supports --summary for compact output.",
         params: &[Param {
@@ -975,11 +841,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "query",
             description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
         }],
+        handler: |p, c| Box::pin(handlers::list_providers(p, c)),
     },
     Operation {
         name: "create_provider",
-        method: "POST",
-        path: "/v1/llm-providers",
         category: "providers",
         description: "Create a new LLM provider configuration.",
         params: &[
@@ -999,12 +864,11 @@ pub static CATALOG: &[Operation] = &[
                 description: "API key for the provider",
             },
         ],
+        handler: |p, c| Box::pin(handlers::create_provider(p, c)),
     },
     // ── MCP Servers ─────────────────────────────────────────────────────
     Operation {
         name: "list_mcp_servers",
-        method: "GET",
-        path: "/v1/mcp-servers",
         category: "mcp_servers",
         description: "List registered MCP servers. Supports --summary for compact output.",
         params: &[
@@ -1019,11 +883,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
+        handler: |p, c| Box::pin(handlers::list_mcp_servers(p, c)),
     },
     Operation {
         name: "create_mcp_server",
-        method: "POST",
-        path: "/v1/mcp-servers",
         category: "mcp_servers",
         description: "Register a new MCP server.",
         params: &[
@@ -1043,11 +906,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Description (optional)",
             },
         ],
+        handler: |p, c| Box::pin(handlers::create_mcp_server(p, c)),
     },
     Operation {
         name: "get_mcp_server",
-        method: "GET",
-        path: "/v1/mcp-servers/{id}",
         category: "mcp_servers",
         description: "Get an MCP server by ID.",
         params: &[Param {
@@ -1055,12 +917,11 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "MCP server ID",
         }],
+        handler: |p, c| Box::pin(handlers::get_mcp_server(p, c)),
     },
     // ── Capabilities ────────────────────────────────────────────────────
     Operation {
         name: "list_capabilities",
-        method: "GET",
-        path: "/v1/capabilities",
         category: "capabilities",
         description: "List available capabilities (virtual bash, web fetch, MCP, etc.). Supports search, pagination (limit/offset), and --summary for compact output.",
         params: &[
@@ -1085,11 +946,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
+        handler: |p, c| Box::pin(handlers::list_capabilities(p, c)),
     },
     Operation {
         name: "get_capability",
-        method: "GET",
-        path: "/v1/capabilities/{id}",
         category: "capabilities",
         description: "Get capability details by ID.",
         params: &[Param {
@@ -1097,12 +957,11 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Capability ID",
         }],
+        handler: |p, c| Box::pin(handlers::get_capability(p, c)),
     },
     // ── Skills ──────────────────────────────────────────────────────────
     Operation {
         name: "list_skills",
-        method: "GET",
-        path: "/v1/skills",
         category: "skills",
         description: "List registered skills. Supports --summary for compact output.",
         params: &[
@@ -1117,11 +976,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
+        handler: |p, c| Box::pin(handlers::list_skills(p, c)),
     },
     Operation {
         name: "create_skill",
-        method: "POST",
-        path: "/v1/skills",
         category: "skills",
         description: "Create a new skill.",
         params: &[
@@ -1141,12 +999,11 @@ pub static CATALOG: &[Operation] = &[
                 description: "inline, url, or github",
             },
         ],
+        handler: |p, c| Box::pin(handlers::create_skill(p, c)),
     },
     // ── Images ──────────────────────────────────────────────────────────
     Operation {
         name: "list_images",
-        method: "GET",
-        path: "/v1/images",
         category: "images",
         description: "List uploaded images. Supports pagination (limit/offset) and --summary for compact output.",
         params: &[
@@ -1166,11 +1023,10 @@ pub static CATALOG: &[Operation] = &[
                 description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
+        handler: |p, c| Box::pin(handlers::list_images(p, c)),
     },
     Operation {
         name: "get_image",
-        method: "GET",
-        path: "/v1/images/{id}",
         category: "images",
         description: "Get image data by ID.",
         params: &[Param {
@@ -1178,12 +1034,11 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Image ID",
         }],
+        handler: |p, c| Box::pin(handlers::get_image(p, c)),
     },
     // ── Schedules ───────────────────────────────────────────────────────
     Operation {
         name: "list_schedules",
-        method: "GET",
-        path: "/v1/schedules",
         category: "schedules",
         description: "List durable scheduled tasks. Supports --summary for compact output.",
         params: &[Param {
@@ -1191,11 +1046,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "query",
             description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
         }],
+        handler: |p, c| Box::pin(handlers::list_schedules(p, c)),
     },
     Operation {
         name: "create_schedule",
-        method: "POST",
-        path: "/v1/schedules",
         category: "schedules",
         description: "Create a new durable scheduled task with a cron expression.",
         params: &[
@@ -1215,12 +1069,11 @@ pub static CATALOG: &[Operation] = &[
                 description: "Schedule target configuration",
             },
         ],
+        handler: |p, c| Box::pin(handlers::create_schedule(p, c)),
     },
     // ── Organizations ───────────────────────────────────────────────────
     Operation {
         name: "list_orgs",
-        method: "GET",
-        path: "/v1/orgs",
         category: "organizations",
         description: "List organizations for the current user. Supports --summary for compact output.",
         params: &[Param {
@@ -1228,11 +1081,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "query",
             description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
         }],
+        handler: |p, c| Box::pin(handlers::list_orgs(p, c)),
     },
     Operation {
         name: "get_org",
-        method: "GET",
-        path: "/v1/orgs/{org}",
         category: "organizations",
         description: "Get organization details.",
         params: &[Param {
@@ -1240,12 +1092,11 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Organization ID or slug",
         }],
+        handler: |p, c| Box::pin(handlers::get_org(p, c)),
     },
     // ── Users ───────────────────────────────────────────────────────────
     Operation {
         name: "list_users",
-        method: "GET",
-        path: "/v1/users",
         category: "users",
         description: "List users in the current organization. Supports search filtering and --summary for compact output.",
         params: &[
@@ -1260,12 +1111,11 @@ pub static CATALOG: &[Operation] = &[
                 description: "Compact output: id, name, description, status, self_url, view_url (default: false)",
             },
         ],
+        handler: |p, c| Box::pin(handlers::list_users(p, c)),
     },
     // ── Session Files ───────────────────────────────────────────────────
     Operation {
         name: "list_session_files",
-        method: "GET",
-        path: "/v1/sessions/{session_id}/files",
         category: "files",
         description: "Get the root directory listing of session files.",
         params: &[Param {
@@ -1273,11 +1123,10 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Session ID",
         }],
+        handler: |p, c| Box::pin(handlers::list_session_files(p, c)),
     },
     Operation {
         name: "get_session_file",
-        method: "GET",
-        path: "/v1/sessions/{session_id}/files/{path}",
         category: "files",
         description: "Get a file or directory at a path in the session filesystem.",
         params: &[
@@ -1292,12 +1141,11 @@ pub static CATALOG: &[Operation] = &[
                 description: "File path",
             },
         ],
+        handler: |p, c| Box::pin(handlers::get_session_file(p, c)),
     },
     // ── Session Databases ───────────────────────────────────────────────
     Operation {
         name: "list_session_databases",
-        method: "GET",
-        path: "/v1/sessions/{session_id}/databases",
         category: "databases",
         description: "List session-scoped SQL databases.",
         params: &[Param {
@@ -1305,12 +1153,11 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Session ID",
         }],
+        handler: |p, c| Box::pin(handlers::list_session_databases(p, c)),
     },
     // ── Session Storage ─────────────────────────────────────────────────
     Operation {
         name: "list_session_storage",
-        method: "GET",
-        path: "/v1/sessions/{session_id}/storage/keys",
         category: "storage",
         description: "List key-value pairs in session storage.",
         params: &[Param {
@@ -1318,12 +1165,11 @@ pub static CATALOG: &[Operation] = &[
             typ: "path",
             description: "Session ID",
         }],
+        handler: |p, c| Box::pin(handlers::list_session_storage(p, c)),
     },
     // ── Tool Results ────────────────────────────────────────────────────
     Operation {
         name: "submit_tool_results",
-        method: "POST",
-        path: "/v1/sessions/{session_id}/tool-results",
         category: "tool_results",
         description: "Submit client-side tool results back to a waiting session.",
         params: &[
@@ -1338,15 +1184,15 @@ pub static CATALOG: &[Operation] = &[
                 description: "Array of {tool_call_id, output} objects",
             },
         ],
+        handler: |p, c| Box::pin(handlers::submit_tool_results(p, c)),
     },
     // ── Health ──────────────────────────────────────────────────────────
     Operation {
         name: "health_check",
-        method: "GET",
-        path: "/health",
         category: "system",
         description: "Health check endpoint. Returns server version and runner mode.",
         params: &[],
+        handler: |p, c| Box::pin(handlers::health_check(p, c)),
     },
 ];
 

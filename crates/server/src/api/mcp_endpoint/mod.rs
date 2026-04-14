@@ -25,8 +25,7 @@ use crate::services::{
 };
 use crate::storage::StorageBackend;
 use axum::{Json, Router, extract::State, routing::post};
-use bashkit::{ScriptedTool, Tool as ScriptedToolTrait};
-use everruns_core::typed_id::{AgentId, BudgetId, EventId, HarnessId, SessionId};
+use bashkit::{ScriptedTool, Tool as _};
 use everruns_core::{Caller, OrgRole, PlatformDefinition, validate_org_public_id};
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
@@ -34,8 +33,6 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 use super::common::impl_auth_state;
-use super::messages::{CreateMessageRequest, InputMessage, MessageRole};
-use super::sessions::CreateSessionRequest;
 
 mod catalog;
 
@@ -850,150 +847,65 @@ async fn tool_agent_run(
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: message")?;
 
-    let agent_id: Option<AgentId> = args
-        .get("agent_id")
-        .and_then(|v| v.as_str())
-        .map(|s| s.parse())
-        .transpose()
-        .map_err(|e| format!("Invalid agent_id: {e}"))?;
+    let ctx = catalog_context(org, state);
 
-    let title = args.get("title").and_then(|v| v.as_str()).map(String::from);
-
-    let model_id = args
-        .get("model_id")
-        .and_then(|v| v.as_str())
-        .map(|s| s.parse())
-        .transpose()
-        .map_err(|e| format!("Invalid model_id: {e}"))?;
-
-    // Resolve harness
-    let harness_id = resolve_base_harness(
-        &state.db,
-        org.org_id,
-        state.fallback_base_harness_name.as_deref(),
-    )
-    .await
-    .map_err(|e| format!("Failed to resolve harness: {e}"))?;
-
-    // Resolve agent internal ID
-    let (agent_internal_id, agent_public_id) = if let Some(ref aid) = agent_id {
-        let agent_row = state
-            .db
-            .get_agent_by_public_id(org.org_id, &aid.to_string())
-            .await
-            .map_err(|e| format!("Failed to resolve agent: {e}"))?
-            .ok_or("Agent not found")?;
-
-        let public_id: AgentId = agent_row
-            .public_id
-            .parse()
-            .unwrap_or_else(|_| AgentId::from_uuid(agent_row.id.uuid()));
-        (Some(agent_row.id.uuid()), Some(public_id))
-    } else {
-        (None, None)
-    };
-
-    let caller = Caller::from(org);
-
-    // Create session
-    let session_req = CreateSessionRequest {
-        harness_id: Some(harness_id),
-        harness_name: None,
-        agent_id,
-        agent_identity_id: None,
-        title,
-        locale: None,
-        tags: vec![],
-        model_id,
-        capabilities: vec![],
-        tools: vec![],
-        system_prompt: None,
-        initial_files: vec![],
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-    };
-
-    let session = state
-        .session_service
-        .create(
-            &caller,
-            harness_id.uuid(),
-            agent_internal_id,
-            agent_public_id,
-            session_req,
-        )
-        .await
-        .map_err(|e| format!("Failed to create session: {e}"))?;
+    // Create session via catalog handler
+    let session_params = json!({
+        "agent_id": args.get("agent_id"),
+        "harness_id": args.get("harness_id"),
+        "title": args.get("title"),
+        "model_id": args.get("model_id"),
+    });
+    let session_json = handlers::create_session(&session_params, &ctx).await?;
+    let session: Value =
+        serde_json::from_str(&session_json).map_err(|e| format!("Internal error: {e}"))?;
+    let session_id = session["id"]
+        .as_str()
+        .ok_or("Internal error: no session ID in response")?;
 
     // Create budget if budget_limit is specified
     let budget_id = if let Some(budget_limit) = args.get("budget_limit").and_then(|v| v.as_f64()) {
         if budget_limit <= 0.0 {
             return Err("budget_limit must be positive".to_string());
         }
-        let budget_currency = args
-            .get("budget_currency")
-            .and_then(|v| v.as_str())
-            .unwrap_or("usd");
         let budget_soft_limit = args.get("budget_soft_limit").and_then(|v| v.as_f64());
         if budget_soft_limit.is_some_and(|s| s <= 0.0 || s > budget_limit) {
             return Err(
                 "budget_soft_limit must be greater than 0 and at most budget_limit".to_string(),
             );
         }
-
-        let input = crate::storage::models::CreateBudgetRow {
-            org_id: org.org_id,
-            subject_type: "session".to_string(),
-            subject_id: session.id.to_string(),
-            currency: budget_currency.to_string(),
-            limit: budget_limit,
-            soft_limit: budget_soft_limit,
-            period: None,
-            metadata: None,
-        };
-        let row = state
-            .db
-            .create_budget(input)
+        let budget_params = json!({
+            "subject_type": "session",
+            "subject_id": session_id,
+            "currency": args.get("budget_currency").and_then(|v| v.as_str()).unwrap_or("usd"),
+            "limit": budget_limit,
+            "soft_limit": budget_soft_limit,
+        });
+        let budget_json = handlers::create_budget(&budget_params, &ctx)
             .await
             .map_err(|e| format!("Session created but budget creation failed: {e}"))?;
-        Some(BudgetId::from_uuid(row.id).to_string())
+        let budget: Value =
+            serde_json::from_str(&budget_json).map_err(|e| format!("Internal error: {e}"))?;
+        budget["id"].as_str().map(String::from)
     } else {
         None
     };
 
-    // Send first message
-    let msg_req = CreateMessageRequest {
-        message: InputMessage {
-            role: MessageRole::User,
-            content: vec![everruns_core::InputContentPart::text(message_text)],
-        },
-        controls: None,
-        metadata: None,
-        tags: None,
-        external_actor: None,
-    };
-
-    let message = state
-        .message_service
-        .create(
-            crate::services::CreateMessageContext {
-                org_id: org.org_id,
-                user_id: org.user_id,
-                harness_id: session.harness_id.uuid(),
-                agent_id: session.agent_id.map(|a| a.uuid()),
-                session_id: session.id.uuid(),
-                event_metadata: None,
-            },
-            msg_req,
-        )
-        .await
-        .map_err(|e| format!("Failed to send message: {e}"))?;
+    // Send first message via catalog handler
+    let msg_params = json!({
+        "session_id": session_id,
+        "message": {
+            "role": "user",
+            "content": [{"type": "text", "text": message_text}]
+        }
+    });
+    let msg_json = handlers::create_message(&msg_params, &ctx).await?;
+    let msg: Value = serde_json::from_str(&msg_json).map_err(|e| format!("Internal error: {e}"))?;
 
     let mut result = json!({
-        "session_id": session.id.to_string(),
-        "message_id": message.id.to_string(),
-        "status": session.status.to_string(),
+        "session_id": session_id,
+        "message_id": msg["id"],
+        "status": session["status"],
         "hint": "Use session_get_status to poll for the agent's response, or connect to SSE at /api/v1/sessions/{session_id}/sse"
     });
     if let Some(bid) = budget_id {
@@ -1012,58 +924,31 @@ async fn tool_session_send_message(
     org: &ResolvedOrg,
     state: &AppState,
 ) -> Result<String, String> {
-    let session_id: SessionId = args
+    let session_id = args
         .get("session_id")
         .and_then(|v| v.as_str())
-        .ok_or("Missing required parameter: session_id")?
-        .parse()
-        .map_err(|e| format!("Invalid session_id: {e}"))?;
+        .ok_or("Missing required parameter: session_id")?;
 
     let message_text = args
         .get("message")
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: message")?;
 
-    let caller = Caller::from(org);
+    let ctx = catalog_context(org, state);
 
-    // Verify session exists
-    let session = state
-        .session_service
-        .get(&caller, session_id.uuid(), None)
-        .await
-        .map_err(|e| format!("Failed to get session: {e}"))?
-        .ok_or("Session not found")?;
-
-    let msg_req = CreateMessageRequest {
-        message: InputMessage {
-            role: MessageRole::User,
-            content: vec![everruns_core::InputContentPart::text(message_text)],
-        },
-        controls: None,
-        metadata: None,
-        tags: None,
-        external_actor: None,
-    };
-
-    let message = state
-        .message_service
-        .create(
-            crate::services::CreateMessageContext {
-                org_id: org.org_id,
-                user_id: org.user_id,
-                harness_id: session.harness_id.uuid(),
-                agent_id: session.agent_id.map(|a| a.uuid()),
-                session_id: session_id.uuid(),
-                event_metadata: None,
-            },
-            msg_req,
-        )
-        .await
-        .map_err(|e| format!("Failed to send message: {e}"))?;
+    let msg_params = json!({
+        "session_id": session_id,
+        "message": {
+            "role": "user",
+            "content": [{"type": "text", "text": message_text}]
+        }
+    });
+    let msg_json = handlers::create_message(&msg_params, &ctx).await?;
+    let msg: Value = serde_json::from_str(&msg_json).map_err(|e| format!("Internal error: {e}"))?;
 
     Ok(serde_json::to_string_pretty(&json!({
-        "message_id": message.id.to_string(),
-        "session_status": session.status.to_string(),
+        "message_id": msg["id"],
+        "session_status": msg["status"],
         "hint": "Use session_get_status to poll for completion"
     }))
     .unwrap())
@@ -1078,20 +963,20 @@ async fn tool_session_get_status(
     org: &ResolvedOrg,
     state: &AppState,
 ) -> Result<String, String> {
-    let session_id: SessionId = args
+    let session_id = args
         .get("session_id")
         .and_then(|v| v.as_str())
-        .ok_or("Missing required parameter: session_id")?
-        .parse()
-        .map_err(|e| format!("Invalid session_id: {e}"))?;
+        .ok_or("Missing required parameter: session_id")?;
 
-    let since_event_id: Option<EventId> = args
-        .get("since_event_id")
-        .and_then(|v| v.as_str())
-        .map(|s| s.parse())
-        .transpose()
-        .map_err(|e| format!("Invalid since_event_id: {e}"))?;
+    let ctx = catalog_context(org, state);
 
+    // Get session via handler
+    let session_params = json!({ "session_id": session_id });
+    let session_json = handlers::get_session(&session_params, &ctx).await?;
+    let session: Value =
+        serde_json::from_str(&session_json).map_err(|e| format!("Internal error: {e}"))?;
+
+    // Get recent events via handler
     let event_types: Vec<String> = args
         .get("event_types")
         .and_then(|v| v.as_array())
@@ -1102,60 +987,51 @@ async fn tool_session_get_status(
         })
         .unwrap_or_default();
 
-    let caller = Caller::from(org);
+    let event_params = json!({
+        "session_id": session_id,
+        "since_id": args.get("since_event_id"),
+        "types": if event_types.is_empty() { None } else { Some(event_types.join(",")) },
+        "limit": 50,
+    });
+    let events_json = handlers::list_events(&event_params, &ctx).await?;
+    let events_data: Value =
+        serde_json::from_str(&events_json).map_err(|e| format!("Internal error: {e}"))?;
+    let events = events_data["data"].as_array();
 
-    // Get session
-    let session = state
-        .session_service
-        .get(&caller, session_id.uuid(), None)
-        .await
-        .map_err(|e| format!("Failed to get session: {e}"))?
-        .ok_or("Session not found")?;
-
-    // Get recent events
-    let since_id = since_event_id.map(|id| id.uuid());
-
-    let events = state
-        .event_service
-        .list(
-            session_id.uuid(),
-            None,         // since_sequence
-            since_id,     // since_id (UUID)
-            &event_types, // filter_types
-            &[],          // exclude_types
-            None,         // before_sequence
-            Some(50),     // limit
-        )
-        .await
-        .map_err(|e| format!("Failed to list events: {e}"))?;
-
-    // Extract the latest agent message text from events if available
-    let latest_output = events
+    // Extract latest output from events
+    let empty = vec![];
+    let events_arr = events.unwrap_or(&empty);
+    let latest_output = events_arr
         .iter()
         .rev()
-        .find(|e| e.event_type == "output.message.completed")
-        .and_then(|e| {
-            if let everruns_core::EventData::OutputMessageCompleted(data) = &e.data {
-                data.message.text().map(String::from)
-            } else {
-                None
-            }
+        .find(|e| e.get("event_type").and_then(|v| v.as_str()) == Some("output.message.completed"))
+        .and_then(|e| e.get("data"))
+        .and_then(|d| d.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array())
+        .and_then(|parts| {
+            parts
+                .iter()
+                .find(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
+                .and_then(|p| p.get("text").and_then(|t| t.as_str()))
         });
 
-    let last_event_id = events.last().map(|e| e.id.to_string());
+    let last_event_id = events_arr
+        .last()
+        .and_then(|e| e.get("id").and_then(|v| v.as_str()));
 
     Ok(serde_json::to_string_pretty(&json!({
-        "session_id": session.id.to_string(),
-        "status": session.status.to_string(),
-        "agent_id": session.agent_id.map(|a| a.to_string()),
-        "title": session.title,
+        "session_id": session_id,
+        "status": session["status"],
+        "agent_id": session["agent_id"],
+        "title": session["title"],
         "latest_output": latest_output,
         "last_event_id": last_event_id,
-        "event_count": events.len(),
-        "events": events.iter().map(|e| json!({
-            "id": e.id.to_string(),
-            "type": e.event_type,
-            "ts": e.ts.to_rfc3339(),
+        "event_count": events_arr.len(),
+        "events": events_arr.iter().map(|e| json!({
+            "id": e["id"],
+            "type": e["event_type"],
+            "ts": e["ts"],
         })).collect::<Vec<_>>()
     }))
     .unwrap())
@@ -1212,26 +1088,20 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
 // ScriptedTool helpers
 // ============================================================================
 
-/// Build a ScriptedTool for the given org context.
-/// All catalog operations are direct service calls — no HTTP.
-fn build_scripted_tool(org: &ResolvedOrg, state: &AppState) -> ScriptedTool {
-    let ctx = catalog::CatalogContext {
+/// Build a CatalogContext for the given org.
+fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::CatalogContext {
+    catalog::CatalogContext {
+        state: state.clone(),
         caller: Caller::from(org),
         org_id: org.org_id,
         user_id: org.user_id,
-        db: state.db.clone(),
-        agent_service: state.agent_service.clone(),
-        session_service: state.session_service.clone(),
-        message_service: state.message_service.clone(),
-        event_service: state.event_service.clone(),
-        capability_service: state.capability_service.clone(),
-        mcp_server_service: state.mcp_server_service.clone(),
-        skill_service: state.skill_service.clone(),
-        budget_service: state.budget_service.clone(),
-        runner: state.runner.clone(),
-        fallback_base_harness_name: state.fallback_base_harness_name.clone(),
-    };
-    catalog::build_scripted_tool(ctx)
+    }
+}
+
+/// Build a ScriptedTool for the given org context.
+/// All catalog operations are direct service calls — no HTTP.
+fn build_scripted_tool(org: &ResolvedOrg, state: &AppState) -> ScriptedTool {
+    catalog::build_scripted_tool(catalog_context(org, state))
 }
 
 /// Execute a script through a ScriptedTool and return formatted output.
@@ -1273,28 +1143,4 @@ async fn execute_script(
         }
         Err(_) => Err(format!("Command timed out after {timeout_ms}ms")),
     }
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-async fn resolve_base_harness(
-    db: &StorageBackend,
-    org_id: i64,
-    fallback_name: Option<&str>,
-) -> anyhow::Result<HarnessId> {
-    let settings = db.get_organization_settings(org_id).await?;
-    if let Some(harness_id) = settings.and_then(|row| row.base_harness_id) {
-        return Ok(harness_id);
-    }
-
-    if let Some(name) = fallback_name {
-        let harnesses = db.list_harnesses(org_id, Some(name), false).await?;
-        if let Some(h) = harnesses.first() {
-            return Ok(h.id);
-        }
-    }
-
-    anyhow::bail!("No base harness configured for this organization")
 }
