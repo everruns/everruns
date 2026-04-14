@@ -389,7 +389,12 @@ pub async fn cancel_session(params: &Value, ctx: &CatalogContext) -> Result<Stri
 // ============================================================================
 
 pub async fn create_budget(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
-    let input = serde_json::from_value(params.clone()).map_err(err)?;
+    // Inject org_id from context — callers should not supply it directly
+    let mut params = params.clone();
+    if let Some(obj) = params.as_object_mut() {
+        obj.insert("org_id".to_string(), json!(ctx.org_id));
+    }
+    let input = serde_json::from_value(params).map_err(err)?;
     let budget = ctx.state.db.create_budget(input).await.map_err(err)?;
     to_json(&budget)
 }
@@ -545,9 +550,14 @@ pub async fn list_messages(params: &Value, ctx: &CatalogContext) -> Result<Strin
 pub async fn list_events(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let session_id = parse_session_id(&require_str(params, "session_id")?)?;
     let since_id = param_str(params, "since_id")
-        .map(|s| s.parse::<uuid::Uuid>())
-        .transpose()
-        .map_err(|e| format!("Invalid since_id: {e}"))?;
+        .map(|s| {
+            // Accept both typed EventId (event_...) and raw UUID
+            s.parse::<everruns_core::typed_id::EventId>()
+                .map(|id| id.uuid())
+                .or_else(|_| s.parse::<uuid::Uuid>())
+                .map_err(|e| format!("Invalid since_id: {e}"))
+        })
+        .transpose()?;
     let types: Vec<String> = param_str(params, "types")
         .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
         .unwrap_or_default();

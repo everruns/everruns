@@ -878,6 +878,7 @@ async fn tool_agent_run(
             );
         }
         let budget_params = json!({
+            "org_id": org.org_id,
             "subject_type": "session",
             "subject_id": session_id,
             "currency": args.get("budget_currency").and_then(|v| v.as_str()).unwrap_or("usd"),
@@ -889,7 +890,14 @@ async fn tool_agent_run(
             .map_err(|e| format!("Session created but budget creation failed: {e}"))?;
         let budget: Value =
             serde_json::from_str(&budget_json).map_err(|e| format!("Internal error: {e}"))?;
-        budget["id"].as_str().map(String::from)
+        // Wrap raw UUID as typed BudgetId for consistent API output
+        budget["id"].as_str().map(|raw| {
+            if let Ok(uuid) = raw.parse::<uuid::Uuid>() {
+                everruns_core::typed_id::BudgetId::from_uuid(uuid).to_string()
+            } else {
+                raw.to_string()
+            }
+        })
     } else {
         None
     };
@@ -949,9 +957,15 @@ async fn tool_session_send_message(
     let msg_json = handlers::create_message(&msg_params, &ctx).await?;
     let msg: Value = serde_json::from_str(&msg_json).map_err(|e| format!("Internal error: {e}"))?;
 
+    // Fetch session to get current status (create_message returns message, not session)
+    let session_params = json!({ "session_id": session_id });
+    let session_json = handlers::get_session(&session_params, &ctx).await?;
+    let session: Value =
+        serde_json::from_str(&session_json).map_err(|e| format!("Internal error: {e}"))?;
+
     Ok(serde_json::to_string_pretty(&json!({
         "message_id": msg["id"],
-        "session_status": msg["status"],
+        "session_status": session["status"],
         "hint": "Use session_get_status to poll for completion"
     }))
     .unwrap())
@@ -990,9 +1004,21 @@ async fn tool_session_get_status(
         })
         .unwrap_or_default();
 
+    // Parse since_event_id as typed EventId and extract UUID for the handler
+    let since_id_uuid = args
+        .get("since_event_id")
+        .and_then(|v| v.as_str())
+        .map(|s| {
+            s.parse::<everruns_core::typed_id::EventId>()
+                .map(|id| id.uuid().to_string())
+                .or_else(|_| s.parse::<uuid::Uuid>().map(|u| u.to_string()))
+                .map_err(|_| format!("Invalid since_event_id: {s}"))
+        })
+        .transpose()?;
+
     let event_params = json!({
         "session_id": session_id,
-        "since_id": args.get("since_event_id"),
+        "since_id": since_id_uuid,
         "types": if event_types.is_empty() { None } else { Some(event_types.join(",")) },
         "limit": 50,
     });
@@ -1060,7 +1086,7 @@ async fn tool_discover(
                 "Provide a 'query' to search or set 'all: true' to list everything.".into(),
             );
         }
-        format!("discover --search {query}")
+        format!("discover --search '{}'", query.replace('\'', "'\\''"))
     };
 
     let toolset = build_toolset(org, state);
