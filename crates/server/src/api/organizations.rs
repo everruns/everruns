@@ -75,7 +75,7 @@ pub struct UpdateOrganizationRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Acme Corporation")]
     pub name: Option<String>,
-    /// Default LLM model for this organization. Must be an installed model.
+    /// Default LLM model for this organization. Must be an enabled model.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<everruns_core::ModelId>,
@@ -436,7 +436,7 @@ pub async fn update_organization(
 
     // Validate referenced IDs exist (skip if already resolved from name)
     if let Some(ref model_id) = default_model_id {
-        // Verify the model exists and is installed
+        // Verify the model exists and is enabled
         let model = state
             .db
             .get_llm_model_with_provider(org_row.org_id, model_id.uuid())
@@ -448,11 +448,11 @@ pub async fn update_organization(
                     Json(ErrorResponse::new("Model not found")),
                 )
             })?;
-        if !model.installed {
+        if !model.enabled {
             return Err((
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse::new(
-                    "Default model must be an installed model",
+                    "Default model must be an enabled model",
                 )),
             ));
         }

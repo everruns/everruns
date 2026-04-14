@@ -241,7 +241,7 @@ impl ModelSyncService {
                     model_id: model.model_id.clone(),
                     display_name,
                     capabilities: vec![],
-                    installed: false,
+                    enabled: false,
                     is_favorite: false,
                     source: "discovered".to_string(),
                     provider_metadata: Some(metadata),

@@ -222,7 +222,7 @@ export function AddModelDialog({
   const [providerId, setProviderId] = useState("");
   const [modelId, setModelId] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [installed, setInstalled] = useState(true);
+  const [enabled, setEnabled] = useState(true);
 
   const createModel = useCreateLlmModel(providerId);
 
@@ -231,14 +231,14 @@ export function AddModelDialog({
     const data: CreateLlmModelRequest = {
       model_id: modelId,
       display_name: displayName,
-      installed,
+      enabled,
     };
     await createModel.mutateAsync(data);
     onOpenChange(false);
     setProviderId("");
     setModelId("");
     setDisplayName("");
-    setInstalled(true);
+    setEnabled(true);
   };
 
   return (
@@ -291,12 +291,12 @@ export function AddModelDialog({
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
-              id="model-installed"
-              checked={installed}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInstalled(e.target.checked)}
+              id="model-enabled"
+              checked={enabled}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEnabled(e.target.checked)}
               className="h-4 w-4"
             />
-            <Label htmlFor="model-installed">Install model (available in UI model pickers)</Label>
+            <Label htmlFor="model-enabled">Enable model (visible in UI model pickers)</Label>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

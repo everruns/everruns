@@ -915,7 +915,7 @@ mod tests {
                 model_id: model_id.to_string(),
                 display_name: model_id.to_string(),
                 capabilities: vec![],
-                installed: true,
+                enabled: true,
                 is_favorite: false,
                 source: "manual".to_string(),
                 provider_metadata: None,
