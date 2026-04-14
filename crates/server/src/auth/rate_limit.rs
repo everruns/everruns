@@ -180,7 +180,7 @@ pub fn extract_client_ip(req: &Request<Body>) -> IpAddr {
 /// Global per-IP rate limiter for all API endpoints.
 ///
 /// Applied as Axum middleware. Uses governor in-memory backend.
-/// Configurable via `RATE_LIMIT_API_REQUESTS_PER_MINUTE` env var (default: 120).
+/// Configurable via `RATE_LIMIT_API_REQUESTS_PER_MINUTE` env var (default: 1200).
 #[derive(Clone)]
 pub struct ApiRateLimiter {
     limiter: Arc<KeyedLimiter>,
@@ -188,7 +188,7 @@ pub struct ApiRateLimiter {
 
 impl ApiRateLimiter {
     pub fn from_env() -> Self {
-        let rpm: u32 = everruns_config::env_or("RATE_LIMIT_API_REQUESTS_PER_MINUTE", 120);
+        let rpm: u32 = everruns_config::env_or("RATE_LIMIT_API_REQUESTS_PER_MINUTE", 1200);
         let rpm = rpm.max(1); // ensure nonzero
         Self {
             limiter: Arc::new(RateLimiter::keyed(Quota::per_minute(
