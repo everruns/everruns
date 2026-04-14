@@ -180,7 +180,7 @@ pub fn extract_client_ip(req: &Request<Body>) -> IpAddr {
 /// Global per-IP rate limiter for all API endpoints.
 ///
 /// Applied as Axum middleware. Uses governor in-memory backend.
-/// Configurable via `RATE_LIMIT_API_REQUESTS_PER_MINUTE` env var (default: 120).
+/// Configurable via `RATE_LIMIT_API_REQUESTS_PER_MINUTE` env var (default: 1200).
 #[derive(Clone)]
 pub struct ApiRateLimiter {
     limiter: Arc<KeyedLimiter>,
