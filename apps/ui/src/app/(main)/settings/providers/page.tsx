@@ -49,7 +49,7 @@ export default function ProvidersPage() {
     text: string;
   } | null>(null);
 
-  const installedModels = models.filter((m) => m.installed);
+  const enabledModels = models.filter((m) => m.enabled);
 
   const handleDeleteProvider = async (id: string) => {
     if (
@@ -67,13 +67,13 @@ export default function ProvidersPage() {
     }
   };
 
-  const handleToggleInstalled = async (modelId: string, installed: boolean) => {
+  const handleToggleEnabled = async (modelId: string, enabled: boolean) => {
     setTogglingModelId(modelId);
     try {
-      await updateLlmModel(modelId, { installed });
+      await updateLlmModel(modelId, { enabled });
       await queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
-      // If uninstalling, also refresh org in case it was the default
-      if (!installed) {
+      // If disabling, also refresh org in case it was the default
+      if (!enabled) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
       }
     } finally {
@@ -232,8 +232,8 @@ export default function ProvidersPage() {
                 key={model.id}
                 model={model}
                 onDelete={handleDeleteModel}
-                onToggleInstalled={handleToggleInstalled}
-                isTogglingInstalled={togglingModelId === model.id}
+                onToggleEnabled={handleToggleEnabled}
+                isTogglingEnabled={togglingModelId === model.id}
               />
             ))}
           </div>
@@ -241,7 +241,7 @@ export default function ProvidersPage() {
       </section>
 
       {/* Organization Default Model Section */}
-      {installedModels.length > 0 && (
+      {enabledModels.length > 0 && (
         <section>
           <div className="mb-4">
             <h2 className="text-xl font-semibold">Organization Settings</h2>
@@ -264,14 +264,14 @@ export default function ProvidersPage() {
                   <SelectTrigger className="w-full max-w-md" id="default-model">
                     <span>
                       {org?.default_model_id
-                        ? (installedModels.find((m) => m.id === org.default_model_id)
-                            ?.display_name ?? "Unknown model")
+                        ? (enabledModels.find((m) => m.id === org.default_model_id)?.display_name ??
+                          "Unknown model")
                         : "No default model"}
                     </span>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No default model</SelectItem>
-                    {installedModels.map((model) => (
+                    {enabledModels.map((model) => (
                       <SelectItem key={model.id} value={model.id}>
                         <div className="flex items-center gap-2">
                           <ProviderIcon

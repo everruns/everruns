@@ -243,7 +243,7 @@ impl InMemoryDatabase {
                 display_name: model.display_name.clone(),
                 capabilities: model.capabilities.clone(),
                 is_favorite: model.is_favorite,
-                installed: model.installed,
+                enabled: model.enabled,
                 status: model.status.clone(),
                 source: model.source.clone(),
                 last_seen_at: model.last_seen_at,
@@ -276,7 +276,7 @@ impl InMemoryDatabase {
             display_name: input.display_name,
             capabilities: serde_json::to_value(&input.capabilities)?,
             is_favorite: input.is_favorite,
-            installed: input.installed,
+            enabled: input.enabled,
             status: "active".to_string(),
             source: input.source,
             last_seen_at: None,
@@ -304,14 +304,14 @@ impl InMemoryDatabase {
             // Check if seed-controlled fields differ
             if existing.display_name == input.display_name
                 && existing.is_favorite == input.is_favorite
-                && existing.installed == input.installed
+                && existing.enabled == input.enabled
             {
                 return Ok(None); // Unchanged
             }
             let row = LlmModelRow {
                 display_name: input.display_name,
                 is_favorite: input.is_favorite,
-                installed: input.installed,
+                enabled: input.enabled,
                 updated_at: now,
                 ..existing
             };
@@ -327,7 +327,7 @@ impl InMemoryDatabase {
             display_name: input.display_name,
             capabilities: serde_json::to_value(&input.capabilities)?,
             is_favorite: input.is_favorite,
-            installed: input.installed,
+            enabled: input.enabled,
             status: "active".to_string(),
             source: input.source,
             last_seen_at: None,
@@ -371,7 +371,7 @@ impl InMemoryDatabase {
                 display_name: model.display_name.clone(),
                 capabilities: model.capabilities.clone(),
                 is_favorite: model.is_favorite,
-                installed: model.installed,
+                enabled: model.enabled,
                 status: model.status.clone(),
                 source: model.source.clone(),
                 last_seen_at: model.last_seen_at,
@@ -420,7 +420,7 @@ impl InMemoryDatabase {
                         display_name: model.display_name.clone(),
                         capabilities: model.capabilities.clone(),
                         is_favorite: model.is_favorite,
-                        installed: model.installed,
+                        enabled: model.enabled,
                         status: model.status.clone(),
                         source: model.source.clone(),
                         last_seen_at: model.last_seen_at,
@@ -432,10 +432,10 @@ impl InMemoryDatabase {
                     })
             })
             .collect();
-        // Sort by installed first, then favorite, then display_name
+        // Sort by enabled first, then favorite, then display_name
         result.sort_by(|a, b| {
-            b.installed
-                .cmp(&a.installed)
+            b.enabled
+                .cmp(&a.enabled)
                 .then_with(|| b.is_favorite.cmp(&a.is_favorite))
                 .then_with(|| a.display_name.cmp(&b.display_name))
         });
@@ -464,8 +464,8 @@ impl InMemoryDatabase {
         if let Some(is_favorite) = input.is_favorite {
             model.is_favorite = is_favorite;
         }
-        if let Some(installed) = input.installed {
-            model.installed = installed;
+        if let Some(enabled) = input.enabled {
+            model.enabled = enabled;
         }
         if let Some(status) = input.status {
             model.status = status;
@@ -511,7 +511,7 @@ impl InMemoryDatabase {
                     display_name: model.display_name.clone(),
                     capabilities: model.capabilities.clone(),
                     is_favorite: model.is_favorite,
-                    installed: model.installed,
+                    enabled: model.enabled,
                     status: model.status.clone(),
                     source: model.source.clone(),
                     last_seen_at: model.last_seen_at,

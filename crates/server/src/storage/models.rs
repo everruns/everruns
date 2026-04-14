@@ -647,8 +647,8 @@ pub struct LlmModelRow {
     pub display_name: String,
     pub capabilities: sqlx::types::JsonValue,
     pub is_favorite: bool,
-    /// Whether this model is installed (available in UI model pickers)
-    pub installed: bool,
+    /// Whether this model is enabled (visible in UI model pickers)
+    pub enabled: bool,
     pub status: String,
     /// How the model was added: manual, discovered, or predefined
     pub source: String,
@@ -670,8 +670,8 @@ pub struct LlmModelWithProviderRow {
     pub display_name: String,
     pub capabilities: sqlx::types::JsonValue,
     pub is_favorite: bool,
-    /// Whether this model is installed (available in UI model pickers)
-    pub installed: bool,
+    /// Whether this model is enabled (visible in UI model pickers)
+    pub enabled: bool,
     pub status: String,
     /// How the model was added: manual, discovered, or predefined
     pub source: String,
@@ -723,8 +723,8 @@ pub struct CreateLlmModelRow {
     pub display_name: String,
     pub capabilities: Vec<String>,
     pub is_favorite: bool,
-    /// Whether this model is installed (available in UI model pickers)
-    pub installed: bool,
+    /// Whether this model is enabled (visible in UI model pickers)
+    pub enabled: bool,
     /// How the model was added: manual, discovered, or predefined
     pub source: String,
     /// Raw metadata from provider API response
@@ -737,8 +737,8 @@ pub struct UpdateLlmModel {
     pub display_name: Option<String>,
     pub capabilities: Option<Vec<String>>,
     pub is_favorite: Option<bool>,
-    /// Update installed flag
-    pub installed: Option<bool>,
+    /// Update enabled flag
+    pub enabled: Option<bool>,
     pub status: Option<String>,
     /// Update last_seen_at timestamp (for sync tracking)
     pub last_seen_at: Option<DateTime<Utc>>,

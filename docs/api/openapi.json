@@ -6345,9 +6345,9 @@
             "description": "Human-readable display name for the model.",
             "example": "GPT-4o"
           },
-          "installed": {
+          "enabled": {
             "type": "boolean",
-            "description": "Whether this model should be installed (visible in UI model pickers).",
+            "description": "Whether this model should be enabled (visible in UI model pickers).",
             "example": false
           },
           "is_favorite": {
@@ -9294,7 +9294,7 @@
                     "display_name",
                     "capabilities",
                     "is_favorite",
-                    "installed",
+                    "enabled",
                     "status",
                     "source",
                     "created_at",
@@ -9314,13 +9314,13 @@
                     "display_name": {
                       "type": "string"
                     },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Whether this model is enabled (visible in UI model pickers).\nAll models are available via API regardless of this flag."
+                    },
                     "id": {
                       "type": "string",
                       "example": "model_01933b5a00007000800000000000001"
-                    },
-                    "installed": {
-                      "type": "boolean",
-                      "description": "Whether this model is installed (available in UI model pickers).\nAll models are available via API regardless of this flag."
                     },
                     "is_favorite": {
                       "type": "boolean"
@@ -9390,7 +9390,7 @@
                     "display_name",
                     "capabilities",
                     "is_favorite",
-                    "installed",
+                    "enabled",
                     "status",
                     "source",
                     "created_at",
@@ -9412,13 +9412,13 @@
                     "display_name": {
                       "type": "string"
                     },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Whether this model is enabled (visible in UI model pickers)"
+                    },
                     "id": {
                       "type": "string",
                       "example": "model_01933b5a00007000800000000000001"
-                    },
-                    "installed": {
-                      "type": "boolean",
-                      "description": "Whether this model is installed (available in UI model pickers)"
                     },
                     "is_favorite": {
                       "type": "boolean"
@@ -10086,7 +10086,7 @@
           "display_name",
           "capabilities",
           "is_favorite",
-          "installed",
+          "enabled",
           "status",
           "source",
           "created_at",
@@ -10106,13 +10106,13 @@
           "display_name": {
             "type": "string"
           },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this model is enabled (visible in UI model pickers).\nAll models are available via API regardless of this flag."
+          },
           "id": {
             "type": "string",
             "example": "model_01933b5a00007000800000000000001"
-          },
-          "installed": {
-            "type": "boolean",
-            "description": "Whether this model is installed (available in UI model pickers).\nAll models are available via API regardless of this flag."
           },
           "is_favorite": {
             "type": "boolean"
@@ -10387,7 +10387,7 @@
           "display_name",
           "capabilities",
           "is_favorite",
-          "installed",
+          "enabled",
           "status",
           "source",
           "created_at",
@@ -10409,13 +10409,13 @@
           "display_name": {
             "type": "string"
           },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this model is enabled (visible in UI model pickers)"
+          },
           "id": {
             "type": "string",
             "example": "model_01933b5a00007000800000000000001"
-          },
-          "installed": {
-            "type": "boolean",
-            "description": "Whether this model is installed (available in UI model pickers)"
           },
           "is_favorite": {
             "type": "boolean"
@@ -14346,12 +14346,12 @@
             "description": "Human-readable display name for the model.",
             "example": "GPT-4o Mini"
           },
-          "installed": {
+          "enabled": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Whether this model should be installed (visible in UI model pickers).",
+            "description": "Whether this model should be enabled (visible in UI model pickers).",
             "example": true
           },
           "is_favorite": {
@@ -14550,7 +14550,7 @@
               "string",
               "null"
             ],
-            "description": "Default LLM model for this organization. Must be an installed model.",
+            "description": "Default LLM model for this organization. Must be an enabled model.",
             "example": "model_01933b5a00007000800000000000001"
           },
           "name": {
@@ -15180,7 +15180,7 @@
               "display_name",
               "capabilities",
               "is_favorite",
-              "installed",
+              "enabled",
               "status",
               "source",
               "created_at",
@@ -15200,13 +15200,13 @@
               "display_name": {
                 "type": "string"
               },
+              "enabled": {
+                "type": "boolean",
+                "description": "Whether this model is enabled (visible in UI model pickers).\nAll models are available via API regardless of this flag."
+              },
               "id": {
                 "type": "string",
                 "example": "model_01933b5a00007000800000000000001"
-              },
-              "installed": {
-                "type": "boolean",
-                "description": "Whether this model is installed (available in UI model pickers).\nAll models are available via API regardless of this flag."
               },
               "is_favorite": {
                 "type": "boolean"
@@ -15263,7 +15263,7 @@
               "display_name",
               "capabilities",
               "is_favorite",
-              "installed",
+              "enabled",
               "status",
               "source",
               "created_at",
@@ -15285,13 +15285,13 @@
               "display_name": {
                 "type": "string"
               },
+              "enabled": {
+                "type": "boolean",
+                "description": "Whether this model is enabled (visible in UI model pickers)"
+              },
               "id": {
                 "type": "string",
                 "example": "model_01933b5a00007000800000000000001"
-              },
-              "installed": {
-                "type": "boolean",
-                "description": "Whether this model is installed (available in UI model pickers)"
               },
               "is_favorite": {
                 "type": "boolean"

@@ -35,7 +35,7 @@ const mockModels = [
     provider_id: "provider-1",
     provider_name: "OpenAI Production",
     status: "active",
-    installed: true,
+    enabled: true,
     capabilities: ["chat", "function_calling"],
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
@@ -283,18 +283,18 @@ describe("ProvidersPage", () => {
     expect(headerButton).toBeDisabled();
   });
 
-  it("shows Installed badge for installed model", () => {
+  it("shows Enabled badge for enabled model", () => {
     render(<ProvidersPage />, { wrapper });
 
-    // GPT-4 is installed
-    expect(screen.getByText("Installed")).toBeInTheDocument();
+    // GPT-4 is enabled
+    expect(screen.getByText("Enabled")).toBeInTheDocument();
   });
 
-  it("shows Install/Uninstall button for models", () => {
+  it("shows Enable/Disable button for models", () => {
     render(<ProvidersPage />, { wrapper });
 
-    // Installed model should show Uninstall button
-    expect(screen.getByRole("button", { name: /Uninstall/i })).toBeInTheDocument();
+    // Enabled model should show Disable button
+    expect(screen.getByRole("button", { name: /Disable/i })).toBeInTheDocument();
   });
 
   it("shows API Key status correctly", () => {

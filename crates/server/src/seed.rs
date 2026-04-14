@@ -1278,7 +1278,7 @@ struct SeedModel {
     provider_id: Uuid,
     model_id: &'static str,
     display_name: &'static str,
-    installed: bool,
+    enabled: bool,
     is_favorite: bool,
 }
 
@@ -1290,7 +1290,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.4",
         display_name: "GPT-5.4",
-        installed: true,   // Installed by default
+        enabled: true,     // Enabled by default
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1298,7 +1298,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.4-pro",
         display_name: "GPT-5.4 Pro",
-        installed: false,
+        enabled: false,
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1306,7 +1306,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.4-mini",
         display_name: "GPT-5.4 mini",
-        installed: true,
+        enabled: true,
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1314,7 +1314,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.4-nano",
         display_name: "GPT-5.4 nano",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     // OpenAI GPT-5.2 series
@@ -1323,7 +1323,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.2",
         display_name: "GPT-5.2",
-        installed: false,
+        enabled: false,
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1331,7 +1331,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.2-pro",
         display_name: "GPT-5.2 Pro",
-        installed: false,
+        enabled: false,
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1339,7 +1339,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.2-codex",
         display_name: "GPT-5.2 Codex",
-        installed: false,
+        enabled: false,
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1347,7 +1347,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.2-chat-latest",
         display_name: "GPT-5.2 Chat",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     // OpenAI GPT-5.1 series
@@ -1356,7 +1356,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.1",
         display_name: "GPT-5.1",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1364,7 +1364,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.1-codex",
         display_name: "GPT-5.1 Codex",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1372,7 +1372,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.1-codex-mini",
         display_name: "GPT-5.1 Codex mini",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1380,7 +1380,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.1-codex-max",
         display_name: "GPT-5.1 Codex max",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1388,7 +1388,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.1-chat-latest",
         display_name: "GPT-5.1 Chat",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     // OpenAI GPT-5 series
@@ -1397,7 +1397,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5-mini",
         display_name: "GPT-5 mini",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1405,7 +1405,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5",
         display_name: "GPT-5",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1413,7 +1413,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5-nano",
         display_name: "GPT-5 nano",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1421,7 +1421,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5-pro",
         display_name: "GPT-5 Pro",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1429,7 +1429,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5-codex",
         display_name: "GPT-5 Codex",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1437,7 +1437,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5-chat-latest",
         display_name: "GPT-5 Chat",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     // OpenAI GPT-4.1 series
@@ -1446,7 +1446,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-4.1",
         display_name: "GPT-4.1",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1454,7 +1454,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-4.1-mini",
         display_name: "GPT-4.1 mini",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1462,7 +1462,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-4.1-nano",
         display_name: "GPT-4.1 nano",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     // OpenAI GPT-4 series
@@ -1471,7 +1471,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-4o",
         display_name: "GPT-4o",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1479,7 +1479,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-4o-mini",
         display_name: "GPT-4o mini",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     // OpenAI Reasoning models (o-series)
@@ -1488,7 +1488,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o4-mini",
         display_name: "o4 mini",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1496,7 +1496,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o4-mini-deep-research",
         display_name: "o4 mini Deep Research",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1504,7 +1504,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o3",
         display_name: "o3",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1512,7 +1512,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o3-mini",
         display_name: "o3 mini",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1520,7 +1520,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o3-pro",
         display_name: "o3 Pro",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1528,7 +1528,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o3-deep-research",
         display_name: "o3 Deep Research",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1536,7 +1536,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o1",
         display_name: "o1",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1544,7 +1544,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o1-mini",
         display_name: "o1 mini",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1552,7 +1552,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o1-pro",
         display_name: "o1 Pro",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1560,7 +1560,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "o1-preview",
         display_name: "o1 Preview",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     // Anthropic Claude 4.6 series
@@ -1569,7 +1569,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-opus-4-6",
         display_name: "Claude Opus 4.6",
-        installed: true,   // Installed by default
+        enabled: true,     // Enabled by default
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1577,7 +1577,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-sonnet-4-6",
         display_name: "Claude Sonnet 4.6",
-        installed: true,   // Installed by default
+        enabled: true,     // Enabled by default
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1585,7 +1585,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-haiku-4-6-20260301",
         display_name: "Claude Haiku 4.6",
-        installed: true,   // Installed by default
+        enabled: true,     // Enabled by default
         is_favorite: true, // Favorite model
     },
     // Anthropic Claude 4.5 series
@@ -1594,7 +1594,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-opus-4-5",
         display_name: "Claude Opus 4.5",
-        installed: false,
+        enabled: false,
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1602,7 +1602,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-sonnet-4-5",
         display_name: "Claude Sonnet 4.5",
-        installed: false,
+        enabled: false,
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1610,7 +1610,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-haiku-4-5",
         display_name: "Claude Haiku 4.5",
-        installed: false,
+        enabled: false,
         is_favorite: true, // Favorite model
     },
     // Anthropic Claude 4 series
@@ -1619,7 +1619,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-opus-4",
         display_name: "Claude Opus 4",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1627,7 +1627,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-sonnet-4",
         display_name: "Claude Sonnet 4",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     // Anthropic Claude 3.7
@@ -1636,7 +1636,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-3-7-sonnet-latest",
         display_name: "Claude 3.7 Sonnet",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     // Anthropic Claude 3.5
@@ -1645,7 +1645,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-3-5-sonnet-latest",
         display_name: "Claude 3.5 Sonnet",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1653,7 +1653,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-3-5-haiku-latest",
         display_name: "Claude 3.5 Haiku",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     // Google Gemini
@@ -1662,7 +1662,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::GEMINI_PROVIDER,
         model_id: "gemini-2.5-pro",
         display_name: "Gemini 2.5 Pro",
-        installed: false,
+        enabled: false,
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1670,7 +1670,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::GEMINI_PROVIDER,
         model_id: "gemini-2.5-flash",
         display_name: "Gemini 2.5 Flash",
-        installed: false,
+        enabled: false,
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -1678,7 +1678,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::GEMINI_PROVIDER,
         model_id: "gemini-2.0-flash",
         display_name: "Gemini 2.0 Flash",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     // LlmSim (simulated LLM for testing)
@@ -1687,7 +1687,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::LLMSIM_PROVIDER,
         model_id: "llmsim-default",
         display_name: "LlmSim Default",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
     SeedModel {
@@ -1695,7 +1695,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::LLMSIM_PROVIDER,
         model_id: "llmsim-latency",
         display_name: "LlmSim Latency",
-        installed: false,
+        enabled: false,
         is_favorite: false,
     },
 ];
@@ -1745,7 +1745,7 @@ async fn seed_models_with_platform_definition(
             model_id: seed.model_id.to_string(),
             display_name: seed.display_name.to_string(),
             capabilities: vec![], // Empty capabilities for now
-            installed: seed.installed,
+            enabled: seed.enabled,
             is_favorite: seed.is_favorite,
             source: "predefined".to_string(), // Seed models are predefined
             provider_metadata: None,

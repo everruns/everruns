@@ -46,9 +46,9 @@ export function ModelPicker({
 }: ModelPickerProps) {
   const { data: models = [], isLoading } = useLlmModels();
 
-  // Only show installed models, sorted: favorites first, then by provider and name
+  // Only show enabled models, sorted: favorites first, then by provider and name
   const sortedModels = [...models]
-    .filter((m) => m.installed)
+    .filter((m) => m.enabled)
     .sort((a, b) => {
       // Favorites first
       if (a.is_favorite !== b.is_favorite) {

@@ -210,7 +210,7 @@ export function ChatComposer({
                 <SelectContent>
                   <SelectItem value="">{defaultModelOptionLabel}</SelectItem>
                   {llmModels
-                    .filter((m) => m.installed)
+                    .filter((m) => m.enabled)
                     .map((model) => (
                       <SelectItem key={model.id} value={model.id}>
                         {model.display_name}

@@ -12,8 +12,8 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
-  Download,
-  X,
+  ToggleLeft,
+  ToggleRight,
   Trash2,
 } from "lucide-react";
 import { ProviderIcon } from "@/components/providers/provider-icon";
@@ -33,13 +33,13 @@ function formatCost(cost: number): string {
 export function ModelRow({
   model,
   onDelete,
-  onToggleInstalled,
-  isTogglingInstalled,
+  onToggleEnabled,
+  isTogglingEnabled,
 }: {
   model: LlmModelWithProvider;
   onDelete: (id: string) => void;
-  onToggleInstalled: (id: string, installed: boolean) => void;
-  isTogglingInstalled: boolean;
+  onToggleEnabled: (id: string, enabled: boolean) => void;
+  isTogglingEnabled: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const profile = model.profile;
@@ -57,12 +57,12 @@ export function ModelRow({
           <div>
             <div className="font-medium flex items-center gap-2">
               {model.display_name}
-              {model.installed && (
+              {model.enabled && (
                 <Badge
                   variant="outline"
                   className="text-xs bg-green-50 text-green-700 border-green-200"
                 >
-                  Installed
+                  Enabled
                 </Badge>
               )}
               {profile && (
@@ -128,27 +128,27 @@ export function ModelRow({
           >
             {model.status}
           </Badge>
-          {/* Install / Uninstall toggle */}
+          {/* Enable / Disable toggle */}
           <Button
-            variant={model.installed ? "outline" : "default"}
+            variant={model.enabled ? "outline" : "default"}
             size="sm"
-            onClick={() => onToggleInstalled(model.id, !model.installed)}
-            disabled={isTogglingInstalled}
+            onClick={() => onToggleEnabled(model.id, !model.enabled)}
+            disabled={isTogglingEnabled}
             title={
-              model.installed
-                ? "Uninstall model (remove from UI pickers)"
-                : "Install model (make available in UI pickers)"
+              model.enabled
+                ? "Disable model (hide from UI pickers)"
+                : "Enable model (show in UI pickers)"
             }
           >
-            {model.installed ? (
+            {model.enabled ? (
               <>
-                <X className="h-4 w-4 mr-1" />
-                Uninstall
+                <ToggleRight className="h-4 w-4 mr-1" />
+                Disable
               </>
             ) : (
               <>
-                <Download className="h-4 w-4 mr-1" />
-                Install
+                <ToggleLeft className="h-4 w-4 mr-1" />
+                Enable
               </>
             )}
           </Button>

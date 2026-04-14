@@ -72,7 +72,7 @@ impl LlmModelService {
             model_id: req.model_id,
             display_name: req.display_name,
             capabilities: req.capabilities,
-            installed: req.installed,
+            enabled: req.enabled,
             is_favorite: req.is_favorite,
             source: "manual".to_string(), // User-created models are always manual
             provider_metadata: None,
@@ -190,7 +190,7 @@ impl LlmModelService {
             model_id: req.model_id,
             display_name: req.display_name,
             capabilities: req.capabilities,
-            installed: req.installed,
+            enabled: req.enabled,
             is_favorite: req.is_favorite,
             status: req.status.map(|s| match s {
                 LlmModelStatus::Active => "active".to_string(),
@@ -202,8 +202,8 @@ impl LlmModelService {
 
         let row = self.db.update_llm_model(caller.org_id, id, input).await?;
 
-        // If uninstalling a model, check if it was the org default and elect a new one
-        if req.installed == Some(false)
+        // If disabling a model, check if it was the org default and elect a new one
+        if req.enabled == Some(false)
             && let Some(ref row) = row
         {
             self.maybe_elect_new_default(caller.org_id, row.id.uuid())
@@ -263,12 +263,12 @@ impl LlmModelService {
         Ok(())
     }
 
-    /// Elect a new default model from installed models
+    /// Elect a new default model from enabled models
     async fn elect_new_default(&self, org_id: i64) -> Result<()> {
         let all_models = self.db.list_all_llm_models(org_id).await?;
         let new_default = all_models
             .iter()
-            .find(|m| m.installed && m.status == "active");
+            .find(|m| m.enabled && m.status == "active");
 
         let new_default_id = new_default.map(|m| m.id.uuid());
         self.db
@@ -296,7 +296,7 @@ impl LlmModelService {
             model_id: row.model_id.clone(),
             display_name: row.display_name.clone(),
             capabilities,
-            installed: row.installed,
+            enabled: row.enabled,
             is_favorite: row.is_favorite,
             status: match row.status.as_str() {
                 "active" => LlmModelStatus::Active,
@@ -337,7 +337,7 @@ impl LlmModelService {
             model_id: row.model_id.clone(),
             display_name: row.display_name.clone(),
             capabilities,
-            installed: row.installed,
+            enabled: row.enabled,
             is_favorite: row.is_favorite,
             status: match row.status.as_str() {
                 "active" => LlmModelStatus::Active,
@@ -398,7 +398,7 @@ mod tests {
             model_id: "test-model".to_string(),
             display_name: "Test Model".to_string(),
             capabilities: vec!["chat".to_string()],
-            installed: true,
+            enabled: true,
             is_favorite: false,
         }
     }
@@ -571,7 +571,7 @@ mod tests {
             display_name: "Test".into(),
             capabilities: serde_json::json!([]),
             is_favorite: false,
-            installed: true,
+            enabled: true,
             status: "active".into(),
             source: "discovered".into(),
             last_seen_at: None,
@@ -600,7 +600,7 @@ mod tests {
             display_name: "Test".into(),
             capabilities: serde_json::json!([]),
             is_favorite: false,
-            installed: true,
+            enabled: true,
             status: "active".into(),
             source: "manual".into(),
             last_seen_at: None,

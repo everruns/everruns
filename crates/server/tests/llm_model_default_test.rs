@@ -1,9 +1,9 @@
-//! Tests for LLM model installed flag and organization default model
+//! Tests for LLM model enabled flag and organization default model
 //!
 //! Verifies that:
-//! - Models can be installed/uninstalled independently
+//! - Models can be enabled/disabled independently
 //! - Organization settings control the default model
-//! - Uninstalling the org default model elects a new one
+//! - Disabling the org default model elects a new one
 //!
 //! Uses in-memory backend (no PostgreSQL required).
 //!
@@ -38,14 +38,14 @@ async fn setup() -> (InMemoryDatabase, everruns_core::ProviderId) {
 fn model_input(
     provider_id: everruns_core::ProviderId,
     name: &str,
-    installed: bool,
+    enabled: bool,
 ) -> CreateLlmModelRow {
     CreateLlmModelRow {
         provider_id,
         model_id: name.to_string(),
         display_name: name.to_string(),
         capabilities: vec![],
-        installed,
+        enabled,
         is_favorite: false,
         source: "manual".to_string(),
         provider_metadata: None,
@@ -60,13 +60,13 @@ async fn test_create_installed_model() {
         .create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", true))
         .await
         .expect("create model-a");
-    assert!(m1.installed);
+    assert!(m1.enabled);
 
     let m2 = db
         .create_llm_model(TEST_ORG_ID, model_input(pid, "model-b", false))
         .await
         .expect("create model-b");
-    assert!(!m2.installed);
+    assert!(!m2.enabled);
 }
 
 #[tokio::test]
@@ -82,11 +82,11 @@ async fn test_multiple_models_can_be_installed() {
         .await
         .expect("create model-b");
 
-    // Both should be installed (unlike is_default, multiple models can be installed)
-    assert!(m1.installed);
-    assert!(m2.installed);
+    // Both should be enabled (unlike is_default, multiple models can be enabled)
+    assert!(m1.enabled);
+    assert!(m2.enabled);
 
-    // Verify both are still installed after fetch
+    // Verify both are still enabled after fetch
     let m1_fetched = db
         .get_llm_model(TEST_ORG_ID, m1.id.into())
         .await
@@ -97,8 +97,8 @@ async fn test_multiple_models_can_be_installed() {
         .await
         .expect("get model-b")
         .expect("model-b exists");
-    assert!(m1_fetched.installed);
-    assert!(m2_fetched.installed);
+    assert!(m1_fetched.enabled);
+    assert!(m2_fetched.enabled);
 }
 
 #[tokio::test]
@@ -109,7 +109,7 @@ async fn test_update_installed_flag() {
         .create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", false))
         .await
         .expect("create model-a");
-    assert!(!m1.installed);
+    assert!(!m1.enabled);
 
     // Install the model
     let updated = db
@@ -117,29 +117,29 @@ async fn test_update_installed_flag() {
             TEST_ORG_ID,
             m1.id.into(),
             UpdateLlmModel {
-                installed: Some(true),
+                enabled: Some(true),
                 ..Default::default()
             },
         )
         .await
         .expect("update model-a")
         .expect("model-a exists");
-    assert!(updated.installed);
+    assert!(updated.enabled);
 
-    // Uninstall
+    // Disable
     let updated2 = db
         .update_llm_model(
             TEST_ORG_ID,
             m1.id.into(),
             UpdateLlmModel {
-                installed: Some(false),
+                enabled: Some(false),
                 ..Default::default()
             },
         )
         .await
         .expect("update model-a")
         .expect("model-a exists");
-    assert!(!updated2.installed);
+    assert!(!updated2.enabled);
 }
 
 #[tokio::test]
@@ -211,7 +211,7 @@ async fn test_seed_upsert_sets_installed() {
         .await
         .expect("seed model");
     assert!(result.is_some(), "seed should create the model");
-    assert!(result.unwrap().installed);
+    assert!(result.unwrap().enabled);
 
     // Re-seed should detect no change
     let reseed = db
@@ -225,7 +225,7 @@ async fn test_seed_upsert_sets_installed() {
 async fn test_get_default_model_returns_none_without_org_settings() {
     let (db, pid) = setup().await;
 
-    // Create an installed model but don't set org settings
+    // Create an enabled model but don't set org settings
     db.create_llm_model(TEST_ORG_ID, model_input(pid, "model-a", true))
         .await
         .expect("create model-a");

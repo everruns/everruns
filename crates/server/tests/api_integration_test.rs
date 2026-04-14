@@ -1154,7 +1154,7 @@ async fn test_llm_provider_crud() {
                 "name": "Test OpenAI Provider",
                 "provider_type": "openai",
                 "base_url": "https://api.openai.com/v1",
-                "installed": true
+                "enabled": true
             }),
         )
         .await
@@ -1201,7 +1201,7 @@ async fn test_llm_model_crud() {
                 "model_id": "gpt-4-test",
                 "display_name": "GPT-4 Test",
                 "capabilities": ["chat"],
-                "installed": true
+                "enabled": true
             }),
         )
         .await
@@ -1238,7 +1238,7 @@ async fn test_create_llm_model_missing_provider_returns_not_found() {
                 "model_id": "missing-provider-model",
                 "display_name": "Missing Provider Model",
                 "capabilities": ["chat"],
-                "installed": true
+                "enabled": true
             }),
         )
         .await
@@ -1272,7 +1272,7 @@ async fn test_session_inherits_agent_default_model() {
             json!({
                 "model_id": "inherit-test-model",
                 "display_name": "Inherit Test Model",
-                "installed": false
+                "enabled": false
             }),
         )
         .await
