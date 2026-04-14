@@ -44,7 +44,7 @@ function ToolCallContentPart({
   toolCall: { id: string; name: string; arguments: Record<string, unknown> };
 }) {
   return (
-    <div className="border rounded-md p-2 bg-muted/50">
+    <div className="border p-2 bg-muted/50">
       <div className="flex items-center gap-2 mb-1">
         <Wrench className="w-3 h-3 text-muted-foreground" />
         <span className="text-xs font-medium">{toolCall.name}</span>
@@ -89,7 +89,7 @@ function ToolResultContentPart({
   return (
     <div
       className={cn(
-        "border rounded-md p-2",
+        "border p-2",
         error
           ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900"
           : "bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-900",
@@ -117,7 +117,7 @@ function ToolResultContentPart({
 
 function ImageContentPart({ imageId, filename }: { imageId?: string; filename?: string }) {
   return (
-    <div className="border rounded-md p-2 bg-muted/50 flex items-center gap-2">
+    <div className="border p-2 bg-muted/50 flex items-center gap-2">
       <FileText className="w-4 h-4 text-muted-foreground" />
       <span className="text-xs">{filename || imageId || "Image"}</span>
     </div>
@@ -180,7 +180,7 @@ function MessageCard({ message, index }: { message: Message; index: number }) {
   const Icon = config.icon;
 
   return (
-    <div className="border rounded-lg p-3 bg-background">
+    <div className="border p-3 bg-background">
       <div className="flex items-center gap-2 mb-2">
         <Icon className="w-4 h-4 text-muted-foreground" />
         <span className="text-sm font-medium">{config.label}</span>
@@ -215,7 +215,7 @@ function OutputSection({ output }: { output: LlmGenerationOutput }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {output.text && (
-          <div className="border rounded-lg p-3 bg-muted/30">
+          <div className="border p-3 bg-muted/30">
             <p className="text-xs font-medium text-muted-foreground mb-1">Text Response</p>
             <p className="text-sm whitespace-pre-wrap">{output.text}</p>
           </div>
@@ -305,7 +305,7 @@ function UsageDisplay({ usage }: { usage: TokenUsage }) {
   const total = usage.input_tokens + usage.output_tokens;
 
   return (
-    <div className="mt-3 p-3 bg-muted/50 rounded-lg">
+    <div className="mt-3 p-3 bg-muted/50">
       <div className="flex items-center gap-2 mb-2">
         <Zap className="w-4 h-4 text-yellow-500" />
         <span className="text-sm font-medium">Token Usage</span>

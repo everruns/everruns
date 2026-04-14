@@ -48,7 +48,7 @@ export function SelectedCapabilityList({
 
   if (selected.length === 0) {
     return (
-      <div className="text-sm text-muted-foreground py-4 text-center border rounded-md border-dashed">
+      <div className="text-sm text-muted-foreground py-4 text-center border border-dashed">
         No capabilities selected
       </div>
     );
@@ -72,7 +72,7 @@ export function SelectedCapabilityList({
             open={isSettingsExpanded}
             onOpenChange={() => hasSettings && toggleSettings(capConfig.ref)}
           >
-            <div className="rounded-md border bg-muted/30 group">
+            <div className="border bg-muted/30 group">
               <div className="flex items-center gap-2 p-2">
                 {/* Reorder controls */}
                 <div className="flex flex-col gap-0.5">

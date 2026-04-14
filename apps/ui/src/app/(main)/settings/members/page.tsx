@@ -94,7 +94,7 @@ function MemberCard({
   };
 
   return (
-    <div className="flex items-center justify-between p-4 border rounded-lg">
+    <div className="flex items-center justify-between p-4 border">
       <div className="flex items-center gap-4">
         <Avatar className="h-10 w-10">
           {member.avatar_url && <AvatarImage src={member.avatar_url} alt={member.name} />}
@@ -165,7 +165,7 @@ function MemberCard({
 
 function MemberCardSkeleton() {
   return (
-    <div className="flex items-center justify-between p-4 border rounded-lg">
+    <div className="flex items-center justify-between p-4 border">
       <div className="flex items-center gap-4">
         <Skeleton className="h-10 w-10 rounded-full" />
         <div className="space-y-2">

@@ -131,14 +131,14 @@ export default function ProvidersPage() {
         </div>
 
         {providersError && (
-          <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-4">
+          <div className="bg-destructive/10 text-destructive p-4 mb-4">
             Failed to load providers: {providersError.message}
           </div>
         )}
 
         {syncMessage && (
           <div
-            className={`p-4 rounded-lg mb-4 ${
+            className={`p-4 mb-4 ${
               syncMessage.type === "success"
                 ? "bg-green-100 text-green-800"
                 : "bg-destructive/10 text-destructive"
@@ -198,7 +198,7 @@ export default function ProvidersPage() {
         </div>
 
         {modelsError && (
-          <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-4">
+          <div className="bg-destructive/10 text-destructive p-4 mb-4">
             Failed to load models: {modelsError.message}
           </div>
         )}

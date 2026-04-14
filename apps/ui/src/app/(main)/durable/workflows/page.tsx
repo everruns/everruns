@@ -362,11 +362,11 @@ export default function WorkflowsPage() {
       </div>
       <div className="space-y-6">
         {/* Tab Navigation */}
-        <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+        <div className="flex items-center gap-1 p-1 bg-muted w-fit">
           <button
             onClick={() => setActiveTab("workflows")}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              "flex items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors",
               activeTab === "workflows"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -383,7 +383,7 @@ export default function WorkflowsPage() {
           <button
             onClick={() => setActiveTab("tasks")}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              "flex items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors",
               activeTab === "tasks"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -400,7 +400,7 @@ export default function WorkflowsPage() {
           <button
             onClick={() => setActiveTab("dlq")}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              "flex items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors",
               activeTab === "dlq"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -453,7 +453,7 @@ export default function WorkflowsPage() {
             <Card>
               <CardContent className="pt-6">
                 {filteredWorkflows.length > 0 ? (
-                  <div className="rounded-md border">
+                  <div className="border">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -510,7 +510,7 @@ export default function WorkflowsPage() {
               </CardHeader>
               <CardContent>
                 {!tasksLoading && tasks.length > 0 ? (
-                  <div className="rounded-md border">
+                  <div className="border">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -564,7 +564,7 @@ export default function WorkflowsPage() {
               </CardHeader>
               <CardContent>
                 {!dlqLoading && dlqEntries.length > 0 ? (
-                  <div className="rounded-md border">
+                  <div className="border">
                     <Table>
                       <TableHeader>
                         <TableRow>

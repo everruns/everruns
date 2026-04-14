@@ -204,7 +204,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
                         return (
                           <div
                             key={capConfig.ref}
-                            className="flex items-center gap-2 p-2 rounded-md border bg-muted/50"
+                            className="flex items-center gap-2 p-2 border bg-muted/50"
                           >
                             <IconComponent className="w-4 h-4" />
                             <div className="flex-1">

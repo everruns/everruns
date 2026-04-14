@@ -28,7 +28,7 @@ export function CompactionDivider({ data }: { data: ContextCompactedData }) {
         <div className="h-px flex-1 bg-border" />
       </button>
       {expanded && (
-        <div className="mx-auto max-w-md rounded-md border bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
+        <div className="mx-auto max-w-md border bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
           <div className="space-y-1">
             <div>
               <span className="font-medium">Saved:</span> {saved} messages in {data.duration_ms}ms

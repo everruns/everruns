@@ -146,7 +146,7 @@ export default function OrganisationPage() {
         ) : (
           <Card className="p-6">
             <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 rounded-lg bg-primary/10">
+              <div className="p-2 bg-primary/10">
                 <Building2 className="h-5 w-5 text-primary" />
               </div>
               <div>
@@ -271,7 +271,7 @@ export default function OrganisationPage() {
                 className={`p-4 flex items-center justify-between ${isCurrent ? "border-primary/50" : ""}`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${isCurrent ? "bg-primary/10" : "bg-muted"}`}>
+                  <div className={`p-2 ${isCurrent ? "bg-primary/10" : "bg-muted"}`}>
                     <Building2
                       className={`h-4 w-4 ${isCurrent ? "text-primary" : "text-muted-foreground"}`}
                     />

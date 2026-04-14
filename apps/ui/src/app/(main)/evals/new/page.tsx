@@ -150,7 +150,7 @@ export default function NewEvalPage() {
 
               {/* Session fields (mirrors session creation params) */}
               {targetType === "session" && (
-                <div className="space-y-4 border rounded-lg p-4">
+                <div className="space-y-4 border p-4">
                   <div className="space-y-2">
                     <Label>Harness (optional)</Label>
                     <HarnessSelect
@@ -190,7 +190,7 @@ export default function NewEvalPage() {
 
               {/* App fields */}
               {targetType === "app" && (
-                <div className="space-y-4 border rounded-lg p-4">
+                <div className="space-y-4 border p-4">
                   <div className="space-y-2">
                     <Label>App ID</Label>
                     <Input

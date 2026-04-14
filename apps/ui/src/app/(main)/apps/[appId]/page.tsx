@@ -647,7 +647,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                       </a>{" "}
                       to expose your local server:
                     </p>
-                    <div className="bg-muted p-3 rounded-md space-y-1">
+                    <div className="bg-muted p-3 space-y-1">
                       <p className="text-xs font-medium text-muted-foreground">1. Start ngrok:</p>
                       <code className="text-xs block">
                         ngrok http{" "}
@@ -667,7 +667,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                       Paste this URL in your Slack app &rarr; <strong>Event Subscriptions</strong>{" "}
                       &rarr; <strong>Request URL</strong>.
                     </p>
-                    <div className="flex items-center gap-2 bg-muted p-3 rounded-md">
+                    <div className="flex items-center gap-2 bg-muted p-3">
                       <Globe className="w-4 h-4 shrink-0 text-muted-foreground" />
                       <code className="text-sm flex-1 truncate">{webhookUrl}</code>
                       <CopyButton value={webhookUrl} />

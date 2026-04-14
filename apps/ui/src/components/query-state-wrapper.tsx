@@ -32,7 +32,7 @@ function DefaultLoadingSkeleton({ count = 6 }: { count?: number }) {
 
 function DefaultError({ prefix, message }: { prefix: string; message: string }) {
   return (
-    <div className="rounded-lg bg-destructive/10 p-4 text-destructive">
+    <div className="bg-destructive/10 p-4 text-destructive">
       {prefix}: {message}
     </div>
   );

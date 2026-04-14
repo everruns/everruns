@@ -290,7 +290,7 @@ export default function WorkersPage() {
           </CardHeader>
           <CardContent>
             {workers.length > 0 ? (
-              <div className="rounded-md border">
+              <div className="border">
                 <Table>
                   <TableHeader>
                     <TableRow>

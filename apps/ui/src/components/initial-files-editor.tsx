@@ -114,13 +114,13 @@ export function InitialFilesEditor({
       </div>
 
       {files.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+        <div className="border border-dashed p-4 text-sm text-muted-foreground">
           No starter files configured.
         </div>
       ) : (
         <div className="space-y-3">
           {files.map((file, index) => (
-            <div key={`${file.path}-${index}`} className="rounded-lg border p-4 space-y-3">
+            <div key={`${file.path}-${index}`} className="border p-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   {file.encoding === "text" ? (

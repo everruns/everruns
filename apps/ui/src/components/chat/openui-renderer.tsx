@@ -90,7 +90,7 @@ export function OpenUIBlock({ code, isStreaming = false }: OpenUIBlockProps) {
   );
 
   return (
-    <div className="openui-block my-2 overflow-hidden rounded-lg border border-border bg-card">
+    <div className="openui-block my-2 overflow-hidden border border-border bg-card">
       <OpenUIErrorBoundary fallback={fallback}>
         <Renderer response={code} library={openuiLibrary} isStreaming={isStreaming} />
       </OpenUIErrorBoundary>

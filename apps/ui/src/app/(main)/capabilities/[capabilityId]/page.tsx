@@ -54,7 +54,7 @@ function ToolCard({ tool }: { tool: ToolDefinition }) {
               <Code className="w-4 h-4" />
               Parameters
             </h4>
-            <pre className="text-xs bg-muted p-3 rounded-md overflow-x-auto">
+            <pre className="text-xs bg-muted p-3 overflow-x-auto">
               {JSON.stringify(tool.parameters, null, 2)}
             </pre>
           </div>
@@ -116,7 +116,7 @@ export default function CapabilityDetailPage({
 
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-muted rounded-lg">
+          <div className="p-3 bg-muted">
             <IconComponent className="w-6 h-6" />
           </div>
           <div>

@@ -180,7 +180,7 @@ function SetupSteps({
                     </code>{" "}
                     then use the ngrok URL with this path as your Request URL:
                   </p>
-                  <div className="flex items-center gap-2 bg-muted p-2 rounded-md">
+                  <div className="flex items-center gap-2 bg-muted p-2">
                     <code className="text-xs flex-1 truncate">{webhookPath}</code>
                     <button
                       className="shrink-0 hover:text-foreground text-muted-foreground"
@@ -196,7 +196,7 @@ function SetupSteps({
                     In your Slack app settings, go to <strong>Event Subscriptions</strong>, enable
                     events, and paste this Request URL:
                   </p>
-                  <div className="flex items-center gap-2 bg-muted p-2 rounded-md">
+                  <div className="flex items-center gap-2 bg-muted p-2">
                     <code className="text-xs flex-1 truncate">{webhookUrl}</code>
                     <button
                       className="shrink-0 hover:text-foreground text-muted-foreground"

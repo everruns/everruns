@@ -39,7 +39,7 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
-      <div className="border rounded-lg p-4 bg-background">{children}</div>
+      <div className="border p-4 bg-background">{children}</div>
     </div>
   );
 }
@@ -287,7 +287,7 @@ export default function DevSessionCardPage() {
                     <SessionCard session={sampleSessions.running} model={sampleModels.anthropic} />
                   </div>
                   <button
-                    className="p-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                    className="p-2 hover:bg-muted text-muted-foreground hover:text-foreground"
                     type="button"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

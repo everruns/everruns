@@ -235,11 +235,11 @@ export default function QueuesPage() {
 
       {/* Tab Navigation */}
       <div className="space-y-6">
-        <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+        <div className="flex items-center gap-1 p-1 bg-muted w-fit">
           <button
             onClick={() => setActiveTab("overview")}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              "flex items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors",
               activeTab === "overview"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -256,7 +256,7 @@ export default function QueuesPage() {
           <button
             onClick={() => setActiveTab("tasks")}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              "flex items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors",
               activeTab === "tasks"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -273,7 +273,7 @@ export default function QueuesPage() {
           <button
             onClick={() => setActiveTab("dlq")}
             className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              "flex items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors",
               activeTab === "dlq"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -340,7 +340,7 @@ export default function QueuesPage() {
                             <Tooltip>
                               <TooltipTrigger className="flex flex-col items-center gap-1 flex-1">
                                 <div
-                                  className="w-full bg-primary/20 rounded-t min-h-[4px]"
+                                  className="w-full bg-primary/20 min-h-[4px]"
                                   style={{ height: `${height}%` }}
                                 />
                                 <span className="text-xs text-muted-foreground">{priority}</span>
@@ -413,7 +413,7 @@ export default function QueuesPage() {
                 {tasksLoading ? (
                   <Skeleton className="h-48" />
                 ) : filteredTasks.length > 0 ? (
-                  <div className="rounded-md border">
+                  <div className="border">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -483,7 +483,7 @@ export default function QueuesPage() {
                 {dlqLoading ? (
                   <Skeleton className="h-48" />
                 ) : dlqEntries.length > 0 ? (
-                  <div className="rounded-md border">
+                  <div className="border">
                     <Table>
                       <TableHeader>
                         <TableRow>

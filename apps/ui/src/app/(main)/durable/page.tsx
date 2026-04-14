@@ -228,7 +228,7 @@ export default function DurableDashboardPage() {
                   <Link
                     key={schedule.id}
                     href={`/durable/schedules/${schedule.id}`}
-                    className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                    className="flex items-center justify-between p-2 bg-muted/50 hover:bg-muted transition-colors"
                   >
                     <div className="flex items-center gap-2">
                       {schedule.enabled ? (
@@ -314,7 +314,7 @@ export default function DurableDashboardPage() {
                     {workersData.data.slice(0, 5).map((worker) => (
                       <div
                         key={worker.id}
-                        className="flex items-center justify-between p-2 rounded-lg bg-muted/50"
+                        className="flex items-center justify-between p-2 bg-muted/50"
                       >
                         <div className="flex items-center gap-2">
                           <div
@@ -375,7 +375,7 @@ export default function DurableDashboardPage() {
                     <Link
                       key={workflow.id}
                       href={`/durable/workflows/${workflow.id}`}
-                      className="flex items-center justify-between p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                      className="flex items-center justify-between p-2 bg-muted/50 hover:bg-muted transition-colors"
                     >
                       <div className="flex items-center gap-2">
                         <WorkflowStatusIcon status={workflow.status} />
@@ -412,10 +412,7 @@ export default function DurableDashboardPage() {
               <CardContent>
                 <div className="grid gap-2 md:grid-cols-3 lg:grid-cols-4">
                   {Object.entries(health.queue_depth_by_type).map(([type, count]) => (
-                    <div
-                      key={type}
-                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                    >
+                    <div key={type} className="flex items-center justify-between p-3 bg-muted/50">
                       <span className="text-sm font-medium">{type}</span>
                       <Badge variant="outline">{count}</Badge>
                     </div>

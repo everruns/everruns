@@ -128,7 +128,7 @@ export function SetupConnectionToolCall({
 
   return (
     <>
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-3">
+      <div className="flex items-center gap-3 border border-border bg-muted/50 px-4 py-3">
         <ProviderIcon iconName={icon} className="h-5 w-5 text-foreground" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground">{displayName} connection required</p>

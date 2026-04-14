@@ -89,17 +89,14 @@ export function ProviderIcon({
 
   if (!IconComponent) {
     return (
-      <div className={cn(showBackground && "bg-primary/10 rounded-lg", container, className)}>
+      <div className={cn(showBackground && "bg-primary/10", container, className)}>
         <Server className="text-primary" style={{ width: iconSize, height: iconSize }} />
       </div>
     );
   }
 
   return (
-    <div
-      className={cn(showBackground && "bg-primary/10 rounded-lg", container, className)}
-      title={label}
-    >
+    <div className={cn(showBackground && "bg-primary/10", container, className)} title={label}>
       <IconComponent size={iconSize} />
     </div>
   );

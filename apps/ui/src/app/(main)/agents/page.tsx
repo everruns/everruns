@@ -102,7 +102,7 @@ export default function AgentsPage() {
       </div>
 
       {importError && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+        <div className="p-4 bg-red-50 border border-red-200 text-red-600 text-sm">
           {importError}
         </div>
       )}

@@ -99,11 +99,11 @@ export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {hasPreview && !isEditing && (
-              <div className="flex items-center border rounded-md mr-1">
+              <div className="flex items-center border mr-1">
                 <Button
                   variant={viewMode === "preview" ? "secondary" : "ghost"}
                   size="sm"
-                  className="h-7 px-2 rounded-r-none"
+                  className="h-7 px-2"
                   onClick={() => setViewMode("preview")}
                   title="View"
                 >
@@ -113,7 +113,7 @@ export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
                 <Button
                   variant={viewMode === "source" ? "secondary" : "ghost"}
                   size="sm"
-                  className="h-7 px-2 rounded-l-none"
+                  className="h-7 px-2"
                   onClick={() => setViewMode("source")}
                   title="Source"
                 >

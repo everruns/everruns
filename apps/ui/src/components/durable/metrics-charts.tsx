@@ -239,7 +239,7 @@ function ChartTooltip({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border bg-background p-2 shadow-sm">
+    <div className="border bg-background p-2 shadow-sm">
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
       {payload.map((entry) => (
         <div key={entry.name} className="flex items-center gap-2 text-xs">

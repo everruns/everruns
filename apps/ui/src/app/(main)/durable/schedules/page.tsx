@@ -327,7 +327,7 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
         </div>
       </div>
       {errorMessage && (
-        <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3">
+        <div className="bg-destructive/10 border border-destructive/20 p-3">
           <p className="text-sm text-destructive">{errorMessage}</p>
         </div>
       )}
@@ -489,7 +489,7 @@ export default function SchedulesPage() {
           </CardHeader>
           <CardContent>
             {filteredSchedules.length > 0 ? (
-              <div className="rounded-md border">
+              <div className="border">
                 <Table>
                   <TableHeader>
                     <TableRow>
