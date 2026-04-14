@@ -42,7 +42,8 @@
     "recharts": "^3.7.0",
     "remark-github-blockquote-alert": "^2.0.1",
     "streamdown": "^2.3.0",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

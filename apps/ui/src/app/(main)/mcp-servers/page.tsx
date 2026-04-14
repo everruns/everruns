@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,12 @@ import {
 import { usePolicies } from "@/hooks/use-policies";
 import { Plus, Plug, Trash2, Key, Globe } from "lucide-react";
 import type { McpServer, CreateMcpServerRequest, McpServerAuthMode } from "@/lib/api/types";
+import {
+  apiKeySecretSchema,
+  getFieldErrors,
+  mcpServerFormSchema,
+  type FieldErrors,
+} from "@/lib/form-validation";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { ArchiveFilter } from "@/components/archive-filter";
 
@@ -131,18 +137,41 @@ function AddMcpServerDialog({
   const [url, setUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [authMode, setAuthMode] = useState<McpServerAuthMode>("none");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const createServer = useCreateMcpServer();
 
+  useEffect(() => {
+    if (!open) return;
+    setName("");
+    setDescription("");
+    setUrl("");
+    setApiKey("");
+    setAuthMode("none");
+    setFieldErrors({});
+  }, [open]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const data: CreateMcpServerRequest = {
+    const parsed = mcpServerFormSchema.safeParse({
       name,
-      description: description || undefined,
+      description,
       url,
-      transport_type: "http",
       auth_mode: authMode,
-      api_key: authMode === "api_key" ? apiKey || undefined : undefined,
+      api_key: apiKey,
+    });
+    if (!parsed.success) {
+      setFieldErrors(getFieldErrors(parsed.error));
+      return;
+    }
+
+    const data: CreateMcpServerRequest = {
+      name: parsed.data.name,
+      description: parsed.data.description,
+      url: parsed.data.url,
+      transport_type: "http",
+      auth_mode: parsed.data.auth_mode,
+      api_key: parsed.data.auth_mode === "api_key" ? parsed.data.api_key : undefined,
     };
     await createServer.mutateAsync(data);
     onOpenChange(false);
@@ -151,6 +180,7 @@ function AddMcpServerDialog({
     setUrl("");
     setApiKey("");
     setAuthMode("none");
+    setFieldErrors({});
   };
 
   return (
@@ -169,38 +199,56 @@ function AddMcpServerDialog({
             <Input
               id="name"
               value={name}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                setName(e.target.value);
+                setFieldErrors((prev) => ({ ...prev, name: undefined }));
+              }}
+              aria-invalid={!!fieldErrors.name}
               placeholder="atlassian-mcp-server"
               required
             />
+            {fieldErrors.name && <p className="text-xs text-destructive">{fieldErrors.name}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="description">Description (optional)</Label>
             <Textarea
               id="description"
               value={description}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                setDescription(e.target.value)
-              }
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+                setDescription(e.target.value);
+                setFieldErrors((prev) => ({ ...prev, description: undefined }));
+              }}
+              aria-invalid={!!fieldErrors.description}
               placeholder="Atlassian MCP Server for Jira and Confluence"
               rows={2}
             />
+            {fieldErrors.description && (
+              <p className="text-xs text-destructive">{fieldErrors.description}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="url">URL</Label>
             <Input
               id="url"
               value={url}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUrl(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                setUrl(e.target.value);
+                setFieldErrors((prev) => ({ ...prev, url: undefined }));
+              }}
+              aria-invalid={!!fieldErrors.url}
               placeholder="https://mcp.atlassian.com/v1/mcp"
               required
             />
+            {fieldErrors.url && <p className="text-xs text-destructive">{fieldErrors.url}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="auth-mode">Authentication</Label>
             <Select
               value={authMode}
-              onValueChange={(value) => setAuthMode(value as McpServerAuthMode)}
+              onValueChange={(value) => {
+                setAuthMode(value as McpServerAuthMode);
+                setFieldErrors((prev) => ({ ...prev, auth_mode: undefined, api_key: undefined }));
+              }}
             >
               <SelectTrigger id="auth-mode">
                 <SelectValue />
@@ -219,10 +267,17 @@ function AddMcpServerDialog({
                 id="api-key"
                 type="password"
                 value={apiKey}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setApiKey(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, api_key: undefined }));
+                }}
+                aria-invalid={!!fieldErrors.api_key}
                 placeholder="your-api-key"
                 required
               />
+              {fieldErrors.api_key && (
+                <p className="text-xs text-destructive">{fieldErrors.api_key}</p>
+              )}
             </div>
           )}
           <DialogFooter>
@@ -254,14 +309,29 @@ function SetApiKeyDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [apiKey, setApiKey] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const updateServer = useUpdateMcpServer(server?.id || "");
+
+  useEffect(() => {
+    if (!open) return;
+    setApiKey("");
+    setFieldErrors({});
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!server) return;
-    await updateServer.mutateAsync({ api_key: apiKey });
+
+    const parsed = apiKeySecretSchema.safeParse({ api_key: apiKey });
+    if (!parsed.success) {
+      setFieldErrors(getFieldErrors(parsed.error));
+      return;
+    }
+
+    await updateServer.mutateAsync({ api_key: parsed.data.api_key });
     onOpenChange(false);
     setApiKey("");
+    setFieldErrors({});
   };
 
   return (
@@ -282,10 +352,17 @@ function SetApiKeyDialog({
               id="new-api-key"
               type="password"
               value={apiKey}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                setApiKey(e.target.value);
+                setFieldErrors((prev) => ({ ...prev, api_key: undefined }));
+              }}
+              aria-invalid={!!fieldErrors.api_key}
               placeholder="your-api-key"
               required
             />
+            {fieldErrors.api_key && (
+              <p className="text-xs text-destructive">{fieldErrors.api_key}</p>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

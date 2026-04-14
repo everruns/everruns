@@ -15,6 +15,12 @@ import { ModelPicker } from "@/components/models/model-picker";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
+import {
+  getFieldErrors,
+  harnessFormSchema,
+  type FieldErrors,
+  parseTagList,
+} from "@/lib/form-validation";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 
 /** Convert a display name to a slug: lowercase, non-alphanumeric → hyphens, deduplicate, trim. */
@@ -53,15 +59,22 @@ export default function NewHarnessPage() {
       updates.name = slugify(value);
     }
     setFormData((prev) => ({ ...prev, ...updates }));
+    setFieldErrors((prev) => ({
+      ...prev,
+      display_name: undefined,
+      ...(nameManuallyEdited ? {} : { name: undefined }),
+    }));
   };
 
   const handleNameChange = (value: string) => {
     setNameManuallyEdited(true);
     setFormData((prev) => ({ ...prev, name: value }));
+    setFieldErrors((prev) => ({ ...prev, name: undefined }));
   };
 
   const [selectedCapabilities, setSelectedCapabilities] = useState<AgentCapabilityConfig[]>([]);
   const [initialFiles, setInitialFiles] = useState<InitialFile[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const handleCapabilitiesChange = useCallback((capabilities: AgentCapabilityConfig[]) => {
     setSelectedCapabilities(capabilities);
@@ -69,20 +82,22 @@ export default function NewHarnessPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const parsed = harnessFormSchema.safeParse(formData);
+    if (!parsed.success) {
+      setFieldErrors(getFieldErrors(parsed.error));
+      return;
+    }
 
     try {
-      const tags = formData.tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
+      const tags = parseTagList(parsed.data.tags);
 
       const harness = await createHarness.mutateAsync({
-        name: formData.name,
-        display_name: formData.display_name || undefined,
-        description: formData.description || undefined,
-        system_prompt: formData.system_prompt,
-        parent_harness_id: formData.parent_harness_id || undefined,
-        default_model_id: formData.default_model_id || undefined,
+        name: parsed.data.name,
+        display_name: parsed.data.display_name,
+        description: parsed.data.description,
+        system_prompt: parsed.data.system_prompt,
+        parent_harness_id: parsed.data.parent_harness_id,
+        default_model_id: parsed.data.default_model_id,
         tags: tags.length > 0 ? tags : undefined,
         capabilities: selectedCapabilities.length > 0 ? selectedCapabilities : undefined,
         initial_files: initialFiles.length > 0 ? initialFiles : undefined,
@@ -117,8 +132,10 @@ export default function NewHarnessPage() {
                 placeholder="my-harness"
                 value={formData.name}
                 onChange={(e) => handleNameChange(e.target.value)}
+                aria-invalid={!!fieldErrors.name}
                 required
               />
+              {fieldErrors.name && <p className="text-xs text-destructive">{fieldErrors.name}</p>}
               {formData.name.length >= 2 && (
                 <div className="flex items-center gap-1.5 text-xs">
                   {nameAvailability.isChecking ? (
@@ -227,9 +244,15 @@ export default function NewHarnessPage() {
                 id="system_prompt"
                 placeholder="You are a helpful assistant..."
                 value={formData.system_prompt}
-                onChange={(value) => setFormData({ ...formData, system_prompt: value })}
+                onChange={(value) => {
+                  setFormData({ ...formData, system_prompt: value });
+                  setFieldErrors((prev) => ({ ...prev, system_prompt: undefined }));
+                }}
                 required
               />
+              {fieldErrors.system_prompt && (
+                <p className="text-xs text-destructive">{fieldErrors.system_prompt}</p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Instructions for the AI model (supports Markdown)
               </p>
