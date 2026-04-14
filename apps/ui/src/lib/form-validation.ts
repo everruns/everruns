@@ -108,7 +108,7 @@ export function createConnectionFormSchema(fields: ConnectionFormField[]) {
   const shape = Object.fromEntries(
     fields.map((field) => [
       field.name,
-      field.required ? requiredString(field.label) : z.preprocess(trimInput, z.string()),
+      field.required ? requiredString(field.label) : optionalString(),
     ]),
   );
 

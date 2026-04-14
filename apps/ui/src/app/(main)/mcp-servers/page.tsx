@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -140,6 +140,16 @@ function AddMcpServerDialog({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const createServer = useCreateMcpServer();
+
+  useEffect(() => {
+    if (!open) return;
+    setName("");
+    setDescription("");
+    setUrl("");
+    setApiKey("");
+    setAuthMode("none");
+    setFieldErrors({});
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -301,6 +311,12 @@ function SetApiKeyDialog({
   const [apiKey, setApiKey] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const updateServer = useUpdateMcpServer(server?.id || "");
+
+  useEffect(() => {
+    if (!open) return;
+    setApiKey("");
+    setFieldErrors({});
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

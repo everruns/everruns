@@ -111,4 +111,18 @@ describe("form validation schemas", () => {
     expect(parsed.error.issues.map((issue) => issue.message)).toContain("Project is required");
     expect(apiKeySecretSchema.parse({ api_key: " secret " }).api_key).toBe("secret");
   });
+
+  it("allows optional provider fields to be omitted entirely", () => {
+    const schema = createConnectionFormSchema([
+      { name: "api_key", label: "API Key", field_type: "password", required: true },
+      { name: "region", label: "Region", field_type: "text", required: false },
+    ]);
+
+    const parsed = schema.parse({ api_key: " secret " });
+
+    expect(parsed).toEqual({
+      api_key: "secret",
+      region: undefined,
+    });
+  });
 });
