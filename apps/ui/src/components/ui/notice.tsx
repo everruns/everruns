@@ -56,7 +56,7 @@ function useNoticeContext() {
   return React.useContext(NoticeContext);
 }
 
-type NoticeProps = Omit<React.ComponentProps<"div">, "title"> &
+type NoticeProps = React.ComponentProps<"div"> &
   Omit<VariantProps<typeof noticeVariants>, "hasIcon"> & {
     icon?: React.ReactNode;
   };
