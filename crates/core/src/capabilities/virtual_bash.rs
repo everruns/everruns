@@ -117,7 +117,7 @@ impl Capability for VirtualBashCapability {
 
 > [!TIP]
 > Use standard Unix commands like `ls`, `cat`, `grep`, `echo`, and shell features
-> like pipes, redirections, and command substitution. Builtin commands support
+> like pipes, redirections, and command substitution. Built-in commands support
 > `<command> --help`, and many also support `<command> --version`."#
     }
 
@@ -1129,12 +1129,12 @@ mod tests {
         let description = cap.description();
         assert!(
             description.contains("`<command> --help`"),
-            "description should advertise builtin help, got: {}",
+            "description should advertise built-in help, got: {}",
             description
         );
         assert!(
             description.contains("`<command> --version`"),
-            "description should advertise builtin version support, got: {}",
+            "description should advertise built-in version support, got: {}",
             description
         );
     }
