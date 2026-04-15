@@ -68,10 +68,6 @@ See `specs/release-process.md` for the full release process specification.
 
    - feat: commit message ([#123](https://github.com/everruns/everruns/pull/123)) by [@username](https://github.com/username)
    - fix: commit message ([#124](https://github.com/everruns/everruns/pull/124)) by [@username](https://github.com/username)
-
-   ### Migration Notes
-
-   **X.Y.Z → X.Y.Z:** Migration instructions if needed.
    ```
 
 5. **Update lock files**:
@@ -82,9 +78,9 @@ See `specs/release-process.md` for the full release process specification.
    cd apps/ui && npm install --package-lock-only
    ```
 
-6. **Ask about migrations**:
-   - "Does this release include database schema changes?"
-   - If yes, add migration notes to CHANGELOG.md and remind about fresh DB requirement
+6. **Do not add migration notes**:
+   - Release notes should not include a dedicated migration section
+   - If migration behavior needs engineering discussion, capture it in specs or code comments instead of the user-facing changelog
 
 7. **Create commit**:
    ```bash
@@ -126,4 +122,5 @@ See `specs/release-process.md` for the full release process specification.
 - Always preserve the CHANGELOG.md header and versioning policy section
 - The Highlights section is optional but recommended for minor/major releases
 - Include screenshots for UI changes (can be added as links in CHANGELOG.md)
+- Do not add a "Migration Notes" section to release entries
 - The `chore(release): prepare vX.Y.Z` commit message triggers auto-tagging on merge
