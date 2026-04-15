@@ -38,8 +38,6 @@ import {
   Cog,
 } from "lucide-react";
 import { capabilityIconMap } from "@/lib/capability-icons";
-import { McpConnectButton } from "@/components/layout/mcp-connect-button";
-import { NotificationBell } from "@/components/layout/notification-bell";
 import { useCommandPalette } from "@/hooks/use-command-palette";
 import { useLlmProviders } from "@/hooks/use-llm-providers";
 import { useAuth } from "@/providers/auth-provider";
@@ -164,10 +162,6 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
           <Image src="/logo.svg" alt="Everruns" width={28} height={28} />
           <span className="text-base font-semibold tracking-[-0.02em]">Everruns</span>
         </Link>
-        <div className="flex items-center gap-1">
-          <McpConnectButton />
-          {featureFlags.notifications && <NotificationBell />}
-        </div>
       </div>
 
       <SidebarOrganizationMenu
@@ -175,7 +169,7 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
         useDefaultCreateOrgDialog={useDefaultCreateOrgDialog}
       />
 
-      <div className="px-2.5 py-2">
+      <div role="search" aria-label="Sidebar search" className="px-2.5 py-2">
         <button
           type="button"
           onClick={() => openCommandPalette(true)}
@@ -191,7 +185,11 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
 
       <SidebarNavigation sections={allSections} pathname={pathname} featureFlags={featureFlags} />
 
-      <div className="border-t border-border/70 p-2.5">
+      <div
+        role="contentinfo"
+        aria-label="Sidebar footer"
+        className="border-t border-border/70 p-2.5"
+      >
         <SidebarUserMenu
           requiresAuth={requiresAuth}
           user={user ?? null}

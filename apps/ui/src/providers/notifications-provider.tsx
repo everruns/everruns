@@ -383,3 +383,7 @@ export function useNotificationsContext() {
   }
   return context;
 }
+
+export function useOptionalNotificationsContext() {
+  return useContext(NotificationsContext);
+}

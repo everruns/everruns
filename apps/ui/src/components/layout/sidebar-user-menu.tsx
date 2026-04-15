@@ -7,6 +7,8 @@
 
 import { useRouter } from "next/navigation";
 import { ChevronUp, Key, LogOut, User } from "lucide-react";
+import { McpConnectMenuItem } from "@/components/layout/mcp-connect-button";
+import { NotificationIndicator, NotificationMenuSub } from "@/components/layout/notification-bell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -67,12 +69,14 @@ export function SidebarUserMenu({
           <p className="truncate font-semibold leading-5">{user.name || user.email}</p>
           {user.name && <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>}
         </div>
+        <NotificationIndicator />
         <ChevronUp className="icon-sharp h-4 w-4 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuPositioner side="top" align="start">
         <DropdownMenuContent className="w-56">
           <DropdownMenuGroup>
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
+            <NotificationMenuSub />
             <DropdownMenuItem onClick={() => router.push("/settings")}>
               <User className="icon-sharp mr-2 h-4 w-4" />
               Profile
@@ -81,6 +85,7 @@ export function SidebarUserMenu({
               <Key className="icon-sharp mr-2 h-4 w-4" />
               API Keys
             </DropdownMenuItem>
+            <McpConnectMenuItem />
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={handleLogout} disabled={logoutPending}>

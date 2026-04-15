@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { capabilityIconMap } from "@/lib/capability-icons";
 import { useFeatureFlags } from "@/providers/feature-flags-provider";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,25 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const McpIcon = capabilityIconMap.mcp;
+
+function useMcpConfig() {
+  const featureFlags = useFeatureFlags();
+  const enabled = featureFlags.mcp_endpoint;
+  const mcpUrl = typeof window !== "undefined" ? `${window.location.origin}/mcp` : "/mcp";
+  const configSnippet = JSON.stringify(
+    {
+      mcpServers: {
+        everruns: {
+          url: mcpUrl,
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  return { enabled, mcpUrl, configSnippet };
+}
 
 function CopySnippetButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -41,26 +61,61 @@ function CopySnippetButton({ value }: { value: string }) {
   );
 }
 
-export function McpConnectButton() {
-  const featureFlags = useFeatureFlags();
+function McpConnectDialogContent({
+  mcpUrl,
+  configSnippet,
+}: {
+  mcpUrl: string;
+  configSnippet: string;
+}) {
+  return (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <McpIcon className="h-5 w-5" />
+          Connect via MCP
+        </DialogTitle>
+        <DialogDescription>
+          Use Everruns from Claude Desktop, Cursor, VS Code, or any MCP-compatible client.
+        </DialogDescription>
+      </DialogHeader>
 
-  if (!featureFlags.mcp_endpoint) {
+      <div className="space-y-4">
+        <div>
+          <p className="mb-1.5 text-sm font-medium">MCP Server URL</p>
+          <div className="relative">
+            <code className="block overflow-x-auto border bg-muted px-3 py-2 pr-9 text-sm">
+              {mcpUrl}
+            </code>
+            <CopySnippetButton value={mcpUrl} />
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-1.5 text-sm font-medium">Quick Setup</p>
+          <p className="mb-2 text-sm text-muted-foreground">Add this to your MCP client config:</p>
+          <div className="relative">
+            <pre className="overflow-x-auto border bg-muted px-3 py-2 pr-9 font-mono text-sm">
+              {configSnippet}
+            </pre>
+            <CopySnippetButton value={configSnippet} />
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Authentication is handled automatically via OAuth when connecting from an MCP client.
+        </p>
+      </div>
+    </DialogContent>
+  );
+}
+
+export function McpConnectButton() {
+  const { enabled, mcpUrl, configSnippet } = useMcpConfig();
+
+  if (!enabled) {
     return null;
   }
-
-  const mcpUrl = typeof window !== "undefined" ? `${window.location.origin}/mcp` : "/mcp";
-
-  const configSnippet = JSON.stringify(
-    {
-      mcpServers: {
-        everruns: {
-          url: mcpUrl,
-        },
-      },
-    },
-    null,
-    2,
-  );
 
   return (
     <Dialog>
@@ -76,46 +131,31 @@ export function McpConnectButton() {
         <TooltipContent>Connect via MCP</TooltipContent>
       </Tooltip>
 
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <McpIcon className="h-5 w-5" />
-            Connect via MCP
-          </DialogTitle>
-          <DialogDescription>
-            Use Everruns from Claude Desktop, Cursor, VS Code, or any MCP-compatible client.
-          </DialogDescription>
-        </DialogHeader>
+      <McpConnectDialogContent mcpUrl={mcpUrl} configSnippet={configSnippet} />
+    </Dialog>
+  );
+}
 
-        <div className="space-y-4">
-          <div>
-            <p className="mb-1.5 text-sm font-medium">MCP Server URL</p>
-            <div className="relative">
-              <code className="block overflow-x-auto border bg-muted px-3 py-2 pr-9 text-sm">
-                {mcpUrl}
-              </code>
-              <CopySnippetButton value={mcpUrl} />
-            </div>
-          </div>
+export function McpConnectMenuItem() {
+  const { enabled, mcpUrl, configSnippet } = useMcpConfig();
+  const [open, setOpen] = useState(false);
 
-          <div>
-            <p className="mb-1.5 text-sm font-medium">Quick Setup</p>
-            <p className="mb-2 text-sm text-muted-foreground">
-              Add this to your MCP client config:
-            </p>
-            <div className="relative">
-              <pre className="overflow-x-auto border bg-muted px-3 py-2 pr-9 font-mono text-sm">
-                {configSnippet}
-              </pre>
-              <CopySnippetButton value={configSnippet} />
-            </div>
-          </div>
+  if (!enabled) {
+    return null;
+  }
 
-          <p className="text-xs text-muted-foreground">
-            Authentication is handled automatically via OAuth when connecting from an MCP client.
-          </p>
-        </div>
-      </DialogContent>
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DropdownMenuItem
+        onSelect={(event) => {
+          event.preventDefault();
+          setOpen(true);
+        }}
+      >
+        <McpIcon className="icon-sharp mr-2 h-4 w-4" />
+        Connect via MCP
+      </DropdownMenuItem>
+      <McpConnectDialogContent mcpUrl={mcpUrl} configSnippet={configSnippet} />
     </Dialog>
   );
 }
