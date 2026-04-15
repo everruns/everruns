@@ -1,0 +1,24 @@
+# Public in-process runtime.
+# Decision: first public runtime is in-memory by default so embedders can run
+# harnesses in-process without the durable engine or control-plane services.
+
+[package]
+name = "everruns-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Public in-process runtime for embedding Everruns harnesses"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+uuid.workspace = true
+
+everruns-core = { path = "../core" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }

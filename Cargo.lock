@@ -1935,6 +1935,19 @@ name = "everruns-openui"
 version = "0.8.12"
 
 [[package]]
+name = "everruns-runtime"
+version = "0.8.12"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "everruns-sdk"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

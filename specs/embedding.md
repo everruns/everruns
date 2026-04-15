@@ -9,9 +9,10 @@ This spec defines the contract for embedding. See `crates/core/src/platform_defi
 ## Goals
 
 1. Let downstream Rust services start from `ServerAppBuilder` and `WorkerAppBuilder` instead of forking Everruns binaries.
-2. Let embedders add or remove built-in runtime components without patching internal call sites.
-3. Keep server startup, worker execution, org initialization, and seeding consistent by reading from the same definition.
-4. Preserve the existing OSS experience through default presets.
+2. Let downstream Rust services run Everruns harnesses directly in-process through `everruns-runtime`.
+3. Let embedders add or remove built-in runtime components without patching internal call sites.
+4. Keep server startup, worker execution, org initialization, and seeding consistent by reading from the same definition.
+5. Preserve the existing OSS experience through default presets.
 
 ## PlatformDefinition
 
@@ -23,6 +24,17 @@ This spec defines the contract for embedding. See `crates/core/src/platform_defi
 - Built-in harness templates
 
 The type lives in `everruns-core` so any binary can construct or mutate it without depending on `everruns-server`.
+
+## In-process Runtime
+
+Embedders that want to execute harnesses in their own process, without the
+durable engine or control-plane server, should use `everruns-runtime`.
+
+`everruns-runtime` consumes the same `PlatformDefinition` type and uses the
+shared core atoms and turn state machine. This keeps embedded execution aligned
+with the worker/runtime behavior while exposing a simpler embedder-facing API.
+
+See [specs/runtime.md](runtime.md) for the public embedded runtime contract.
 
 ### Built-in Harness Templates
 
