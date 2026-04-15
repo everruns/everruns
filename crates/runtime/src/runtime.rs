@@ -423,8 +423,15 @@ impl InProcessRuntime {
         let capability_registry = self.platform_definition.capability_registry().clone();
         let driver_registry = self.platform_definition.driver_registry().clone();
         let resolved_configs =
-            resolve_capability_configs(&overlay.capabilities, &capability_registry)
-                .unwrap_or_else(|_| overlay.capabilities.clone());
+            resolve_capability_configs(&overlay.capabilities, &capability_registry).unwrap_or_else(
+                |error| {
+                    tracing::warn!(
+                        error = ?error,
+                        "failed to resolve capability configs; falling back to overlay capabilities"
+                    );
+                    overlay.capabilities.clone()
+                },
+            );
         let system_prompt_ctx = SystemPromptContext {
             session_id,
             locale: session.locale.clone(),
@@ -447,8 +454,10 @@ impl InProcessRuntime {
             .collect::<Vec<_>>();
 
         let tool_registry = build_tool_registry(collected.tools);
-        let synthetic_agent_id = session.agent_id.unwrap_or_else(AgentId::new);
-        let org_id = 1;
+        let synthetic_agent_id = session
+            .agent_id
+            .unwrap_or_else(|| AgentId::from_uuid(session.id.uuid()));
+        let org_id = 0;
         let org_public_id = session
             .organization_id
             .parse::<OrgId>()
@@ -625,7 +634,7 @@ impl PersistingEventEmitter {
 impl EventEmitter for PersistingEventEmitter {
     async fn emit(&self, request: EventRequest) -> Result<Event> {
         let event = self.inner.emit(request.clone()).await?;
-        if let Some(message) = message_from_event(&request.data) {
+        if let Some(message) = message_from_event(&event.data) {
             self.message_store
                 .store_message(request.session_id, message)
                 .await?;
