@@ -1,64 +1,34 @@
-"use client";
+import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-keys";
+import {
+  createServerQueryClient,
+  getServerRequestContext,
+  prefetchAuthBootstrap,
+  seedQueryData,
+  serverGetList,
+} from "@/lib/server-query";
+import type { Capability, Harness } from "@/lib/api/types";
+import HarnessesPageClient from "./harnesses-page-client";
 
-import { useState } from "react";
-import { useHarnesses, useCapabilities } from "@/hooks";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
-import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import { HarnessCard } from "@/components/harnesses";
-import { ArchiveFilter } from "@/components/archive-filter";
+export default async function HarnessesPage() {
+  const queryClient = createServerQueryClient();
+  const requestContext = await getServerRequestContext();
+  const { currentOrgId } = await prefetchAuthBootstrap(queryClient, requestContext);
 
-export default function HarnessesPage() {
-  const [showArchived, setShowArchived] = useState(false);
-  const { data: harnesses, isLoading, error } = useHarnesses({ includeArchived: showArchived });
-  const { data: allCapabilities } = useCapabilities();
+  if (currentOrgId) {
+    await Promise.all([
+      seedQueryData(queryClient, [...queryKeys.harnesses.list(false), currentOrgId], () =>
+        serverGetList<Harness>(requestContext, "/v1/harnesses"),
+      ),
+      seedQueryData(queryClient, ["capabilities", currentOrgId], () =>
+        serverGetList<Capability>(requestContext, "/v1/capabilities"),
+      ),
+    ]);
+  }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Harnesses</h1>
-        <div className="flex items-center gap-2">
-          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
-          <Link href="/harnesses/new">
-            <Button variant="accent">
-              <Plus className="w-4 h-4 mr-2" />
-              New Harness
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      <QueryStateWrapper
-        isLoading={isLoading}
-        error={error}
-        data={harnesses}
-        errorMessagePrefix="Failed to load harnesses"
-        emptyState={
-          <div className="text-center py-12">
-            <p className="text-muted-foreground mb-4">No harnesses yet</p>
-            <Link href="/harnesses/new">
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Create your first harness
-              </Button>
-            </Link>
-          </div>
-        }
-      >
-        {(items) => (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {items.map((harness) => (
-              <HarnessCard
-                key={harness.id}
-                harness={harness}
-                allCapabilities={allCapabilities}
-                showEditButton
-              />
-            ))}
-          </div>
-        )}
-      </QueryStateWrapper>
-    </div>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <HarnessesPageClient />
+    </HydrationBoundary>
   );
 }

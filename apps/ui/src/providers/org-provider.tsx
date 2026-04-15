@@ -76,9 +76,10 @@ export const OrgContext = createContext<OrgContextValue | undefined>(undefined);
 
 interface OrgProviderProps {
   children: ReactNode;
+  initialOrgId?: string | null;
 }
 
-export function OrgProvider({ children }: OrgProviderProps) {
+export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps) {
   const { user, isLoading: authLoading } = useAuth();
   const [currentOrg, setCurrentOrgState] = useState<OrganizationMembership | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -98,14 +99,13 @@ export function OrgProvider({ children }: OrgProviderProps) {
   useEffect(() => {
     if (authLoading || isInitialized) return;
 
-    // Try to restore from localStorage
     const storedOrgId = localStorage.getItem(ORG_STORAGE_KEY);
+    const preferredOrgId = initialOrgId ?? storedOrgId;
 
-    if (storedOrgId && organizations.length > 0) {
-      // Find the stored org in user's organizations
-      const storedOrg = organizations.find((org) => org.public_id === storedOrgId);
-      if (storedOrg) {
-        setCurrentOrgState(storedOrg);
+    if (preferredOrgId && organizations.length > 0) {
+      const preferredOrg = organizations.find((org) => org.public_id === preferredOrgId);
+      if (preferredOrg) {
+        setCurrentOrgState(preferredOrg);
         setIsInitialized(true);
         return;
       }
@@ -118,7 +118,7 @@ export function OrgProvider({ children }: OrgProviderProps) {
     }
 
     setIsInitialized(true);
-  }, [authLoading, organizations, isInitialized]);
+  }, [authLoading, organizations, isInitialized, initialOrgId]);
 
   // Update current org when organizations change (e.g., after login)
   useEffect(() => {
@@ -147,11 +147,14 @@ export function OrgProvider({ children }: OrgProviderProps) {
   useEffect(() => {
     if (currentOrg && isInitialized && !didInitSyncRef.current) {
       didInitSyncRef.current = true;
+      if (initialOrgId === currentOrg.public_id) {
+        return;
+      }
       void switchOrgApi(currentOrg.public_id).catch((error) => {
         console.warn("Failed to sync org cookie on init:", error);
       });
     }
-  }, [currentOrg, isInitialized]);
+  }, [currentOrg, isInitialized, initialOrgId]);
 
   // Track latest switch to handle concurrent calls (last one wins)
   const switchCounterRef = useRef(0);
