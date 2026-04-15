@@ -54,6 +54,7 @@ jest.mock("@/hooks/use-organizations", () => ({
 
 jest.mock("@/components/layout/mcp-connect-button", () => ({
   McpConnectButton: () => <button type="button" aria-label="Connect via MCP" />,
+  McpConnectDialog: () => null,
   McpConnectMenuItem: () => <div>Connect via MCP</div>,
 }));
 

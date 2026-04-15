@@ -110,6 +110,26 @@ function McpConnectDialogContent({
   );
 }
 
+export function McpConnectDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { enabled, mcpUrl, configSnippet } = useMcpConfig();
+
+  if (!enabled) {
+    return null;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <McpConnectDialogContent mcpUrl={mcpUrl} configSnippet={configSnippet} />
+    </Dialog>
+  );
+}
+
 export function McpConnectButton() {
   const { enabled, mcpUrl, configSnippet } = useMcpConfig();
 
@@ -136,26 +156,22 @@ export function McpConnectButton() {
   );
 }
 
-export function McpConnectMenuItem() {
-  const { enabled, mcpUrl, configSnippet } = useMcpConfig();
-  const [open, setOpen] = useState(false);
+export function McpConnectMenuItem({ onSelect }: { onSelect: () => void }) {
+  const { enabled } = useMcpConfig();
 
   if (!enabled) {
     return null;
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DropdownMenuItem
-        onSelect={(event) => {
-          event.preventDefault();
-          setOpen(true);
-        }}
-      >
-        <McpIcon className="icon-sharp mr-2 h-4 w-4" />
-        Connect via MCP
-      </DropdownMenuItem>
-      <McpConnectDialogContent mcpUrl={mcpUrl} configSnippet={configSnippet} />
-    </Dialog>
+    <DropdownMenuItem
+      onClick={() => {
+        // Let the menu close and restore focus before opening the dialog.
+        window.setTimeout(onSelect, 0);
+      }}
+    >
+      <McpIcon className="icon-sharp mr-2 h-4 w-4" />
+      Connect via MCP
+    </DropdownMenuItem>
   );
 }

@@ -143,7 +143,14 @@ export function NotificationIndicator() {
     return null;
   }
 
-  return <span aria-label="Unread notifications" className="h-2.5 w-2.5 rounded-full bg-primary" />;
+  return (
+    <>
+      <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-primary" />
+      <span className="sr-only">
+        {context.unviewedCount} unread notification{context.unviewedCount === 1 ? "" : "s"}
+      </span>
+    </>
+  );
 }
 
 export function NotificationMenuSub() {
