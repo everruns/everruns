@@ -117,7 +117,8 @@ impl Capability for VirtualBashCapability {
 
 > [!TIP]
 > Use standard Unix commands like `ls`, `cat`, `grep`, `echo`, and shell features
-> like pipes, redirections, and command substitution."#
+> like pipes, redirections, and command substitution. Builtin commands support
+> `<command> --help`, and many also support `<command> --version`."#
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -1125,6 +1126,17 @@ mod tests {
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("terminal"));
         assert_eq!(cap.category(), Some("Execution"));
+        let description = cap.description();
+        assert!(
+            description.contains("`<command> --help`"),
+            "description should advertise builtin help, got: {}",
+            description
+        );
+        assert!(
+            description.contains("`<command> --version`"),
+            "description should advertise builtin version support, got: {}",
+            description
+        );
     }
 
     #[test]
