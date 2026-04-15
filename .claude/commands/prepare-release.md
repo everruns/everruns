@@ -78,9 +78,10 @@ See `specs/release-process.md` for the full release process specification.
    cd apps/ui && npm install --package-lock-only
    ```
 
-6. **Do not add migration notes**:
-   - Release notes should not include a dedicated migration section
-   - If migration behavior needs engineering discussion, capture it in specs or code comments instead of the user-facing changelog
+6. **Skip migration notes unless necessary**:
+   - Do not add a dedicated migration section by default
+   - Add one only when a release needs user-facing upgrade guidance
+   - If migration behavior only needs engineering discussion, capture it in specs or code comments instead of the changelog
 
 7. **Create commit**:
    ```bash
@@ -122,5 +123,5 @@ See `specs/release-process.md` for the full release process specification.
 - Always preserve the CHANGELOG.md header and versioning policy section
 - The Highlights section is optional but recommended for minor/major releases
 - Include screenshots for UI changes (can be added as links in CHANGELOG.md)
-- Do not add a "Migration Notes" section to release entries
+- Do not add a "Migration Notes" section to release entries unless it is necessary for user-facing upgrade guidance
 - The `chore(release): prepare vX.Y.Z` commit message triggers auto-tagging on merge

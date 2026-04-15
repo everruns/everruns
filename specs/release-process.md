@@ -23,7 +23,7 @@ This specification defines the release process for Everruns. The process is desi
    - **Highlights** - Key features (user-written, 5-10 items with PR links)
    - **What's Changed** - List of commits: `- <message> ([#PR](url))`
 
-Release notes should not include a dedicated "Migration Notes" section. Releases are expected to preserve normal forward migration from the previous released version; any migration-specific engineering detail belongs in the migration files or migration spec, not the user-facing changelog.
+Release notes should not include a dedicated "Migration Notes" section by default. Add one only when a release truly needs user-facing upgrade guidance; otherwise migration-specific engineering detail belongs in the migration files or migration spec, not the changelog.
 
 ### Version Updates
 
