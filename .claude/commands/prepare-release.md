@@ -68,6 +68,13 @@ See `specs/release-process.md` for the full release process specification.
 
    - feat: commit message ([#123](https://github.com/everruns/everruns/pull/123)) by [@username](https://github.com/username)
    - fix: commit message ([#124](https://github.com/everruns/everruns/pull/124)) by [@username](https://github.com/username)
+
+   <!-- Optional: keep only when the release needs user-facing upgrade guidance. -->
+   <!--
+   ### Migration Notes
+
+   - Upgrade guidance, if needed.
+   -->
    ```
 
 5. **Update lock files**:
@@ -81,7 +88,7 @@ See `specs/release-process.md` for the full release process specification.
 6. **Skip migration notes unless necessary**:
    - Do not add a dedicated migration section by default
    - Add one only when a release needs user-facing upgrade guidance
-   - If migration behavior only needs engineering discussion, capture it in specs or code comments instead of the changelog
+   - If migration behavior only needs engineering discussion, capture it in the canonical migration locations, for example `crates/server/migrations/` and/or `specs/migrations.md`, instead of the changelog
 
 7. **Create commit**:
    ```bash
