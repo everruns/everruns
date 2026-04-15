@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.12] - 2026-04-14
+
+### Highlights
+
+- **API Keys Are Personal** - API keys are now user-scoped instead of org-scoped, which aligns key auth with session auth and removes org binding drift ([#1293](https://github.com/everruns/everruns/pull/1293))
+- **Form Validation Tightening** - Core UI forms now use Zod validation, catching invalid input earlier and making client-side errors more consistent ([#1294](https://github.com/everruns/everruns/pull/1294))
+- **Auth + MCP Cleanup** - Auth redirect proxying and MCP endpoint simplification reduce auth friction and remove duplicated endpoint logic ([#1295](https://github.com/everruns/everruns/pull/1295), [#1289](https://github.com/everruns/everruns/pull/1289))
+
+### What's Changed
+
+- chore(deps): bump bashkit to v0.1.18 ([#1296](https://github.com/everruns/everruns/pull/1296))
+- fix(ui): add auth redirect proxy ([#1295](https://github.com/everruns/everruns/pull/1295))
+- feat(ui): add zod validation to core forms ([#1294](https://github.com/everruns/everruns/pull/1294))
+- refactor(auth): make API keys user-scoped instead of org-scoped ([#1293](https://github.com/everruns/everruns/pull/1293))
+- refactor(mcp): simplify MCP endpoint, remove duplication ([#1289](https://github.com/everruns/everruns/pull/1289))
+- docs: rename Capabilities tab to Built-ins, add harness pages ([#1292](https://github.com/everruns/everruns/pull/1292))
+- feat(models): rename installed to enabled for LLM model visibility ([#1291](https://github.com/everruns/everruns/pull/1291))
+- fix(ui): remove rounded-* class violations across 55 components ([#1290](https://github.com/everruns/everruns/pull/1290))
+- fix(rate-limit): raise default API rate limit from 120 to 1200 req/min ([#1288](https://github.com/everruns/everruns/pull/1288))
+- ci: reduce CI waste and improve cache sharing ([#1287](https://github.com/everruns/everruns/pull/1287))
+
+### Migration Notes
+
+**0.8.11 → 0.8.12:** Migrations squashed into `013_v0.8.12.sql`. Fresh database required.
+
 ## [0.8.11] - 2026-04-13
 
 ### Highlights
