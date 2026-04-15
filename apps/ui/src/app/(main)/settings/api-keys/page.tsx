@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
 import { useApiKeys, useCreateApiKey, useDeleteApiKey } from "@/hooks/use-auth";
 import { useAuth } from "@/providers/auth-provider";
 import { Plus, Key, Trash2, Copy, Check, Clock, ShieldAlert } from "lucide-react";
@@ -250,16 +251,17 @@ export default function ApiKeysPage() {
           </Button>
         </div>
 
-        <div className="flex items-start gap-3 p-3 mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-          <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-500 mt-0.5 shrink-0" />
-          <div className="text-sm">
-            <p className="font-medium text-amber-800 dark:text-amber-400">Full account access</p>
-            <p className="text-amber-700 dark:text-amber-500/80 mt-0.5">
-              API keys grant access to all organizations and resources available to your account.
-              Treat them like passwords &mdash; do not share or commit them to source control.
-            </p>
-          </div>
-        </div>
+        <Notice
+          variant="warning"
+          icon={<ShieldAlert className="h-5 w-5 shrink-0" aria-hidden="true" />}
+          className="mb-4"
+        >
+          <NoticeTitle>Full account access</NoticeTitle>
+          <NoticeDescription>
+            API keys grant access to all organizations and resources available to your account.
+            Treat them like passwords &mdash; do not share or commit them to source control.
+          </NoticeDescription>
+        </Notice>
 
         <QueryStateWrapper
           isLoading={apiKeysLoading}

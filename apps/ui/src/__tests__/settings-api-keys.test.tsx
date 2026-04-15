@@ -84,6 +84,19 @@ describe("ApiKeysPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the account access warning as a reusable notice", () => {
+    render(<ApiKeysPage />, { wrapper });
+
+    const notice = screen.getByText("Full account access").closest('[data-slot="notice"]');
+
+    expect(notice).toHaveAttribute("data-variant", "warning");
+    expect(
+      screen.getByText(
+        /API keys grant access to all organizations and resources available to your account\./,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("renders API key rows with correct data", () => {
     render(<ApiKeysPage />, { wrapper });
 
