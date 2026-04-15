@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Migration Notes
 
-**0.8.11 → 0.8.12:** Migrations squashed into `013_v0.8.12.sql`. Fresh database required.
+**0.8.11 → 0.8.12:** Released `0.8.11` databases migrate forward normally with `013_v0.8.12.sql`. Fresh database required only if you already applied the unreleased `013_rename_installed_to_enabled.sql` and `014_api_keys_user_scoped.sql` migrations from `main`.
 
 ## [0.8.11] - 2026-04-13
 
