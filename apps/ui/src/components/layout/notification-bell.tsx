@@ -2,7 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { Bell } from "lucide-react";
-import { useNotificationsContext } from "@/providers/notifications-provider";
+import {
+  useNotificationsContext,
+  useOptionalNotificationsContext,
+} from "@/providers/notifications-provider";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +14,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuPositioner,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -24,10 +30,82 @@ function formatNotificationTime(timestamp: string): string {
   }).format(new Date(timestamp));
 }
 
-export function NotificationBell() {
+function NotificationMenuContent() {
   const router = useRouter();
-  const { notifications, unviewedCount, isEnabled, openNotification, markViewed } =
-    useNotificationsContext();
+  const { notifications, isEnabled, openNotification, markViewed } = useNotificationsContext();
+
+  if (!isEnabled) {
+    return null;
+  }
+
+  return (
+    <>
+      <DropdownMenuGroup>
+        <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {notifications.length === 0 ? (
+          <div className="px-3 py-6 text-sm text-muted-foreground">No notifications</div>
+        ) : (
+          notifications.map((notification) => (
+            <DropdownMenuItem
+              key={notification.id}
+              className="block px-3 py-3"
+              onClick={() => openNotification(notification)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p
+                    className={cn(
+                      "truncate text-sm",
+                      notification.viewed_at ? "text-muted-foreground" : "font-medium",
+                    )}
+                  >
+                    {notification.title}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{notification.body}</p>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    {formatNotificationTime(notification.created_at)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {notification.occurrence_count > 1 && (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                      x{notification.occurrence_count}
+                    </span>
+                  )}
+                  {!notification.viewed_at && (
+                    <button
+                      type="button"
+                      className="rounded px-2 py-1 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        void markViewed(notification.id);
+                      }}
+                    >
+                      View
+                    </button>
+                  )}
+                </div>
+              </div>
+            </DropdownMenuItem>
+          ))
+        )}
+      </DropdownMenuGroup>
+      {notifications.some((notification) => notification.href) && (
+        <>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => router.push("/sessions")}>
+            Open sessions
+          </DropdownMenuItem>
+        </>
+      )}
+    </>
+  );
+}
+
+export function NotificationBell() {
+  const { unviewedCount, isEnabled } = useNotificationsContext();
 
   if (!isEnabled) {
     return null;
@@ -51,68 +129,51 @@ export function NotificationBell() {
       </DropdownMenuTrigger>
       <DropdownMenuPositioner side="bottom" align="end">
         <DropdownMenuContent className="w-[22rem]">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {notifications.length === 0 ? (
-              <div className="px-3 py-6 text-sm text-muted-foreground">No notifications</div>
-            ) : (
-              notifications.map((notification) => (
-                <DropdownMenuItem
-                  key={notification.id}
-                  className="block px-3 py-3"
-                  onClick={() => openNotification(notification)}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p
-                        className={cn(
-                          "truncate text-sm",
-                          notification.viewed_at ? "text-muted-foreground" : "font-medium",
-                        )}
-                      >
-                        {notification.title}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">{notification.body}</p>
-                      <p className="mt-2 text-[11px] text-muted-foreground">
-                        {formatNotificationTime(notification.created_at)}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {notification.occurrence_count > 1 && (
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-                          x{notification.occurrence_count}
-                        </span>
-                      )}
-                      {!notification.viewed_at && (
-                        <button
-                          type="button"
-                          className="rounded px-2 py-1 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            void markViewed(notification.id);
-                          }}
-                        >
-                          View
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </DropdownMenuItem>
-              ))
-            )}
-          </DropdownMenuGroup>
-          {notifications.some((notification) => notification.href) && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/sessions")}>
-                Open sessions
-              </DropdownMenuItem>
-            </>
-          )}
+          <NotificationMenuContent />
         </DropdownMenuContent>
       </DropdownMenuPositioner>
     </DropdownMenu>
+  );
+}
+
+export function NotificationIndicator() {
+  const context = useOptionalNotificationsContext();
+
+  if (!context?.isEnabled || context.unviewedCount === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-primary" />
+      <span className="sr-only">
+        {context.unviewedCount} unread notification{context.unviewedCount === 1 ? "" : "s"}
+      </span>
+    </>
+  );
+}
+
+export function NotificationMenuSub() {
+  const context = useOptionalNotificationsContext();
+
+  if (!context?.isEnabled) {
+    return null;
+  }
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <Bell className="icon-sharp mr-2 h-4 w-4" />
+        Notifications
+        {context.unviewedCount > 0 && (
+          <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary-foreground">
+            {context.unviewedCount > 9 ? "9+" : context.unviewedCount}
+          </span>
+        )}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-[22rem]">
+        <NotificationMenuContent />
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   );
 }

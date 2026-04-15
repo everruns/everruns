@@ -5,8 +5,11 @@
  */
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronUp, Key, LogOut, User } from "lucide-react";
+import { McpConnectDialog, McpConnectMenuItem } from "@/components/layout/mcp-connect-button";
+import { NotificationIndicator, NotificationMenuSub } from "@/components/layout/notification-bell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -44,6 +47,7 @@ export function SidebarUserMenu({
   version: string;
 }) {
   const router = useRouter();
+  const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -55,40 +59,48 @@ export function SidebarUserMenu({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger className="flex w-full items-center gap-2.5 border border-transparent px-2.5 py-1.5 text-[13px] transition-colors hover:border-border hover:bg-card">
-        <Avatar className="h-7 w-7">
-          {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name || user.email} />}
-          <AvatarFallback>
-            {user.name ? getInitials(user.name) : <User className="h-4 w-4" />}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 text-left">
-          <p className="truncate font-semibold leading-5">{user.name || user.email}</p>
-          {user.name && <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>}
-        </div>
-        <ChevronUp className="icon-sharp h-4 w-4 text-muted-foreground" />
-      </DropdownMenuTrigger>
-      <DropdownMenuPositioner side="top" align="start">
-        <DropdownMenuContent className="w-56">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => router.push("/settings")}>
-              <User className="icon-sharp mr-2 h-4 w-4" />
-              Profile
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger className="flex w-full items-center gap-2.5 border border-transparent px-2.5 py-1.5 text-[13px] transition-colors hover:border-border hover:bg-card">
+          <Avatar className="h-7 w-7">
+            {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name || user.email} />}
+            <AvatarFallback>
+              {user.name ? getInitials(user.name) : <User className="h-4 w-4" />}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 text-left">
+            <p className="truncate font-semibold leading-5">{user.name || user.email}</p>
+            {user.name && (
+              <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>
+            )}
+          </div>
+          <NotificationIndicator />
+          <ChevronUp className="icon-sharp h-4 w-4 text-muted-foreground" />
+        </DropdownMenuTrigger>
+        <DropdownMenuPositioner side="top" align="start">
+          <DropdownMenuContent className="w-56">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <NotificationMenuSub />
+              <DropdownMenuItem onClick={() => router.push("/settings")}>
+                <User className="icon-sharp mr-2 h-4 w-4" />
+                Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/settings/api-keys")}>
+                <Key className="icon-sharp mr-2 h-4 w-4" />
+                API Keys
+              </DropdownMenuItem>
+              <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={handleLogout} disabled={logoutPending}>
+              <LogOut className="icon-sharp mr-2 h-4 w-4" />
+              {logoutPending ? "Signing out..." : "Sign out"}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/settings/api-keys")}>
-              <Key className="icon-sharp mr-2 h-4 w-4" />
-              API Keys
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={handleLogout} disabled={logoutPending}>
-            <LogOut className="icon-sharp mr-2 h-4 w-4" />
-            {logoutPending ? "Signing out..." : "Sign out"}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenuPositioner>
-    </DropdownMenu>
+          </DropdownMenuContent>
+        </DropdownMenuPositioner>
+      </DropdownMenu>
+      <McpConnectDialog open={mcpDialogOpen} onOpenChange={setMcpDialogOpen} />
+    </>
   );
 }

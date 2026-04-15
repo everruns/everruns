@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { Sidebar } from "@/components/layout/sidebar";
 import type { SidebarConfig, NavigationSection } from "@/components/layout/sidebar";
 import { Settings, Zap } from "lucide-react";
@@ -25,17 +25,9 @@ jest.mock("next/image", () => ({
 }));
 
 // Mock auth provider
+const mockUseAuth = jest.fn();
 jest.mock("@/providers/auth-provider", () => ({
-  useAuth: () => ({
-    user: null,
-    requiresAuth: false,
-    isAuthenticated: true,
-    config: { mode: "none" },
-    isLoading: false,
-    logout: jest.fn(),
-    logoutPending: false,
-    createOrganization: undefined,
-  }),
+  useAuth: () => mockUseAuth(),
 }));
 
 // Mock org provider
@@ -60,11 +52,24 @@ jest.mock("@/hooks/use-organizations", () => ({
   }),
 }));
 
+jest.mock("@/components/layout/mcp-connect-button", () => ({
+  McpConnectButton: () => <button type="button" aria-label="Connect via MCP" />,
+  McpConnectDialog: () => null,
+  McpConnectMenuItem: () => <div>Connect via MCP</div>,
+}));
+
+jest.mock("@/components/layout/notification-bell", () => ({
+  NotificationBell: () => <button type="button" aria-label="Notifications" />,
+  NotificationIndicator: () => <span aria-label="Unread notifications" />,
+  NotificationMenuSub: () => <div>Notifications</div>,
+}));
+
 // Mock feature flags provider
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => ({
     global_chat: true,
     apps: true,
+    notifications: true,
     mcp_endpoint: true,
   }),
 }));
@@ -83,6 +88,16 @@ describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
     mockPush.mockClear();
+    mockUseAuth.mockReturnValue({
+      user: null,
+      requiresAuth: false,
+      isAuthenticated: true,
+      config: { mode: "none" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
   });
 
   it("renders the Everruns logo and title", () => {
@@ -90,6 +105,43 @@ describe("Sidebar", () => {
 
     expect(screen.getByText("Everruns")).toBeInTheDocument();
     expect(screen.getByAltText("Everruns")).toBeInTheDocument();
+  });
+
+  it("keeps search row focused on search only", () => {
+    render(<Sidebar />);
+
+    const brandRow = screen.getByAltText("Everruns").closest("a")?.parentElement;
+    const searchRow = screen.getByRole("search", { name: "Sidebar search" });
+
+    expect(brandRow).not.toBeNull();
+    expect(within(searchRow).getByRole("button", { name: /search/i })).toBeInTheDocument();
+    expect(within(brandRow!).queryByLabelText("Connect via MCP")).not.toBeInTheDocument();
+    expect(within(brandRow!).queryByLabelText("Notifications")).not.toBeInTheDocument();
+    expect(within(searchRow).queryByLabelText("Connect via MCP")).not.toBeInTheDocument();
+    expect(within(searchRow).queryByLabelText("Notifications")).not.toBeInTheDocument();
+  });
+
+  it("renders notifications as an account-row indicator and MCP in the profile menu", () => {
+    mockUseAuth.mockReturnValue({
+      user: { name: "Test User", email: "test@example.com", avatar_url: null },
+      requiresAuth: true,
+      isAuthenticated: true,
+      config: { mode: "password" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+
+    render(<Sidebar />);
+
+    const footer = screen.getByRole("contentinfo", { name: "Sidebar footer" });
+    expect(within(footer).getByRole("button", { name: /test user/i })).toBeInTheDocument();
+    expect(within(footer).getByLabelText("Unread notifications")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+    expect(screen.getByText("Notifications")).toBeInTheDocument();
+    expect(screen.getByText("Connect via MCP")).toBeInTheDocument();
   });
 
   it("renders all navigation items", () => {
