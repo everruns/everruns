@@ -13,6 +13,7 @@ import {
 import { updateProfile } from "@/lib/api/users";
 import { useOrg } from "@/providers/org-provider";
 import { ORG_STORAGE_KEY } from "@/lib/constants";
+import { authQueryKeys } from "@/lib/auth-query-keys";
 import type {
   LoginRequest,
   RegisterRequest,
@@ -20,14 +21,7 @@ import type {
   UpdateProfileRequest,
 } from "@/lib/api/types";
 
-// Query keys
-export const authKeys = {
-  all: ["auth"] as const,
-  config: () => [...authKeys.all, "config"] as const,
-  user: () => [...authKeys.all, "user"] as const,
-  apiKeys: (org?: string) =>
-    org ? ([...authKeys.all, "api-keys", org] as const) : ([...authKeys.all, "api-keys"] as const),
-};
+export const authKeys = authQueryKeys;
 
 /**
  * Hook to get auth configuration.

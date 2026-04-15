@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { cookies } from "next/headers";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
 import { FeatureFlagsProvider } from "@/providers/feature-flags-provider";
@@ -22,11 +23,14 @@ export const metadata: Metadata = {
   description: "Manage and monitor your AI agents",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const initialOrgId = cookieStore.get("everruns_org")?.value ?? null;
+
   return (
     <html lang="en" className={caveat.variable}>
       <body className="font-sans antialiased bg-brand-dots">
@@ -34,7 +38,7 @@ export default function RootLayout({
           <QueryProvider>
             <FeatureFlagsProvider>
               <AuthProvider>
-                <OrgProvider>{children}</OrgProvider>
+                <OrgProvider initialOrgId={initialOrgId}>{children}</OrgProvider>
               </AuthProvider>
             </FeatureFlagsProvider>
           </QueryProvider>

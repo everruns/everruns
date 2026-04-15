@@ -21,6 +21,7 @@ jest.mock("@/lib/api/users", () => ({
 // Mock auth provider — mutable so we can change the user mid-test
 let mockUser: { organizations: OrganizationMembership[] } | null = null;
 let mockAuthLoading = false;
+let mockInitialOrgId: string | null = null;
 jest.mock("@/providers/auth-provider", () => ({
   useAuth: () => ({ user: mockUser, isLoading: mockAuthLoading }),
 }));
@@ -37,6 +38,7 @@ beforeEach(() => {
   mockPush.mockClear();
   mockSwitchOrg.mockClear().mockResolvedValue(undefined);
   mockPathname.mockReturnValue("/dashboard");
+  mockInitialOrgId = null;
 });
 
 const DEFAULT_ORG: OrganizationMembership = {
@@ -67,7 +69,7 @@ beforeEach(() => {
 function wrapper({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <OrgProvider>{children}</OrgProvider>
+      <OrgProvider initialOrgId={mockInitialOrgId}>{children}</OrgProvider>
     </QueryClientProvider>
   );
 }
@@ -248,5 +250,26 @@ describe("OrgProvider", () => {
     const { result } = renderHook(() => useOrg(), { wrapper });
 
     expect(result.current.currentOrg?.public_id).toBe(SECOND_ORG.public_id);
+  });
+
+  it("prefers request cookie org over localStorage during bootstrap", () => {
+    storageMap.set("everruns_current_org", SECOND_ORG.public_id);
+    mockInitialOrgId = DEFAULT_ORG.public_id;
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+
+    const { result } = renderHook(() => useOrg(), { wrapper });
+
+    expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id);
+  });
+
+  it("skips init cookie sync when request org already matches", () => {
+    mockInitialOrgId = DEFAULT_ORG.public_id;
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+
+    renderHook(() => useOrg(), { wrapper });
+
+    expect(mockSwitchOrg).not.toHaveBeenCalled();
   });
 });
