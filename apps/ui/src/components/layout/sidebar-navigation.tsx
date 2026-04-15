@@ -35,13 +35,13 @@ function NavLink({
     <Link
       href={item.href}
       className={cn(
-        "flex items-center gap-3 border-l-2 px-3 py-2.5 text-sm font-medium transition-colors",
+        "flex items-center gap-2.5 border-l-2 px-3 py-1.5 text-[13px] font-semibold leading-5 transition-colors",
         isActive
           ? "border-l-primary bg-card text-foreground"
-          : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-card hover:text-foreground",
+          : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-card/80 hover:text-foreground",
       )}
     >
-      <item.icon className="icon-sharp h-[18px] w-[18px] shrink-0 stroke-[2.15]" />
+      <item.icon className="icon-sharp h-4 w-4 shrink-0 stroke-[2.15]" />
       {item.name}
       {item.warningTooltip && <WarningBadge tooltip={item.warningTooltip} />}
       {item.experimental && !item.warningTooltip && <ExperimentalBadge />}
@@ -67,13 +67,13 @@ function NavSection({
 
   return (
     <>
-      {!isFirst && <div className="my-3 border-t" />}
+      {!isFirst && <div className="my-2 border-t" />}
       {section.label &&
         (isCollapsible ? (
           <button
             type="button"
             onClick={() => setCollapsed((value) => !value)}
-            className="flex w-full items-center justify-between px-3 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:text-foreground"
+            className="flex w-full items-center justify-between px-3 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground"
           >
             {section.label}
             {collapsed ? (
@@ -83,7 +83,7 @@ function NavSection({
             )}
           </button>
         ) : (
-          <p className="px-3 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+          <p className="px-3 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
             {section.label}
           </p>
         ))}
@@ -107,7 +107,7 @@ export function SidebarNavigation({
   let visibleIndex = 0;
 
   return (
-    <nav className="flex-1 min-h-0 overflow-y-auto space-y-1 bg-background py-4">
+    <nav className="flex-1 min-h-0 overflow-y-auto space-y-0.5 bg-background py-2.5">
       {sections.map((section, index) => {
         if (section.devOnly && !isDev) return null;
         const isFirst = visibleIndex === 0;

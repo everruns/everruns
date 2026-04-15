@@ -158,11 +158,11 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const useDefaultCreateOrgDialog = !config?.orgActions?.createOrg && !createOrgOverride;
 
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-background">
-      <div className="flex h-16 items-center justify-between border-b bg-card px-6">
+    <div className="flex h-full w-60 flex-col border-r border-border/70 bg-background">
+      <div className="flex h-14 items-center justify-between border-b border-border/70 bg-card px-4">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <Image src="/logo.svg" alt="Everruns" width={32} height={32} />
-          <span className="text-xl font-bold">Everruns</span>
+          <Image src="/logo.svg" alt="Everruns" width={28} height={28} />
+          <span className="text-base font-semibold tracking-[-0.02em]">Everruns</span>
         </Link>
         <div className="flex items-center gap-1">
           <McpConnectButton />
@@ -175,23 +175,23 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
         useDefaultCreateOrgDialog={useDefaultCreateOrgDialog}
       />
 
-      <div className="px-3 py-2">
+      <div className="px-2.5 py-2">
         <button
           type="button"
           onClick={() => openCommandPalette(true)}
-          className="flex w-full items-center gap-3 border border-input bg-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-card hover:text-foreground"
+          className="flex w-full items-center gap-2 border border-input bg-transparent px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-card hover:text-foreground"
         >
-          <Search className="h-4 w-4 shrink-0" />
+          <Search className="h-3.5 w-3.5 shrink-0" />
           <span className="flex-1 text-left">Search...</span>
-          <kbd className="hidden h-5 items-center gap-0.5 border bg-muted px-1.5 font-mono text-[10px] font-medium sm:inline-flex">
-            <span className="text-xs">⌘</span>K
+          <kbd className="hidden h-4 items-center gap-0.5 border bg-muted px-1.5 font-mono text-[10px] font-medium sm:inline-flex">
+            <span className="text-[11px]">⌘</span>K
           </kbd>
         </button>
       </div>
 
       <SidebarNavigation sections={allSections} pathname={pathname} featureFlags={featureFlags} />
 
-      <div className="border-t p-3">
+      <div className="border-t border-border/70 p-2.5">
         <SidebarUserMenu
           requiresAuth={requiresAuth}
           user={user ?? null}

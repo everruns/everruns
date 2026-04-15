@@ -149,6 +149,23 @@ describe("Sidebar", () => {
     expect(screen.getByText(/^Everruns v\d+\.\d+\.\d+$/)).toBeInTheDocument();
   });
 
+  it("uses the compact sidebar shell treatment", () => {
+    const { container } = render(<Sidebar />);
+
+    expect(container.firstChild).toHaveClass("w-60");
+
+    const searchButton = screen.getByRole("button", { name: /search/i });
+    expect(searchButton).toHaveClass("gap-2");
+    expect(searchButton).toHaveClass("px-2.5");
+    expect(searchButton).toHaveClass("py-1.5");
+    expect(searchButton).toHaveClass("text-[13px]");
+
+    const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
+    expect(dashboardLink).toHaveClass("gap-2.5");
+    expect(dashboardLink).toHaveClass("py-1.5");
+    expect(dashboardLink).toHaveClass("text-[13px]");
+  });
+
   it("has exactly 6 navigation items", () => {
     render(<Sidebar />);
 

@@ -226,9 +226,9 @@ export const ChatMessageList = memo(function ChatMessageList({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {loadingOlderEvents && hasMoreEvents && (
-        <div className="flex items-center justify-center py-3">
+        <div className="flex items-center justify-center py-2.5">
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           <span className="ml-2 text-xs text-muted-foreground">{t("loading_older_messages")}</span>
         </div>
