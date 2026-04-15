@@ -67,6 +67,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
 - `specs/production-deployment.md` - Production deployment aggregation spec and reverse proxy contract
 - `specs/embedding.md` - Embedding contract and `PlatformDefinition`
+- `specs/runtime.md` - Public in-process runtime contract for embedded execution
 - `specs/code-organization.md` - Developer conventions: formatting, testing, error handling, UI patterns
 - `specs/migrations.md` - Database migration naming, squashing, ordering, and conflict resolution
 - `specs/models.md` - Data models (Agent, Session, Message, etc.)

@@ -68,6 +68,7 @@ Events are classified as **ephemeral** or **durable**:
    - `server/` → `everruns-server` - **Control plane**: HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
    - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, shared types)
+   - `runtime/` → `everruns-runtime` - Public in-process runtime for embedded execution without durable engine/server
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
@@ -92,6 +93,7 @@ everruns/
 │   ├── server/           # Control plane: HTTP API + gRPC server + storage
 │   ├── worker/           # Durable worker with gRPC client
 │   ├── core/             # Shared abstractions and types
+│   ├── runtime/          # Public in-process embedded runtime
 │   ├── internal-protocol/# gRPC protocol definitions
 │   ├── durable/          # Durable execution engine
 │   ├── openai/           # OpenAI provider
@@ -113,12 +115,14 @@ everruns/
 ```mermaid
 graph TD
     core[core]
+    runtime[runtime]
     openai[openai]
     anthropic[anthropic]
     protocol[internal-protocol]
     worker[worker]
     server["server (control plane)"]
 
+    core --> runtime
     core --> openai
     core --> anthropic
     core --> protocol
@@ -146,6 +150,20 @@ The server and worker builders both accept an explicit `PlatformDefinition`. If 
 - `everruns_worker::default_platform_definition()`
 
 This keeps the existing OSS runtime as the default while allowing embedders to remove integrations, add custom capabilities, replace harness templates, or register different LLM drivers without forking Everruns internals.
+
+### Embedded Runtime
+
+Embedders who want to execute Everruns harnesses directly inside their own
+process should use `everruns-runtime`.
+
+`everruns-runtime` provides:
+
+- `InProcessRuntimeBuilder`
+- in-memory session/filesystem/storage/message backends
+- turn execution via the shared core `TurnStateMachine`
+- direct seeding of harnesses, agents, sessions, and files
+
+See [specs/runtime.md](runtime.md) for the public embedded runtime contract.
 
 ### Integration Plugin Force-Linking
 

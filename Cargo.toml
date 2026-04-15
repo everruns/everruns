@@ -5,6 +5,7 @@ members = [
     "crates/server",
     "crates/worker",
     "crates/core",
+    "crates/runtime",
     "crates/macros",
     "crates/openai",
     "crates/anthropic",
