@@ -42,7 +42,7 @@ function TabsList({ children, className }: TabsListProps) {
   return (
     <div
       className={cn(
-        "inline-flex h-10 items-center justify-center bg-muted p-1 text-muted-foreground",
+        "inline-flex h-8 items-center justify-center bg-muted p-0.5 text-muted-foreground",
         className,
       )}
     >
@@ -69,7 +69,7 @@ function TabsTrigger({ value, children, className, disabled }: TabsTriggerProps)
       aria-selected={isSelected}
       disabled={disabled}
       className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex items-center justify-center whitespace-nowrap px-2.5 py-1 text-[13px] font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
         isSelected ? "bg-background text-foreground shadow-sm" : "hover:bg-background/50",
         className,
       )}

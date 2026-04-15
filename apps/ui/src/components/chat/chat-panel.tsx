@@ -181,7 +181,7 @@ export function ChatPanel() {
         ref={scrollContainerRef}
         onScroll={handleScrollUp}
         className={cn(
-          "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-4 py-5 sm:px-6",
+          "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-3 py-4 sm:px-4",
           !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-end",
         )}
       >
@@ -200,10 +200,10 @@ export function ChatPanel() {
         />
 
         {(isThinking || streamingText) && (
-          <div className="mt-6 flex justify-start">
+          <div className="mt-4 flex justify-start">
             <div className={chatSurfaceStyles.agentMessageRow}>
               <div className={chatSurfaceStyles.agentIcon}>
-                <Bot className="h-3.5 w-3.5" />
+                <Bot className="h-3 w-3" />
               </div>
               <div className={chatSurfaceStyles.agentMessage}>
                 {streamingIteration && streamingIteration > 1 && (

@@ -116,11 +116,11 @@ export function SidebarOrganizationMenu({
 
   return (
     <>
-      <div className="border-b px-3 py-2">
+      <div className="border-b border-border/70 px-2.5 py-2">
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex w-full items-center gap-2 border border-transparent px-3 py-2 text-sm transition-colors hover:border-border hover:bg-card">
+          <DropdownMenuTrigger className="flex w-full items-center gap-1.5 border border-transparent px-2.5 py-1.5 text-[13px] transition-colors hover:border-border hover:bg-card">
             <Building2 className="icon-sharp h-4 w-4 text-muted-foreground" />
-            <span className="flex-1 truncate text-left font-medium">
+            <span className="flex-1 truncate text-left font-semibold leading-5">
               {currentOrg?.name ?? "Select Organization"}
             </span>
             <ChevronDown className="icon-sharp h-4 w-4 text-muted-foreground" />
