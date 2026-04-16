@@ -627,15 +627,13 @@ pub async fn upsert_agent(
     // a command). ID-based upsert uses the domain command.
     let _caller = Caller::from(&org);
     let (agent, was_created) = if let Ok(agent_id) = agent_id_or_name.parse::<AgentId>() {
-        // Command-based path (validation + policy + persistence in the command)
-        let agent = crate::domains::agents::UpsertAgent {
+        let result = crate::domains::agents::UpsertAgent {
             id: agent_id.to_string(),
             req,
         }
         .execute(&state.ctx(&org))
         .await?;
-        // UpsertAgent command doesn't currently expose was_created; assume 200 OK.
-        (agent, false)
+        (result.agent, result.was_created)
     } else {
         // Enforce path name matches body name to prevent ambiguous updates.
         if req.name != agent_id_or_name {
@@ -998,21 +996,20 @@ async fn import_from_file(
 
     // If the file has an ID, upsert (create or update). Otherwise, always create.
     if let Some(ref id) = client_id {
-        let agent = crate::domains::agents::UpsertAgent {
+        let result = crate::domains::agents::UpsertAgent {
             id: id.to_string(),
             req: request,
         }
         .execute(&state.ctx(&org))
         .await?;
-        let was_created = false;
 
-        let status = if was_created {
+        let status = if result.was_created {
             StatusCode::CREATED
         } else {
             StatusCode::OK
         };
 
-        Ok((status, Json(builder.wrap(agent))))
+        Ok((status, Json(builder.wrap(result.agent))))
     } else {
         let agent = crate::domains::agents::CreateAgent(request)
             .execute(&state.ctx(&org))
@@ -1176,7 +1173,6 @@ pub async fn preview_agent(
     State(state): State<AppState>,
     Json(req): Json<PreviewAgentRequest>,
 ) -> ApiResult<AgentPreviewResponse> {
-    let extra_tools = req.tools.clone();
     let result = crate::domains::agents::PreviewAgent {
         system_prompt: Some(req.system_prompt),
         capabilities: req.capabilities,
@@ -1185,11 +1181,8 @@ pub async fn preview_agent(
     .execute(&state.ctx(&org))
     .await?;
 
-    let mut tools = result.tools;
-    tools.extend(extra_tools);
-
     Ok(Json(AgentPreviewResponse {
         system_prompt: result.system_prompt,
-        tools,
+        tools: result.tools,
     }))
 }

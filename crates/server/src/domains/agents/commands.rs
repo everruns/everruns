@@ -99,10 +99,8 @@ async fn persist_capabilities(
     agent_uuid: uuid::Uuid,
     caps: &[AgentCapabilityConfig],
 ) -> Result<(), CommandError> {
-    if !caps.is_empty() {
-        db.set_agent_capabilities(agent_uuid, q::cap_tuples(caps))
-            .await?;
-    }
+    db.set_agent_capabilities(agent_uuid, q::cap_tuples(caps))
+        .await?;
     Ok(())
 }
 
@@ -515,8 +513,16 @@ pub struct UpsertAgent {
     pub req: CreateAgentRequest,
 }
 
+/// Result of an upsert operation, including whether the agent was created or updated.
+#[derive(Debug, serde::Serialize)]
+pub struct UpsertResult {
+    #[serde(flatten)]
+    pub agent: Agent,
+    pub was_created: bool,
+}
+
 impl Command for UpsertAgent {
-    type Output = Agent;
+    type Output = UpsertResult;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -532,8 +538,14 @@ impl Command for UpsertAgent {
         Some(&AGENT_MANAGE)
     }
 
-    async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
+    async fn execute(self, ctx: &Ctx) -> Result<UpsertResult, CommandError> {
         let req = self.req;
+
+        // Validate (same checks as CreateAgent)
+        validate_name("Agent", &req.name)?;
+        validate_create_limits(&req)?;
+        check_high_risk_caps(ctx, &req.capabilities)?;
+
         let caps = q::ensure_file_system_capability(
             req.capabilities.clone(),
             !req.initial_files.is_empty(),
@@ -560,7 +572,10 @@ impl Command for UpsertAgent {
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             max_iterations: req.max_iterations.map(|v| v as i32),
-            network_access: None,
+            network_access: req
+                .network_access
+                .as_ref()
+                .map(|na| serde_json::to_value(na).unwrap()),
         };
         let (row, was_created) = ctx
             .db
@@ -580,7 +595,10 @@ impl Command for UpsertAgent {
                 .map_err(classify_anyhow)?
         };
 
-        Ok(q::row_to_agent(row, final_caps))
+        Ok(UpsertResult {
+            agent: q::row_to_agent(row, final_caps),
+            was_created,
+        })
     }
 }
 
@@ -748,7 +766,7 @@ impl Command for PreviewAgent {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentPreview, CommandError> {
-        let (prompt, tools) = ctx
+        let (prompt, mut tools) = ctx
             .capability_service
             .preview(
                 ctx.org_id(),
@@ -757,6 +775,7 @@ impl Command for PreviewAgent {
             )
             .await
             .map_err(classify_anyhow)?;
+        tools.extend(self.tools);
         Ok(AgentPreview {
             system_prompt: prompt,
             tools,

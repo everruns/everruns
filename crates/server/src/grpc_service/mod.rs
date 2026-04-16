@@ -3,7 +3,7 @@
 // Decision: Workers communicate with control plane via gRPC for all database operations
 // Decision: This provides a clean boundary and simplifies worker deployment
 // Decision: gRPC service uses the same services layer as HTTP API for consistency
-// Decision: No direct database access - all operations go through services layer
+// Decision: Operations go through domain commands/queries or services layer
 // Decision: Split into submodules for maintainability (EVE-101).
 
 mod worker_service_impl;
@@ -335,8 +335,8 @@ impl tonic::service::Interceptor for GrpcAuthInterceptor {
 
 /// gRPC service implementation for worker communication
 ///
-/// This service follows the layered architecture: gRPC -> Services -> Storage
-/// No direct database access is allowed - all operations go through the services layer.
+/// Uses domain commands/queries for agents and harnesses, and services for
+/// sessions, events, and other domains not yet migrated.
 pub struct WorkerServiceImpl {
     event_service: EventService,
     session_service: SessionService,

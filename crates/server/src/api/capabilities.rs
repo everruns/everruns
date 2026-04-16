@@ -91,10 +91,7 @@ pub async fn list_capabilities(
     }
     .execute(&state.ctx(&org))
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to list capabilities: {}", e);
-        e.status()
-    })?;
+    .map_err(|e| e.status())?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(
@@ -124,10 +121,7 @@ pub async fn get_capability(
     let capability = crate::domains::capabilities::GetCapability { id: capability_id }
         .execute(&state.ctx(&org))
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to get capability: {}", e);
-            e.status()
-        })?;
+        .map_err(|e| e.status())?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(capability)))

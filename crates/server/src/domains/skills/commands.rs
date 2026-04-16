@@ -3,9 +3,8 @@
 // Each struct is the request type, catalog entry, and execution logic.
 // inventory::submit! auto-registers for MCP catalog.
 //
-// Design note: SkillService owns a moka cache for list operations.
-// Commands that benefit from the cache (ListSkills) delegate to the
-// service. Direct DB operations use ctx.db.
+// Note: SkillService retains a moka cache for list operations used by
+// the capability registry. Domain commands read from DB directly.
 
 use super::queries as q;
 use super::types::{CreateSkillRequest, CreateSkillRow, UpdateSkill, UpdateSkillRequest};

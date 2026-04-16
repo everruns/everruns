@@ -84,10 +84,8 @@ async fn persist_capabilities(
     harness_uuid: uuid::Uuid,
     caps: &[AgentCapabilityConfig],
 ) -> Result<(), CommandError> {
-    if !caps.is_empty() {
-        db.set_harness_capabilities(harness_uuid, q::cap_tuples(caps))
-            .await?;
-    }
+    db.set_harness_capabilities(harness_uuid, q::cap_tuples(caps))
+        .await?;
     Ok(())
 }
 
