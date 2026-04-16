@@ -327,6 +327,14 @@ async fn runtime_exposes_assembled_context() {
         .await
         .unwrap();
 
+    let initial_context = runtime.load_context(session_id).await.unwrap();
+    assert!(initial_context.messages.is_empty());
+    assert_eq!(initial_context.session.id, session_id);
+    assert_eq!(
+        initial_context.agent.as_ref().map(|agent| agent.public_id),
+        Some(agent_id)
+    );
+
     runtime
         .run_text_turn(session_id, "What locale and tools do I have?")
         .await
@@ -336,10 +344,6 @@ async fn runtime_exposes_assembled_context() {
 
     assert_eq!(context.session.id, session_id);
     assert_eq!(context.harness_chain.len(), 1);
-    assert_eq!(
-        context.agent.as_ref().map(|agent| agent.public_id),
-        Some(agent_id)
-    );
     assert_eq!(context.messages.len(), 2);
     assert_eq!(context.model_with_provider.model, "llmsim-model");
     assert!(

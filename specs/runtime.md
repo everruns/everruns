@@ -56,7 +56,7 @@ The builder must allow an embedder to:
 - `run_turn(session_id, input)` for one turn of execution
 - `run_text_turn(session_id, text)` convenience helper
 - `load_context(session_id)` to inspect the assembled turn context without
-  executing a new turn
+  executing a new turn, including empty sessions before the first message
 - `messages(session_id)` to inspect conversation history
 - `read_file(session_id, path)` to inspect the in-memory workspace
 - `events()` to inspect emitted runtime events
@@ -96,6 +96,7 @@ hosts:
 Public API:
 
 - `everruns_core::assemble_turn_context(...)`
+- `everruns_core::inspect_turn_context(...)`
 - `everruns_core::AssembledTurnContext`
 
 `ReasonAtom` and `everruns-runtime` must use this shared path so embedded hosts

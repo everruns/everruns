@@ -35,7 +35,9 @@ use everruns_core::memory::{
 };
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::platform_definition::PlatformDefinition;
-use everruns_core::runtime_context::{AssembledTurnContext, assemble_turn_context};
+use everruns_core::runtime_context::{
+    AssembledTurnContext, assemble_turn_context, inspect_turn_context,
+};
 use everruns_core::session::Session;
 use everruns_core::session_file::{InitialFile, SessionFile};
 use everruns_core::tools::{ToolRegistry, ToolResultImage};
@@ -398,9 +400,9 @@ impl InProcessRuntime {
             ))
             .await?;
         let assembled = self
-            .load_context_with_ids(session_id, session.harness_id, session.agent_id)
+            .load_execution_context_with_ids(session_id, session.harness_id, session.agent_id)
             .await?;
-        let session = assembled.session;
+        let session = assembled.session.clone();
         let capability_registry = self.platform_definition.capability_registry().clone();
         let driver_registry = self.platform_definition.driver_registry().clone();
         let system_prompt_ctx = SystemPromptContext {
@@ -467,6 +469,7 @@ impl InProcessRuntime {
 
         let mut previous_response_id: Option<String> = None;
         let mut last_reason_result: Option<everruns_core::ReasonResult> = None;
+        let mut first_reason_context = Some(assembled.clone());
         let mut state_machine = TurnStateMachine::new(
             TurnContext::new(session_id, input_message.id, synthetic_agent_id, org_id),
             assembled.runtime_agent.max_iterations,
@@ -493,17 +496,23 @@ impl InProcessRuntime {
                         state_machine.context().turn_id,
                         state_machine.context().input_message_id,
                     );
-                    let reason_result = reason_atom
-                        .execute(ReasonInput {
-                            context: base_context.next_exec(),
-                            harness_id: session.harness_id,
-                            agent_id: session.agent_id,
-                            org_id,
-                            mcp_tool_definitions: vec![],
-                            previous_response_id: previous_response_id.take(),
-                            iteration: state_machine.current_iteration() as u32 + 1,
-                        })
-                        .await?;
+                    let reason_input = ReasonInput {
+                        context: base_context.next_exec(),
+                        harness_id: session.harness_id,
+                        agent_id: session.agent_id,
+                        org_id,
+                        mcp_tool_definitions: vec![],
+                        previous_response_id: previous_response_id.take(),
+                        iteration: state_machine.current_iteration() as u32 + 1,
+                    };
+                    let reason_result = match first_reason_context.take() {
+                        Some(assembled) => {
+                            reason_atom
+                                .execute_with_assembled_context(reason_input, assembled)
+                                .await?
+                        }
+                        None => reason_atom.execute(reason_input).await?,
+                    };
 
                     let tool_call_count = reason_result.tool_calls.len();
                     previous_response_id = reason_result.response_id.clone();
@@ -582,7 +591,7 @@ impl InProcessRuntime {
             .get_session(session_id)
             .await?
             .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
-        self.load_context_with_ids(session_id, session.harness_id, session.agent_id)
+        self.inspect_context_with_ids(session_id, session.harness_id, session.agent_id)
             .await
     }
 
@@ -594,13 +603,35 @@ impl InProcessRuntime {
         Ok(collector.events().await)
     }
 
-    async fn load_context_with_ids(
+    async fn load_execution_context_with_ids(
         &self,
         session_id: SessionId,
         harness_id: everruns_core::HarnessId,
         agent_id: Option<AgentId>,
     ) -> Result<AssembledTurnContext> {
         assemble_turn_context(
+            self.harness_store.as_ref(),
+            self.agent_store.as_ref(),
+            self.session_store.as_ref(),
+            self.message_store.as_ref(),
+            self.provider_store.as_ref(),
+            self.platform_definition.capability_registry(),
+            session_id,
+            harness_id,
+            agent_id,
+            &[],
+            Some(Arc::new(DynFileStore(self.file_store.clone()))),
+        )
+        .await
+    }
+
+    async fn inspect_context_with_ids(
+        &self,
+        session_id: SessionId,
+        harness_id: everruns_core::HarnessId,
+        agent_id: Option<AgentId>,
+    ) -> Result<AssembledTurnContext> {
+        inspect_turn_context(
             self.harness_store.as_ref(),
             self.agent_store.as_ref(),
             self.session_store.as_ref(),

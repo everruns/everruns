@@ -180,7 +180,7 @@ let runtime = InProcessRuntimeBuilder::new()
 
 ### Context Inspection
 
-`everruns-runtime` exposes `load_context(session_id)` so embedders can inspect the exact merged turn context that the reason phase will use:
+`everruns-runtime` exposes `load_context(session_id)` so embedders can inspect the exact merged turn context that the reason phase will use. This works both before the first turn and after messages already exist:
 
 - harness chain
 - optional agent
@@ -191,11 +191,14 @@ let runtime = InProcessRuntimeBuilder::new()
 
 ```rust
 let context = runtime.load_context(session_id).await?;
+println!("messages = {}", context.messages.len());
 println!("model = {}", context.runtime_agent.model);
 println!("tools = {}", context.runtime_agent.tools.len());
 ```
 
-Under the hood, both `ReasonAtom` and `everruns-runtime` use the same shared core helper: `everruns_core::assemble_turn_context(...)`. That keeps in-process and worker-backed behavior aligned.
+When the session has no messages yet, `context.messages` is empty and model/locale resolution falls back to merged harness, agent, session, and platform defaults.
+
+Under the hood, execute-time hosts use `everruns_core::assemble_turn_context(...)`, while inspection uses `everruns_core::inspect_turn_context(...)`. Both share the same merged harness/agent/session assembly logic so in-process and worker-backed behavior stay aligned.
 
 ### Custom Backends
 

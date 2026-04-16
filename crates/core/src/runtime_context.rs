@@ -68,6 +68,79 @@ pub async fn assemble_turn_context(
     mcp_tool_definitions: &[ToolDefinition],
     file_store: Option<Arc<dyn SessionFileStore>>,
 ) -> Result<AssembledTurnContext> {
+    assemble_turn_context_with_mode(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        capability_registry,
+        session_id,
+        harness_id,
+        agent_id,
+        mcp_tool_definitions,
+        file_store,
+        ContextAssemblyMode::RequireMessages,
+    )
+    .await
+}
+
+/// Assemble the current turn context for inspection without requiring messages.
+///
+/// This is intended for embedders who need to inspect the merged harness/agent/session
+/// configuration before the first user message is stored.
+#[allow(clippy::too_many_arguments)]
+pub async fn inspect_turn_context(
+    harness_store: &dyn HarnessStore,
+    agent_store: &dyn AgentStore,
+    session_store: &dyn SessionStore,
+    message_retriever: &dyn MessageRetriever,
+    provider_store: &dyn LlmProviderStore,
+    capability_registry: &CapabilityRegistry,
+    session_id: SessionId,
+    harness_id: HarnessId,
+    agent_id: Option<AgentId>,
+    mcp_tool_definitions: &[ToolDefinition],
+    file_store: Option<Arc<dyn SessionFileStore>>,
+) -> Result<AssembledTurnContext> {
+    assemble_turn_context_with_mode(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        capability_registry,
+        session_id,
+        harness_id,
+        agent_id,
+        mcp_tool_definitions,
+        file_store,
+        ContextAssemblyMode::AllowEmptyMessages,
+    )
+    .await
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ContextAssemblyMode {
+    RequireMessages,
+    AllowEmptyMessages,
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn assemble_turn_context_with_mode(
+    harness_store: &dyn HarnessStore,
+    agent_store: &dyn AgentStore,
+    session_store: &dyn SessionStore,
+    message_retriever: &dyn MessageRetriever,
+    provider_store: &dyn LlmProviderStore,
+    capability_registry: &CapabilityRegistry,
+    session_id: SessionId,
+    harness_id: HarnessId,
+    agent_id: Option<AgentId>,
+    mcp_tool_definitions: &[ToolDefinition],
+    file_store: Option<Arc<dyn SessionFileStore>>,
+    mode: ContextAssemblyMode,
+) -> Result<AssembledTurnContext> {
     let harness_chain = harness_store.get_harness_chain(harness_id).await?;
     if harness_chain.is_empty() {
         return Err(AgentLoopError::harness_not_found(harness_id));
@@ -99,19 +172,15 @@ pub async fn assemble_turn_context(
         AgentConfigOverlay::fold(layers)
     };
 
+    let message_filters = crate::capabilities::collect_message_filters_only(
+        &effective_overlay.capabilities,
+        capability_registry,
+    );
     let mut query = MessageQuery::new(session_id);
-    crate::capabilities::collect_message_filters_only(
-        &effective_overlay.capabilities,
-        capability_registry,
-    )
-    .apply_message_filters(&mut query);
+    message_filters.apply_message_filters(&mut query);
     let mut messages = message_retriever.load_filtered(query).await?;
-    crate::capabilities::collect_message_filters_only(
-        &effective_overlay.capabilities,
-        capability_registry,
-    )
-    .apply_post_load_filters(&mut messages);
-    if messages.is_empty() {
+    message_filters.apply_post_load_filters(&mut messages);
+    if messages.is_empty() && matches!(mode, ContextAssemblyMode::RequireMessages) {
         return Err(AgentLoopError::NoMessages);
     }
 
@@ -446,5 +515,55 @@ mod tests {
                 .iter()
                 .any(|tool| tool.name() == "multiply")
         );
+    }
+
+    #[tokio::test]
+    async fn inspect_turn_context_allows_empty_message_history() {
+        let harness_id = "harness_00000000000000000000000000000082".parse().unwrap();
+        let agent_id = "agent_00000000000000000000000000000082".parse().unwrap();
+        let session_id = "session_00000000000000000000000000000082".parse().unwrap();
+
+        let harness_store = InMemoryHarnessStore::new();
+        harness_store.add_harness(harness(harness_id)).await;
+        let agent_store = InMemoryAgentStore::new();
+        agent_store.add_agent(agent(agent_id)).await;
+        let session_store = crate::memory::InMemorySessionStore::new();
+        session_store
+            .add_session(session(session_id, harness_id, agent_id))
+            .await;
+        let message_store = InMemoryMessageRetriever::new();
+
+        let provider_store = InMemoryLlmProviderStore::new();
+        provider_store
+            .set_default_model(ModelWithProvider {
+                model: "llmsim-model".into(),
+                provider_type: crate::llm_models::LlmProviderType::LlmSim,
+                api_key: Some("fake-key".into()),
+                base_url: None,
+            })
+            .await;
+
+        let mut capability_registry = CapabilityRegistry::new();
+        capability_registry.register(TestMathCapability);
+
+        let assembled = inspect_turn_context(
+            &harness_store,
+            &agent_store,
+            &session_store,
+            &message_store,
+            &provider_store,
+            &capability_registry,
+            session_id,
+            harness_id,
+            Some(agent_id),
+            &[],
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(assembled.messages.is_empty());
+        assert_eq!(assembled.resolved_locale.as_deref(), Some("en-US"));
+        assert_eq!(assembled.runtime_agent.model, "llmsim-model");
     }
 }

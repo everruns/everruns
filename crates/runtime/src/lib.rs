@@ -10,7 +10,7 @@
 //! - provide their own platform definition (capabilities, drivers, harnesses)
 //! - seed harnesses, agents, sessions, and workspace files directly in code
 //! - replace the default in-memory stores with custom runtime backends
-//! - inspect the assembled turn context before executing a turn
+//! - inspect the assembled turn context before or after executing a turn
 //!
 //! For a runnable example, see:
 //!

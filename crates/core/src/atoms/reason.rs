@@ -43,7 +43,7 @@ use crate::message_retriever::MessageRetriever;
 use crate::openresponses_protocol::{
     CompactInputItem, CompactRequest, compact_output_to_messages, messages_to_compact_input,
 };
-use crate::runtime_context::assemble_turn_context;
+use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
     AgentStore, EventEmitter, HarnessStore, ImageResolver, LlmProviderStore, ModelWithProvider,
@@ -289,6 +289,28 @@ impl Atom for ReasonAtom {
     }
 
     async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
+        self.execute_inner(input, None).await
+    }
+}
+
+impl ReasonAtom {
+    /// Execute using a pre-assembled turn context.
+    ///
+    /// Hosts that already assembled turn context for the current reason phase can
+    /// pass it through here to avoid reloading messages and rebuilding the agent.
+    pub async fn execute_with_assembled_context(
+        &self,
+        input: ReasonInput,
+        assembled: AssembledTurnContext,
+    ) -> Result<ReasonResult> {
+        self.execute_inner(input, Some(assembled)).await
+    }
+
+    async fn execute_inner(
+        &self,
+        input: ReasonInput,
+        assembled: Option<AssembledTurnContext>,
+    ) -> Result<ReasonResult> {
         let ReasonInput {
             context,
             harness_id,
@@ -364,6 +386,7 @@ impl Atom for ReasonAtom {
                 &reason_span_id,
                 previous_response_id,
                 iteration,
+                assembled,
             )
             .await
         {
@@ -499,9 +522,7 @@ impl Atom for ReasonAtom {
 
         Ok(result)
     }
-}
 
-impl ReasonAtom {
     /// Execute the actual LLM call
     #[allow(clippy::too_many_arguments)]
     async fn execute_llm_call(
@@ -516,21 +537,27 @@ impl ReasonAtom {
         reason_span_id: &str,
         previous_response_id: Option<String>,
         iteration: u32,
+        assembled: Option<AssembledTurnContext>,
     ) -> Result<ReasonResult> {
-        let assembled = assemble_turn_context(
-            self.harness_store.as_ref(),
-            self.agent_store.as_ref(),
-            self.session_store.as_ref(),
-            self.message_retriever.as_ref(),
-            self.provider_store.as_ref(),
-            &self.capability_registry,
-            session_id,
-            harness_id,
-            agent_id,
-            mcp_tool_definitions,
-            self.file_store.clone(),
-        )
-        .await?;
+        let assembled = match assembled {
+            Some(assembled) => assembled,
+            None => {
+                assemble_turn_context(
+                    self.harness_store.as_ref(),
+                    self.agent_store.as_ref(),
+                    self.session_store.as_ref(),
+                    self.message_retriever.as_ref(),
+                    self.provider_store.as_ref(),
+                    &self.capability_registry,
+                    session_id,
+                    harness_id,
+                    agent_id,
+                    mcp_tool_definitions,
+                    self.file_store.clone(),
+                )
+                .await?
+            }
+        };
 
         let messages = assembled.messages;
         let model_with_provider = assembled.model_with_provider;
