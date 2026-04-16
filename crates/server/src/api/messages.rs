@@ -227,9 +227,10 @@ pub async fn create_message(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-    Extension(RequestId(request_id)): Extension<RequestId>,
+    req_id: Option<Extension<RequestId>>,
     Json(mut req): Json<CreateMessageRequest>,
 ) -> Result<(StatusCode, Json<Message>), (StatusCode, Json<ErrorResponse>)> {
+    let request_id = req_id.map(|Extension(r)| r.0);
     req.controls = normalize_controls_locale(req.controls)
         .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
 
@@ -294,7 +295,7 @@ pub async fn create_message(
                 agent_id: session.agent_id.map(|a| a.uuid()),
                 session_id: session_id.uuid(),
                 event_metadata: None,
-                request_id: Some(request_id),
+                request_id,
             },
             req,
         )
