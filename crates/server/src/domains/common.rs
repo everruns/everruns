@@ -63,6 +63,11 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
         return CommandError::Forbidden(pe.message.clone());
     }
 
+    // ResourceNotFoundError → NotFound
+    if let Some(nf) = e.downcast_ref::<crate::errors::ResourceNotFoundError>() {
+        return CommandError::NotFound(format!("{} not found", nf.resource()));
+    }
+
     let msg = e.to_string();
     let lowered = msg.to_ascii_lowercase();
 
