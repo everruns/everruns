@@ -122,7 +122,7 @@ Background eligibility rules:
 - `spawn_background` must run with a worker-side `ToolContext` that includes the current `ToolRegistry`.
 
 Contract:
-- Input: `{ "tool": "...", "args": { ... }, "title"?: "...", "signal_on_completion"?: true }`
+- Input: `{ "tool": "...", "args": { ... }, "title"?: "...", "signal_on_completion"?: true, "schedule"?: { "cron_expression"?: "...", "scheduled_at"?: "...", "timezone"?: "..." } }`
 - Immediate result: `run_id`, `resource_id`, target `tool`, and artifact paths under `/.background/{run_id}/`
 - Execution happens in a detached worker task
 - Progress flows through `BackgroundEventSink`, which supports:
@@ -137,6 +137,11 @@ Artifacts and visibility:
   - `/.background/{run_id}/output.log`
   - `/.background/{run_id}/result.json`
 - On completion or failure, the worker may send a synthetic session message summarizing the result and artifact paths.
+
+Scheduled monitors:
+- When `schedule` is provided, `spawn_background` does not start the tool immediately.
+- Instead it creates a session schedule using the existing session-scheduling infrastructure.
+- When that schedule fires, the session receives a synthetic user message instructing the agent to start the requested background run with the original `tool`, `args`, `title`, and `signal_on_completion` values.
 
 V1 limitation:
 - Background runs are best-effort and worker-local. They are started with `tokio::spawn` inside the worker process and are not yet durable across worker restarts.

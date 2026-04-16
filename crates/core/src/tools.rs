@@ -21,6 +21,7 @@ use crate::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
 use crate::session_resource::{RegisterSessionResource, SessionResourceStatus};
+use crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION;
 use crate::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
@@ -758,6 +759,76 @@ impl Tool for EchoTool {
 /// Spawn a background-capable tool and return immediately with a run handle.
 pub struct SpawnBackgroundTool;
 
+#[derive(Debug, Clone)]
+struct BackgroundScheduleRequest {
+    cron_expression: Option<String>,
+    scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
+    timezone: String,
+}
+
+fn parse_background_schedule(
+    arguments: &Value,
+) -> std::result::Result<Option<BackgroundScheduleRequest>, String> {
+    let Some(schedule) = arguments.get("schedule") else {
+        return Ok(None);
+    };
+    let Some(schedule) = schedule.as_object() else {
+        return Err("schedule must be an object".to_string());
+    };
+
+    let cron_expression = schedule
+        .get("cron_expression")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let scheduled_at = schedule
+        .get("scheduled_at")
+        .and_then(Value::as_str)
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc));
+
+    if cron_expression.is_none() && scheduled_at.is_none() {
+        return Err(
+            "schedule must include either cron_expression (recurring) or scheduled_at (one-shot)"
+                .to_string(),
+        );
+    }
+
+    let timezone = schedule
+        .get("timezone")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("UTC")
+        .to_string();
+
+    Ok(Some(BackgroundScheduleRequest {
+        cron_expression,
+        scheduled_at,
+        timezone,
+    }))
+}
+
+fn build_background_schedule_description(
+    tool_name: &str,
+    tool_args: &Value,
+    title: &str,
+    signal_on_completion: bool,
+) -> String {
+    let args_json =
+        serde_json::to_string_pretty(tool_args).unwrap_or_else(|_| tool_args.to_string());
+
+    format!(
+        "This scheduled monitor fired. Start the background run now.\n\n\
+Use `spawn_background` with:\n\
+- tool: `{tool_name}`\n\
+- title: `{title}`\n\
+- signal_on_completion: {signal_on_completion}\n\
+- args:\n```json\n{args_json}\n```"
+    )
+}
+
 #[async_trait]
 impl Tool for SpawnBackgroundTool {
     fn name(&self) -> &str {
@@ -787,6 +858,25 @@ impl Tool for SpawnBackgroundTool {
                 "title": {
                     "type": "string",
                     "description": "Optional human-readable label for the background run"
+                },
+                "schedule": {
+                    "type": "object",
+                    "description": "Optional session schedule. When provided, this creates a scheduled monitor instead of starting the run immediately.",
+                    "properties": {
+                        "cron_expression": {
+                            "type": "string",
+                            "description": "Standard 5-field cron expression for recurring runs (e.g. '*/10 * * * *' for every 10 minutes)"
+                        },
+                        "scheduled_at": {
+                            "type": "string",
+                            "description": "ISO 8601 datetime for a one-shot run (e.g. '2026-04-16T15:30:00Z')"
+                        },
+                        "timezone": {
+                            "type": "string",
+                            "description": "IANA timezone for the schedule. Default: UTC"
+                        }
+                    },
+                    "additionalProperties": false
                 },
                 "signal_on_completion": {
                     "type": "boolean",
@@ -826,6 +916,10 @@ impl Tool for SpawnBackgroundTool {
             .get("signal_on_completion")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
+        let schedule_request = match parse_background_schedule(&arguments) {
+            Ok(schedule) => schedule,
+            Err(message) => return ToolExecutionResult::tool_error(message),
+        };
 
         let Some(tool_registry) = &context.tool_registry else {
             return ToolExecutionResult::tool_error(
@@ -851,18 +945,6 @@ impl Tool for SpawnBackgroundTool {
                 "Tool declared background support but has no background executor: {tool_name}"
             ));
         }
-        let Some(resource_registry) = &context.session_resource_registry else {
-            return ToolExecutionResult::tool_error(
-                "Session resource registry not available in this context",
-            );
-        };
-        if context.file_store.is_none() {
-            return ToolExecutionResult::tool_error(
-                "Session file store not available in this context. spawn_background requires artifact persistence.",
-            );
-        }
-
-        let run_id = format!("bg_{}", uuid::Uuid::now_v7().simple());
         let title = arguments
             .get("title")
             .and_then(|v| v.as_str())
@@ -875,6 +957,73 @@ impl Tool for SpawnBackgroundTool {
                     .unwrap_or_else(|| format!("Background {tool_name}"))
             });
 
+        if let Some(schedule_request) = schedule_request {
+            let Some(schedule_store) = &context.schedule_store else {
+                return ToolExecutionResult::tool_error(
+                    "Schedule store not available in this context. Scheduled monitors require session schedules.",
+                );
+            };
+
+            match schedule_store
+                .count_active_schedules(context.session_id)
+                .await
+            {
+                Ok(count) if count >= MAX_ACTIVE_SCHEDULES_PER_SESSION => {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Maximum {MAX_ACTIVE_SCHEDULES_PER_SESSION} active schedules per session. Cancel an existing schedule first."
+                    ));
+                }
+                Err(err) => return ToolExecutionResult::internal_error(err),
+                _ => {}
+            }
+
+            let description = build_background_schedule_description(
+                tool_name,
+                &tool_args,
+                &title,
+                signal_on_completion,
+            );
+
+            return match schedule_store
+                .create_schedule(
+                    context.session_id,
+                    description,
+                    schedule_request.cron_expression.clone(),
+                    schedule_request.scheduled_at,
+                    schedule_request.timezone.clone(),
+                )
+                .await
+            {
+                Ok(schedule) => ToolExecutionResult::success(json!({
+                    "created": true,
+                    "status": "scheduled",
+                    "title": title,
+                    "tool": tool_name,
+                    "signal_on_completion": signal_on_completion,
+                    "schedule_id": schedule.id.to_string(),
+                    "schedule_type": schedule.schedule_type,
+                    "cron_expression": schedule.cron_expression,
+                    "scheduled_at": schedule.scheduled_at,
+                    "timezone": schedule.timezone,
+                    "next_trigger_at": schedule.next_trigger_at,
+                    "enabled": schedule.enabled
+                })),
+                Err(err) => ToolExecutionResult::internal_error(err),
+            };
+        }
+
+        let Some(resource_registry) = &context.session_resource_registry else {
+            return ToolExecutionResult::tool_error(
+                "Session resource registry not available in this context",
+            );
+        };
+        if context.file_store.is_none() {
+            return ToolExecutionResult::tool_error(
+                "Session file store not available in this context. spawn_background requires artifact persistence.",
+            );
+        }
+
+        let run_id = format!("bg_{}", uuid::Uuid::now_v7().simple());
         let artifact_dir = format!("/.background/{run_id}");
         let log_path = format!("{artifact_dir}/output.log");
         let result_path = format!("{artifact_dir}/result.json");
@@ -1277,7 +1426,7 @@ mod tests {
     use crate::platform_store::PlatformStore;
     use crate::session_file::{FileInfo, FileStat, SessionFile};
     use crate::session_resource::{SessionResourceEntry, SessionResourceFilter};
-    use crate::traits::{SessionFileStore, SessionResourceRegistry};
+    use crate::traits::{SessionFileStore, SessionResourceRegistry, SessionScheduleStore};
     use crate::typed_id::{HarnessId, SessionId};
     use crate::{AgentId, KeyInfo, PlatformMessage, SecretInfo};
     use async_trait::async_trait;
@@ -1726,6 +1875,81 @@ mod tests {
 
     #[derive(Default)]
     struct NoopStorageStore;
+
+    #[derive(Default)]
+    struct TestScheduleStore {
+        schedules: Mutex<Vec<crate::session_schedule::SessionSchedule>>,
+    }
+
+    #[async_trait]
+    impl crate::traits::SessionScheduleStore for TestScheduleStore {
+        async fn create_schedule(
+            &self,
+            session_id: SessionId,
+            description: String,
+            cron_expression: Option<String>,
+            scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
+            timezone: String,
+        ) -> crate::Result<crate::session_schedule::SessionSchedule> {
+            let schedule = crate::session_schedule::SessionSchedule {
+                id: crate::typed_id::ScheduleId::new(),
+                session_id,
+                description,
+                cron_expression: cron_expression.clone(),
+                scheduled_at,
+                timezone,
+                enabled: true,
+                schedule_type: crate::session_schedule::SessionSchedule::derive_type(
+                    &cron_expression,
+                ),
+                next_trigger_at: Some(chrono::Utc::now() + chrono::Duration::minutes(10)),
+                last_triggered_at: None,
+                trigger_count: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            };
+            self.schedules.lock().unwrap().push(schedule.clone());
+            Ok(schedule)
+        }
+
+        async fn cancel_schedule(
+            &self,
+            _session_id: SessionId,
+            schedule_id: crate::ScheduleId,
+        ) -> crate::Result<crate::session_schedule::SessionSchedule> {
+            let mut schedules = self.schedules.lock().unwrap();
+            let schedule = schedules
+                .iter_mut()
+                .find(|schedule| schedule.id == schedule_id)
+                .ok_or_else(|| crate::AgentLoopError::tool("Schedule not found".to_string()))?;
+            schedule.enabled = false;
+            Ok(schedule.clone())
+        }
+
+        async fn list_schedules(
+            &self,
+            session_id: SessionId,
+        ) -> crate::Result<Vec<crate::session_schedule::SessionSchedule>> {
+            Ok(self
+                .schedules
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|schedule| schedule.session_id == session_id)
+                .cloned()
+                .collect())
+        }
+
+        async fn count_active_schedules(&self, session_id: SessionId) -> crate::Result<u32> {
+            Ok(self
+                .schedules
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|schedule| schedule.session_id == session_id && schedule.enabled)
+                .count() as u32)
+        }
+    }
 
     #[async_trait]
     impl crate::traits::SessionStorageStore for NoopStorageStore {
@@ -2207,5 +2431,62 @@ mod tests {
             panic!("spawn_background should reject missing file store");
         };
         assert!(message.contains("Session file store not available"));
+    }
+
+    #[tokio::test]
+    async fn test_spawn_background_can_create_scheduled_monitor() {
+        let session_id = SessionId::new();
+        let schedule_store = Arc::new(TestScheduleStore::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(TestBackgroundTool)
+            .build();
+
+        let context = ToolContext::with_storage_store(session_id, storage_store)
+            .with_tool_registry(Arc::new(tool_registry))
+            .with_schedule_store(schedule_store.clone());
+
+        let result = SpawnBackgroundTool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background",
+                    "title": "Watch PR 1319",
+                    "args": { "summary": "Background complete" },
+                    "schedule": {
+                        "cron_expression": "*/10 * * * *",
+                        "timezone": "America/Chicago"
+                    }
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("spawn_background should create a schedule: {result:?}");
+        };
+
+        assert_eq!(value["status"], "scheduled");
+        assert_eq!(value["title"], "Watch PR 1319");
+        assert_eq!(value["cron_expression"], "*/10 * * * *");
+        assert_eq!(value["timezone"], "America/Chicago");
+
+        let schedules = schedule_store.list_schedules(session_id).await.unwrap();
+        assert_eq!(schedules.len(), 1);
+        assert_eq!(
+            schedules[0].cron_expression.as_deref(),
+            Some("*/10 * * * *")
+        );
+        assert!(
+            schedules[0]
+                .description
+                .contains("This scheduled monitor fired.")
+        );
+        assert!(schedules[0].description.contains("Watch PR 1319"));
+        assert!(
+            schedules[0]
+                .description
+                .contains("\"summary\": \"Background complete\"")
+        );
     }
 }

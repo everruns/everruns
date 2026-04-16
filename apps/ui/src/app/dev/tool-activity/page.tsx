@@ -145,6 +145,81 @@ const clientToolCalls: ToolCallContent[] = [
   },
 ];
 
+const monitorToolCalls: ToolCallContent[] = [
+  {
+    id: "tool-monitor-create",
+    name: "spawn_background",
+    arguments: {
+      tool: "github_watch_pr",
+      title: "Watch PR 1319",
+      schedule: {
+        cron_expression: "*/10 * * * *",
+        timezone: "America/Chicago",
+      },
+    },
+  },
+  {
+    id: "tool-monitor-delete",
+    name: "cancel_schedule",
+    arguments: {
+      schedule_id: "sched_0195monitor",
+    },
+  },
+];
+
+const monitorToolResults = new Map<string, ToolCompletedData>([
+  [
+    "tool-monitor-create",
+    {
+      tool_call_id: "tool-monitor-create",
+      tool_name: "spawn_background",
+      success: true,
+      status: "success",
+      result: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            created: true,
+            status: "scheduled",
+            title: "Watch PR 1319",
+            cron_expression: "*/10 * * * *",
+            timezone: "America/Chicago",
+          }),
+        },
+      ],
+      duration_ms: 84,
+    },
+  ],
+  [
+    "tool-monitor-delete",
+    {
+      tool_call_id: "tool-monitor-delete",
+      tool_name: "cancel_schedule",
+      success: true,
+      status: "success",
+      result: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            cancelled: true,
+            description: `This scheduled monitor fired. Start the background run now.
+
+Use \`spawn_background\` with:
+- tool: \`github_watch_pr\`
+- title: \`Watch PR 1319\`
+- signal_on_completion: true
+- args:
+\`\`\`json
+{"pull_request":1319}
+\`\`\``,
+          }),
+        },
+      ],
+      duration_ms: 41,
+    },
+  ],
+]);
+
 const planTodos = [
   {
     content: "Update schema for rock collection domain",
@@ -324,6 +399,21 @@ export default function ToolActivityDevPage() {
                       toolResultsMap={completedToolResults}
                     />
                     <TodoListRenderer arguments={{ todos: planTodos }} isExecuting />
+                  </div>
+                </div>
+
+                <div className={chatSurfaceStyles.agentMessageRow}>
+                  <div className={chatSurfaceStyles.agentIcon}>
+                    <Bot className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="flex-1 space-y-3">
+                    <p className={chatSurfaceStyles.agentMessage}>
+                      I set a monitor for the PR and removed it after merge.
+                    </p>
+                    <ToolActivityGroup
+                      toolCalls={monitorToolCalls}
+                      toolResultsMap={monitorToolResults}
+                    />
                   </div>
                 </div>
 

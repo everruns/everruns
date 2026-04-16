@@ -43,11 +43,11 @@ When asked to \"run an agent\" or \"run X with agent Y\", follow these steps:
 3. Wait for the turn to complete (use `session_read_response`)
 4. Retrieve and relay the results (use `session_read_messages`)
 
-When creating sessions, the `harness_id` parameter is optional. If not specified, it defaults to the built-in Generic harness which includes file system, bash, storage, context compaction, and other standard capabilities.
+When creating sessions, the `harness_id` parameter is optional. If not specified, it defaults to the built-in Generic harness which includes file system, bash, storage, schedules, context compaction, and other standard capabilities.
 
 ## Harness creation
 
-Avoid creating new harnesses unless the user explicitly needs a custom one. For most tasks, use the built-in \"Generic\" harness (find it via `read_harnesses`) which already includes file system, bash, storage, long-context support, context compaction, session, agent instructions, and skills capabilities.
+Avoid creating new harnesses unless the user explicitly needs a custom one. For most tasks, use the built-in \"Generic\" harness (find it via `read_harnesses`) which already includes file system, bash, storage, schedules, long-context support, context compaction, session, agent instructions, and skills capabilities.
 
 ## Confirmation guidelines
 
