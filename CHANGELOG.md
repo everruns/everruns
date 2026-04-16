@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.13] - 2026-04-15
+
+### Highlights
+
+- **Embedded Runtime** - Everruns can now run embedded in-process with shared turn context and shared host orchestration, which closes the gap between local runtime and worker execution ([#1304](https://github.com/everruns/everruns/pull/1304), [#1306](https://github.com/everruns/everruns/pull/1306), [#1309](https://github.com/everruns/everruns/pull/1309))
+- **Managed Session Sandboxes** - Session sandboxes now have an explicit managed lifecycle, which gives runtime-owned sandbox resources the same durability model as other session resources ([#1305](https://github.com/everruns/everruns/pull/1305))
+- **UI Flow Tightening** - List pages now hydrate on the server and the shell chrome got smaller cleanup passes around density, warnings, and notifications ([#1299](https://github.com/everruns/everruns/pull/1299), [#1300](https://github.com/everruns/everruns/pull/1300), [#1302](https://github.com/everruns/everruns/pull/1302), [#1303](https://github.com/everruns/everruns/pull/1303))
+
+### What's Changed
+
+- feat(runtime): share host orchestration with worker ([#1309](https://github.com/everruns/everruns/pull/1309))
+- feat(runtime): expose shared turn context ([#1306](https://github.com/everruns/everruns/pull/1306))
+- feat(session): add managed session sandbox lifecycle ([#1305](https://github.com/everruns/everruns/pull/1305))
+- feat(runtime): add embedded in-process runtime ([#1304](https://github.com/everruns/everruns/pull/1304))
+- fix(ui): move sidebar notifications into account menu ([#1303](https://github.com/everruns/everruns/pull/1303))
+- fix(core): advertise bash help in virtual bash ([#1301](https://github.com/everruns/everruns/pull/1301))
+- fix(ui): tighten app density ([#1302](https://github.com/everruns/everruns/pull/1302))
+- fix(ui): reuse settings warning notice ([#1300](https://github.com/everruns/everruns/pull/1300))
+- chore(specs): drop release migration notes ([#1298](https://github.com/everruns/everruns/pull/1298))
+- feat(ui): hydrate list pages on the server ([#1299](https://github.com/everruns/everruns/pull/1299))
+
 ## [0.8.12] - 2026-04-14
 
 ### Highlights
