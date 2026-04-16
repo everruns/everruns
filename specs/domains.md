@@ -205,20 +205,25 @@ automatic HTTP error mapping.
 
 ## MCP Dispatch
 
-Generic dispatch replaces hand-written handlers. The entire `handlers.rs` and
-static `CATALOG` array collapse to:
+Domain commands are exposed automatically as bash builtins inside the MCP
+`execute` tool. The MCP `build_toolset` function in
+`crates/server/src/api/mcp_endpoint/catalog.rs` iterates inventory-registered
+descriptors and merges them with the legacy static `CATALOG`:
+
+- Inventory commands take precedence — when both define the same name, the
+  static entry is skipped. This enables incremental migration.
+- `CatalogContext::to_domain_ctx()` constructs the domain `Ctx` from the
+  MCP `AppState` (db, capability_service, encryption).
+- Adding `inventory::submit! { CommandDescriptor::of::<Cmd>() }` makes the
+  command immediately discoverable in MCP — no other wiring needed.
+
+Generic runtime dispatch table for non-MCP callers:
 
 ```rust
-// Built once at startup from inventory
-pub fn catalog() -> Vec<Operation> {
-    inventory::iter::<CommandDescriptor>().map(|d| (d.meta)().into()).collect()
-}
-
-pub async fn dispatch(name: &str, params: Value, ctx: &Ctx) -> Result<String, String> {
+pub async fn dispatch(name: &str, params: Value, ctx: &Ctx) -> Result<String, CommandError> {
     DISPATCH_TABLE.get(name)
-        .ok_or_else(|| format!("Unknown command: {name}"))?
+        .ok_or_else(|| CommandError::NotFound(format!("Unknown command: {name}")))?
         .dispatch(params, ctx).await
-        .map_err(|e| e.to_string())
 }
 ```
 
@@ -228,13 +233,28 @@ Domains are migrated incrementally. During migration, both the old service and
 the new command can coexist: the service delegates to queries, the command owns
 the logic. Once all callers are migrated, the service file is removed.
 
-### Migration order
+### Status
 
-1. `domains/common.rs` — infrastructure
-2. `agents` — canonical reference implementation
-3. `harnesses`, `apps`, `mcp_servers`, `agent_identities`, `skills`, `capabilities`
-4. Wire MCP dispatch to inventory
-5. Remove empty service files
+**Migrated (commands + queries + MCP wired):**
+- `agents`, `harnesses`, `apps`, `mcp_servers`, `agent_identities`, `skills`,
+  `capabilities`
+
+**Pending migration:**
+- `sessions`, `budgets`, `messages`, `events`, `harnesses` (sessions),
+  `llm_models`, `llm_providers`, `schedules`, `notifications`,
+  `session_files`, `session_databases`, `session_storage`,
+  `session_resources`, `session_sandbox`, `evals`, `audit_log`
+
+### Migration order for new domains
+
+1. Create `domains/{name}/` with `mod.rs`, `commands.rs`, `queries.rs`, `types.rs`
+2. Move request types into `types.rs` (initially re-export from `api/`)
+3. Extract shared DB helpers from `services/{name}.rs` into `queries.rs`
+4. Implement `Command` for each user-facing operation in `commands.rs`,
+   each with `inventory::submit! { CommandDescriptor::of::<Cmd>() }`
+5. Wire HTTP adapter to call commands via `cmd.execute(&ctx).await`
+   (MCP integration is automatic via inventory)
+6. Once all callers migrated, delete the old `services/{name}.rs`
 
 ### When NOT to use this pattern
 

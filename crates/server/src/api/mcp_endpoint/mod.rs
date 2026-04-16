@@ -325,6 +325,7 @@ pub struct AppState {
     pub budget_service: Arc<BudgetService>,
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
+    pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
     pub fallback_base_harness_name: Option<String>,
 }
 
@@ -354,12 +355,13 @@ impl AppState {
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             capability_service,
-            mcp_server_service: Arc::new(McpServerService::new(db.clone(), encryption)),
+            mcp_server_service: Arc::new(McpServerService::new(db.clone(), encryption.clone())),
             skill_service: Arc::new(SkillService::new(db.clone())),
             budget_service: Arc::new(BudgetService::new(db.clone())),
             db,
             runner,
             auth,
+            encryption,
             fallback_base_harness_name: platform_definition
                 .harness_for_role(everruns_core::BuiltInHarnessRole::Base)
                 .map(|h| h.name.clone()),

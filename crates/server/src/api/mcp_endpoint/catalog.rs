@@ -40,7 +40,26 @@ pub struct CatalogContext {
     pub user_id: Option<uuid::Uuid>,
 }
 
+impl CatalogContext {
+    /// Convert to a domain Ctx for inventory-registered Command dispatch.
+    pub fn to_domain_ctx(&self) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx {
+            caller: self.caller.clone(),
+            db: self.state.db.clone(),
+            capability_service: self.state.capability_service.clone(),
+            encryption: self.state.encryption.clone(),
+        }
+    }
+}
+
 /// Build a ScriptingToolSet with direct service calls for all catalog operations.
+///
+/// Combines two sources:
+/// 1. Static CATALOG entries (legacy operations not yet migrated to domains/)
+/// 2. Inventory-registered Command implementations from domains/
+///
+/// Inventory entries take precedence — when both define the same operation name,
+/// the static entry is skipped. This enables incremental migration.
 pub fn build_toolset(ctx: CatalogContext) -> ScriptingToolSet {
     let mut builder = ScriptingToolSet::builder("everruns")
         .short_description("Everruns API operations as bash builtins")
@@ -54,13 +73,65 @@ pub fn build_toolset(ctx: CatalogContext) -> ScriptingToolSet {
                 .parser_timeout(std::time::Duration::from_secs(3)),
         );
 
+    // Collect inventory command names so we can skip static CATALOG duplicates.
+    let inventory_names: std::collections::HashSet<&'static str> =
+        inventory::iter::<crate::domains::common::CommandDescriptor>
+            .into_iter()
+            .map(|d| (d.meta)().name)
+            .collect();
+
+    // Inventory commands first — they own the namespace.
+    for desc in inventory::iter::<crate::domains::common::CommandDescriptor> {
+        let def = command_descriptor_to_def(desc);
+        let callback = make_inventory_callback(desc, ctx.clone());
+        builder = builder.tool(def, callback);
+    }
+
+    // Static CATALOG fills in everything not yet migrated.
     for op in CATALOG {
+        if inventory_names.contains(op.name) {
+            continue;
+        }
         let def = op_to_def(op);
         let callback = make_direct_callback(op, ctx.clone());
         builder = builder.tool(def, callback);
     }
 
     builder.build()
+}
+
+/// Convert a domain CommandDescriptor to a bashkit ToolDef.
+///
+/// Domain commands don't carry param schemas (the request types own them via
+/// serde), so the schema is open: any JSON object accepted.
+fn command_descriptor_to_def(desc: &crate::domains::common::CommandDescriptor) -> ToolDef {
+    let meta = (desc.meta)();
+    let schema = json!({
+        "type": "object",
+        "additionalProperties": true,
+    });
+    ToolDef::new(meta.name, meta.description)
+        .with_schema(schema)
+        .with_category(meta.category)
+}
+
+/// Build a callback that dispatches an inventory command via domain dispatch.
+fn make_inventory_callback(
+    desc: &'static crate::domains::common::CommandDescriptor,
+    ctx: CatalogContext,
+) -> impl Fn(&ToolArgs) -> Result<String, String> + Send + Sync + 'static {
+    move |args: &ToolArgs| {
+        let params = args.params.clone();
+        let domain_ctx = ctx.to_domain_ctx();
+        tokio::task::block_in_place(|| {
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async {
+                (desc.dispatch)(params, &domain_ctx)
+                    .await
+                    .map_err(|e| e.to_string())
+            })
+        })
+    }
 }
 
 /// Create a callback that calls a handler function directly via service layer.
