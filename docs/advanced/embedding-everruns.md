@@ -14,6 +14,7 @@ This lets you:
 - Remove built-in capabilities or connection providers you do not want
 - Replace built-in harness templates
 - Run the stock worker with the same runtime surface as your server
+- Run Everruns fully in-process with `everruns-runtime` when you do not want the durable engine
 
 ## What PlatformDefinition Controls
 
@@ -139,6 +140,100 @@ Special harness behavior is driven by explicit roles, not fixed names:
 - `Chat`: used by the global chat session endpoint
 
 That means you can rename the harnesses freely. A platform can ship a base harness called `Minimal` or `Internal Default` as long as it carries the correct role.
+
+## In-Process Runtime
+
+If you do not want PostgreSQL, the control-plane server, or the worker boundary, use the public `everruns-runtime` crate instead of embedding the full server/worker stack.
+
+This path is for applications that want to:
+
+- run a harness entirely inside their own process
+- register their own capabilities and drivers
+- provide their own backend implementations
+- inspect the assembled turn context before execution
+
+```rust
+use everruns_core::{
+    CapabilityRegistry, DriverRegistry, LlmProviderType, ModelWithProvider, PlatformDefinition,
+};
+use everruns_core::llmsim_driver::LlmSimConfig;
+use everruns_runtime::InProcessRuntimeBuilder;
+
+let platform = PlatformDefinition::new(CapabilityRegistry::new(), DriverRegistry::new());
+
+let runtime = InProcessRuntimeBuilder::new()
+    .platform_definition(platform)
+    .llm_sim(LlmSimConfig::fixed("hello from everruns-runtime"))
+    .default_model(ModelWithProvider {
+        model: "llmsim-model".into(),
+        provider_type: LlmProviderType::LlmSim,
+        api_key: Some("fake-key".into()),
+        base_url: None,
+    })
+    // .capability(...)
+    // .backends(...)
+    // .harness(...)
+    // .session(...)
+    .build()
+    .await?;
+```
+
+### Context Inspection
+
+`everruns-runtime` exposes `load_context(session_id)` so embedders can inspect the exact merged turn context that the reason phase will use:
+
+- harness chain
+- optional agent
+- session
+- filtered message history
+- resolved model
+- assembled `RuntimeAgent`
+
+```rust
+let context = runtime.load_context(session_id).await?;
+println!("model = {}", context.runtime_agent.model);
+println!("tools = {}", context.runtime_agent.tools.len());
+```
+
+Under the hood, both `ReasonAtom` and `everruns-runtime` use the same shared core helper: `everruns_core::assemble_turn_context(...)`. That keeps in-process and worker-backed behavior aligned.
+
+### Custom Backends
+
+`everruns-runtime` ships in-memory defaults, but public extension traits let embedders supply their own stores:
+
+- `RuntimeHarnessStore`
+- `RuntimeAgentStore`
+- `RuntimeSessionStore`
+- `RuntimeMessageStore`
+- `RuntimeFileStore`
+- `RuntimeProviderStore`
+
+Pass them through `RuntimeBackends` on the builder:
+
+```rust
+use everruns_runtime::{InProcessRuntimeBuilder, RuntimeBackends};
+
+let runtime = InProcessRuntimeBuilder::new()
+    .backends(RuntimeBackends {
+        harness_store: my_harness_store,
+        agent_store: my_agent_store,
+        session_store: my_session_store,
+        message_store: my_message_store,
+        provider_store: my_provider_store,
+        event_emitter: my_event_emitter,
+        event_collector: None,
+        file_store: my_file_store,
+        storage_store: my_storage_store,
+        memory_store: my_memory_store,
+    })
+    .build()
+    .await?;
+```
+
+See also:
+
+- `cargo run -p everruns-runtime --example in_process_runtime`
+- `cargo run -p everruns-runtime --example inspect_context`
 
 ## Seeding Behavior
 

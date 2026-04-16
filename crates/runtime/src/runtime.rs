@@ -18,7 +18,6 @@ use everruns_core::atoms::{
 };
 use everruns_core::capabilities::{
     Capability, CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
-    resolve_capability_configs,
 };
 use everruns_core::config_layer::AgentConfigOverlay;
 use everruns_core::error::{AgentLoopError, Result};
@@ -36,7 +35,7 @@ use everruns_core::memory::{
 };
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::platform_definition::PlatformDefinition;
-use everruns_core::runtime_agent::default_max_iterations;
+use everruns_core::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use everruns_core::session::Session;
 use everruns_core::session_file::{InitialFile, SessionFile};
 use everruns_core::tools::{ToolRegistry, ToolResultImage};
@@ -398,52 +397,25 @@ impl InProcessRuntime {
                 InputMessageData::new(input_message.clone()),
             ))
             .await?;
-        let harness_chain = self
-            .harness_store
-            .get_harness_chain(session.harness_id)
+        let assembled = self
+            .load_context_with_ids(session_id, session.harness_id, session.agent_id)
             .await?;
-        if harness_chain.is_empty() {
-            return Err(AgentLoopError::store(format!(
-                "harness not found: {}",
-                session.harness_id
-            )));
-        }
-
-        let agent = match session.agent_id {
-            Some(agent_id) => self
-                .agent_store
-                .get_agent(agent_id)
-                .await?
-                .ok_or_else(|| AgentLoopError::store(format!("agent not found: {agent_id}")))
-                .map(Some)?,
-            None => None,
-        };
-
-        let overlay = effective_overlay(&harness_chain, agent.as_ref(), &session);
+        let session = assembled.session;
         let capability_registry = self.platform_definition.capability_registry().clone();
         let driver_registry = self.platform_definition.driver_registry().clone();
-        let resolved_configs =
-            resolve_capability_configs(&overlay.capabilities, &capability_registry).unwrap_or_else(
-                |error| {
-                    tracing::warn!(
-                        error = ?error,
-                        "failed to resolve capability configs; falling back to overlay capabilities"
-                    );
-                    overlay.capabilities.clone()
-                },
-            );
         let system_prompt_ctx = SystemPromptContext {
             session_id,
-            locale: session.locale.clone(),
+            locale: assembled.resolved_locale.clone(),
             file_store: Some(Arc::new(DynFileStore(self.file_store.clone()))),
         };
         let collected = collect_capabilities_with_configs(
-            &resolved_configs,
+            &assembled.resolved_capability_configs,
             &capability_registry,
             &system_prompt_ctx,
         )
         .await;
-        let post_tool_hooks = resolved_configs
+        let post_tool_hooks = assembled
+            .resolved_capability_configs
             .iter()
             .flat_map(|config| {
                 capability_registry
@@ -495,12 +467,9 @@ impl InProcessRuntime {
 
         let mut previous_response_id: Option<String> = None;
         let mut last_reason_result: Option<everruns_core::ReasonResult> = None;
-        let max_iterations = overlay
-            .max_iterations
-            .unwrap_or_else(default_max_iterations);
         let mut state_machine = TurnStateMachine::new(
             TurnContext::new(session_id, input_message.id, synthetic_agent_id, org_id),
-            max_iterations,
+            assembled.runtime_agent.max_iterations,
         );
 
         loop {
@@ -606,12 +575,45 @@ impl InProcessRuntime {
         self.file_store.read_file(session_id, path).await
     }
 
+    /// Assemble the current runtime context for a session without executing a turn.
+    pub async fn load_context(&self, session_id: SessionId) -> Result<AssembledTurnContext> {
+        let session = self
+            .session_store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        self.load_context_with_ids(session_id, session.harness_id, session.agent_id)
+            .await
+    }
+
     /// Return all emitted events when the backend exposes an event collector.
     pub async fn events(&self) -> Result<Vec<Event>> {
         let collector = self.event_collector.as_ref().ok_or_else(|| {
             AgentLoopError::config("events are not available for this runtime backend")
         })?;
         Ok(collector.events().await)
+    }
+
+    async fn load_context_with_ids(
+        &self,
+        session_id: SessionId,
+        harness_id: everruns_core::HarnessId,
+        agent_id: Option<AgentId>,
+    ) -> Result<AssembledTurnContext> {
+        assemble_turn_context(
+            self.harness_store.as_ref(),
+            self.agent_store.as_ref(),
+            self.session_store.as_ref(),
+            self.message_store.as_ref(),
+            self.provider_store.as_ref(),
+            self.platform_definition.capability_registry(),
+            session_id,
+            harness_id,
+            agent_id,
+            &[],
+            Some(Arc::new(DynFileStore(self.file_store.clone()))),
+        )
+        .await
     }
 }
 

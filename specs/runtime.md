@@ -55,6 +55,8 @@ The builder must allow an embedder to:
 
 - `run_turn(session_id, input)` for one turn of execution
 - `run_text_turn(session_id, text)` convenience helper
+- `load_context(session_id)` to inspect the assembled turn context without
+  executing a new turn
 - `messages(session_id)` to inspect conversation history
 - `read_file(session_id, path)` to inspect the in-memory workspace
 - `events()` to inspect emitted runtime events
@@ -76,6 +78,28 @@ Required behavior:
 6. Persist assistant messages and tool-result messages from emitted events so
    subsequent turns see the same history shape as the durable/server-backed
    runtime.
+
+## Shared Context Assembly
+
+Context assembly is a shared core concern, not a server-only concern.
+
+`everruns-core` owns the canonical context assembly helper for reason-phase
+hosts:
+
+- merged harness/agent/session overlay
+- capability dependency resolution
+- capability message filtering
+- model resolution
+- locale resolution
+- `RuntimeAgent` construction
+
+Public API:
+
+- `everruns_core::assemble_turn_context(...)`
+- `everruns_core::AssembledTurnContext`
+
+`ReasonAtom` and `everruns-runtime` must use this shared path so embedded hosts
+and worker-backed hosts stay aligned.
 
 ## In-Memory Stores
 
@@ -168,6 +192,8 @@ Those remain separate concerns.
 - `crates/runtime/src/runtime.rs`
 - `crates/runtime/src/in_memory.rs`
 - `crates/runtime/examples/in_process_runtime.rs`
+- `crates/runtime/examples/inspect_context.rs`
 - `crates/runtime/tests/in_process_runtime_test.rs`
+- `crates/core/src/runtime_context.rs`
 - `crates/core/src/turn.rs`
 - `crates/core/src/platform_definition.rs`

@@ -304,3 +304,50 @@ async fn runtime_accepts_explicit_backend_bundle() {
     assert!(result.success);
     assert_eq!(result.response, "Custom backend bundle works");
 }
+
+#[tokio::test]
+async fn runtime_exposes_assembled_context() {
+    let harness_id = "harness_00000000000000000000000000000061".parse().unwrap();
+    let agent_id = "agent_00000000000000000000000000000061".parse().unwrap();
+    let session_id = "session_00000000000000000000000000000061".parse().unwrap();
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(minimal_platform())
+        .llm_sim(LlmSimConfig::fixed("Context inspection"))
+        .default_model(ModelWithProvider {
+            model: "llmsim-model".into(),
+            provider_type: LlmProviderType::LlmSim,
+            api_key: Some("fake-key".into()),
+            base_url: None,
+        })
+        .harness(harness(harness_id))
+        .agent(agent(agent_id))
+        .session(session(session_id, harness_id, Some(agent_id)))
+        .build()
+        .await
+        .unwrap();
+
+    runtime
+        .run_text_turn(session_id, "What locale and tools do I have?")
+        .await
+        .unwrap();
+
+    let context = runtime.load_context(session_id).await.unwrap();
+
+    assert_eq!(context.session.id, session_id);
+    assert_eq!(context.harness_chain.len(), 1);
+    assert_eq!(
+        context.agent.as_ref().map(|agent| agent.public_id),
+        Some(agent_id)
+    );
+    assert_eq!(context.messages.len(), 2);
+    assert_eq!(context.model_with_provider.model, "llmsim-model");
+    assert!(
+        context
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "multiply"),
+        "assembled context should expose effective capability tools",
+    );
+}
