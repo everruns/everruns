@@ -11,6 +11,7 @@ use crate::errors::ResourceNotFoundError;
 use crate::org_init::BASE_HARNESS_ID;
 use crate::services::harness::resolve_effective_harness;
 use crate::services::session_file::{CreateFileInput, SessionFileService};
+use crate::services::session_sandbox::SessionSandboxService;
 use crate::storage::{
     StorageBackend,
     models::{CreateSessionRow, UpdateSession},
@@ -20,7 +21,7 @@ use everruns_core::{
     AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry, HarnessId, InitialFile, ModelId,
     Permission, Policy, Rule, Session, SessionId, SessionStatus, SubagentStatus, TokenUsage,
     capabilities::{SystemPromptContext, collect_capabilities, compute_features},
-    merge_initial_files, normalize_initial_file_path,
+    merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
 use everruns_durable::UpdateField;
 use everruns_macros::policy;
@@ -55,6 +56,7 @@ pub struct SessionService {
     db: Arc<StorageBackend>,
     capability_registry: CapabilityRegistry,
     session_file_service: SessionFileService,
+    session_sandbox_service: Option<Arc<SessionSandboxService>>,
 }
 
 impl SessionService {
@@ -63,6 +65,7 @@ impl SessionService {
             capability_registry: CapabilityRegistry::with_builtins(),
             session_file_service: SessionFileService::new(db.clone()),
             db,
+            session_sandbox_service: None,
         }
     }
 
@@ -72,6 +75,7 @@ impl SessionService {
             capability_registry: registry,
             session_file_service: SessionFileService::new(db.clone()),
             db,
+            session_sandbox_service: None,
         }
     }
 
@@ -82,6 +86,11 @@ impl SessionService {
     ) -> Self {
         self.session_file_service =
             SessionFileService::new(self.db.clone()).with_virtual_registry(registry);
+        self
+    }
+
+    pub fn with_session_sandbox_service(mut self, service: Arc<SessionSandboxService>) -> Self {
+        self.session_sandbox_service = Some(service);
         self
     }
 
@@ -215,6 +224,24 @@ impl SessionService {
             session.id.uuid(),
         )
         .await?;
+
+        if let Some(service) = &self.session_sandbox_service {
+            let agent_capabilities = if let Some(agent_id) = agent_id {
+                self.db
+                    .get_agent_capabilities(agent_id.uuid())
+                    .await?
+                    .into_iter()
+                    .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            let merged = merge_capabilities(&effective_harness.capabilities, &agent_capabilities);
+            let merged = merge_capabilities(&merged, &req.capabilities);
+            service
+                .auto_start_for_capabilities(session.id, &merged)
+                .await;
+        }
 
         Ok(session)
     }

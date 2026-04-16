@@ -67,6 +67,7 @@ pub mod organization;
 pub mod session;
 pub mod session_file;
 pub mod session_resource;
+pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sqldb;
 pub mod skill;
@@ -200,6 +201,17 @@ pub use platform_definition::{
     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, PlatformDefinition,
     PlatformDefinitionBuilder,
 };
+pub use session_sandbox::{
+    DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS, SESSION_SANDBOX_CAPABILITY_ID,
+    SESSION_SANDBOX_SECRET_NAME, SessionSandboxConfig, SessionSandboxExecRequest,
+    SessionSandboxExecResponse, SessionSandboxInitConfig, SessionSandboxInstance,
+    SessionSandboxProvider, SessionSandboxProviderPlugin, SessionSandboxReadFileResponse,
+    SessionSandboxState, SessionSandboxStatus, SessionSandboxStatusResponse,
+    SessionSandboxWriteFileResponse, create_session_sandbox_provider, delete_session_sandbox,
+    delete_session_sandbox_state, ensure_session_sandbox_running, load_session_sandbox_state,
+    pause_session_sandbox, run_session_sandbox_init_if_needed, save_session_sandbox_state,
+    session_sandbox_config_from_capabilities, session_sandbox_tool_hints,
+};
 
 pub use capabilities::SystemPromptContext;
 pub use capabilities::{
@@ -213,11 +225,12 @@ pub use capabilities::{
     NoopCapability, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
     PlatformManagementCapability, QueryHistoryTool, ReadFileTool, ResearchCapability,
     ResolvedCapabilities, RiskLevel, SampleDataCapability, SessionCapability,
-    SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool,
-    StatelessTodoListCapability, SubtractTool, TestMathCapability, TestWeatherCapability,
-    WriteFileTool, WriteSessionTitleTool, WriteTodosTool, apply_capabilities, collect_capabilities,
-    collect_capabilities_with_configs, compute_features, get_dependencies, is_mcp_capability,
-    mcp_capability_id, parse_mcp_capability_id, resolve_dependencies,
+    SessionSandboxCapability, SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool,
+    SqlSchemaTool, StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
+    TestWeatherCapability, WriteFileTool, WriteSessionTitleTool, WriteTodosTool,
+    apply_capabilities, collect_capabilities, collect_capabilities_with_configs, compute_features,
+    get_dependencies, is_mcp_capability, mcp_capability_id, parse_mcp_capability_id,
+    resolve_dependencies,
 };
 pub use capabilities::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_CAPABILITY_ID, SKILLS_DISCOVERY_PATH,

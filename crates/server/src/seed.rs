@@ -69,6 +69,8 @@ mod seed_ids {
     pub const TASK_ORCHESTRATOR_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010e);
     pub const KNOWLEDGE_BASE_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000112);
+    pub const SESSION_SANDBOX_CODER_AGENT: Uuid =
+        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000113);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -660,6 +662,40 @@ Always delete sandboxes when done."#,
         tags: &["coding", "cloud", "sandbox", "daytona", "demo", "seed"],
         capabilities: &[
             SeedCapability::new("daytona"),
+            SeedCapability::new("session_storage"),
+            SeedCapability::new("session_file_system"),
+        ],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::SESSION_SANDBOX_CODER_AGENT,
+        name: "session-sandbox-coder",
+        display_name: "Session Sandbox Coder",
+        description: "A coding agent that uses one managed session-owned sandbox backed by Daytona",
+        system_prompt: r#"You are a Session Sandbox Coder Agent. This session owns one managed sandbox.
+
+Use the provider-neutral sandbox tools for coding work:
+1. Inspect the current environment with `sandbox_status` if needed
+2. Read/search code with `sandbox_read_file` or `sandbox_exec`
+3. Edit code with `sandbox_write_file` or shell-based edits via `sandbox_exec`
+4. Run tests/builds with `sandbox_exec`
+5. Pause or delete the environment only when needed via `sandbox_manage`
+
+The sandbox auto-starts for the session, pauses after idle time, and resumes automatically on the next sandbox tool call.
+Do not use raw provider tools when the managed sandbox tools can handle the task."#,
+        tags: &["coding", "sandbox", "managed", "daytona", "demo", "seed"],
+        capabilities: &[
+            SeedCapability::with_config("session_sandbox", || {
+                serde_json::json!({
+                    "provider": "daytona",
+                    "auto_start": true,
+                    "idle_pause_after_seconds": 180,
+                    "provider_config": {
+                        "size": "small",
+                        "workspace_path": "/home/daytona"
+                    }
+                })
+            }),
             SeedCapability::new("session_storage"),
             SeedCapability::new("session_file_system"),
         ],

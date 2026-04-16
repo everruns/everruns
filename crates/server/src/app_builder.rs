@@ -360,6 +360,7 @@ impl ServerAppBuilder {
             auth::AuthState::new(auth_config.clone(), auth_backend.clone()).with_db(db.clone());
         let deployment_grade = everruns_core::DeploymentGrade::from_env();
         let feature_flags = everruns_core::FeatureFlags::from_env(&deployment_grade);
+        let internal_feature_flags = everruns_core::InternalFeatureFlags::from_env();
         let notifications_enabled = feature_flags.notifications;
         tracing::info!(?feature_flags, "Feature flags computed");
 
@@ -392,6 +393,61 @@ impl ServerAppBuilder {
         let budget_listener: Arc<dyn EventListener> = budget_service.clone();
         let mut event_listeners: Vec<Arc<dyn EventListener>> =
             vec![otel_listener, usage_listener, budget_listener];
+        let session_sandbox_service = if internal_feature_flags.session_sandbox {
+            match db.as_ref() {
+                crate::storage::StorageBackend::Postgres(database) => match &encryption {
+                    Some(enc) => {
+                        let storage_store: Arc<dyn everruns_core::traits::SessionStorageStore> =
+                            Arc::new(crate::storage::create_db_session_storage_store(
+                                database.clone(),
+                                enc.as_ref().clone(),
+                            ));
+                        let github_app_minter =
+                            auth_config.github_connection.as_ref().map(|config| {
+                                crate::storage::GitHubAppTokenMinter::new(
+                                    config.app_id.clone(),
+                                    config.private_key.clone(),
+                                )
+                            });
+                        let connection_resolver =
+                            Some(Arc::new(crate::storage::DbConnectionResolver::new(
+                                db.as_ref().clone(),
+                                enc.as_ref().clone(),
+                                github_app_minter,
+                            ))
+                                as Arc<dyn everruns_core::traits::UserConnectionResolver>);
+                        let service = Arc::new(services::SessionSandboxService::new(
+                            db.clone(),
+                            storage_store,
+                            connection_resolver,
+                        ));
+                        event_listeners.push(Arc::new(services::SessionSandboxEventListener::new(
+                            service.clone(),
+                        )));
+                        Some(service)
+                    }
+                    None => {
+                        tracing::warn!(
+                            "FEATURE_SESSION_SANDBOX is enabled but encryption is not configured; session_sandbox lifecycle is disabled"
+                        );
+                        None
+                    }
+                },
+                crate::storage::StorageBackend::InMemory(mem_db) => {
+                    let service = Arc::new(services::SessionSandboxService::new(
+                        db.clone(),
+                        mem_db.clone(),
+                        None,
+                    ));
+                    event_listeners.push(Arc::new(services::SessionSandboxEventListener::new(
+                        service.clone(),
+                    )));
+                    Some(service)
+                }
+            }
+        } else {
+            None
+        };
         let notification_service = if notifications_enabled {
             let service = Arc::new(services::NotificationService::new(db.clone()));
             let notification_listener: Arc<dyn EventListener> =
@@ -483,13 +539,15 @@ impl ServerAppBuilder {
             platform_definition.as_ref(),
             event_delivery.clone(),
         );
-        sessions_state.session_service = Arc::new(
-            services::SessionService::with_registry(
-                db.clone(),
-                platform_definition.capability_registry().clone(),
-            )
-            .with_virtual_registry(virtual_registry.clone()),
-        );
+        let mut session_service = services::SessionService::with_registry(
+            db.clone(),
+            platform_definition.capability_registry().clone(),
+        )
+        .with_virtual_registry(virtual_registry.clone());
+        if let Some(service) = &session_sandbox_service {
+            session_service = session_service.with_session_sandbox_service(service.clone());
+        }
+        sessions_state.session_service = Arc::new(session_service);
         let messages_state = api::messages::AppState::new(
             db.clone(),
             runner.clone(),

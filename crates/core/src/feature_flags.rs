@@ -75,6 +75,9 @@ pub struct InternalFeatureFlags {
     /// Docker container capability. Disabled by default on all envs.
     /// Enable via `FEATURE_DOCKER_CAPABILITY=true`.
     pub docker_capability: bool,
+    /// Managed session-owned sandbox capability and lifecycle orchestration.
+    /// Experimental and disabled by default.
+    pub session_sandbox: bool,
 }
 
 impl InternalFeatureFlags {
@@ -82,6 +85,7 @@ impl InternalFeatureFlags {
     pub fn from_env() -> Self {
         Self {
             docker_capability: standard_flag("FEATURE_DOCKER_CAPABILITY", false),
+            session_sandbox: standard_flag("FEATURE_SESSION_SANDBOX", false),
         }
     }
 
@@ -89,6 +93,7 @@ impl InternalFeatureFlags {
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
             "docker_capability" => self.docker_capability,
+            "session_sandbox" => self.session_sandbox,
             _ => false,
         }
     }
@@ -256,6 +261,7 @@ mod tests {
     fn test_internal_default_flags() {
         let flags = InternalFeatureFlags::default();
         assert!(!flags.docker_capability);
+        assert!(!flags.session_sandbox);
     }
 
     #[test]
@@ -282,8 +288,19 @@ mod tests {
     fn test_internal_is_enabled_dynamic() {
         let flags = InternalFeatureFlags {
             docker_capability: true,
+            session_sandbox: true,
         };
         assert!(flags.is_enabled("docker_capability"));
+        assert!(flags.is_enabled("session_sandbox"));
         assert!(!flags.is_enabled("nonexistent"));
+    }
+
+    #[test]
+    fn test_session_sandbox_flag_enabled_by_env_override() {
+        let _lock = lock_env();
+        unsafe { std::env::set_var("FEATURE_SESSION_SANDBOX", "true") };
+        let flags = InternalFeatureFlags::from_env();
+        assert!(flags.session_sandbox);
+        unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
     }
 }

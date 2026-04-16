@@ -13,6 +13,7 @@
 pub mod client;
 pub mod connection;
 pub mod openapi_spec;
+mod session_sandbox_provider;
 pub mod state;
 mod tools;
 
@@ -25,6 +26,7 @@ use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
 use connection::DaytonaConnectionProvider;
+use session_sandbox_provider::DaytonaSessionSandboxProvider;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -51,6 +53,12 @@ inventory::submit! {
     ConnectionProviderPlugin {
         experimental_only: true,
         factory: || Box::new(DaytonaConnectionProvider),
+    }
+}
+
+inventory::submit! {
+    everruns_core::SessionSandboxProviderPlugin {
+        factory: || Box::new(DaytonaSessionSandboxProvider),
     }
 }
 
