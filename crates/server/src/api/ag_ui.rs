@@ -64,6 +64,7 @@ use crate::api::messages::{
     CreateMessageRequest, InputContentPart, InputMessage, MessageRole as ApiMessageRole,
 };
 use crate::api::sessions::CreateSessionRequest;
+use crate::api::sse::SseConnectionTracker;
 use crate::execution_metadata;
 use crate::services::{
     AppService, CreateMessageContext, EventService, MessageService, SessionService,
@@ -77,6 +78,7 @@ pub struct AgUiState {
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
+    pub sse_tracker: Arc<SseConnectionTracker>,
 }
 
 impl AgUiState {
@@ -86,6 +88,7 @@ impl AgUiState {
         runner: Arc<dyn everruns_worker::AgentRunner>,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
+        sse_tracker: Arc<SseConnectionTracker>,
     ) -> Self {
         Self {
             app_service: Arc::new(AppService::new(db.clone(), encryption)),
@@ -97,6 +100,7 @@ impl AgUiState {
                 event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
+            sse_tracker,
             db,
         }
     }
@@ -164,6 +168,22 @@ async fn run_agent(
     let session = find_or_create_session(&state, &app, &routing_tags, &thread_tag, &req)
         .await
         .map_err(internal_error)?;
+
+    // THREAT[TM-DOS-010]: Anonymous AG-UI streams must still respect server-wide
+    // SSE connection limits.
+    // Mitigation: Reuse the shared SSE tracker for per-org and per-session limits
+    // before opening the stream.
+    let sse_guard = state
+        .sse_tracker
+        .try_acquire(app.org_id, session.session.id.uuid())
+        .map_err(|rejection| {
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(ErrorResponse {
+                    error: rejection.to_string(),
+                }),
+            )
+        })?;
 
     // Seed prior history only on first use of the thread so a new AG-UI client can
     // carry conversation context into the durable session without triggering old runs.
@@ -303,7 +323,10 @@ async fn run_agent(
         }
     });
 
-    let stream = initial_stream.chain(translated_stream);
+    let stream = initial_stream.chain(translated_stream).map(move |event| {
+        let _guard = &sse_guard;
+        event
+    });
 
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
@@ -518,6 +541,23 @@ fn content_part_to_string(part: &ContentPart) -> String {
     }
 }
 
+fn ensure_assistant_message_id(
+    state: &mut AgUiStreamState,
+    event: &everruns_core::Event,
+) -> AgUiMessageId {
+    state
+        .assistant_message_id
+        .get_or_insert_with(|| {
+            event
+                .context
+                .turn_id
+                .as_ref()
+                .map(|id| AgUiMessageId::from(id.uuid()))
+                .unwrap_or_else(AgUiMessageId::random)
+        })
+        .clone()
+}
+
 struct AgUiStreamState {
     subscription: Box<crate::event_delivery::EventSubscription>,
     session_id: Uuid,
@@ -538,10 +578,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
     match event.event_type.as_str() {
         "output.message.delta" => {
             if let Ok(data) = parse_event_data::<OutputMessageDeltaData>(event) {
-                let message_id = state
-                    .assistant_message_id
-                    .get_or_insert_with(|| AgUiMessageId::from(data.turn_id.uuid()))
-                    .clone();
+                let message_id = ensure_assistant_message_id(state, event);
                 if !state.assistant_content_started {
                     state
                         .queue
@@ -560,10 +597,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
         }
         "output.message.completed" => {
             if let Ok(data) = parse_event_data::<OutputMessageCompletedData>(event) {
-                let message_id = state
-                    .assistant_message_id
-                    .clone()
-                    .unwrap_or_else(|| AgUiMessageId::from(data.message.id.uuid()));
+                let message_id = ensure_assistant_message_id(state, event);
                 if !state.assistant_content_started {
                     state
                         .queue
@@ -653,6 +687,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
         }
         "tool.started" => {
             if let Ok(data) = parse_event_data::<ToolStartedData>(event) {
+                let message_id = ensure_assistant_message_id(state, event);
                 let tool_call_id = state
                     .tool_call_ids
                     .entry(data.tool_call.id.clone())
@@ -664,7 +699,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                         base: agui_base_event(),
                         tool_call_id: tool_call_id.clone(),
                         tool_call_name: data.tool_call.name,
-                        parent_message_id: state.assistant_message_id.clone(),
+                        parent_message_id: Some(message_id),
                     }));
                 state
                     .queue
@@ -684,6 +719,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
         }
         "tool.completed" => {
             if let Ok(data) = parse_event_data::<ToolCompletedData>(event) {
+                let message_id = ensure_assistant_message_id(state, event);
                 let tool_call_id = state
                     .tool_call_ids
                     .remove(&data.tool_call_id)
@@ -692,10 +728,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                     .queue
                     .push_back(AgUiEvent::ToolCallResult(AgUiToolCallResultEvent {
                         base: agui_base_event(),
-                        message_id: state
-                            .assistant_message_id
-                            .clone()
-                            .unwrap_or_else(AgUiMessageId::random),
+                        message_id,
                         tool_call_id,
                         content: data
                             .result
@@ -819,7 +852,7 @@ mod tests {
     use ag_ui_core::event::EventType as AgUiEventType;
     use everruns_core::{
         Event, EventContext, Message, MessageId, OutputMessageCompletedData,
-        OutputMessageDeltaData, SessionId, TurnId,
+        OutputMessageDeltaData, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
     };
 
     async fn test_stream_state() -> AgUiStreamState {
@@ -918,5 +951,82 @@ mod tests {
             _ => unreachable!(),
         }
         assert!(state.finished);
+    }
+
+    #[tokio::test]
+    async fn test_tool_first_run_reuses_assistant_message_id() {
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let context = EventContext::turn(turn_id, input_message_id);
+        let session_id = SessionId::from_uuid(state.session_id);
+
+        let tool_started = Event::new(
+            session_id,
+            context.clone(),
+            ToolStartedData {
+                tool_call: ToolCall {
+                    id: "call_1".to_string(),
+                    name: "web_search".to_string(),
+                    arguments: serde_json::json!({"q": "hello"}),
+                },
+                display_name: None,
+                narration: None,
+            },
+        );
+        translate_event(&mut state, &tool_started);
+
+        let tool_completed = Event::new(
+            session_id,
+            context.clone(),
+            ToolCompletedData {
+                tool_call_id: "call_1".to_string(),
+                tool_name: "web_search".to_string(),
+                display_name: None,
+                success: true,
+                status: "success".to_string(),
+                result: Some(vec![ContentPart::text("result")]),
+                error: None,
+                duration_ms: Some(10),
+                narration: None,
+            },
+        );
+        translate_event(&mut state, &tool_completed);
+
+        let output_completed = Event::new(
+            session_id,
+            context,
+            OutputMessageCompletedData::new(Message::assistant("Hello after tool")),
+        );
+        translate_event(&mut state, &output_completed);
+
+        let expected_message_id = AgUiMessageId::from(turn_id.uuid());
+
+        let tool_call_id = match &state.queue[0] {
+            AgUiEvent::ToolCallStart(event) => {
+                assert_eq!(event.parent_message_id, Some(expected_message_id.clone()));
+                event.tool_call_id.clone()
+            }
+            _ => panic!("expected tool start event"),
+        };
+        match &state.queue[1] {
+            AgUiEvent::ToolCallArgs(_) => {}
+            _ => panic!("expected tool args event"),
+        }
+        match &state.queue[2] {
+            AgUiEvent::ToolCallEnd(event) => assert_eq!(event.tool_call_id, tool_call_id),
+            _ => panic!("expected tool end event"),
+        }
+        match &state.queue[3] {
+            AgUiEvent::ToolCallResult(event) => {
+                assert_eq!(event.message_id, expected_message_id.clone());
+                assert_eq!(event.tool_call_id, tool_call_id);
+            }
+            _ => panic!("expected tool result event"),
+        }
+        match &state.queue[4] {
+            AgUiEvent::TextMessageStart(event) => assert_eq!(event.message_id, expected_message_id),
+            _ => panic!("expected text start event"),
+        }
     }
 }

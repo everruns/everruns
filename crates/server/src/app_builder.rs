@@ -591,7 +591,7 @@ impl ServerAppBuilder {
         let notifications_state = notification_service.as_ref().map(|notification_service| {
             api::notifications::AppState {
                 notification_service: notification_service.clone(),
-                sse_tracker,
+                sse_tracker: sse_tracker.clone(),
                 notification_broadcaster,
                 auth: auth_state.clone(),
             }
@@ -681,6 +681,7 @@ impl ServerAppBuilder {
             runner.clone(),
             notifications_enabled,
             event_delivery.clone(),
+            sse_tracker.clone(),
         );
         let session_files_state = api::session_files::AppState::new(
             db.clone(),

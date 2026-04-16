@@ -298,7 +298,7 @@ impl TestServer {
         let notifications_state = if feature_flags.notifications {
             Some(api::notifications::AppState {
                 notification_service: Arc::new(services::NotificationService::new(db.clone())),
-                sse_tracker,
+                sse_tracker: sse_tracker.clone(),
                 notification_broadcaster: None,
                 auth: auth_state.clone(),
             })
@@ -344,6 +344,7 @@ impl TestServer {
             runner.clone(),
             feature_flags.notifications,
             event_delivery.clone(),
+            sse_tracker.clone(),
         );
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
