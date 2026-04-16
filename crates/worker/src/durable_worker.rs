@@ -44,6 +44,54 @@ struct ActTaskInput {
 }
 
 // =============================================================================
+// Task Session Context Extraction
+// =============================================================================
+
+/// Session context extracted from a task input.
+///
+/// Used by failure paths (DLQ emission, cancellation) that need to surface
+/// user-facing events regardless of which phase (input/reason/act) failed.
+struct TaskSessionContext {
+    org_id: i64,
+    session_id: SessionId,
+    turn_id: TurnId,
+    input_message_id: MessageId,
+}
+
+/// Extract session context from a task input by activity type.
+///
+/// Different activities serialize different wrapper types into `task.input`
+/// (`DurableTurnInput` for input/reason, `ActTaskInput` for act). Without
+/// handling both shapes, act-task failure paths silently skip emitting
+/// `session.idled` and leave the session stuck.
+fn extract_task_session_context(
+    activity_type: &str,
+    input: &serde_json::Value,
+) -> Option<TaskSessionContext> {
+    match activity_type {
+        "process_input" | "reason" => {
+            let turn_input: DurableTurnInput = serde_json::from_value(input.clone()).ok()?;
+            Some(TaskSessionContext {
+                org_id: turn_input.org_id,
+                session_id: turn_input.session_id,
+                turn_id: turn_input.turn_id.unwrap_or_default(),
+                input_message_id: turn_input.input_message_id,
+            })
+        }
+        "act" => {
+            let act_task_input: ActTaskInput = serde_json::from_value(input.clone()).ok()?;
+            Some(TaskSessionContext {
+                org_id: act_task_input.org_id,
+                session_id: act_task_input.act_input.context.session_id,
+                turn_id: act_task_input.act_input.context.turn_id,
+                input_message_id: act_task_input.act_input.context.input_message_id,
+            })
+        }
+        _ => None,
+    }
+}
+
+// =============================================================================
 // Cancellation Helper
 // =============================================================================
 
@@ -1058,14 +1106,14 @@ impl DurableWorker {
     /// emits one final error event so the user sees exactly one error message,
     /// then emits session.idled + sets session status to idle so the UI unblocks.
     async fn emit_dlq_error_event(&self, task: &ClaimedTask) {
-        // Try to extract session context from the task input.
-        // For "act" tasks the input is wrapped in ActTaskInput; try DurableTurnInput first,
-        // then fall back to extracting session_id/turn_id from the JSON directly.
-        let turn_input: Option<DurableTurnInput> = serde_json::from_value(task.input.clone()).ok();
-
-        let Some(turn_input) = turn_input else {
+        // Extract session context from the task input. `act` task input is
+        // wrapped in `ActTaskInput`, while `reason`/`process_input` use
+        // `DurableTurnInput`; both shapes must be handled or act-task DLQs
+        // skip emitting session.idled and leave the session stuck.
+        let Some(ctx) = extract_task_session_context(&task.activity_type, &task.input) else {
             warn!(
                 task_id = %task.id,
+                activity_type = %task.activity_type,
                 "Cannot emit DLQ error event: failed to parse task input"
             );
             return;
@@ -1084,9 +1132,12 @@ impl DurableWorker {
         };
 
         let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
-        let session_id = turn_input.session_id;
-        let turn_id = turn_input.turn_id.unwrap_or_default();
-        let input_message_id = turn_input.input_message_id;
+        let TaskSessionContext {
+            org_id,
+            session_id,
+            turn_id,
+            input_message_id,
+        } = ctx;
         let error_message = Message::assistant(
             "I encountered an error while processing your request. Please try again later.",
         );
@@ -1130,7 +1181,7 @@ impl DurableWorker {
 
         // Set session status to idle
         if let Err(e) = grpc_client
-            .set_session_status(turn_input.org_id, session_id, "idle")
+            .set_session_status(org_id, session_id, "idle")
             .await
         {
             warn!(session_id = %session_id, error = %e, "Failed to set session idle after DLQ");
@@ -1685,6 +1736,7 @@ impl DurableWorker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::typed_id::HarnessId;
     use serde_json::json;
 
     #[test]
@@ -1734,5 +1786,74 @@ mod tests {
             summarize_task_failure(task_id, workflow_id, "act", 1, Some(3), &input, &error);
 
         assert!(is_non_retryable_task_error(&failure.persisted_message));
+    }
+
+    #[test]
+    fn test_extract_task_session_context_reason() {
+        let session_id = SessionId::new();
+        let input_message_id = MessageId::new();
+        let turn_id = TurnId::new();
+        let turn_input = DurableTurnInput {
+            org_id: 42,
+            session_id,
+            harness_id: HarnessId::new(),
+            agent_id: None,
+            input_message_id,
+            turn_id: Some(turn_id),
+            previous_response_id: None,
+            iteration: 1,
+        };
+        let value = serde_json::to_value(&turn_input).unwrap();
+
+        let ctx = extract_task_session_context("reason", &value).expect("reason input parses");
+
+        assert_eq!(ctx.org_id, 42);
+        assert_eq!(ctx.session_id, session_id);
+        assert_eq!(ctx.turn_id, turn_id);
+        assert_eq!(ctx.input_message_id, input_message_id);
+    }
+
+    #[test]
+    fn test_extract_task_session_context_act() {
+        use everruns_core::atoms::{ActInput, AtomContext};
+        use everruns_core::typed_id::ExecId;
+
+        let session_id = SessionId::new();
+        let input_message_id = MessageId::new();
+        let turn_id = TurnId::new();
+        let act_task_input = ActTaskInput {
+            org_id: 7,
+            act_input: ActInput {
+                org_id: Some(7),
+                context: AtomContext {
+                    session_id,
+                    turn_id,
+                    input_message_id,
+                    exec_id: ExecId::new(),
+                },
+                harness_id: HarnessId::new(),
+                agent_id: None,
+                tool_calls: vec![],
+                tool_definitions: vec![],
+                locale: None,
+                blueprint_id: None,
+                network_access: None,
+            },
+        };
+        let value = serde_json::to_value(&act_task_input).unwrap();
+
+        let ctx = extract_task_session_context("act", &value)
+            .expect("act input parses — regression for EVE-306");
+
+        assert_eq!(ctx.org_id, 7);
+        assert_eq!(ctx.session_id, session_id);
+        assert_eq!(ctx.turn_id, turn_id);
+        assert_eq!(ctx.input_message_id, input_message_id);
+    }
+
+    #[test]
+    fn test_extract_task_session_context_unknown_activity() {
+        let value = json!({ "irrelevant": true });
+        assert!(extract_task_session_context("heartbeat", &value).is_none());
     }
 }
