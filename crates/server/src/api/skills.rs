@@ -5,10 +5,11 @@
 // Supports both SKILL.md text upload and ZIP archive upload.
 
 use crate::api::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
-    impl_auth_state,
+    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::Command;
+use crate::services::CapabilityService;
 use crate::services::SkillService;
 use crate::services::skill::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::storage::StorageBackend;
@@ -20,8 +21,8 @@ use axum::{
 };
 use axum_extra::extract::Multipart;
 use everruns_core::{
-    Caller, ResourceConfigResponse, Skill, SkillContent, SkillId, SkillStatus,
-    SkillValidationResult, evaluate_policies_with,
+    Caller, ResourceConfigResponse, Skill, SkillContent, SkillStatus, SkillValidationResult,
+    evaluate_policies_with,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -81,16 +82,34 @@ pub struct ListSkillsQuery {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub service: Arc<SkillService>,
+    pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        capability_service: Arc<CapabilityService>,
+        auth: AuthState,
+    ) -> Self {
         Self {
-            service: Arc::new(SkillService::new(db)),
+            service: Arc::new(SkillService::new(db.clone())),
+            db,
+            capability_service,
             auth,
         }
+    }
+
+    /// Build a domain Ctx from this AppState for the given org.
+    pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx::new(
+            Caller::from(org),
+            self.db.clone(),
+            self.capability_service.clone(),
+            None,
+        )
     }
 }
 
@@ -165,18 +184,9 @@ pub async fn create_skill(
     State(state): State<AppState>,
     Json(req): Json<CreateSkillRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Skill>>), (StatusCode, Json<ErrorResponse>)> {
-    let caller = Caller::from(&org);
-    let skill = state.service.create(&caller, req).await.map_err(|e| {
-        let msg = e.to_string();
-        if msg.contains("already exists") {
-            ErrorResponse::new(msg).into_response(StatusCode::CONFLICT)
-        } else if msg.contains("Invalid SKILL.md") {
-            ErrorResponse::new(msg).into_response(StatusCode::UNPROCESSABLE_ENTITY)
-        } else {
-            tracing::error!("Failed to create skill: {}", e);
-            ErrorResponse::internal_error()
-        }
-    })?;
+    let skill = crate::domains::skills::CreateSkill(req)
+        .execute(&state.ctx(&org))
+        .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(urls.wrap(skill))))
@@ -261,16 +271,12 @@ pub async fn list_skills(
     State(state): State<AppState>,
     Query(query): Query<ListSkillsQuery>,
 ) -> ApiResult<ListResponse<WithUrls<Skill>>> {
-    let caller = Caller::from(&org);
-    let skills = state
-        .service
-        .list(
-            &caller,
-            query.search.as_deref(),
-            query.include_archived.unwrap_or(false),
-        )
-        .await
-        .map_policy_or_internal("list skills")?;
+    let skills = crate::domains::skills::ListSkills {
+        search: query.search,
+        include_archived: query.include_archived.unwrap_or(false),
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(ListResponse::new(skills).with_urls(&urls)))
@@ -294,17 +300,9 @@ pub async fn get_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> ApiResult<WithUrls<Skill>> {
-    let skill_id: SkillId = skill_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let skill = state
-        .service
-        .get(&caller, skill_id.uuid())
-        .await
-        .map_policy_or_internal("get skill")?
-        .ok_or_not_found_json("Skill")?;
+    let skill = crate::domains::skills::GetSkill { id: skill_id }
+        .execute(&state.ctx(&org))
+        .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(skill)))
@@ -328,17 +326,9 @@ pub async fn get_skill_content(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> ApiResult<SkillContent> {
-    let skill_id: SkillId = skill_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let content = state
-        .service
-        .get_content(&caller, skill_id.uuid())
-        .await
-        .map_policy_or_internal("get skill content")?
-        .ok_or_not_found_json("Skill")?;
+    let content = crate::domains::skills::GetSkillContent { id: skill_id }
+        .execute(&state.ctx(&org))
+        .await?;
 
     Ok(Json(content))
 }
@@ -362,27 +352,9 @@ pub async fn update_skill(
     Path(skill_id): Path<String>,
     Json(req): Json<UpdateSkillRequest>,
 ) -> ApiResult<WithUrls<Skill>> {
-    let skill_id: SkillId = skill_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let skill = state
-        .service
-        .update(&caller, skill_id.uuid(), req)
-        .await
-        .map_err(|e| {
-            let msg = e.to_string();
-            if msg.contains("already exists") {
-                ErrorResponse::new(msg).into_response(StatusCode::CONFLICT)
-            } else if msg.contains("Invalid SKILL.md") {
-                ErrorResponse::new(msg).into_response(StatusCode::UNPROCESSABLE_ENTITY)
-            } else {
-                tracing::error!("Failed to update skill: {}", e);
-                ErrorResponse::internal_error()
-            }
-        })?
-        .ok_or_else(|| ErrorResponse::not_found("Skill"))?;
+    let skill = crate::domains::skills::UpdateSkillCmd { id: skill_id, req }
+        .execute(&state.ctx(&org))
+        .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(skill)))
@@ -406,22 +378,10 @@ pub async fn delete_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let skill_id: SkillId = skill_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .delete(&caller, skill_id.uuid())
-        .await
-        .map_policy_or_internal("delete skill")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::not_found("Skill"))
-    }
+    crate::domains::skills::DeleteSkill { id: skill_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn destroy_skill(
@@ -429,22 +389,10 @@ pub async fn destroy_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let skill_id: SkillId = skill_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid skill ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .destroy(&caller, skill_id.uuid())
-        .await
-        .map_policy_or_internal("destroy skill")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::new("Skill not found").into_response(StatusCode::NOT_FOUND))
-    }
+    crate::domains::skills::DestroySkill { id: skill_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /v1/skills/validate - Validate SKILL.md content

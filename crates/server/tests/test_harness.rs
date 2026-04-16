@@ -236,15 +236,22 @@ impl TestServer {
             None,
         );
         let llm_models_state = api::llm_models::AppState::new(db.clone(), auth_state.clone(), None);
-        let mcp_servers_state =
-            api::mcp_servers::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
         let capability_service = Arc::new(services::CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),
             platform_definition.capability_registry().clone(),
         ));
-        let capabilities_state =
-            api::capabilities::AppState::new(capability_service.clone(), auth_state.clone());
+        let mcp_servers_state = api::mcp_servers::AppState::new(
+            db.clone(),
+            encryption.clone(),
+            capability_service.clone(),
+            auth_state.clone(),
+        );
+        let capabilities_state = api::capabilities::AppState::new(
+            db.clone(),
+            capability_service.clone(),
+            auth_state.clone(),
+        );
         let harnesses_state = api::harnesses::AppState::new(
             db.clone(),
             capability_service.clone(),
@@ -284,7 +291,8 @@ impl TestServer {
         );
         let schedules_state =
             api::schedules::ScheduleAppState::new(Some(durable_store), auth_state.clone());
-        let skills_state = api::skills::AppState::new(db.clone(), auth_state.clone());
+        let skills_state =
+            api::skills::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
         let organizations_state = api::organizations::AppState::with_harnesses(
             db.clone(),
@@ -321,15 +329,23 @@ impl TestServer {
             mcp_service,
         );
 
-        let agent_identities_state =
-            api::agent_identities::AppState::new(db.clone(), auth_state.clone());
+        let agent_identities_state = api::agent_identities::AppState::new(
+            db.clone(),
+            capability_service.clone(),
+            auth_state.clone(),
+        );
         let agent_identity_connections_state = api::agent_identity_connections::AppState::new(
             db.clone(),
             encryption.clone(),
             auth_state.clone(),
             platform_definition.connection_providers().clone(),
         );
-        let apps_state = api::apps::AppState::new(db.clone(), None, auth_state.clone());
+        let apps_state = api::apps::AppState::new(
+            db.clone(),
+            None,
+            capability_service.clone(),
+            auth_state.clone(),
+        );
         let slack_state = api::slack_events::SlackState::new(
             db.clone(),
             None, // No encryption in tests

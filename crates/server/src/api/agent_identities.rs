@@ -2,12 +2,11 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie).
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::AgentIdentityService;
+use crate::services::CapabilityService;
 use crate::services::agent_identity::{
     AGENT_IDENTITY_DANGEROUS, AGENT_IDENTITY_MANAGE, AGENT_IDENTITY_VIEW,
 };
 use crate::storage::StorageBackend;
-use axum::extract::FromRef;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -15,15 +14,15 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::{
-    AgentIdentity, AgentIdentityId, AgentIdentityStatus, Caller, ResourceConfigResponse,
-    evaluate_policies_with,
+    AgentIdentity, AgentIdentityStatus, Caller, ResourceConfigResponse, evaluate_policies_with,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use super::common::deserialize_nullable_update_field;
-use super::common::{ApiOptionExt, ApiPolicyResultExt, ErrorResponse, ListResponse};
+use super::common::{ErrorResponse, ListResponse, impl_auth_state};
+use crate::domains::common::Command;
 use everruns_durable::UpdateField;
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -64,24 +63,36 @@ pub struct ListAgentIdentitiesQuery {
 
 #[derive(Clone)]
 pub struct AppState {
-    pub service: Arc<AgentIdentityService>,
+    pub db: Arc<StorageBackend>,
+    pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        capability_service: Arc<CapabilityService>,
+        auth: AuthState,
+    ) -> Self {
         Self {
-            service: Arc::new(AgentIdentityService::new(db)),
+            db,
+            capability_service,
             auth,
         }
     }
-}
 
-impl FromRef<AppState> for AuthState {
-    fn from_ref(input: &AppState) -> Self {
-        input.auth.clone()
+    /// Build a domain Ctx from this AppState for the given org.
+    pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx::new(
+            Caller::from(org),
+            self.db.clone(),
+            self.capability_service.clone(),
+            None,
+        )
     }
 }
+
+impl_auth_state!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -125,12 +136,9 @@ pub async fn create_agent_identity(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentIdentityRequest>,
 ) -> Result<(StatusCode, Json<AgentIdentity>), (StatusCode, Json<ErrorResponse>)> {
-    let caller = Caller::from(&org);
-    let identity = state
-        .service
-        .create(&caller, req)
-        .await
-        .map_policy_or_internal("create agent identity")?;
+    let identity = crate::domains::agent_identities::CreateAgentIdentity(req)
+        .execute(&state.ctx(&org))
+        .await?;
     Ok((StatusCode::CREATED, Json(identity)))
 }
 
@@ -139,16 +147,12 @@ pub async fn list_agent_identities(
     State(state): State<AppState>,
     Query(query): Query<ListAgentIdentitiesQuery>,
 ) -> Result<Json<ListResponse<AgentIdentity>>, (StatusCode, Json<ErrorResponse>)> {
-    let caller = Caller::from(&org);
-    let identities = state
-        .service
-        .list(
-            &caller,
-            query.search.as_deref(),
-            query.include_archived.unwrap_or(false),
-        )
-        .await
-        .map_policy_or_internal("list agent identities")?;
+    let identities = crate::domains::agent_identities::ListAgentIdentities {
+        search: query.search,
+        include_archived: query.include_archived.unwrap_or(false),
+    }
+    .execute(&state.ctx(&org))
+    .await?;
     Ok(Json(ListResponse::new(identities)))
 }
 
@@ -157,17 +161,9 @@ pub async fn get_agent_identity(
     State(state): State<AppState>,
     Path(identity_id): Path<String>,
 ) -> Result<Json<AgentIdentity>, (StatusCode, Json<ErrorResponse>)> {
-    let identity_id: AgentIdentityId = identity_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid identity ID: {}", e))
-            .into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let identity = state
-        .service
-        .get(&caller, identity_id)
-        .await
-        .map_policy_or_internal("get agent identity")?
-        .ok_or_not_found_json("Agent identity")?;
+    let identity = crate::domains::agent_identities::GetAgentIdentity { id: identity_id }
+        .execute(&state.ctx(&org))
+        .await?;
     Ok(Json(identity))
 }
 
@@ -177,17 +173,12 @@ pub async fn update_agent_identity(
     Path(identity_id): Path<String>,
     Json(req): Json<UpdateAgentIdentityRequest>,
 ) -> Result<Json<AgentIdentity>, (StatusCode, Json<ErrorResponse>)> {
-    let identity_id: AgentIdentityId = identity_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid identity ID: {}", e))
-            .into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let identity = state
-        .service
-        .update(&caller, identity_id, req)
-        .await
-        .map_policy_or_internal("update agent identity")?
-        .ok_or_not_found_json("Agent identity")?;
+    let identity = crate::domains::agent_identities::UpdateAgentIdentityCmd {
+        id: identity_id,
+        req,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
     Ok(Json(identity))
 }
 
@@ -196,22 +187,10 @@ pub async fn delete_agent_identity(
     State(state): State<AppState>,
     Path(identity_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let identity_id: AgentIdentityId = identity_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid identity ID: {}", e))
-            .into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .delete(&caller, identity_id)
-        .await
-        .map_policy_or_internal("archive agent identity")?;
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::new("Agent identity not found".to_string())
-            .into_response(StatusCode::NOT_FOUND))
-    }
+    crate::domains::agent_identities::DeleteAgentIdentity { id: identity_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn destroy_agent_identity(
@@ -219,22 +198,10 @@ pub async fn destroy_agent_identity(
     State(state): State<AppState>,
     Path(identity_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let identity_id: AgentIdentityId = identity_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid identity ID: {}", e))
-            .into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .destroy(&caller, identity_id)
-        .await
-        .map_policy_or_internal("delete agent identity")?;
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::new("Agent identity not found".to_string())
-            .into_response(StatusCode::NOT_FOUND))
-    }
+    crate::domains::agent_identities::DestroyAgentIdentity { id: identity_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]

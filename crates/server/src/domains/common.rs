@@ -141,6 +141,25 @@ impl Ctx {
     pub fn org_id(&self) -> i64 {
         self.caller.org_id
     }
+
+    /// Construct a Ctx for an HTTP request.
+    ///
+    /// `encryption` may be `None` for domains that never need it (agents,
+    /// harnesses, skills). Domains that encrypt secrets (apps, mcp_servers)
+    /// must pass `Some`.
+    pub fn new(
+        caller: Caller,
+        db: Arc<StorageBackend>,
+        capability_service: Arc<crate::services::CapabilityService>,
+        encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+    ) -> Self {
+        Self {
+            caller,
+            db,
+            capability_service,
+            encryption,
+        }
+    }
 }
 
 // ============================================================================

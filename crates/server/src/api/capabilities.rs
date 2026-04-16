@@ -8,16 +8,18 @@
 // Agent capabilities are managed through the agents API (POST/PATCH /v1/agents).
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
 };
-use everruns_core::{CapabilityId, CapabilityInfo};
+use everruns_core::{Caller, CapabilityInfo};
 use serde::Deserialize;
 
 use super::common::{PaginatedResponse, UrlBuilder, WithUrls, impl_auth_state};
+use crate::domains::common::Command;
 use std::sync::Arc;
 
 use crate::services::CapabilityService;
@@ -25,13 +27,24 @@ use crate::services::CapabilityService;
 /// App state for capability routes
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub service: Arc<CapabilityService>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(service: Arc<CapabilityService>, auth: AuthState) -> Self {
-        Self { service, auth }
+    pub fn new(db: Arc<StorageBackend>, service: Arc<CapabilityService>, auth: AuthState) -> Self {
+        Self { db, service, auth }
+    }
+
+    /// Build a domain Ctx from this AppState for the given org.
+    pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx::new(
+            Caller::from(org),
+            self.db.clone(),
+            self.service.clone(),
+            None,
+        )
     }
 }
 
@@ -44,10 +57,6 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/capabilities/{capability_id}", get(get_capability))
         .with_state(state)
 }
-
-// Capabilities are a bounded set (~30-50 items), so default to showing all.
-const DEFAULT_LIMIT: u32 = 100;
-const MAX_LIMIT: u32 = 200;
 
 #[derive(Debug, Default, Deserialize)]
 pub struct ListCapabilitiesQuery {
@@ -75,29 +84,22 @@ pub async fn list_capabilities(
     State(state): State<AppState>,
     Query(query): Query<ListCapabilitiesQuery>,
 ) -> Result<Json<PaginatedResponse<WithUrls<CapabilityInfo>>>, StatusCode> {
-    let mut capabilities = state.service.list_all(org.org_id).await.map_err(|e| {
-        tracing::error!("Failed to list capabilities: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    // Filter by search query
-    if let Some(ref search) = query.search {
-        capabilities.retain(|c| c.matches_search(search));
+    let result = crate::domains::capabilities::ListCapabilities {
+        search: query.search,
+        offset: query.offset,
+        limit: query.limit,
     }
-
-    let total = capabilities.len() as u32;
-    let offset = query.offset.unwrap_or(0);
-    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
-
-    let data: Vec<CapabilityInfo> = capabilities
-        .into_iter()
-        .skip(offset as usize)
-        .take(limit as usize)
-        .collect();
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to list capabilities: {}", e);
+        e.status()
+    })?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(
-        PaginatedResponse::new(data, total, offset, limit).with_urls(&builder),
+        PaginatedResponse::new(result.data, result.total, result.offset, result.limit)
+            .with_urls(&builder),
     ))
 }
 
@@ -119,17 +121,13 @@ pub async fn get_capability(
     State(state): State<AppState>,
     Path(capability_id): Path<String>,
 ) -> Result<Json<WithUrls<CapabilityInfo>>, StatusCode> {
-    let cap_id = CapabilityId::new(&capability_id);
-
-    let capability = state
-        .service
-        .get(org.org_id, &cap_id)
+    let capability = crate::domains::capabilities::GetCapability { id: capability_id }
+        .execute(&state.ctx(&org))
         .await
         .map_err(|e| {
             tracing::error!("Failed to get capability: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+            e.status()
+        })?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(capability)))

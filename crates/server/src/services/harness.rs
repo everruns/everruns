@@ -63,10 +63,6 @@ impl HarnessService {
         Self { db }
     }
 
-    pub(crate) fn db(&self) -> &Arc<StorageBackend> {
-        &self.db
-    }
-
     #[policy(HARNESS_MANAGE)]
     pub async fn create(&self, caller: &Caller, req: CreateHarnessRequest) -> Result<Harness> {
         self.ensure_name_available(caller.org_id, &req.name, None)

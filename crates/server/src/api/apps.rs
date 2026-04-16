@@ -1,31 +1,31 @@
 // App CRUD HTTP routes
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
-// Policy enforcement happens at the service layer via #[policy] macro.
+// Handlers call domain commands; policy enforcement happens inside commands.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::services::CapabilityService;
 use crate::services::app::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
-use crate::storage::StorageBackend;
+use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::typed_id::{AgentId, AgentIdentityId, AppId, HarnessId};
+use everruns_core::typed_id::{AgentId, AgentIdentityId, HarnessId};
 use everruns_core::{
     App, AppChannel, AppStatus, Caller, ChannelType, ResourceConfigResponse, evaluate_policies_with,
 };
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
+    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
     deserialize_nullable_update_field, impl_auth_state,
 };
+use crate::domains::common::Command;
 use everruns_durable::UpdateField;
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
-
-use crate::services::AppService;
 
 /// Request to create a new app
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -119,20 +119,35 @@ pub struct ListAppsQuery {
 /// App state for routes
 #[derive(Clone)]
 pub struct AppState {
-    pub service: Arc<AppService>,
+    pub db: Arc<StorageBackend>,
+    pub encryption: Option<Arc<EncryptionService>>,
+    pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
 }
 
 impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
-        encryption: Option<Arc<crate::storage::EncryptionService>>,
+        encryption: Option<Arc<EncryptionService>>,
+        capability_service: Arc<CapabilityService>,
         auth: AuthState,
     ) -> Self {
         Self {
-            service: Arc::new(AppService::new(db, encryption)),
+            db,
+            encryption,
+            capability_service,
             auth,
         }
+    }
+
+    /// Build a domain Ctx from this AppState for the given org.
+    pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx::new(
+            Caller::from(org),
+            self.db.clone(),
+            self.capability_service.clone(),
+            self.encryption.clone(),
+        )
     }
 }
 
@@ -198,12 +213,9 @@ pub async fn create_app(
     State(state): State<AppState>,
     Json(req): Json<CreateAppRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<App>>), (StatusCode, Json<ErrorResponse>)> {
-    let caller = Caller::from(&org);
-    let app = state
-        .service
-        .create(&caller, req)
-        .await
-        .map_policy_or_internal("create app")?;
+    let app = crate::domains::apps::CreateApp(req)
+        .execute(&state.ctx(&org))
+        .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(builder.wrap(app))))
@@ -225,16 +237,12 @@ pub async fn list_apps(
     State(state): State<AppState>,
     Query(query): Query<ListAppsQuery>,
 ) -> ApiResult<ListResponse<WithUrls<App>>> {
-    let caller = Caller::from(&org);
-    let apps = state
-        .service
-        .list(
-            &caller,
-            query.search.as_deref(),
-            query.include_archived.unwrap_or(false),
-        )
-        .await
-        .map_policy_or_internal("list apps")?;
+    let apps = crate::domains::apps::ListApps {
+        search: query.search,
+        include_archived: query.include_archived.unwrap_or(false),
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(ListResponse::new(apps).with_urls(&builder)))
@@ -258,17 +266,9 @@ pub async fn get_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
 ) -> ApiResult<WithUrls<App>> {
-    let app_id: AppId = app_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let app = state
-        .service
-        .get_by_public_id(&caller, &app_id.to_string())
-        .await
-        .map_policy_or_internal("get app")?
-        .ok_or_not_found_json("App")?;
+    let app = crate::domains::apps::GetApp { id: app_id }
+        .execute(&state.ctx(&org))
+        .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(app)))
@@ -294,17 +294,9 @@ pub async fn update_app(
     Path(app_id): Path<String>,
     Json(req): Json<UpdateAppRequest>,
 ) -> ApiResult<WithUrls<App>> {
-    let app_id: AppId = app_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let app = state
-        .service
-        .update(&caller, &app_id.to_string(), req)
-        .await
-        .map_policy_or_internal("update app")?
-        .ok_or_not_found_json("App")?;
+    let app = crate::domains::apps::UpdateAppCmd { id: app_id, req }
+        .execute(&state.ctx(&org))
+        .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(app)))
@@ -328,22 +320,10 @@ pub async fn delete_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let app_id: AppId = app_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .delete(&caller, &app_id.to_string())
-        .await
-        .map_policy_or_internal("delete app")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))
-    }
+    crate::domains::apps::DeleteApp { id: app_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn destroy_app(
@@ -351,22 +331,10 @@ pub async fn destroy_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let app_id: AppId = app_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .destroy(&caller, &app_id.to_string())
-        .await
-        .map_policy_or_internal("destroy app")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))
-    }
+    crate::domains::apps::DestroyApp { id: app_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /v1/apps/{app_id}/publish - Publish app (start accepting requests)
@@ -387,17 +355,9 @@ pub async fn publish_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
 ) -> ApiResult<WithUrls<App>> {
-    let app_id: AppId = app_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let app = state
-        .service
-        .publish(&caller, &app_id.to_string())
-        .await
-        .map_policy_or_internal("publish app")?
-        .ok_or_not_found_json("App")?;
+    let app = crate::domains::apps::PublishApp { id: app_id }
+        .execute(&state.ctx(&org))
+        .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(app)))
@@ -421,17 +381,9 @@ pub async fn unpublish_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
 ) -> ApiResult<WithUrls<App>> {
-    let app_id: AppId = app_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let app = state
-        .service
-        .unpublish(&caller, &app_id.to_string())
-        .await
-        .map_policy_or_internal("unpublish app")?
-        .ok_or_not_found_json("App")?;
+    let app = crate::domains::apps::UnpublishApp { id: app_id }
+        .execute(&state.ctx(&org))
+        .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(app)))
@@ -448,17 +400,9 @@ pub async fn add_channel(
     Path(app_id): Path<String>,
     Json(req): Json<AddChannelRequest>,
 ) -> Result<(StatusCode, Json<AppChannel>), (StatusCode, Json<ErrorResponse>)> {
-    let app_id: AppId = app_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let channel: AppChannel = state
-        .service
-        .add_channel(&caller, &app_id.to_string(), req)
-        .await
-        .map_policy_or_internal("add channel")?;
-
+    let channel = crate::domains::apps::AddChannel { app_id, req }
+        .execute(&state.ctx(&org))
+        .await?;
     Ok((StatusCode::CREATED, Json(channel)))
 }
 
@@ -469,18 +413,13 @@ pub async fn update_channel(
     Path((app_id, channel_id)): Path<(String, String)>,
     Json(req): Json<UpdateChannelRequest>,
 ) -> ApiResult<AppChannel> {
-    let app_id: AppId = app_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let channel: AppChannel = state
-        .service
-        .update_channel(&caller, &app_id.to_string(), &channel_id, req)
-        .await
-        .map_policy_or_internal("update channel")?
-        .ok_or_not_found_json("Channel")?;
-
+    let channel = crate::domains::apps::UpdateChannelCmd {
+        app_id,
+        channel_id,
+        req,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
     Ok(Json(channel))
 }
 
@@ -490,22 +429,10 @@ pub async fn delete_channel(
     State(state): State<AppState>,
     Path((app_id, channel_id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let app_id: AppId = app_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid app ID: {}", e)).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .delete_channel(&caller, &app_id.to_string(), &channel_id)
-        .await
-        .map_policy_or_internal("delete channel")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::new("Channel not found").into_response(StatusCode::NOT_FOUND))
-    }
+    crate::domains::apps::DeleteChannel { app_id, channel_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]

@@ -3,9 +3,8 @@
 // Policy enforcement happens at the service layer via #[policy] macro.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::harness::{
-    HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW, merge_preview_layer, resolve_effective_harness,
-};
+use crate::domains::common::Command;
+use crate::services::harness::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -20,11 +19,7 @@ use everruns_core::{
 };
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
-    impl_auth_state,
-};
-use super::validation::{
-    validate_create_agent_input, validate_harness_name_strict, validate_update_agent_input,
+    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -155,6 +150,7 @@ pub struct CheckNameResponse {
 /// App state for harness routes
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub service: Arc<HarnessService>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
@@ -167,10 +163,21 @@ impl AppState {
         auth: AuthState,
     ) -> Self {
         Self {
-            service: Arc::new(HarnessService::new(db)),
+            service: Arc::new(HarnessService::new(db.clone())),
+            db,
             capability_service,
             auth,
         }
+    }
+
+    /// Build a domain Ctx from this AppState for the given org.
+    pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx::new(
+            Caller::from(org),
+            self.db.clone(),
+            self.capability_service.clone(),
+            None,
+        )
     }
 }
 
@@ -239,34 +246,14 @@ pub async fn check_harness_name(
     State(state): State<AppState>,
     Query(query): Query<CheckNameQuery>,
 ) -> Result<Json<CheckNameResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Validate format first — if the name is invalid, it's not "available"
-    if validate_harness_name_strict(&query.name).is_err() {
-        return Ok(Json(CheckNameResponse { available: false }));
+    let result = crate::domains::harnesses::CheckHarnessName {
+        name: query.name,
+        exclude_id: query.exclude_id,
     }
-
-    let exclude_id = query
-        .exclude_id
-        .as_deref()
-        .map(|id| id.parse::<HarnessId>())
-        .transpose()
-        .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: format!("Invalid exclude_id: {}", e),
-                }),
-            )
-        })?;
-
-    let caller = Caller::from(&org);
-    let existing = state
-        .service
-        .check_name_available(&caller, &query.name, exclude_id)
-        .await
-        .map_policy_or_internal("check harness name")?;
-
+    .execute(&state.ctx(&org))
+    .await?;
     Ok(Json(CheckNameResponse {
-        available: existing,
+        available: result.available,
     }))
 }
 
@@ -288,24 +275,9 @@ pub async fn create_harness(
     State(state): State<AppState>,
     Json(req): Json<CreateHarnessRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Harness>>), (StatusCode, Json<ErrorResponse>)> {
-    validate_harness_name_strict(&req.name)?;
-    // Reuse agent validation for display_name and other fields
-    validate_create_agent_input(
-        &req.name,
-        req.display_name.as_deref(),
-        req.description.as_deref(),
-        &req.system_prompt,
-        req.capabilities.len(),
-        &req.initial_files,
-    )?;
-
-    let caller = Caller::from(&org);
-    let harness = state
-        .service
-        .create(&caller, req)
-        .await
-        .map_policy_or_internal("create harness")?;
-
+    let harness = crate::domains::harnesses::CreateHarness(req)
+        .execute(&state.ctx(&org))
+        .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(urls.wrap(harness))))
 }
@@ -327,16 +299,12 @@ pub async fn list_harnesses(
     State(state): State<AppState>,
     Query(query): Query<ListHarnessesQuery>,
 ) -> ApiResult<ListResponse<WithUrls<Harness>>> {
-    let caller = Caller::from(&org);
-    let harnesses = state
-        .service
-        .list(
-            &caller,
-            query.search.as_deref(),
-            query.include_archived.unwrap_or(false),
-        )
-        .await
-        .map_policy_or_internal("list harnesses")?;
+    let harnesses = crate::domains::harnesses::ListHarnesses {
+        search: query.search,
+        include_archived: query.include_archived.unwrap_or(false),
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(ListResponse::new(harnesses).with_urls(&urls)))
@@ -366,27 +334,12 @@ pub async fn get_harness(
     State(state): State<AppState>,
     Path(harness_id_or_name): Path<String>,
 ) -> ApiResult<WithUrls<Harness>> {
-    let caller = Caller::from(&org);
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-
-    // Try parsing as a prefixed ID first; fall back to name lookup.
-    if let Ok(harness_id) = harness_id_or_name.parse::<HarnessId>() {
-        let harness = state
-            .service
-            .get(&caller, harness_id.uuid())
-            .await
-            .map_policy_or_internal("get harness")?
-            .ok_or_not_found_json("Harness")?;
-        return Ok(Json(urls.wrap(harness)));
+    let harness = crate::domains::harnesses::GetHarness {
+        id: harness_id_or_name,
     }
-
-    let harness = state
-        .service
-        .get_by_name_or_alias(&caller, &harness_id_or_name)
-        .await
-        .map_policy_or_internal("get harness by name")?
-        .ok_or_not_found_json("Harness")?;
-
+    .execute(&state.ctx(&org))
+    .await?;
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(harness)))
 }
 
@@ -413,35 +366,12 @@ pub async fn update_harness(
     Path(harness_id): Path<String>,
     Json(req): Json<UpdateHarnessRequest>,
 ) -> ApiResult<WithUrls<Harness>> {
-    let harness_id: HarnessId = harness_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid harness ID: {}", e),
-            }),
-        )
-    })?;
-
-    if let Some(ref name) = req.name {
-        validate_harness_name_strict(name)?;
+    let harness = crate::domains::harnesses::UpdateHarnessCmd {
+        id: harness_id,
+        req,
     }
-    // Reuse agent validation for display_name and other fields
-    validate_update_agent_input(
-        req.display_name.as_deref(),
-        req.description.as_deref(),
-        req.system_prompt.as_deref(),
-        req.capabilities.as_ref().map(|c| c.len()),
-        req.initial_files.as_deref(),
-    )?;
-
-    let caller = Caller::from(&org);
-    let harness = state
-        .service
-        .update(&caller, harness_id.uuid(), req)
-        .await
-        .map_policy_or_internal("update harness")?
-        .ok_or_not_found_json("Harness")?;
-
+    .execute(&state.ctx(&org))
+    .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(harness)))
 }
@@ -467,32 +397,10 @@ pub async fn delete_harness(
     State(state): State<AppState>,
     Path(harness_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let harness_id: HarnessId = harness_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid harness ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .delete(&caller, harness_id.uuid())
-        .await
-        .map_policy_or_internal("delete harness")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Harness not found".to_string(),
-            }),
-        ))
-    }
+    crate::domains::harnesses::DeleteHarness { id: harness_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn destroy_harness(
@@ -500,32 +408,10 @@ pub async fn destroy_harness(
     State(state): State<AppState>,
     Path(harness_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let harness_id: HarnessId = harness_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid harness ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .destroy(&caller, harness_id.uuid())
-        .await
-        .map_policy_or_internal("destroy harness")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Harness not found".to_string(),
-            }),
-        ))
-    }
+    crate::domains::harnesses::DestroyHarness { id: harness_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /v1/harnesses/{harness_id}/copy - Copy a harness
@@ -552,23 +438,9 @@ pub async fn copy_harness(
     State(state): State<AppState>,
     Path(harness_id): Path<String>,
 ) -> Result<(StatusCode, Json<WithUrls<Harness>>), (StatusCode, Json<ErrorResponse>)> {
-    let harness_id: HarnessId = harness_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid harness ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let harness = state
-        .service
-        .copy(&caller, harness_id.uuid())
-        .await
-        .map_policy_or_internal("copy harness")?
-        .ok_or_not_found_json("Harness")?;
-
+    let harness = crate::domains::harnesses::CopyHarness { id: harness_id }
+        .execute(&state.ctx(&org))
+        .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(urls.wrap(harness))))
 }
@@ -589,36 +461,16 @@ pub async fn preview_harness(
     State(state): State<AppState>,
     Json(req): Json<PreviewHarnessRequest>,
 ) -> ApiResult<HarnessPreviewResponse> {
-    let parent = match req.parent_harness_id {
-        Some(parent_harness_id) => Some(
-            resolve_effective_harness(state.service.db().as_ref(), org.org_id, parent_harness_id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to resolve harness preview parent: {}", e);
-                    ErrorResponse::new("Internal server error")
-                        .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-                })?
-                .ok_or_else(|| {
-                    ErrorResponse::new("Parent harness not found")
-                        .into_response(StatusCode::NOT_FOUND)
-                })?,
-        ),
-        None => None,
-    };
-    let (system_prompt, capabilities) =
-        merge_preview_layer(parent.as_ref(), &req.system_prompt, &req.capabilities);
-    let (system_prompt, tools) = state
-        .capability_service
-        .preview(org.org_id, &system_prompt, &capabilities)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to generate harness preview: {}", e);
-            ErrorResponse::new("Internal server error")
-                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-        })?;
+    let result = crate::domains::harnesses::PreviewHarness {
+        system_prompt: Some(req.system_prompt),
+        parent_harness_id: req.parent_harness_id,
+        capabilities: req.capabilities,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     Ok(Json(HarnessPreviewResponse {
-        system_prompt,
-        tools,
+        system_prompt: result.system_prompt,
+        tools: result.tools,
     }))
 }

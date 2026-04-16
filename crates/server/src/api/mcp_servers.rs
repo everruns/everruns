@@ -4,7 +4,8 @@
 // Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (API endpoints)
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::McpServerService;
+use crate::domains::common::Command;
+use crate::services::CapabilityService;
 use crate::services::mcp_server::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -13,15 +14,13 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::typed_id::McpServerId;
 use everruns_core::{
     Caller, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
-    ResourceConfigResponse, evaluate_policies_with, validate_safe_url,
+    ResourceConfigResponse, evaluate_policies_with,
 };
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
-    impl_auth_state,
+    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -113,7 +112,9 @@ pub struct McpServerConfigResponse {
 /// App state for MCP servers routes
 #[derive(Clone)]
 pub struct AppState {
-    pub service: Arc<McpServerService>,
+    pub db: Arc<StorageBackend>,
+    pub encryption: Option<Arc<EncryptionService>>,
+    pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
 }
 
@@ -121,12 +122,25 @@ impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
+        capability_service: Arc<CapabilityService>,
         auth: AuthState,
     ) -> Self {
         Self {
-            service: Arc::new(McpServerService::new(db, encryption)),
+            db,
+            encryption,
+            capability_service,
             auth,
         }
+    }
+
+    /// Build a domain Ctx from this AppState for the given org.
+    pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx::new(
+            Caller::from(org),
+            self.db.clone(),
+            self.capability_service.clone(),
+            self.encryption.clone(),
+        )
     }
 }
 
@@ -194,30 +208,9 @@ pub async fn create_mcp_server(
     State(state): State<AppState>,
     Json(req): Json<CreateMcpServerRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<McpServer>>), (StatusCode, Json<ErrorResponse>)> {
-    // Validate name is not empty
-    if req.name.trim().is_empty() {
-        return Err(
-            ErrorResponse::new("Name cannot be empty").into_response(StatusCode::BAD_REQUEST)
-        );
-    }
-
-    // Validate URL: non-empty, safe scheme, no private/internal targets (SSRF)
-    if req.url.trim().is_empty() {
-        return Err(
-            ErrorResponse::new("URL cannot be empty").into_response(StatusCode::BAD_REQUEST)
-        );
-    }
-    validate_safe_url(&req.url).map_err(|e| {
-        ErrorResponse::new(format!("Invalid MCP server URL: {e}"))
-            .into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let caller = Caller::from(&org);
-    let server = state
-        .service
-        .create(&caller, req)
-        .await
-        .map_policy_or_internal("create MCP server")?;
+    let server = crate::domains::mcp_servers::CreateMcpServer(req)
+        .execute(&state.ctx(&org))
+        .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(urls.wrap(server))))
@@ -239,16 +232,12 @@ pub async fn list_mcp_servers(
     State(state): State<AppState>,
     Query(query): Query<ListMcpServersQuery>,
 ) -> ApiResult<ListResponse<WithUrls<McpServer>>> {
-    let caller = Caller::from(&org);
-    let servers = state
-        .service
-        .list(
-            &caller,
-            query.search.as_deref(),
-            query.include_archived.unwrap_or(false),
-        )
-        .await
-        .map_policy_or_internal("list MCP servers")?;
+    let servers = crate::domains::mcp_servers::ListMcpServers {
+        search: query.search,
+        include_archived: query.include_archived.unwrap_or(false),
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(ListResponse::new(servers).with_urls(&urls)))
@@ -274,22 +263,9 @@ pub async fn get_mcp_server(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
 ) -> ApiResult<WithUrls<McpServer>> {
-    let server_id: McpServerId = server_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid server ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let server = state
-        .service
-        .get(&caller, server_id.uuid())
-        .await
-        .map_policy_or_internal("get MCP server")?
-        .ok_or_not_found_json("MCP server")?;
+    let server = crate::domains::mcp_servers::GetMcpServer { id: server_id }
+        .execute(&state.ctx(&org))
+        .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(server)))
@@ -317,44 +293,9 @@ pub async fn update_mcp_server(
     Path(server_id): Path<String>,
     Json(req): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<WithUrls<McpServer>> {
-    let server_id: McpServerId = server_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid server ID: {}", e),
-            }),
-        )
-    })?;
-
-    // Validate name if provided
-    if let Some(ref name) = req.name
-        && name.trim().is_empty()
-    {
-        return Err(
-            ErrorResponse::new("Name cannot be empty").into_response(StatusCode::BAD_REQUEST)
-        );
-    }
-
-    // Validate URL if provided: non-empty, safe scheme, no private/internal targets (SSRF)
-    if let Some(ref url) = req.url {
-        if url.trim().is_empty() {
-            return Err(
-                ErrorResponse::new("URL cannot be empty").into_response(StatusCode::BAD_REQUEST)
-            );
-        }
-        validate_safe_url(url).map_err(|e| {
-            ErrorResponse::new(format!("Invalid MCP server URL: {e}"))
-                .into_response(StatusCode::BAD_REQUEST)
-        })?;
-    }
-
-    let caller = Caller::from(&org);
-    let server = state
-        .service
-        .update(&caller, server_id.uuid(), req)
-        .await
-        .map_policy_or_internal("update MCP server")?
-        .ok_or_not_found_json("MCP server")?;
+    let server = crate::domains::mcp_servers::UpdateMcpServerCmd { id: server_id, req }
+        .execute(&state.ctx(&org))
+        .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(server)))
@@ -380,32 +321,10 @@ pub async fn delete_mcp_server(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let server_id: McpServerId = server_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid server ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .delete(&caller, server_id.uuid())
-        .await
-        .map_policy_or_internal("delete MCP server")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "MCP server not found".to_string(),
-            }),
-        ))
-    }
+    crate::domains::mcp_servers::DeleteMcpServer { id: server_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn destroy_mcp_server(
@@ -413,27 +332,10 @@ pub async fn destroy_mcp_server(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let server_id: McpServerId = server_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid server ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .destroy(&caller, server_id.uuid())
-        .await
-        .map_policy_or_internal("destroy MCP server")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::new("MCP server not found").into_response(StatusCode::NOT_FOUND))
-    }
+    crate::domains::mcp_servers::DestroyMcpServer { id: server_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]
