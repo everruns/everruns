@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { Sidebar } from "@/components/layout/sidebar";
 import type { SidebarConfig, NavigationSection } from "@/components/layout/sidebar";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Settings, Zap } from "lucide-react";
 
 // Mock next/navigation
@@ -370,6 +371,37 @@ describe("Sidebar with config", () => {
     expect(screen.queryByText("Create a new organisation")).not.toBeInTheDocument();
     // The org selector trigger should still render
     expect(screen.getByText("Test Org")).toBeInTheDocument();
+  });
+
+  it("appends custom profile menu items when config.profileMenu.items is provided", () => {
+    mockUseAuth.mockReturnValue({
+      user: { name: "Test User", email: "test@example.com", avatar_url: null },
+      requiresAuth: true,
+      isAuthenticated: true,
+      config: { mode: "password" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+
+    const config: Partial<SidebarConfig> = {
+      profileMenu: {
+        items: ({ navigate }) => (
+          <DropdownMenuItem onClick={() => navigate("/billing")}>Billing</DropdownMenuItem>
+        ),
+      },
+    };
+
+    render(<Sidebar config={config} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+
+    const billingItem = screen.getByText("Billing");
+    expect(billingItem).toBeInTheDocument();
+
+    fireEvent.click(billingItem);
+    expect(mockPush).toHaveBeenCalledWith("/billing");
   });
 
   it("renders sections without labels (unlabeled sections)", () => {
