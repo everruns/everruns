@@ -1,9 +1,9 @@
 // Agent management commands
 //
-// Design Decision: When --file is provided, send raw content to the server's
-// import API (POST /v1/agents/import) which handles YAML/JSON/Markdown parsing.
-// --initial-files-dir injects files from a local directory into the payload
-// before sending, so the server receives them as initial_files.
+// Design Decision: Most file formats are forwarded to the server import API
+// unchanged, but TOML is normalized client-side into JSON because the server
+// import endpoint only parses Markdown/YAML/JSON today. The CLI also parses any
+// agent file locally when it needs to inject initial_files.
 
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
@@ -12,11 +12,13 @@ use everruns_sdk::{CreateAgentRequest, Everruns};
 use serde::Deserialize;
 use std::path::Path;
 
+const DEFAULT_AGENT_FILE_NAME: &str = "agent.toml";
+
 #[derive(Subcommand)]
 pub enum AgentsCommand {
     /// Create a new agent (upserts if id: is present in frontmatter)
     Create {
-        /// YAML/JSON/Markdown file with agent definition (sent to server for parsing)
+        /// TOML/YAML/JSON/Markdown file with agent definition
         #[arg(short, long)]
         file: Option<String>,
 
@@ -54,7 +56,7 @@ pub enum AgentsCommand {
         /// Agent ID (e.g. agent_xxx). If omitted, uses id from file frontmatter.
         agent_id: Option<String>,
 
-        /// YAML/JSON/Markdown file with agent definition (sent to server for parsing)
+        /// TOML/YAML/JSON/Markdown file with agent definition
         #[arg(short, long)]
         file: Option<String>,
 
@@ -129,6 +131,12 @@ pub async fn run(
             model,
             tag,
         } => {
+            let use_default_file = name.is_none()
+                && system_prompt.is_none()
+                && description.is_none()
+                && model.is_none()
+                && tag.is_empty();
+            let file = resolve_agent_file(file, use_default_file);
             if let Some(path) = file {
                 if name.is_some()
                     || system_prompt.is_some()
@@ -176,6 +184,13 @@ pub async fn run(
             model,
             tag,
         } => {
+            let use_default_file = agent_id.is_none()
+                && name.is_none()
+                && system_prompt.is_none()
+                && description.is_none()
+                && model.is_none()
+                && tag.is_empty();
+            let file = resolve_agent_file(file, use_default_file);
             if let Some(path) = file {
                 if agent_id.is_some()
                     || name.is_some()
@@ -223,7 +238,7 @@ pub async fn run(
 }
 
 /// Import agent from file via server import API.
-/// Server handles YAML/JSON/Markdown parsing.
+/// The CLI normalizes TOML into JSON before calling the server import API.
 /// When initial_files_dir is provided, files are globbed and injected into the
 /// payload as initial_files before sending.
 async fn import_from_file(
@@ -235,6 +250,7 @@ async fn import_from_file(
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
+    let file_path = Path::new(path);
     let content =
         std::fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path))?;
 
@@ -245,20 +261,28 @@ async fn import_from_file(
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-    // If --initial-files-dir is provided, parse the agent file, inject the files,
-    // and send as JSON so the server receives initial_files in the payload.
-    // Also parse when initial_files contains glob patterns (strings) in frontmatter.
-    let (body, content_type) = if let Some(dir) = initial_files_dir {
-        let files = glob_initial_files(dir, writable)?;
-        let mut agent: serde_json::Value =
-            parse_agent_file_as_json(&content).context("Failed to parse agent file")?;
-        agent["initial_files"] = serde_json::to_value(&files)?;
-        (serde_json::to_string(&agent)?, "application/json")
-    } else if has_initial_files_globs(&content) {
-        let mut agent: serde_json::Value =
-            parse_agent_file_as_json(&content).context("Failed to parse agent file")?;
-        let files = expand_initial_files_globs(&agent, &file_dir, writable)?;
-        agent["initial_files"] = serde_json::to_value(&files)?;
+    // Parse once when possible so TOML conversion and initial_files inspection
+    // don't duplicate work before we build the request body.
+    let parsed_agent = parse_agent_file_as_json(file_path, &content).ok();
+    let has_glob_initial_files = parsed_agent.as_ref().is_some_and(initial_files_has_globs);
+    let should_send_json =
+        initial_files_dir.is_some() || has_glob_initial_files || is_toml_agent_file(file_path);
+
+    let (body, content_type) = if should_send_json {
+        let mut agent = if let Some(agent) = parsed_agent {
+            agent
+        } else {
+            parse_agent_file_as_json(file_path, &content).context("Failed to parse agent file")?
+        };
+
+        if let Some(dir) = initial_files_dir {
+            let files = glob_initial_files(dir, writable)?;
+            agent["initial_files"] = serde_json::to_value(&files)?;
+        } else if has_glob_initial_files {
+            let files = expand_initial_files_globs(&agent, &file_dir, writable)?;
+            agent["initial_files"] = serde_json::to_value(&files)?;
+        }
+
         (serde_json::to_string(&agent)?, "application/json")
     } else {
         (content, "text/plain")
@@ -305,6 +329,16 @@ async fn import_from_file(
     }
 
     Ok(())
+}
+
+fn resolve_agent_file(file: Option<String>, use_default: bool) -> Option<String> {
+    file.or_else(|| {
+        if use_default && Path::new(DEFAULT_AGENT_FILE_NAME).is_file() {
+            Some(DEFAULT_AGENT_FILE_NAME.to_string())
+        } else {
+            None
+        }
+    })
 }
 
 /// Represents a file to be uploaded as an initial file for an agent.
@@ -417,15 +451,17 @@ fn glob_initial_files(dir: &str, writable: bool) -> Result<Vec<CollectedFile>> {
 
 /// Quick check whether parsed initial_files contains glob patterns (strings)
 /// rather than fully-specified InitialFile objects.
-fn has_initial_files_globs(content: &str) -> bool {
-    // Fast-path: parse just enough to detect string entries in initial_files.
-    let Ok(agent) = parse_agent_file_as_json(content) else {
-        return false;
-    };
+fn initial_files_has_globs(agent: &serde_json::Value) -> bool {
     let Some(arr) = agent.get("initial_files").and_then(|v| v.as_array()) else {
         return false;
     };
     arr.iter().any(|v| v.is_string())
+}
+
+fn is_toml_agent_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
 }
 
 /// Check if a path component is a hidden/dot entry that should be skipped.
@@ -655,10 +691,10 @@ fn collect_single_file(
     Ok(())
 }
 
-/// Parse agent file content (Markdown/YAML/JSON) into a JSON Value.
+/// Parse agent file content (Markdown/TOML/YAML/JSON) into a JSON Value.
 /// This is minimal parsing to allow injecting initial_files before sending
 /// to the server import API.
-fn parse_agent_file_as_json(content: &str) -> Result<serde_json::Value> {
+fn parse_agent_file_as_json(path: &Path, content: &str) -> Result<serde_json::Value> {
     let content = content.trim();
 
     // Markdown with front matter: require `---` delimiters on their own lines
@@ -708,6 +744,15 @@ fn parse_agent_file_as_json(content: &str) -> Result<serde_json::Value> {
     // JSON
     if content.starts_with('{') {
         return serde_json::from_str(content).context("Failed to parse JSON");
+    }
+
+    if is_toml_agent_file(path) {
+        let val: toml::Value = toml::from_str(content).context("Failed to parse TOML")?;
+        let val = serde_json::to_value(val).context("Failed to convert TOML to JSON")?;
+        if !val.is_object() {
+            anyhow::bail!("Agent file must be a TOML object");
+        }
+        return Ok(val);
     }
 
     // YAML
@@ -904,7 +949,7 @@ mod tests {
     #[test]
     fn test_parse_agent_file_json() {
         let content = r#"{"name":"test","system_prompt":"hello"}"#;
-        let val = parse_agent_file_as_json(content).unwrap();
+        let val = parse_agent_file_as_json(Path::new("agent.json"), content).unwrap();
         assert_eq!(val["name"], "test");
         assert_eq!(val["system_prompt"], "hello");
     }
@@ -912,7 +957,15 @@ mod tests {
     #[test]
     fn test_parse_agent_file_yaml() {
         let content = "name: test\nsystem_prompt: hello\n";
-        let val = parse_agent_file_as_json(content).unwrap();
+        let val = parse_agent_file_as_json(Path::new("agent.yaml"), content).unwrap();
+        assert_eq!(val["name"], "test");
+        assert_eq!(val["system_prompt"], "hello");
+    }
+
+    #[test]
+    fn test_parse_agent_file_toml() {
+        let content = "name = \"test\"\nsystem_prompt = \"hello\"\n";
+        let val = parse_agent_file_as_json(Path::new("agent.toml"), content).unwrap();
         assert_eq!(val["name"], "test");
         assert_eq!(val["system_prompt"], "hello");
     }
@@ -920,7 +973,7 @@ mod tests {
     #[test]
     fn test_parse_agent_file_markdown() {
         let content = "---\nname: test\n---\nHello world";
-        let val = parse_agent_file_as_json(content).unwrap();
+        let val = parse_agent_file_as_json(Path::new("agent.md"), content).unwrap();
         assert_eq!(val["name"], "test");
         assert_eq!(val["system_prompt"], "Hello world");
     }
@@ -928,7 +981,7 @@ mod tests {
     #[test]
     fn test_parse_agent_file_markdown_with_system_prompt() {
         let content = "---\nname: test\nsystem_prompt: from frontmatter\n---\nBody text";
-        let val = parse_agent_file_as_json(content).unwrap();
+        let val = parse_agent_file_as_json(Path::new("agent.md"), content).unwrap();
         assert_eq!(val["name"], "test");
         // Frontmatter system_prompt takes precedence
         assert_eq!(val["system_prompt"], "from frontmatter");
@@ -1022,25 +1075,35 @@ mod tests {
     #[test]
     fn test_parse_agent_file_non_object_errors() {
         let content = "just a string";
-        let result = parse_agent_file_as_json(content);
+        let result = parse_agent_file_as_json(Path::new("agent.yaml"), content);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_has_initial_files_globs_with_strings() {
         let content = "---\nname: test\ninitial_files:\n  - .\n  - .agents/*\n---\nPrompt";
-        assert!(has_initial_files_globs(content));
+        let agent = parse_agent_file_as_json(Path::new("agent.md"), content).unwrap();
+        assert!(initial_files_has_globs(&agent));
     }
 
     #[test]
     fn test_has_initial_files_globs_without_strings() {
         // No initial_files at all
         let content = "---\nname: test\n---\nPrompt";
-        assert!(!has_initial_files_globs(content));
+        let agent = parse_agent_file_as_json(Path::new("agent.md"), content).unwrap();
+        assert!(!initial_files_has_globs(&agent));
 
         // initial_files with objects (already expanded)
         let content = r#"{"name":"test","initial_files":[{"path":"/workspace/f.txt","content":"x","encoding":"text","is_readonly":false}]}"#;
-        assert!(!has_initial_files_globs(content));
+        let agent = parse_agent_file_as_json(Path::new("agent.json"), content).unwrap();
+        assert!(!initial_files_has_globs(&agent));
+    }
+
+    #[test]
+    fn test_has_initial_files_globs_toml() {
+        let content = "name = \"test\"\ninitial_files = [\".\", \".agents/*\"]\n";
+        let agent = parse_agent_file_as_json(Path::new("agent.toml"), content).unwrap();
+        assert!(initial_files_has_globs(&agent));
     }
 
     #[test]
