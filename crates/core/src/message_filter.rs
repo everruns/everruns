@@ -404,7 +404,7 @@ impl MessageQuery {
         }
 
         // Sort index injections by index (descending) to avoid index shifts affecting later insertions
-        index_injections.sort_by(|a, b| b.0.cmp(&a.0));
+        index_injections.sort_by_key(|entry| std::cmp::Reverse(entry.0));
 
         for (idx, is_before, msg) in index_injections {
             let insert_idx = if is_before {

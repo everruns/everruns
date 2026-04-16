@@ -63,7 +63,7 @@ impl InMemoryDatabase {
             .filter(|r| r.org_id == org_id && r.session_id == session_id)
             .cloned()
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|schedule| std::cmp::Reverse(schedule.created_at));
         Ok(result)
     }
 
@@ -128,7 +128,7 @@ impl InMemoryDatabase {
             .filter(|r| r.enabled && r.next_trigger_at.is_some_and(|t| t <= now))
             .cloned()
             .collect();
-        due.sort_by(|a, b| a.next_trigger_at.cmp(&b.next_trigger_at));
+        due.sort_by_key(|schedule| schedule.next_trigger_at);
         due.truncate(limit as usize);
         Ok(due)
     }
@@ -232,7 +232,7 @@ impl InMemoryDatabase {
             .filter(|row| row.session_id == Some(session_id))
             .cloned()
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|execution| std::cmp::Reverse(execution.created_at));
         Ok(result)
     }
 

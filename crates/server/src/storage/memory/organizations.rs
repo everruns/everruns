@@ -134,7 +134,7 @@ impl InMemoryDatabase {
     pub async fn list_organizations(&self) -> Result<Vec<OrganizationRow>> {
         let orgs = self.organizations.read();
         let mut result: Vec<_> = orgs.values().cloned().collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|organization| std::cmp::Reverse(organization.created_at));
         Ok(result)
     }
 
@@ -199,7 +199,7 @@ impl InMemoryDatabase {
             .filter(|m| m.org_id == org_id)
             .cloned()
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|invitation| std::cmp::Reverse(invitation.created_at));
         Ok(result)
     }
 
@@ -225,7 +225,7 @@ impl InMemoryDatabase {
                     })
             })
             .collect();
-        result.sort_by(|a, b| a.joined_at.cmp(&b.joined_at));
+        result.sort_by_key(|membership| membership.joined_at);
         Ok(result)
     }
 

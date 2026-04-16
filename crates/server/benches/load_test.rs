@@ -428,7 +428,7 @@ impl CheckpointStore {
         }
 
         // Sort by timestamp (newest first)
-        checkpoints.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        checkpoints.sort_by_key(|checkpoint| std::cmp::Reverse(checkpoint.timestamp));
         checkpoints.truncate(limit);
 
         Ok(checkpoints)

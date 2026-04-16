@@ -93,7 +93,7 @@ impl InMemoryDatabase {
                 created_at: img.created_at,
             })
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|skill| std::cmp::Reverse(skill.created_at));
         let result = result
             .into_iter()
             .skip(offset as usize)
@@ -184,7 +184,7 @@ impl InMemoryDatabase {
             .filter(|s| matches_search_tokens(search, &[&s.name, &s.description]))
             .cloned()
             .collect();
-        skills.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        skills.sort_by_key(|skill| std::cmp::Reverse(skill.created_at));
         Ok(skills)
     }
 

@@ -72,7 +72,7 @@ impl InMemoryDatabase {
             })
             .cloned()
             .collect();
-        rows.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        rows.sort_by_key(|row| std::cmp::Reverse(row.created_at));
         Ok(rows)
     }
 

@@ -123,7 +123,7 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
 
 # Everruns SDK
-everruns-sdk = "0.1.7"
+everruns-sdk = "0.1.8"
 
 # gRPC (tonic)
 tonic = { version = "0.14", features = ["tls-ring"] }

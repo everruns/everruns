@@ -163,7 +163,7 @@ impl InMemoryDatabase {
             })
             .cloned()
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|agent| std::cmp::Reverse(agent.created_at));
 
         let total = result.len() as u32;
         let offset = pagination.offset as usize;

@@ -39,7 +39,7 @@ impl InMemoryDatabase {
             .filter(|ch| ch.app_id == app_id)
             .cloned()
             .collect();
-        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        result.sort_by_key(|channel| channel.created_at);
         Ok(result)
     }
 

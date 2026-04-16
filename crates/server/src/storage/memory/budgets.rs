@@ -55,7 +55,7 @@ impl InMemoryDatabase {
             })
             .cloned()
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|budget| std::cmp::Reverse(budget.created_at));
         result.truncate(200);
         Ok(result)
     }
@@ -185,7 +185,7 @@ impl InMemoryDatabase {
             .filter(|e| e.budget_id == budget_id)
             .cloned()
             .collect();
-        entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.created_at));
         let result = entries
             .into_iter()
             .skip(offset as usize)

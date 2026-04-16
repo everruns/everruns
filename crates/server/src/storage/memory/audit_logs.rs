@@ -46,7 +46,7 @@ impl InMemoryDatabase {
             })
             .cloned()
             .collect();
-        filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        filtered.sort_by_key(|entry| std::cmp::Reverse(entry.created_at));
         filtered.truncate(query.limit as usize);
         Ok(filtered)
     }

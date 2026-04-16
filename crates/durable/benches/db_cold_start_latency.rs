@@ -446,11 +446,9 @@ fn parse_args() -> CliOptions {
     while i < args.len() {
         match args[i].as_str() {
             "--save" => opts.save_checkpoint = true,
-            "--moniker" => {
-                if i + 1 < args.len() {
-                    opts.moniker = Some(args[i + 1].clone());
-                    i += 1;
-                }
+            "--moniker" if i + 1 < args.len() => {
+                opts.moniker = Some(args[i + 1].clone());
+                i += 1;
             }
             _ => {}
         }

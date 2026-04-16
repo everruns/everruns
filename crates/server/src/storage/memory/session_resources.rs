@@ -82,7 +82,7 @@ impl InMemoryDatabase {
             })
             .cloned()
             .collect();
-        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        result.sort_by_key(|resource| resource.created_at);
         Ok(result)
     }
 

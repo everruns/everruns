@@ -182,11 +182,11 @@ impl LatencyHistogramSnapshot {
 
         LatencySummary {
             count: self.count,
-            mean: if self.count == 0 {
-                Duration::ZERO
-            } else {
-                Duration::from_micros(self.sum_micros / self.count)
-            },
+            mean: self
+                .sum_micros
+                .checked_div(self.count)
+                .map(Duration::from_micros)
+                .unwrap_or(Duration::ZERO),
             min: if self.min_micros == u64::MAX {
                 Duration::ZERO
             } else {
