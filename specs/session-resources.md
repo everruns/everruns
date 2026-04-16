@@ -42,6 +42,7 @@ rather than duplicate.
 | Sandbox (Daytona, E2B, Deno) | `LeasedResourceStore.upsert_resource` | `sandbox`         | Leased resource public ID  |
 | Browser (Browserless)        | `LeasedResourceStore.upsert_resource` | `browser_session` | Leased resource public ID  |
 | Subagents                    | `spawn_subagent` tool                 | `subagent`        | Child session public ID    |
+| Background tool runs         | `spawn_background` tool              | `background_run`  | Generated background run ID |
 | Sprites                      | `LeasedResourceStore.upsert_resource` | `sprite`          | Leased resource public ID  |
 | *(future)*                   | Direct `registry.register()`          | *(any string)*    | Caller-defined             |
 
@@ -58,6 +59,27 @@ In-memory: `HashMap<SessionId, HashMap<String, SessionResourceEntry>>`.
 Agents query via the registry through `ToolContext.session_resource_registry`.
 Capabilities or tools can call `registry.list()` to answer "what is running?".
 Infrastructure cleanup workers scan the registry to find stale resources.
+
+### Background runs
+
+Background tool runs are session resources, not leased resources.
+
+Properties:
+- They are registered immediately when `spawn_background` accepts the run.
+- They remain visible while active and are updated in-place as status, output tail, or progress changes.
+- Metadata may include:
+  - `tool`
+  - `status_text`
+  - `progress`
+  - `output_tail`
+  - `log_path`
+  - `result_path`
+  - `summary`
+- Final logs and result payloads live in the session VFS under `/.background/{run_id}/`.
+
+V1 limitation:
+- The registry gives visibility only. It does not make background runs durable or restartable.
+- If a worker dies, the registry entry may remain until cleanup logic or a later reconciliation marks it failed.
 
 ### API
 

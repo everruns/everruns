@@ -176,6 +176,8 @@ where
     session_resource_registry: Option<Arc<dyn crate::traits::SessionResourceRegistry>>,
     /// Optional capability registry for blueprint lookups in subagent tools
     capability_registry: Option<crate::capabilities::CapabilityRegistry>,
+    /// Optional built-in tool registry for meta-tools that delegate to sibling tools.
+    tool_registry: Option<Arc<crate::tools::ToolRegistry>>,
     /// Optional memory store backend for persistent cross-session memory.
     memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
     /// Optional org ID for org-scoped operations.
@@ -217,6 +219,7 @@ where
             leased_resource_store: None,
             session_resource_registry: None,
             capability_registry: None,
+            tool_registry: None,
             memory_store: None,
             org_id: None,
             network_access: None,
@@ -248,6 +251,7 @@ where
             leased_resource_store: None,
             session_resource_registry: None,
             capability_registry: None,
+            tool_registry: None,
             memory_store: None,
             org_id: None,
             network_access: None,
@@ -362,6 +366,12 @@ where
         registry: crate::capabilities::CapabilityRegistry,
     ) -> Self {
         self.capability_registry = Some(registry);
+        self
+    }
+
+    /// Set the active built-in tool registry for meta-tools like `spawn_background`.
+    pub fn with_tool_registry(mut self, registry: Arc<crate::tools::ToolRegistry>) -> Self {
+        self.tool_registry = Some(registry);
         self
     }
 
@@ -826,6 +836,9 @@ where
         }
         if let Some(ref registry) = self.capability_registry {
             tool_context.capability_registry = Some(registry.clone());
+        }
+        if let Some(ref registry) = self.tool_registry {
+            tool_context.tool_registry = Some(registry.clone());
         }
         if let Some(ref store) = self.memory_store {
             tool_context.memory_store = Some(store.clone());

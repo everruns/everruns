@@ -13801,6 +13801,13 @@
               "null"
             ],
             "description": "Tool requires API keys, credentials, or other secrets to function.\nUseful for UI to show connection prompts and for LLMs to anticipate\nauthentication failures."
+          },
+          "supports_background": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later."
           }
         }
       },

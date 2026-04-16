@@ -58,6 +58,7 @@ Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convent
 | `requires_secrets` | Needs API keys or credentials | Assume no secrets needed |
 | `long_running` | May take significant time (> ~5s typical) | Assume fast |
 | `persist_output` | Tool requests full output be persisted to VFS before truncation when supported | Assume no persistence |
+| `supports_background` | Tool can be executed through `spawn_background` and stream status/output/progress updates | Assume foreground-only |
 | `narration_noun` | Entity noun for operation-based narration (e.g. `"agent"`, `"harness"`) | Generic "Ran {display_name}" fallback |
 
 ### Narration Formatting
@@ -110,6 +111,36 @@ All exec tools accept an `output` parameter controlling how much output is retur
 Default is `concise`. Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Full output is always persisted to `/.outputs/` via `tool_output_persistence` — stdout to `/.outputs/{tool_call_id}.stdout`, stderr to `.stderr` — and readable with `read_file`. See `crates/core/src/tool_output_sanitizer.rs` for budget constants and `output_verbosity_budget()`.
 
 This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
+
+### Background Tool Execution
+
+`spawn_background` is a built-in meta-tool that schedules another built-in tool to run asynchronously and returns immediately with a run handle. It is generic: the caller passes `tool` plus `args`; the target tool determines whether background execution is supported.
+
+Background eligibility rules:
+- The target tool must set `ToolHints.supports_background = Some(true)`.
+- The target tool must implement `BackgroundExecutableTool`.
+- `spawn_background` must run with a worker-side `ToolContext` that includes the current `ToolRegistry`.
+
+Contract:
+- Input: `{ "tool": "...", "args": { ... }, "title"?: "...", "signal_on_completion"?: true }`
+- Immediate result: `run_id`, `resource_id`, target `tool`, and artifact paths under `/.background/{run_id}/`
+- Execution happens in a detached worker task
+- Progress flows through `BackgroundEventSink`, which supports:
+  - one-line status updates
+  - streamed output deltas
+  - optional structured progress (`current`, `total`, `unit`, `label`)
+
+Artifacts and visibility:
+- Each run is registered in the session resource registry as `kind = "background_run"`.
+- Live metadata includes status text, output tail, and optional progress.
+- Final artifacts are persisted to session VFS:
+  - `/.background/{run_id}/output.log`
+  - `/.background/{run_id}/result.json`
+- On completion or failure, the worker may send a synthetic session message summarizing the result and artifact paths.
+
+V1 limitation:
+- Background runs are best-effort and worker-local. They are started with `tokio::spawn` inside the worker process and are not yet durable across worker restarts.
+- This is intentional for the first iteration; durable resumption can be layered later without changing the tool contract.
 
 ### PostToolExecHook (per-tool hooks)
 

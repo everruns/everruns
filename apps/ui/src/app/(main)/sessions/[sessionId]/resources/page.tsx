@@ -40,6 +40,24 @@ function statusIcon(status: string) {
 }
 
 function ResourceCard({ resource }: { resource: SessionResourceEntry }) {
+  const statusText =
+    typeof resource.metadata?.status_text === "string" ? resource.metadata.status_text : null;
+  const summary = typeof resource.metadata?.summary === "string" ? resource.metadata.summary : null;
+  const logPath =
+    typeof resource.metadata?.log_path === "string" ? resource.metadata.log_path : null;
+  const resultPath =
+    typeof resource.metadata?.result_path === "string" ? resource.metadata.result_path : null;
+  const outputTail =
+    typeof resource.metadata?.output_tail === "string" ? resource.metadata.output_tail : null;
+  const progress =
+    resource.metadata?.progress && typeof resource.metadata.progress === "object"
+      ? (resource.metadata.progress as Record<string, unknown>)
+      : null;
+  const progressLine =
+    progress && (progress.current !== undefined || progress.total !== undefined)
+      ? `${progress.label ? `${progress.label}: ` : ""}${progress.current ?? "?"}/${progress.total ?? "?"}${typeof progress.unit === "string" ? ` ${progress.unit}` : ""}`
+      : null;
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -60,7 +78,17 @@ function ResourceCard({ resource }: { resource: SessionResourceEntry }) {
         <div className="grid gap-1">
           <div>Registered: {formatRelativeTime(resource.created_at)}</div>
           <div className="truncate">ID: {resource.resource_id}</div>
+          {statusText ? <div>Status: {statusText}</div> : null}
+          {progressLine ? <div>Progress: {progressLine}</div> : null}
+          {summary ? <div className="text-foreground">Summary: {summary}</div> : null}
+          {logPath ? <div className="truncate">Log: {logPath}</div> : null}
+          {resultPath ? <div className="truncate">Result: {resultPath}</div> : null}
         </div>
+        {outputTail ? (
+          <pre className="overflow-x-auto whitespace-pre-wrap rounded border border-border/70 bg-card px-3 py-2 text-xs text-foreground">
+            {outputTail}
+          </pre>
+        ) : null}
       </CardContent>
     </Card>
   );

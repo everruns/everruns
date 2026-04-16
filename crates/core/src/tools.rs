@@ -12,11 +12,15 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
+use crate::background::{
+    BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
+};
+use crate::session_resource::{RegisterSessionResource, SessionResourceStatus};
 use crate::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
@@ -423,6 +427,12 @@ pub trait Tool: Send + Sync {
         ToolHints::default()
     }
 
+    /// Returns native background execution support when this tool opts into
+    /// detached execution via `hints().supports_background`.
+    fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
+        None
+    }
+
     /// Convert this tool to a ToolDefinition for the agent config.
     ///
     /// This is used by ToolRegistry to generate tool definitions
@@ -502,6 +512,7 @@ impl ToolRegistry {
         ToolRegistry::builder()
             .tool(GetCurrentTimeTool)
             .tool(EchoTool)
+            .tool(SpawnBackgroundTool)
             .tool(ReportProgressTool)
             // TestMath capability tools
             .tool(AddTool)
@@ -744,6 +755,450 @@ impl Tool for EchoTool {
     }
 }
 
+/// Spawn a background-capable tool and return immediately with a run handle.
+pub struct SpawnBackgroundTool;
+
+#[async_trait]
+impl Tool for SpawnBackgroundTool {
+    fn name(&self) -> &str {
+        "spawn_background"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Spawn Background")
+    }
+
+    fn description(&self) -> &str {
+        "Run a background-capable built-in tool asynchronously. Returns immediately and signals the session when the background run completes."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "tool": {
+                    "type": "string",
+                    "description": "Name of the built-in tool to execute in the background"
+                },
+                "args": {
+                    "type": "object",
+                    "description": "Arguments to pass to the target tool"
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Optional human-readable label for the background run"
+                },
+                "signal_on_completion": {
+                    "type": "boolean",
+                    "description": "Send a synthetic user message back to the session when the run completes",
+                    "default": true
+                }
+            },
+            "required": ["tool", "args"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "spawn_background requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let tool_name = match arguments.get("tool").and_then(|v| v.as_str()) {
+            Some(name) if !name.trim().is_empty() => name.trim(),
+            _ => return ToolExecutionResult::tool_error("Missing required parameter: tool"),
+        };
+        let tool_args = match arguments.get("args") {
+            Some(args) if args.is_object() => args.clone(),
+            _ => {
+                return ToolExecutionResult::tool_error(
+                    "Missing required parameter: args (object expected)",
+                );
+            }
+        };
+        let signal_on_completion = arguments
+            .get("signal_on_completion")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        let Some(tool_registry) = &context.tool_registry else {
+            return ToolExecutionResult::tool_error(
+                "Tool registry not available in this context. spawn_background requires worker-side tool execution.",
+            );
+        };
+
+        let Some(tool) = tool_registry.get(tool_name).cloned() else {
+            return ToolExecutionResult::tool_error(format!("Unknown tool: {tool_name}"));
+        };
+        if tool_name == self.name() {
+            return ToolExecutionResult::tool_error(
+                "spawn_background cannot target itself recursively",
+            );
+        }
+        if tool.hints().supports_background != Some(true) {
+            return ToolExecutionResult::tool_error(format!(
+                "Tool does not support background execution: {tool_name}"
+            ));
+        }
+        if tool.as_background_executable().is_none() {
+            return ToolExecutionResult::tool_error(format!(
+                "Tool declared background support but has no background executor: {tool_name}"
+            ));
+        }
+        let Some(resource_registry) = &context.session_resource_registry else {
+            return ToolExecutionResult::tool_error(
+                "Session resource registry not available in this context",
+            );
+        };
+        if context.file_store.is_none() {
+            return ToolExecutionResult::tool_error(
+                "Session file store not available in this context. spawn_background requires artifact persistence.",
+            );
+        }
+
+        let run_id = format!("bg_{}", uuid::Uuid::now_v7().simple());
+        let title = arguments
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                tool.display_name()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| format!("Background {tool_name}"))
+            });
+
+        let artifact_dir = format!("/.background/{run_id}");
+        let log_path = format!("{artifact_dir}/output.log");
+        let result_path = format!("{artifact_dir}/result.json");
+        let metadata = json!({
+            "tool": tool_name,
+            "status_text": "Queued",
+            "signal_on_completion": signal_on_completion,
+            "artifact_dir": artifact_dir,
+            "log_path": log_path,
+            "result_path": result_path,
+        });
+
+        if let Err(e) = resource_registry
+            .register(RegisterSessionResource {
+                session_id: context.session_id,
+                resource_id: run_id.clone(),
+                kind: "background_run".to_string(),
+                display_name: title.clone(),
+                status: SessionResourceStatus::Active,
+                metadata,
+            })
+            .await
+        {
+            return ToolExecutionResult::internal_error_msg(format!(
+                "Failed to register background run: {e}"
+            ));
+        }
+
+        let background_context = context.clone().with_tool_registry(tool_registry.clone());
+        let sink = Arc::new(SessionBackgroundSink::new(
+            background_context.clone(),
+            run_id.clone(),
+            title.clone(),
+            tool_name.to_string(),
+            log_path.clone(),
+            result_path.clone(),
+            signal_on_completion,
+        ));
+        let run_id_for_task = run_id.clone();
+        let tool_for_task = tool.clone();
+        let tool_name_for_task = tool_name.to_string();
+
+        tokio::spawn(async move {
+            let _ = sink.status("Starting").await;
+            let outcome = match tool_for_task.as_background_executable() {
+                Some(background_tool) => {
+                    background_tool
+                        .execute_background(tool_args, background_context, sink.clone())
+                        .await
+                }
+                None => Err(ToolExecutionResult::tool_error(format!(
+                    "Tool declared background support but has no background executor: {}",
+                    tool_name_for_task
+                ))),
+            };
+
+            if let Err(err) = sink.finalize(outcome).await {
+                tracing::warn!(
+                    run_id = run_id_for_task,
+                    error = %err,
+                    "Background run finalization failed"
+                );
+            }
+        });
+
+        ToolExecutionResult::success(json!({
+            "run_id": run_id,
+            "resource_id": run_id,
+            "title": title,
+            "tool": tool_name,
+            "status": "running",
+            "signal_on_completion": signal_on_completion,
+            "artifact_dir": artifact_dir,
+            "log_path": log_path,
+            "result_path": result_path
+        }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Default)]
+struct SessionBackgroundState {
+    status_text: String,
+    progress: Option<BackgroundProgress>,
+    output_tail: String,
+    output_log: String,
+}
+
+struct SessionBackgroundSink {
+    context: ToolContext,
+    run_id: String,
+    display_name: String,
+    tool_name: String,
+    log_path: String,
+    result_path: String,
+    signal_on_completion: bool,
+    state: tokio::sync::Mutex<SessionBackgroundState>,
+}
+
+impl SessionBackgroundSink {
+    fn new(
+        context: ToolContext,
+        run_id: String,
+        display_name: String,
+        tool_name: String,
+        log_path: String,
+        result_path: String,
+        signal_on_completion: bool,
+    ) -> Self {
+        Self {
+            context,
+            run_id,
+            display_name,
+            tool_name,
+            log_path,
+            result_path,
+            signal_on_completion,
+            state: tokio::sync::Mutex::new(SessionBackgroundState {
+                status_text: "Queued".to_string(),
+                ..Default::default()
+            }),
+        }
+    }
+
+    async fn finalize(
+        &self,
+        outcome: std::result::Result<BackgroundOutcome, ToolExecutionResult>,
+    ) -> Result<()> {
+        match outcome {
+            Ok(outcome) => {
+                let output_log = if let Some(raw_output) = &outcome.raw_output {
+                    raw_output.clone()
+                } else {
+                    self.state.lock().await.output_log.clone()
+                };
+                self.write_text_file(&self.log_path, &output_log).await?;
+                let result_json = serde_json::to_string_pretty(&outcome.result)
+                    .unwrap_or_else(|_| outcome.result.to_string());
+                self.write_text_file(&self.result_path, &result_json)
+                    .await?;
+
+                let mut state = self.state.lock().await;
+                state.status_text = "Completed".to_string();
+                drop(state);
+                self.update_resource(SessionResourceStatus::Completed, Some(&outcome.summary))
+                    .await?;
+                if self.signal_on_completion {
+                    self.signal_session("completed", &outcome.summary).await?;
+                }
+            }
+            Err(err) => {
+                let message = match err {
+                    ToolExecutionResult::ToolError(msg) => msg,
+                    ToolExecutionResult::InternalError(inner) => inner.message,
+                    ToolExecutionResult::ConnectionRequired { provider } => {
+                        format!("Background tool requires connection setup: {provider}")
+                    }
+                    ToolExecutionResult::Success(_)
+                    | ToolExecutionResult::SuccessWithImages { .. } => {
+                        "Background run ended unexpectedly".to_string()
+                    }
+                };
+                let output_log = self.state.lock().await.output_log.clone();
+                self.write_text_file(&self.log_path, &output_log).await?;
+                let error_json = serde_json::to_string_pretty(&json!({
+                    "status": "failed",
+                    "error": &message,
+                }))
+                .unwrap_or_else(|_| {
+                    json!({
+                        "status": "failed",
+                        "error": &message,
+                    })
+                    .to_string()
+                });
+                self.write_text_file(&self.result_path, &error_json).await?;
+                let mut state = self.state.lock().await;
+                state.status_text = "Failed".to_string();
+                drop(state);
+                self.update_resource(SessionResourceStatus::Failed, Some(&message))
+                    .await?;
+                if self.signal_on_completion {
+                    self.signal_session("failed", &message).await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn signal_session(&self, status: &str, summary: &str) -> Result<()> {
+        let Some(platform_store) = &self.context.platform_store else {
+            return Ok(());
+        };
+        let message = format!(
+            "Background run {status}.\n- run_id: {}\n- title: {}\n- tool: {}\n- summary: {}\n- result_path: {}\n- log_path: {}",
+            self.run_id,
+            self.display_name,
+            self.tool_name,
+            summary,
+            self.result_path,
+            self.log_path
+        );
+        platform_store
+            .send_message(self.context.session_id, &message)
+            .await
+    }
+
+    async fn update_resource(
+        &self,
+        status: SessionResourceStatus,
+        summary: Option<&str>,
+    ) -> Result<()> {
+        let Some(registry) = &self.context.session_resource_registry else {
+            return Ok(());
+        };
+        let state = self.state.lock().await;
+        let status_text = state.status_text.clone();
+        let progress = state.progress.clone();
+        let output_tail = state.output_tail.clone();
+        drop(state);
+        registry
+            .register(RegisterSessionResource {
+                session_id: self.context.session_id,
+                resource_id: self.run_id.clone(),
+                kind: "background_run".to_string(),
+                display_name: self.display_name.clone(),
+                status,
+                metadata: json!({
+                    "tool": self.tool_name,
+                    "status_text": status_text,
+                    "progress": progress,
+                    "output_tail": output_tail,
+                    "log_path": self.log_path,
+                    "result_path": self.result_path,
+                    "summary": summary,
+                    "signal_on_completion": self.signal_on_completion,
+                }),
+            })
+            .await?;
+        Ok(())
+    }
+
+    async fn write_text_file(&self, path: &str, content: &str) -> Result<()> {
+        let file_store = self.context.file_store.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "background run {} cannot persist artifact {} because no session file store is configured",
+                self.run_id,
+                path
+            )
+        })?;
+
+        ensure_directory(file_store.as_ref(), self.context.session_id, "/.background").await?;
+        let run_dir = format!("/.background/{}", self.run_id);
+        ensure_directory(file_store.as_ref(), self.context.session_id, &run_dir).await?;
+        file_store
+            .write_file(self.context.session_id, path, content, "text")
+            .await?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl BackgroundEventSink for SessionBackgroundSink {
+    async fn status(&self, message: &str) -> Result<()> {
+        let mut state = self.state.lock().await;
+        state.status_text = message.to_string();
+        drop(state);
+        self.update_resource(SessionResourceStatus::Active, None)
+            .await
+    }
+
+    async fn output(&self, stream: &str, delta: &str) -> Result<()> {
+        let mut state = self.state.lock().await;
+        if !delta.is_empty() {
+            let prefix = format!("[{stream}] ");
+            state.output_tail.push_str(&prefix);
+            state.output_tail.push_str(delta);
+            state.output_log.push_str(&prefix);
+            state.output_log.push_str(delta);
+            if state.output_tail.chars().count() > 2048 {
+                state.output_tail = state
+                    .output_tail
+                    .chars()
+                    .rev()
+                    .take(2048)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
+            }
+        }
+        drop(state);
+        self.update_resource(SessionResourceStatus::Active, None)
+            .await
+    }
+
+    async fn progress(&self, progress: BackgroundProgress) -> Result<()> {
+        let mut state = self.state.lock().await;
+        state.progress = Some(progress);
+        drop(state);
+        self.update_resource(SessionResourceStatus::Active, None)
+            .await
+    }
+}
+
+async fn ensure_directory(
+    file_store: &dyn crate::traits::SessionFileStore,
+    session_id: crate::SessionId,
+    path: &str,
+) -> Result<()> {
+    if let Some(entry) = file_store.stat_file(session_id, path).await? {
+        if entry.is_directory {
+            return Ok(());
+        }
+        return Err(anyhow::anyhow!("path exists but is not a directory: {path}").into());
+    }
+    let _ = file_store.create_directory(session_id, path).await?;
+    Ok(())
+}
+
 /// A tool that always fails (useful for testing error handling)
 pub struct FailingTool {
     error_message: String,
@@ -819,6 +1274,504 @@ impl Tool for FailingTool {
 mod tests {
     use super::*;
     use crate::capabilities::GetCurrentTimeTool;
+    use crate::platform_store::PlatformStore;
+    use crate::session_file::{FileInfo, FileStat, SessionFile};
+    use crate::session_resource::{SessionResourceEntry, SessionResourceFilter};
+    use crate::traits::{SessionFileStore, SessionResourceRegistry};
+    use crate::typed_id::{HarnessId, SessionId};
+    use crate::{AgentId, KeyInfo, PlatformMessage, SecretInfo};
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct TestBackgroundTool;
+
+    #[async_trait]
+    impl BackgroundExecutableTool for TestBackgroundTool {
+        async fn execute_background(
+            &self,
+            arguments: Value,
+            _context: ToolContext,
+            sink: Arc<dyn BackgroundEventSink>,
+        ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
+            sink.status("Waiting for test result")
+                .await
+                .map_err(ToolExecutionResult::internal_error)?;
+            sink.output("stdout", "hello from background")
+                .await
+                .map_err(ToolExecutionResult::internal_error)?;
+            sink.progress(BackgroundProgress {
+                current: Some(1),
+                total: Some(1),
+                unit: Some("step".to_string()),
+                label: Some("done".to_string()),
+            })
+            .await
+            .map_err(ToolExecutionResult::internal_error)?;
+
+            Ok(BackgroundOutcome {
+                summary: arguments["summary"].as_str().unwrap_or("done").to_string(),
+                result: json!({"ok": true}),
+                raw_output: None,
+            })
+        }
+    }
+
+    #[async_trait]
+    impl Tool for TestBackgroundTool {
+        fn name(&self) -> &str {
+            "test_background"
+        }
+
+        fn display_name(&self) -> Option<&str> {
+            Some("Test Background")
+        }
+
+        fn description(&self) -> &str {
+            "test tool"
+        }
+
+        fn parameters_schema(&self) -> Value {
+            json!({
+                "type": "object",
+                "properties": {
+                    "summary": { "type": "string" }
+                }
+            })
+        }
+
+        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+            ToolExecutionResult::tool_error("foreground unsupported")
+        }
+
+        fn hints(&self) -> ToolHints {
+            ToolHints::default().with_supports_background(true)
+        }
+
+        fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
+            Some(self)
+        }
+    }
+
+    #[derive(Default)]
+    struct TestFailingBackgroundTool;
+
+    #[async_trait]
+    impl BackgroundExecutableTool for TestFailingBackgroundTool {
+        async fn execute_background(
+            &self,
+            _arguments: Value,
+            _context: ToolContext,
+            sink: Arc<dyn BackgroundEventSink>,
+        ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
+            sink.status("Running failing test")
+                .await
+                .map_err(ToolExecutionResult::internal_error)?;
+            sink.output("stderr", "background failed")
+                .await
+                .map_err(ToolExecutionResult::internal_error)?;
+            Err(ToolExecutionResult::tool_error("boom"))
+        }
+    }
+
+    #[async_trait]
+    impl Tool for TestFailingBackgroundTool {
+        fn name(&self) -> &str {
+            "test_background_fail"
+        }
+
+        fn display_name(&self) -> Option<&str> {
+            Some("Test Background Fail")
+        }
+
+        fn description(&self) -> &str {
+            "failing background test tool"
+        }
+
+        fn parameters_schema(&self) -> Value {
+            json!({
+                "type": "object",
+                "properties": {}
+            })
+        }
+
+        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+            ToolExecutionResult::tool_error("foreground unsupported")
+        }
+
+        fn hints(&self) -> ToolHints {
+            ToolHints::default().with_supports_background(true)
+        }
+
+        fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
+            Some(self)
+        }
+    }
+
+    #[derive(Default)]
+    struct TestSessionResourceRegistry {
+        entries: Mutex<HashMap<String, SessionResourceEntry>>,
+    }
+
+    #[async_trait]
+    impl crate::traits::SessionResourceRegistry for TestSessionResourceRegistry {
+        async fn register(
+            &self,
+            entry: RegisterSessionResource,
+        ) -> crate::Result<SessionResourceEntry> {
+            let stored = SessionResourceEntry {
+                resource_id: entry.resource_id.clone(),
+                session_id: entry.session_id,
+                kind: entry.kind,
+                display_name: entry.display_name,
+                status: entry.status,
+                metadata: entry.metadata,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            };
+            self.entries
+                .lock()
+                .unwrap()
+                .insert(entry.resource_id, stored.clone());
+            Ok(stored)
+        }
+
+        async fn update_status(
+            &self,
+            _session_id: SessionId,
+            resource_id: &str,
+            status: SessionResourceStatus,
+        ) -> crate::Result<Option<SessionResourceEntry>> {
+            let mut entries = self.entries.lock().unwrap();
+            if let Some(entry) = entries.get_mut(resource_id) {
+                entry.status = status;
+                entry.updated_at = chrono::Utc::now();
+                return Ok(Some(entry.clone()));
+            }
+            Ok(None)
+        }
+
+        async fn get(
+            &self,
+            _session_id: SessionId,
+            resource_id: &str,
+        ) -> crate::Result<Option<SessionResourceEntry>> {
+            Ok(self.entries.lock().unwrap().get(resource_id).cloned())
+        }
+
+        async fn list(
+            &self,
+            _session_id: SessionId,
+            _filter: Option<&SessionResourceFilter>,
+        ) -> crate::Result<Vec<SessionResourceEntry>> {
+            Ok(self.entries.lock().unwrap().values().cloned().collect())
+        }
+
+        async fn deregister(
+            &self,
+            _session_id: SessionId,
+            resource_id: &str,
+        ) -> crate::Result<bool> {
+            Ok(self.entries.lock().unwrap().remove(resource_id).is_some())
+        }
+    }
+
+    #[derive(Default)]
+    struct TestFileStore {
+        files: Mutex<HashMap<String, SessionFile>>,
+    }
+
+    #[async_trait]
+    impl crate::traits::SessionFileStore for TestFileStore {
+        async fn read_file(
+            &self,
+            _session_id: SessionId,
+            path: &str,
+        ) -> crate::Result<Option<SessionFile>> {
+            Ok(self.files.lock().unwrap().get(path).cloned())
+        }
+
+        async fn write_file(
+            &self,
+            session_id: SessionId,
+            path: &str,
+            content: &str,
+            encoding: &str,
+        ) -> crate::Result<SessionFile> {
+            let now = chrono::Utc::now();
+            let file = SessionFile {
+                id: uuid::Uuid::now_v7(),
+                session_id: session_id.uuid(),
+                path: path.to_string(),
+                name: FileInfo::name_from_path(path),
+                content: Some(content.to_string()),
+                encoding: encoding.to_string(),
+                is_directory: false,
+                is_readonly: false,
+                size_bytes: content.len() as i64,
+                created_at: now,
+                updated_at: now,
+            };
+            self.files
+                .lock()
+                .unwrap()
+                .insert(path.to_string(), file.clone());
+            Ok(file)
+        }
+
+        async fn delete_file(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+            _recursive: bool,
+        ) -> crate::Result<bool> {
+            Ok(false)
+        }
+
+        async fn list_directory(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+        ) -> crate::Result<Vec<FileInfo>> {
+            Ok(Vec::new())
+        }
+
+        async fn stat_file(
+            &self,
+            _session_id: SessionId,
+            path: &str,
+        ) -> crate::Result<Option<FileStat>> {
+            let file = self.files.lock().unwrap().get(path).cloned();
+            Ok(file.map(|entry| FileStat {
+                path: entry.path,
+                name: entry.name,
+                is_directory: entry.is_directory,
+                is_readonly: entry.is_readonly,
+                size_bytes: entry.size_bytes,
+                created_at: entry.created_at,
+                updated_at: entry.updated_at,
+            }))
+        }
+
+        async fn grep_files(
+            &self,
+            _session_id: SessionId,
+            _pattern: &str,
+            _path_pattern: Option<&str>,
+        ) -> crate::Result<Vec<crate::session_file::GrepMatch>> {
+            Ok(Vec::new())
+        }
+
+        async fn create_directory(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> crate::Result<FileInfo> {
+            let now = chrono::Utc::now();
+            let id = uuid::Uuid::now_v7();
+            let dir = SessionFile {
+                id,
+                session_id: session_id.uuid(),
+                path: path.to_string(),
+                name: FileInfo::name_from_path(path),
+                content: None,
+                encoding: "text".to_string(),
+                is_directory: true,
+                is_readonly: false,
+                size_bytes: 0,
+                created_at: now,
+                updated_at: now,
+            };
+            self.files.lock().unwrap().insert(path.to_string(), dir);
+            Ok(FileInfo {
+                id,
+                session_id: session_id.uuid(),
+                path: path.to_string(),
+                name: FileInfo::name_from_path(path),
+                is_directory: true,
+                is_readonly: false,
+                size_bytes: 0,
+                created_at: now,
+                updated_at: now,
+            })
+        }
+    }
+
+    #[derive(Default)]
+    struct TestPlatformStore {
+        sent_messages: Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl PlatformStore for TestPlatformStore {
+        async fn list_harnesses(&self) -> crate::Result<Vec<crate::Harness>> {
+            Ok(Vec::new())
+        }
+        async fn get_harness(&self, _id: HarnessId) -> crate::Result<Option<crate::Harness>> {
+            Ok(None)
+        }
+        async fn create_harness(
+            &self,
+            _name: &str,
+            _display_name: Option<&str>,
+            _description: Option<&str>,
+            _system_prompt: &str,
+            _parent_harness_id: Option<HarnessId>,
+            _capabilities: &[String],
+        ) -> crate::Result<crate::Harness> {
+            unreachable!()
+        }
+        async fn update_harness(
+            &self,
+            _id: HarnessId,
+            _name: Option<&str>,
+            _display_name: Option<&str>,
+            _description: Option<&str>,
+            _system_prompt: Option<&str>,
+            _parent_harness_id: Option<Option<HarnessId>>,
+        ) -> crate::Result<crate::Harness> {
+            unreachable!()
+        }
+        async fn delete_harness(&self, _id: HarnessId) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn copy_harness(
+            &self,
+            _id: HarnessId,
+            _new_name: Option<&str>,
+        ) -> crate::Result<crate::Harness> {
+            unreachable!()
+        }
+        async fn list_agents(&self) -> crate::Result<Vec<crate::Agent>> {
+            Ok(Vec::new())
+        }
+        async fn get_agent_by_id(&self, _id: AgentId) -> crate::Result<Option<crate::Agent>> {
+            Ok(None)
+        }
+        async fn create_agent(
+            &self,
+            _name: &str,
+            _display_name: Option<&str>,
+            _description: Option<&str>,
+            _system_prompt: &str,
+            _capabilities: &[String],
+        ) -> crate::Result<crate::Agent> {
+            unreachable!()
+        }
+        async fn update_agent(
+            &self,
+            _id: AgentId,
+            _name: Option<&str>,
+            _display_name: Option<&str>,
+            _description: Option<&str>,
+            _system_prompt: Option<&str>,
+        ) -> crate::Result<crate::Agent> {
+            unreachable!()
+        }
+        async fn delete_agent(&self, _id: AgentId) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn list_sessions(
+            &self,
+            _limit: Option<usize>,
+            _agent_id: Option<AgentId>,
+        ) -> crate::Result<Vec<crate::Session>> {
+            Ok(Vec::new())
+        }
+        async fn create_session(
+            &self,
+            _harness_id: HarnessId,
+            _agent_id: Option<AgentId>,
+            _title: Option<&str>,
+            _locale: Option<&str>,
+            _blueprint_id: Option<&str>,
+            _blueprint_config: Option<&serde_json::Value>,
+        ) -> crate::Result<crate::Session> {
+            unreachable!()
+        }
+        async fn get_session_by_id(&self, _id: SessionId) -> crate::Result<Option<crate::Session>> {
+            Ok(None)
+        }
+        async fn delete_session(&self, _id: SessionId) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn send_message(&self, _session_id: SessionId, content: &str) -> crate::Result<()> {
+            self.sent_messages.lock().unwrap().push(content.to_string());
+            Ok(())
+        }
+        async fn get_messages(
+            &self,
+            _session_id: SessionId,
+            _limit: Option<usize>,
+        ) -> crate::Result<Vec<PlatformMessage>> {
+            Ok(Vec::new())
+        }
+        async fn wait_for_idle(
+            &self,
+            _session_id: SessionId,
+            _timeout_secs: Option<u64>,
+        ) -> crate::Result<String> {
+            Ok("idle".to_string())
+        }
+        async fn list_capabilities(
+            &self,
+            _search: Option<&str>,
+        ) -> crate::Result<Vec<crate::CapabilityInfo>> {
+            Ok(Vec::new())
+        }
+        fn base_url(&self) -> &str {
+            "http://localhost:9300"
+        }
+    }
+
+    #[derive(Default)]
+    struct NoopStorageStore;
+
+    #[async_trait]
+    impl crate::traits::SessionStorageStore for NoopStorageStore {
+        async fn set_value(
+            &self,
+            _session_id: SessionId,
+            _key: &str,
+            _value: &str,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn get_value(
+            &self,
+            _session_id: SessionId,
+            _key: &str,
+        ) -> crate::Result<Option<String>> {
+            Ok(None)
+        }
+        async fn delete_value(&self, _session_id: SessionId, _key: &str) -> crate::Result<bool> {
+            Ok(false)
+        }
+        async fn list_keys(&self, _session_id: SessionId) -> crate::Result<Vec<KeyInfo>> {
+            Ok(Vec::new())
+        }
+        async fn set_secret(
+            &self,
+            _session_id: SessionId,
+            _name: &str,
+            _value: &str,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn get_secret(
+            &self,
+            _session_id: SessionId,
+            _name: &str,
+        ) -> crate::Result<Option<String>> {
+            Ok(None)
+        }
+        async fn delete_secret(&self, _session_id: SessionId, _name: &str) -> crate::Result<bool> {
+            Ok(false)
+        }
+        async fn list_secrets(&self, _session_id: SessionId) -> crate::Result<Vec<SecretInfo>> {
+            Ok(Vec::new())
+        }
+    }
 
     #[tokio::test]
     async fn test_echo_tool() {
@@ -994,6 +1947,10 @@ mod tests {
         );
         assert!(registry.has("echo"), "should have echo");
         assert!(
+            registry.has("spawn_background"),
+            "should have spawn_background"
+        );
+        assert!(
             registry.has("report_progress"),
             "should have report_progress"
         );
@@ -1024,7 +1981,7 @@ mod tests {
         assert!(registry.has("web_fetch"), "should have web_fetch");
 
         // Total count
-        assert_eq!(registry.len(), 18, "should have 18 default tools");
+        assert_eq!(registry.len(), 19, "should have 19 default tools");
     }
 
     #[tokio::test]
@@ -1081,5 +2038,174 @@ mod tests {
             !registry.has("kv_store"),
             "kv_store must not be in defaults — it comes from session_storage capability"
         );
+    }
+
+    #[tokio::test]
+    async fn test_spawn_background_executes_and_signals_session() {
+        let session_id = SessionId::new();
+        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
+        let file_store = Arc::new(TestFileStore::default());
+        let platform_store = Arc::new(TestPlatformStore::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(TestBackgroundTool)
+            .build();
+
+        let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
+            .with_tool_registry(Arc::new(tool_registry))
+            .with_platform_store(platform_store.clone())
+            .with_session_resource_registry(resource_registry.clone());
+
+        let tool = SpawnBackgroundTool;
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background",
+                    "args": { "summary": "Background complete" }
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("spawn_background should succeed");
+        };
+        let run_id = value["run_id"].as_str().unwrap().to_string();
+
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let entry = resource_registry
+                    .get(session_id, &run_id)
+                    .await
+                    .unwrap()
+                    .expect("resource exists");
+                if entry.status == SessionResourceStatus::Completed {
+                    break entry;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("background run should complete");
+
+        let messages = platform_store.sent_messages.lock().unwrap().clone();
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("Background run completed"));
+        assert!(messages[0].contains(&run_id));
+
+        let log_file = file_store
+            .read_file(session_id, &format!("/.background/{run_id}/output.log"))
+            .await
+            .unwrap()
+            .expect("log file");
+        assert!(
+            log_file
+                .content
+                .as_deref()
+                .unwrap_or_default()
+                .contains("hello from background")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_spawn_background_persists_failure_artifacts() {
+        let session_id = SessionId::new();
+        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
+        let file_store = Arc::new(TestFileStore::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(TestFailingBackgroundTool)
+            .build();
+
+        let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
+            .with_tool_registry(Arc::new(tool_registry))
+            .with_session_resource_registry(resource_registry.clone());
+
+        let result = SpawnBackgroundTool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background_fail",
+                    "args": {}
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("spawn_background should succeed");
+        };
+        let run_id = value["run_id"].as_str().unwrap().to_string();
+
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let entry = resource_registry
+                    .get(session_id, &run_id)
+                    .await
+                    .unwrap()
+                    .expect("resource exists");
+                if entry.status == SessionResourceStatus::Failed {
+                    break entry;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("background run should fail");
+
+        let log_file = file_store
+            .read_file(session_id, &format!("/.background/{run_id}/output.log"))
+            .await
+            .unwrap()
+            .expect("log file");
+        assert!(
+            log_file
+                .content
+                .as_deref()
+                .unwrap_or_default()
+                .contains("background failed")
+        );
+
+        let result_file = file_store
+            .read_file(session_id, &format!("/.background/{run_id}/result.json"))
+            .await
+            .unwrap()
+            .expect("result file");
+        let result_json: Value =
+            serde_json::from_str(result_file.content.as_deref().unwrap_or_default())
+                .expect("valid json");
+        assert_eq!(result_json["status"], "failed");
+        assert_eq!(result_json["error"], "boom");
+    }
+
+    #[tokio::test]
+    async fn test_spawn_background_requires_file_store() {
+        let session_id = SessionId::new();
+        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(TestBackgroundTool)
+            .build();
+
+        let context = ToolContext::with_storage_store(session_id, storage_store)
+            .with_tool_registry(Arc::new(tool_registry))
+            .with_session_resource_registry(resource_registry);
+
+        let result = SpawnBackgroundTool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background",
+                    "args": {}
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("spawn_background should reject missing file store");
+        };
+        assert!(message.contains("Session file store not available"));
     }
 }

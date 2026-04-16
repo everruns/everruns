@@ -246,6 +246,12 @@ pub struct ToolHints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub long_running: Option<bool>,
 
+    /// Tool supports detached background execution via `spawn_background`.
+    /// When true, the tool may be executed asynchronously outside the current
+    /// foreground tool call and report status back later.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_background: Option<bool>,
+
     /// Tool output should be persisted to session VFS before truncation.
     /// When set, the `tool_output_persistence` capability (EVE-222, EVE-245) writes
     /// stdout to `/.outputs/{tool_call_id}.stdout` and stderr to
@@ -301,6 +307,12 @@ impl ToolHints {
     /// Builder: set long_running hint.
     pub fn with_long_running(mut self, value: bool) -> Self {
         self.long_running = Some(value);
+        self
+    }
+
+    /// Builder: set supports_background hint.
+    pub fn with_supports_background(mut self, value: bool) -> Self {
+        self.supports_background = Some(value);
         self
     }
 

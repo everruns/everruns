@@ -14,6 +14,9 @@
 //!   single-query indexed search instead of per-file linear scan
 
 use super::{Capability, CapabilityStatus};
+use crate::background::{
+    BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
+};
 use crate::session_file::SessionFile;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -181,6 +184,7 @@ impl Tool for BashTool {
             .with_long_running(true)
             .with_open_world(true)
             .with_persist_output(true)
+            .with_supports_background(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -399,6 +403,181 @@ impl Tool for BashTool {
 
     fn requires_context(&self) -> bool {
         true
+    }
+
+    fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
+        Some(self)
+    }
+}
+
+#[async_trait]
+impl BackgroundExecutableTool for BashTool {
+    async fn execute_background(
+        &self,
+        arguments: Value,
+        context: ToolContext,
+        sink: Arc<dyn BackgroundEventSink>,
+    ) -> Result<BackgroundOutcome, ToolExecutionResult> {
+        let command = match arguments.get("commands").and_then(|v| v.as_str()) {
+            Some(c) => c,
+            None => {
+                return Err(ToolExecutionResult::tool_error(
+                    "Missing required parameter: commands",
+                ));
+            }
+        };
+
+        let working_dir = arguments
+            .get("working_dir")
+            .and_then(|v| v.as_str())
+            .unwrap_or("/workspace");
+
+        let timeout_ms = arguments
+            .get("timeout_ms")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(30000)
+            .min(60000);
+
+        let output_mode = arguments
+            .get("output")
+            .and_then(|v| v.as_str())
+            .unwrap_or("concise");
+
+        let file_store = match &context.file_store {
+            Some(store) => store.clone(),
+            None => {
+                return Err(ToolExecutionResult::tool_error(
+                    "File system not available in this context",
+                ));
+            }
+        };
+
+        let session_fs = Arc::new(SessionFileSystemAdapter::new(
+            context.session_id,
+            file_store,
+        ));
+        let locale = context.locale.as_deref().unwrap_or("en-US");
+
+        let mut bash = Bash::builder()
+            .fs(session_fs)
+            .cwd(working_dir)
+            .username("everruns")
+            .hostname("everruns")
+            .env("HOME", "/home/agent")
+            .env("SHELL", "/bin/bash")
+            .env("PATH", "/usr/local/bin:/usr/bin:/bin")
+            .env("WORKSPACE", "/workspace")
+            .env("LANG", locale)
+            .limits(execution_limits())
+            .max_memory(10 * 1024 * 1024)
+            .trace_mode(TraceMode::Redacted)
+            .build();
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
+        let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
+        let sink_for_output = sink.clone();
+        let output_callback: OutputCallback =
+            Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
+                let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+                let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+            });
+
+        let emit_task = tokio::spawn(async move {
+            while let Some((stdout_chunk, stderr_chunk)) = rx.recv().await {
+                if !stdout_chunk.is_empty() {
+                    let _ = sink_for_output.output("stdout", &stdout_chunk).await;
+                }
+                if !stderr_chunk.is_empty() {
+                    let _ = sink_for_output.output("stderr", &stderr_chunk).await;
+                }
+            }
+        });
+
+        let _ = sink.status("Running bash command").await;
+        let cancel_token = bash.cancellation_token();
+        let exec_start = std::time::Instant::now();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(timeout_ms),
+            bash.exec_streaming(command, output_callback),
+        )
+        .await;
+        let exec_duration = exec_start.elapsed();
+        let _ = emit_task.await;
+
+        match result {
+            Ok(Ok(output)) => {
+                use crate::tool_output_sanitizer::{
+                    clean_exec_output, output_verbosity_budget, priority_aware_truncate,
+                };
+
+                let clean_stdout = clean_exec_output(&output.stdout);
+                let clean_stderr = clean_exec_output(&output.stderr);
+                let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
+                    (
+                        priority_aware_truncate(&clean_stdout, budget),
+                        priority_aware_truncate(&clean_stderr, budget.min(4096)),
+                    )
+                } else {
+                    (clean_stdout.clone(), clean_stderr.clone())
+                };
+                let mut raw = clean_stdout;
+                if !clean_stderr.is_empty() {
+                    raw.push_str("\n--- stderr ---\n");
+                    raw.push_str(&clean_stderr);
+                }
+                let _ = sink
+                    .progress(BackgroundProgress {
+                        current: Some(exec_duration.as_millis() as u64),
+                        total: None,
+                        unit: Some("ms".to_string()),
+                        label: Some("runtime".to_string()),
+                    })
+                    .await;
+                Ok(BackgroundOutcome {
+                    summary: format!(
+                        "Bash command exited with code {} after {} ms",
+                        output.exit_code,
+                        exec_duration.as_millis()
+                    ),
+                    result: json!({
+                        "stdout": stdout,
+                        "stderr": stderr,
+                        "exit_code": output.exit_code,
+                        "success": output.exit_code == 0
+                    }),
+                    raw_output: Some(raw),
+                })
+            }
+            Ok(Err(e)) => Err(ToolExecutionResult::tool_error(format!(
+                "Bash execution error: {}",
+                e
+            ))),
+            Err(_) => {
+                cancel_token.store(true, std::sync::atomic::Ordering::Relaxed);
+
+                let partial = collect_partial_output(partial_rx);
+                if partial.is_empty() {
+                    Err(ToolExecutionResult::tool_error(format!(
+                        "Command timed out after {}ms",
+                        timeout_ms
+                    )))
+                } else {
+                    use crate::tool_output_sanitizer::{
+                        clean_exec_output, output_verbosity_budget, priority_aware_truncate,
+                    };
+                    let clean = clean_exec_output(&partial);
+                    let truncated = if let Some(budget) = output_verbosity_budget(output_mode) {
+                        priority_aware_truncate(&clean, budget)
+                    } else {
+                        clean.clone()
+                    };
+                    Err(ToolExecutionResult::tool_error(format!(
+                        "Command timed out after {}ms. Partial output:\n{}",
+                        timeout_ms, truncated
+                    )))
+                }
+            }
+        }
     }
 }
 
