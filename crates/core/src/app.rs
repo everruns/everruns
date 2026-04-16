@@ -4,12 +4,11 @@
 // - public_id: AppId (external, API-facing, client-supplied or auto-generated)
 // - internal_id: Uuid (internal PK, used for FK references, never exposed in API)
 //
-// An App binds a Harness + Agent to a distribution channel (Slack, etc.)
+// An App binds a Harness + Agent to a distribution channel (Slack, AG-UI, etc.)
 // with a publish/unpublish lifecycle.
 //
-// Design Decision: Slack ingestion is app-scoped (POST /v1/apps/{app_id}/slack/events)
-// because the App defines the agent, harness, signing secret, and session strategy.
-// Webhooks are unauthenticated — security comes from Slack signing secret verification.
+// Design Decision: Channel ingress is app-scoped because the App defines the
+// agent, harness, identity, and channel-specific configuration.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -63,12 +62,15 @@ impl From<&str> for AppStatus {
 #[serde(rename_all = "lowercase")]
 pub enum ChannelType {
     Slack,
+    #[serde(rename = "ag_ui")]
+    AgUi,
 }
 
 impl std::fmt::Display for ChannelType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ChannelType::Slack => write!(f, "slack"),
+            ChannelType::AgUi => write!(f, "ag_ui"),
         }
     }
 }
@@ -77,6 +79,7 @@ impl ChannelType {
     pub fn from_str_opt(s: &str) -> Option<Self> {
         match s {
             "slack" => Some(ChannelType::Slack),
+            "ag_ui" => Some(ChannelType::AgUi),
             _ => None,
         }
     }
@@ -171,6 +174,15 @@ impl AppChannel {
         }
         serde_json::from_value(self.channel_config.clone()).ok()
     }
+
+    /// Parse channel_config as AgUiChannelConfig. Returns None if not an AG-UI
+    /// channel or if the config is invalid.
+    pub fn ag_ui_config(&self) -> Option<AgUiChannelConfig> {
+        if self.channel_type != ChannelType::AgUi {
+            return None;
+        }
+        serde_json::from_value(self.channel_config.clone()).ok()
+    }
 }
 
 impl App {
@@ -179,6 +191,13 @@ impl App {
         self.channels
             .iter()
             .find(|ch| ch.channel_type == ChannelType::Slack && ch.enabled)
+    }
+
+    /// Find the first enabled AG-UI channel on this app.
+    pub fn ag_ui_channel(&self) -> Option<&AppChannel> {
+        self.channels
+            .iter()
+            .find(|ch| ch.channel_type == ChannelType::AgUi && ch.enabled)
     }
 
     /// Find a channel by its public ID.
@@ -286,6 +305,18 @@ pub struct SlackChannelConfig {
     pub first_message_received_at: Option<DateTime<Utc>>,
 }
 
+/// Typed AG-UI channel configuration.
+///
+/// Parsed from the `channel_config` JSON field on App.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct AgUiChannelConfig {
+    /// Whether anonymous access is allowed for this endpoint.
+    /// Enabled by default for the initial AG-UI rollout.
+    #[serde(default = "default_true")]
+    pub anonymous: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,11 +350,13 @@ mod tests {
     #[test]
     fn test_channel_type_display() {
         assert_eq!(ChannelType::Slack.to_string(), "slack");
+        assert_eq!(ChannelType::AgUi.to_string(), "ag_ui");
     }
 
     #[test]
     fn test_channel_type_from_str_opt() {
         assert_eq!(ChannelType::from_str_opt("slack"), Some(ChannelType::Slack));
+        assert_eq!(ChannelType::from_str_opt("ag_ui"), Some(ChannelType::AgUi));
         assert_eq!(ChannelType::from_str_opt("unknown"), None);
         assert_eq!(ChannelType::from_str_opt(""), None);
     }
@@ -334,6 +367,11 @@ mod tests {
         assert_eq!(json, r#""slack""#);
         let parsed: ChannelType = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, ChannelType::Slack);
+
+        let json = serde_json::to_string(&ChannelType::AgUi).unwrap();
+        assert_eq!(json, r#""ag_ui""#);
+        let parsed: ChannelType = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, ChannelType::AgUi);
     }
 
     #[test]
@@ -432,6 +470,20 @@ mod tests {
         assert!(serde_json::from_str::<SlackChannelConfig>(json).is_err());
     }
 
+    #[test]
+    fn test_ag_ui_channel_config_defaults_to_anonymous() {
+        let config: AgUiChannelConfig = serde_json::from_str("{}").unwrap();
+        assert!(config.anonymous);
+    }
+
+    #[test]
+    fn test_ag_ui_channel_config_roundtrip() {
+        let config = AgUiChannelConfig { anonymous: true };
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: AgUiChannelConfig = serde_json::from_str(&json).unwrap();
+        assert!(parsed.anonymous);
+    }
+
     fn test_app(channels: Vec<AppChannel>) -> App {
         App {
             public_id: AppId::from_uuid(Uuid::nil()),
@@ -494,6 +546,20 @@ mod tests {
     fn test_app_slack_channel_none_when_empty() {
         let app = test_app(vec![]);
         assert!(app.slack_channel().is_none());
+    }
+
+    #[test]
+    fn test_app_channel_ag_ui_config_valid() {
+        let ch = test_channel(ChannelType::AgUi, serde_json::json!({"anonymous": true}));
+        let config = ch.ag_ui_config().unwrap();
+        assert!(config.anonymous);
+    }
+
+    #[test]
+    fn test_app_ag_ui_channel_lookup() {
+        let ch = test_channel(ChannelType::AgUi, serde_json::json!({"anonymous": true}));
+        let app = test_app(vec![ch]);
+        assert!(app.ag_ui_channel().is_some());
     }
 
     #[test]

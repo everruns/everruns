@@ -267,7 +267,8 @@ pub use agent::{
 };
 pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
 pub use app::{
-    App, AppChannel, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode,
+    AgUiChannelConfig, App, AppChannel, AppStatus, ChannelType, SessionStrategy,
+    SlackChannelConfig, SlackReplyMode,
 };
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use events::{

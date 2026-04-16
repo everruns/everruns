@@ -4,20 +4,20 @@ This document records technical options that were considered but dismissed for s
 
 ## AG-UI Protocol
 
-**Status**: Dismissed (may revisit)
+**Status**: Revisited and implemented for Apps
 
 **What it was**: AG-UI is a protocol for streaming agent UI events, designed for compatibility with CopilotKit and other agent UI frameworks. See https://docs.ag-ui.com for the specification.
 
 **Why considered**: AG-UI provided a standardized event format for streaming agent execution events (RunStarted, TextMessageContent, ToolCallStart, etc.) to UI clients via SSE. This would enable compatibility with the CopilotKit ecosystem and other AG-UI-compatible clients.
 
-**Why dismissed**: The current implementation priorities shifted away from CopilotKit compatibility. The system uses a custom PostgreSQL-backed durable execution engine for orchestration, which provides sufficient visibility into workflow execution state without a separate event streaming layer.
+**Original reason it was dismissed**: The implementation priorities shifted away from CopilotKit compatibility. The system uses a custom PostgreSQL-backed durable execution engine for orchestration, which provides sufficient visibility into workflow execution state without a separate event streaming layer.
 
-**What we use instead**: PostgreSQL-backed durable execution state for tracking execution progress. Session status transitions (pending → running → pending) reflect workflow state changes. Real-time streaming can be revisited when there's a concrete need.
+**What changed**: Apps now support AG-UI as a first-class channel with anonymous ingress and SSE streaming translated from durable runtime events. See `specs/apps.md` for the active contract.
 
-**May revisit when**:
-- There is renewed interest in CopilotKit integration
-- Real-time SSE streaming becomes a requirement
-- The AG-UI protocol matures and provides clear benefits
+**Remaining constraints**:
+- Initial rollout is app-scoped and anonymous only
+- The runtime remains the source of truth; AG-UI events are translated from internal events
+- Follow-up work may add authenticated or scoped access controls
 
 ## Temporal Workflow Engine
 

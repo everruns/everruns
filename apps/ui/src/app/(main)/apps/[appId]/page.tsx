@@ -49,9 +49,12 @@ import {
 } from "@/components/ui/dialog";
 import { ArrowLeft, Globe, GlobeLock, Trash2, Pencil, Check, X, Rocket, Plus } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
+import { AgUiSetupGuidance } from "@/components/apps/ag-ui-setup-guidance";
 import { SlackSetupGuidance } from "@/components/apps/slack-setup-guidance";
 import type {
+  AgUiChannelConfig,
   AppChannel,
+  ChannelType,
   SessionStrategy,
   SlackChannelConfig,
   SlackReplyMode,
@@ -83,6 +86,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAddChannel, setShowAddChannel] = useState(false);
+  const [editingChannelType, setEditingChannelType] = useState<ChannelType>("slack");
+  const [addChannelType, setAddChannelType] = useState<ChannelType>("slack");
 
   // Basic info edit state
   const [editName, setEditName] = useState("");
@@ -112,7 +117,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       config,
     }: {
       channelId: string;
-      config: SlackChannelConfig;
+      config: SlackChannelConfig | AgUiChannelConfig;
     }) => {
       return apiUpdateChannel(appId, channelId, { channel_config: config });
     },
@@ -120,9 +125,15 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   });
 
   const addChannelMutation = useMutation({
-    mutationFn: async (config: SlackChannelConfig) => {
+    mutationFn: async ({
+      channelType,
+      config,
+    }: {
+      channelType: ChannelType;
+      config: SlackChannelConfig | AgUiChannelConfig;
+    }) => {
       return apiAddChannel(appId, {
-        channel_type: "slack",
+        channel_type: channelType,
         channel_config: config,
       });
     },
@@ -150,11 +161,21 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   );
   const slackConfig = slackChannel?.channel_config as SlackChannelConfig | undefined;
   const hasSlackConfig = slackConfig?.signing_secret && slackConfig?.bot_token;
+  const agUiChannel = app?.channels?.find(
+    (ch: AppChannel) => ch.channel_type === "ag_ui" && ch.enabled,
+  );
+  const agUiConfig = agUiChannel?.channel_config as AgUiChannelConfig | undefined;
+  const hasAgUiConfig = agUiConfig?.anonymous ?? !!agUiChannel;
+  const canPublishApp = !!hasSlackConfig || hasAgUiConfig;
 
   const webhookUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/api/v1/apps/${appId}/slack/events`
       : `/api/v1/apps/${appId}/slack/events`;
+  const agUiEndpointUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/api/v1/apps/${appId}/ag-ui`
+      : `/api/v1/apps/${appId}/ag-ui`;
 
   const isLocalhost =
     typeof window !== "undefined" &&
@@ -199,17 +220,21 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   };
 
   const startEditChannel = (channel: AppChannel) => {
-    const config = channel.channel_config as SlackChannelConfig;
-    setEditSigningSecret(config?.signing_secret ?? "");
-    setEditBotToken(config?.bot_token ?? "");
-    setEditChannelIdField(config?.channel_id ?? "");
-    setEditTeamId(config?.team_id ?? "");
-    setEditSessionStrategy(config?.session_strategy ?? "per_thread");
-    setEditReplyMode(config?.reply_mode ?? "all_messages");
+    setEditingChannelType(channel.channel_type);
+    if (channel.channel_type === "slack") {
+      const config = channel.channel_config as SlackChannelConfig;
+      setEditSigningSecret(config?.signing_secret ?? "");
+      setEditBotToken(config?.bot_token ?? "");
+      setEditChannelIdField(config?.channel_id ?? "");
+      setEditTeamId(config?.team_id ?? "");
+      setEditSessionStrategy(config?.session_strategy ?? "per_thread");
+      setEditReplyMode(config?.reply_mode ?? "all_messages");
+    }
     setEditingChannelId(channel.id);
   };
 
   const startAddChannel = () => {
+    setAddChannelType("slack");
     setEditSigningSecret("");
     setEditBotToken("");
     setEditChannelIdField("");
@@ -221,31 +246,38 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
   const saveChannel = async () => {
     if (!editingChannelId) return;
-    const channelConfig: SlackChannelConfig = {
-      signing_secret: editSigningSecret,
-      bot_token: editBotToken,
-      session_strategy: editSessionStrategy,
-      reply_mode: editReplyMode,
-      ...(editChannelIdField ? { channel_id: editChannelIdField } : {}),
-      ...(editTeamId ? { team_id: editTeamId } : {}),
-    };
     await updateChannelMutation.mutateAsync({
       channelId: editingChannelId,
-      config: channelConfig,
+      config:
+        editingChannelType === "ag_ui"
+          ? { anonymous: true }
+          : {
+              signing_secret: editSigningSecret,
+              bot_token: editBotToken,
+              session_strategy: editSessionStrategy,
+              reply_mode: editReplyMode,
+              ...(editChannelIdField ? { channel_id: editChannelIdField } : {}),
+              ...(editTeamId ? { team_id: editTeamId } : {}),
+            },
     });
     setEditingChannelId(null);
   };
 
   const saveNewChannel = async () => {
-    const channelConfig: SlackChannelConfig = {
-      signing_secret: editSigningSecret,
-      bot_token: editBotToken,
-      session_strategy: editSessionStrategy,
-      reply_mode: editReplyMode,
-      ...(editChannelIdField ? { channel_id: editChannelIdField } : {}),
-      ...(editTeamId ? { team_id: editTeamId } : {}),
-    };
-    await addChannelMutation.mutateAsync(channelConfig);
+    await addChannelMutation.mutateAsync({
+      channelType: addChannelType,
+      config:
+        addChannelType === "ag_ui"
+          ? { anonymous: true }
+          : {
+              signing_secret: editSigningSecret,
+              bot_token: editBotToken,
+              session_strategy: editSessionStrategy,
+              reply_mode: editReplyMode,
+              ...(editChannelIdField ? { channel_id: editChannelIdField } : {}),
+              ...(editTeamId ? { team_id: editTeamId } : {}),
+            },
+    });
   };
 
   const handleDelete = async () => {
@@ -283,132 +315,204 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     );
   }
 
-  const renderChannelForm = (isSaving: boolean, formId: string = "default") => (
-    <div className="space-y-4">
-      <div>
-        <Label htmlFor={`signing_secret_${formId}`}>Signing Secret</Label>
-        <Input
-          id={`signing_secret_${formId}`}
-          type="password"
-          value={editSigningSecret}
-          onChange={(e) => setEditSigningSecret(e.target.value)}
-          placeholder="Your Slack app's signing secret"
-          required
-        />
-        <p className="text-xs text-muted-foreground mt-1">
-          Found in your Slack app &rarr; Settings &rarr; Basic Information &rarr; App Credentials
-        </p>
+  const renderChannelForm = (isSaving: boolean, formId: string = "default") => {
+    const formChannelType = editingChannelId ? editingChannelType : addChannelType;
+
+    return (
+      <div className="space-y-4">
+        {!editingChannelId && (
+          <div>
+            <Label htmlFor={`channel_type_${formId}`}>Channel Type</Label>
+            <Select
+              value={addChannelType}
+              onValueChange={(v) => setAddChannelType(v as ChannelType)}
+            >
+              <SelectTrigger id={`channel_type_${formId}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="slack">Slack</SelectItem>
+                <SelectItem value="ag_ui">AG-UI</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {formChannelType === "ag_ui" ? (
+          <div className="space-y-4">
+            <div className="rounded-md border p-3 text-sm text-muted-foreground">
+              AG-UI requests are accepted anonymously for now. Publish the app, then point an AG-UI
+              client at the endpoint shown on this page.
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                size="sm"
+                onClick={editingChannelId ? saveChannel : saveNewChannel}
+                disabled={isSaving}
+              >
+                <Check className="w-3 h-3 mr-1" />
+                {isSaving ? "Saving..." : "Save"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingChannelId(null);
+                  setShowAddChannel(false);
+                }}
+              >
+                <X className="w-3 h-3 mr-1" />
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div>
+              <Label htmlFor={`signing_secret_${formId}`}>Signing Secret</Label>
+              <Input
+                id={`signing_secret_${formId}`}
+                type="password"
+                value={editSigningSecret}
+                onChange={(e) => setEditSigningSecret(e.target.value)}
+                placeholder="Your Slack app's signing secret"
+                required
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Found in your Slack app &rarr; Settings &rarr; Basic Information &rarr; App
+                Credentials
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor={`bot_token_${formId}`}>Bot User OAuth Token</Label>
+              <Input
+                id={`bot_token_${formId}`}
+                type="password"
+                value={editBotToken}
+                onChange={(e) => setEditBotToken(e.target.value)}
+                placeholder="xoxb-..."
+                required
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Found in your Slack app &rarr; OAuth &amp; Permissions &rarr; Bot User OAuth Token
+              </p>
+            </div>
+
+            <Separator />
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor={`team_id_${formId}`}>Workspace ID (optional)</Label>
+                <Input
+                  id={`team_id_${formId}`}
+                  value={editTeamId}
+                  onChange={(e) => setEditTeamId(e.target.value)}
+                  placeholder="T0123456789"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor={`channel_id_${formId}`}>Channel ID (optional)</Label>
+                <Input
+                  id={`channel_id_${formId}`}
+                  value={editChannelIdField}
+                  onChange={(e) => setEditChannelIdField(e.target.value)}
+                  placeholder="C0123456789"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor={`session_strategy_${formId}`}>Session Strategy</Label>
+              <Select
+                value={editSessionStrategy}
+                onValueChange={(v) => setEditSessionStrategy(v as SessionStrategy)}
+              >
+                <SelectTrigger>
+                  <SelectValue>
+                    {
+                      {
+                        per_thread: "Per Thread (default)",
+                        per_channel: "Per Channel",
+                        per_user: "Per User",
+                      }[editSessionStrategy]
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="per_thread">Per Thread (default)</SelectItem>
+                  <SelectItem value="per_channel">Per Channel</SelectItem>
+                  <SelectItem value="per_user">Per User</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor={`reply_mode_${formId}`}>Reply Mode</Label>
+              <Select
+                value={editReplyMode}
+                onValueChange={(v) => setEditReplyMode(v as SlackReplyMode)}
+              >
+                <SelectTrigger>
+                  <SelectValue>
+                    {
+                      {
+                        all_messages: "All Assistant Messages",
+                        report_progress_only: "Report Progress Only",
+                      }[editReplyMode]
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all_messages">All Assistant Messages</SelectItem>
+                  <SelectItem value="report_progress_only">Report Progress Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                size="sm"
+                onClick={editingChannelId ? saveChannel : saveNewChannel}
+                disabled={isSaving || !editSigningSecret || !editBotToken}
+              >
+                <Check className="w-3 h-3 mr-1" />
+                {isSaving ? "Saving..." : "Save"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingChannelId(null);
+                  setShowAddChannel(false);
+                }}
+              >
+                <X className="w-3 h-3 mr-1" />
+                Cancel
+              </Button>
+            </div>
+          </>
+        )}
       </div>
-
-      <div>
-        <Label htmlFor={`bot_token_${formId}`}>Bot User OAuth Token</Label>
-        <Input
-          id={`bot_token_${formId}`}
-          type="password"
-          value={editBotToken}
-          onChange={(e) => setEditBotToken(e.target.value)}
-          placeholder="xoxb-..."
-          required
-        />
-        <p className="text-xs text-muted-foreground mt-1">
-          Found in your Slack app &rarr; OAuth &amp; Permissions &rarr; Bot User OAuth Token
-        </p>
-      </div>
-
-      <Separator />
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor={`team_id_${formId}`}>Workspace ID (optional)</Label>
-          <Input
-            id={`team_id_${formId}`}
-            value={editTeamId}
-            onChange={(e) => setEditTeamId(e.target.value)}
-            placeholder="T0123456789"
-          />
-        </div>
-
-        <div>
-          <Label htmlFor={`channel_id_${formId}`}>Channel ID (optional)</Label>
-          <Input
-            id={`channel_id_${formId}`}
-            value={editChannelIdField}
-            onChange={(e) => setEditChannelIdField(e.target.value)}
-            placeholder="C0123456789"
-          />
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor={`session_strategy_${formId}`}>Session Strategy</Label>
-        <Select
-          value={editSessionStrategy}
-          onValueChange={(v) => setEditSessionStrategy(v as SessionStrategy)}
-        >
-          <SelectTrigger>
-            <SelectValue>
-              {
-                {
-                  per_thread: "Per Thread (default)",
-                  per_channel: "Per Channel",
-                  per_user: "Per User",
-                }[editSessionStrategy]
-              }
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="per_thread">Per Thread (default)</SelectItem>
-            <SelectItem value="per_channel">Per Channel</SelectItem>
-            <SelectItem value="per_user">Per User</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <Label htmlFor={`reply_mode_${formId}`}>Reply Mode</Label>
-        <Select value={editReplyMode} onValueChange={(v) => setEditReplyMode(v as SlackReplyMode)}>
-          <SelectTrigger>
-            <SelectValue>
-              {
-                {
-                  all_messages: "All Assistant Messages",
-                  report_progress_only: "Report Progress Only",
-                }[editReplyMode]
-              }
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all_messages">All Assistant Messages</SelectItem>
-            <SelectItem value="report_progress_only">Report Progress Only</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex gap-2 pt-2">
-        <Button
-          size="sm"
-          onClick={editingChannelId ? saveChannel : saveNewChannel}
-          disabled={isSaving || !editSigningSecret || !editBotToken}
-        >
-          <Check className="w-3 h-3 mr-1" />
-          {isSaving ? "Saving..." : "Save"}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            setEditingChannelId(null);
-            setShowAddChannel(false);
-          }}
-        >
-          <X className="w-3 h-3 mr-1" />
-          Cancel
-        </Button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const renderChannelDisplay = (channel: AppChannel) => {
+    if (channel.channel_type === "ag_ui") {
+      const config = channel.channel_config as AgUiChannelConfig;
+      return (
+        <div key={channel.id} className="space-y-4">
+          <AgUiSetupGuidance
+            endpointUrl={agUiEndpointUrl}
+            isPublished={isPublished}
+            anonymousEnabled={config?.anonymous ?? true}
+            onConfigure={() => startEditChannel(channel)}
+          />
+        </div>
+      );
+    }
+
     const config = channel.channel_config as SlackChannelConfig;
     const chHasConfig = config?.signing_secret && config?.bot_token;
     const chWebhookVerified = !!config?.webhook_verified_at;
@@ -531,7 +635,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             <Button
               variant="default"
               onClick={() => publishApp.mutate(app.id)}
-              disabled={publishApp.isPending || !hasSlackConfig || isReadOnly}
+              disabled={publishApp.isPending || !canPublishApp || isReadOnly}
             >
               <Globe className="w-4 h-4 mr-2" />
               {publishApp.isPending ? "Publishing..." : "Publish"}
@@ -579,7 +683,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                     <>
                       <Button variant="outline" size="sm" onClick={() => startEditChannel(channel)}>
                         <Pencil className="w-3 h-3 mr-1" />
-                        {(channel.channel_config as SlackChannelConfig)?.signing_secret
+                        {channel.channel_type === "slack" &&
+                        (channel.channel_config as SlackChannelConfig)?.signing_secret
                           ? "Edit"
                           : "Configure"}
                       </Button>
@@ -617,7 +722,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           {showAddChannel && (
             <Card>
               <CardHeader>
-                <CardTitle>Add Slack Channel</CardTitle>
+                <CardTitle>Add Channel</CardTitle>
               </CardHeader>
               <CardContent>{renderChannelForm(addChannelMutation.isPending, "new")}</CardContent>
             </Card>

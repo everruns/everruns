@@ -179,6 +179,7 @@ Re-encryption CLI tool implemented at `crates/server/src/bin/reencrypt_secrets.r
 | TM-TENANT-006 | Session inherits wrong org | Medium | Sessions scoped via agent FK; agent scoped to org; query joins enforce chain | MITIGATED |
 | TM-TENANT-007 | Durable tasks cross-org | Medium | gRPC `GetTurnContext` validates org_id in request matches record in DB | MITIGATED |
 | TM-TENANT-008 | User listing cross-org | High | `GET /v1/users` returns all system users without org filtering; uses `AuthUser` not `ResolvedOrg` | **OPEN** |
+| TM-TENANT-009 | AG-UI thread ID collision crosses app session boundaries | High | AG-UI session routing tags include both `ag_ui:app:{app_id}` and `ag_ui:thread:{thread_id}` so a shared thread UUID cannot attach to another app's session | MITIGATED |
 
 ### Mitigation Details
 
@@ -214,6 +215,7 @@ ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 | TM-AUTHZ-002 | Policy bypass via internal Caller | Medium | `Caller::internal()` bypasses policies with Owner role; only used in gRPC service (worker ↔ server), not HTTP-accessible | MITIGATED |
 | TM-AUTHZ-003 | Policy error reveals permission names | Low | 403 response includes policy ID and required permission; acceptable for debugging, no internal state leaked | **ACCEPTED** |
 | TM-AUTHZ-004 | Missing policy on service method | Medium | Compile-time enforcement via `#[policy]` macro; code review required to ensure coverage | MITIGATED |
+| TM-AUTHZ-005 | Anonymous app channel reaches draft or disabled app config | High | Public AG-UI ingress requires `AppStatus::Published`, an enabled `ag_ui` channel, and `anonymous=true`; otherwise returns 403/400 before session creation | MITIGATED |
 
 ### Mitigation Details
 
@@ -800,6 +802,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-007 | Nested JSON depth in API input | Medium | Input validation rejects deeply nested structures | MITIGATED |
 | TM-DOS-008 | ReDoS via file grep endpoint | Medium | `POST /v1/sessions/:id/fs/_/grep` accepts user regex with no complexity limits | **OPEN** |
 | TM-DOS-009 | Valkey unauthenticated access | Medium | Valkey listens on localhost:6379 by default; no AUTH configured in local/example compose | **CALLER RISK** |
+| TM-DOS-010 | AG-UI SSE connection exhaustion | Medium | AG-UI app streams reuse the shared `SseConnectionTracker`, enforcing the same global/per-org/per-session limits as other SSE endpoints | MITIGATED |
 | TM-DOS-010 | Rate limit bypass via Valkey failure | Low | Fail-open design: if Valkey is down, requests are allowed without rate limiting | **ACCEPTED** |
 
 ### Mitigation Details

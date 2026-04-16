@@ -298,7 +298,7 @@ impl TestServer {
         let notifications_state = if feature_flags.notifications {
             Some(api::notifications::AppState {
                 notification_service: Arc::new(services::NotificationService::new(db.clone())),
-                sse_tracker,
+                sse_tracker: sse_tracker.clone(),
                 notification_broadcaster: None,
                 auth: auth_state.clone(),
             })
@@ -336,7 +336,15 @@ impl TestServer {
             runner.clone(),
             None, // No delivery dispatcher in tests
             feature_flags.notifications,
-            everruns_server::EventDelivery::in_memory(),
+            event_delivery.clone(),
+        );
+        let ag_ui_state = api::ag_ui::AgUiState::new(
+            db.clone(),
+            None, // No encryption in tests
+            runner.clone(),
+            feature_flags.notifications,
+            event_delivery.clone(),
+            sse_tracker.clone(),
         );
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
@@ -344,7 +352,7 @@ impl TestServer {
             auth_state.clone(),
             &platform_definition,
             feature_flags.notifications,
-            everruns_server::EventDelivery::in_memory(),
+            event_delivery.clone(),
             None, // No encryption in tests
             capability_service.clone(),
         );
@@ -378,6 +386,7 @@ impl TestServer {
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::user_connections::routes(user_connections_state))
+            .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::slack_events::routes(slack_state))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(

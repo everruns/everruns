@@ -591,7 +591,7 @@ impl ServerAppBuilder {
         let notifications_state = notification_service.as_ref().map(|notification_service| {
             api::notifications::AppState {
                 notification_service: notification_service.clone(),
-                sse_tracker,
+                sse_tracker: sse_tracker.clone(),
                 notification_broadcaster,
                 auth: auth_state.clone(),
             }
@@ -674,6 +674,14 @@ impl ServerAppBuilder {
             slack_dispatcher.clone(),
             notifications_enabled,
             event_delivery.clone(),
+        );
+        let ag_ui_state = api::ag_ui::AgUiState::new(
+            db.clone(),
+            encryption.clone(),
+            runner.clone(),
+            notifications_enabled,
+            event_delivery.clone(),
+            sse_tracker.clone(),
         );
         let session_files_state = api::session_files::AppState::new(
             db.clone(),
@@ -852,6 +860,7 @@ impl ServerAppBuilder {
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))
             .merge(api::slack_events::routes(slack_state))
+            .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::budgets::routes(api::budgets::AppState::new(
                 db.clone(),
