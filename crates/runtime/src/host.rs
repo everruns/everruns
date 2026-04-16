@@ -24,9 +24,10 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     Agent, CapabilityRegistry, DependencyBlocker, DriverRegistry, Harness, Session, TokenUsage,
-    ToolDefinition, ToolRegistry,
+    ToolDefinition, ToolRegistry, org_public_id_from_internal,
 };
 use std::sync::Arc;
+use tracing::warn;
 
 #[derive(Clone)]
 struct HostAgentStore(Arc<dyn AgentStore>);
@@ -337,6 +338,35 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         }
     }
 
+    async fn set_session_status(&self, status: SessionStatus, action: &'static str) {
+        if let Err(error) = self
+            .adapter
+            .set_session_status(self.org_id, self.session_id, status)
+            .await
+        {
+            warn!(
+                session_id = %self.session_id,
+                org_id = self.org_id,
+                action,
+                %error,
+                "runtime host lifecycle status update failed"
+            );
+        }
+    }
+
+    async fn emit_event(&self, request: EventRequest) {
+        let event_type = request.event_type.clone();
+        if let Err(error) = self.adapter.event_emitter().emit(request).await {
+            warn!(
+                session_id = %self.session_id,
+                org_id = self.org_id,
+                event_type,
+                %error,
+                "runtime host lifecycle event emission failed"
+            );
+        }
+    }
+
     pub async fn turn_started(&self, turn_id: TurnId, input_message_id: MessageId) {
         let input_content = self
             .adapter
@@ -347,37 +377,29 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
             .flatten()
             .map(|message| message.content_to_llm_string());
 
-        let _ = self
-            .adapter
-            .set_session_status(self.org_id, self.session_id, SessionStatus::Active)
+        self.set_session_status(SessionStatus::Active, "turn_started")
             .await;
 
-        let _ = self
-            .adapter
-            .event_emitter()
-            .emit(EventRequest::new(
-                self.session_id,
-                EventContext::turn(turn_id, input_message_id),
-                SessionActivatedData {
-                    turn_id,
-                    input_message_id,
-                },
-            ))
-            .await;
+        self.emit_event(EventRequest::new(
+            self.session_id,
+            EventContext::turn(turn_id, input_message_id),
+            SessionActivatedData {
+                turn_id,
+                input_message_id,
+            },
+        ))
+        .await;
 
-        let _ = self
-            .adapter
-            .event_emitter()
-            .emit(EventRequest::new(
-                self.session_id,
-                EventContext::turn(turn_id, input_message_id),
-                TurnStartedData {
-                    turn_id,
-                    input_message_id,
-                    input_content,
-                },
-            ))
-            .await;
+        self.emit_event(EventRequest::new(
+            self.session_id,
+            EventContext::turn(turn_id, input_message_id),
+            TurnStartedData {
+                turn_id,
+                input_message_id,
+                input_content,
+            },
+        ))
+        .await;
     }
 
     pub async fn emit_turn_completed(
@@ -388,21 +410,18 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         usage: Option<TokenUsage>,
         input_content: Option<String>,
     ) {
-        let _ = self
-            .adapter
-            .event_emitter()
-            .emit(EventRequest::new(
-                self.session_id,
-                EventContext::turn(turn_id, input_message_id),
-                TurnCompletedData {
-                    turn_id,
-                    iterations,
-                    duration_ms: None,
-                    usage,
-                    input_content,
-                },
-            ))
-            .await;
+        self.emit_event(EventRequest::new(
+            self.session_id,
+            EventContext::turn(turn_id, input_message_id),
+            TurnCompletedData {
+                turn_id,
+                iterations,
+                duration_ms: None,
+                usage,
+                input_content,
+            },
+        ))
+        .await;
     }
 
     pub async fn emit_session_idled(
@@ -412,24 +431,19 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         iterations: Option<u32>,
         usage: Option<TokenUsage>,
     ) {
-        let _ = self
-            .adapter
-            .set_session_status(self.org_id, self.session_id, SessionStatus::Idle)
+        self.set_session_status(SessionStatus::Idle, "emit_session_idled")
             .await;
 
-        let _ = self
-            .adapter
-            .event_emitter()
-            .emit(EventRequest::new(
-                self.session_id,
-                EventContext::turn(turn_id, input_message_id),
-                SessionIdledData {
-                    turn_id,
-                    iterations,
-                    usage,
-                },
-            ))
-            .await;
+        self.emit_event(EventRequest::new(
+            self.session_id,
+            EventContext::turn(turn_id, input_message_id),
+            SessionIdledData {
+                turn_id,
+                iterations,
+                usage,
+            },
+        ))
+        .await;
     }
 
     pub async fn turn_completed(
@@ -459,49 +473,38 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         error: &str,
         error_code: Option<&str>,
     ) {
-        let _ = self
-            .adapter
-            .set_session_status(self.org_id, self.session_id, SessionStatus::Idle)
+        self.set_session_status(SessionStatus::Idle, "turn_failed")
             .await;
 
-        let _ = self
-            .adapter
-            .event_emitter()
-            .emit(EventRequest::new(
-                self.session_id,
-                EventContext::turn(turn_id, input_message_id),
-                TurnFailedData {
-                    turn_id,
-                    error: error.to_string(),
-                    error_code: error_code.map(str::to_string),
-                },
-            ))
-            .await;
+        self.emit_event(EventRequest::new(
+            self.session_id,
+            EventContext::turn(turn_id, input_message_id),
+            TurnFailedData {
+                turn_id,
+                error: error.to_string(),
+                error_code: error_code.map(str::to_string),
+            },
+        ))
+        .await;
 
-        let _ = self
-            .adapter
-            .event_emitter()
-            .emit(EventRequest::new(
-                self.session_id,
-                EventContext::turn(turn_id, input_message_id),
-                SessionIdledData {
-                    turn_id,
-                    iterations: None,
-                    usage: None,
-                },
-            ))
-            .await;
+        self.emit_event(EventRequest::new(
+            self.session_id,
+            EventContext::turn(turn_id, input_message_id),
+            SessionIdledData {
+                turn_id,
+                iterations: None,
+                usage: None,
+            },
+        ))
+        .await;
     }
 
     pub async fn waiting_for_tool_results(&self) {
-        let _ = self
-            .adapter
-            .set_session_status(
-                self.org_id,
-                self.session_id,
-                SessionStatus::WaitingForToolResults,
-            )
-            .await;
+        self.set_session_status(
+            SessionStatus::WaitingForToolResults,
+            "waiting_for_tool_results",
+        )
+        .await;
     }
 
     pub async fn dependency_blocked(
@@ -510,15 +513,12 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         input_message_id: MessageId,
         blocker: DependencyBlocker,
     ) {
-        let _ = self
-            .adapter
-            .event_emitter()
-            .emit(EventRequest::new(
-                self.session_id,
-                EventContext::turn(turn_id, input_message_id),
-                OutputMessageCompletedData::new(Message::assistant(blocker.message())),
-            ))
-            .await;
+        self.emit_event(EventRequest::new(
+            self.session_id,
+            EventContext::turn(turn_id, input_message_id),
+            OutputMessageCompletedData::new(Message::assistant(blocker.message())),
+        ))
+        .await;
 
         self.turn_failed(
             turn_id,
@@ -663,6 +663,11 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     .with_session_store(adapter.session_store(org_id))
     .with_session_mutator(adapter.session_mutator(org_id))
     .with_agent_store(adapter.agent_store(org_id))
+    .with_org_id(
+        org_public_id_from_internal(org_id)
+            .parse()
+            .expect("internal org id converts to valid public org id"),
+    )
     .with_capability_registry(adapter.capability_registry())
     .with_post_tool_hooks(
         adapter
