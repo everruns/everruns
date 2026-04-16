@@ -77,12 +77,18 @@ fn format_error_chain(error: &Error) -> String {
 }
 
 fn extract_session_id(input: &Value) -> Option<String> {
-    session_context(input).and_then(|context| {
-        context
-            .get("session_id")
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned)
-    })
+    input
+        .get("session_id")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            session_context(input).and_then(|context| {
+                context
+                    .get("session_id")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+            })
+        })
 }
 
 fn extract_tool_identifiers(input: &Value) -> Vec<String> {
@@ -220,6 +226,27 @@ mod tests {
             summary
                 .persisted_message
                 .contains("error_chain=outer: inner")
+        );
+    }
+
+    #[test]
+    fn summarize_task_failure_reads_top_level_durable_turn_session_id() {
+        let input = json!({
+            "session_id": "session_top_level",
+            "context": {
+                "session_id": "session_nested"
+            }
+        });
+        let error = anyhow::anyhow!("inner");
+
+        let summary =
+            summarize_task_failure(Uuid::nil(), None, "reason", 1, Some(2), &input, &error);
+
+        assert_eq!(summary.session_id.as_deref(), Some("session_top_level"));
+        assert!(
+            summary
+                .persisted_message
+                .contains("session_id=session_top_level")
         );
     }
 }
