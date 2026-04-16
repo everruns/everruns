@@ -648,21 +648,25 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         });
     }
 
+    let tool_registry = adapter
+        .build_tool_registry(
+            org_id,
+            input.harness_id,
+            input.agent_id,
+            input.blueprint_id.as_deref(),
+        )
+        .await?;
+    let builtin_tool_registry = tool_registry.clone();
+
     let mut atom = ActAtom::with_file_store(
-        adapter
-            .build_tool_registry(
-                org_id,
-                input.harness_id,
-                input.agent_id,
-                input.blueprint_id.as_deref(),
-            )
-            .await?,
+        tool_registry,
         HostEventEmitter(adapter.event_emitter()),
         adapter.file_store(),
     )
     .with_session_store(adapter.session_store(org_id))
     .with_session_mutator(adapter.session_mutator(org_id))
     .with_agent_store(adapter.agent_store(org_id))
+    .with_tool_registry(builtin_tool_registry)
     .with_org_id(
         org_public_id_from_internal(org_id)
             .parse()

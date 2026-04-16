@@ -45,6 +45,7 @@ pub mod typed_id;
 pub mod audit;
 
 // Budget types (budgets, ledger, rules, actions)
+pub mod background;
 pub mod budget;
 
 // Domain entity types
@@ -163,6 +164,9 @@ pub use channel::{
 pub use platform_store::{PlatformMessage, PlatformStore};
 
 // Event listener re-exports
+pub use background::{
+    BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
+};
 pub use event_listeners::{CompositeEventListener, EventListener, NoopEventListener};
 
 // LLM driver types re-exports
@@ -189,8 +193,8 @@ pub use openresponses_protocol::{
 
 // Tool abstraction re-exports
 pub use tools::{
-    EchoTool, FailingTool, Tool, ToolExecutionResult, ToolInternalError, ToolRegistry,
-    ToolRegistryBuilder, ToolResultImage,
+    EchoTool, FailingTool, SpawnBackgroundTool, Tool, ToolExecutionResult, ToolInternalError,
+    ToolRegistry, ToolRegistryBuilder, ToolResultImage,
 };
 
 // Capability re-exports

@@ -602,6 +602,10 @@ pub struct ToolContext {
     /// Optional capability registry for blueprint lookups.
     pub capability_registry: Option<crate::capabilities::CapabilityRegistry>,
 
+    /// Optional registry of active built-in tools for meta-tools such as
+    /// `spawn_background` that need to inspect or delegate to sibling tools.
+    pub tool_registry: Option<crate::tools::ToolRegistry>,
+
     /// Optional memory store backend for persistent cross-session memory.
     pub memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
 
@@ -642,6 +646,7 @@ impl ToolContext {
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
+            tool_registry: None,
             memory_store: None,
             org_id: None,
             network_access: None,
@@ -670,6 +675,7 @@ impl ToolContext {
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
+            tool_registry: None,
             memory_store: None,
             org_id: None,
             network_access: None,
@@ -701,6 +707,7 @@ impl ToolContext {
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
+            tool_registry: None,
             memory_store: None,
             org_id: None,
             network_access: None,
@@ -733,6 +740,7 @@ impl ToolContext {
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
+            tool_registry: None,
             memory_store: None,
             org_id: None,
             network_access: None,
@@ -822,6 +830,12 @@ impl ToolContext {
     /// Set org ID for org-scoped operations.
     pub fn with_org_id(mut self, org_id: crate::typed_id::OrgId) -> Self {
         self.org_id = Some(org_id);
+        self
+    }
+
+    /// Set the active built-in tool registry on this context.
+    pub fn with_tool_registry(mut self, registry: crate::tools::ToolRegistry) -> Self {
+        self.tool_registry = Some(registry);
         self
     }
 
@@ -918,6 +932,7 @@ impl std::fmt::Debug for ToolContext {
                 &self.leased_resource_store.is_some(),
             )
             .field("event_emitter", &self.event_emitter.is_some())
+            .field("tool_registry", &self.tool_registry.is_some())
             .field("memory_store", &self.memory_store.is_some())
             .field("org_id", &self.org_id)
             .finish()
