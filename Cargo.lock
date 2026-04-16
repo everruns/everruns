@@ -2091,6 +2091,7 @@ dependencies = [
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
  "everruns-openai",
+ "everruns-runtime",
  "futures",
  "hex",
  "prost-types",

@@ -30,6 +30,7 @@ everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
 everruns-internal-protocol = { path = "../internal-protocol" }
+everruns-runtime = { path = "../runtime" }
 # Note: Workers don't need direct DB access - all DB operations go through gRPC
 # The durable module is used for control-plane direct DB mode (avoids circular gRPC dependency)
 everruns-durable = { path = "../durable" }

@@ -11,6 +11,7 @@
 //! - seed harnesses, agents, sessions, and workspace files directly in code
 //! - replace the default in-memory stores with custom runtime backends
 //! - inspect the assembled turn context before or after executing a turn
+//! - reuse runtime-owned host phase execution from durable or server-backed hosts
 //!
 //! For a runnable example, see:
 //!
@@ -133,6 +134,7 @@
 //! ```
 
 mod backends;
+mod host;
 mod in_memory;
 mod runtime;
 
@@ -141,5 +143,9 @@ pub use backends::{
     RuntimeHarnessStore, RuntimeMessageStore, RuntimeProviderStore, RuntimeSessionStore,
 };
 pub use everruns_core::AssembledTurnContext;
+pub use host::{
+    RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle, detect_dependency_blocker,
+    execute_act_activity, execute_input_activity, execute_reason_activity,
+};
 pub use in_memory::{InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore};
 pub use runtime::{InProcessRuntime, InProcessRuntimeBuilder, TurnResult};

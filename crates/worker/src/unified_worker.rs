@@ -10,12 +10,17 @@
 
 use anyhow::Result;
 use everruns_core::ActInput;
-use everruns_core::atoms::{ActAtom, Atom, AtomContext, InputAtom, ReasonAtom};
+use everruns_core::atoms::AtomContext;
 use everruns_core::typed_id::{ExecId, TurnId};
 use everruns_durable::{
     ActivityOptions, ClaimedTask, WorkerInfo, WorkflowEvent, WorkflowEventStore, WorkflowStatus,
     append_event, record_activity_completed, record_activity_failed, record_activity_started,
     record_workflow_completed,
+};
+use everruns_runtime::{
+    RuntimeSessionLifecycle, execute_act_activity as runtime_execute_act_activity,
+    execute_input_activity as runtime_execute_input_activity,
+    execute_reason_activity as runtime_execute_reason_activity,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -25,12 +30,8 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::durable_runner::DurableTurnInput;
-use crate::session_lifecycle::SessionLifecycle;
-use crate::worker_adapters::{
-    AdapterAgentStore, AdapterEventEmitter, AdapterHarnessStore, AdapterImageResolver,
-    AdapterLlmProviderStore, AdapterMessageRetriever, AdapterSessionFileStore,
-    AdapterSessionMutator, AdapterSessionStore, WorkerAdapters,
-};
+use crate::runtime_host::WorkerRuntimeHost;
+use crate::worker_adapters::WorkerAdapters;
 
 // Re-export atom types
 pub use everruns_core::atoms::{InputAtomInput, ReasonInput, ReasonResult};
@@ -345,26 +346,6 @@ pub struct ShutdownHandle {
     tx: watch::Sender<bool>,
 }
 
-/// Helper: detect dependency blockers using shared core logic.
-async fn detect_dependency_blocker<A: WorkerAdapters>(
-    adapters: &A,
-    org_id: i64,
-    harness_id: everruns_core::HarnessId,
-    agent_id: Option<everruns_core::AgentId>,
-) -> Result<Option<everruns_core::DependencyBlocker>> {
-    let harness_store = AdapterHarnessStore::new(adapters.clone(), org_id);
-    let agent_store = AdapterAgentStore::new(adapters.clone(), org_id);
-    Ok(
-        everruns_core::detect_dependency_blocker(
-            &harness_store,
-            &agent_store,
-            harness_id,
-            agent_id,
-        )
-        .await?,
-    )
-}
-
 impl ShutdownHandle {
     /// Trigger shutdown of the worker
     pub fn shutdown(&self) {
@@ -544,8 +525,8 @@ where
                                 };
 
                             if hint_enabled {
-                                let lifecycle = SessionLifecycle::new(
-                                    adapters.clone(),
+                                let lifecycle = RuntimeSessionLifecycle::new(
+                                    WorkerRuntimeHost::new(adapters.clone()),
                                     ti.org_id,
                                     ti.session_id,
                                 );
@@ -620,20 +601,15 @@ async fn execute_input_activity<A: WorkerAdapters>(
         exec_id: ExecId::new(),
     };
 
-    // Turn starting: set active, emit session.activated + turn.started
-    let lifecycle = SessionLifecycle::new(adapters.clone(), input.org_id, input.session_id);
-    lifecycle
-        .turn_started(context.turn_id, input.input_message_id, None)
-        .await;
-
-    // Execute InputAtom
-    let message_retriever = AdapterMessageRetriever::new(adapters.clone());
-    let atom = InputAtom::new(message_retriever);
-
     let atom_input = everruns_core::InputAtomInput {
         context: context.clone(),
     };
-    let result = atom.execute(atom_input).await?;
+    let result = runtime_execute_input_activity(
+        &WorkerRuntimeHost::new(adapters.clone()),
+        input.org_id,
+        atom_input,
+    )
+    .await?;
 
     // Include turn_id in output for propagation
     let mut output = serde_json::to_value(&result)?;
@@ -666,71 +642,22 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         exec_id: ExecId::new(),
     };
 
-    let session_id = input.session_id;
-    let input_message_id = input.input_message_id;
-
-    let lifecycle = SessionLifecycle::new(adapters.clone(), input.org_id, session_id);
-
-    if let Some(blocker) =
-        detect_dependency_blocker(adapters, input.org_id, input.harness_id, input.agent_id).await?
-    {
-        lifecycle
-            .dependency_blocked(turn_id, input_message_id, blocker)
-            .await;
-        return Ok(serde_json::to_value(everruns_core::ReasonResult {
-            success: false,
-            text: blocker.message().to_string(),
-            tool_calls: vec![],
-            has_tool_calls: false,
-            tool_definitions: vec![],
-            max_iterations: everruns_core::runtime_agent::default_max_iterations(),
-            error: Some("dependency_unavailable".to_string()),
-            usage: None,
-            response_id: None,
-            locale: None,
-            network_access: None,
-        })?);
-    }
-
-    // Load turn context (batch call for efficiency)
-    let turn_context = adapters
-        .load_turn_context(input.org_id, session_id.uuid())
-        .await?;
-
-    // Create atom dependencies
-    let harness_store = AdapterHarnessStore::new(adapters.clone(), input.org_id);
-    let agent_store = AdapterAgentStore::new(adapters.clone(), input.org_id);
-    let session_store = AdapterSessionStore::new(adapters.clone(), input.org_id);
-    let message_retriever = AdapterMessageRetriever::new(adapters.clone());
-    let provider_store = AdapterLlmProviderStore::new(adapters.clone(), input.org_id);
-    let capability_registry = adapters.capability_registry();
-    let driver_registry = adapters.driver_registry();
-    let event_emitter = AdapterEventEmitter::new(adapters.clone());
-    let image_resolver = Arc::new(AdapterImageResolver::new(adapters.clone(), input.org_id));
-
-    let atom = ReasonAtom::new(
-        harness_store,
-        agent_store,
-        session_store,
-        message_retriever,
-        provider_store,
-        capability_registry,
-        driver_registry,
-        event_emitter,
-    )
-    .with_image_resolver(image_resolver);
-
     let reason_input = everruns_core::ReasonInput {
         context: context.clone(),
         harness_id: input.harness_id,
         agent_id: input.agent_id,
         org_id: input.org_id,
-        mcp_tool_definitions: turn_context.mcp_tool_definitions,
+        mcp_tool_definitions: vec![],
         previous_response_id: input.previous_response_id.clone(),
         iteration: input.iteration,
     };
 
-    let result = atom.execute(reason_input).await?;
+    let result = runtime_execute_reason_activity(
+        &WorkerRuntimeHost::new(adapters.clone()),
+        input.org_id,
+        reason_input,
+    )
+    .await?;
 
     // Turn lifecycle events (turn.completed, turn.failed, session.idled) are NOT
     // emitted here. They are deferred to the workflow scheduler which checks for
@@ -753,70 +680,9 @@ async fn execute_act_activity<A: WorkerAdapters>(
     );
 
     // Extract org_id early — must be set by callers for proper tenant isolation.
-    let org_id = input
-        .org_id
-        .expect("ActInput.org_id must be set for act activities");
-
-    if let Some(blocker) =
-        detect_dependency_blocker(adapters, org_id, input.harness_id, input.agent_id).await?
-    {
-        let lifecycle = SessionLifecycle::new(adapters.clone(), org_id, input.context.session_id);
-        lifecycle
-            .dependency_blocked(
-                input.context.turn_id,
-                input.context.input_message_id,
-                blocker,
-            )
-            .await;
-        let output = serde_json::to_value(everruns_core::ActResult {
-            results: vec![],
-            completed: true,
-            success_count: 0,
-            error_count: 1,
-            waiting_for_tool_results: false,
-            blocked: true,
-            client_tool_calls: vec![],
-            client_tool_definitions: vec![],
-        })?;
-        return Ok(output);
-    }
-
-    // Build tool registry with defaults and capability tools.
-    // When agent_id is present, use agent capabilities.
-    // When agent_id is absent, fall back to harness capabilities so that
-    // harness-provided tools (e.g. bash) are still registered.
-    let tool_registry = if let Some(agent_id) = input.agent_id {
-        adapters
-            .build_tool_registry(org_id, agent_id.uuid())
-            .await?
-    } else {
-        adapters
-            .build_tool_registry_for_harness(org_id, input.harness_id.uuid())
-            .await?
-    };
-
-    let event_emitter = AdapterEventEmitter::new(adapters.clone());
-    let file_store = Arc::new(AdapterSessionFileStore::new(adapters.clone()));
-    let session_store = Arc::new(AdapterSessionStore::new(adapters.clone(), org_id));
-    let session_mutator = Arc::new(AdapterSessionMutator::new(adapters.clone(), org_id));
-    let agent_store = Arc::new(AdapterAgentStore::new(adapters.clone(), org_id));
-
-    let mut atom = ActAtom::with_file_store(tool_registry, event_emitter, file_store)
-        .with_session_store(session_store)
-        .with_session_mutator(session_mutator)
-        .with_agent_store(agent_store);
-    atom = atom
-        .with_sqldb_store(adapters.sqldb_store())
-        .with_storage_store(adapters.storage_store())
-        .with_connection_resolver(adapters.connection_resolver())
-        .with_leased_resource_store(adapters.leased_resource_store())
-        .with_schedule_store(adapters.schedule_store(org_id))
-        .with_platform_store(adapters.platform_store(org_id));
-    if let Some(registry) = adapters.session_resource_registry() {
-        atom = atom.with_session_resource_registry(registry);
-    }
-
-    let result = atom.execute(input.clone()).await?;
+    let result =
+        runtime_execute_act_activity(&WorkerRuntimeHost::new(adapters.clone()), input.clone())
+            .await?;
 
     Ok(serde_json::to_value(&result)?)
 }
@@ -1008,8 +874,11 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
             } else {
                 // Turn truly complete. Emit turn event + session.idled + mark done.
                 let turn_id = input.turn_id.unwrap_or_default();
-                let lifecycle =
-                    SessionLifecycle::new(adapters.clone(), input.org_id, input.session_id);
+                let lifecycle = RuntimeSessionLifecycle::new(
+                    WorkerRuntimeHost::new(adapters.clone()),
+                    input.org_id,
+                    input.session_id,
+                );
 
                 if reason_result.success {
                     lifecycle

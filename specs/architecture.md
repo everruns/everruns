@@ -68,7 +68,7 @@ Events are classified as **ephemeral** or **durable**:
    - `server/` → `everruns-server` - **Control plane**: HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
    - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, shared types)
-   - `runtime/` → `everruns-runtime` - Public in-process runtime for embedded execution without durable engine/server
+   - `runtime/` → `everruns-runtime` - Public in-process runtime plus reusable host-phase execution for embedded and durable/server-backed execution
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
@@ -162,6 +162,11 @@ process should use `everruns-runtime`.
 - in-memory session/filesystem/storage/message backends
 - turn execution via the shared core `TurnStateMachine`
 - direct seeding of harnesses, agents, sessions, and files
+- runtime-owned host phase execution (`execute_input_activity`, `execute_reason_activity`, `execute_act_activity`)
+
+`everruns-worker` provides the first-party adapter bridge from worker backends
+into that host contract via `WorkerRuntimeHost`, so both the in-process worker
+and external durable worker reuse the same runtime-owned atom wiring.
 
 See [specs/runtime.md](runtime.md) for the public embedded runtime contract.
 
@@ -238,6 +243,7 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - `GrpcMessageRetriever` - Implements `MessageRetriever` trait via gRPC
    - `GrpcAgentStore` - Implements `AgentStore` trait via gRPC
    - `GrpcSessionStore` - Implements `SessionStore` trait via gRPC
+   - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-runtime` host execution
    - `GrpcLlmProviderStore` - Implements `LlmProviderStore` trait via gRPC
    - `GrpcSessionFileStore` - Implements `SessionFileStore` trait via gRPC
    - `GrpcEventEmitter` - Implements `EventEmitter` trait via gRPC

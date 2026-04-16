@@ -21,6 +21,7 @@ pub mod leased_resource_cleanup;
 pub mod mcp_executor;
 pub mod platform;
 pub mod runner;
+pub mod runtime_host;
 pub mod session_lifecycle;
 pub mod unified_worker;
 pub mod worker_adapters;
@@ -49,6 +50,7 @@ pub use grpc_adapters::{
 
 // Re-export task worker types
 pub use grpc_worker_adapters::GrpcWorkerAdapters;
+pub use runtime_host::WorkerRuntimeHost;
 pub use unified_worker::{TaskWorker, TaskWorkerConfig};
 pub use worker_adapters::{
     AdapterAgentStore, AdapterEventEmitter, AdapterLlmProviderStore, AdapterMessageRetriever,
