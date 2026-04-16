@@ -49,11 +49,11 @@ Organization management.
 
 ### `everruns agents`
 
-Agent CRUD. Create from YAML/JSON/Markdown files or CLI flags.
+Agent CRUD. Create from TOML/YAML/JSON/Markdown files or CLI flags.
 
-- `create --file <path> [--initial-files-dir <dir>] [--writable]` — send file to server import API (server handles parsing); upserts when `id:` present in frontmatter. `--initial-files-dir` recursively collects non-hidden text files from the directory and injects them as read-only `initial_files`. `--writable` makes collected files writable. Alternatively, `initial_files` can be specified directly in frontmatter as a list of relative paths — each entry is resolved relative to the agent file's parent directory, directories are walked recursively, and files are collected with the same security rules as `--initial-files-dir`.
+- `create --file <path> [--initial-files-dir <dir>] [--writable]` — send file to server import API; the CLI normalizes TOML to JSON and otherwise forwards the file as-is. Upserts when `id:` is present in the definition. If `--file` is omitted and `./agent.toml` exists, the CLI uses it automatically unless inline creation flags are present. `--initial-files-dir` recursively collects non-hidden text files from the directory and injects them as read-only `initial_files`. `--writable` makes collected files writable. Alternatively, `initial_files` can be specified directly in the definition as a list of relative paths — each entry is resolved relative to the agent file's parent directory, directories are walked recursively, and files are collected with the same security rules as `--initial-files-dir`.
 - `create --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--tag <t>]` — create from CLI flags
-- `update --file <path> [--initial-files-dir <dir>] [--writable]` — send file to server import API; requires `id:` in file frontmatter for upsert. `--initial-files-dir` and frontmatter `initial_files` work the same as in create.
+- `update --file <path> [--initial-files-dir <dir>] [--writable]` — send file to server import API; TOML is normalized client-side, and `./agent.toml` is used automatically when `--file` is omitted, no inline update flags are present, and no positional `<id>` is provided. Requires `id:` in the definition for upsert. `--initial-files-dir` and definition `initial_files` work the same as in create.
 - `update <id> --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--tag <t>]` — update from CLI flags
 - `list`
 - `get <id>`

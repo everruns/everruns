@@ -68,6 +68,12 @@ everruns agents create \
   --system-prompt "You are a helpful assistant." \
   --tag production
 
+# From default TOML file in the current directory
+everruns agents create
+
+# From TOML file
+everruns agents create -f agent.toml
+
 # From YAML file
 everruns agents create -f agent.yaml
 
@@ -76,6 +82,26 @@ everruns agents create -f agent.json
 
 # From Markdown with front matter
 everruns agents create -f agent.md
+```
+
+If `./agent.toml` exists and you do not pass inline creation flags, `everruns agents create` will use it automatically. `everruns agents update` also uses it in file-based mode, but passing an explicit positional `<id>` disables implicit `agent.toml` selection.
+
+**TOML file format** (`agent.toml`):
+
+```toml
+name = "research-assistant"
+description = "Helps with research tasks"
+system_prompt = """
+You are a helpful research assistant.
+Always cite your sources.
+"""
+tags = ["research", "assistant"]
+
+[[capabilities]]
+ref = "current_time"
+
+[[capabilities]]
+ref = "web_fetch"
 ```
 
 **YAML file format** (`agent.yaml`):
@@ -290,7 +316,7 @@ Suppress non-essential output:
 
 ```bash
 # Only output the created agent ID
-everruns agents create -f agent.yaml --quiet
+everruns agents create -f agent.toml --quiet
 # Output: agt_550e8400e29b41d4a716446655440000
 ```
 
