@@ -604,7 +604,7 @@ pub struct ToolContext {
 
     /// Optional registry of active built-in tools for meta-tools such as
     /// `spawn_background` that need to inspect or delegate to sibling tools.
-    pub tool_registry: Option<crate::tools::ToolRegistry>,
+    pub tool_registry: Option<Arc<crate::tools::ToolRegistry>>,
 
     /// Optional memory store backend for persistent cross-session memory.
     pub memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
@@ -834,7 +834,7 @@ impl ToolContext {
     }
 
     /// Set the active built-in tool registry on this context.
-    pub fn with_tool_registry(mut self, registry: crate::tools::ToolRegistry) -> Self {
+    pub fn with_tool_registry(mut self, registry: Arc<crate::tools::ToolRegistry>) -> Self {
         self.tool_registry = Some(registry);
         self
     }

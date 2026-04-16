@@ -856,6 +856,11 @@ impl Tool for SpawnBackgroundTool {
                 "Session resource registry not available in this context",
             );
         };
+        if context.file_store.is_none() {
+            return ToolExecutionResult::tool_error(
+                "Session file store not available in this context. spawn_background requires artifact persistence.",
+            );
+        }
 
         let run_id = format!("bg_{}", uuid::Uuid::now_v7().simple());
         let title = arguments
@@ -958,6 +963,7 @@ struct SessionBackgroundState {
     status_text: String,
     progress: Option<BackgroundProgress>,
     output_tail: String,
+    output_log: String,
 }
 
 struct SessionBackgroundSink {
@@ -1002,9 +1008,12 @@ impl SessionBackgroundSink {
     ) -> Result<()> {
         match outcome {
             Ok(outcome) => {
-                if let Some(raw_output) = &outcome.raw_output {
-                    self.write_text_file(&self.log_path, raw_output).await?;
-                }
+                let output_log = if let Some(raw_output) = &outcome.raw_output {
+                    raw_output.clone()
+                } else {
+                    self.state.lock().await.output_log.clone()
+                };
+                self.write_text_file(&self.log_path, &output_log).await?;
                 let result_json = serde_json::to_string_pretty(&outcome.result)
                     .unwrap_or_else(|_| outcome.result.to_string());
                 self.write_text_file(&self.result_path, &result_json)
@@ -1031,6 +1040,20 @@ impl SessionBackgroundSink {
                         "Background run ended unexpectedly".to_string()
                     }
                 };
+                let output_log = self.state.lock().await.output_log.clone();
+                self.write_text_file(&self.log_path, &output_log).await?;
+                let error_json = serde_json::to_string_pretty(&json!({
+                    "status": "failed",
+                    "error": &message,
+                }))
+                .unwrap_or_else(|_| {
+                    json!({
+                        "status": "failed",
+                        "error": &message,
+                    })
+                    .to_string()
+                });
+                self.write_text_file(&self.result_path, &error_json).await?;
                 let mut state = self.state.lock().await;
                 state.status_text = "Failed".to_string();
                 drop(state);
@@ -1072,6 +1095,10 @@ impl SessionBackgroundSink {
             return Ok(());
         };
         let state = self.state.lock().await;
+        let status_text = state.status_text.clone();
+        let progress = state.progress.clone();
+        let output_tail = state.output_tail.clone();
+        drop(state);
         registry
             .register(RegisterSessionResource {
                 session_id: self.context.session_id,
@@ -1081,9 +1108,9 @@ impl SessionBackgroundSink {
                 status,
                 metadata: json!({
                     "tool": self.tool_name,
-                    "status_text": state.status_text,
-                    "progress": state.progress,
-                    "output_tail": state.output_tail,
+                    "status_text": status_text,
+                    "progress": progress,
+                    "output_tail": output_tail,
                     "log_path": self.log_path,
                     "result_path": self.result_path,
                     "summary": summary,
@@ -1095,9 +1122,13 @@ impl SessionBackgroundSink {
     }
 
     async fn write_text_file(&self, path: &str, content: &str) -> Result<()> {
-        let Some(file_store) = &self.context.file_store else {
-            return Ok(());
-        };
+        let file_store = self.context.file_store.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "background run {} cannot persist artifact {} because no session file store is configured",
+                self.run_id,
+                path
+            )
+        })?;
 
         ensure_directory(file_store.as_ref(), self.context.session_id, "/.background").await?;
         let run_dir = format!("/.background/{}", self.run_id);
@@ -1125,6 +1156,8 @@ impl BackgroundEventSink for SessionBackgroundSink {
             let prefix = format!("[{stream}] ");
             state.output_tail.push_str(&prefix);
             state.output_tail.push_str(delta);
+            state.output_log.push_str(&prefix);
+            state.output_log.push_str(delta);
             if state.output_tail.chars().count() > 2048 {
                 state.output_tail = state
                     .output_tail
@@ -1156,8 +1189,11 @@ async fn ensure_directory(
     session_id: crate::SessionId,
     path: &str,
 ) -> Result<()> {
-    if file_store.stat_file(session_id, path).await?.is_some() {
-        return Ok(());
+    if let Some(entry) = file_store.stat_file(session_id, path).await? {
+        if entry.is_directory {
+            return Ok(());
+        }
+        return Err(anyhow::anyhow!("path exists but is not a directory: {path}").into());
     }
     let _ = file_store.create_directory(session_id, path).await?;
     Ok(())
@@ -1276,7 +1312,7 @@ mod tests {
             Ok(BackgroundOutcome {
                 summary: arguments["summary"].as_str().unwrap_or("done").to_string(),
                 result: json!({"ok": true}),
-                raw_output: Some("hello from background".to_string()),
+                raw_output: None,
             })
         }
     }
@@ -1301,6 +1337,61 @@ mod tests {
                 "properties": {
                     "summary": { "type": "string" }
                 }
+            })
+        }
+
+        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+            ToolExecutionResult::tool_error("foreground unsupported")
+        }
+
+        fn hints(&self) -> ToolHints {
+            ToolHints::default().with_supports_background(true)
+        }
+
+        fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
+            Some(self)
+        }
+    }
+
+    #[derive(Default)]
+    struct TestFailingBackgroundTool;
+
+    #[async_trait]
+    impl BackgroundExecutableTool for TestFailingBackgroundTool {
+        async fn execute_background(
+            &self,
+            _arguments: Value,
+            _context: ToolContext,
+            sink: Arc<dyn BackgroundEventSink>,
+        ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
+            sink.status("Running failing test")
+                .await
+                .map_err(ToolExecutionResult::internal_error)?;
+            sink.output("stderr", "background failed")
+                .await
+                .map_err(ToolExecutionResult::internal_error)?;
+            Err(ToolExecutionResult::tool_error("boom"))
+        }
+    }
+
+    #[async_trait]
+    impl Tool for TestFailingBackgroundTool {
+        fn name(&self) -> &str {
+            "test_background_fail"
+        }
+
+        fn display_name(&self) -> Option<&str> {
+            Some("Test Background Fail")
+        }
+
+        fn description(&self) -> &str {
+            "failing background test tool"
+        }
+
+        fn parameters_schema(&self) -> Value {
+            json!({
+                "type": "object",
+                "properties": {}
             })
         }
 
@@ -1962,7 +2053,7 @@ mod tests {
             .build();
 
         let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
-            .with_tool_registry(tool_registry)
+            .with_tool_registry(Arc::new(tool_registry))
             .with_platform_store(platform_store.clone())
             .with_session_resource_registry(resource_registry.clone());
 
@@ -2015,5 +2106,106 @@ mod tests {
                 .unwrap_or_default()
                 .contains("hello from background")
         );
+    }
+
+    #[tokio::test]
+    async fn test_spawn_background_persists_failure_artifacts() {
+        let session_id = SessionId::new();
+        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
+        let file_store = Arc::new(TestFileStore::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(TestFailingBackgroundTool)
+            .build();
+
+        let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
+            .with_tool_registry(Arc::new(tool_registry))
+            .with_session_resource_registry(resource_registry.clone());
+
+        let result = SpawnBackgroundTool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background_fail",
+                    "args": {}
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("spawn_background should succeed");
+        };
+        let run_id = value["run_id"].as_str().unwrap().to_string();
+
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let entry = resource_registry
+                    .get(session_id, &run_id)
+                    .await
+                    .unwrap()
+                    .expect("resource exists");
+                if entry.status == SessionResourceStatus::Failed {
+                    break entry;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("background run should fail");
+
+        let log_file = file_store
+            .read_file(session_id, &format!("/.background/{run_id}/output.log"))
+            .await
+            .unwrap()
+            .expect("log file");
+        assert!(
+            log_file
+                .content
+                .as_deref()
+                .unwrap_or_default()
+                .contains("background failed")
+        );
+
+        let result_file = file_store
+            .read_file(session_id, &format!("/.background/{run_id}/result.json"))
+            .await
+            .unwrap()
+            .expect("result file");
+        let result_json: Value =
+            serde_json::from_str(result_file.content.as_deref().unwrap_or_default())
+                .expect("valid json");
+        assert_eq!(result_json["status"], "failed");
+        assert_eq!(result_json["error"], "boom");
+    }
+
+    #[tokio::test]
+    async fn test_spawn_background_requires_file_store() {
+        let session_id = SessionId::new();
+        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(TestBackgroundTool)
+            .build();
+
+        let context = ToolContext::with_storage_store(session_id, storage_store)
+            .with_tool_registry(Arc::new(tool_registry))
+            .with_session_resource_registry(resource_registry);
+
+        let result = SpawnBackgroundTool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background",
+                    "args": {}
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("spawn_background should reject missing file store");
+        };
+        assert!(message.contains("Session file store not available"));
     }
 }

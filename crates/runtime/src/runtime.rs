@@ -459,7 +459,7 @@ impl InProcessRuntime {
             DynEventEmitter(Arc::new(self.event_emitter.clone())),
             Arc::new(DynFileStore(self.file_store.clone())),
         )
-        .with_tool_registry(tool_registry.clone())
+        .with_tool_registry(Arc::new(tool_registry.clone()))
         .with_storage_store(self.storage_store.clone())
         .with_session_store(Arc::new(DynSessionStore(self.session_store.clone())))
         .with_session_mutator(Arc::new(DynSessionStore(self.session_store.clone())))

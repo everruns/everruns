@@ -656,7 +656,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             input.blueprint_id.as_deref(),
         )
         .await?;
-    let builtin_tool_registry = tool_registry.clone();
+    let builtin_tool_registry = Arc::new(tool_registry.clone());
 
     let mut atom = ActAtom::with_file_store(
         tool_registry,

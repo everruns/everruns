@@ -475,7 +475,7 @@ impl InMemoryAgenticLoopBuilder {
             event_emitter.clone(),
         );
         let act_atom = ActAtom::new(tool_registry.clone(), event_emitter.clone())
-            .with_tool_registry(tool_registry.clone());
+            .with_tool_registry(Arc::new(tool_registry.clone()));
 
         Ok(InMemoryAgenticLoop {
             harness_id,

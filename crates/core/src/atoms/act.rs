@@ -177,7 +177,7 @@ where
     /// Optional capability registry for blueprint lookups in subagent tools
     capability_registry: Option<crate::capabilities::CapabilityRegistry>,
     /// Optional built-in tool registry for meta-tools that delegate to sibling tools.
-    tool_registry: Option<crate::tools::ToolRegistry>,
+    tool_registry: Option<Arc<crate::tools::ToolRegistry>>,
     /// Optional memory store backend for persistent cross-session memory.
     memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
     /// Optional org ID for org-scoped operations.
@@ -370,7 +370,7 @@ where
     }
 
     /// Set the active built-in tool registry for meta-tools like `spawn_background`.
-    pub fn with_tool_registry(mut self, registry: crate::tools::ToolRegistry) -> Self {
+    pub fn with_tool_registry(mut self, registry: Arc<crate::tools::ToolRegistry>) -> Self {
         self.tool_registry = Some(registry);
         self
     }
