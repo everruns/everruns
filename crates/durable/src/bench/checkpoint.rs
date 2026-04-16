@@ -273,7 +273,7 @@ impl CheckpointStore {
         }
 
         // Sort by timestamp (newest first)
-        checkpoints.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        checkpoints.sort_by_key(|checkpoint| std::cmp::Reverse(checkpoint.timestamp));
 
         Ok(checkpoints)
     }
@@ -315,7 +315,7 @@ impl CheckpointStore {
         let mut deleted = 0;
         for (_, mut checkpoints) in groups {
             // Sort by timestamp (newest first)
-            checkpoints.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+            checkpoints.sort_by_key(|checkpoint| std::cmp::Reverse(checkpoint.timestamp));
 
             // Delete all but the most recent N
             for checkpoint in checkpoints.into_iter().skip(keep_per_combo) {

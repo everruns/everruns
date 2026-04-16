@@ -67,7 +67,7 @@ impl InMemoryDatabase {
             })
             .cloned()
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|evaluation| std::cmp::Reverse(evaluation.created_at));
         Ok(result)
     }
 
@@ -276,7 +276,7 @@ impl InMemoryDatabase {
             .filter(|r| r.eval_id == eval_id)
             .cloned()
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|run| std::cmp::Reverse(run.created_at));
         Ok(result)
     }
 
@@ -321,7 +321,7 @@ impl InMemoryDatabase {
         let runs = self.eval_runs.read();
         let mut matching: Vec<&EvalRunRow> =
             runs.values().filter(|r| r.eval_id == eval_id).collect();
-        matching.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        matching.sort_by_key(|run| std::cmp::Reverse(run.created_at));
         Ok(matching.first().cloned().cloned())
     }
 
@@ -367,7 +367,7 @@ impl InMemoryDatabase {
             .filter(|r| r.eval_run_id == eval_run_id)
             .cloned()
             .collect();
-        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        result.sort_by_key(|event| event.created_at);
         Ok(result)
     }
 

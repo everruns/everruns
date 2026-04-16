@@ -130,7 +130,7 @@ impl InMemoryDatabase {
             }
             _ => users.values().cloned().collect(),
         };
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|user| std::cmp::Reverse(user.created_at));
         Ok(result)
     }
 
@@ -251,7 +251,7 @@ impl InMemoryDatabase {
             })
             .cloned()
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|invitation| std::cmp::Reverse(invitation.created_at));
         Ok(result)
     }
 }

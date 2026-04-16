@@ -635,17 +635,17 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                 state.finished = true;
             }
         }
-        "reason.thinking.started" => {
-            if parse_event_data::<ReasonThinkingStartedData>(event).is_ok() {
-                state
-                    .queue
-                    .push_back(AgUiEvent::ThinkingStart(AgUiThinkingStartEvent {
-                        base: agui_base_event(),
-                        title: None,
-                    }));
-                state.thinking_started = true;
-                state.thinking_text_started = false;
-            }
+        "reason.thinking.started"
+            if parse_event_data::<ReasonThinkingStartedData>(event).is_ok() =>
+        {
+            state
+                .queue
+                .push_back(AgUiEvent::ThinkingStart(AgUiThinkingStartEvent {
+                    base: agui_base_event(),
+                    title: None,
+                }));
+            state.thinking_started = true;
+            state.thinking_text_started = false;
         }
         "reason.thinking.delta" => {
             if let Ok(data) = parse_event_data::<ReasonThinkingDeltaData>(event) {
@@ -665,25 +665,25 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                 ));
             }
         }
-        "reason.thinking.completed" => {
-            if parse_event_data::<ReasonThinkingCompletedData>(event).is_ok() {
-                if state.thinking_text_started {
-                    state.queue.push_back(AgUiEvent::ThinkingTextMessageEnd(
-                        AgUiThinkingTextMessageEndEvent {
-                            base: agui_base_event(),
-                        },
-                    ));
-                }
-                if state.thinking_started {
-                    state
-                        .queue
-                        .push_back(AgUiEvent::ThinkingEnd(AgUiThinkingEndEvent {
-                            base: agui_base_event(),
-                        }));
-                }
-                state.thinking_started = false;
-                state.thinking_text_started = false;
+        "reason.thinking.completed"
+            if parse_event_data::<ReasonThinkingCompletedData>(event).is_ok() =>
+        {
+            if state.thinking_text_started {
+                state.queue.push_back(AgUiEvent::ThinkingTextMessageEnd(
+                    AgUiThinkingTextMessageEndEvent {
+                        base: agui_base_event(),
+                    },
+                ));
             }
+            if state.thinking_started {
+                state
+                    .queue
+                    .push_back(AgUiEvent::ThinkingEnd(AgUiThinkingEndEvent {
+                        base: agui_base_event(),
+                    }));
+            }
+            state.thinking_started = false;
+            state.thinking_text_started = false;
         }
         "tool.started" => {
             if let Ok(data) = parse_event_data::<ToolStartedData>(event) {
@@ -744,18 +744,16 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                     }));
             }
         }
-        "turn.completed" | "session.idled" => {
-            if !state.finished {
-                state
-                    .queue
-                    .push_back(AgUiEvent::RunFinished(AgUiRunFinishedEvent {
-                        base: agui_base_event(),
-                        thread_id: state.thread_id.clone(),
-                        run_id: state.run_id.clone(),
-                        result: None,
-                    }));
-                state.finished = true;
-            }
+        "turn.completed" | "session.idled" if !state.finished => {
+            state
+                .queue
+                .push_back(AgUiEvent::RunFinished(AgUiRunFinishedEvent {
+                    base: agui_base_event(),
+                    thread_id: state.thread_id.clone(),
+                    run_id: state.run_id.clone(),
+                    result: None,
+                }));
+            state.finished = true;
         }
         "turn.failed" | "turn.cancelled" => {
             let event_data = serde_json::to_value(&event.data).unwrap_or_default();

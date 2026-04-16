@@ -99,7 +99,7 @@ impl InMemoryDatabase {
             .filter(|s| matches_search_tokens(search, &[s.title.as_deref().unwrap_or("")]))
             .cloned()
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|session| std::cmp::Reverse(session.created_at));
 
         let total = result.len() as u32;
         let offset = pagination.offset as usize;
@@ -122,7 +122,7 @@ impl InMemoryDatabase {
             .filter(|s| s.parent_session_id == Some(parent_session_id))
             .cloned()
             .collect();
-        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        result.sort_by_key(|message| message.created_at);
         Ok(result)
     }
 
@@ -175,7 +175,7 @@ impl InMemoryDatabase {
             .filter(|s| s.org_id == org_id && tags.iter().all(|tag| s.tags.contains(tag)))
             .cloned()
             .collect();
-        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        result.sort_by_key(|session| session.created_at);
         Ok(result.into_iter().next())
     }
 
@@ -301,7 +301,7 @@ impl InMemoryDatabase {
             .filter(|((uid, _), (oid, _))| *uid == user_id && *oid == org_id)
             .map(|((_, sid), (_, pinned_at))| (*sid, *pinned_at))
             .collect();
-        entries.sort_by(|a, b| b.1.cmp(&a.1)); // Most recently pinned first
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.1)); // Most recently pinned first
         Ok(entries.into_iter().map(|(sid, _)| sid).collect())
     }
 }

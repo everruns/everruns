@@ -184,7 +184,7 @@ impl InMemoryDatabase {
             })
             .cloned()
             .collect();
-        servers.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        servers.sort_by_key(|server| std::cmp::Reverse(server.created_at));
         Ok(servers)
     }
 

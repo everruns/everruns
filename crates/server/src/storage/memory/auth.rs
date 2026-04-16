@@ -51,7 +51,7 @@ impl InMemoryDatabase {
             .filter(|k| k.user_id == user_id)
             .cloned()
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|provider| std::cmp::Reverse(provider.created_at));
         Ok(result)
     }
 

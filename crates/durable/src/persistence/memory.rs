@@ -865,7 +865,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             .cloned()
             .collect();
 
-        entries.sort_by(|a, b| b.dead_at.cmp(&a.dead_at));
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.dead_at));
 
         let start = pagination.offset as usize;
         let end = (pagination.offset + pagination.limit) as usize;
@@ -1080,7 +1080,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             })
             .cloned()
             .collect();
-        result.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        result.sort_by_key(|worker| std::cmp::Reverse(worker.started_at));
         Ok(result)
     }
 
@@ -1215,7 +1215,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 continued_as_new_id: w.continued_as_new_id,
             })
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|workflow| std::cmp::Reverse(workflow.created_at));
 
         let start = pagination.offset as usize;
         let end = (pagination.offset + pagination.limit) as usize;
@@ -1271,7 +1271,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             })
             .collect();
         // Sort by created_at ascending (oldest first) to show execution order
-        result.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        result.sort_by_key(|task| task.created_at);
 
         let start = pagination.offset as usize;
         let end = (pagination.offset + pagination.limit) as usize;
@@ -1340,7 +1340,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             })
             .map(|s| s.row.clone())
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|schedule| std::cmp::Reverse(schedule.created_at));
 
         let start = pagination.offset as usize;
         let end = (pagination.offset + pagination.limit) as usize;
@@ -1436,7 +1436,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                     && s.row.claimed_by.is_none()
             })
             .collect();
-        candidates.sort_by(|a, b| a.1.row.next_trigger_at.cmp(&b.1.row.next_trigger_at));
+        candidates.sort_by_key(|entry| entry.1.row.next_trigger_at);
 
         let mut claimed = Vec::new();
         for (_, state) in candidates {
@@ -1600,7 +1600,7 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             })
             .map(|e| e.row.clone())
             .collect();
-        result.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        result.sort_by_key(|execution| std::cmp::Reverse(execution.created_at));
 
         let start = pagination.offset as usize;
         let end = (pagination.offset + pagination.limit) as usize;
