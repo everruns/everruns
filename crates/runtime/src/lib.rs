@@ -10,11 +10,13 @@
 //! - provide their own platform definition (capabilities, drivers, harnesses)
 //! - seed harnesses, agents, sessions, and workspace files directly in code
 //! - replace the default in-memory stores with custom runtime backends
+//! - inspect the assembled turn context before or after executing a turn
 //!
 //! For a runnable example, see:
 //!
 //! ```text
 //! cargo run -p everruns-runtime --example in_process_runtime
+//! cargo run -p everruns-runtime --example inspect_context
 //! ```
 //!
 //! # Example
@@ -138,5 +140,6 @@ pub use backends::{
     RuntimeAgentStore, RuntimeBackends, RuntimeEventCollector, RuntimeFileStore,
     RuntimeHarnessStore, RuntimeMessageStore, RuntimeProviderStore, RuntimeSessionStore,
 };
+pub use everruns_core::AssembledTurnContext;
 pub use in_memory::{InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore};
 pub use runtime::{InProcessRuntime, InProcessRuntimeBuilder, TurnResult};

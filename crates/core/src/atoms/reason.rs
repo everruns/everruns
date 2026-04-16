@@ -26,7 +26,6 @@ use uuid::Uuid;
 
 use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
-use crate::config_layer::AgentConfigOverlay;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
     EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, LlmRetryInfo,
@@ -44,7 +43,7 @@ use crate::message_retriever::MessageRetriever;
 use crate::openresponses_protocol::{
     CompactInputItem, CompactRequest, compact_output_to_messages, messages_to_compact_input,
 };
-use crate::runtime_agent::RuntimeAgentBuilder;
+use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
     AgentStore, EventEmitter, HarnessStore, ImageResolver, LlmProviderStore, ModelWithProvider,
@@ -113,29 +112,6 @@ fn is_error_placeholder_message(msg: &Message) -> bool {
     }
     let text = msg.text().unwrap_or("");
     ERROR_PLACEHOLDER_MESSAGES.contains(&text)
-}
-
-fn extract_locale_override(messages: &[Message]) -> Option<String> {
-    messages
-        .iter()
-        .rev()
-        .find(|message| message.role == MessageRole::User)
-        .and_then(|message| {
-            message
-                .controls
-                .as_ref()
-                .and_then(|controls| controls.locale.as_deref())
-                .or_else(|| {
-                    message
-                        .metadata
-                        .as_ref()
-                        .and_then(|metadata| metadata.get("locale"))
-                        .and_then(|value| value.as_str())
-                })
-        })
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
 }
 
 // ============================================================================
@@ -313,6 +289,28 @@ impl Atom for ReasonAtom {
     }
 
     async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
+        self.execute_inner(input, None).await
+    }
+}
+
+impl ReasonAtom {
+    /// Execute using a pre-assembled turn context.
+    ///
+    /// Hosts that already assembled turn context for the current reason phase can
+    /// pass it through here to avoid reloading messages and rebuilding the agent.
+    pub async fn execute_with_assembled_context(
+        &self,
+        input: ReasonInput,
+        assembled: AssembledTurnContext,
+    ) -> Result<ReasonResult> {
+        self.execute_inner(input, Some(assembled)).await
+    }
+
+    async fn execute_inner(
+        &self,
+        input: ReasonInput,
+        assembled: Option<AssembledTurnContext>,
+    ) -> Result<ReasonResult> {
         let ReasonInput {
             context,
             harness_id,
@@ -388,6 +386,7 @@ impl Atom for ReasonAtom {
                 &reason_span_id,
                 previous_response_id,
                 iteration,
+                assembled,
             )
             .await
         {
@@ -523,9 +522,7 @@ impl Atom for ReasonAtom {
 
         Ok(result)
     }
-}
 
-impl ReasonAtom {
     /// Execute the actual LLM call
     #[allow(clippy::too_many_arguments)]
     async fn execute_llm_call(
@@ -540,155 +537,34 @@ impl ReasonAtom {
         reason_span_id: &str,
         previous_response_id: Option<String>,
         iteration: u32,
+        assembled: Option<AssembledTurnContext>,
     ) -> Result<ReasonResult> {
-        // 1. Retrieve harness chain (root-to-leaf)
-        let harness_chain = self.harness_store.get_harness_chain(harness_id).await?;
-        if harness_chain.is_empty() {
-            return Err(AgentLoopError::harness_not_found(harness_id));
-        }
-
-        // 2. Retrieve agent (optional)
-        let agent = if let Some(agent_id) = agent_id {
-            Some(
-                self.agent_store
-                    .get_agent(agent_id)
-                    .await?
-                    .ok_or_else(|| AgentLoopError::agent_not_found(agent_id))?,
-            )
-        } else {
-            None
-        };
-
-        // 3. Retrieve session
-        let session = self
-            .session_store
-            .get_session(session_id)
-            .await?
-            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
-
-        // 4. Fold harness chain → agent → session into a single config overlay.
-        //    Each harness in the inheritance chain is its own overlay.
-        let effective_overlay = {
-            let mut layers: Vec<AgentConfigOverlay> =
-                harness_chain.iter().map(AgentConfigOverlay::from).collect();
-            if let Some(ref agent) = agent {
-                layers.push(AgentConfigOverlay::from(agent));
+        let assembled = match assembled {
+            Some(assembled) => assembled,
+            None => {
+                assemble_turn_context(
+                    self.harness_store.as_ref(),
+                    self.agent_store.as_ref(),
+                    self.session_store.as_ref(),
+                    self.message_retriever.as_ref(),
+                    self.provider_store.as_ref(),
+                    &self.capability_registry,
+                    session_id,
+                    harness_id,
+                    agent_id,
+                    mcp_tool_definitions,
+                    self.file_store.clone(),
+                )
+                .await?
             }
-            layers.push(AgentConfigOverlay::from(&session));
-            AgentConfigOverlay::fold(layers)
         };
 
-        // 5. Load messages with capability message filters applied.
-        let collected_filters = crate::capabilities::collect_message_filters_only(
-            &effective_overlay.capabilities,
-            &self.capability_registry,
-        );
-
-        let mut query = crate::message_filter::MessageQuery::new(session_id);
-        collected_filters.apply_message_filters(&mut query);
-        let mut messages = self.message_retriever.load_filtered(query).await?;
-        collected_filters.apply_post_load_filters(&mut messages);
-
-        if messages.is_empty() {
-            return Err(AgentLoopError::NoMessages);
-        }
-
-        // 6. Resolve model: controls > overlay (session > agent > harness) > system default
-        let controls_model_id = messages
-            .iter()
-            .rev()
-            .find(|m| m.role == MessageRole::User)
-            .and_then(|m| m.controls.as_ref())
-            .and_then(|c| c.model_id);
-
-        let (model_with_provider, resolved_model_id) = self
-            .resolve_model(
-                controls_model_id,
-                effective_overlay.default_model_id,
-                None,
-                None,
-            )
-            .await?;
-
-        // 7. Extract compaction config from merged capabilities (before consuming overlay)
-        let compaction_config = {
-            use crate::capabilities::COMPACTION_CAPABILITY_ID;
-            effective_overlay
-                .capabilities
-                .iter()
-                .find(|cap| cap.capability_id() == COMPACTION_CAPABILITY_ID)
-                .map(|cap| crate::capabilities::CompactionConfig::from_json(&cap.config))
-        };
-
-        // 8. Build runtime agent
-        let resolved_locale = extract_locale_override(&messages).or_else(|| session.locale.clone());
-        let prompt_ctx = crate::capabilities::SystemPromptContext {
-            session_id,
-            locale: resolved_locale.clone(),
-            file_store: self.file_store.clone(),
-        };
-        let mut runtime_agent = if let Some(ref blueprint_id) = session.blueprint_id {
-            // Blueprint path: build RuntimeAgent from blueprint definition
-            let blueprint = self
-                .capability_registry
-                .blueprint(blueprint_id)
-                .ok_or_else(|| {
-                    anyhow::anyhow!("Unknown blueprint: \"{blueprint_id}\". Session has blueprint_id set but blueprint not found in registry.")
-                })?;
-
-            let blueprint_model = match &blueprint.model {
-                crate::capabilities::BlueprintModel::Fixed(m) => m.clone(),
-                crate::capabilities::BlueprintModel::Default(m) => {
-                    // Allow config to override model
-                    session
-                        .blueprint_config
-                        .as_ref()
-                        .and_then(|c| c.get("model"))
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| m.clone())
-                }
-                crate::capabilities::BlueprintModel::Inherit => model_with_provider.model.clone(),
-            };
-
-            let mut prompt = blueprint.system_prompt.to_string();
-            if let Some(ref config) = session.blueprint_config {
-                prompt.push_str(&format!("\n\n<config>\n{}\n</config>", config));
-            }
-
-            RuntimeAgentBuilder::new()
-                .system_prompt(&prompt)
-                .tools(blueprint.tool_definitions())
-                .model(&blueprint_model)
-                .max_iterations(blueprint.max_turns.unwrap_or(20))
-                .with_locale(prompt_ctx.locale.as_deref())
-                .build()
-        } else {
-            // Standard path: use the pre-computed effective overlay.
-            //
-            // Tool ordering matters — build() deduplicates by name (last wins).
-            // Extract overlay tools so we can insert MCP tools before them,
-            // preserving legacy precedence where session/agent tools win over
-            // same-named MCP tools.
-            let mut effective_overlay = effective_overlay;
-            let overlay_tools = std::mem::take(&mut effective_overlay.tools);
-
-            RuntimeAgentBuilder::from_overlay(
-                effective_overlay,
-                &self.capability_registry,
-                &prompt_ctx,
-            )
-            .await
-            .with_locale(prompt_ctx.locale.as_deref())
-            .tools(mcp_tool_definitions.iter().cloned())
-            .tools(overlay_tools)
-            .model(&model_with_provider.model)
-            .build()
-        };
-
-        if crate::progress_reporting::session_uses_report_progress(&session.tags) {
-            runtime_agent = crate::progress_reporting::apply_report_progress_mode(runtime_agent);
-        }
+        let messages = assembled.messages;
+        let model_with_provider = assembled.model_with_provider;
+        let resolved_model_id = assembled.resolved_model_id;
+        let resolved_locale = assembled.resolved_locale;
+        let compaction_config = assembled.compaction_config;
+        let runtime_agent = assembled.runtime_agent;
 
         // 7. Create LLM driver using factory
         let llm_driver = self.create_llm_driver(&model_with_provider)?;
@@ -1802,45 +1678,6 @@ impl ReasonAtom {
     }
 
     /// Resolve model using priority chain: controls > session > agent > harness > system default
-    async fn resolve_model(
-        &self,
-        controls_model_id: Option<crate::typed_id::ModelId>,
-        session_model_id: Option<crate::typed_id::ModelId>,
-        agent_model_id: Option<crate::typed_id::ModelId>,
-        harness_model_id: Option<crate::typed_id::ModelId>,
-    ) -> Result<(ModelWithProvider, Option<crate::typed_id::ModelId>)> {
-        // Try in priority order: controls > session > agent > harness
-        for model_id in [
-            controls_model_id,
-            session_model_id,
-            agent_model_id,
-            harness_model_id,
-        ]
-        .into_iter()
-        .flatten()
-        {
-            if let Some(model_with_provider) = self
-                .provider_store
-                .get_model_with_provider(model_id)
-                .await?
-            {
-                return Ok((model_with_provider, Some(model_id)));
-            }
-        }
-
-        // Fall back to system default model (no model_id available)
-        let model = self
-            .provider_store
-            .get_default_model()
-            .await?
-            .ok_or_else(|| {
-                AgentLoopError::llm(
-                    "No model configured: no model_id in controls, session, or agent, and no system default model is set"
-                )
-            })?;
-        Ok((model, None))
-    }
-
     /// Create LLM driver using the driver registry
     fn create_llm_driver(
         &self,
@@ -2005,26 +1842,5 @@ mod tests {
         assert_eq!(patched.len(), 4);
         assert_eq!(patched[2].role, MessageRole::ToolResult);
         assert_eq!(patched[2].tool_call_id(), Some("call_456"));
-    }
-
-    #[test]
-    fn test_extract_locale_override_prefers_controls_locale() {
-        let mut message = Message::user("Привіт");
-        message.controls = Some(crate::Controls {
-            model_id: None,
-            locale: Some("uk-UA".to_string()),
-            reasoning: None,
-            hints: None,
-        });
-        message.metadata = Some(
-            [("locale".to_string(), serde_json::json!("en-US"))]
-                .into_iter()
-                .collect(),
-        );
-
-        assert_eq!(
-            extract_locale_override(&[message]),
-            Some("uk-UA".to_string())
-        );
     }
 }

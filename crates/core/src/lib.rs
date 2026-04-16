@@ -101,6 +101,7 @@ pub mod outline;
 pub mod platform_definition;
 pub mod platform_store;
 pub mod runtime_agent;
+pub mod runtime_context;
 pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod traits;
@@ -137,6 +138,7 @@ pub use message_filter::{
 };
 pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
+pub use runtime_context::{AssembledTurnContext, assemble_turn_context, inspect_turn_context};
 pub use traits::{
     EventEmitter, HarnessStore, ImageResolver, KeyInfo, LeasedResourceStore, LlmProviderStore,
     ModelWithProvider, NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore,
