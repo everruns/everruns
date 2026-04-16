@@ -97,6 +97,7 @@ mod platform_management;
 mod research;
 mod sample_data;
 mod session;
+mod session_sandbox;
 mod session_schedule;
 mod session_sql_database;
 mod session_storage;
@@ -179,6 +180,10 @@ pub use platform_management::{
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
 pub use session::{GetSessionInfoTool, SessionCapability, WriteSessionTitleTool};
+pub use session_sandbox::{
+    SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
+    SandboxStatusTool, SandboxWriteFileTool, SessionSandboxCapability,
+};
 pub use session_schedule::{
     CancelScheduleTool, CreateScheduleTool, ListSchedulesTool, SESSION_SCHEDULE_CAPABILITY_ID,
     SessionScheduleCapability,
@@ -674,6 +679,9 @@ impl CapabilityRegistry {
 
         // External integration plugins (registered via inventory::submit! in integration crates)
         let internal_flags = crate::InternalFeatureFlags::from_env();
+        if internal_flags.session_sandbox {
+            registry.register(SessionSandboxCapability);
+        }
         for plugin in inventory::iter::<IntegrationPlugin>() {
             if (!plugin.experimental_only || grade.experimental_features_enabled())
                 && plugin

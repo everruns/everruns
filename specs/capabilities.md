@@ -206,6 +206,7 @@ Capabilities declare UI features they contribute to via `features()`. Features a
 | `sample_data` | `file_system` |
 | `session_storage` | `secrets`, `key_value` |
 | `session_schedule` | `schedules` |
+| `session_sandbox` | `managed_sandbox` |
 | `session_sql_database` | `sql_database` |
 
 | `openui` | `openui` |
@@ -218,6 +219,7 @@ MCP and Skill virtual capabilities currently declare no features.
 |---------|------------|-------------|
 | `file_system` | Workspace tab | Session has file system access |
 | `secrets` | Storage tab | Session can store encrypted secrets |
+| `managed_sandbox` | Sandbox-aware UX | Session has one managed sandbox with provider-neutral tools |
 | `key_value` | Storage tab | Session can store key/value pairs |
 | `schedules` | Schedules tab | Session can create/manage schedules |
 | `sql_database` | *(reserved)* | Session has SQL database access |
