@@ -2,6 +2,7 @@
  * Decisions:
  * - User footer owns auth-only actions; anonymous mode stays a simple version label.
  * - Route pushes happen inside menu actions so parent layout does not coordinate menu details.
+ * - Forks can append profile menu items via a render prop instead of replacing this component.
  */
 "use client";
 
@@ -22,6 +23,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+export type SidebarUserMenuUser = {
+  name?: string | null;
+  email: string;
+  avatar_url?: string | null;
+};
+
+export type SidebarUserMenuItemsRenderer = (context: {
+  user: SidebarUserMenuUser;
+  navigate: (href: string) => void;
+}) => React.ReactNode;
+
 function getInitials(name: string): string {
   if (!name.trim()) return "";
   return name
@@ -38,20 +50,23 @@ export function SidebarUserMenu({
   user,
   logout,
   logoutPending,
+  renderExtraItems,
   version,
 }: {
   requiresAuth: boolean;
-  user: { name?: string | null; email: string; avatar_url?: string | null } | null;
+  user: SidebarUserMenuUser | null;
   logout: () => Promise<void>;
   logoutPending: boolean;
+  renderExtraItems?: SidebarUserMenuItemsRenderer;
   version: string;
 }) {
   const router = useRouter();
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
+  const navigate = (href: string) => router.push(href);
 
   const handleLogout = async () => {
     await logout();
-    router.push("/login");
+    navigate("/login");
   };
 
   if (!requiresAuth || !user) {
@@ -82,15 +97,16 @@ export function SidebarUserMenu({
             <DropdownMenuGroup>
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <NotificationMenuSub />
-              <DropdownMenuItem onClick={() => router.push("/settings")}>
+              <DropdownMenuItem onClick={() => navigate("/settings")}>
                 <User className="icon-sharp mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/settings/api-keys")}>
+              <DropdownMenuItem onClick={() => navigate("/settings/api-keys")}>
                 <Key className="icon-sharp mr-2 h-4 w-4" />
                 API Keys
               </DropdownMenuItem>
               <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />
+              {renderExtraItems?.({ user, navigate })}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={handleLogout} disabled={logoutPending}>

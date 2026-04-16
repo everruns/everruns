@@ -10,6 +10,7 @@
  * - navigation: replace the default navigation sections entirely
  * - orgActions.createOrg: override "Create Organisation" click handler
  * - extraSections: append additional sections (billing, usage, etc.)
+ * - profileMenu.items: append items inside the authenticated profile menu
  */
 "use client";
 
@@ -46,6 +47,7 @@ import type { FeatureFlags } from "@/lib/api/types";
 import { SidebarNavigation } from "./sidebar-navigation";
 import { SidebarOrganizationMenu } from "./sidebar-organization-menu";
 import { SidebarUserMenu } from "./sidebar-user-menu";
+import type { SidebarUserMenuItemsRenderer } from "./sidebar-user-menu";
 
 const { version } = packageJson;
 
@@ -72,6 +74,9 @@ export interface SidebarConfig {
     createOrg?: () => void;
   };
   extraSections?: NavigationSection[];
+  profileMenu?: {
+    items?: SidebarUserMenuItemsRenderer;
+  };
 }
 
 export const defaultTopNavigation: NavigationItem[] = [
@@ -195,6 +200,7 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
           user={user ?? null}
           logout={logout}
           logoutPending={logoutPending}
+          renderExtraItems={config?.profileMenu?.items}
           version={version}
         />
       </div>
