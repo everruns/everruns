@@ -46,6 +46,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@ag-ui/core": "^0.0.45",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.2.0",
     "@testing-library/jest-dom": "^6.6.3",

@@ -2,7 +2,7 @@
 
 ## Abstract
 
-An App is a deployable unit that binds a Harness and Agent to a distribution channel (Slack, WhatsApp, web widget, etc.). It provides a publish/unpublish lifecycle that controls whether the app actively accepts incoming requests from its configured channel.
+An App is a deployable unit that binds a Harness and Agent to a distribution channel (Slack, AG-UI, WhatsApp, web widget, etc.). It provides a publish/unpublish lifecycle that controls whether the app actively accepts incoming requests from its configured channel.
 
 ## Concepts
 
@@ -28,7 +28,7 @@ A distribution channel attached to an App. Each channel has its own type, config
 
 ### Channel Types
 
-Initially: `slack`. Future: `whatsapp`, `web_widget`, `api_endpoint`, `discord`, etc.
+Current: `slack`, `ag_ui`. Future: `whatsapp`, `web_widget`, `api_endpoint`, `discord`, etc.
 
 Channel config is stored as JSONB and validated at the application layer per channel type.
 
@@ -42,6 +42,21 @@ Channel config is stored as JSONB and validated at the application layer per cha
   "reply_mode": "all_messages"
 }
 ```
+
+**AG-UI channel config example:**
+```json
+{
+  "anonymous": true
+}
+```
+
+AG-UI uses an app-scoped anonymous ingress for the initial rollout:
+
+- Endpoint: `POST /v1/apps/{app_id}/ag-ui`
+- Requests use AG-UI `RunAgentInput` JSON
+- Responses stream back as AG-UI SSE events translated from the durable runtime
+- Anonymous access is currently required when the channel is enabled
+- Session routing is per `threadId`, with sessions tagged by app and thread
 
 ### Session Strategy
 

@@ -61,10 +61,15 @@ function AppCard({ app }: { app: App }) {
   const unpublishApp = useUnpublishApp();
   const isPublished = app.status === "published";
   const isArchived = app.status === "archived";
-  const webhookUrl =
+  const primaryChannel = app.channels.find((channel) => channel.enabled) ?? app.channels[0];
+  const primaryUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/api/v1/apps/${app.id}/slack/events`
-      : `/api/v1/apps/${app.id}/slack/events`;
+      ? primaryChannel?.channel_type === "ag_ui"
+        ? `${window.location.origin}/api/v1/apps/${app.id}/ag-ui`
+        : `${window.location.origin}/api/v1/apps/${app.id}/slack/events`
+      : primaryChannel?.channel_type === "ag_ui"
+        ? `/api/v1/apps/${app.id}/ag-ui`
+        : `/api/v1/apps/${app.id}/slack/events`;
 
   return (
     <Link href={`/apps/${app.id}`}>
@@ -84,21 +89,23 @@ function AppCard({ app }: { app: App }) {
         <CardContent className="space-y-3">
           {app.description && <p className="text-sm text-muted-foreground">{app.description}</p>}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="outline" className="text-xs">
-              Slack
-            </Badge>
+            {app.channels.map((channel) => (
+              <Badge key={channel.id} variant="outline" className="text-xs uppercase">
+                {channel.channel_type === "ag_ui" ? "AG-UI" : "Slack"}
+              </Badge>
+            ))}
           </div>
 
-          {isPublished && (
+          {isPublished && primaryUrl && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted p-2 rounded">
               <Globe className="w-3 h-3 shrink-0" />
-              <span className="truncate font-mono">{webhookUrl}</span>
+              <span className="truncate font-mono">{primaryUrl}</span>
               <button
                 className="shrink-0 ml-1 hover:text-foreground"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  navigator.clipboard.writeText(webhookUrl);
+                  navigator.clipboard.writeText(primaryUrl);
                 }}
               >
                 <Copy className="w-3 h-3" />
@@ -149,8 +156,8 @@ function EmptyState() {
       <Rocket className="w-12 h-12 text-muted-foreground mb-4" />
       <h3 className="text-lg font-semibold mb-2">No Apps Yet</h3>
       <p className="text-muted-foreground mb-4 max-w-md">
-        Apps deploy your agents to channels like Slack. Create an app to connect an agent to a Slack
-        workspace.
+        Apps deploy your agents to channels like Slack and AG-UI. Create an app to connect an agent
+        to the interface you need.
       </p>
       <Link href="/apps/new">
         <Button variant="accent">

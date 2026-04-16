@@ -91,6 +91,7 @@ tonic.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 serde_urlencoded = "0.7.1"
+ag-ui-core = "0.1.0"
 
 [dev-dependencies]
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }
