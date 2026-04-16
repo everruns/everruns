@@ -157,6 +157,20 @@ impl Tool for SandboxExecTool {
             Ok(config) => config,
             Err(err) => return err,
         };
+        let Some(command) = arguments.get("command").and_then(|v| v.as_str()) else {
+            return ToolExecutionResult::tool_error("Missing required parameter: command");
+        };
+        let timeout_ms = match arguments.get("timeout_ms") {
+            None => None,
+            Some(value) => match value.as_u64() {
+                Some(timeout_ms) if timeout_ms > 0 => Some(timeout_ms),
+                _ => {
+                    return ToolExecutionResult::tool_error(
+                        "timeout_ms must be a positive integer",
+                    );
+                }
+            },
+        };
         let provider = match provider_for_config(&config) {
             Ok(provider) => provider,
             Err(err) => return err,
@@ -165,13 +179,6 @@ impl Tool for SandboxExecTool {
             Ok(state) => state,
             Err(err) => return err,
         };
-        let Some(command) = arguments.get("command").and_then(|v| v.as_str()) else {
-            return ToolExecutionResult::tool_error("Missing required parameter: command");
-        };
-        let timeout_ms = arguments.get("timeout_ms").and_then(|v| v.as_u64());
-        if arguments.get("timeout_ms").is_some() && timeout_ms.is_none() {
-            return ToolExecutionResult::tool_error("timeout_ms must be a positive integer");
-        }
 
         match provider
             .exec(
@@ -558,6 +565,7 @@ mod tests {
     use super::*;
     use crate::capabilities::{Capability, CapabilityRegistry};
     use crate::deployment::DeploymentGrade;
+    use crate::traits::ToolContext;
 
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -598,5 +606,28 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
         assert!(registry.has("session_sandbox"));
         unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
+    }
+
+    #[tokio::test]
+    async fn sandbox_exec_rejects_zero_timeout() {
+        let tool = SandboxExecTool::new(json!({ "provider": "missing-provider" }));
+        let context = ToolContext::new(crate::typed_id::SessionId::new());
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "command": "echo hi",
+                    "timeout_ms": 0,
+                }),
+                &context,
+            )
+            .await;
+
+        match result {
+            ToolExecutionResult::ToolError(message) => {
+                assert!(message.contains("timeout_ms must be a positive integer"));
+            }
+            other => panic!("expected ToolError, got {other:?}"),
+        }
     }
 }

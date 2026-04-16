@@ -9,7 +9,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // Force linker to include the integration crate's inventory submissions.
@@ -281,4 +281,70 @@ async fn daytona_provider_manages_managed_sandbox_flow() {
     assert_eq!(status.external_id, "sb_managed");
 
     provider.delete(&context, &config, &resumed).await.unwrap();
+}
+
+#[tokio::test]
+async fn daytona_provider_escapes_workspace_path_when_creating_directory() {
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let mut config = test_config(&mock_server);
+    config.provider_config["workspace_path"] = json!("/tmp/it's workspace; rm -rf /");
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+
+    Mock::given(method("POST"))
+        .and(path("/sandbox"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_escape",
+            "name": "Escaped Sandbox",
+            "state": "started"
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_escape"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_escape",
+            "name": "Escaped Sandbox",
+            "state": "started"
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/sb_escape/process/session"))
+        .respond_with(ResponseTemplate::new(201))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/sb_escape/process/session/everruns-exec/exec"))
+        .and(body_string_contains(
+            "mkdir -p -- '/tmp/it'\\\\''s workspace; rm -rf /'",
+        ))
+        .respond_with(ResponseTemplate::new(202).set_body_json(json!({
+            "cmdId": "cmd_escape"
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_escape/process/session/everruns-exec/command/cmd_escape/logs",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![0x01, 0x01, 0x01]))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_escape/process/session/everruns-exec/command/cmd_escape",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "exitCode": 0
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let instance = provider.create(&context, &config).await.unwrap();
+    assert_eq!(instance.external_id, "sb_escape");
+    assert_eq!(
+        instance.workspace_path.as_deref(),
+        Some("/tmp/it's workspace; rm -rf /")
+    );
 }

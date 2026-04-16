@@ -89,7 +89,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         if let Err(err) = client
             .exec(
                 &sandbox_info.id,
-                &format!("mkdir -p {workspace_path}"),
+                &format!("mkdir -p -- {}", shell_escape(&workspace_path)),
                 None,
                 None,
                 |_| {},
@@ -446,4 +446,8 @@ fn exit_code_hint(exit_code: i32) -> Option<&'static str> {
         _ if exit_code > 128 && exit_code <= 192 => Some("Process was killed by a signal."),
         _ => None,
     }
+}
+
+fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
