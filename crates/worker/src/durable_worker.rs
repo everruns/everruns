@@ -27,6 +27,7 @@ use crate::grpc_adapters::{GrpcClient, GrpcEventEmitter, load_turn_context};
 use crate::grpc_durable_store::{
     ClaimedTask, GrpcDurableStore, TaskNotificationEvent, TaskNotificationStream, WorkflowStatus,
 };
+use crate::task_error::summarize_task_failure;
 use serde::{Deserialize, Serialize};
 
 // =============================================================================
@@ -593,14 +594,27 @@ impl DurableWorker {
                 let result = worker.execute_task(&task).await;
 
                 if let Err(e) = result {
+                    let failure = summarize_task_failure(
+                        task.id,
+                        task.workflow_id,
+                        &task.activity_type,
+                        task.attempt,
+                        None,
+                        &task.input,
+                        &e,
+                    );
                     error!(
                         task_id = %task.id,
+                        workflow_id = ?task.workflow_id,
                         activity_type = %task.activity_type,
-                        error = %e,
+                        attempt = task.attempt,
+                        session_id = ?failure.session_id,
+                        tool_identifiers = ?failure.tool_identifiers,
+                        error_chain = %failure.error_chain,
                         "Task execution failed"
                     );
 
-                    let error_msg = e.to_string();
+                    let error_msg = failure.persisted_message;
                     let force_dlq = is_non_retryable_task_error(&error_msg);
 
                     if force_dlq {
@@ -1671,6 +1685,7 @@ impl DurableWorker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_config_default() {
@@ -1699,5 +1714,25 @@ mod tests {
         assert!(!is_non_retryable_task_error(
             "LLM provider temporarily unavailable (circuit breaker open)"
         ));
+    }
+
+    #[test]
+    fn test_is_non_retryable_task_error_with_formatted_task_failure() {
+        let task_id = Uuid::parse_str("019d97fa-c961-7272-a2f8-fef2220f0ec1").unwrap();
+        let workflow_id = Some(Uuid::parse_str("019d9861-b17a-71d3-b929-eb0e7ae2dc55").unwrap());
+        let input = json!({
+            "act_input": {
+                "context": {
+                    "session_id": "session_019d97fa3d8f736195d605c1ace8b83c"
+                }
+            }
+        });
+        let error = anyhow::anyhow!("Message store error: User message not found: msg_abc123")
+            .context("ActAtom execution failed");
+
+        let failure =
+            summarize_task_failure(task_id, workflow_id, "act", 1, Some(3), &input, &error);
+
+        assert!(is_non_retryable_task_error(&failure.persisted_message));
     }
 }

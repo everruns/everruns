@@ -31,6 +31,7 @@ use uuid::Uuid;
 
 use crate::durable_runner::DurableTurnInput;
 use crate::runtime_host::WorkerRuntimeHost;
+use crate::task_error::summarize_task_failure;
 use crate::worker_adapters::WorkerAdapters;
 
 // Re-export atom types
@@ -322,14 +323,28 @@ where
                 let result = execute_task(&store, &adapters, &worker_id, &task).await;
 
                 if let Err(e) = result {
+                    let failure = summarize_task_failure(
+                        task.id,
+                        task.workflow_id,
+                        &task.activity_type,
+                        task.attempt,
+                        Some(task.max_attempts),
+                        &task.input,
+                        &e,
+                    );
                     error!(
                         task_id = %task.id,
+                        workflow_id = ?task.workflow_id,
                         activity_type = %task.activity_type,
-                        error = %e,
+                        attempt = task.attempt,
+                        max_attempts = task.max_attempts,
+                        session_id = ?failure.session_id,
+                        tool_identifiers = ?failure.tool_identifiers,
+                        error_chain = %failure.error_chain,
                         "Task execution failed"
                     );
 
-                    let _ = store.fail_task(task.id, &e.to_string()).await;
+                    let _ = store.fail_task(task.id, &failure.persisted_message).await;
                 }
 
                 in_flight.fetch_sub(1, Ordering::SeqCst);
@@ -563,11 +578,20 @@ where
         }
         Err(e) => {
             let will_retry = task.attempt < task.max_attempts;
+            let failure = summarize_task_failure(
+                task.id,
+                task.workflow_id,
+                &task.activity_type,
+                task.attempt,
+                Some(task.max_attempts),
+                &task.input,
+                &e,
+            );
             record_activity_failed(
                 store.as_ref(),
                 task.workflow_id,
                 task.activity_id.clone(),
-                e.to_string(),
+                failure.persisted_message,
                 will_retry,
             )
             .await;
