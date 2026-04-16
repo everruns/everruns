@@ -23,6 +23,7 @@ pub mod platform;
 pub mod runner;
 pub mod runtime_host;
 pub mod session_lifecycle;
+pub mod task_error;
 pub mod unified_worker;
 pub mod worker_adapters;
 
