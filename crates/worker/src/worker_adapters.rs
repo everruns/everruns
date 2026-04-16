@@ -193,6 +193,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     async fn get_mcp_server_by_prefix(
         &self,
         org_id: i64,
+        session_id: Option<Uuid>,
         server_prefix: &str,
     ) -> Result<McpServerInfo>;
 

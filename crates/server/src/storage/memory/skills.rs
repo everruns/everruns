@@ -298,7 +298,7 @@ impl InMemoryDatabase {
             .filter(|f| f.skill_id == skill_id)
             .cloned()
             .collect();
-        files.sort_by(|a, b| a.path.cmp(&b.path));
+        files.sort_by_key(|file| file.path.clone());
         Ok(files)
     }
 

@@ -8,7 +8,9 @@ use super::types::{CreateAgentRequest, CreateAgentRow, UpdateAgent, UpdateAgentR
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use everruns_core::typed_id::AgentId;
-use everruns_core::{Agent, AgentCapabilityConfig, InitialFile, OrgRole, Policy, ToolDefinition};
+use everruns_core::{
+    Agent, AgentCapabilityConfig, InitialFile, OrgRole, Policy, ScopedMcpServers, ToolDefinition,
+};
 use serde::Deserialize;
 
 // ============================================================================
@@ -150,6 +152,8 @@ impl Command for CreateAgent {
         )
         .await
         .map_err(classify_anyhow)?;
+        crate::services::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
+            .map_err(classify_anyhow)?;
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
@@ -167,6 +171,7 @@ impl Command for CreateAgent {
                 tags: req.tags,
                 initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
                 tools: serde_json::to_value(&req.tools).unwrap_or_default(),
+                mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
                 network_access: req
                     .network_access
                     .as_ref()
@@ -193,6 +198,7 @@ impl Command for CreateAgent {
                 tags: req.tags,
                 initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
                 tools: serde_json::to_value(&req.tools).unwrap_or_default(),
+                mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
                 network_access: req
                     .network_access
                     .as_ref()
@@ -404,6 +410,10 @@ impl Command for UpdateAgentCmd {
             .await
             .map_err(classify_anyhow)?;
         }
+        if let Some(ref servers) = req.mcp_servers {
+            crate::services::scoped_mcp::validate_scoped_mcp_servers(servers)
+                .map_err(classify_anyhow)?;
+        }
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
@@ -423,6 +433,9 @@ impl Command for UpdateAgentCmd {
             tools: req
                 .tools
                 .map(|t| serde_json::to_value(&t).unwrap_or_default()),
+            mcp_servers: req
+                .mcp_servers
+                .map(|servers| serde_json::to_value(&servers).unwrap_or_default()),
             max_iterations: req.max_iterations.map(|v| Some(v as i32)),
             network_access: req
                 .network_access
@@ -557,6 +570,8 @@ impl Command for UpsertAgent {
         )
         .await
         .map_err(classify_anyhow)?;
+        crate::services::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
+            .map_err(classify_anyhow)?;
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
@@ -571,6 +586,7 @@ impl Command for UpsertAgent {
             tags: req.tags,
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
+            mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
             max_iterations: req.max_iterations.map(|v| v as i32),
             network_access: req
                 .network_access
@@ -653,6 +669,7 @@ impl Command for CopyAgent {
             capabilities: source.capabilities,
             initial_files: source.initial_files,
             tools: source.tools,
+            mcp_servers: source.mcp_servers,
             network_access: None,
             max_iterations: source.max_iterations,
         };
@@ -744,6 +761,8 @@ pub struct PreviewAgent {
     pub capabilities: Vec<AgentCapabilityConfig>,
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
+    #[serde(default)]
+    pub mcp_servers: ScopedMcpServers,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -766,6 +785,8 @@ impl Command for PreviewAgent {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentPreview, CommandError> {
+        crate::services::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
+            .map_err(classify_anyhow)?;
         let (prompt, mut tools) = ctx
             .capability_service
             .preview(
@@ -775,6 +796,11 @@ impl Command for PreviewAgent {
             )
             .await
             .map_err(classify_anyhow)?;
+        tools.extend(
+            crate::services::scoped_mcp::build_scoped_mcp_tool_definitions(&self.mcp_servers)
+                .await
+                .map_err(classify_anyhow)?,
+        );
         tools.extend(self.tools);
         Ok(AgentPreview {
             system_prompt: prompt,

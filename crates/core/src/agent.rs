@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
+use crate::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use crate::network_access::NetworkAccessList;
 use crate::session_file::InitialFile;
 use crate::tool_types::ToolDefinition;
@@ -108,6 +109,14 @@ pub struct Agent {
     /// These tools are executed by the client, not the server.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolDefinition>,
+    /// Remote MCP servers scoped to this agent and inherited by its sessions.
+    #[serde(
+        default,
+        rename = "mcpServers",
+        alias = "mcp_servers",
+        skip_serializing_if = "scoped_mcp_servers_is_empty"
+    )]
+    pub mcp_servers: ScopedMcpServers,
     /// Current lifecycle status of the agent.
     pub status: AgentStatus,
     /// Timestamp when the agent was created.
@@ -239,6 +248,7 @@ mod tests {
             network_access: None,
             max_iterations: None,
             tools: vec![],
+            mcp_servers: ScopedMcpServers::default(),
             status: AgentStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),

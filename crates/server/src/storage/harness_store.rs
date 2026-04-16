@@ -87,6 +87,7 @@ impl HarnessStore for DbHarnessStore {
                 tags: row.tags,
                 capabilities,
                 initial_files: from_json(row.initial_files),
+                mcp_servers: from_json(row.mcp_servers),
                 network_access: row
                     .network_access
                     .and_then(|v| serde_json::from_value(v).ok()),

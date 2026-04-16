@@ -196,7 +196,7 @@ impl InMemoryDatabase {
             .filter(|s| s.status == "active" && s.org_id == org_id)
             .cloned()
             .collect();
-        servers.sort_by(|a, b| a.name.cmp(&b.name));
+        servers.sort_by_key(|server| server.name.clone());
         Ok(servers)
     }
 

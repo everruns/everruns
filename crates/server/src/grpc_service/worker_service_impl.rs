@@ -44,14 +44,17 @@ impl WorkerService for WorkerServiceImpl {
             None
         };
 
-        // Load harness via domain query
-        let harness =
-            crate::domains::harnesses::queries::get_by_id(&self.db, req.org_id, session.harness_id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to get harness: {}", e);
-                    Status::internal("Failed to get harness")
-                })?;
+        // Load effective harness, including inherited parent config.
+        let harness = crate::domains::harnesses::queries::resolve_effective(
+            &self.db,
+            req.org_id,
+            session.harness_id,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get harness: {}", e);
+            Status::internal("Failed to get harness")
+        })?;
 
         // Convert to proto types
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
@@ -159,13 +162,49 @@ impl WorkerService for WorkerServiceImpl {
                 .map(Self::resolved_model_to_proto)
         };
 
-        // Build MCP tool definitions from agent's MCP capabilities
-        // This resolves MCP tools so the worker doesn't need to look them up
-        let mcp_tool_definitions = if let Some(ref a) = agent {
-            self.build_mcp_tool_definitions(req.org_id, a).await
+        // Append org-scoped tool definitions first so scoped definitions win on
+        // name collisions when RuntimeAgentBuilder deduplicates with last-wins.
+        let local_mcp_tool_definitions = if let Some(ref harness) = harness {
+            let effective = crate::services::scoped_mcp::merge_effective_scoped_mcp_servers(
+                harness,
+                agent.as_ref(),
+                &session,
+            );
+
+            if let Err(error) = crate::services::scoped_mcp::validate_scoped_mcp_servers(&effective)
+            {
+                tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
+                vec![]
+            } else {
+                crate::services::scoped_mcp::build_scoped_mcp_tool_definitions(&effective)
+                    .await
+                    .map(|defs| {
+                        defs.into_iter()
+                            .map(|tool| McpToolDef {
+                                name: tool.name().to_string(),
+                                description: tool.description().to_string(),
+                                parameters: Some(
+                                    everruns_internal_protocol::json_to_proto_struct(
+                                        tool.parameters(),
+                                    ),
+                                ),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_else(|error| {
+                        tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
+                        vec![]
+                    })
+            }
         } else {
             vec![]
         };
+
+        let mut mcp_tool_definitions = Vec::new();
+        if let Some(ref a) = agent {
+            mcp_tool_definitions.extend(self.build_mcp_tool_definitions(req.org_id, a).await);
+        }
+        mcp_tool_definitions.extend(local_mcp_tool_definitions);
 
         Ok(Response::new(GetTurnContextResponse {
             agent: proto_agent,
@@ -1991,6 +2030,67 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetMcpServerByPrefixResponse>, Status> {
         let req = request.into_inner();
 
+        if let Some(session_id) = req.session_id.as_ref() {
+            let session_id = parse_uuid(Some(session_id))?;
+            let internal_caller = everruns_core::Caller::internal(req.org_id);
+
+            if let Some(session) = self
+                .session_service
+                .get(&internal_caller, session_id, None)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to get session for scoped MCP lookup: {}", e);
+                    Status::internal("Failed to resolve scoped MCP server")
+                })?
+                && let Some(harness) = crate::domains::harnesses::queries::resolve_effective(
+                    &self.db,
+                    req.org_id,
+                    session.harness_id,
+                )
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to get harness for scoped MCP lookup: {}", e);
+                    Status::internal("Failed to resolve scoped MCP server")
+                })?
+            {
+                let agent = if let Some(agent_id) = session.agent_id {
+                    crate::domains::agents::queries::get_by_public_id(
+                        &self.db,
+                        req.org_id,
+                        &agent_id.to_string(),
+                    )
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to get agent for scoped MCP lookup: {}", e);
+                        Status::internal("Failed to resolve scoped MCP server")
+                    })?
+                } else {
+                    None
+                };
+
+                if let Some(r) = crate::services::scoped_mcp::resolve_scoped_mcp_server(
+                    &harness,
+                    agent.as_ref(),
+                    &session,
+                    &req.server_prefix,
+                ) {
+                    return Ok(Response::new(GetMcpServerByPrefixResponse {
+                        server: Some(McpServerInfo {
+                            id: Some(proto::Uuid {
+                                value: r.id.to_string(),
+                            }),
+                            name: r.name,
+                            url: r.url,
+                            api_key: r.api_key,
+                            headers: r.headers,
+                            auth_mode: r.auth_mode.to_string(),
+                            oauth_provider_id: r.oauth_provider_id,
+                        }),
+                    }));
+                }
+            }
+        }
+
         let internal_caller = everruns_core::Caller::internal(req.org_id);
         let resolved = self
             .mcp_server_service
@@ -2863,6 +2963,7 @@ impl WorkerService for WorkerServiceImpl {
             tags: vec![],
             capabilities,
             initial_files: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
         };
 
@@ -2904,6 +3005,7 @@ impl WorkerService for WorkerServiceImpl {
             tags: None,
             capabilities: None,
             initial_files: None,
+            mcp_servers: None,
             network_access: None,
             status: None,
         };
@@ -2973,6 +3075,7 @@ impl WorkerService for WorkerServiceImpl {
                 tags: None,
                 capabilities: None,
                 initial_files: None,
+                mcp_servers: None,
                 network_access: None,
                 status: None,
             };
@@ -3036,6 +3139,7 @@ impl WorkerService for WorkerServiceImpl {
             capabilities,
             initial_files: vec![],
             tools: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
         };
@@ -3071,6 +3175,7 @@ impl WorkerService for WorkerServiceImpl {
             capabilities: None,
             initial_files: None,
             tools: None,
+            mcp_servers: None,
             network_access: None,
             max_iterations: None,
             status: None,
@@ -3179,6 +3284,7 @@ impl WorkerService for WorkerServiceImpl {
             model_id: None,
             capabilities: vec![],
             tools: vec![],
+            mcp_servers: Default::default(),
             system_prompt: None,
             initial_files: vec![],
             hints: None,

@@ -55,7 +55,7 @@ impl InMemoryDatabase {
                 updated_at: row.updated_at,
             })
             .collect();
-        secrets.sort_by(|a, b| a.name.cmp(&b.name));
+        secrets.sort_by_key(|secret| secret.name.clone());
         Ok(secrets)
     }
 
@@ -215,7 +215,7 @@ impl everruns_core::traits::SessionStorageStore for InMemoryDatabase {
                 updated_at: row.updated_at,
             })
             .collect();
-        secrets.sort_by(|a, b| a.name.cmp(&b.name));
+        secrets.sort_by_key(|secret| secret.name.clone());
         Ok(secrets)
     }
 }

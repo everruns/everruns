@@ -29,6 +29,7 @@ pub fn row_to_harness(row: HarnessRow, capabilities: Vec<AgentCapabilityConfig>)
         capabilities,
         initial_files: serde_json::from_value::<Vec<InitialFile>>(row.initial_files)
             .unwrap_or_default(),
+        mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
         network_access: row
             .network_access
             .and_then(|v| serde_json::from_value(v).ok()),
@@ -265,6 +266,7 @@ pub fn merge_preview_layer(
         tags: vec![],
         capabilities: capabilities.to_vec(),
         initial_files: vec![],
+        mcp_servers: Default::default(),
         network_access: None,
         is_built_in: false,
         status: HarnessStatus::Active,

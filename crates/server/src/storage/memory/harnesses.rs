@@ -26,6 +26,7 @@ impl InMemoryDatabase {
             default_model_id: input.default_model_id,
             tags: input.tags,
             initial_files: input.initial_files,
+            mcp_servers: input.mcp_servers,
             network_access: input.network_access,
             is_built_in: input.is_built_in,
             status: "active".to_string(),
@@ -58,6 +59,7 @@ impl InMemoryDatabase {
                 && existing.parent_harness_id == input.parent_harness_id
                 && existing.tags == input.tags
                 && existing.initial_files == input.initial_files
+                && existing.mcp_servers == input.mcp_servers
             {
                 return Ok(None); // Unchanged
             }
@@ -69,6 +71,7 @@ impl InMemoryDatabase {
                 parent_harness_id: input.parent_harness_id,
                 tags: input.tags,
                 initial_files: input.initial_files,
+                mcp_servers: input.mcp_servers,
                 updated_at: now,
                 ..existing.clone()
             };
@@ -87,6 +90,7 @@ impl InMemoryDatabase {
             default_model_id: input.default_model_id,
             tags: input.tags,
             initial_files: input.initial_files,
+            mcp_servers: input.mcp_servers,
             network_access: input.network_access,
             is_built_in: input.is_built_in,
             status: "active".to_string(),
@@ -181,6 +185,9 @@ impl InMemoryDatabase {
             }
             if let Some(initial_files) = input.initial_files {
                 harness.initial_files = initial_files;
+            }
+            if let Some(mcp_servers) = input.mcp_servers {
+                harness.mcp_servers = mcp_servers;
             }
             if let Some(network_access) = input.network_access {
                 harness.network_access = network_access;

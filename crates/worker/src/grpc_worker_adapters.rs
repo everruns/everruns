@@ -331,10 +331,11 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     async fn get_mcp_server_by_prefix(
         &self,
         org_id: i64,
+        session_id: Option<Uuid>,
         server_prefix: &str,
     ) -> Result<McpServerInfo> {
         self.client
-            .get_mcp_server_by_prefix(org_id, server_prefix)
+            .get_mcp_server_by_prefix(org_id, session_id, server_prefix)
             .await
     }
 

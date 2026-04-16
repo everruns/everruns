@@ -51,6 +51,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> 
         capabilities,
         initial_files: serde_json::from_value::<Vec<InitialFile>>(row.initial_files)
             .unwrap_or_default(),
+        mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
         network_access: row
             .network_access
             .and_then(|v| serde_json::from_value(v).ok()),

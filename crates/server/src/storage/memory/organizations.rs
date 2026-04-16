@@ -306,7 +306,7 @@ impl InMemoryDatabase {
                 })
             })
             .collect();
-        result.sort_by(|a, b| a.name.cmp(&b.name));
+        result.sort_by_key(|organization| organization.name.clone());
         Ok(result)
     }
 

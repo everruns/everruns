@@ -132,6 +132,9 @@ impl SessionService {
         } else {
             None
         };
+        let agent_mcp_servers = agent
+            .as_ref()
+            .map(|agent| serde_json::from_value(agent.mcp_servers.clone()).unwrap_or_default());
 
         let agent_identity_id = if let Some(identity_id) = req.agent_identity_id {
             let identity = self
@@ -166,6 +169,12 @@ impl SessionService {
             &req.capabilities,
         )
         .await?;
+        let mut scoped_mcp_layers = vec![&effective_harness.mcp_servers];
+        if let Some(ref agent_mcp_servers) = agent_mcp_servers {
+            scoped_mcp_layers.push(agent_mcp_servers);
+        }
+        scoped_mcp_layers.push(&req.mcp_servers);
+        crate::services::scoped_mcp::validate_merged_scoped_mcp_servers(scoped_mcp_layers)?;
 
         // Serialize capabilities to JSON for storage
         let capabilities_json = serde_json::to_value(&req.capabilities)?;
@@ -186,6 +195,7 @@ impl SessionService {
             model_id,
             capabilities: capabilities_json,
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
+            mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
             system_prompt: req.system_prompt.clone(),
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             hints: hints_json,
@@ -259,6 +269,17 @@ impl SessionService {
         let org_id = caller.org_id;
         let org_public_id = &caller.org_public_id;
         let harness_id = HarnessId::from_uuid(harness_id);
+        let effective_harness = crate::domains::harnesses::queries::resolve_effective(
+            self.db.as_ref(),
+            org_id,
+            harness_id,
+        )
+        .await?
+        .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
+        crate::services::scoped_mcp::validate_merged_scoped_mcp_servers([
+            &effective_harness.mcp_servers,
+            &req.mcp_servers,
+        ])?;
 
         let input = CreateSessionRow {
             org_id,
@@ -271,6 +292,7 @@ impl SessionService {
             model_id: None,
             capabilities: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
+            mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
             system_prompt: req.system_prompt.clone(),
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             hints: None,
@@ -653,6 +675,7 @@ impl SessionService {
             model_id: None,
             capabilities: serde_json::json!([]),
             tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
@@ -833,6 +856,7 @@ impl SessionService {
             model_id: row.model_id,
             capabilities,
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
+            mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
             system_prompt: row.system_prompt,
             initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
             network_access: row
@@ -903,6 +927,7 @@ mod tests {
             model_id,
             capabilities: vec![],
             tools: vec![],
+            mcp_servers: Default::default(),
             system_prompt: None,
             initial_files: vec![],
             hints: None,
@@ -989,6 +1014,7 @@ mod tests {
                     is_readonly: true,
                 },
             ],
+            mcp_servers: Default::default(),
             network_access: None,
         })
         .execute(&ctx)
@@ -1019,6 +1045,7 @@ mod tests {
                 },
             ],
             tools: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
         })
@@ -1093,6 +1120,7 @@ mod tests {
                     is_readonly: true,
                 },
             ],
+            mcp_servers: Default::default(),
             network_access: None,
         })
         .execute(&ctx)
@@ -1114,6 +1142,7 @@ mod tests {
                 encoding: "text".to_string(),
                 is_readonly: true,
             }],
+            mcp_servers: Default::default(),
             network_access: None,
         })
         .execute(&ctx)
@@ -1164,6 +1193,7 @@ mod tests {
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
         })
         .execute(&ctx)
@@ -1181,6 +1211,7 @@ mod tests {
             capabilities: vec![],
             initial_files: vec![],
             tools: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
         })
@@ -1220,6 +1251,7 @@ mod tests {
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
         })
         .execute(&ctx)
@@ -1267,6 +1299,7 @@ mod tests {
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
         })
         .execute(&other_ctx)
@@ -1307,6 +1340,7 @@ mod tests {
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
         })
         .execute(&ctx)
@@ -1346,6 +1380,7 @@ mod tests {
             tags: vec![],
             capabilities: vec![AgentCapabilityConfig::new("sample_data")],
             initial_files: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
         })
         .execute(&other_ctx)
@@ -1363,6 +1398,7 @@ mod tests {
             capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
             initial_files: vec![],
             tools: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
         })
@@ -1385,6 +1421,7 @@ mod tests {
                 )])
                 .unwrap(),
                 tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
                 system_prompt: None,
                 initial_files: serde_json::Value::Array(vec![]),
                 hints: None,
@@ -1438,6 +1475,7 @@ mod tests {
             tags: vec![],
             capabilities: vec![AgentCapabilityConfig::new("sample_data")],
             initial_files: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
         })
         .execute(&other_ctx)
@@ -1455,6 +1493,7 @@ mod tests {
             capabilities: vec![AgentCapabilityConfig::new("sample_data")],
             initial_files: vec![],
             tools: vec![],
+            mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
         })
@@ -1474,6 +1513,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::json!([]),
                 tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
                 system_prompt: None,
                 initial_files: serde_json::Value::Array(vec![]),
                 hints: None,

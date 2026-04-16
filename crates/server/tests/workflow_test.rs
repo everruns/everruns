@@ -4694,6 +4694,7 @@ async fn test_anthropic_extended_thinking() {
                             thinking_content.len()
                         );
                     }
+                    // Check if message has thinking field
                     "message.agent" if event["data"]["message"]["thinking"].is_string() => {
                         message_agent_with_thinking = true;
                         let thinking = event["data"]["message"]["thinking"].as_str().unwrap_or("");

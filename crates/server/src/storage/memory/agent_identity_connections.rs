@@ -67,7 +67,7 @@ impl InMemoryDatabase {
             .filter(|c| c.agent_identity_id == identity_id)
             .cloned()
             .collect();
-        connections.sort_by(|a, b| a.provider.cmp(&b.provider));
+        connections.sort_by_key(|connection| connection.provider.clone());
         Ok(connections)
     }
 

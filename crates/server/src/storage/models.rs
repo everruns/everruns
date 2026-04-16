@@ -336,6 +336,9 @@ pub struct AgentRow {
     /// Client-side tools (JSONB in DB)
     #[sqlx(default)]
     pub tools: serde_json::Value,
+    /// Scoped MCP server configs (JSONB in DB)
+    #[sqlx(default)]
+    pub mcp_servers: serde_json::Value,
     /// Network access list (JSONB in DB, nullable)
     #[sqlx(default)]
     pub network_access: Option<serde_json::Value>,
@@ -369,6 +372,8 @@ pub struct CreateAgentRow {
     pub initial_files: serde_json::Value,
     /// Client-side tools (JSONB in DB)
     pub tools: serde_json::Value,
+    /// Scoped MCP server configs (JSONB in DB)
+    pub mcp_servers: serde_json::Value,
     /// Network access list (JSONB in DB)
     pub network_access: Option<serde_json::Value>,
     /// Maximum iterations per turn
@@ -386,6 +391,7 @@ pub struct UpdateAgent {
     pub status: Option<String>,
     pub initial_files: Option<serde_json::Value>,
     pub tools: Option<serde_json::Value>,
+    pub mcp_servers: Option<serde_json::Value>,
     pub network_access: Option<Option<serde_json::Value>>,
     /// None = don't change, Some(None) = set to NULL, Some(Some(v)) = set to v
     pub max_iterations: Option<Option<i32>>,
@@ -413,6 +419,9 @@ pub struct HarnessRow {
     /// Network access list (JSONB in DB, nullable)
     #[sqlx(default)]
     pub network_access: Option<serde_json::Value>,
+    /// Scoped MCP server configs (JSONB in DB)
+    #[sqlx(default)]
+    pub mcp_servers: serde_json::Value,
     pub is_built_in: bool,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -432,6 +441,8 @@ pub struct CreateHarnessRow {
     pub tags: Vec<String>,
     /// Starter files copied into new sessions (JSONB in DB)
     pub initial_files: serde_json::Value,
+    /// Scoped MCP server configs (JSONB in DB)
+    pub mcp_servers: serde_json::Value,
     /// Network access list (JSONB in DB)
     pub network_access: Option<serde_json::Value>,
     pub is_built_in: bool,
@@ -447,6 +458,7 @@ pub struct UpdateHarness {
     pub default_model_id: Option<ModelId>,
     pub tags: Option<Vec<String>>,
     pub initial_files: Option<serde_json::Value>,
+    pub mcp_servers: Option<serde_json::Value>,
     pub network_access: Option<Option<serde_json::Value>>,
     pub status: Option<String>,
 }
@@ -493,6 +505,9 @@ pub struct SessionRow {
     /// Client-side tools (JSONB in DB)
     #[sqlx(default)]
     pub tools: serde_json::Value,
+    /// Scoped MCP server configs (JSONB in DB)
+    #[sqlx(default)]
+    pub mcp_servers: serde_json::Value,
     /// Session-level system prompt override
     #[sqlx(default)]
     pub system_prompt: Option<String>,
@@ -555,6 +570,8 @@ pub struct CreateSessionRow {
     pub capabilities: serde_json::Value,
     /// Client-side tools (additive to agent tools, JSONB in DB)
     pub tools: serde_json::Value,
+    /// Scoped MCP server configs (JSONB in DB)
+    pub mcp_servers: serde_json::Value,
     /// Session-level system prompt override (prepended to agent prompt)
     pub system_prompt: Option<String>,
     /// Session-level initial files (JSONB in DB, additive to agent files)

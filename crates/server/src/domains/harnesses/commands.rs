@@ -7,7 +7,10 @@ use super::queries as q;
 use super::types::{CreateHarnessRequest, CreateHarnessRow, UpdateHarness, UpdateHarnessRequest};
 use super::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::domains::common::*;
-use everruns_core::{AgentCapabilityConfig, Harness, HarnessId, Policy, ToolDefinition};
+use everruns_core::{
+    AgentCapabilityConfig, Harness, HarnessId, Policy, ScopedMcpServers, ToolDefinition,
+    merge_scoped_mcp_servers,
+};
 use serde::Deserialize;
 
 // ============================================================================
@@ -138,6 +141,19 @@ impl Command for CreateHarness {
             q::validate_parent_harness(&ctx.db, ctx.org_id(), None, req.parent_harness_id)
                 .await
                 .map_err(classify_anyhow)?;
+        let parent = match parent_harness_id {
+            Some(parent_id) => q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id)
+                .await
+                .map_err(classify_anyhow)?,
+            None => None,
+        };
+        let mut scoped_mcp_layers = Vec::new();
+        if let Some(ref parent) = parent {
+            scoped_mcp_layers.push(&parent.mcp_servers);
+        }
+        scoped_mcp_layers.push(&req.mcp_servers);
+        crate::services::scoped_mcp::validate_merged_scoped_mcp_servers(scoped_mcp_layers)
+            .map_err(classify_anyhow)?;
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
@@ -152,6 +168,7 @@ impl Command for CreateHarness {
             default_model_id,
             tags: req.tags,
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
+            mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
             network_access: req
                 .network_access
                 .as_ref()
@@ -364,6 +381,26 @@ impl Command for UpdateHarnessCmd {
         )
         .await
         .map_err(classify_anyhow)?;
+        let updated_mcp_servers = req.mcp_servers.clone().unwrap_or_else(|| {
+            serde_json::from_value(existing.mcp_servers.clone()).unwrap_or_default()
+        });
+        let effective_parent_harness_id = req
+            .parent_harness_id
+            .map(|_| parent_harness_id)
+            .unwrap_or(existing.parent_harness_id);
+        let parent = match effective_parent_harness_id {
+            Some(parent_id) => q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id)
+                .await
+                .map_err(classify_anyhow)?,
+            None => None,
+        };
+        let mut scoped_mcp_layers = Vec::new();
+        if let Some(ref parent) = parent {
+            scoped_mcp_layers.push(&parent.mcp_servers);
+        }
+        scoped_mcp_layers.push(&updated_mcp_servers);
+        crate::services::scoped_mcp::validate_merged_scoped_mcp_servers(scoped_mcp_layers)
+            .map_err(classify_anyhow)?;
 
         // Persist
         let input = UpdateHarness {
@@ -377,6 +414,9 @@ impl Command for UpdateHarnessCmd {
             initial_files: req
                 .initial_files
                 .map(|files| serde_json::to_value(&files).unwrap_or_default()),
+            mcp_servers: req
+                .mcp_servers
+                .map(|servers| serde_json::to_value(&servers).unwrap_or_default()),
             network_access: req
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap())),
@@ -587,6 +627,7 @@ impl Command for CopyHarness {
             tags: source.tags,
             capabilities: source.capabilities,
             initial_files: source.initial_files,
+            mcp_servers: source.mcp_servers,
             network_access: None,
         };
 
@@ -608,6 +649,8 @@ pub struct PreviewHarness {
     pub parent_harness_id: Option<HarnessId>,
     #[serde(default)]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    #[serde(default)]
+    pub mcp_servers: ScopedMcpServers,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -636,16 +679,32 @@ impl Command for PreviewHarness {
                 .map_err(classify_anyhow)?,
             None => None,
         };
+        crate::services::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
+            .map_err(classify_anyhow)?;
         let (system_prompt, capabilities) = q::merge_preview_layer(
             parent.as_ref(),
             &self.system_prompt.unwrap_or_default(),
             &self.capabilities,
         );
-        let (system_prompt, tools) = ctx
+        let effective_mcp_servers = merge_scoped_mcp_servers(
+            &parent
+                .as_ref()
+                .map(|h| h.mcp_servers.clone())
+                .unwrap_or_default(),
+            &self.mcp_servers,
+        );
+        crate::services::scoped_mcp::validate_scoped_mcp_servers(&effective_mcp_servers)
+            .map_err(classify_anyhow)?;
+        let (system_prompt, mut tools) = ctx
             .capability_service
             .preview(ctx.org_id(), &system_prompt, &capabilities)
             .await
             .map_err(classify_anyhow)?;
+        tools.extend(
+            crate::services::scoped_mcp::build_scoped_mcp_tool_definitions(&effective_mcp_servers)
+                .await
+                .map_err(classify_anyhow)?,
+        );
         Ok(HarnessPreview {
             system_prompt,
             tools,

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
+use crate::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use crate::network_access::NetworkAccessList;
 use crate::tool_types::ToolDefinition;
 use crate::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId, SessionId};
@@ -152,6 +153,14 @@ pub struct Session {
     /// Client-side tools for this session (additive to agent tools).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolDefinition>,
+    /// Remote MCP servers scoped to this session only.
+    #[serde(
+        default,
+        rename = "mcpServers",
+        alias = "mcp_servers",
+        skip_serializing_if = "scoped_mcp_servers_is_empty"
+    )]
+    pub mcp_servers: ScopedMcpServers,
     /// Session-level system prompt override.
     /// Prepended to the agent's system prompt when building RuntimeAgent.
     #[serde(default, skip_serializing_if = "Option::is_none")]

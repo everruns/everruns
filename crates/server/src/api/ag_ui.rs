@@ -387,6 +387,7 @@ async fn find_or_create_session(
                         model_id: None,
                         capabilities: vec![],
                         tools: vec![],
+                        mcp_servers: Default::default(),
                         system_prompt: None,
                         initial_files: vec![],
                         hints: None,

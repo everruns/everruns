@@ -28,6 +28,7 @@ impl InMemoryDatabase {
             model_id: input.model_id,
             capabilities: input.capabilities,
             tools: input.tools,
+            mcp_servers: input.mcp_servers,
             system_prompt: input.system_prompt,
             initial_files: input.initial_files,
             hints: input.hints,

@@ -84,6 +84,7 @@ pub async fn initialize_org_harnesses_with_definitions(
             default_model_id: None,
             tags: harness.tags.clone(),
             initial_files: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
             is_built_in: true,
             network_access: None,
         };

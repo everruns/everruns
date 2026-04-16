@@ -175,7 +175,7 @@ impl InMemoryDatabase {
             .filter(|r| r.session_id == session_id)
             .cloned()
             .collect();
-        refs.sort_by(|a, b| a.name.cmp(&b.name));
+        refs.sort_by_key(|reference| reference.name.clone());
         Ok(refs)
     }
 

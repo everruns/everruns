@@ -567,7 +567,7 @@ pub struct McpServerResolved {
 }
 
 /// Fetch tools from an MCP server using JSON-RPC over HTTP
-async fn fetch_mcp_tools(
+pub(crate) async fn fetch_mcp_tools(
     url: &str,
     api_key: Option<&str>,
     headers: &HashMap<String, String>,

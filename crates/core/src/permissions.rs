@@ -596,8 +596,8 @@ pub fn check_skill_permission(rules: &[SkillPermissionRule], skill_name: &str) -
                 best_specificity = Some(spec);
                 best_allowed = is_allow;
             }
+            // Same specificity: deny wins
             Some(best) if spec == best && !is_allow => {
-                // Same specificity: deny wins
                 best_allowed = false;
             }
             _ => {} // lower specificity, ignore

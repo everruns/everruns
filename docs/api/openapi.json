@@ -5310,6 +5310,10 @@
             "description": "Maximum number of LLM iterations per turn for this agent.",
             "minimum": 0
           },
+          "mcpServers": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
+          },
           "name": {
             "type": "string",
             "description": "Name, unique per org (e.g. \"customer-support\")."
@@ -5410,6 +5414,39 @@
           "archived",
           "deleted"
         ]
+      },
+      "BTreeMap": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
+          "required": [
+            "url"
+          ],
+          "properties": {
+            "headers": {
+              "type": "object",
+              "description": "Additional HTTP headers sent on MCP requests.",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "type": "string"
+              }
+            },
+            "type": {
+              "$ref": "#/components/schemas/McpServerTransportType",
+              "description": "MCP transport type. Only remote HTTP is supported today."
+            },
+            "url": {
+              "type": "string",
+              "description": "URL of the remote MCP server endpoint."
+            }
+          }
+        },
+        "propertyNames": {
+          "type": "string"
+        }
       },
       "BudgetEventData": {
         "type": "object",
@@ -6116,6 +6153,10 @@
             "description": "Maximum number of LLM iterations per turn for this agent.",
             "minimum": 0
           },
+          "mcpServers": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Remote MCP servers scoped to this agent."
+          },
           "name": {
             "type": "string",
             "description": "Name, unique per org. Lowercase alphanumeric and hyphens.\nFormat: lowercase alphanumeric and hyphens (e.g. \"customer-support\").",
@@ -6277,6 +6318,10 @@
               "$ref": "#/components/schemas/InitialFile"
             },
             "description": "Starter files copied into each new session for this harness."
+          },
+          "mcpServers": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Remote MCP servers scoped to this harness."
           },
           "name": {
             "type": "string",
@@ -6664,6 +6709,10 @@
             ],
             "description": "Maximum number of LLM iterations per turn for this session.",
             "minimum": 0
+          },
+          "mcpServers": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Remote MCP servers scoped to this session only."
           },
           "model_id": {
             "type": [
@@ -7518,6 +7567,10 @@
             "type": "boolean",
             "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them."
           },
+          "mcpServers": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Remote MCP servers scoped to this harness and inherited by descendant layers."
+          },
           "name": {
             "type": "string",
             "description": "Name, unique per org (e.g. \"generic\")."
@@ -8111,6 +8164,10 @@
                   "description": "Maximum number of LLM iterations per turn for this agent.",
                   "minimum": 0
                 },
+                "mcpServers": {
+                  "$ref": "#/components/schemas/BTreeMap",
+                  "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
+                },
                 "name": {
                   "type": "string",
                   "description": "Name, unique per org (e.g. \"customer-support\")."
@@ -8563,6 +8620,10 @@
                 "is_built_in": {
                   "type": "boolean",
                   "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them."
+                },
+                "mcpServers": {
+                  "$ref": "#/components/schemas/BTreeMap",
+                  "description": "Remote MCP servers scoped to this harness and inherited by descendant layers."
                 },
                 "name": {
                   "type": "string",
@@ -9203,6 +9264,10 @@
                     "is_built_in": {
                       "type": "boolean",
                       "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them."
+                    },
+                    "mcpServers": {
+                      "$ref": "#/components/schemas/BTreeMap",
+                      "description": "Remote MCP servers scoped to this harness and inherited by descendant layers."
                     },
                     "name": {
                       "type": "string",
@@ -11178,6 +11243,10 @@
                   "description": "Maximum number of LLM iterations per turn for this session.",
                   "minimum": 0
                 },
+                "mcpServers": {
+                  "$ref": "#/components/schemas/BTreeMap",
+                  "description": "Remote MCP servers scoped to this session only."
+                },
                 "model_id": {
                   "type": [
                     "string",
@@ -11423,6 +11492,10 @@
                       ],
                       "description": "Maximum number of LLM iterations per turn for this agent.",
                       "minimum": 0
+                    },
+                    "mcpServers": {
+                      "$ref": "#/components/schemas/BTreeMap",
+                      "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
                     },
                     "name": {
                       "type": "string",
@@ -11797,6 +11870,10 @@
                       "description": "Maximum number of LLM iterations per turn for this session.",
                       "minimum": 0
                     },
+                    "mcpServers": {
+                      "$ref": "#/components/schemas/BTreeMap",
+                      "description": "Remote MCP servers scoped to this session only."
+                    },
                     "model_id": {
                       "type": [
                         "string",
@@ -11991,6 +12068,10 @@
               }
             ]
           },
+          "mcpServers": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Remote MCP servers scoped to the previewed agent."
+          },
           "system_prompt": {
             "type": "string",
             "description": "The base system prompt (before capability additions)",
@@ -12017,6 +12098,9 @@
             "items": {
               "$ref": "#/components/schemas/AgentCapabilityConfig"
             }
+          },
+          "mcpServers": {
+            "$ref": "#/components/schemas/BTreeMap"
           },
           "parent_harness_id": {
             "type": [
@@ -12725,6 +12809,10 @@
             ],
             "description": "Maximum number of LLM iterations per turn for this session.",
             "minimum": 0
+          },
+          "mcpServers": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Remote MCP servers scoped to this session only."
           },
           "model_id": {
             "type": [
@@ -14143,6 +14231,17 @@
             "description": "Maximum number of LLM iterations per turn for this agent.",
             "minimum": 0
           },
+          "mcpServers": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BTreeMap",
+                "description": "Remote MCP servers scoped to this agent."
+              }
+            ]
+          },
           "name": {
             "type": [
               "string",
@@ -14274,6 +14373,16 @@
             "items": {
               "$ref": "#/components/schemas/InitialFile"
             }
+          },
+          "mcpServers": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BTreeMap"
+              }
+            ]
           },
           "name": {
             "type": [
@@ -14851,6 +14960,10 @@
                 "description": "Maximum number of LLM iterations per turn for this agent.",
                 "minimum": 0
               },
+              "mcpServers": {
+                "$ref": "#/components/schemas/BTreeMap",
+                "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
+              },
               "name": {
                 "type": "string",
                 "description": "Name, unique per org (e.g. \"customer-support\")."
@@ -15109,6 +15222,10 @@
               "is_built_in": {
                 "type": "boolean",
                 "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them."
+              },
+              "mcpServers": {
+                "$ref": "#/components/schemas/BTreeMap",
+                "description": "Remote MCP servers scoped to this harness and inherited by descendant layers."
               },
               "name": {
                 "type": "string",
@@ -15681,6 +15798,10 @@
                 ],
                 "description": "Maximum number of LLM iterations per turn for this session.",
                 "minimum": 0
+              },
+              "mcpServers": {
+                "$ref": "#/components/schemas/BTreeMap",
+                "description": "Remote MCP servers scoped to this session only."
               },
               "model_id": {
                 "type": [

@@ -27,6 +27,7 @@ impl InMemoryDatabase {
             tags: input.tags,
             initial_files: input.initial_files,
             tools: input.tools,
+            mcp_servers: input.mcp_servers,
             network_access: input.network_access,
             max_iterations: input.max_iterations,
             status: "active".to_string(),
@@ -64,6 +65,7 @@ impl InMemoryDatabase {
                 && existing.tags == input.tags
                 && existing.initial_files == input.initial_files
                 && existing.tools == input.tools
+                && existing.mcp_servers == input.mcp_servers
             {
                 return Ok(None); // Unchanged
             }
@@ -76,6 +78,7 @@ impl InMemoryDatabase {
                 tags: input.tags,
                 initial_files: input.initial_files,
                 tools: input.tools,
+                mcp_servers: input.mcp_servers,
                 updated_at: now,
                 ..existing.clone()
             };
@@ -95,6 +98,7 @@ impl InMemoryDatabase {
             tags: input.tags,
             initial_files: input.initial_files,
             tools: input.tools,
+            mcp_servers: input.mcp_servers,
             network_access: input.network_access,
             max_iterations: input.max_iterations,
             status: "active".to_string(),
@@ -217,6 +221,9 @@ impl InMemoryDatabase {
             if let Some(tools) = input.tools {
                 agent.tools = tools;
             }
+            if let Some(mcp_servers) = input.mcp_servers {
+                agent.mcp_servers = mcp_servers;
+            }
             if let Some(network_access) = input.network_access {
                 agent.network_access = network_access;
             }
@@ -279,6 +286,7 @@ impl InMemoryDatabase {
             agent.tags = input.tags;
             agent.initial_files = input.initial_files;
             agent.tools = input.tools;
+            agent.mcp_servers = input.mcp_servers;
             agent.max_iterations = input.max_iterations;
             agent.status = "active".to_string();
             agent.updated_at = Self::now();
@@ -298,6 +306,7 @@ impl InMemoryDatabase {
                 tags: input.tags,
                 initial_files: input.initial_files,
                 tools: input.tools,
+                mcp_servers: input.mcp_servers,
                 network_access: input.network_access,
                 max_iterations: input.max_iterations,
                 status: "active".to_string(),
@@ -336,6 +345,7 @@ impl InMemoryDatabase {
             agent.tags = input.tags;
             agent.initial_files = input.initial_files;
             agent.tools = input.tools;
+            agent.mcp_servers = input.mcp_servers;
             agent.network_access = input.network_access;
             agent.max_iterations = input.max_iterations;
             agent.status = "active".to_string();
@@ -356,6 +366,7 @@ impl InMemoryDatabase {
                 tags: input.tags,
                 initial_files: input.initial_files,
                 tools: input.tools,
+                mcp_servers: input.mcp_servers,
                 network_access: input.network_access,
                 max_iterations: input.max_iterations,
                 status: "active".to_string(),

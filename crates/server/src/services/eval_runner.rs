@@ -299,6 +299,7 @@ async fn execute_case_inner(
                 model_id: model_id.and_then(|m| m.parse().ok()),
                 capabilities: vec![],
                 tools: vec![],
+                mcp_servers: Default::default(),
                 system_prompt,
                 initial_files: vec![],
                 hints: None,
