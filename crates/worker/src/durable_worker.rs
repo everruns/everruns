@@ -38,6 +38,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ActTaskInput {
     org_id: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    request_id: Option<String>,
     #[serde(flatten)]
     act_input: ActInput,
 }
@@ -879,7 +881,7 @@ impl DurableWorker {
                     turn_id: Some(act_task_input.act_input.context.turn_id),
                     previous_response_id,
                     iteration,
-                    request_id: None,
+                    request_id: act_task_input.request_id.clone(),
                 };
                 let res = self
                     .execute_act_activity(
@@ -1442,6 +1444,7 @@ impl DurableWorker {
 
                     let act_task_input = ActTaskInput {
                         org_id: input.org_id,
+                        request_id: input.request_id.clone(),
                         act_input: ActInput {
                             org_id: Some(input.org_id),
                             context: AtomContext {

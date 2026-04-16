@@ -147,6 +147,7 @@ impl MessageService {
         // The message is already persisted, so we can return immediately
         let runner = self.runner.clone();
         let request_id = ctx.request_id.clone();
+        let request_id_str = request_id.as_deref().unwrap_or("").to_string();
         let session_id_str = ctx.session_id.to_string();
         let message_id_str = message_id.to_string();
         tokio::spawn(async move {
@@ -164,6 +165,7 @@ impl MessageService {
                 tracing::error!(
                     session_id = %session_id_str,
                     input_message_id = %message_id_str,
+                    request_id = %request_id_str,
                     error = %e,
                     "Failed to start turn workflow"
                 );
@@ -171,6 +173,7 @@ impl MessageService {
                 tracing::info!(
                     session_id = %session_id_str,
                     input_message_id = %message_id_str,
+                    request_id = %request_id_str,
                     "Turn workflow started"
                 );
             }

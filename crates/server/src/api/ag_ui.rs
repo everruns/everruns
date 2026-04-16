@@ -39,7 +39,7 @@ use ag_ui_core::types::{
     tool::ToolCall as AgUiToolCall,
 };
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::sse::{Event as SseEvent, KeepAlive, Sse},
@@ -66,6 +66,7 @@ use crate::api::messages::{
 use crate::api::sessions::CreateSessionRequest;
 use crate::api::sse::SseConnectionTracker;
 use crate::execution_metadata;
+use crate::middleware::RequestId;
 use crate::services::{
     AppService, CreateMessageContext, EventService, MessageService, SessionService,
 };
@@ -115,9 +116,11 @@ pub fn routes(state: AgUiState) -> Router {
 async fn run_agent(
     State(state): State<AgUiState>,
     Path(app_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
     Json(req): Json<AgUiRunAgentInput>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, (StatusCode, Json<ErrorResponse>)>
 {
+    let request_id = req_id.map(|Extension(r)| r.0);
     let app = state
         .app_service
         .get_by_public_id_unscoped(&app_id)
@@ -218,7 +221,7 @@ async fn run_agent(
                     app.public_id,
                     app.agent_identity_id,
                 )),
-                request_id: None,
+                request_id,
             },
             CreateMessageRequest {
                 message: InputMessage {

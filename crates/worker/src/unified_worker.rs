@@ -435,6 +435,13 @@ where
                 .filter(|&it| it > 0)
                 .unwrap_or(1);
 
+            // Extract request_id propagated from the originating HTTP request
+            let act_request_id = task
+                .input
+                .get("request_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
             // Create DurableTurnInput from ActInput context
             let turn_input = DurableTurnInput {
                 org_id: act_input
@@ -447,7 +454,7 @@ where
                 turn_id: Some(act_input.context.turn_id),
                 previous_response_id,
                 iteration,
-                request_id: None,
+                request_id: act_request_id,
             };
 
             let res = execute_act_activity(adapters, &act_input).await;
@@ -809,6 +816,9 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
                     act_input_json["previous_response_id"] = serde_json::json!(rid);
                 }
                 act_input_json["iteration"] = serde_json::json!(input.iteration);
+                if let Some(rid) = &input.request_id {
+                    act_input_json["request_id"] = serde_json::json!(rid);
+                }
                 let activity_id = format!("act_{}", Uuid::now_v7());
 
                 let task = TaskDefinition {

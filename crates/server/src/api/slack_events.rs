@@ -18,7 +18,7 @@
 // polling in DEV_MODE where EventNotificationBroadcaster is unavailable.
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
@@ -42,6 +42,7 @@ use tokio::sync::RwLock;
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
 use crate::execution_metadata;
+use crate::middleware::RequestId;
 use crate::services::{
     AppService, CreateMessageContext, EventService, MessageService, SessionService,
 };
@@ -333,9 +334,11 @@ pub fn routes(state: SlackState) -> Router {
 async fn handle_slack_event(
     State(state): State<SlackState>,
     Path(app_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    let request_id = req_id.map(|Extension(r)| r.0);
     // 1. Look up app (unscoped — no org context for webhooks)
     let app = state
         .app_service
@@ -449,8 +452,16 @@ async fn handle_slack_event(
                 let state = state.clone();
                 let app = app.clone();
                 let slack_config = slack_config.clone();
+                let spawned_request_id = request_id.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = process_slack_message(&state, &app, &slack_config, &event).await
+                    if let Err(e) = process_slack_message(
+                        &state,
+                        &app,
+                        &slack_config,
+                        &event,
+                        spawned_request_id,
+                    )
+                    .await
                     {
                         tracing::error!(
                             app_id = %app_id,
@@ -485,6 +496,7 @@ async fn process_slack_message(
     app: &App,
     slack_config: &SlackChannelConfig,
     event: &SlackEvent,
+    request_id: Option<String>,
 ) -> anyhow::Result<()> {
     let org_id = app.org_id;
     let slack_user_id = event.user.clone().unwrap_or_default();
@@ -710,7 +722,7 @@ async fn process_slack_message(
                     app.public_id,
                     app.agent_identity_id,
                 )),
-                request_id: None,
+                request_id,
             },
             create_msg,
         )

@@ -9,8 +9,8 @@ Everruns attaches three correlation identifiers to every request and propagates 
 A per-HTTP-request opaque identifier.
 
 - **Header**: `X-Request-ID` (de facto standard; used by nginx, AWS API Gateway, GCP, Heroku)
-- **Format**: UUID v4 (e.g. `550e8400-e29b-41d4-a716-446655440000`)
-- **Source**: Extracted verbatim from the incoming `X-Request-ID` header if present; generated as UUID v4 otherwise.
+- **Format**: Opaque client-supplied printable ASCII value when `X-Request-ID` is provided (max 256 chars); otherwise a server-generated UUID v4 (e.g. `550e8400-e29b-41d4-a716-446655440000`). Clients are recommended to send UUID v4 values for interoperability.
+- **Source**: Extracted verbatim from the incoming `X-Request-ID` header if present and valid; generated as UUID v4 otherwise.
 - **Response**: Always echoed back in the `X-Request-ID` response header.
 - **Scope**: Single HTTP request → persists into any async durable run triggered by that request.
 

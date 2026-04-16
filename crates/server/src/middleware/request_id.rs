@@ -50,10 +50,12 @@ where
     }
 
     fn call(&mut self, mut req: Request<ReqBody>) -> Self::Future {
+        const MAX_REQUEST_ID_LEN: usize = 256;
         let request_id = req
             .headers()
             .get(&REQUEST_ID_HEADER)
             .and_then(|v| v.to_str().ok())
+            .filter(|s| s.len() <= MAX_REQUEST_ID_LEN)
             .map(|s| s.to_string())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
@@ -66,8 +68,7 @@ where
             if let Ok(val) = HeaderValue::from_str(&request_id) {
                 response
                     .headers_mut()
-                    .entry(HeaderName::from_static("x-request-id"))
-                    .or_insert(val);
+                    .insert(REQUEST_ID_HEADER.clone(), val);
             }
             Ok(response)
         })
