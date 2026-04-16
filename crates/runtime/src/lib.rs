@@ -12,6 +12,7 @@
 //! - replace the default in-memory stores with custom runtime backends
 //! - inspect the assembled turn context before or after executing a turn
 //! - reuse runtime-owned host phase execution from durable or server-backed hosts
+//! - map `plan_next_host_turn(...)` onto their own queue, retry, or in-memory host
 //!
 //! For a runnable example, see:
 //!
@@ -137,6 +138,7 @@ mod backends;
 mod host;
 mod in_memory;
 mod runtime;
+mod turn_strategy;
 
 pub use backends::{
     RuntimeAgentStore, RuntimeBackends, RuntimeEventCollector, RuntimeFileStore,
@@ -149,3 +151,4 @@ pub use host::{
 };
 pub use in_memory::{InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore};
 pub use runtime::{InProcessRuntime, InProcessRuntimeBuilder, TurnResult};
+pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};

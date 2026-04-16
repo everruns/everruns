@@ -344,7 +344,7 @@ The `TaskWorker` provides a unified worker implementation that works with both i
    - `sqldb_store()` — optional with default `None` until gRPC support added (EVE-44)
 
 2. **Implementations**:
-   - `DirectWorkerAdapters` - Direct storage access (in-process workers)
+   - `DirectWorkerAdapters` - Direct storage access (in-process workers), including budget-check parity for runtime tools
    - `GrpcWorkerAdapters` - gRPC access (external workers)
 
 3. **Deployment Modes**:
@@ -358,6 +358,7 @@ The `TaskWorker` provides a unified worker implementation that works with both i
 
 **Benefits of Unified Architecture**:
 - Single codebase for activity implementations (input, reason, act)
+- `everruns-runtime` owns the shared turn-strategy planner, so in-process and gRPC-backed workers use the same reason/act continuation and tool-results pause/resume policy without coupling runtime to the durable engine
 - Shared task scheduling logic
 - Easy to test with mock adapters
 - Consistent behavior across deployment modes

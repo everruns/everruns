@@ -1288,6 +1288,7 @@ impl ServerAppBuilder {
                     platform_definition.driver_registry().clone(),
                     sqldb_store.clone(),
                 )
+                .with_budget_service(budget_service.clone())
                 .with_virtual_registry(virtual_registry.clone())
                 .with_storage_store(session_storage_store)
                 .with_runner(runner.clone());

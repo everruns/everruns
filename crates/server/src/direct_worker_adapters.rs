@@ -7,6 +7,7 @@
 // but with direct access to the storage backend and services.
 
 use async_trait::async_trait;
+use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
 use everruns_core::capabilities::{
     AgentCapabilityConfig, CapabilityRegistry, SystemPromptContext, collect_capabilities,
     is_mcp_capability,
@@ -14,7 +15,7 @@ use everruns_core::capabilities::{
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-use everruns_core::traits::{ModelWithProvider, ResolvedImage};
+use everruns_core::traits::{BudgetChecker, ModelWithProvider, ResolvedImage};
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EventData, Harness, HarnessStatus,
@@ -28,7 +29,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::org_init::BASE_HARNESS_ID;
-use crate::services::{EventService, LlmResolverService, McpServerService};
+use crate::services::{BudgetService, EventService, LlmResolverService, McpServerService};
 use crate::storage::StorageBackend;
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 
@@ -49,6 +50,104 @@ fn name_from_path(path: &str) -> String {
         .to_string()
 }
 
+struct DirectBudgetChecker {
+    db: Arc<StorageBackend>,
+    budget_service: Arc<BudgetService>,
+    org_id: i64,
+    agent_id: Option<String>,
+}
+
+#[async_trait]
+impl BudgetChecker for DirectBudgetChecker {
+    async fn check_budgets(&self, session_id: &str) -> Result<BudgetToolResponse> {
+        let session_budgets = self
+            .db
+            .list_budgets(self.org_id, Some("session"), Some(session_id))
+            .await
+            .map_err(|e| store_error(format!("Failed to list session budgets: {e}")))?;
+
+        let mut all_budgets = session_budgets;
+        if let Some(agent_id) = self.agent_id.as_deref() {
+            match self
+                .db
+                .list_budgets(self.org_id, Some("agent"), Some(agent_id))
+                .await
+            {
+                Ok(agent_budgets) => all_budgets.extend(agent_budgets),
+                Err(error) => {
+                    tracing::error!(agent_id, error = %error, "Failed to list agent budgets");
+                }
+            }
+        }
+
+        if all_budgets.is_empty() {
+            return Ok(BudgetToolResponse {
+                status: "no_budgets".to_string(),
+                budgets: vec![],
+                hint: Some(
+                    "No budgets are configured for this session. You can proceed without budget constraints.".to_string(),
+                ),
+            });
+        }
+
+        let check = self
+            .budget_service
+            .check_budgets_for_session(self.org_id, session_id, self.agent_id.as_deref())
+            .await;
+
+        let budgets = all_budgets
+            .into_iter()
+            .map(|budget| {
+                let percent_remaining = if budget.limit > 0.0 {
+                    (budget.balance / budget.limit * 100.0).clamp(0.0, 100.0)
+                } else {
+                    100.0
+                };
+
+                BudgetSummary {
+                    currency: budget.currency,
+                    limit: budget.limit,
+                    balance: budget.balance,
+                    soft_limit: budget.soft_limit,
+                    percent_remaining: (percent_remaining * 10.0).round() / 10.0,
+                    status: budget.status,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let status = match check.action.as_str() {
+            "stop" => "exhausted",
+            "pause" => "paused",
+            "warn" => "warning",
+            _ => "active",
+        }
+        .to_string();
+
+        let hint = if status == "active" {
+            let min_pct = budgets
+                .iter()
+                .map(|budget| budget.percent_remaining)
+                .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                .unwrap_or(100.0);
+            if min_pct < 50.0 {
+                Some(format!(
+                    "{min_pct}% of budget remaining. Consider prioritizing task completion."
+                ))
+            } else {
+                Some(format!("{min_pct}% of budget remaining."))
+            }
+        } else {
+            check.message.clone()
+        };
+
+        Ok(BudgetToolResponse {
+            status,
+            budgets,
+            hint,
+        })
+    }
+}
+
 // =============================================================================
 // DirectWorkerAdapters Implementation
 // =============================================================================
@@ -58,6 +157,7 @@ fn name_from_path(path: &str) -> String {
 pub struct DirectWorkerAdapters {
     db: Arc<StorageBackend>,
     event_service: Arc<EventService>,
+    budget_service: Option<Arc<BudgetService>>,
     llm_resolver: Arc<LlmResolverService>,
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
@@ -83,6 +183,7 @@ impl DirectWorkerAdapters {
         Self {
             db,
             event_service,
+            budget_service: None,
             llm_resolver,
             mcp_server_service,
             capability_registry,
@@ -98,6 +199,12 @@ impl DirectWorkerAdapters {
     /// Set the agent runner for platform management tools (send_message, etc.)
     pub fn with_runner(mut self, runner: Arc<dyn everruns_worker::AgentRunner>) -> Self {
         self.runner = Some(runner);
+        self
+    }
+
+    /// Set the budget service for in-process budget tool parity.
+    pub fn with_budget_service(mut self, service: Arc<BudgetService>) -> Self {
+        self.budget_service = Some(service);
         self
     }
 
@@ -1058,6 +1165,21 @@ impl WorkerAdapters for DirectWorkerAdapters {
             self.db.clone(),
             org_id,
         ))
+    }
+
+    fn budget_checker(
+        &self,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+    ) -> Option<Arc<dyn BudgetChecker>> {
+        self.budget_service.as_ref().map(|budget_service| {
+            Arc::new(DirectBudgetChecker {
+                db: self.db.clone(),
+                budget_service: budget_service.clone(),
+                org_id,
+                agent_id: agent_id.map(|id| id.to_string()),
+            }) as Arc<dyn BudgetChecker>
+        })
     }
 
     fn platform_store(&self, org_id: i64) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
@@ -2567,6 +2689,39 @@ mod tests {
             driver_registry,
             sqldb_store,
         )
+    }
+
+    fn test_adapters_with_budget_service() -> DirectWorkerAdapters {
+        let adapters = test_adapters();
+        let budget_service = Arc::new(crate::services::BudgetService::new(adapters.db.clone()));
+        adapters.with_budget_service(budget_service)
+    }
+
+    #[tokio::test]
+    async fn budget_checker_is_absent_without_service() {
+        let adapters = test_adapters();
+        assert!(
+            adapters
+                .budget_checker(everruns_core::DEFAULT_ORG_ID, None)
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn budget_checker_returns_no_budgets_without_rows() {
+        let adapters = test_adapters_with_budget_service();
+        let checker = adapters
+            .budget_checker(everruns_core::DEFAULT_ORG_ID, None)
+            .expect("budget checker should be wired");
+
+        let response = checker
+            .check_budgets("session_test_budget")
+            .await
+            .expect("budget check should succeed");
+
+        assert_eq!(response.status, "no_budgets");
+        assert!(response.budgets.is_empty());
+        assert!(response.hint.is_some());
     }
 
     /// Seed an MCP server with an optional encrypted API key. Returns server UUID.
