@@ -47,6 +47,9 @@ pub struct DurableTurnInput {
     /// Incremented each time a new reason activity is scheduled after act.
     #[serde(default = "default_iteration")]
     pub iteration: u32,
+    /// HTTP request ID that triggered this turn. Propagated for log correlation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub request_id: Option<String>,
 }
 
 fn default_iteration() -> u32 {
@@ -598,6 +601,7 @@ impl AgentRunner for DurableRunner {
         harness_id: HarnessId,
         agent_id: Option<AgentId>,
         input_message_id: MessageId,
+        request_id: Option<String>,
     ) -> Result<()> {
         info!(
             org_id = org_id,
@@ -605,6 +609,7 @@ impl AgentRunner for DurableRunner {
             harness_id = %harness_id,
             ?agent_id,
             input_message_id = %input_message_id,
+            request_id = ?request_id,
             "Starting durable turn workflow for session"
         );
 
@@ -619,6 +624,7 @@ impl AgentRunner for DurableRunner {
             turn_id: None,
             previous_response_id: None,
             iteration: 1,
+            request_id,
         };
 
         // Create workflow instance
@@ -911,6 +917,7 @@ mod tests {
             turn_id: None,
             previous_response_id: None,
             iteration: 1,
+            request_id: None,
         };
 
         let json = serde_json::to_string(&input).unwrap();
@@ -939,6 +946,7 @@ mod tests {
             turn_id: None,
             previous_response_id: None,
             iteration: 3,
+            request_id: None,
         };
         let mut json_val: serde_json::Value = serde_json::to_value(&input).unwrap();
         // Remove iteration to simulate pre-existing persisted data
@@ -968,6 +976,7 @@ mod tests {
                 harness_id,
                 Some(agent_id),
                 message_id,
+                None,
             )
             .await
             .expect("First start_run should succeed");
@@ -997,6 +1006,7 @@ mod tests {
                 harness_id,
                 Some(agent_id),
                 message_id1,
+                None,
             )
             .await
             .expect("First start_run should succeed");
@@ -1013,6 +1023,7 @@ mod tests {
                 harness_id,
                 Some(agent_id),
                 message_id2,
+                None,
             )
             .await
             .expect("Second start_run should send steering signal");
@@ -1073,6 +1084,7 @@ mod tests {
                 harness_id,
                 Some(agent_id),
                 message_id1,
+                None,
             )
             .await
             .expect("First start_run should succeed");
@@ -1104,6 +1116,7 @@ mod tests {
                 harness_id,
                 Some(agent_id),
                 message_id2,
+                None,
             )
             .await
             .expect("Second start_run should succeed (reset workflow)");
@@ -1136,6 +1149,7 @@ mod tests {
                 harness_id,
                 Some(agent_id),
                 message_id1,
+                None,
             )
             .await
             .expect("First start_run should succeed");
@@ -1164,6 +1178,7 @@ mod tests {
                 harness_id,
                 Some(agent_id),
                 message_id2,
+                None,
             )
             .await
             .expect("Second start_run should reset failed workflow");
@@ -1194,6 +1209,7 @@ mod tests {
                 harness_id,
                 Some(agent_id),
                 message_id,
+                None,
             )
             .await
             .expect("start_run should succeed");
@@ -1209,6 +1225,7 @@ mod tests {
             turn_id: Some(turn_id),
             previous_response_id: Some("resp_abc".to_string()),
             iteration: 3,
+            request_id: None,
         };
         {
             let mut store = runner.store.lock().await;
@@ -1251,7 +1268,14 @@ mod tests {
 
         // Create and complete a workflow without saving turn input in result
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, harness_id, None, message_id)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                None,
+                message_id,
+                None,
+            )
             .await
             .expect("start_run should succeed");
 
@@ -1287,7 +1311,14 @@ mod tests {
         let message_id = MessageId::new();
 
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, harness_id, None, message_id)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                None,
+                message_id,
+                None,
+            )
             .await
             .expect("start_run should succeed");
 
@@ -1327,6 +1358,7 @@ mod tests {
                 harness_id,
                 Some(agent_id),
                 message_id1,
+                None,
             )
             .await
             .expect("First start_run should succeed");
@@ -1346,6 +1378,7 @@ mod tests {
                 harness_id,
                 Some(agent_id),
                 message_id2,
+                None,
             ),
         )
         .await;
@@ -1378,6 +1411,7 @@ mod tests {
                 HarnessId::new(),
                 Some(AgentId::new()),
                 MessageId::new(),
+                None,
             )
             .await
             .unwrap();
@@ -1391,6 +1425,7 @@ mod tests {
                 HarnessId::new(),
                 Some(AgentId::new()),
                 MessageId::new(),
+                None,
             )
             .await
             .unwrap();
@@ -1419,6 +1454,7 @@ mod tests {
                 HarnessId::new(),
                 Some(AgentId::new()),
                 MessageId::new(),
+                None,
             )
             .await
             .unwrap();
@@ -1452,6 +1488,7 @@ mod tests {
                 harness_id,
                 Some(agent_id),
                 MessageId::new(),
+                None,
             )
             .await
             .expect("First start_run should succeed");
@@ -1466,6 +1503,7 @@ mod tests {
                     harness_id,
                     Some(agent_id),
                     MessageId::new(),
+                    None,
                 )
                 .await
                 .unwrap_or_else(|e| panic!("Message {} should succeed: {}", i + 2, e));
@@ -1496,7 +1534,14 @@ mod tests {
 
         // First message — workflow created, set to Running
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, harness_id, Some(agent_id), msg1)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                msg1,
+                None,
+            )
             .await
             .expect("First start_run");
 
@@ -1514,11 +1559,25 @@ mod tests {
 
         // Second and third messages — both should send steering signals
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, harness_id, Some(agent_id), msg2)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                msg2,
+                None,
+            )
             .await
             .expect("Second start_run (steering)");
         runner
-            .start_run(DEFAULT_ORG_ID, session_id, harness_id, Some(agent_id), msg3)
+            .start_run(
+                DEFAULT_ORG_ID,
+                session_id,
+                harness_id,
+                Some(agent_id),
+                msg3,
+                None,
+            )
             .await
             .expect("Third start_run (steering)");
 

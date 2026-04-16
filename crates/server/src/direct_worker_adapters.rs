@@ -2050,6 +2050,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
                     session.harness_id,
                     session.agent_id,
                     message_id,
+                    None,
                 )
                 .await
                 .map_err(|e| store_error(format!("Failed to start turn: {e}")))?;

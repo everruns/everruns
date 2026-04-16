@@ -451,6 +451,7 @@ async fn send_message_and_wait(
         agent_id: sctx.agent_id,
         session_id: sctx.session_uuid,
         event_metadata: None,
+        request_id: None,
     };
     let msg_req = CreateMessageRequest {
         message: InputMessage {

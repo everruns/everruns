@@ -43,6 +43,7 @@ pub trait AgentRunner: Send + Sync {
         harness_id: HarnessId,
         agent_id: Option<AgentId>,
         input_message_id: MessageId,
+        request_id: Option<String>,
     ) -> Result<()>;
 
     /// Resume a workflow after client-side tool results (e.g. connection_required).

@@ -447,6 +447,7 @@ where
                 turn_id: Some(act_input.context.turn_id),
                 previous_response_id,
                 iteration,
+                request_id: None,
             };
 
             let res = execute_act_activity(adapters, &act_input).await;
@@ -720,6 +721,7 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
                 turn_id,
                 previous_response_id: None,
                 iteration: 1,
+                request_id: input.request_id.clone(),
             };
             let input_json = serde_json::to_value(&input_with_turn)?;
 
@@ -843,6 +845,7 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
                     turn_id: input.turn_id,
                     previous_response_id: response_id,
                     iteration: next_iteration,
+                    request_id: input.request_id.clone(),
                 };
                 let continued_json = serde_json::to_value(&continued_input)?;
                 let activity_id = format!("reason_{}", Uuid::now_v7());

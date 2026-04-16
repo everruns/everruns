@@ -36,6 +36,8 @@ pub struct CreateMessageContext {
     pub agent_id: Option<Uuid>,
     pub session_id: Uuid,
     pub event_metadata: Option<serde_json::Value>,
+    /// HTTP request ID for log correlation. Propagated to durable turn input.
+    pub request_id: Option<String>,
 }
 
 impl MessageService {
@@ -70,6 +72,7 @@ impl MessageService {
             session_id = %ctx.session_id,
             harness_id = %ctx.harness_id,
             agent_id = ?ctx.agent_id,
+            request_id = ?ctx.request_id,
             "Creating user message"
         );
 
@@ -143,6 +146,9 @@ impl MessageService {
         // Start workflow for user message in background (don't block the response)
         // The message is already persisted, so we can return immediately
         let runner = self.runner.clone();
+        let request_id = ctx.request_id.clone();
+        let session_id_str = ctx.session_id.to_string();
+        let message_id_str = message_id.to_string();
         tokio::spawn(async move {
             if let Err(e) = runner
                 .start_run(
@@ -151,19 +157,20 @@ impl MessageService {
                     harness_id_typed,
                     agent_id_typed,
                     message_id_typed,
+                    request_id,
                 )
                 .await
             {
                 tracing::error!(
-                    session_id = %ctx.session_id,
-                    input_message_id = %message_id,
+                    session_id = %session_id_str,
+                    input_message_id = %message_id_str,
                     error = %e,
                     "Failed to start turn workflow"
                 );
             } else {
                 tracing::info!(
-                    session_id = %ctx.session_id,
-                    input_message_id = %message_id,
+                    session_id = %session_id_str,
+                    input_message_id = %message_id_str,
                     "Turn workflow started"
                 );
             }

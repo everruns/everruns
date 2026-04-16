@@ -218,6 +218,7 @@ async fn run_agent(
                     app.public_id,
                     app.agent_identity_id,
                 )),
+                request_id: None,
             },
             CreateMessageRequest {
                 message: InputMessage {

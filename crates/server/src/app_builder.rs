@@ -17,6 +17,8 @@ use crate::server::{ServerConfig, build_router_with_prefix};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::{api, seed, services};
 
+use crate::middleware::RequestIdLayer;
+use crate::middleware::request_id::RequestId;
 use anyhow::{Context, Result};
 use axum::http::{Method, header};
 use axum::{Json, Router, extract::State, routing::get};
@@ -1010,7 +1012,27 @@ impl ServerAppBuilder {
                 ),
             ));
 
-        let app = app.layer(TraceLayer::new_for_http());
+        let app = app.layer(TraceLayer::new_for_http().make_span_with(
+            |req: &axum::http::Request<_>| {
+                let request_id = req
+                    .extensions()
+                    .get::<RequestId>()
+                    .map(|r| r.0.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                tracing::info_span!(
+                    "http_request",
+                    method = %req.method(),
+                    uri = %req.uri().path(),
+                    request_id = %request_id,
+                    session_id = tracing::field::Empty,
+                )
+            },
+        ));
+
+        // RequestIdLayer must be outer (run first) so TraceLayer can read the ID when
+        // creating the span above. See specs/correlation-ids.md.
+        let app = app.layer(RequestIdLayer);
 
         // HTTP request duration histogram: applied as route_layer so axum's
         // MatchedPath extractor is available for low-cardinality path labels.

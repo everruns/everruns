@@ -710,6 +710,7 @@ async fn process_slack_message(
                     app.public_id,
                     app.agent_identity_id,
                 )),
+                request_id: None,
             },
             create_msg,
         )
@@ -2865,6 +2866,7 @@ mod tests {
             _harness_id: everruns_core::typed_id::HarnessId,
             _agent_id: Option<everruns_core::typed_id::AgentId>,
             _input_message_id: everruns_core::typed_id::MessageId,
+            _request_id: Option<String>,
         ) -> anyhow::Result<()> {
             Ok(())
         }

@@ -97,6 +97,8 @@ For the complete attribute tables per span type (invoke_agent, chat, execute_too
 
 Spans use the `tracing` crate's native parent-child mechanism. The `OtelEventListener` maintains a `HashMap<String, tracing::Span>` to track active spans. When a child event arrives, the listener looks up the parent span, enters its context, and creates the child span (inheriting the parent). See `crates/core/src/observation/otel.rs` for the full implementation.
 
+HTTP-layer correlation identifiers (`request_id`, `session_id`) are recorded as span fields on every HTTP request span and propagated into durable execution. See [`specs/correlation-ids.md`](./correlation-ids.md) for the full contract.
+
 ### Content Recording
 
 Disabled by default for privacy. Enable with:
