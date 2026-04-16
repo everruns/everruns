@@ -75,8 +75,6 @@ pub enum SessionsCommand {
 pub async fn run(
     command: SessionsCommand,
     client: &Everruns,
-    api_url: &str,
-    api_key: &str,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -92,8 +90,6 @@ pub async fn run(
         } => {
             create(
                 client,
-                api_url,
-                api_key,
                 output,
                 quiet,
                 harness,
@@ -112,15 +108,13 @@ pub async fn run(
         SessionsCommand::Export {
             session,
             output: file_path,
-        } => export(api_url, api_key, output, quiet, session, file_path).await,
+        } => export(client, output, quiet, session, file_path).await,
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn create(
     client: &Everruns,
-    api_url: &str,
-    api_key: &str,
     output: OutputFormat,
     quiet: bool,
     harness: Option<String>,
@@ -134,21 +128,13 @@ async fn create(
     let secrets = parse_secrets(&raw_secrets)?;
     let budget_specs = parse_budget_limits(&raw_budget_limits, &raw_budget_soft_limits)?;
 
-    // Resolve harness: if it looks like a prefixed ID (harness_ + 32 hex chars),
-    // use it directly. Otherwise resolve via the server's GET /v1/harnesses/{id_or_name}
-    // endpoint (which handles both IDs and names).
-    let harness_id = match harness {
-        Some(h) if h.starts_with("harness_") && h.len() == 40 => Some(h),
-        Some(name) => {
-            let resolved = resolve_harness_name(api_url, api_key, &name).await?;
-            Some(resolved)
-        }
-        None => None,
-    };
-
     let mut req = CreateSessionRequest::new();
-    if let Some(h) = harness_id {
-        req = req.harness_id(h);
+    if let Some(h) = harness {
+        req = if h.starts_with("harness_") && h.len() == 40 {
+            req.harness_id(h)
+        } else {
+            req.harness_name(h)
+        };
     }
     if let Some(a) = agent_id {
         req = req.agent_id(a);
@@ -595,31 +581,18 @@ fn truncate_str(s: &str, max: usize) -> String {
     }
 }
 
-// TODO: Replace direct HTTP with everruns-sdk once export is supported.
-// Tracking issue: https://github.com/everruns/everruns/issues/1180
 async fn export(
-    api_url: &str,
-    api_key: &str,
+    client: &Everruns,
     output: OutputFormat,
     quiet: bool,
     session_id: String,
     file_path: Option<String>,
 ) -> Result<()> {
-    let http = reqwest::Client::new();
-    let resp = http
-        .get(format!("{}/v1/sessions/{}/export", api_url, session_id))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
+    let body = client
+        .sessions()
+        .export(&session_id)
         .await
-        .context("Failed to request session export")?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Export failed ({}): {}", status, body);
-    }
-
-    let body = resp.text().await.context("Failed to read export body")?;
+        .context("Failed to export session")?;
 
     if let Some(path) = file_path {
         std::fs::write(&path, &body).with_context(|| format!("Failed to write to {}", path))?;
@@ -632,33 +605,6 @@ async fn export(
     }
 
     Ok(())
-}
-
-/// Resolve a harness name to its ID via the GET /v1/harnesses/{name} endpoint.
-/// Harness names are `[a-z0-9-]` only, so no percent-encoding is needed for path
-/// segments. We strip trailing slashes from the base URL to avoid double slashes.
-async fn resolve_harness_name(api_url: &str, api_key: &str, name: &str) -> Result<String> {
-    let base = api_url.trim_end_matches('/');
-    let http = reqwest::Client::new();
-    let resp = http
-        .get(format!("{base}/v1/harnesses/{name}"))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await
-        .context("Failed to resolve harness name")?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Harness '{name}' not found ({status}): {body}");
-    }
-
-    let harness: serde_json::Value = resp.json().await.context("Invalid harness response")?;
-    harness
-        .get("id")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .context(format!("Harness '{name}' response missing id field"))
 }
 
 fn capitalize_first(s: &str) -> String {
