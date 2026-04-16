@@ -13,100 +13,21 @@
 // Atoms emit events via EventEmitter for observability.
 
 use anyhow::{Context, Result};
-use everruns_core::ToolRegistry;
-use everruns_core::atoms::{ActAtom, Atom, InputAtom, ReasonAtom};
-use everruns_core::capabilities::{SystemPromptContext, collect_capabilities, is_mcp_capability};
-use everruns_core::traits::{AgentStore, SessionStore};
-use everruns_core::{Message, PlatformDefinition};
-use std::sync::Arc;
-
-use crate::grpc_adapters::{
-    GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcConnectionResolver, GrpcEventEmitter,
-    GrpcHarnessStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore,
-    GrpcMessageRetriever, GrpcPlatformStore, GrpcScheduleStore, GrpcSessionFileStore,
-    GrpcSessionMutator, GrpcSessionResourceRegistry, GrpcSessionSqlDbStore,
-    GrpcSessionStorageStore, GrpcSessionStore,
+use everruns_core::PlatformDefinition;
+use everruns_runtime::{
+    execute_act_activity as runtime_execute_act_activity,
+    execute_input_activity as runtime_execute_input_activity,
+    execute_reason_activity as runtime_execute_reason_activity,
 };
+
+use crate::grpc_adapters::GrpcClient;
+use crate::grpc_worker_adapters::GrpcWorkerAdapters;
+use crate::runtime_host::WorkerRuntimeHost;
 
 // Re-export atom types for activity callers
 pub use everruns_core::atoms::{
     ActInput, ActResult, InputAtomInput, InputAtomResult, ReasonInput, ReasonResult, ToolCallResult,
 };
-
-/// Thin wrapper: detect dependency blockers using core's shared logic with gRPC adapters.
-async fn detect_dependency_blocker(
-    grpc_client: &GrpcClient,
-    org_id: i64,
-    harness_id: everruns_core::HarnessId,
-    agent_id: Option<everruns_core::AgentId>,
-) -> Result<Option<everruns_core::DependencyBlocker>> {
-    let harness_store = GrpcHarnessStore::new(grpc_client.clone(), org_id);
-    let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
-    everruns_core::detect_dependency_blocker(&harness_store, &agent_store, harness_id, agent_id)
-        .await
-        .map_err(anyhow::Error::new)
-}
-
-/// Emit dependency-blocked events (output message + turn.failed + session.idled, set idle).
-async fn emit_dependency_blocked_events(
-    grpc_client: &GrpcClient,
-    org_id: i64,
-    context: &everruns_core::atoms::AtomContext,
-    blocker: everruns_core::DependencyBlocker,
-) {
-    use everruns_core::events::{
-        EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData, TurnFailedData,
-    };
-    use everruns_core::traits::EventEmitter;
-
-    let session_id = context.session_id;
-    let turn_id = context.turn_id;
-    let input_message_id = context.input_message_id;
-    let message = blocker.message();
-    let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
-
-    let output_event = EventRequest::new(
-        session_id,
-        EventContext::turn(turn_id, input_message_id),
-        OutputMessageCompletedData::new(Message::assistant(message)),
-    );
-    if let Err(e) = event_emitter.emit(output_event).await {
-        tracing::warn!(error = %e, "Failed to emit dependency blocked message");
-    }
-
-    if let Err(e) = grpc_client
-        .set_session_status(org_id, session_id, "idle")
-        .await
-    {
-        tracing::warn!(error = %e, "Failed to set session status to idle");
-    }
-
-    let failed_event = EventRequest::new(
-        session_id,
-        EventContext::turn(turn_id, input_message_id),
-        TurnFailedData {
-            turn_id,
-            error: message.to_string(),
-            error_code: Some(blocker.error_code().to_string()),
-        },
-    );
-    if let Err(e) = event_emitter.emit(failed_event).await {
-        tracing::warn!(error = %e, "Failed to emit dependency turn.failed");
-    }
-
-    let idled_event = EventRequest::new(
-        session_id,
-        EventContext::turn(turn_id, input_message_id),
-        SessionIdledData {
-            turn_id,
-            iterations: None,
-            usage: None,
-        },
-    );
-    if let Err(e) = event_emitter.emit(idled_event).await {
-        tracing::warn!(error = %e, "Failed to emit dependency session.idled");
-    }
-}
 
 // ============================================================================
 // Activity Implementations
@@ -124,12 +45,6 @@ pub async fn input_activity(
     org_id: i64,
     input: InputAtomInput,
 ) -> Result<InputAtomResult> {
-    use everruns_core::MessageRetriever;
-    use everruns_core::events::{
-        EventContext, EventRequest, SessionActivatedData, TurnStartedData,
-    };
-    use everruns_core::traits::EventEmitter;
-
     tracing::info!(
         org_id = org_id,
         session_id = %input.context.session_id,
@@ -138,66 +53,13 @@ pub async fn input_activity(
         "Executing input_activity"
     );
 
-    // Set session status to "active" - turn is starting
-    if let Err(e) = grpc_client
-        .set_session_status(org_id, input.context.session_id, "active")
-        .await
-    {
-        tracing::warn!(error = %e, "Failed to set session status to active");
-    }
-
-    // Create message retriever early to fetch input content for observability
-    let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
-
-    // Fetch input message content for turn.started event (for Braintrust observability)
-    let input_content = match message_retriever
-        .get(input.context.session_id, input.context.input_message_id)
-        .await
-    {
-        Ok(Some(msg)) => Some(msg.content_to_llm_string()),
-        Ok(None) => {
-            tracing::warn!("Input message not found for turn.started event");
-            None
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to fetch input message for turn.started event");
-            None
-        }
-    };
-
-    // Emit session.activated event
-    let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
-    let activated_event = EventRequest::new(
-        input.context.session_id,
-        EventContext::turn(input.context.turn_id, input.context.input_message_id),
-        SessionActivatedData {
-            turn_id: input.context.turn_id,
-            input_message_id: input.context.input_message_id,
-        },
-    );
-    if let Err(e) = event_emitter.emit(activated_event).await {
-        tracing::warn!(error = %e, "Failed to emit session.activated event");
-    }
-
-    // Emit turn.started event with input content for observability
-    let turn_started_event = EventRequest::new(
-        input.context.session_id,
-        EventContext::turn(input.context.turn_id, input.context.input_message_id),
-        TurnStartedData {
-            turn_id: input.context.turn_id,
-            input_message_id: input.context.input_message_id,
-            input_content,
-        },
-    );
-    if let Err(e) = event_emitter.emit(turn_started_event).await {
-        tracing::warn!(error = %e, "Failed to emit turn.started event");
-    }
-
-    let atom = InputAtom::new(message_retriever);
-
-    atom.execute(input)
-        .await
-        .context("InputAtom execution failed")
+    runtime_execute_input_activity(
+        &WorkerRuntimeHost::new(GrpcWorkerAdapters::from_client(grpc_client)),
+        org_id,
+        input,
+    )
+    .await
+    .context("InputAtom execution failed")
 }
 
 /// Call the LLM model for reasoning using ReasonAtom
@@ -227,58 +89,16 @@ pub async fn reason_activity(
         "Executing reason_activity"
     );
 
-    if let Some(blocker) =
-        detect_dependency_blocker(&grpc_client, org_id, input.harness_id, input.agent_id).await?
-    {
-        emit_dependency_blocked_events(&grpc_client, org_id, &input.context, blocker).await;
-        return Ok(ReasonResult {
-            success: false,
-            text: blocker.message().to_string(),
-            tool_calls: vec![],
-            has_tool_calls: false,
-            tool_definitions: vec![],
-            max_iterations: everruns_core::runtime_agent::default_max_iterations(),
-            error: Some("dependency_unavailable".to_string()),
-            usage: None,
-            response_id: None,
-            locale: None,
-            network_access: None,
-        });
-    }
-
-    // Create atom dependencies using gRPC adapters
-    let harness_store = GrpcHarnessStore::new(grpc_client.clone(), org_id);
-    let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
-    let session_store = GrpcSessionStore::new(grpc_client.clone(), org_id);
-    let message_retriever = GrpcMessageRetriever::new(grpc_client.clone());
-    let provider_store = GrpcLlmProviderStore::new(grpc_client.clone(), org_id);
-    let capability_registry = platform_definition.capability_registry().clone();
-    let driver_registry = platform_definition.driver_registry().clone();
-    let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
-
-    // Create image resolver for multimodal image support
-    let image_resolver = Arc::new(GrpcImageResolver::new(grpc_client.clone(), org_id));
-
-    // Create file store for AGENTS.md reading (agent_instructions capability)
-    let file_store = Arc::new(GrpcSessionFileStore::new(grpc_client.clone()));
-
-    let atom = ReasonAtom::new(
-        harness_store,
-        agent_store,
-        session_store,
-        message_retriever,
-        provider_store,
-        capability_registry,
-        driver_registry,
-        event_emitter,
+    let result = runtime_execute_reason_activity(
+        &WorkerRuntimeHost::new(GrpcWorkerAdapters::from_client_with_platform_definition(
+            grpc_client,
+            platform_definition.clone(),
+        )),
+        org_id,
+        input,
     )
-    .with_image_resolver(image_resolver)
-    .with_file_store(file_store);
-
-    let result = atom
-        .execute(input)
-        .await
-        .context("ReasonAtom execution failed")?;
+    .await
+    .context("ReasonAtom execution failed")?;
 
     // Turn lifecycle events (turn.completed, turn.failed, session.idled) are NOT
     // emitted here. They are deferred to the workflow scheduler which checks for
@@ -314,171 +134,15 @@ pub async fn act_activity(
         "Executing act_activity"
     );
 
-    if let Some(blocker) =
-        detect_dependency_blocker(&grpc_client, org_id, input.harness_id, input.agent_id).await?
-    {
-        emit_dependency_blocked_events(&grpc_client, org_id, &input.context, blocker).await;
-        return Ok(ActResult {
-            results: vec![],
-            completed: true,
-            success_count: 0,
-            error_count: 1,
-            waiting_for_tool_results: false,
-            blocked: true,
-            client_tool_calls: vec![],
-            client_tool_definitions: vec![],
-        });
-    }
-
-    // Create tool registry with default built-in tools
-    let mut builtin_executor = ToolRegistry::with_defaults();
-
-    // Resolve blueprint_id: prefer ActInput field, fall back to session lookup
-    let blueprint_id = if input.blueprint_id.is_some() {
-        input.blueprint_id.clone()
-    } else {
-        let session_store = GrpcSessionStore::new(grpc_client.clone(), org_id);
-        match session_store.get_session(input.context.session_id).await {
-            Ok(Some(session)) => session.blueprint_id.clone(),
-            _ => None,
-        }
-    };
-
-    // Load tools: blueprint tools for blueprint sessions, capability tools otherwise.
-    if let Some(ref blueprint_id) = blueprint_id {
-        // Blueprint path: load tools from the blueprint definition
-        let capability_registry = platform_definition.capability_registry().clone();
-        let blueprint = capability_registry
-            .blueprint(blueprint_id)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Blueprint \"{}\" not found in registry. Session has blueprint_id but no matching blueprint.",
-                    blueprint_id
-                )
-            })?;
-        for tool in blueprint.tools {
-            builtin_executor.register_boxed(tool);
-        }
-        tracing::debug!(
-            blueprint_id = blueprint_id,
-            "Registered blueprint tools for act_activity"
-        );
-    } else {
-        // Standard path: load capabilities from agent or harness.
-        // When agent_id is present, use agent capabilities.
-        // When agent_id is absent, fall back to harness capabilities so that
-        // harness-provided tools (e.g. bash) are still registered.
-        let cap_ids: Vec<String> = if let Some(agent_id) = input.agent_id {
-            let agent_store = GrpcAgentStore::new(grpc_client.clone(), org_id);
-            if let Ok(Some(agent)) = agent_store.get_agent(agent_id).await {
-                agent
-                    .capabilities
-                    .iter()
-                    .map(|c| c.capability_id().to_string())
-                    .filter(|id| !is_mcp_capability(id))
-                    .collect()
-            } else {
-                vec![]
-            }
-        } else {
-            let harness_store = GrpcHarnessStore::new(grpc_client.clone(), org_id);
-            let chain = everruns_core::traits::HarnessStore::get_harness_chain(
-                &harness_store,
-                input.harness_id,
-            )
-            .await
-            .unwrap_or_default();
-            // Fold harness chain into effective overlay to get merged capabilities
-            let overlay = everruns_core::AgentConfigOverlay::fold(
-                chain.iter().map(everruns_core::AgentConfigOverlay::from),
-            );
-            overlay
-                .capabilities
-                .iter()
-                .map(|c| c.capability_id().to_string())
-                .filter(|id| !is_mcp_capability(id))
-                .collect()
-        };
-
-        if !cap_ids.is_empty() {
-            let capability_registry = platform_definition.capability_registry().clone();
-            let ctx = SystemPromptContext::without_file_store(input.context.session_id);
-            let collected = collect_capabilities(&cap_ids, &capability_registry, &ctx).await;
-            for tool in collected.tools {
-                builtin_executor.register_boxed(tool);
-            }
-            tracing::debug!(
-                capability_count = cap_ids.len(),
-                tool_count = collected.tool_definitions.len(),
-                "Registered capability tools for act_activity"
-            );
-        }
-    }
-
-    // Create composite tool executor that handles both built-in and MCP tools
-    let mcp_executor = Arc::new(crate::mcp_executor::McpToolExecutor::new(
-        grpc_client.clone(),
-        org_id,
-    ));
-    let tool_executor =
-        crate::mcp_executor::CompositeToolExecutor::new(builtin_executor, mcp_executor);
-
-    let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
-    let file_store = Arc::new(GrpcSessionFileStore::new(grpc_client.clone()));
-    let storage_store: Arc<dyn everruns_core::traits::SessionStorageStore> =
-        Arc::new(GrpcSessionStorageStore::new(grpc_client.clone()));
-    let connection_resolver: Arc<dyn everruns_core::traits::UserConnectionResolver> =
-        Arc::new(GrpcConnectionResolver::new(grpc_client.clone()));
-    let session_store: Arc<dyn everruns_core::traits::SessionStore> =
-        Arc::new(GrpcSessionStore::new(grpc_client.clone(), org_id));
-    let session_mutator: Arc<dyn everruns_core::traits::SessionMutator> =
-        Arc::new(GrpcSessionMutator::new(grpc_client.clone(), org_id));
-    let agent_store: Arc<dyn everruns_core::traits::AgentStore> =
-        Arc::new(GrpcAgentStore::new(grpc_client.clone(), org_id));
-    let sqldb_store: everruns_core::traits::SessionSqlDbStoreRef =
-        Arc::new(GrpcSessionSqlDbStore::new(grpc_client.clone()));
-    let leased_resource_store: Arc<dyn everruns_core::traits::LeasedResourceStore> =
-        Arc::new(GrpcLeasedResourceStore::new(grpc_client.clone()));
-    let session_resource_registry: Arc<dyn everruns_core::traits::SessionResourceRegistry> =
-        Arc::new(GrpcSessionResourceRegistry::new(grpc_client.clone()));
-    let schedule_store: Arc<dyn everruns_core::traits::SessionScheduleStore> =
-        Arc::new(GrpcScheduleStore::new(grpc_client.clone(), org_id));
-    let platform_store: Arc<dyn everruns_core::platform_store::PlatformStore> =
-        Arc::new(GrpcPlatformStore::new(grpc_client.clone(), org_id));
-    let budget_checker: Arc<dyn everruns_core::traits::BudgetChecker> = Arc::new(
-        GrpcBudgetChecker::new(grpc_client, org_id)
-            .with_agent_id(input.agent_id.map(|id| id.to_string())),
-    );
-
-    let atom = ActAtom::with_file_store(tool_executor, event_emitter, file_store)
-        .with_storage_store(storage_store)
-        .with_connection_resolver(connection_resolver)
-        .with_session_store(session_store)
-        .with_session_mutator(session_mutator)
-        .with_agent_store(agent_store)
-        .with_sqldb_store(sqldb_store)
-        .with_leased_resource_store(leased_resource_store)
-        .with_session_resource_registry(session_resource_registry)
-        .with_schedule_store(schedule_store)
-        .with_platform_store(platform_store)
-        .with_budget_checker(budget_checker)
-        .with_capability_registry(platform_definition.capability_registry().clone())
-        // Collect post-tool hooks from all capabilities. Hooks self-gate on tool hints
-        // (e.g. persist_output), so this is safe even though it uses the full registry
-        // rather than only session-active capabilities. A future refinement could pass
-        // only hooks from the active capability set.
-        .with_post_tool_hooks(
-            platform_definition
-                .capability_registry()
-                .list()
-                .iter()
-                .flat_map(|c| c.post_tool_exec_hooks())
-                .collect(),
-        );
-
-    atom.execute(input)
-        .await
-        .context("ActAtom execution failed")
+    runtime_execute_act_activity(
+        &WorkerRuntimeHost::new(GrpcWorkerAdapters::from_client_with_platform_definition(
+            grpc_client,
+            platform_definition.clone(),
+        )),
+        input,
+    )
+    .await
+    .context("ActAtom execution failed")
 }
 
 // ============================================================================

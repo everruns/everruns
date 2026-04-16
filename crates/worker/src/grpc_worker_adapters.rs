@@ -23,9 +23,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::grpc_adapters::{
-    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcHarnessStore, GrpcImageResolver,
-    GrpcLeasedResourceStore, GrpcLlmProviderStore, GrpcMessageRetriever, GrpcSessionFileStore,
-    GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
+    GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcEventEmitter, GrpcHarnessStore,
+    GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore, GrpcMessageRetriever,
+    GrpcSessionFileStore, GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
@@ -407,6 +407,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Arc::new(crate::grpc_adapters::GrpcScheduleStore::new(
             self.client.clone(),
             org_id,
+        ))
+    }
+
+    fn budget_checker(
+        &self,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+    ) -> Option<Arc<dyn everruns_core::traits::BudgetChecker>> {
+        Some(Arc::new(
+            GrpcBudgetChecker::new(self.client.clone(), org_id)
+                .with_agent_id(agent_id.map(|id| id.to_string())),
         ))
     }
 

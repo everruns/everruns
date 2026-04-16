@@ -16,7 +16,9 @@ use everruns_core::error::Result;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-use everruns_core::traits::{ImageResolver, LeasedResourceStore, ModelWithProvider, ResolvedImage};
+use everruns_core::traits::{
+    BudgetChecker, ImageResolver, LeasedResourceStore, ModelWithProvider, ResolvedImage,
+};
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
@@ -289,6 +291,19 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get the session schedule store for scheduling tools.
     /// Takes org_id so the store is scoped to the current session's organization.
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore>;
+
+    /// Get the budget checker for the current turn, if available.
+    ///
+    /// gRPC workers provide this through the control-plane API. Direct dev-mode
+    /// workers may return `None` until they are wired to the server budget
+    /// service.
+    fn budget_checker(
+        &self,
+        _org_id: i64,
+        _agent_id: Option<AgentId>,
+    ) -> Option<Arc<dyn BudgetChecker>> {
+        None
+    }
 
     /// Claim due leased resources for cleanup work.
     ///

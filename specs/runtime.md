@@ -2,12 +2,15 @@
 
 ## Abstract
 
-`everruns-runtime` is the public in-process execution crate for Everruns.
+`everruns-runtime` is the public execution crate for Everruns.
 
-It lets embedders run sessions inside their own process, without the durable
-execution engine, gRPC worker boundary, or control-plane server. The crate uses
-the same core atoms and capability resolution path as the worker so embedded
-execution stays behaviorally aligned with the main runtime.
+It lets embedders run sessions inside their own process without the durable
+execution engine, gRPC worker boundary, or control-plane server. It also owns
+the reusable host-phase execution contract that durable/server-backed workers
+use for `input -> reason -> act`.
+
+The crate uses the same core atoms and capability resolution path as the worker
+so embedded execution stays behaviorally aligned with the main runtime.
 
 ## Goals
 
@@ -19,6 +22,8 @@ execution stays behaviorally aligned with the main runtime.
    server internals.
 5. Preserve the core turn contract (`input -> reason -> act`) and event/message
    shapes used elsewhere in the system.
+6. Provide a supported host adapter contract so durable/server-backed execution
+   can reuse runtime-owned phase orchestration.
 
 ## Position in the Stack
 
@@ -27,9 +32,10 @@ execution stays behaviorally aligned with the main runtime.
 - `everruns-core` owns atoms, traits, capabilities, event types, and shared
   domain/runtime types.
 - `everruns-runtime` owns embedder-facing orchestration, in-memory stores, turn
-  execution, and runtime seeding helpers.
+  execution, runtime seeding helpers, and reusable host-phase execution.
 - `everruns-server` and `everruns-worker` remain control-plane and durable
-  execution hosts. They do not define the public in-process contract.
+  execution hosts. They use runtime-owned host execution but still own queueing,
+  retries, workflows, and process boundaries.
 
 ## Public Contract
 
@@ -61,6 +67,21 @@ The builder must allow an embedder to:
 - `read_file(session_id, path)` to inspect the in-memory workspace
 - `events()` to inspect emitted runtime events
 
+### Host execution responsibilities
+
+`everruns-runtime` must also expose a reusable host contract for durable or
+server-backed execution:
+
+- `RuntimeHostAdapter`
+- `RuntimeSessionLifecycle`
+- `execute_input_activity(...)`
+- `execute_reason_activity(...)`
+- `execute_act_activity(...)`
+
+These APIs own phase-local orchestration, atom wiring, dependency blocker
+handling, and lifecycle event emission for the host runtime. Durable scheduling
+and workflow management remain outside this contract.
+
 ## Execution Semantics
 
 `everruns-runtime` must execute the shared `TurnStateMachine` from `everruns-core`.
@@ -78,6 +99,9 @@ Required behavior:
 6. Persist assistant messages and tool-result messages from emitted events so
    subsequent turns see the same history shape as the durable/server-backed
    runtime.
+7. Durable/server-backed workers must execute their per-phase host logic
+   through `everruns-runtime` instead of maintaining a separate copy of atom
+   wiring in the worker crate.
 
 ## Shared Context Assembly
 
@@ -144,8 +168,10 @@ embedded runtime needs for:
 This keeps `everruns-core` storage traits read-oriented where they already were,
 while making custom embedded backends a supported public path.
 
-This first public contract still does not require full production-ready
-persistence adapters in-tree. It only defines the supported extension seam.
+`everruns-runtime` owns the public extension seam for embedder-supplied
+backends. `everruns-worker` ships the first-party durable/server-backed host
+adapter (`WorkerRuntimeHost`) that bridges worker storage/adapters into the
+runtime host contract.
 
 ## Context and Capabilities
 
@@ -176,25 +202,26 @@ configuration error.
 
 ## Non-goals
 
-This spec does not require:
+This spec does not require runtime to own:
 
 - durable workflows
 - cross-process task recovery
-- gRPC adapters
-- database-backed persistence
+- task queues or workflow schedulers
 - server route composition
-- full parity with every server-owned integration backend
 
-Those remain separate concerns.
+Those remain separate concerns outside the runtime host-phase contract.
 
 ## Source Index
 
 - `crates/runtime/src/lib.rs`
 - `crates/runtime/src/runtime.rs`
+- `crates/runtime/src/host.rs`
 - `crates/runtime/src/in_memory.rs`
 - `crates/runtime/examples/in_process_runtime.rs`
 - `crates/runtime/examples/inspect_context.rs`
 - `crates/runtime/tests/in_process_runtime_test.rs`
+- `crates/runtime/tests/runtime_host_test.rs`
+- `crates/worker/src/runtime_host.rs`
 - `crates/core/src/runtime_context.rs`
 - `crates/core/src/turn.rs`
 - `crates/core/src/platform_definition.rs`
