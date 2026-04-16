@@ -43,7 +43,8 @@ function ResourceCard({ resource }: { resource: SessionResourceEntry }) {
   const statusText =
     typeof resource.metadata?.status_text === "string" ? resource.metadata.status_text : null;
   const summary = typeof resource.metadata?.summary === "string" ? resource.metadata.summary : null;
-  const logPath = typeof resource.metadata?.log_path === "string" ? resource.metadata.log_path : null;
+  const logPath =
+    typeof resource.metadata?.log_path === "string" ? resource.metadata.log_path : null;
   const resultPath =
     typeof resource.metadata?.result_path === "string" ? resource.metadata.result_path : null;
   const outputTail =
