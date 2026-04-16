@@ -5,8 +5,8 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::Command;
+use crate::domains::mcp_servers::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::services::CapabilityService;
-use crate::services::mcp_server::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,

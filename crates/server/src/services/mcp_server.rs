@@ -3,6 +3,7 @@
 //
 // Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (detail)
 
+use crate::domains::mcp_servers::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::storage::{
     EncryptionService, McpServerRow, StorageBackend,
     models::{CreateMcpServerRow, UpdateMcpServer, UpdateMcpServerTools},
@@ -12,8 +13,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use everruns_core::{
     Caller, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
-    McpToolDefinition, McpToolsListRequest, McpToolsListResponse, Permission, Policy, Rule,
-    mcp_oauth_provider_id_for_uuid,
+    McpToolDefinition, McpToolsListRequest, McpToolsListResponse, mcp_oauth_provider_id_for_uuid,
 };
 use everruns_macros::policy;
 use serde::{Deserialize, Serialize};
@@ -31,22 +31,6 @@ const TOOL_CACHE_TTL: Duration = Duration::from_secs(3600);
 
 /// HTTP client timeout for MCP server calls
 const MCP_CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
-
-pub const MCP_SERVER_VIEW: Policy = Policy {
-    id: "mcp_server.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
-};
-pub const MCP_SERVER_MANAGE: Policy = Policy {
-    id: "mcp_server.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
-};
-pub const MCP_SERVER_DANGEROUS: Policy = Policy {
-    id: "mcp_server.dangerous",
-    rules: &[
-        Rule::UserHasPermission(Permission::OrgAgentsManage),
-        Rule::UserHasPermission(Permission::OrgMcpServersDangerous),
-    ],
-};
 
 pub struct McpServerService {
     db: Arc<StorageBackend>,

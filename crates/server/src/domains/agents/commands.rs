@@ -5,8 +5,8 @@
 
 use super::queries as q;
 use super::types::{CreateAgentRequest, CreateAgentRow, UpdateAgent, UpdateAgentRequest};
+use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
-use crate::services::agent::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use everruns_core::typed_id::AgentId;
 use everruns_core::{Agent, AgentCapabilityConfig, InitialFile, OrgRole, Policy, ToolDefinition};
 use serde::Deserialize;

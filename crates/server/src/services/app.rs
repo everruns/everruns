@@ -3,6 +3,7 @@
 // Decision: encrypt on write, decrypt in row_to_app; fallback to plaintext for migration
 // Decision: multi-channel support — channels live in app_channels table (one-to-many)
 
+use crate::domains::apps::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
 use crate::errors::ResourceNotFoundError;
 use crate::storage::{
     AppChannelRow, AppRow, EncryptionService, StorageBackend,
@@ -11,9 +12,7 @@ use crate::storage::{
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, AgentIdentityId, AppChannelId, HarnessId};
-use everruns_core::{
-    App, AppChannel, AppId, AppStatus, Caller, ChannelType, Permission, Policy, Rule,
-};
+use everruns_core::{App, AppChannel, AppId, AppStatus, Caller, ChannelType};
 use everruns_durable::UpdateField;
 use everruns_macros::policy;
 use std::sync::Arc;
@@ -21,27 +20,6 @@ use uuid::Uuid;
 
 use crate::api::apps::{
     AddChannelRequest, CreateAppRequest, UpdateAppRequest, UpdateChannelRequest,
-};
-
-/// Policy: View apps (read-only).
-pub const APP_VIEW: Policy = Policy {
-    id: "app.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
-};
-
-/// Policy: Manage apps (create, update).
-pub const APP_MANAGE: Policy = Policy {
-    id: "app.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
-};
-
-/// Policy: Dangerous app operations (delete, publish, unpublish).
-pub const APP_DANGEROUS: Policy = Policy {
-    id: "app.dangerous",
-    rules: &[
-        Rule::UserHasPermission(Permission::OrgAgentsManage),
-        Rule::UserHasPermission(Permission::OrgAppsDangerous),
-    ],
 };
 
 pub struct AppService {

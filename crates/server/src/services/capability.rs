@@ -10,7 +10,7 @@
 // instances that mount skill files into the VFS. The built-in SkillsCapability
 // discovers them at runtime.
 //
-// Note: Agent-specific capability management is handled by AgentService.
+// Note: Agent-specific capability management is handled by domains::agents commands.
 
 use crate::services::mcp_server::McpServerService;
 use crate::services::skill::SkillService;

@@ -12,8 +12,8 @@ mod worker_service_impl;
 mod tests;
 
 use crate::services::{
-    AgentService, CapabilityService, EventService, HarnessService, LlmResolverService,
-    McpServerService, SessionFileService, SessionService,
+    CapabilityService, EventService, LlmResolverService, McpServerService, SessionFileService,
+    SessionService,
     session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
 };
 use crate::storage::{EncryptionService, StorageBackend};
@@ -339,13 +339,11 @@ impl tonic::service::Interceptor for GrpcAuthInterceptor {
 /// No direct database access is allowed - all operations go through the services layer.
 pub struct WorkerServiceImpl {
     event_service: EventService,
-    agent_service: AgentService,
-    harness_service: HarnessService,
     session_service: SessionService,
     session_file_service: SessionFileService,
     llm_resolver_service: LlmResolverService,
     mcp_server_service: McpServerService,
-    capability_service: CapabilityService,
+    capability_service: Arc<CapabilityService>,
     durable_store: Option<Arc<PostgresWorkflowEventStore>>,
     /// Task notification broadcaster for push-based notifications (PG NOTIFY or NATS)
     task_broadcaster: Option<Arc<TaskBroadcaster>>,
@@ -396,8 +394,6 @@ impl WorkerServiceImpl {
             Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
         >,
     ) -> Self {
-        let agent_service = AgentService::new(db.clone());
-        let harness_service = HarnessService::new(db.clone());
         let capability_registry = platform_definition.capability_registry().clone();
         let session_service = {
             let svc = SessionService::with_registry(db.clone(), capability_registry.clone());
@@ -414,8 +410,11 @@ impl WorkerServiceImpl {
         };
         let llm_resolver_service = LlmResolverService::new(db.clone(), encryption.clone());
         let mcp_server_service = McpServerService::new(db.clone(), encryption.clone());
-        let capability_service =
-            CapabilityService::with_registry(db.clone(), encryption.clone(), capability_registry);
+        let capability_service = Arc::new(CapabilityService::with_registry(
+            db.clone(),
+            encryption.clone(),
+            capability_registry,
+        ));
 
         // Create durable store using the pool if available (PostgreSQL mode only)
         // In dev mode (in-memory), durable execution is handled differently
@@ -471,8 +470,6 @@ impl WorkerServiceImpl {
 
         Self {
             event_service,
-            agent_service,
-            harness_service,
             session_service,
             session_file_service,
             llm_resolver_service,
@@ -506,6 +503,16 @@ impl WorkerServiceImpl {
             }
             _ => None,
         }
+    }
+
+    /// Build a domain command context for the given org.
+    fn domain_ctx(&self, org_id: i64) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx::new(
+            everruns_core::Caller::internal(org_id),
+            self.db.clone(),
+            self.capability_service.clone(),
+            None,
+        )
     }
 
     /// Get durable store or return unavailable error

@@ -7,9 +7,9 @@
 // (additive behavior).
 
 use crate::api::common::Pagination;
+use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
 use crate::errors::ResourceNotFoundError;
 use crate::org_init::BASE_HARNESS_ID;
-use crate::services::harness::resolve_effective_harness;
 use crate::services::session_file::{CreateFileInput, SessionFileService};
 use crate::services::session_sandbox::SessionSandboxService;
 use crate::storage::{
@@ -875,11 +875,17 @@ impl SessionService {
 mod tests {
     use super::*;
     use crate::api::{agents::CreateAgentRequest, harnesses::CreateHarnessRequest};
-    use crate::services::{AgentService, HarnessService};
+    use crate::domains::common::{Command, Ctx};
+    use crate::services::CapabilityService;
     use crate::storage::{
         CreateLlmModelRow, CreateLlmProviderRow, CreateOrganizationRow, StorageBackend,
     };
     use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile};
+
+    fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
+        let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
+        Ctx::new(caller, db, capability_service, None)
+    }
 
     fn build_create_request(
         harness_id: HarnessId,
@@ -956,77 +962,69 @@ mod tests {
     #[tokio::test]
     async fn starter_files_are_copied_into_new_sessions() {
         let db = Arc::new(StorageBackend::in_memory());
-        let harness_service = HarnessService::new(db.clone());
-        let agent_service = AgentService::new(db.clone());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
+        let ctx = test_ctx(caller.clone(), db.clone());
 
-        let harness = harness_service
-            .create(
-                &caller,
-                CreateHarnessRequest {
-                    name: "harness".to_string(),
-                    display_name: Some("Harness".to_string()),
-                    description: None,
-                    system_prompt: "Harness prompt".to_string(),
-                    parent_harness_id: None,
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![],
-                    initial_files: vec![
-                        InitialFile {
-                            path: "/workspace/config.txt".to_string(),
-                            content: "from harness".to_string(),
-                            encoding: "text".to_string(),
-                            is_readonly: false,
-                        },
-                        InitialFile {
-                            path: "/only-harness.txt".to_string(),
-                            content: "h-only".to_string(),
-                            encoding: "text".to_string(),
-                            is_readonly: true,
-                        },
-                    ],
-                    network_access: None,
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "harness".to_string(),
+            display_name: Some("Harness".to_string()),
+            description: None,
+            system_prompt: "Harness prompt".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![
+                InitialFile {
+                    path: "/workspace/config.txt".to_string(),
+                    content: "from harness".to_string(),
+                    encoding: "text".to_string(),
+                    is_readonly: false,
                 },
-            )
-            .await
-            .unwrap();
+                InitialFile {
+                    path: "/only-harness.txt".to_string(),
+                    content: "h-only".to_string(),
+                    encoding: "text".to_string(),
+                    is_readonly: true,
+                },
+            ],
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
 
-        let agent = agent_service
-            .create(
-                &caller,
-                None,
-                CreateAgentRequest {
-                    id: None,
-                    name: "test-agent".to_string(),
-                    display_name: Some("Test Agent".to_string()),
-                    description: None,
-                    system_prompt: "Agent prompt".to_string(),
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![],
-                    initial_files: vec![
-                        InitialFile {
-                            path: "/config.txt".to_string(),
-                            content: "from agent".to_string(),
-                            encoding: "text".to_string(),
-                            is_readonly: false,
-                        },
-                        InitialFile {
-                            path: "/binary.bin".to_string(),
-                            content: "AAE=".to_string(),
-                            encoding: "base64".to_string(),
-                            is_readonly: true,
-                        },
-                    ],
-                    tools: vec![],
-                    network_access: None,
-                    max_iterations: None,
+        let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+            id: None,
+            name: "test-agent".to_string(),
+            display_name: Some("Test Agent".to_string()),
+            description: None,
+            system_prompt: "Agent prompt".to_string(),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![
+                InitialFile {
+                    path: "/config.txt".to_string(),
+                    content: "from agent".to_string(),
+                    encoding: "text".to_string(),
+                    is_readonly: false,
                 },
-            )
-            .await
-            .unwrap();
+                InitialFile {
+                    path: "/binary.bin".to_string(),
+                    content: "AAE=".to_string(),
+                    encoding: "base64".to_string(),
+                    is_readonly: true,
+                },
+            ],
+            tools: vec![],
+            network_access: None,
+            max_iterations: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
 
         let session = session_service
             .create(
@@ -1068,65 +1066,59 @@ mod tests {
     #[tokio::test]
     async fn inherited_harness_starter_files_are_copied_into_new_sessions() {
         let db = Arc::new(StorageBackend::in_memory());
-        let harness_service = HarnessService::new(db.clone());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
+        let ctx = test_ctx(caller.clone(), db.clone());
 
-        let parent = harness_service
-            .create(
-                &caller,
-                CreateHarnessRequest {
-                    name: "parent".to_string(),
-                    display_name: Some("Parent".to_string()),
-                    description: None,
-                    system_prompt: "Parent prompt".to_string(),
-                    parent_harness_id: None,
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![],
-                    initial_files: vec![
-                        InitialFile {
-                            path: "/workspace/config.txt".to_string(),
-                            content: "from parent".to_string(),
-                            encoding: "text".to_string(),
-                            is_readonly: false,
-                        },
-                        InitialFile {
-                            path: "/parent-only.txt".to_string(),
-                            content: "only parent".to_string(),
-                            encoding: "text".to_string(),
-                            is_readonly: true,
-                        },
-                    ],
-                    network_access: None,
+        let parent = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "parent".to_string(),
+            display_name: Some("Parent".to_string()),
+            description: None,
+            system_prompt: "Parent prompt".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![
+                InitialFile {
+                    path: "/workspace/config.txt".to_string(),
+                    content: "from parent".to_string(),
+                    encoding: "text".to_string(),
+                    is_readonly: false,
                 },
-            )
-            .await
-            .unwrap();
+                InitialFile {
+                    path: "/parent-only.txt".to_string(),
+                    content: "only parent".to_string(),
+                    encoding: "text".to_string(),
+                    is_readonly: true,
+                },
+            ],
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
 
-        let child = harness_service
-            .create(
-                &caller,
-                CreateHarnessRequest {
-                    name: "child".to_string(),
-                    display_name: Some("Child".to_string()),
-                    description: None,
-                    system_prompt: "Child prompt".to_string(),
-                    parent_harness_id: Some(parent.id),
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![],
-                    initial_files: vec![InitialFile {
-                        path: "/config.txt".to_string(),
-                        content: "from child".to_string(),
-                        encoding: "text".to_string(),
-                        is_readonly: true,
-                    }],
-                    network_access: None,
-                },
-            )
-            .await
-            .unwrap();
+        let child = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "child".to_string(),
+            display_name: Some("Child".to_string()),
+            description: None,
+            system_prompt: "Child prompt".to_string(),
+            parent_harness_id: Some(parent.id),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![InitialFile {
+                path: "/config.txt".to_string(),
+                content: "from child".to_string(),
+                encoding: "text".to_string(),
+                is_readonly: true,
+            }],
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
 
         let session = session_service
             .create(
@@ -1158,56 +1150,50 @@ mod tests {
     #[tokio::test]
     async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
         let db = Arc::new(StorageBackend::in_memory());
-        let harness_service = HarnessService::new(db.clone());
-        let agent_service = AgentService::new(db.clone());
-        let session_service = SessionService::new(db);
+        let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
+        let ctx = test_ctx(caller.clone(), db.clone());
 
-        let harness = harness_service
-            .create(
-                &caller,
-                CreateHarnessRequest {
-                    name: "harness".to_string(),
-                    display_name: Some("Harness".to_string()),
-                    description: None,
-                    system_prompt: "Harness prompt".to_string(),
-                    parent_harness_id: None,
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![],
-                    initial_files: vec![],
-                    network_access: None,
-                },
-            )
-            .await
-            .unwrap();
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "harness".to_string(),
+            display_name: Some("Harness".to_string()),
+            description: None,
+            system_prompt: "Harness prompt".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
 
-        let agent = agent_service
-            .create(
-                &caller,
-                None,
-                CreateAgentRequest {
-                    id: None,
-                    name: "test-agent".to_string(),
-                    display_name: Some("Test Agent".to_string()),
-                    description: None,
-                    system_prompt: "Agent prompt".to_string(),
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![],
-                    initial_files: vec![],
-                    tools: vec![],
-                    network_access: None,
-                    max_iterations: None,
-                },
-            )
-            .await
-            .unwrap();
+        let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+            id: None,
+            name: "test-agent".to_string(),
+            display_name: Some("Test Agent".to_string()),
+            description: None,
+            system_prompt: "Agent prompt".to_string(),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            tools: vec![],
+            network_access: None,
+            max_iterations: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
 
-        harness_service
-            .delete(&caller, harness.id.uuid())
-            .await
-            .unwrap();
+        crate::domains::harnesses::DeleteHarness {
+            id: harness.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
         let error = session_service
             .create(
                 &caller,
@@ -1224,28 +1210,27 @@ mod tests {
                 .contains("Archived or deleted harnesses cannot be assigned")
         );
 
-        let harness = harness_service
-            .create(
-                &caller,
-                CreateHarnessRequest {
-                    name: "harness-2".to_string(),
-                    display_name: Some("Harness 2".to_string()),
-                    description: None,
-                    system_prompt: "Harness prompt".to_string(),
-                    parent_harness_id: None,
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![],
-                    initial_files: vec![],
-                    network_access: None,
-                },
-            )
-            .await
-            .unwrap();
-        agent_service
-            .delete(&caller, &agent.public_id.to_string())
-            .await
-            .unwrap();
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "harness-2".to_string(),
+            display_name: Some("Harness 2".to_string()),
+            description: None,
+            system_prompt: "Harness prompt".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        crate::domains::agents::DeleteAgent {
+            id: agent.public_id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
 
         let error = session_service
             .create(
@@ -1267,29 +1252,26 @@ mod tests {
     #[tokio::test]
     async fn create_rejects_harness_from_another_org() {
         let db = Arc::new(StorageBackend::in_memory());
-        let harness_service = HarnessService::new(db.clone());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let other_org_id = create_second_org(&db).await;
+        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone());
 
-        let other_harness = harness_service
-            .create(
-                &Caller::internal(other_org_id),
-                CreateHarnessRequest {
-                    name: "other-harness".to_string(),
-                    display_name: Some("Other Harness".to_string()),
-                    description: None,
-                    system_prompt: "Other".to_string(),
-                    parent_harness_id: None,
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![],
-                    initial_files: vec![],
-                    network_access: None,
-                },
-            )
-            .await
-            .unwrap();
+        let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "other-harness".to_string(),
+            display_name: Some("Other Harness".to_string()),
+            description: None,
+            system_prompt: "Other".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            network_access: None,
+        })
+        .execute(&other_ctx)
+        .await
+        .unwrap();
 
         let err = session_service
             .create(
@@ -1309,30 +1291,27 @@ mod tests {
     #[tokio::test]
     async fn create_rejects_model_from_another_org() {
         let db = Arc::new(StorageBackend::in_memory());
-        let harness_service = HarnessService::new(db.clone());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone());
         let other_org_id = create_second_org(&db).await;
         let other_model_id = create_model(&db, other_org_id, "cross-org-model").await;
 
-        let harness = harness_service
-            .create(
-                &caller,
-                CreateHarnessRequest {
-                    name: "harness".to_string(),
-                    display_name: Some("Harness".to_string()),
-                    description: None,
-                    system_prompt: "Harness".to_string(),
-                    parent_harness_id: None,
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![],
-                    initial_files: vec![],
-                    network_access: None,
-                },
-            )
-            .await
-            .unwrap();
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "harness".to_string(),
+            display_name: Some("Harness".to_string()),
+            description: None,
+            system_prompt: "Harness".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
 
         let err = session_service
             .create(
@@ -1352,52 +1331,44 @@ mod tests {
     #[tokio::test]
     async fn get_skips_foreign_harness_and_agent_capability_features() {
         let db = Arc::new(StorageBackend::in_memory());
-        let harness_service = HarnessService::new(db.clone());
-        let agent_service = AgentService::new(db.clone());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let other_org_id = create_second_org(&db).await;
+        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone());
 
-        let other_harness = harness_service
-            .create(
-                &Caller::internal(other_org_id),
-                CreateHarnessRequest {
-                    name: "other-harness".to_string(),
-                    display_name: Some("Other Harness".to_string()),
-                    description: None,
-                    system_prompt: "Other".to_string(),
-                    parent_harness_id: None,
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![AgentCapabilityConfig::new("sample_data")],
-                    initial_files: vec![],
-                    network_access: None,
-                },
-            )
-            .await
-            .unwrap();
+        let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "other-harness".to_string(),
+            display_name: Some("Other Harness".to_string()),
+            description: None,
+            system_prompt: "Other".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("sample_data")],
+            initial_files: vec![],
+            network_access: None,
+        })
+        .execute(&other_ctx)
+        .await
+        .unwrap();
 
-        let other_agent = agent_service
-            .create(
-                &Caller::internal(other_org_id),
-                None,
-                CreateAgentRequest {
-                    id: None,
-                    name: "other-agent".to_string(),
-                    display_name: Some("Other Agent".to_string()),
-                    description: None,
-                    system_prompt: "Other".to_string(),
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
-                    initial_files: vec![],
-                    tools: vec![],
-                    network_access: None,
-                    max_iterations: None,
-                },
-            )
-            .await
-            .unwrap();
+        let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+            id: None,
+            name: "other-agent".to_string(),
+            display_name: Some("Other Agent".to_string()),
+            description: None,
+            system_prompt: "Other".to_string(),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
+            initial_files: vec![],
+            tools: vec![],
+            network_access: None,
+            max_iterations: None,
+        })
+        .execute(&other_ctx)
+        .await
+        .unwrap();
 
         let session_row = db
             .create_session(CreateSessionRow {
@@ -1451,53 +1422,45 @@ mod tests {
     #[tokio::test]
     async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() {
         let db = Arc::new(StorageBackend::in_memory());
-        let harness_service = HarnessService::new(db.clone());
-        let agent_service = AgentService::new(db.clone());
         let session_service = SessionService::new(db.clone());
         let file_service = SessionFileService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let other_org_id = create_second_org(&db).await;
+        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone());
 
-        let other_harness = harness_service
-            .create(
-                &Caller::internal(other_org_id),
-                CreateHarnessRequest {
-                    name: "other-harness".to_string(),
-                    display_name: Some("Other Harness".to_string()),
-                    description: None,
-                    system_prompt: "Other".to_string(),
-                    parent_harness_id: None,
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![AgentCapabilityConfig::new("sample_data")],
-                    initial_files: vec![],
-                    network_access: None,
-                },
-            )
-            .await
-            .unwrap();
+        let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "other-harness".to_string(),
+            display_name: Some("Other Harness".to_string()),
+            description: None,
+            system_prompt: "Other".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("sample_data")],
+            initial_files: vec![],
+            network_access: None,
+        })
+        .execute(&other_ctx)
+        .await
+        .unwrap();
 
-        let other_agent = agent_service
-            .create(
-                &Caller::internal(other_org_id),
-                None,
-                CreateAgentRequest {
-                    id: None,
-                    name: "other-agent".to_string(),
-                    display_name: Some("Other Agent".to_string()),
-                    description: None,
-                    system_prompt: "Other".to_string(),
-                    default_model_id: None,
-                    tags: vec![],
-                    capabilities: vec![AgentCapabilityConfig::new("sample_data")],
-                    initial_files: vec![],
-                    tools: vec![],
-                    network_access: None,
-                    max_iterations: None,
-                },
-            )
-            .await
-            .unwrap();
+        let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+            id: None,
+            name: "other-agent".to_string(),
+            display_name: Some("Other Agent".to_string()),
+            description: None,
+            system_prompt: "Other".to_string(),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("sample_data")],
+            initial_files: vec![],
+            tools: vec![],
+            network_access: None,
+            max_iterations: None,
+        })
+        .execute(&other_ctx)
+        .await
+        .unwrap();
 
         let session_row = db
             .create_session(CreateSessionRow {

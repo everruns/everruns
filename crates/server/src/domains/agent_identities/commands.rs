@@ -8,10 +8,8 @@ use super::types::{
     CreateAgentIdentityRequest, CreateAgentIdentityRow, UpdateAgentIdentity,
     UpdateAgentIdentityRequest,
 };
+use super::{AGENT_IDENTITY_DANGEROUS, AGENT_IDENTITY_MANAGE, AGENT_IDENTITY_VIEW};
 use crate::domains::common::*;
-use crate::services::agent_identity::{
-    AGENT_IDENTITY_DANGEROUS, AGENT_IDENTITY_MANAGE, AGENT_IDENTITY_VIEW,
-};
 use everruns_core::{AgentIdentity, AgentIdentityId, Policy};
 use serde::Deserialize;
 

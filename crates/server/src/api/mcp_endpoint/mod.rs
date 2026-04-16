@@ -20,8 +20,7 @@ mod handlers;
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::{
-    AgentService, BudgetService, CapabilityService, EventService, McpServerService, MessageService,
-    SessionService, SkillService,
+    BudgetService, CapabilityService, EventService, MessageService, SessionService,
 };
 use crate::storage::StorageBackend;
 use axum::{Json, Router, extract::State, routing::post};
@@ -315,13 +314,10 @@ fn tool_definitions() -> Value {
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
-    pub agent_service: Arc<AgentService>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
     pub capability_service: Arc<CapabilityService>,
-    pub mcp_server_service: Arc<McpServerService>,
-    pub skill_service: Arc<SkillService>,
     pub budget_service: Arc<BudgetService>,
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
@@ -342,7 +338,6 @@ impl AppState {
         capability_service: Arc<CapabilityService>,
     ) -> Self {
         Self {
-            agent_service: Arc::new(AgentService::new(db.clone())),
             session_service: Arc::new(SessionService::with_registry(
                 db.clone(),
                 platform_definition.capability_registry().clone(),
@@ -355,8 +350,6 @@ impl AppState {
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             capability_service,
-            mcp_server_service: Arc::new(McpServerService::new(db.clone(), encryption.clone())),
-            skill_service: Arc::new(SkillService::new(db.clone())),
             budget_service: Arc::new(BudgetService::new(db.clone())),
             db,
             runner,

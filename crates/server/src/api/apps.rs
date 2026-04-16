@@ -3,8 +3,8 @@
 // Handlers call domain commands; policy enforcement happens inside commands.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::apps::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
 use crate::services::CapabilityService;
-use crate::services::app::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,

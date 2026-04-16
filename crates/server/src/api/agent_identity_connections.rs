@@ -6,7 +6,7 @@
 // any data access. Identity org-scoping prevents cross-tenant access.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::agent_identity::AGENT_IDENTITY_MANAGE;
+use crate::domains::agent_identities::AGENT_IDENTITY_MANAGE;
 use crate::storage::models::CreateAgentIdentityConnectionRow;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{

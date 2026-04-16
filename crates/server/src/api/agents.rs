@@ -19,8 +19,7 @@ use everruns_core::{
 };
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, PaginatedResponse, UrlBuilder,
-    WithUrls, impl_auth_state,
+    ApiResult, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 use super::validation::{
     validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
@@ -239,8 +238,8 @@ struct AgentFile {
     pub initial_files: Vec<AgentFileInitialFile>,
 }
 
-use crate::services::agent::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
-use crate::services::{AgentService, CapabilityService};
+use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
+use crate::services::CapabilityService;
 
 /// Query parameters for listing agents.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
@@ -277,7 +276,6 @@ pub struct CheckAgentNameResponse {
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
-    pub service: Arc<AgentService>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
     pub grade: DeploymentGrade,
@@ -293,7 +291,6 @@ impl AppState {
         platform_definition: Arc<PlatformDefinition>,
     ) -> Self {
         Self {
-            service: Arc::new(AgentService::new(db.clone())),
             db,
             capability_service,
             auth,
@@ -628,7 +625,7 @@ pub async fn upsert_agent(
     // Path may be ID or name. For name-based upsert we go through the legacy
     // service path (upsert_by_name uniqueness semantics not yet expressed as
     // a command). ID-based upsert uses the domain command.
-    let caller = Caller::from(&org);
+    let _caller = Caller::from(&org);
     let (agent, was_created) = if let Ok(agent_id) = agent_id_or_name.parse::<AgentId>() {
         // Command-based path (validation + policy + persistence in the command)
         let agent = crate::domains::agents::UpsertAgent {
@@ -649,22 +646,45 @@ pub async fn upsert_agent(
                 )),
             ));
         }
-        // Fall back to service for name-based upsert.
-        validate_agent_name_format(&req.name)?;
-        validate_create_agent_input(
-            &req.name,
-            req.display_name.as_deref(),
-            req.description.as_deref(),
-            &req.system_prompt,
-            req.capabilities.len(),
-            &req.initial_files,
-        )?;
-        require_admin_for_high_risk(&org, &req.capabilities, &state.capability_service)?;
-        state
-            .service
-            .upsert_by_name(&caller, req)
-            .await
-            .map_policy_or_internal("upsert agent by name")?
+        // Name-based upsert: try create, if name taken → update
+        let create_result = crate::domains::agents::CreateAgent(req.clone())
+            .execute(&state.ctx(&org))
+            .await;
+        match create_result {
+            Ok(agent) => (agent, true),
+            Err(crate::domains::common::CommandError::Conflict(_)) => {
+                let existing = crate::domains::agents::queries::get_by_name(
+                    &state.db,
+                    state.ctx(&org).org_id(),
+                    &req.name,
+                )
+                .await
+                .map_err(crate::domains::common::classify_anyhow)?
+                .ok_or_else(|| crate::domains::common::CommandError::not_found("Agent"))?;
+                let update_req = UpdateAgentRequest {
+                    name: Some(req.name),
+                    display_name: req.display_name,
+                    description: req.description,
+                    system_prompt: Some(req.system_prompt),
+                    default_model_id: req.default_model_id,
+                    tags: Some(req.tags),
+                    capabilities: Some(req.capabilities),
+                    initial_files: Some(req.initial_files),
+                    tools: Some(req.tools),
+                    network_access: req.network_access,
+                    max_iterations: req.max_iterations,
+                    status: None,
+                };
+                let agent = crate::domains::agents::UpdateAgentCmd {
+                    id: existing.public_id.to_string(),
+                    req: update_req,
+                }
+                .execute(&state.ctx(&org))
+                .await?;
+                (agent, false)
+            }
+            Err(e) => return Err(e.into()),
+        }
     };
 
     let status = if was_created {
@@ -706,13 +726,11 @@ pub async fn export_agent(
         )
     })?;
 
-    let caller = Caller::from(&org);
-    let agent = state
-        .service
-        .get_by_public_id(&caller, &agent_id.to_string())
-        .await
-        .map_policy_or_internal("get agent for export")?
-        .ok_or_not_found_json("Agent")?;
+    let agent = crate::domains::agents::GetAgent {
+        id: agent_id.to_string(),
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let markdown = agent_to_markdown(&agent);
     let filename = format!("{}.md", slugify(&agent.name));
@@ -828,7 +846,7 @@ async fn import_from_example(
     // TM-AGENT-005: High-risk capabilities require admin role
     require_admin_for_high_risk(&org, &capabilities, &state.capability_service)?;
 
-    let caller = Caller::from(&org);
+    let _caller = Caller::from(&org);
 
     // If an agent with the same name exists, keep trying suffixed variants
     // to avoid one-shot collisions and reduce failures under concurrency.
@@ -850,11 +868,13 @@ async fn import_from_example(
                 format!("{base}-{suffix}")
             };
 
-            let available = state
-                .service
-                .check_name_available(&caller, &candidate, None)
-                .await
-                .map_err(|_| ErrorResponse::internal_error())?;
+            let result = crate::domains::agents::CheckAgentName {
+                name: candidate.clone(),
+                exclude_id: None,
+            }
+            .execute(&state.ctx(&org))
+            .await?;
+            let available = result.available;
 
             if available {
                 selected = Some(candidate);
@@ -880,11 +900,9 @@ async fn import_from_example(
         max_iterations: None,
     };
 
-    let agent = state
-        .service
-        .create(&caller, None, req)
-        .await
-        .map_policy_or_internal("import agent from example")?;
+    let agent = crate::domains::agents::CreateAgent(req)
+        .execute(&state.ctx(&org))
+        .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
@@ -974,17 +992,19 @@ async fn import_from_file(
     // TM-AGENT-005: High-risk capabilities require admin role
     require_admin_for_high_risk(&org, &request.capabilities, &state.capability_service)?;
 
-    let caller = Caller::from(&org);
+    let _caller = Caller::from(&org);
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
 
     // If the file has an ID, upsert (create or update). Otherwise, always create.
     if let Some(ref id) = client_id {
-        let (agent, was_created) = state
-            .service
-            .upsert(&caller, &id.to_string(), request)
-            .await
-            .map_policy_or_internal("import agent")?;
+        let agent = crate::domains::agents::UpsertAgent {
+            id: id.to_string(),
+            req: request,
+        }
+        .execute(&state.ctx(&org))
+        .await?;
+        let was_created = false;
 
         let status = if was_created {
             StatusCode::CREATED
@@ -994,14 +1014,9 @@ async fn import_from_file(
 
         Ok((status, Json(builder.wrap(agent))))
     } else {
-        let agent = state
-            .service
-            .create(&caller, None, request)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to import agent: {}", e);
-                ErrorResponse::internal_error()
-            })?;
+        let agent = crate::domains::agents::CreateAgent(request)
+            .execute(&state.ctx(&org))
+            .await?;
 
         Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
     }

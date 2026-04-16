@@ -9,9 +9,9 @@ use crate::api::common::{
 };
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::Command;
+use crate::domains::skills::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::services::CapabilityService;
 use crate::services::SkillService;
-use crate::services::skill::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,

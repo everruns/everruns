@@ -8,9 +8,9 @@ use super::types::{
     AddChannelRequest, CreateAppChannelRow, CreateAppRequest, CreateAppRow, UpdateApp,
     UpdateAppChannel, UpdateAppRequest, UpdateChannelRequest,
 };
+use super::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
 use crate::domains::common::*;
 use crate::errors::ResourceNotFoundError;
-use crate::services::app::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, AppChannelId, HarnessId};
 use everruns_core::{App, AppChannel, AppId, Policy};

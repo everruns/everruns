@@ -9,8 +9,8 @@
 
 use super::queries as q;
 use super::types::{CreateSkillRequest, CreateSkillRow, UpdateSkill, UpdateSkillRequest};
+use super::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::domains::common::*;
-use crate::services::skill::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use everruns_core::{Policy, Skill, SkillContent, SkillFileEntry, SkillId, parse_skill_md};
 use serde::Deserialize;
 use std::collections::HashMap;

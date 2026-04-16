@@ -4,7 +4,7 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::Command;
-use crate::services::harness::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
+use crate::domains::harnesses::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::services::{CapabilityService, HarnessService};
+use crate::services::CapabilityService;
 
 /// Request to create a new harness
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -151,7 +151,6 @@ pub struct CheckNameResponse {
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
-    pub service: Arc<HarnessService>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
 }
@@ -163,7 +162,6 @@ impl AppState {
         auth: AuthState,
     ) -> Self {
         Self {
-            service: Arc::new(HarnessService::new(db.clone())),
             db,
             capability_service,
             auth,

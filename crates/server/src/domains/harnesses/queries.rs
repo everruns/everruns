@@ -4,7 +4,10 @@
 
 use crate::domains::common::CommandError;
 use crate::storage::StorageBackend;
-use everruns_core::{AgentCapabilityConfig, Harness, HarnessId, HarnessStatus, InitialFile};
+use everruns_core::{
+    AgentCapabilityConfig, Harness, HarnessId, HarnessStatus, InitialFile, merge_harness,
+};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use super::types::HarnessRow;
@@ -194,6 +197,84 @@ pub async fn load_harnesses_list(
         harnesses.push(row_to_harness(row, caps));
     }
     Ok(harnesses)
+}
+
+/// Load a single harness row + capabilities without inheritance merging.
+pub async fn load_raw_harness(
+    db: &StorageBackend,
+    org_id: i64,
+    harness_id: HarnessId,
+) -> anyhow::Result<Option<Harness>> {
+    let Some(row) = db.get_harness(org_id, harness_id).await? else {
+        return Ok(None);
+    };
+    let capabilities = get_capabilities(db, harness_id.uuid()).await?;
+    Ok(Some(row_to_harness(row, capabilities)))
+}
+
+/// Resolve effective harness by walking the inheritance chain and merging.
+pub async fn resolve_effective(
+    db: &StorageBackend,
+    org_id: i64,
+    id: HarnessId,
+) -> anyhow::Result<Option<Harness>> {
+    let mut visited = HashSet::new();
+    let mut chain = Vec::new();
+    let mut cursor = Some(id);
+
+    while let Some(current_id) = cursor {
+        if !visited.insert(current_id) {
+            anyhow::bail!("Harness inheritance cycle detected");
+        }
+        let Some(harness) = load_raw_harness(db, org_id, current_id).await? else {
+            if chain.is_empty() {
+                return Ok(None);
+            }
+            anyhow::bail!("Parent harness not found");
+        };
+        cursor = harness.parent_harness_id;
+        chain.push(harness);
+    }
+
+    let Some(mut effective) = chain.pop() else {
+        return Ok(None);
+    };
+    while let Some(layer) = chain.pop() {
+        effective = merge_harness(&effective, &layer);
+    }
+    Ok(Some(effective))
+}
+
+/// Merge a preview layer onto a parent harness.
+pub fn merge_preview_layer(
+    parent: Option<&Harness>,
+    system_prompt: &str,
+    capabilities: &[AgentCapabilityConfig],
+) -> (String, Vec<AgentCapabilityConfig>) {
+    let Some(parent) = parent else {
+        return (system_prompt.to_string(), capabilities.to_vec());
+    };
+    let draft = Harness {
+        id: HarnessId::new(),
+        name: "preview".to_string(),
+        display_name: Some("Preview".to_string()),
+        description: None,
+        system_prompt: system_prompt.to_string(),
+        parent_harness_id: None,
+        default_model_id: None,
+        tags: vec![],
+        capabilities: capabilities.to_vec(),
+        initial_files: vec![],
+        network_access: None,
+        is_built_in: false,
+        status: HarnessStatus::Active,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        archived_at: None,
+        deleted_at: None,
+    };
+    let merged = merge_harness(parent, &draft);
+    (merged.system_prompt, merged.capabilities)
 }
 
 /// Check if a harness is built-in (system-managed, readonly).

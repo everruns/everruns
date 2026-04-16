@@ -5,8 +5,8 @@
 
 use super::queries as q;
 use super::types::{CreateHarnessRequest, CreateHarnessRow, UpdateHarness, UpdateHarnessRequest};
+use super::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::domains::common::*;
-use crate::services::harness::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use everruns_core::{AgentCapabilityConfig, Harness, HarnessId, Policy, ToolDefinition};
 use serde::Deserialize;
 
@@ -633,16 +633,12 @@ impl Command for PreviewHarness {
 
     async fn execute(self, ctx: &Ctx) -> Result<HarnessPreview, CommandError> {
         let parent = match self.parent_harness_id {
-            Some(parent_id) => crate::services::harness::resolve_effective_harness(
-                ctx.db.as_ref(),
-                ctx.org_id(),
-                parent_id,
-            )
-            .await
-            .map_err(classify_anyhow)?,
+            Some(parent_id) => q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id)
+                .await
+                .map_err(classify_anyhow)?,
             None => None,
         };
-        let (system_prompt, capabilities) = crate::services::harness::merge_preview_layer(
+        let (system_prompt, capabilities) = q::merge_preview_layer(
             parent.as_ref(),
             &self.system_prompt.unwrap_or_default(),
             &self.capabilities,

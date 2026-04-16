@@ -2,10 +2,10 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie).
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::CapabilityService;
-use crate::services::agent_identity::{
+use crate::domains::agent_identities::{
     AGENT_IDENTITY_DANGEROUS, AGENT_IDENTITY_MANAGE, AGENT_IDENTITY_VIEW,
 };
+use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,

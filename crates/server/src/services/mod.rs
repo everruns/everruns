@@ -1,8 +1,6 @@
 // Services layer for business logic (M2)
 // Services own business logic and validation, calling storage directly
 
-pub mod agent;
-pub mod agent_identity;
 pub mod app;
 pub mod audit_log;
 pub mod budget;
@@ -13,7 +11,6 @@ pub(crate) mod capability_validation;
 pub mod eval;
 pub mod eval_runner;
 pub mod event;
-pub mod harness;
 pub mod leased_resource;
 pub mod llm_model;
 pub mod llm_provider;
@@ -32,15 +29,12 @@ pub mod skill;
 pub mod usage_tracking;
 pub mod virtual_mount_registry;
 
-pub use agent::AgentService;
-pub use agent_identity::AgentIdentityService;
 pub use app::AppService;
 pub use audit_log::AuditLogService;
 pub use budget::BudgetService;
 pub use capability::CapabilityService;
 pub use eval::EvalService;
 pub use event::EventService;
-pub use harness::HarnessService;
 pub use leased_resource::LeasedResourceService;
 pub use llm_model::LlmModelService;
 pub use llm_provider::LlmProviderService;
