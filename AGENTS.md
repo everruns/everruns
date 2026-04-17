@@ -88,6 +88,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/authentication.md` - Authentication modes and OAuth
 - `specs/integrations.md` - **Integration specs index** (links to specs co-located with their crates)
 - `specs/observability.md` - Observability providers (OpenTelemetry Gen-AI tracing, Braintrust)
+- `specs/correlation-ids.md` - Correlation IDs (request_id, session_id, durable propagation)
 - `specs/prometheus-metrics.md` - Prometheus `/metrics` endpoint and scrape configuration
 - `specs/evals.md` - User-facing behavioral evals for agents (cases, scorers, runs)
 - `specs/encryption.md` - Envelope encryption for sensitive data

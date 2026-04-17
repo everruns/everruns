@@ -80,8 +80,10 @@ Do not rewrite `/mcp` under `/api`. Do not rewrite `/.well-known/*` under `/api`
 
 - TLS/HTTPS required for public traffic
 - Disable proxy buffering for SSE responses under `/api/*`
-- Preserve Host and standard forwarding headers
+- Preserve Host and standard forwarding headers, including `X-Request-ID` (pass through unchanged)
 - Keep gRPC worker traffic off the public ingress path
+
+See [`specs/correlation-ids.md`](./correlation-ids.md) for the `X-Request-ID` contract: the server generates a UUID if the header is absent and always echoes it in the response. Stripping or rewriting it breaks client-injected request correlation.
 
 ### Operational Notes
 

@@ -17,6 +17,9 @@ extern crate everruns_integrations_sprites;
 // API routes and types (shared for OpenAPI generation)
 pub mod api;
 
+// HTTP middleware (request ID, etc.)
+pub mod middleware;
+
 // Authentication module
 pub mod auth;
 pub use auth::{AuthBackend, BuiltinAuthBackend};

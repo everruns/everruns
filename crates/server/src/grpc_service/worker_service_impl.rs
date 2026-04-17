@@ -3281,6 +3281,7 @@ impl WorkerService for WorkerServiceImpl {
                         harness_id,
                         agent_id,
                         message_id_typed,
+                        None,
                     )
                     .await
                 {

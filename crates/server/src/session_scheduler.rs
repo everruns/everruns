@@ -176,6 +176,7 @@ async fn poll_and_trigger(
                     harness_id,
                     agent_id,
                     message_id_typed,
+                    None,
                 )
                 .await
             {

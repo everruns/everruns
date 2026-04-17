@@ -39,6 +39,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ActTaskInput {
     org_id: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    request_id: Option<String>,
     #[serde(flatten)]
     act_input: ActInput,
 }
@@ -954,6 +956,7 @@ impl DurableWorker {
                     turn_id: Some(act_task_input.act_input.context.turn_id),
                     previous_response_id,
                     iteration,
+                    request_id: act_task_input.request_id.clone(),
                 };
                 let res = self
                     .execute_act_activity(
@@ -1464,6 +1467,7 @@ impl DurableWorker {
                     turn_id,
                     previous_response_id: None,
                     iteration: 1,
+                    request_id: input.request_id.clone(),
                 };
                 let input_json = serde_json::to_value(&input_with_turn)?;
 
@@ -1522,6 +1526,7 @@ impl DurableWorker {
 
                     let act_task_input = ActTaskInput {
                         org_id: input.org_id,
+                        request_id: input.request_id.clone(),
                         act_input: ActInput {
                             org_id: Some(input.org_id),
                             context: AtomContext {
@@ -1573,6 +1578,7 @@ impl DurableWorker {
                         turn_id: input.turn_id,
                         previous_response_id: chained_input.previous_response_id.clone(),
                         iteration: next_iteration,
+                        request_id: input.request_id.clone(),
                     };
                     let continued_json = serde_json::to_value(&continued_input)?;
 

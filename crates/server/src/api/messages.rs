@@ -9,9 +9,10 @@
 // We re-export them here with ToSchema for OpenAPI documentation.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::middleware::RequestId;
 use crate::storage::StorageBackend;
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
@@ -226,8 +227,10 @@ pub async fn create_message(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
+    req_id: Option<Extension<RequestId>>,
     Json(mut req): Json<CreateMessageRequest>,
 ) -> Result<(StatusCode, Json<Message>), (StatusCode, Json<ErrorResponse>)> {
+    let request_id = req_id.map(|Extension(r)| r.0);
     req.controls = normalize_controls_locale(req.controls)
         .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
 
@@ -239,6 +242,8 @@ pub async fn create_message(
             }),
         )
     })?;
+
+    tracing::Span::current().record("session_id", session_id.to_string().as_str());
 
     // Get session to retrieve agent_id
     let caller = Caller::from(&org);
@@ -290,6 +295,7 @@ pub async fn create_message(
                 agent_id: session.agent_id.map(|a| a.uuid()),
                 session_id: session_id.uuid(),
                 event_metadata: None,
+                request_id,
             },
             req,
         )

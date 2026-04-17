@@ -520,6 +520,7 @@ pub async fn create_message(params: &Value, ctx: &CatalogContext) -> Result<Stri
         agent_id: session.agent_id.map(|id| id.uuid()),
         session_id,
         event_metadata: None,
+        request_id: None,
     };
 
     let req = serde_json::from_value(params.clone()).map_err(err)?;
