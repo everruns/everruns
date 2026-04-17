@@ -2,9 +2,10 @@
 //!
 //! Provides session metadata tools:
 //! - `write_session_title`: update session title
-//! - `get_session_info`: return session id, title, and agent name (if any)
+//! - `get_session_info`: return session id, title, agent name, and cumulative usage
 
 use super::{Capability, CapabilityStatus};
+use crate::events::TokenUsage;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -132,7 +133,7 @@ impl Tool for GetSessionInfoTool {
     }
 
     fn description(&self) -> &str {
-        "Get current session metadata: id, title, and agent name (if assigned)."
+        "Get current session metadata: id, title, locale, agent name, and cumulative token usage."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -187,8 +188,19 @@ impl Tool for GetSessionInfoTool {
             "title": session.title,
             "locale": session.locale,
             "agent_name": agent_name,
+            "usage": session.usage.as_ref().map(usage_json),
         }))
     }
+}
+
+fn usage_json(usage: &TokenUsage) -> Value {
+    json!({
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cache_read_tokens": usage.cache_read_tokens,
+        "cache_creation_tokens": usage.cache_creation_tokens,
+        "total_tokens": usage.total_tokens(),
+    })
 }
 
 #[cfg(test)]
@@ -346,6 +358,32 @@ mod tests {
             ToolExecutionResult::Success(value) => {
                 assert_eq!(value["title"], "Old title");
                 assert_eq!(value["agent_name"], "Research Agent");
+                assert!(value["usage"].is_null());
+            }
+            _ => panic!("expected success"),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_session_info_returns_cumulative_usage() {
+        let mut session = build_session(None);
+        session.usage = Some(TokenUsage::with_cache(120, 45, Some(30), Some(10)));
+        let session_id = session.id;
+
+        let context = ToolContext::new(session_id).with_session_store(Arc::new(MockSessionStore {
+            session: Arc::new(Mutex::new(Some(session))),
+        }));
+
+        let tool = GetSessionInfoTool;
+        let result = tool.execute_with_context(json!({}), &context).await;
+
+        match result {
+            ToolExecutionResult::Success(value) => {
+                assert_eq!(value["usage"]["input_tokens"], 120);
+                assert_eq!(value["usage"]["output_tokens"], 45);
+                assert_eq!(value["usage"]["cache_read_tokens"], 30);
+                assert_eq!(value["usage"]["cache_creation_tokens"], 10);
+                assert_eq!(value["usage"]["total_tokens"], 165);
             }
             _ => panic!("expected success"),
         }
