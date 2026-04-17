@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.14] - 2026-04-17
+
+### Highlights
+
+- **Scheduled Monitors** - Monitors can now run on a cron schedule, enabling recurring background checks without manual trigger ([#1322](https://github.com/everruns/everruns/pull/1322))
+- **Background Tool Execution** - New `spawn_background` meta-tool runs long-lived tools asynchronously with session-resource visibility and completion signalling ([#1308](https://github.com/everruns/everruns/pull/1308))
+- **AG-UI App Channel** - Apps can now register against the AG-UI channel alongside Slack ([#1307](https://github.com/everruns/everruns/pull/1307))
+- **Claude Opus 4.7** - Added Anthropic profile for Claude Opus 4.7 and promoted it to the seeded favorite Opus model ([#1323](https://github.com/everruns/everruns/pull/1323))
+- **Correlation IDs** - Every HTTP request now carries `request_id` and `session_id` through async execution and durable workers for end-to-end log tracing ([#1320](https://github.com/everruns/everruns/pull/1320))
+
+### What's Changed
+
+- refactor(auth): unify login-page resume contract on return_to ([#1325](https://github.com/everruns/everruns/pull/1325))
+- feat(runtime): add durable-agnostic host planning ([#1311](https://github.com/everruns/everruns/pull/1311))
+- refactor(server): introduce domain modules and delete service layer duplication ([#1318](https://github.com/everruns/everruns/pull/1318))
+- chore(deps): bump dompurify from 3.3.3 to 3.4.0 in /apps/ui ([#1312](https://github.com/everruns/everruns/pull/1312))
+- feat(observability): add request_id, session_id correlation IDs ([#1320](https://github.com/everruns/everruns/pull/1320))
+- feat(session): include usage in get_session_info ([#1324](https://github.com/everruns/everruns/pull/1324))
+- feat(models): add Claude Opus 4.7 ([#1323](https://github.com/everruns/everruns/pull/1323))
+- fix(worker): emit session.idled when act tasks hit DLQ ([#1321](https://github.com/everruns/everruns/pull/1321))
+- feat(monitors): add scheduled monitor support ([#1322](https://github.com/everruns/everruns/pull/1322))
+- fix(worker): preserve inner act activity failures ([#1319](https://github.com/everruns/everruns/pull/1319))
+- feat(setup): add LLM provider configuration to org setup page ([#1317](https://github.com/everruns/everruns/pull/1317))
+- feat(ui): add profile menu extension point ([#1316](https://github.com/everruns/everruns/pull/1316))
+- chore(cli): adopt everruns-sdk 0.1.8 ([#1314](https://github.com/everruns/everruns/pull/1314))
+- feat(cli): add agent.toml support ([#1313](https://github.com/everruns/everruns/pull/1313))
+- feat(apps): add AG-UI app channel ([#1307](https://github.com/everruns/everruns/pull/1307))
+- feat(core): add background tool execution ([#1308](https://github.com/everruns/everruns/pull/1308))
+
 ## [0.8.13] - 2026-04-15
 
 ### Highlights
