@@ -34,15 +34,28 @@ use serde::{Deserialize, Serialize};
 // Act Task Input Wrapper
 // =============================================================================
 
-/// Wrapper for act task input that includes org_id
-/// This keeps org_id (infrastructure concern) out of core types
+/// Wrapper for act task input.
+///
+/// `org_id` is carried on the flattened `ActInput` itself. Duplicating it as
+/// an explicit outer field collides with the flattened key during
+/// deserialization and drops the inner value (EVE-325), so the wrapper only
+/// adds fields not already present on `ActInput`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ActTaskInput {
-    org_id: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     request_id: Option<String>,
     #[serde(flatten)]
     act_input: ActInput,
+}
+
+impl ActTaskInput {
+    /// Returns the org_id carried by the inner `ActInput`, erroring if it is
+    /// missing. Used by all act-task dequeue paths.
+    fn require_org_id(&self) -> Result<i64> {
+        self.act_input
+            .org_id
+            .ok_or_else(|| anyhow::anyhow!("ActTaskInput.act_input.org_id must be set"))
+    }
 }
 
 // =============================================================================
@@ -94,7 +107,7 @@ fn extract_task_session_context(
             let act_task_input: ActTaskInput = serde_json::from_value(input.clone())
                 .with_context(|| format!("parse ActTaskInput for activity '{activity_type}'"))?;
             Ok(TaskSessionContext {
-                org_id: act_task_input.org_id,
+                org_id: act_task_input.act_input.org_id.unwrap_or(0),
                 session_id: act_task_input.act_input.context.session_id,
                 turn_id: act_task_input.act_input.context.turn_id,
                 input_message_id: act_task_input.act_input.context.input_message_id,
@@ -789,7 +802,7 @@ impl DurableWorker {
                             serde_json::from_value::<ActTaskInput>(task.input.clone())
                         {
                             (
-                                act_input.org_id,
+                                act_input.act_input.org_id.unwrap_or(0),
                                 act_input.act_input.context.session_id,
                                 act_input.act_input.context.input_message_id,
                             )
@@ -891,6 +904,7 @@ impl DurableWorker {
                 // Act activity uses ActTaskInput wrapper to include org_id
                 let act_task_input: ActTaskInput = serde_json::from_value(task.input.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse ActTaskInput: {}", e))?;
+                let org_id = act_task_input.require_org_id()?;
                 // Create DurableTurnInput from ActInput context for scheduling next activity
                 // Include turn_id from act_input context for trace correlation
                 // Extract previous_response_id injected by reason→act scheduling
@@ -908,7 +922,7 @@ impl DurableWorker {
                     .filter(|&it| it > 0)
                     .unwrap_or(1);
                 let turn_input = DurableTurnInput {
-                    org_id: act_task_input.org_id,
+                    org_id,
                     session_id: act_task_input.act_input.context.session_id,
                     harness_id: act_task_input.act_input.harness_id,
                     agent_id: act_task_input.act_input.agent_id,
@@ -919,11 +933,7 @@ impl DurableWorker {
                     request_id: act_task_input.request_id.clone(),
                 };
                 let res = self
-                    .execute_act_activity(
-                        grpc_client.clone(),
-                        act_task_input.org_id,
-                        act_task_input.act_input,
-                    )
+                    .execute_act_activity(grpc_client.clone(), org_id, act_task_input.act_input)
                     .await;
                 (res, Some(turn_input))
             }
@@ -1426,11 +1436,12 @@ impl DurableWorker {
 }
 
 fn serialize_act_plan_for_durable_worker(plan: &RuntimeActPlan) -> Result<serde_json::Value> {
+    if plan.input.org_id.is_none() {
+        return Err(anyhow::anyhow!(
+            "ActInput.org_id must be set for durable worker scheduling"
+        ));
+    }
     let mut input_json = serde_json::to_value(ActTaskInput {
-        org_id: plan
-            .input
-            .org_id
-            .expect("ActInput.org_id must be set for durable worker scheduling"),
         request_id: plan.request_id.clone(),
         act_input: plan.input.clone(),
     })?;
@@ -1531,7 +1542,6 @@ mod tests {
         let input_message_id = MessageId::new();
         let turn_id = TurnId::new();
         let act_task_input = ActTaskInput {
-            org_id: 7,
             request_id: Some("req_123".to_string()),
             act_input: ActInput {
                 org_id: Some(7),
@@ -1577,5 +1587,40 @@ mod tests {
             chain.contains("ActTaskInput"),
             "expected wrapping context in error chain: {chain}"
         );
+    }
+
+    /// Regression for EVE-325: ensure the inner `ActInput.org_id` survives a
+    /// serde round-trip through `ActTaskInput`. Previously the outer
+    /// `ActTaskInput.org_id` and flattened `ActInput.org_id` collided on the
+    /// same JSON key and deserialization dropped the inner value, causing
+    /// every tool call in the durable worker path to fail with
+    /// "ActInput.org_id must be set for runtime host execution".
+    #[test]
+    fn act_task_input_roundtrip_preserves_inner_org_id() {
+        use everruns_core::atoms::{ActInput, AtomContext};
+        use everruns_core::typed_id::ExecId;
+
+        let input = ActTaskInput {
+            request_id: None,
+            act_input: ActInput {
+                org_id: Some(7),
+                context: AtomContext {
+                    session_id: SessionId::new(),
+                    turn_id: TurnId::new(),
+                    input_message_id: MessageId::new(),
+                    exec_id: ExecId::new(),
+                },
+                harness_id: HarnessId::new(),
+                agent_id: None,
+                tool_calls: vec![],
+                tool_definitions: vec![],
+                locale: None,
+                blueprint_id: None,
+                network_access: None,
+            },
+        };
+        let json = serde_json::to_value(&input).unwrap();
+        let decoded: ActTaskInput = serde_json::from_value(json).unwrap();
+        assert_eq!(decoded.act_input.org_id, Some(7));
     }
 }
