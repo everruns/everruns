@@ -6,14 +6,15 @@
 // Cache uses 5-min TTL; invalidated on create/update/delete.
 
 use crate::api::skills::{CreateSkillRequest, UpdateSkillRequest};
+use crate::domains::skills::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::storage::{
     StorageBackend,
     models::{CreateSkillFileRow, CreateSkillRow, UpdateSkill},
 };
 use anyhow::{Result, anyhow};
 use everruns_core::{
-    Caller, Permission, Policy, Rule, Skill, SkillContent, SkillFileEntry, SkillId,
-    SkillSourceType, SkillStatus, SkillValidationResult, parse_skill_md, validate_skill_md,
+    Caller, Skill, SkillContent, SkillFileEntry, SkillId, SkillSourceType, SkillStatus,
+    SkillValidationResult, parse_skill_md, validate_skill_md,
 };
 use everruns_macros::policy;
 use moka::future::Cache;
@@ -34,22 +35,6 @@ const MAX_DECOMPRESSED_SIZE: usize = 10 * 1024 * 1024;
 
 /// Cache TTL for skill listings per org
 const SKILL_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
-
-pub const SKILL_VIEW: Policy = Policy {
-    id: "skill.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
-};
-pub const SKILL_MANAGE: Policy = Policy {
-    id: "skill.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
-};
-pub const SKILL_DANGEROUS: Policy = Policy {
-    id: "skill.dangerous",
-    rules: &[
-        Rule::UserHasPermission(Permission::OrgAgentsManage),
-        Rule::UserHasPermission(Permission::OrgSkillsDangerous),
-    ],
-};
 
 pub struct SkillService {
     db: Arc<StorageBackend>,

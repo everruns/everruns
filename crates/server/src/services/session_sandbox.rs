@@ -7,8 +7,8 @@
 // - Capability config is resolved from effective harness + agent + session layers,
 //   matching normal capability merge behavior.
 
+use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
 use crate::org_init::BASE_HARNESS_ID;
-use crate::services::harness::resolve_effective_harness;
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use anyhow::Context;
 use async_trait::async_trait;

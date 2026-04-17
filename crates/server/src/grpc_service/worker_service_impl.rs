@@ -28,28 +28,30 @@ impl WorkerService for WorkerServiceImpl {
             })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
-        // Get agent with capabilities via AgentService (optional)
+        // Get agent with capabilities via domain query (optional)
         let agent = if let Some(agent_id) = session.agent_id {
-            self.agent_service
-                .get(&internal_caller, agent_id.uuid())
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to get agent: {}", e);
-                    Status::internal("Failed to get agent")
-                })?
+            crate::domains::agents::queries::get_by_public_id(
+                &self.db,
+                req.org_id,
+                &agent_id.to_string(),
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get agent: {}", e);
+                Status::internal("Failed to get agent")
+            })?
         } else {
             None
         };
 
-        // Load harness
-        let harness = self
-            .harness_service
-            .get(&internal_caller, session.harness_id.uuid())
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get harness: {}", e);
-                Status::internal("Failed to get harness")
-            })?;
+        // Load harness via domain query
+        let harness =
+            crate::domains::harnesses::queries::get_by_id(&self.db, req.org_id, session.harness_id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to get harness: {}", e);
+                    Status::internal("Failed to get harness")
+                })?;
 
         // Convert to proto types
         use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
@@ -229,13 +231,12 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
-        // Get agent with capabilities via AgentService
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
-        let agent = self
-            .agent_service
-            .get(&internal_caller, agent_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?;
+        // Get agent with capabilities via domain query
+        let public_id = everruns_core::typed_id::AgentId::from_uuid(agent_id).to_string();
+        let agent =
+            crate::domains::agents::queries::get_by_public_id(&self.db, req.org_id, &public_id)
+                .await
+                .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?;
 
         let proto_agent = agent.map(|a| schema_agent_to_proto(&a));
 
@@ -249,11 +250,13 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
-        let harness = self
-            .harness_service
-            .resolve_effective(req.org_id, everruns_core::HarnessId::from_uuid(harness_id))
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get harness: {}", e)))?;
+        let harness = crate::domains::harnesses::queries::resolve_effective(
+            &self.db,
+            req.org_id,
+            everruns_core::HarnessId::from_uuid(harness_id),
+        )
+        .await
+        .map_err(|e| Status::internal(format!("Failed to get harness: {}", e)))?;
 
         let proto_harness = harness.map(|h| schema_harness_to_proto(&h));
 
@@ -2819,10 +2822,12 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<PlatformListHarnessesRequest>,
     ) -> Result<Response<PlatformListHarnessesResponse>, Status> {
         let req = request.into_inner();
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
-        let harnesses = self
-            .harness_service
-            .list(&internal_caller, None, false)
+        let rows = self
+            .db
+            .list_harnesses(req.org_id, None, false)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list harnesses: {}", e)))?;
+        let harnesses = crate::domains::harnesses::queries::load_harnesses_list(&self.db, rows)
             .await
             .map_err(|e| Status::internal(format!("Failed to list harnesses: {}", e)))?;
 
@@ -2861,10 +2866,10 @@ impl WorkerService for WorkerServiceImpl {
             network_access: None,
         };
 
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
-        let harness = self
-            .harness_service
-            .create(&internal_caller, create_req)
+        use crate::domains::common::Command;
+        let ctx = self.domain_ctx(req.org_id);
+        let harness = crate::domains::harnesses::CreateHarness(create_req)
+            .execute(&ctx)
             .await
             .map_err(|e| Status::internal(format!("Failed to create harness: {}", e)))?;
 
@@ -2903,13 +2908,16 @@ impl WorkerService for WorkerServiceImpl {
             status: None,
         };
 
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
-        let harness = self
-            .harness_service
-            .update(&internal_caller, harness_id, update_req)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to update harness: {}", e)))?
-            .ok_or_else(|| Status::not_found("Harness not found"))?;
+        use crate::domains::common::Command;
+        let harness_public_id = everruns_core::HarnessId::from_uuid(harness_id).to_string();
+        let ctx = self.domain_ctx(req.org_id);
+        let harness = crate::domains::harnesses::UpdateHarnessCmd {
+            id: harness_public_id,
+            req: update_req,
+        }
+        .execute(&ctx)
+        .await
+        .map_err(|e| Status::internal(format!("Failed to update harness: {}", e)))?;
 
         Ok(Response::new(PlatformUpdateHarnessResponse {
             harness: Some(schema_harness_to_proto(&harness)),
@@ -2923,11 +2931,15 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
-        self.harness_service
-            .delete(&internal_caller, harness_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to delete harness: {}", e)))?;
+        use crate::domains::common::Command;
+        let harness_public_id = everruns_core::HarnessId::from_uuid(harness_id).to_string();
+        let ctx = self.domain_ctx(req.org_id);
+        crate::domains::harnesses::DeleteHarness {
+            id: harness_public_id,
+        }
+        .execute(&ctx)
+        .await
+        .map_err(|e| Status::internal(format!("Failed to delete harness: {}", e)))?;
 
         Ok(Response::new(PlatformDeleteHarnessResponse {}))
     }
@@ -2939,13 +2951,15 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
-        let harness = self
-            .harness_service
-            .copy(&internal_caller, harness_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to copy harness: {}", e)))?
-            .ok_or_else(|| Status::not_found("Harness not found"))?;
+        use crate::domains::common::Command;
+        let harness_public_id = everruns_core::HarnessId::from_uuid(harness_id).to_string();
+        let ctx = self.domain_ctx(req.org_id);
+        let harness = crate::domains::harnesses::CopyHarness {
+            id: harness_public_id,
+        }
+        .execute(&ctx)
+        .await
+        .map_err(|e| Status::internal(format!("Failed to copy harness: {}", e)))?;
 
         // If a new_name was provided, update the copy with the new name
         let harness = if let Some(new_name) = req.new_name {
@@ -2962,11 +2976,14 @@ impl WorkerService for WorkerServiceImpl {
                 network_access: None,
                 status: None,
             };
-            self.harness_service
-                .update(&internal_caller, harness.id.uuid(), update_req)
-                .await
-                .map_err(|e| Status::internal(format!("Failed to rename copied harness: {}", e)))?
-                .unwrap_or(harness)
+            crate::domains::harnesses::UpdateHarnessCmd {
+                id: harness.id.to_string(),
+                req: update_req,
+            }
+            .execute(&ctx)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to rename copied harness: {}", e)))
+            .unwrap_or(harness)
         } else {
             harness
         };
@@ -2981,11 +2998,13 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<PlatformListAgentsRequest>,
     ) -> Result<Response<PlatformListAgentsResponse>, Status> {
         let req = request.into_inner();
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
         let pagination = crate::api::common::Pagination::new(0, 1000);
-        let (agents, _total) = self
-            .agent_service
-            .list(&internal_caller, None, false, pagination)
+        let (rows, _total) = self
+            .db
+            .list_agents(req.org_id, None, false, pagination)
+            .await
+            .map_err(|e| Status::internal(format!("Failed to list agents: {}", e)))?;
+        let agents = crate::domains::agents::queries::load_agents_list(&self.db, rows)
             .await
             .map_err(|e| Status::internal(format!("Failed to list agents: {}", e)))?;
 
@@ -3021,10 +3040,10 @@ impl WorkerService for WorkerServiceImpl {
             max_iterations: None,
         };
 
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
-        let agent = self
-            .agent_service
-            .create(&internal_caller, None, create_req)
+        use crate::domains::common::Command;
+        let ctx = self.domain_ctx(req.org_id);
+        let agent = crate::domains::agents::CreateAgent(create_req)
+            .execute(&ctx)
             .await
             .map_err(|e| Status::internal(format!("Failed to create agent: {}", e)))?;
 
@@ -3040,14 +3059,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
-        // Resolve UUID to public_id for the service
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
-        let agent = self
-            .agent_service
-            .get(&internal_caller, agent_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
-            .ok_or_else(|| Status::not_found("Agent not found"))?;
+        let public_id = everruns_core::typed_id::AgentId::from_uuid(agent_id).to_string();
 
         let update_req = crate::api::agents::UpdateAgentRequest {
             name: req.name,
@@ -3064,12 +3076,15 @@ impl WorkerService for WorkerServiceImpl {
             status: None,
         };
 
-        let updated = self
-            .agent_service
-            .update(&internal_caller, &agent.public_id.to_string(), update_req)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to update agent: {}", e)))?
-            .ok_or_else(|| Status::not_found("Agent not found"))?;
+        use crate::domains::common::Command;
+        let ctx = self.domain_ctx(req.org_id);
+        let updated = crate::domains::agents::UpdateAgentCmd {
+            id: public_id,
+            req: update_req,
+        }
+        .execute(&ctx)
+        .await
+        .map_err(|e| Status::internal(format!("Failed to update agent: {}", e)))?;
 
         Ok(Response::new(PlatformUpdateAgentResponse {
             agent: Some(schema_agent_to_proto(&updated)),
@@ -3083,17 +3098,11 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
-        // Resolve UUID to public_id for the service
-        let internal_caller = everruns_core::Caller::internal(req.org_id);
-        let agent = self
-            .agent_service
-            .get(&internal_caller, agent_id)
-            .await
-            .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
-            .ok_or_else(|| Status::not_found("Agent not found"))?;
-
-        self.agent_service
-            .delete(&internal_caller, &agent.public_id.to_string())
+        use crate::domains::common::Command;
+        let public_id = everruns_core::typed_id::AgentId::from_uuid(agent_id).to_string();
+        let ctx = self.domain_ctx(req.org_id);
+        crate::domains::agents::DeleteAgent { id: public_id }
+            .execute(&ctx)
             .await
             .map_err(|e| Status::internal(format!("Failed to delete agent: {}", e)))?;
 
@@ -3142,12 +3151,12 @@ impl WorkerService for WorkerServiceImpl {
 
         // Look up agent public_id if agent_uuid is provided
         let agent_public_id = if let Some(aid) = agent_uuid {
-            let agent = self
-                .agent_service
-                .get(&internal_caller, aid)
-                .await
-                .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
-                .ok_or_else(|| Status::not_found("Agent not found"))?;
+            let public_id = everruns_core::typed_id::AgentId::from_uuid(aid).to_string();
+            let agent =
+                crate::domains::agents::queries::get_by_public_id(&self.db, req.org_id, &public_id)
+                    .await
+                    .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
+                    .ok_or_else(|| Status::not_found("Agent not found"))?;
             Some(agent.public_id)
         } else {
             None

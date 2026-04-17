@@ -2,7 +2,6 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::errors::ResourceNotFoundError;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -20,13 +19,12 @@ use everruns_core::{
 };
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, PaginatedResponse, Pagination,
-    UrlBuilder, WithUrls, impl_auth_state,
+    ApiResult, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 use super::validation::{
     validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
-    validate_update_agent_input,
 };
+use crate::domains::common::Command;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -240,8 +238,8 @@ struct AgentFile {
     pub initial_files: Vec<AgentFileInitialFile>,
 }
 
-use crate::services::agent::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
-use crate::services::{AgentService, CapabilityService};
+use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
+use crate::services::CapabilityService;
 
 /// Query parameters for listing agents.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
@@ -274,15 +272,10 @@ pub struct CheckAgentNameResponse {
     pub available: bool,
 }
 
-/// Default limit for agent listing
-const DEFAULT_LIMIT: u32 = 20;
-/// Maximum allowed limit for agent listing
-const MAX_LIMIT: u32 = 100;
-
 /// App state for agents routes
 #[derive(Clone)]
 pub struct AppState {
-    pub service: Arc<AgentService>,
+    pub db: Arc<StorageBackend>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
     pub grade: DeploymentGrade,
@@ -298,12 +291,22 @@ impl AppState {
         platform_definition: Arc<PlatformDefinition>,
     ) -> Self {
         Self {
-            service: Arc::new(AgentService::new(db)),
+            db,
             capability_service,
             auth,
             grade,
             platform_definition,
         }
+    }
+
+    /// Build a domain Ctx from this AppState for the given org.
+    pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx::new(
+            Caller::from(org),
+            self.db.clone(),
+            self.capability_service.clone(),
+            None,
+        )
     }
 }
 
@@ -329,33 +332,15 @@ pub async fn check_agent_name(
     State(state): State<AppState>,
     Query(query): Query<CheckAgentNameQuery>,
 ) -> Result<Json<CheckAgentNameResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Validate format first — if the name is invalid, it's not "available"
-    if validate_agent_name_format(&query.name).is_err() {
-        return Ok(Json(CheckAgentNameResponse { available: false }));
+    let result = crate::domains::agents::CheckAgentName {
+        name: query.name,
+        exclude_id: query.exclude_id,
     }
-
-    let exclude_id = query
-        .exclude_id
-        .as_deref()
-        .map(|id| id.parse::<AgentId>())
-        .transpose()
-        .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: format!("Invalid exclude_id: {}", e),
-                }),
-            )
-        })?;
-
-    let caller = Caller::from(&org);
-    let available = state
-        .service
-        .check_name_available(&caller, &query.name, exclude_id)
-        .await
-        .map_policy_or_internal("check agent name")?;
-
-    Ok(Json(CheckAgentNameResponse { available }))
+    .execute(&state.ctx(&org))
+    .await?;
+    Ok(Json(CheckAgentNameResponse {
+        available: result.available,
+    }))
 }
 
 /// GET /v1/agents/config
@@ -444,39 +429,9 @@ pub async fn create_agent(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
-    // Validate slug name format
-    validate_agent_name_format(&req.name)?;
-
-    // Validate input sizes (last-resort protection against abuse)
-    validate_create_agent_input(
-        &req.name,
-        req.display_name.as_deref(),
-        req.description.as_deref(),
-        &req.system_prompt,
-        req.capabilities.len(),
-        &req.initial_files,
-    )?;
-
-    // TM-AGENT-005: High-risk capabilities require admin role
-    require_admin_for_high_risk(&org, &req.capabilities, &state.capability_service)?;
-
-    let caller = Caller::from(&org);
-    let client_id = req.id;
-    let agent = match state.service.create(&caller, client_id, req).await {
-        Ok(agent) => agent,
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("duplicate key") || msg.contains("already exists") {
-                return Err(ErrorResponse::conflict("Agent with this ID already exists"));
-            }
-            if let Some(not_found) = e.downcast_ref::<ResourceNotFoundError>() {
-                return Err(ErrorResponse::not_found(not_found.resource()));
-            }
-            tracing::error!("Failed to create agent: {}", msg);
-            return Err(ErrorResponse::internal_error());
-        }
-    };
-
+    let agent = crate::domains::agents::CreateAgent(req)
+        .execute(&state.ctx(&org))
+        .await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
 }
@@ -497,25 +452,19 @@ pub async fn list_agents(
     State(state): State<AppState>,
     Query(query): Query<ListAgentsQuery>,
 ) -> ApiResult<PaginatedResponse<WithUrls<Agent>>> {
-    let offset = query.offset.unwrap_or(0);
-    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
-    let pagination = Pagination::new(offset, limit);
-
-    let caller = Caller::from(&org);
-    let (agents, total) = state
-        .service
-        .list(
-            &caller,
-            query.search.as_deref(),
-            query.include_archived.unwrap_or(false),
-            pagination,
-        )
-        .await
-        .map_policy_or_internal("list agents")?;
+    let result = crate::domains::agents::ListAgents {
+        search: query.search,
+        include_archived: query.include_archived.unwrap_or(false),
+        offset: query.offset,
+        limit: query.limit,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(
-        PaginatedResponse::new(agents, total, offset, limit).with_urls(&builder),
+        PaginatedResponse::new(result.data, result.total, result.offset, result.limit)
+            .with_urls(&builder),
     ))
 }
 
@@ -542,27 +491,12 @@ pub async fn get_agent(
     State(state): State<AppState>,
     Path(agent_id_or_name): Path<String>,
 ) -> ApiResult<WithUrls<Agent>> {
-    let caller = Caller::from(&org);
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-
-    // Try parsing as a prefixed ID first; fall back to name lookup.
-    if let Ok(agent_id) = agent_id_or_name.parse::<AgentId>() {
-        let agent = state
-            .service
-            .get_by_public_id(&caller, &agent_id.to_string())
-            .await
-            .map_policy_or_internal("get agent")?
-            .ok_or_not_found_json("Agent")?;
-        return Ok(Json(builder.wrap(agent)));
+    let agent = crate::domains::agents::GetAgent {
+        id: agent_id_or_name,
     }
-
-    let agent = state
-        .service
-        .get_by_name(&caller, &agent_id_or_name)
-        .await
-        .map_policy_or_internal("get agent by name")?
-        .ok_or_not_found_json("Agent")?;
-
+    .execute(&state.ctx(&org))
+    .await?;
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(agent)))
 }
 
@@ -588,42 +522,9 @@ pub async fn update_agent(
     Path(agent_id): Path<String>,
     Json(req): Json<UpdateAgentRequest>,
 ) -> ApiResult<WithUrls<Agent>> {
-    let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
-        )
-    })?;
-
-    // Validate slug name format if provided
-    if let Some(ref name) = req.name {
-        validate_agent_name_format(name)?;
-    }
-
-    // Validate input sizes (last-resort protection against abuse)
-    validate_update_agent_input(
-        req.display_name.as_deref(),
-        req.description.as_deref(),
-        req.system_prompt.as_deref(),
-        req.capabilities.as_ref().map(|c| c.len()),
-        req.initial_files.as_deref(),
-    )?;
-
-    // TM-AGENT-005: High-risk capabilities require admin role
-    if let Some(caps) = &req.capabilities {
-        require_admin_for_high_risk(&org, caps, &state.capability_service)?;
-    }
-
-    let caller = Caller::from(&org);
-    let agent = state
-        .service
-        .update(&caller, &agent_id.to_string(), req)
-        .await
-        .map_policy_or_internal("update agent")?
-        .ok_or_not_found_json("Agent")?;
-
+    let agent = crate::domains::agents::UpdateAgentCmd { id: agent_id, req }
+        .execute(&state.ctx(&org))
+        .await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(agent)))
 }
@@ -648,32 +549,10 @@ pub async fn delete_agent(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .delete(&caller, &agent_id.to_string())
-        .await
-        .map_policy_or_internal("delete agent")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Agent not found".to_string(),
-            }),
-        ))
-    }
+    crate::domains::agents::DeleteAgent { id: agent_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn destroy_agent(
@@ -681,32 +560,10 @@ pub async fn destroy_agent(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .destroy(&caller, &agent_id.to_string())
-        .await
-        .map_policy_or_internal("destroy agent")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Agent not found".to_string(),
-            }),
-        ))
-    }
+    crate::domains::agents::DestroyAgent { id: agent_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /v1/agents/{agent_id}/copy - Copy an agent
@@ -732,23 +589,9 @@ pub async fn copy_agent(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
-    let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let agent = state
-        .service
-        .copy(&caller, &agent_id.to_string())
-        .await
-        .map_policy_or_internal("copy agent")?
-        .ok_or_not_found_json("Agent")?;
-
+    let agent = crate::domains::agents::CopyAgent { id: agent_id }
+        .execute(&state.ctx(&org))
+        .await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
 }
@@ -779,31 +622,18 @@ pub async fn upsert_agent(
     Path(agent_id_or_name): Path<String>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
-    // Validate name format
-    validate_agent_name_format(&req.name)?;
-
-    // Validate input sizes
-    validate_create_agent_input(
-        &req.name,
-        req.display_name.as_deref(),
-        req.description.as_deref(),
-        &req.system_prompt,
-        req.capabilities.len(),
-        &req.initial_files,
-    )?;
-
-    // TM-AGENT-005: High-risk capabilities require admin role
-    require_admin_for_high_risk(&org, &req.capabilities, &state.capability_service)?;
-
-    let caller = Caller::from(&org);
-
-    // Try parsing as a prefixed ID first; fall back to upsert by name.
+    // Path may be ID or name. For name-based upsert we go through the legacy
+    // service path (upsert_by_name uniqueness semantics not yet expressed as
+    // a command). ID-based upsert uses the domain command.
+    let _caller = Caller::from(&org);
     let (agent, was_created) = if let Ok(agent_id) = agent_id_or_name.parse::<AgentId>() {
-        state
-            .service
-            .upsert(&caller, &agent_id.to_string(), req)
-            .await
-            .map_policy_or_internal("upsert agent")?
+        let result = crate::domains::agents::UpsertAgent {
+            id: agent_id.to_string(),
+            req,
+        }
+        .execute(&state.ctx(&org))
+        .await?;
+        (result.agent, result.was_created)
     } else {
         // Enforce path name matches body name to prevent ambiguous updates.
         if req.name != agent_id_or_name {
@@ -814,11 +644,45 @@ pub async fn upsert_agent(
                 )),
             ));
         }
-        state
-            .service
-            .upsert_by_name(&caller, req)
-            .await
-            .map_policy_or_internal("upsert agent by name")?
+        // Name-based upsert: try create, if name taken → update
+        let create_result = crate::domains::agents::CreateAgent(req.clone())
+            .execute(&state.ctx(&org))
+            .await;
+        match create_result {
+            Ok(agent) => (agent, true),
+            Err(crate::domains::common::CommandError::Conflict(_)) => {
+                let existing = crate::domains::agents::queries::get_by_name(
+                    &state.db,
+                    state.ctx(&org).org_id(),
+                    &req.name,
+                )
+                .await
+                .map_err(crate::domains::common::classify_anyhow)?
+                .ok_or_else(|| crate::domains::common::CommandError::not_found("Agent"))?;
+                let update_req = UpdateAgentRequest {
+                    name: Some(req.name),
+                    display_name: req.display_name,
+                    description: req.description,
+                    system_prompt: Some(req.system_prompt),
+                    default_model_id: req.default_model_id,
+                    tags: Some(req.tags),
+                    capabilities: Some(req.capabilities),
+                    initial_files: Some(req.initial_files),
+                    tools: Some(req.tools),
+                    network_access: req.network_access,
+                    max_iterations: req.max_iterations,
+                    status: None,
+                };
+                let agent = crate::domains::agents::UpdateAgentCmd {
+                    id: existing.public_id.to_string(),
+                    req: update_req,
+                }
+                .execute(&state.ctx(&org))
+                .await?;
+                (agent, false)
+            }
+            Err(e) => return Err(e.into()),
+        }
     };
 
     let status = if was_created {
@@ -860,13 +724,11 @@ pub async fn export_agent(
         )
     })?;
 
-    let caller = Caller::from(&org);
-    let agent = state
-        .service
-        .get_by_public_id(&caller, &agent_id.to_string())
-        .await
-        .map_policy_or_internal("get agent for export")?
-        .ok_or_not_found_json("Agent")?;
+    let agent = crate::domains::agents::GetAgent {
+        id: agent_id.to_string(),
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let markdown = agent_to_markdown(&agent);
     let filename = format!("{}.md", slugify(&agent.name));
@@ -982,7 +844,7 @@ async fn import_from_example(
     // TM-AGENT-005: High-risk capabilities require admin role
     require_admin_for_high_risk(&org, &capabilities, &state.capability_service)?;
 
-    let caller = Caller::from(&org);
+    let _caller = Caller::from(&org);
 
     // If an agent with the same name exists, keep trying suffixed variants
     // to avoid one-shot collisions and reduce failures under concurrency.
@@ -1004,11 +866,13 @@ async fn import_from_example(
                 format!("{base}-{suffix}")
             };
 
-            let available = state
-                .service
-                .check_name_available(&caller, &candidate, None)
-                .await
-                .map_err(|_| ErrorResponse::internal_error())?;
+            let result = crate::domains::agents::CheckAgentName {
+                name: candidate.clone(),
+                exclude_id: None,
+            }
+            .execute(&state.ctx(&org))
+            .await?;
+            let available = result.available;
 
             if available {
                 selected = Some(candidate);
@@ -1034,11 +898,9 @@ async fn import_from_example(
         max_iterations: None,
     };
 
-    let agent = state
-        .service
-        .create(&caller, None, req)
-        .await
-        .map_policy_or_internal("import agent from example")?;
+    let agent = crate::domains::agents::CreateAgent(req)
+        .execute(&state.ctx(&org))
+        .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
@@ -1128,34 +990,30 @@ async fn import_from_file(
     // TM-AGENT-005: High-risk capabilities require admin role
     require_admin_for_high_risk(&org, &request.capabilities, &state.capability_service)?;
 
-    let caller = Caller::from(&org);
+    let _caller = Caller::from(&org);
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
 
     // If the file has an ID, upsert (create or update). Otherwise, always create.
     if let Some(ref id) = client_id {
-        let (agent, was_created) = state
-            .service
-            .upsert(&caller, &id.to_string(), request)
-            .await
-            .map_policy_or_internal("import agent")?;
+        let result = crate::domains::agents::UpsertAgent {
+            id: id.to_string(),
+            req: request,
+        }
+        .execute(&state.ctx(&org))
+        .await?;
 
-        let status = if was_created {
+        let status = if result.was_created {
             StatusCode::CREATED
         } else {
             StatusCode::OK
         };
 
-        Ok((status, Json(builder.wrap(agent))))
+        Ok((status, Json(builder.wrap(result.agent))))
     } else {
-        let agent = state
-            .service
-            .create(&caller, None, request)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to import agent: {}", e);
-                ErrorResponse::internal_error()
-            })?;
+        let agent = crate::domains::agents::CreateAgent(request)
+            .execute(&state.ctx(&org))
+            .await?;
 
         Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
     }
@@ -1315,19 +1173,16 @@ pub async fn preview_agent(
     State(state): State<AppState>,
     Json(req): Json<PreviewAgentRequest>,
 ) -> ApiResult<AgentPreviewResponse> {
-    let (system_prompt, mut tools) = state
-        .capability_service
-        .preview(org.org_id, &req.system_prompt, &req.capabilities)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to generate agent preview: {}", e);
-            ErrorResponse::new("Internal server error")
-                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-        })?;
-    tools.extend(req.tools);
+    let result = crate::domains::agents::PreviewAgent {
+        system_prompt: Some(req.system_prompt),
+        capabilities: req.capabilities,
+        tools: req.tools,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     Ok(Json(AgentPreviewResponse {
-        system_prompt,
-        tools,
+        system_prompt: result.system_prompt,
+        tools: result.tools,
     }))
 }
