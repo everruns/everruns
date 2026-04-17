@@ -25,6 +25,7 @@ import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useNotifications } from "@/hooks/use-notifications";
 import { markNotificationViewed, getNotificationsSseUrl } from "@/lib/api/notifications";
 import { createReconnectTracker } from "@/lib/sse-reconnect";
+import { createEventStream, type EventStreamLike } from "@/lib/event-stream";
 import {
   getActiveNotificationTarget,
   getNotificationTargetKey,
@@ -115,7 +116,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [isFocused, setIsFocused] = useState(true);
   const reconnectRef = useRef(createReconnectTracker());
   const lastUpdatedAtRef = useRef<string | undefined>(undefined);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const eventSourceRef = useRef<EventStreamLike | null>(null);
   const autoViewingIdsRef = useRef<Set<string>>(new Set());
   const toastIdsRef = useRef<Set<string>>(new Set());
   const activeTargetKey = useMemo(() => getActiveNotificationTarget(pathname), [pathname]);
@@ -216,7 +217,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const connect = () => {
       if (cancelled) return;
       eventSourceRef.current?.close();
-      const eventSource = new EventSource(getNotificationsSseUrl(lastUpdatedAtRef.current), {
+      const eventSource = createEventStream(getNotificationsSseUrl(lastUpdatedAtRef.current), {
         withCredentials: true,
       });
       eventSourceRef.current = eventSource;

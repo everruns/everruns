@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createReconnectTracker } from "@/lib/sse-reconnect";
+import { createEventStream, type EventStreamLike } from "@/lib/event-stream";
 import {
   getDurableHealth,
   listWorkers,
@@ -73,7 +74,7 @@ interface WorkflowSnapshot {
  */
 export function useDurableSSE(options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const eventSourceRef = useRef<EventStreamLike | null>(null);
   const reconnectRef = useRef(createReconnectTracker());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -99,7 +100,7 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
       cleanup();
 
       const sseUrl = getDurableSseUrl();
-      const eventSource = new EventSource(sseUrl, { withCredentials: true });
+      const eventSource = createEventStream(sseUrl, { withCredentials: true });
       eventSourceRef.current = eventSource;
 
       eventSource.addEventListener("connected", () => {
@@ -200,7 +201,7 @@ export function useDurableSSE(options?: { enabled?: boolean }) {
  */
 export function useWorkflowSSE(workflowId: string | undefined, options?: { enabled?: boolean }) {
   const queryClient = useQueryClient();
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const eventSourceRef = useRef<EventStreamLike | null>(null);
   const reconnectRef = useRef(createReconnectTracker());
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -232,7 +233,7 @@ export function useWorkflowSSE(workflowId: string | undefined, options?: { enabl
       cleanup();
 
       const sseUrl = getWorkflowSseUrl(workflowId);
-      const eventSource = new EventSource(sseUrl, { withCredentials: true });
+      const eventSource = createEventStream(sseUrl, { withCredentials: true });
       eventSourceRef.current = eventSource;
 
       eventSource.addEventListener("connected", () => {

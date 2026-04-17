@@ -26,6 +26,7 @@ import type {
 import { useOrg } from "@/providers/org-provider";
 import { useLocale } from "@/providers/locale-provider";
 import { createReconnectTracker } from "@/lib/sse-reconnect";
+import { createEventStream, type EventStreamLike } from "@/lib/event-stream";
 
 /**
  * Fetch paginated sessions for an organization.
@@ -254,7 +255,7 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const eventSourceRef = useRef<EventStreamLike | null>(null);
   const lastEventIdRef = useRef<string | null>(null);
   const reconnectRef = useRef(createReconnectTracker());
   const isEnabled = options?.enabled !== false;
@@ -414,7 +415,7 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
       cleanup();
 
       const sseUrl = getSseUrl(sessionId, lastEventIdRef.current ?? undefined);
-      const eventSource = new EventSource(sseUrl, { withCredentials: true });
+      const eventSource = createEventStream(sseUrl, { withCredentials: true });
       eventSourceRef.current = eventSource;
 
       eventSource.addEventListener("connected", () => {
