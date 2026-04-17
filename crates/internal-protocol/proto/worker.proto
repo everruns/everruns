@@ -1054,6 +1054,8 @@ message GetMcpServerByPrefixRequest {
     string server_prefix = 1;
     // Organization ID for resource validation
     int64 org_id = 2;
+    // Optional session scope for resolving harness/agent/session MCP servers.
+    Uuid session_id = 3;
 }
 
 message GetMcpServerByPrefixResponse {

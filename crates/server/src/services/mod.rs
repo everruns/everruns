@@ -19,6 +19,7 @@ pub mod mcp_server;
 pub mod message;
 pub mod model_sync;
 pub mod notification;
+pub mod scoped_mcp;
 pub mod session;
 pub mod session_file;
 pub mod session_git;

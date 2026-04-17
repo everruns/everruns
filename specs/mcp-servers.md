@@ -35,6 +35,48 @@ Future transport types (not yet implemented):
 - `stdio` - Local process with stdio communication
 - `websocket` - WebSocket-based transport
 
+### Scoped `mcpServers`
+
+In addition to organization-managed MCP server records, harnesses, agents, and
+sessions may embed remote MCP server config directly in a `mcpServers` object.
+This is intended for session-local or agent-local MCP wiring without creating an
+organization-global MCP server.
+
+The shape matches the remote-server subset of `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "docs": {
+      "type": "http",
+      "url": "https://example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer test-token"
+      }
+    }
+  }
+}
+```
+
+Constraints:
+- Only remote HTTP MCP servers are supported in scoped config.
+- Names must be unique after Everruns MCP tool-name sanitization.
+- URLs use the same SSRF-safe validation as organization-managed MCP servers.
+- Scoped servers are not stored as org capabilities and do not appear in org MCP CRUD APIs.
+- Scoped headers are literal values; `${ENV}` placeholders are not expanded.
+
+Merge order:
+1. Harness `mcpServers`
+2. Agent `mcpServers`
+3. Session `mcpServers`
+
+Later layers override earlier layers by logical server name.
+
+Runtime behavior:
+- Effective scoped servers are resolved before organization-managed MCP servers.
+- Scoped tool discovery is live at preview/runtime; there is no persisted org-level cache row.
+- Scoped tool names use the same `mcp_{server_name}__{tool_name}` prefixing as org MCP servers.
+
 ### Status Values
 
 | Status | Description |

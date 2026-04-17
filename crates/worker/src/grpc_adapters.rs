@@ -217,11 +217,13 @@ impl GrpcClient {
     pub async fn get_mcp_server_by_prefix(
         &self,
         org_id: i64,
+        session_id: Option<uuid::Uuid>,
         server_prefix: &str,
     ) -> Result<crate::mcp_executor::McpServerInfo> {
         let request = proto::GetMcpServerByPrefixRequest {
             server_prefix: server_prefix.to_string(),
             org_id,
+            session_id: session_id.map(uuid_to_proto),
         };
 
         let mut client = self.inner.lock().await;
@@ -650,6 +652,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
             .into_iter()
             .map(everruns_core::AgentCapabilityConfig::new)
             .collect(),
+        mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,
         max_iterations: None,
@@ -730,6 +733,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
             .into_iter()
             .map(everruns_core::AgentCapabilityConfig::new)
             .collect(),
+        mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,
         is_built_in: proto_harness.is_built_in,
@@ -823,6 +827,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         model_id: model_id.map(|u| u.into()),
         capabilities,
         tools: vec![],
+        mcp_servers: Default::default(),
         system_prompt: proto_session.system_prompt.clone(),
         initial_files: serde_json::from_str(&proto_session.initial_files_json).unwrap_or_default(),
         hints: proto_session.hints.as_ref().and_then(|s| {

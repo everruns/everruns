@@ -226,6 +226,7 @@ mod tests {
             model_id: None,
             capabilities: json!([]),
             tools: json!([]),
+            mcp_servers: serde_json::json!({}),
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,

@@ -90,7 +90,7 @@ impl InMemoryDatabase {
             })
             .map(Self::file_to_info)
             .collect();
-        result.sort_by(|a, b| a.path.cmp(&b.path));
+        result.sort_by_key(|file| file.path.clone());
         Ok(result)
     }
 
@@ -104,7 +104,7 @@ impl InMemoryDatabase {
             .filter(|f| f.session_id == session_id)
             .map(Self::file_to_info)
             .collect();
-        result.sort_by(|a, b| a.path.cmp(&b.path));
+        result.sort_by_key(|file| file.path.clone());
         Ok(result)
     }
 
@@ -365,7 +365,7 @@ impl InMemoryDatabase {
             .filter(|f| f.session_id == session_id && !f.is_directory)
             .cloned()
             .collect();
-        files.sort_by(|a, b| a.path.cmp(&b.path));
+        files.sort_by_key(|file| file.path.clone());
         Ok(files)
     }
 }

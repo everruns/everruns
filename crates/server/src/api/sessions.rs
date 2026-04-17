@@ -19,8 +19,8 @@ use everruns_core::typed_id::{
     AgentId, AgentIdentityId, HarnessId, MessageId, ModelId, SessionId, TurnId,
 };
 use everruns_core::{
-    BuiltInHarnessRole, Caller, Message, PlatformDefinition, ResourceConfigResponse, Session,
-    evaluate_policies_with,
+    BuiltInHarnessRole, Caller, Message, PlatformDefinition, ResourceConfigResponse,
+    ScopedMcpServers, Session, evaluate_policies_with,
 };
 use everruns_worker::AgentRunner;
 
@@ -82,6 +82,9 @@ pub struct CreateSessionRequest {
     /// These tools are sent to the LLM but executed by the client.
     #[serde(default)]
     pub tools: Vec<everruns_core::ToolDefinition>,
+    /// Remote MCP servers scoped to this session only.
+    #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
+    pub mcp_servers: ScopedMcpServers,
     /// Optional session-level system prompt override.
     /// Prepended to the agent's system prompt when building RuntimeAgent.
     #[serde(default)]
@@ -1119,6 +1122,7 @@ mod tests {
                     default_model_id: None,
                     tags: vec!["generic".to_string()],
                     initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
                     is_built_in: true,
                     network_access: None,
                 },

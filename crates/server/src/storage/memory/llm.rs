@@ -101,7 +101,7 @@ impl InMemoryDatabase {
             .filter(|p| p.org_id == org_id)
             .cloned()
             .collect();
-        result.sort_by(|a, b| a.name.cmp(&b.name));
+        result.sort_by_key(|provider| provider.name.clone());
         Ok(result)
     }
 
@@ -397,7 +397,7 @@ impl InMemoryDatabase {
             .filter(|m| m.provider_id == provider_id && m.org_id == org_id)
             .cloned()
             .collect();
-        result.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        result.sort_by_key(|provider| provider.display_name.clone());
         Ok(result)
     }
 

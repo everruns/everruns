@@ -302,8 +302,10 @@ pub use mcp_server::{
     McpContent, McpError, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
     McpToolAnnotations, McpToolCallParams, McpToolCallRequest, McpToolCallResponse,
     McpToolCallResult, McpToolDefinition, McpToolsListRequest, McpToolsListResponse,
-    McpToolsListResult, is_mcp_tool, mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name,
-    mcp_tool_name, parse_mcp_tool_name,
+    McpToolsListResult, ScopedMcpServer, ScopedMcpServers, is_mcp_tool,
+    mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
+    merge_scoped_mcp_servers, parse_mcp_tool_name, sanitize_mcp_server_name,
+    scoped_mcp_servers_is_empty,
 };
 pub use organization::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,

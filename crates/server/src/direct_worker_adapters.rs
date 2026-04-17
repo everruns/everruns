@@ -29,6 +29,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::org_init::BASE_HARNESS_ID;
+use crate::services::scoped_mcp::{
+    build_scoped_mcp_tool_definitions, resolve_scoped_mcp_server, validate_scoped_mcp_servers,
+};
 use crate::services::{BudgetService, EventService, LlmResolverService, McpServerService};
 use crate::storage::StorageBackend;
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
@@ -364,7 +367,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 tags: r.tags,
                 model_id: r.model_id,
                 capabilities,
-                tools: vec![],
+                tools: serde_json::from_value(r.tools).unwrap_or_default(),
+                mcp_servers: serde_json::from_value(r.mcp_servers).unwrap_or_default(),
                 system_prompt: r.system_prompt,
                 initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
                 network_access: r
@@ -1006,8 +1010,35 @@ impl WorkerAdapters for DirectWorkerAdapters {
     async fn get_mcp_server_by_prefix(
         &self,
         org_id: i64,
+        session_id: Option<Uuid>,
         server_prefix: &str,
     ) -> Result<McpServerInfo> {
+        if let Some(session_id) = session_id
+            && let Some(session) = self.get_session(org_id, session_id).await?
+            && let Some(harness) = self
+                .get_harness_impl(org_id, session.harness_id.uuid())
+                .await?
+        {
+            let agent = match session.agent_id {
+                Some(agent_id) => self.get_agent(org_id, agent_id.uuid()).await?,
+                None => None,
+            };
+
+            if let Some(resolved) =
+                resolve_scoped_mcp_server(&harness, agent.as_ref(), &session, server_prefix)
+            {
+                return Ok(McpServerInfo {
+                    id: resolved.id,
+                    name: resolved.name,
+                    url: resolved.url,
+                    api_key: resolved.api_key,
+                    headers: resolved.headers,
+                    auth_mode: resolved.auth_mode,
+                    oauth_provider_id: resolved.oauth_provider_id,
+                });
+            }
+        }
+
         let resolved = self
             .mcp_server_service
             .resolve_by_prefix(&Caller::internal(org_id), server_prefix)
@@ -1042,7 +1073,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         // session.agent_id from get_session() is the internal UUID (raw DB FK).
         // Use get_agent() which queries by internal id.
-        let (agent, mcp_tool_definitions) = if let Some(agent_id) = session.agent_id {
+        let (agent, org_mcp_tool_definitions) = if let Some(agent_id) = session.agent_id {
             let agent_row = self.db.get_agent(org_id, agent_id).await.map_err(|e| {
                 tracing::error!("Failed to get agent: {}", e);
                 store_error("Failed to get agent")
@@ -1074,6 +1105,31 @@ impl WorkerAdapters for DirectWorkerAdapters {
         let harness = self
             .get_harness_impl(org_id, session.harness_id.uuid())
             .await?;
+
+        let local_mcp_tool_definitions = if let Some(ref harness) = harness {
+            let effective = crate::services::scoped_mcp::merge_effective_scoped_mcp_servers(
+                harness,
+                agent.as_ref(),
+                &session,
+            );
+
+            if let Err(error) = validate_scoped_mcp_servers(&effective) {
+                tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
+                vec![]
+            } else {
+                build_scoped_mcp_tool_definitions(&effective)
+                    .await
+                    .unwrap_or_else(|error| {
+                        tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
+                        vec![]
+                    })
+            }
+        } else {
+            vec![]
+        };
+
+        let mut mcp_tool_definitions = org_mcp_tool_definitions;
+        mcp_tool_definitions.extend(local_mcp_tool_definitions);
 
         // Load messages
         let messages = self.load_messages(session_id).await?;
@@ -1316,6 +1372,7 @@ impl DirectWorkerAdapters {
                 default_model_id: row.default_model_id,
                 tags: row.tags,
                 capabilities,
+                mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
                 initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
                 network_access: row
                     .network_access
@@ -1367,11 +1424,12 @@ impl DirectWorkerAdapters {
                 .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
                 .collect(),
             initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
+            mcp_servers: serde_json::from_value(r.mcp_servers).unwrap_or_default(),
             network_access: r
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
             max_iterations: r.max_iterations.map(|v| v as usize),
-            tools: vec![],
+            tools: serde_json::from_value(r.tools).unwrap_or_default(),
             status: match r.status.as_str() {
                 "active" => AgentStatus::Active,
                 "archived" => AgentStatus::Archived,
@@ -1594,6 +1652,7 @@ impl DirectPlatformStore {
             tags: row.tags,
             capabilities,
             initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+            mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
             network_access: row
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
@@ -1625,6 +1684,7 @@ impl DirectPlatformStore {
             tags: row.tags,
             capabilities,
             initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
+            mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
             network_access: row
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
@@ -1657,6 +1717,7 @@ impl DirectPlatformStore {
             model_id: row.model_id,
             capabilities,
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
+            mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
             system_prompt: row.system_prompt,
             initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
             network_access: row
@@ -1758,6 +1819,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             default_model_id: None,
             tags: vec!["managed".to_string()],
             initial_files: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
             is_built_in: false,
             network_access: None,
         };
@@ -1941,6 +2003,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             tags: vec!["managed".to_string()],
             initial_files: serde_json::json!([]),
             tools: serde_json::Value::Array(vec![]),
+            mcp_servers: serde_json::json!({}),
             max_iterations: None,
             network_access: None,
         };
@@ -2081,6 +2144,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             model_id: None,
             capabilities: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
+            mcp_servers: serde_json::json!({}),
             system_prompt: None,
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
@@ -2573,6 +2637,7 @@ mod tests {
             tags: vec![],
             initial_files: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
+            mcp_servers: serde_json::json!({}),
             max_iterations: None,
             network_access: None,
         };
@@ -2755,7 +2820,7 @@ mod tests {
         seed_mcp_server(&adapters.db, "My Server", None).await;
 
         let info = adapters
-            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "my_server")
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "my_server")
             .await
             .unwrap();
         assert!(info.api_key.is_none());
@@ -2769,7 +2834,7 @@ mod tests {
         seed_mcp_server(&adapters.db, "Auth Server", Some(encrypted)).await;
 
         let info = adapters
-            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "auth_server")
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "auth_server")
             .await
             .unwrap();
         assert_eq!(info.api_key.as_deref(), Some("sk-live-key"));
@@ -2783,7 +2848,7 @@ mod tests {
         seed_mcp_server(&adapters.db, "No Enc Server", Some(encrypted)).await;
 
         let result = adapters
-            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "no_enc_server")
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "no_enc_server")
             .await;
         assert!(result.is_err());
     }
@@ -2792,7 +2857,7 @@ mod tests {
     async fn get_mcp_server_by_prefix_errors_when_server_not_found() {
         let adapters = test_adapters();
         let result = adapters
-            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "nonexistent")
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "nonexistent")
             .await;
         assert!(result.is_err());
     }
@@ -2962,6 +3027,7 @@ mod tests {
                         adapters
                             .get_mcp_server_by_prefix(
                                 everruns_core::DEFAULT_ORG_ID,
+                                None,
                                 "no_such_prefix"
                             )
                             .await
@@ -2974,7 +3040,11 @@ mod tests {
                     let (adapters, db) = $make_adapters;
                     seed_mcp_server(&db, "Plain Server", None).await;
                     let info = adapters
-                        .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "plain_server")
+                        .get_mcp_server_by_prefix(
+                            everruns_core::DEFAULT_ORG_ID,
+                            None,
+                            "plain_server",
+                        )
                         .await
                         .unwrap();
                     assert!(info.api_key.is_none());
@@ -2987,7 +3057,7 @@ mod tests {
                     let encrypted = test_encryption().encrypt_string("sk-contract").unwrap();
                     seed_mcp_server(&adapters.db, "Enc Server", Some(encrypted)).await;
                     let info = adapters
-                        .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "enc_server")
+                        .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "enc_server")
                         .await
                         .unwrap();
                     assert_eq!(info.api_key.as_deref(), Some("sk-contract"));
@@ -3072,7 +3142,7 @@ mod tests {
         let encrypted = enc.encrypt_string(key).unwrap();
         seed_mcp_server(&adapters.db, "Auth Required MCP", Some(encrypted)).await;
         let info = adapters
-            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "auth_required_mcp")
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "auth_required_mcp")
             .await
             .unwrap();
         assert_eq!(info.api_key.as_deref(), Some(key));
@@ -3086,7 +3156,7 @@ mod tests {
         let encrypted = enc.encrypt_string("sk-should-fail").unwrap();
         seed_mcp_server(&adapters.db, "Fail MCP", Some(encrypted)).await;
         let result = adapters
-            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "fail_mcp")
+            .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "fail_mcp")
             .await;
         assert!(
             result.is_err(),
@@ -3100,13 +3170,13 @@ mod tests {
         seed_mcp_server(&adapters.db, "Org Scoped MCP", None).await;
         assert!(
             adapters
-                .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, "org_scoped_mcp")
+                .get_mcp_server_by_prefix(everruns_core::DEFAULT_ORG_ID, None, "org_scoped_mcp")
                 .await
                 .is_ok()
         );
         assert!(
             adapters
-                .get_mcp_server_by_prefix(999, "org_scoped_mcp")
+                .get_mcp_server_by_prefix(999, None, "org_scoped_mcp")
                 .await
                 .is_err(),
             "MCP server must not be visible in wrong org"
@@ -3139,6 +3209,7 @@ mod tests {
                 model_id: None,
                 capabilities: serde_json::Value::Array(vec![]),
                 tools: serde_json::Value::Array(vec![]),
+                mcp_servers: serde_json::json!({}),
                 system_prompt: None,
                 initial_files: serde_json::Value::Array(vec![]),
                 hints: None,

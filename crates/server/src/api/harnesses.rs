@@ -15,7 +15,7 @@ use axum::{
 use everruns_core::typed_id::{HarnessId, ModelId};
 use everruns_core::{
     AgentCapabilityConfig, Caller, Harness, HarnessStatus, InitialFile, ResourceConfigResponse,
-    ToolDefinition, evaluate_policies_with,
+    ScopedMcpServers, ToolDefinition, evaluate_policies_with,
 };
 
 use super::common::{
@@ -63,6 +63,9 @@ pub struct CreateHarnessRequest {
     /// Starter files copied into each new session for this harness.
     #[serde(default)]
     pub initial_files: Vec<InitialFile>,
+    /// Remote MCP servers scoped to this harness.
+    #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
+    pub mcp_servers: ScopedMcpServers,
     /// Network access list controlling which hosts/URLs sessions can reach.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
@@ -95,6 +98,13 @@ pub struct UpdateHarnessRequest {
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub initial_files: Option<Vec<InitialFile>>,
+    #[serde(
+        default,
+        rename = "mcpServers",
+        alias = "mcp_servers",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub mcp_servers: Option<ScopedMcpServers>,
     /// Network access list. Send `{}` (empty object) to clear. Omit to leave unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
@@ -112,6 +122,8 @@ pub struct PreviewHarnessRequest {
     pub parent_harness_id: Option<HarnessId>,
     #[serde(default)]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
+    pub mcp_servers: ScopedMcpServers,
 }
 
 /// Preview response showing merged prompt and tools
@@ -463,6 +475,7 @@ pub async fn preview_harness(
         system_prompt: Some(req.system_prompt),
         parent_harness_id: req.parent_harness_id,
         capabilities: req.capabilities,
+        mcp_servers: req.mcp_servers,
     }
     .execute(&state.ctx(&org))
     .await?;

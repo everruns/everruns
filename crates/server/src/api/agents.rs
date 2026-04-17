@@ -15,7 +15,8 @@ use chrono::Utc;
 use everruns_core::typed_id::{AgentId, ModelId};
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, Caller, DeploymentGrade, InitialFile, OrgRole,
-    PlatformDefinition, ResourceConfigResponse, ToolDefinition, evaluate_policies_with,
+    PlatformDefinition, ResourceConfigResponse, ScopedMcpServers, ToolDefinition,
+    evaluate_policies_with,
 };
 
 use super::common::{
@@ -75,6 +76,9 @@ pub struct CreateAgentRequest {
     /// These tools are sent to the LLM but executed by the client, not the server.
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
+    /// Remote MCP servers scoped to this agent.
+    #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
+    pub mcp_servers: ScopedMcpServers,
     /// Network access list controlling which hosts/URLs this agent's sessions can reach.
     /// If set, merged with harness and session layers (allowed: intersect, blocked: union).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -126,6 +130,14 @@ pub struct UpdateAgentRequest {
     /// Replaces existing tools if provided.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<ToolDefinition>>,
+    /// Remote MCP servers scoped to this agent.
+    #[serde(
+        default,
+        rename = "mcpServers",
+        alias = "mcp_servers",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub mcp_servers: Option<ScopedMcpServers>,
     /// Network access list controlling which hosts/URLs this agent's sessions can reach.
     /// Send `{}` (empty object) to clear restrictions. Omit to leave unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -149,6 +161,9 @@ pub struct PreviewAgentRequest {
     #[serde(default)]
     #[schema(value_type = Vec<Object>)]
     pub tools: Vec<ToolDefinition>,
+    /// Remote MCP servers scoped to the previewed agent.
+    #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
+    pub mcp_servers: ScopedMcpServers,
 }
 
 /// Response showing the final agent shape after applying capabilities
@@ -236,6 +251,8 @@ struct AgentFile {
     /// fully-specified InitialFile objects.
     #[serde(default)]
     pub initial_files: Vec<AgentFileInitialFile>,
+    #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
+    pub mcp_servers: ScopedMcpServers,
 }
 
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
@@ -669,6 +686,7 @@ pub async fn upsert_agent(
                     capabilities: Some(req.capabilities),
                     initial_files: Some(req.initial_files),
                     tools: Some(req.tools),
+                    mcp_servers: Some(req.mcp_servers),
                     network_access: req.network_access,
                     max_iterations: req.max_iterations,
                     status: None,
@@ -894,6 +912,7 @@ async fn import_from_example(
         capabilities,
         initial_files: vec![],
         tools: vec![],
+        mcp_servers: Default::default(),
         network_access: None,
         max_iterations: None,
     };
@@ -983,6 +1002,7 @@ async fn import_from_file(
             .collect(),
         initial_files,
         tools: vec![],
+        mcp_servers: agent_file.mcp_servers,
         network_access: None,
         max_iterations: None,
     };
@@ -1116,6 +1136,7 @@ fn parse_agent_content(content: &str) -> Result<AgentFile, String> {
         tags: vec![],
         capabilities: vec![],
         initial_files: vec![],
+        mcp_servers: Default::default(),
     })
 }
 
@@ -1177,6 +1198,7 @@ pub async fn preview_agent(
         system_prompt: Some(req.system_prompt),
         capabilities: req.capabilities,
         tools: req.tools,
+        mcp_servers: req.mcp_servers,
     }
     .execute(&state.ctx(&org))
     .await?;

@@ -11,7 +11,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::typed_id::McpServerId;
 
@@ -170,6 +170,48 @@ pub struct McpServer {
     /// Timestamp when the MCP server was deleted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<DateTime<Utc>>,
+}
+
+/// Session-, agent-, or harness-scoped remote MCP server configuration.
+///
+/// This intentionally mirrors the `mcpServers` object shape used by common MCP
+/// client config files while staying within Everruns' current remote-HTTP-only
+/// support.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ScopedMcpServer {
+    /// MCP transport type. Only remote HTTP is supported today.
+    #[serde(
+        default = "default_scoped_transport_type",
+        rename = "type",
+        alias = "transport_type"
+    )]
+    pub transport_type: McpServerTransportType,
+    /// URL of the remote MCP server endpoint.
+    pub url: String,
+    /// Additional HTTP headers sent on MCP requests.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub headers: HashMap<String, String>,
+}
+
+pub type ScopedMcpServers = BTreeMap<String, ScopedMcpServer>;
+
+fn default_scoped_transport_type() -> McpServerTransportType {
+    McpServerTransportType::Http
+}
+
+pub fn scoped_mcp_servers_is_empty(servers: &ScopedMcpServers) -> bool {
+    servers.is_empty()
+}
+
+/// Merge scoped MCP servers by logical server name. Later layers override earlier ones.
+pub fn merge_scoped_mcp_servers(
+    base: &ScopedMcpServers,
+    overlay: &ScopedMcpServers,
+) -> ScopedMcpServers {
+    let mut merged = base.clone();
+    merged.extend(overlay.clone());
+    merged
 }
 
 // ============================================================================
@@ -339,13 +381,20 @@ pub enum McpContent {
 /// Format: mcp_{server_name}__{tool_name} (double underscore separator)
 /// The double underscore allows unambiguous parsing when server names contain underscores.
 pub fn mcp_tool_name(server_name: &str, tool_name: &str) -> String {
-    // Sanitize server name: lowercase, replace non-alphanumeric with underscore
-    let sanitized_server = server_name
+    format!(
+        "mcp_{}__{}",
+        sanitize_mcp_server_name(server_name),
+        tool_name
+    )
+}
+
+/// Sanitize an MCP server name into a stable tool-name prefix.
+pub fn sanitize_mcp_server_name(server_name: &str) -> String {
+    server_name
         .to_lowercase()
         .chars()
         .map(|c| if c.is_alphanumeric() { c } else { '_' })
-        .collect::<String>();
-    format!("mcp_{}__{}", sanitized_server, tool_name)
+        .collect::<String>()
 }
 
 /// Check if a tool name is an MCP tool (starts with "mcp_").

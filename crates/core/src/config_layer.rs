@@ -20,10 +20,12 @@
 // - default_model_id: overlay wins if set, else inherit base
 // - tools: additive (overlay appended after base, deduplicated at build time)
 // - max_iterations: overlay wins if set, else inherit base
+// - mcp_servers: overlay overrides base by logical server name (last wins)
 
 use crate::agent::Agent;
 use crate::capability_types::AgentCapabilityConfig;
 use crate::harness::Harness;
+use crate::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::network_access::{self, NetworkAccessList};
 use crate::session::Session;
 use crate::session_file::InitialFile;
@@ -50,6 +52,8 @@ pub struct AgentConfigOverlay {
     pub tools: Vec<ToolDefinition>,
     /// Max iterations per turn.
     pub max_iterations: Option<usize>,
+    /// Remote MCP servers scoped to this layer.
+    pub mcp_servers: ScopedMcpServers,
 }
 
 impl AgentConfigOverlay {
@@ -68,6 +72,7 @@ impl AgentConfigOverlay {
         );
         let default_model_id = overlay.default_model_id.or(self.default_model_id);
         let max_iterations = overlay.max_iterations.or(self.max_iterations);
+        let mcp_servers = merge_scoped_mcp_servers(&self.mcp_servers, &overlay.mcp_servers);
 
         let mut tools = self.tools;
         tools.extend(overlay.tools);
@@ -80,6 +85,7 @@ impl AgentConfigOverlay {
             default_model_id,
             tools,
             max_iterations,
+            mcp_servers,
         }
     }
 
@@ -182,6 +188,7 @@ impl From<&Harness> for AgentConfigOverlay {
             default_model_id: h.default_model_id,
             tools: vec![],
             max_iterations: None,
+            mcp_servers: h.mcp_servers.clone(),
         }
     }
 }
@@ -196,6 +203,7 @@ impl From<&Agent> for AgentConfigOverlay {
             default_model_id: a.default_model_id,
             tools: a.tools.clone(),
             max_iterations: a.max_iterations,
+            mcp_servers: a.mcp_servers.clone(),
         }
     }
 }
@@ -210,6 +218,7 @@ impl From<&Session> for AgentConfigOverlay {
             default_model_id: s.model_id,
             tools: s.tools.clone(),
             max_iterations: s.max_iterations,
+            mcp_servers: s.mcp_servers.clone(),
         }
     }
 }
@@ -218,6 +227,7 @@ impl From<&Session> for AgentConfigOverlay {
 mod tests {
     use super::*;
     use crate::capability_types::AgentCapabilityConfig;
+    use crate::mcp_server::{McpServerTransportType, ScopedMcpServer};
     use crate::network_access::NetworkAccessList;
     use crate::session_file::InitialFile;
 
@@ -443,6 +453,62 @@ mod tests {
         assert_eq!(merged.tools.len(), 2);
         assert_eq!(merged.tools[0].name(), "tool_a");
         assert_eq!(merged.tools[1].name(), "tool_b");
+    }
+
+    #[test]
+    fn merge_mcp_servers_overlay_wins_by_name() {
+        let mut base_servers = ScopedMcpServers::default();
+        base_servers.insert(
+            "docs".to_string(),
+            ScopedMcpServer {
+                transport_type: McpServerTransportType::Http,
+                url: "https://base.example.com/mcp".to_string(),
+                headers: Default::default(),
+            },
+        );
+
+        let mut overlay_servers = ScopedMcpServers::default();
+        overlay_servers.insert(
+            "docs".to_string(),
+            ScopedMcpServer {
+                transport_type: McpServerTransportType::Http,
+                url: "https://overlay.example.com/mcp".to_string(),
+                headers: Default::default(),
+            },
+        );
+        overlay_servers.insert(
+            "search".to_string(),
+            ScopedMcpServer {
+                transport_type: McpServerTransportType::Http,
+                url: "https://search.example.com/mcp".to_string(),
+                headers: Default::default(),
+            },
+        );
+
+        let merged = AgentConfigOverlay {
+            mcp_servers: base_servers,
+            ..Default::default()
+        }
+        .merge(AgentConfigOverlay {
+            mcp_servers: overlay_servers,
+            ..Default::default()
+        });
+
+        assert_eq!(merged.mcp_servers.len(), 2);
+        assert_eq!(
+            merged
+                .mcp_servers
+                .get("docs")
+                .map(|server| server.url.as_str()),
+            Some("https://overlay.example.com/mcp")
+        );
+        assert_eq!(
+            merged
+                .mcp_servers
+                .get("search")
+                .map(|server| server.url.as_str()),
+            Some("https://search.example.com/mcp")
+        );
     }
 
     #[test]

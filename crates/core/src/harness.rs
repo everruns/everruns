@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::capability_types::AgentCapabilityConfig;
+use crate::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use crate::network_access::NetworkAccessList;
 use crate::session_file::InitialFile;
 use crate::typed_id::{HarnessId, ModelId};
@@ -92,6 +93,14 @@ pub struct Harness {
     /// Merged with agent and session layers (allowed: intersect, blocked: union).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<NetworkAccessList>,
+    /// Remote MCP servers scoped to this harness and inherited by descendant layers.
+    #[serde(
+        default,
+        rename = "mcpServers",
+        alias = "mcp_servers",
+        skip_serializing_if = "scoped_mcp_servers_is_empty"
+    )]
+    pub mcp_servers: ScopedMcpServers,
     /// Whether this harness is built-in (system-managed, readonly).
     /// Built-in harnesses are provisioned during org initialization and
     /// cannot be modified or deleted via the API. Users can copy them.
@@ -141,6 +150,7 @@ pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
         capabilities: effective.capabilities,
         initial_files: effective.initial_files,
         network_access: effective.network_access,
+        mcp_servers: effective.mcp_servers,
     }
 }
 
@@ -168,6 +178,7 @@ mod tests {
             capabilities: vec![],
             initial_files: vec![],
             network_access: None,
+            mcp_servers: ScopedMcpServers::default(),
             is_built_in: false,
             status: HarnessStatus::Active,
             created_at: Utc::now(),

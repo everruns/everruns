@@ -15,9 +15,9 @@ impl Database {
     pub async fn create_harness(&self, org_id: i64, input: CreateHarnessRow) -> Result<HarnessRow> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            INSERT INTO harnesses (org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, network_access, is_built_in, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')
-            RETURNING id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            INSERT INTO harnesses (org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, is_built_in, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active')
+            RETURNING id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -29,6 +29,7 @@ impl Database {
         .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
         .bind(&input.initial_files)
+        .bind(&input.mcp_servers)
         .bind(&input.network_access)
         .bind(input.is_built_in)
         .fetch_one(&self.pool)
@@ -49,8 +50,8 @@ impl Database {
     ) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            INSERT INTO harnesses (id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, network_access, is_built_in, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active')
+            INSERT INTO harnesses (id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, is_built_in, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active')
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 display_name = EXCLUDED.display_name,
@@ -59,6 +60,7 @@ impl Database {
                 parent_harness_id = EXCLUDED.parent_harness_id,
                 tags = EXCLUDED.tags,
                 initial_files = EXCLUDED.initial_files,
+                mcp_servers = EXCLUDED.mcp_servers,
                 network_access = EXCLUDED.network_access,
                 is_built_in = EXCLUDED.is_built_in,
                 updated_at = NOW()
@@ -70,9 +72,10 @@ impl Database {
                 OR harnesses.parent_harness_id IS DISTINCT FROM EXCLUDED.parent_harness_id
                 OR harnesses.tags IS DISTINCT FROM EXCLUDED.tags
                 OR harnesses.initial_files IS DISTINCT FROM EXCLUDED.initial_files
+                OR harnesses.mcp_servers IS DISTINCT FROM EXCLUDED.mcp_servers
                 OR harnesses.network_access IS DISTINCT FROM EXCLUDED.network_access
                 OR harnesses.is_built_in IS DISTINCT FROM EXCLUDED.is_built_in
-            RETURNING id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(id.uuid())
@@ -85,6 +88,7 @@ impl Database {
         .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
         .bind(&input.initial_files)
+        .bind(&input.mcp_servers)
         .bind(&input.network_access)
         .bind(input.is_built_in)
         .fetch_optional(&self.pool)
@@ -96,7 +100,7 @@ impl Database {
     pub async fn get_harness(&self, org_id: i64, id: HarnessId) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            SELECT id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             FROM harnesses
             WHERE org_id = $1 AND id = $2
             "#,
@@ -112,7 +116,7 @@ impl Database {
     pub async fn get_harness_by_name(&self, org_id: i64, name: &str) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
-            SELECT id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             FROM harnesses
             WHERE org_id = $1 AND name = $2 AND status != 'deleted'
             "#,
@@ -142,7 +146,7 @@ impl Database {
             " AND status = 'active'"
         };
         let sql = format!(
-            r#"SELECT id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            r#"SELECT id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
                 FROM harnesses
                 WHERE org_id = $1{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
@@ -175,11 +179,12 @@ impl Database {
                 default_model_id = COALESCE($9, default_model_id),
                 tags = COALESCE($10, tags),
                 initial_files = COALESCE($11, initial_files),
-                network_access = CASE WHEN $12 THEN $13 ELSE network_access END,
-                status = COALESCE($14, status),
+                mcp_servers = COALESCE($12, mcp_servers),
+                network_access = CASE WHEN $13 THEN $14 ELSE network_access END,
+                status = COALESCE($15, status),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -193,6 +198,7 @@ impl Database {
         .bind(input.default_model_id.map(|m| m.uuid()))
         .bind(&input.tags)
         .bind(&input.initial_files)
+        .bind(&input.mcp_servers)
         .bind(input.network_access.is_some())
         .bind(input.network_access.flatten())
         .bind(&input.status)
@@ -209,7 +215,7 @@ impl Database {
     ) -> Result<Vec<HarnessRow>> {
         Ok(sqlx::query_as::<_, HarnessRow>(
             r#"
-            SELECT id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, is_built_in, status, created_at, updated_at, archived_at, deleted_at
             FROM harnesses
             WHERE org_id = $1 AND parent_harness_id = $2 AND status != 'deleted'
             ORDER BY created_at DESC

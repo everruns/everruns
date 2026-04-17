@@ -39,7 +39,7 @@ pub struct McpServerInfo {
 pub struct McpToolExecutor {
     grpc_client: GrpcClient,
     org_id: i64,
-    /// Cache of MCP server info by server name prefix
+    /// Cache of MCP server info by session scope + server name prefix.
     server_cache: tokio::sync::RwLock<HashMap<String, McpServerInfo>>,
 }
 
@@ -63,7 +63,8 @@ impl McpToolExecutor {
             .ok_or_else(|| anyhow!("Invalid MCP tool name: {}", tool_call.name))?;
 
         // Get MCP server info (from cache or gRPC)
-        let server_info = self.get_server_info(&server_prefix).await?;
+        let session_id = context.map(|ctx| ctx.session_id.uuid());
+        let server_info = self.get_server_info(session_id, &server_prefix).await?;
 
         // Call the MCP server
         let auth_header = self.resolve_auth_header(&server_info, context).await?;
@@ -105,11 +106,20 @@ impl McpToolExecutor {
     }
 
     /// Get MCP server info by name prefix, caching for efficiency
-    async fn get_server_info(&self, server_prefix: &str) -> Result<McpServerInfo> {
+    async fn get_server_info(
+        &self,
+        session_id: Option<uuid::Uuid>,
+        server_prefix: &str,
+    ) -> Result<McpServerInfo> {
+        let cache_key = match session_id {
+            Some(session_id) => format!("{session_id}:{server_prefix}"),
+            None => format!("org:{server_prefix}"),
+        };
+
         // Check cache first
         {
             let cache = self.server_cache.read().await;
-            if let Some(info) = cache.get(server_prefix) {
+            if let Some(info) = cache.get(&cache_key) {
                 return Ok(info.clone());
             }
         }
@@ -117,13 +127,13 @@ impl McpToolExecutor {
         // Fetch from gRPC
         let info = self
             .grpc_client
-            .get_mcp_server_by_prefix(self.org_id, server_prefix)
+            .get_mcp_server_by_prefix(self.org_id, session_id, server_prefix)
             .await?;
 
         // Cache for future use
         {
             let mut cache = self.server_cache.write().await;
-            cache.insert(server_prefix.to_string(), info.clone());
+            cache.insert(cache_key, info.clone());
         }
 
         Ok(info)
