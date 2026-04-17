@@ -36,6 +36,35 @@ fn generate_random_hex() -> String {
     hex::encode(bytes)
 }
 
+/// Build the relative `return_to` path that navigates the browser to the CLI
+/// auth callback endpoint after login.
+///
+/// The CLI callback is mounted on the API (`/v1/auth/cli/callback`). We derive
+/// the API path prefix (e.g. `/api`) by stripping `frontend_url` from
+/// `base_url`. When both live on the same origin with a path prefix, the
+/// browser can reach the backend through the standard frontend proxy. When
+/// they differ (rare dev setup), no prefix is added and operators must ensure
+/// the backend is reachable from the frontend origin.
+///
+/// The result is always a relative path starting with `/`. We only accept the
+/// stripped remainder when it is empty or starts with `/` — otherwise the strip
+/// landed mid-path-segment (e.g. `frontend_url=https://app` against
+/// `base_url=https://app.example.com/api` would yield `.example.com/api`),
+/// which would produce a `return_to` rejected by the UI sanitizer.
+fn build_cli_callback_path(frontend_url: &str, base_url: &str, auth_state: &str) -> String {
+    let stripped = base_url
+        .strip_prefix(frontend_url)
+        .map(|s| s.trim_end_matches('/'));
+    let api_path_prefix = match stripped {
+        Some(s) if s.is_empty() || s.starts_with('/') => s,
+        _ => "",
+    };
+    format!(
+        "{}/v1/auth/cli/callback?state={}",
+        api_path_prefix, auth_state
+    )
+}
+
 // ============================================
 // Request/Response types
 // ============================================
@@ -170,22 +199,26 @@ async fn cli_auth_start(
             AuthError::unauthorized("Failed to start CLI login")
         })?;
 
-    // Build auth URL — points to the server's login page with a redirect back to
-    // the CLI callback endpoint on the server.
-    // base_url already includes any API prefix (e.g. "/api"), so no env lookup needed.
-    let callback_url = format!(
-        "{}/v1/auth/cli/callback?state={}",
-        state.base_url.trim_end_matches('/'),
-        auth_state
-    );
-
-    // Redirect to the frontend login page with a redirect_to parameter
-    // pointing back to our CLI callback. Works for both OSS (built-in login)
-    // and external auth providers (login page handles redirect_to).
-    let auth_url = format!(
-        "{}/login?redirect_to={}",
+    // Build auth URL — points to the server's login page with a `return_to`
+    // pointing back to our CLI callback. `return_to` is the single public
+    // login-page contract for auth resume (see specs/authentication.md).
+    //
+    // We derive a browser-relative path rather than leaking the full backend URL
+    // into `return_to`, because `return_to` is restricted to relative paths on
+    // the frontend origin. The API path prefix is derived by stripping
+    // `frontend_url` from `base_url` (e.g. `/api`) — in the rare case the two
+    // live on different origins (dev without reverse proxy), there is no prefix
+    // and the browser would need the backend mounted under the frontend origin
+    // for CLI login to work.
+    let callback_path = build_cli_callback_path(
         state.frontend_url.trim_end_matches('/'),
-        urlencoding::encode(&callback_url)
+        state.base_url.trim_end_matches('/'),
+        &auth_state,
+    );
+    let auth_url = format!(
+        "{}/login?return_to={}",
+        state.frontend_url.trim_end_matches('/'),
+        urlencoding::encode(&callback_path)
     );
 
     audit::emit(
@@ -449,5 +482,67 @@ mod tests {
     fn test_generate_random_hex_format() {
         let hex = generate_random_hex();
         assert!(hex.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_build_cli_callback_path_with_api_prefix() {
+        // Standard production/local layout: base_url = frontend_url + "/api"
+        let path = build_cli_callback_path(
+            "https://app.example.com",
+            "https://app.example.com/api",
+            "abcd1234",
+        );
+        assert_eq!(path, "/api/v1/auth/cli/callback?state=abcd1234");
+    }
+
+    #[test]
+    fn test_build_cli_callback_path_same_origin_no_prefix() {
+        // Backend mounted at the frontend origin root
+        let path = build_cli_callback_path(
+            "https://app.example.com",
+            "https://app.example.com",
+            "abcd1234",
+        );
+        assert_eq!(path, "/v1/auth/cli/callback?state=abcd1234");
+    }
+
+    #[test]
+    fn test_build_cli_callback_path_different_origins() {
+        // Rare dev layout without a reverse proxy — no prefix we can safely
+        // derive. Result is still a relative path (no host leak into return_to).
+        let path =
+            build_cli_callback_path("http://localhost:9300", "http://localhost:9301", "abcd1234");
+        assert_eq!(path, "/v1/auth/cli/callback?state=abcd1234");
+    }
+
+    #[test]
+    fn test_build_cli_callback_path_strip_lands_mid_segment() {
+        // `frontend_url` is a string-prefix of `base_url` but not a path-prefix
+        // (the strip would land mid-segment). We must fall back to no prefix
+        // rather than emit a `return_to` like ".example.com/api/v1/...".
+        let path =
+            build_cli_callback_path("https://app", "https://app.example.com/api", "abcd1234");
+        assert_eq!(path, "/v1/auth/cli/callback?state=abcd1234");
+    }
+
+    #[test]
+    fn test_build_cli_callback_path_returns_relative() {
+        // `return_to` must always be a relative path (no absolute URL)
+        let path = build_cli_callback_path(
+            "https://app.example.com",
+            "https://app.example.com/api",
+            "state123",
+        );
+        assert!(path.starts_with('/'), "path must be relative: {}", path);
+        assert!(
+            !path.starts_with("//"),
+            "path must not be protocol-relative: {}",
+            path
+        );
+        assert!(
+            !path.contains("://"),
+            "path must not contain scheme: {}",
+            path
+        );
     }
 }

@@ -272,7 +272,7 @@ Works automatically because:
 3. `POST /oauth/token` — validates code + PKCE, creates JWT. Backend not involved.
 4. Token validation — standard JWT validation via `validate_token()`
 
-External backends only need to ensure their login page handles `redirect_to` query parameter (already required for CLI auth).
+External backends only need to ensure their login page honors the shared `return_to` query parameter (see [Login Page Contract](authentication.md#login-page-contract) in the authentication spec). `return_to` is the single public auth-resume parameter across app, MCP OAuth, and CLI flows — there is no separate `redirect_to`.
 
 ## Security
 

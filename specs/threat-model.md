@@ -584,6 +584,7 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 | TM-WEB-005 | Missing security headers | Low | CSP, X-Content-Type-Options: nosniff, Referrer-Policy, Permissions-Policy via tower-http middleware | MITIGATED |
 | TM-WEB-006 | Open redirect in OAuth flow | Medium | OAuth callbacks validated against configured redirect URIs | MITIGATED |
 | TM-WEB-007 | CORS wildcard exposure | Medium | `CORS_ALLOWED_ORIGINS` not set by default; must be explicitly configured | MITIGATED |
+| TM-WEB-008 | Open redirect via login page `return_to` | Medium | `sanitizeReturnTo` (`apps/ui/src/lib/auth-redirect.ts`) restricts `return_to` to relative paths on the frontend origin: must start with `/`, never `//` (protocol-relative), never `/\` (browser-normalized), never an absolute URL. Applied in login page and main layout (sessionStorage consumer). CLI auth start emits only relative `return_to` paths. See `specs/authentication.md` "Login Page Contract". | MITIGATED |
 
 ### Mitigation Details
 

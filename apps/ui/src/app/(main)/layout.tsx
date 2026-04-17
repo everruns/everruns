@@ -9,7 +9,11 @@ import { CommandPalette } from "@/components/command-palette";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CommandPaletteContext, useCommandPaletteState } from "@/hooks/use-command-palette";
-import { getLoginRedirectPath } from "@/lib/auth-redirect";
+import {
+  getLoginRedirectPath,
+  isBackendNavigationPath,
+  sanitizeReturnTo,
+} from "@/lib/auth-redirect";
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 import { NotificationsProvider } from "@/providers/notifications-provider";
@@ -63,11 +67,13 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   // After OAuth login, check sessionStorage for a pending return_to redirect
   useEffect(() => {
     if (!authLoading && !authUnavailable && isAuthenticated) {
-      const pendingReturnTo = sessionStorage.getItem("everruns_return_to");
+      const pendingReturnTo = sanitizeReturnTo(sessionStorage.getItem("everruns_return_to"));
+      sessionStorage.removeItem("everruns_return_to");
       if (pendingReturnTo) {
-        sessionStorage.removeItem("everruns_return_to");
-        // Backend paths (e.g. /oauth/authorize) need a full page navigation
-        if (pendingReturnTo.startsWith("/oauth/") || pendingReturnTo.startsWith("/api/")) {
+        // Backend paths (e.g. /oauth/authorize, /api/v1/auth/cli/callback,
+        // or /v1/... when frontend and backend share an origin) need a
+        // full page navigation so the reverse proxy forwards them.
+        if (isBackendNavigationPath(pendingReturnTo)) {
           window.location.assign(pendingReturnTo);
         } else {
           router.replace(pendingReturnTo);
