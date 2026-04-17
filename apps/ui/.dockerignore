@@ -6,7 +6,10 @@ node_modules
 out
 
 # Development
-.env*.local
+# Exclude all .env* files. A .env / .env.production accidentally placed here
+# would otherwise be copied into the builder layer by `COPY . .` and persist
+# in image history even if later removed (Docker layers are immutable).
+.env*
 *.log
 
 # Testing
