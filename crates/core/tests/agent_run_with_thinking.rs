@@ -27,6 +27,7 @@ use everruns_core::message_retriever::InputMessage;
 // ============================================================================
 
 #[rstest]
+#[case::anthropic_opus(ANTHROPIC_OPUS)]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
@@ -106,6 +107,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 // ============================================================================
 
 #[rstest]
+#[case::anthropic_opus(ANTHROPIC_OPUS)]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
