@@ -66,7 +66,14 @@ const INFINITY_CONTEXT_SYSTEM_PROMPT: &str = r#"## Conversation History
 
 This session may have earlier messages that are not visible in the active prompt.
 If you need information from earlier in the conversation, call `query_history`
-to search or retrieve those messages before answering."#;
+to search or retrieve those messages before answering.
+
+Your context window will be trimmed automatically as it approaches its limit, so
+you can continue working from where you left off. Do not stop tasks early due to
+token budget concerns. As you approach the budget, save any important progress
+or state to persistent storage (files, memory, or external tools) before the
+window refreshes. Complete tasks fully — never artificially cut a task short
+because context is running low."#;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct InfinityContextConfig {

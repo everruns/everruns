@@ -70,10 +70,18 @@ impl Capability for SubagentCapability {
 
 const SUBAGENT_SYSTEM_PROMPT: &str = r#"Delegate tasks to subagents running in their own context window.
 
+When to spawn a subagent:
 - Move noisy/verbose work off the main conversation (test runs, large searches).
-- Run independent tasks in parallel (multiple spawn_subagent calls in one response).
+- Fan out across independent items — spawn multiple subagents in the same response.
+- Isolate an independent workstream that does not need to share state with the main thread.
+
+When NOT to spawn a subagent:
+- Do not spawn a subagent for work you can complete directly in this response (e.g. editing a function you can already see).
+- Do not spawn a subagent for a single sequential step that needs the main context.
+
+Other rules:
 - Subagents cannot spawn other subagents (no nesting).
-- Use `blueprint` parameter to spawn specialist agents with their own tools and model."#;
+- Use the `blueprint` parameter to spawn specialist agents with their own tools and model."#;
 
 // =============================================================================
 // Helper: get platform store from context
