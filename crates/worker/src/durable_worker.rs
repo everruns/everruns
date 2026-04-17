@@ -49,8 +49,10 @@ struct ActTaskInput {
 
 /// Session context extracted from a task input.
 ///
-/// Used by failure paths (DLQ emission, cancellation) that need to surface
-/// user-facing events regardless of which phase (input/reason/act) failed.
+/// Used by failure handling such as DLQ emission and other task-input
+/// error paths that need to surface user-facing events regardless of which
+/// phase (input/reason/act) failed.
+#[derive(Debug)]
 struct TaskSessionContext {
     org_id: i64,
     session_id: SessionId,
@@ -64,14 +66,22 @@ struct TaskSessionContext {
 /// (`DurableTurnInput` for input/reason, `ActTaskInput` for act). Without
 /// handling both shapes, act-task failure paths silently skip emitting
 /// `session.idled` and leave the session stuck.
+///
+/// Returns `Err` with the underlying parse failure (or "unknown activity
+/// type") so callers can log enough context to diagnose unexpected
+/// `task.input` shapes in production.
 fn extract_task_session_context(
     activity_type: &str,
     input: &serde_json::Value,
-) -> Option<TaskSessionContext> {
+) -> Result<TaskSessionContext> {
+    use anyhow::Context;
     match activity_type {
         "process_input" | "reason" => {
-            let turn_input: DurableTurnInput = serde_json::from_value(input.clone()).ok()?;
-            Some(TaskSessionContext {
+            let turn_input: DurableTurnInput =
+                serde_json::from_value(input.clone()).with_context(|| {
+                    format!("parse DurableTurnInput for activity '{activity_type}'")
+                })?;
+            Ok(TaskSessionContext {
                 org_id: turn_input.org_id,
                 session_id: turn_input.session_id,
                 turn_id: turn_input.turn_id.unwrap_or_default(),
@@ -79,15 +89,18 @@ fn extract_task_session_context(
             })
         }
         "act" => {
-            let act_task_input: ActTaskInput = serde_json::from_value(input.clone()).ok()?;
-            Some(TaskSessionContext {
+            let act_task_input: ActTaskInput = serde_json::from_value(input.clone())
+                .with_context(|| format!("parse ActTaskInput for activity '{activity_type}'"))?;
+            Ok(TaskSessionContext {
                 org_id: act_task_input.org_id,
                 session_id: act_task_input.act_input.context.session_id,
                 turn_id: act_task_input.act_input.context.turn_id,
                 input_message_id: act_task_input.act_input.context.input_message_id,
             })
         }
-        _ => None,
+        other => Err(anyhow::anyhow!(
+            "unknown activity type '{other}' has no recognised task input shape"
+        )),
     }
 }
 
@@ -1110,13 +1123,17 @@ impl DurableWorker {
         // wrapped in `ActTaskInput`, while `reason`/`process_input` use
         // `DurableTurnInput`; both shapes must be handled or act-task DLQs
         // skip emitting session.idled and leave the session stuck.
-        let Some(ctx) = extract_task_session_context(&task.activity_type, &task.input) else {
-            warn!(
-                task_id = %task.id,
-                activity_type = %task.activity_type,
-                "Cannot emit DLQ error event: failed to parse task input"
-            );
-            return;
+        let ctx = match extract_task_session_context(&task.activity_type, &task.input) {
+            Ok(ctx) => ctx,
+            Err(err) => {
+                warn!(
+                    task_id = %task.id,
+                    activity_type = %task.activity_type,
+                    error = format!("{err:#}"),
+                    "Cannot emit DLQ error event: failed to parse task input"
+                );
+                return;
+            }
         };
 
         let grpc_client = match GrpcClient::connect(&self.grpc_address).await {
@@ -1854,6 +1871,18 @@ mod tests {
     #[test]
     fn test_extract_task_session_context_unknown_activity() {
         let value = json!({ "irrelevant": true });
-        assert!(extract_task_session_context("heartbeat", &value).is_none());
+        let err = extract_task_session_context("heartbeat", &value).expect_err("unknown errs");
+        assert!(format!("{err:#}").contains("heartbeat"));
+    }
+
+    #[test]
+    fn test_extract_task_session_context_act_malformed_includes_parse_error() {
+        let value = json!({ "org_id": 1, "context": { "session_id": "not-a-session-id" } });
+        let err = extract_task_session_context("act", &value).expect_err("malformed errs");
+        let chain = format!("{err:#}");
+        assert!(
+            chain.contains("ActTaskInput"),
+            "expected wrapping context in error chain: {chain}"
+        );
     }
 }
