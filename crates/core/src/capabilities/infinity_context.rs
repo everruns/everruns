@@ -70,10 +70,10 @@ to search or retrieve those messages before answering.
 
 Your context window will be trimmed automatically as it approaches its limit, so
 you can continue working from where you left off. Do not stop tasks early due to
-token budget concerns. As you approach the budget, save any important progress
-or state to persistent storage (files, memory, or external tools) before the
-window refreshes. Complete tasks fully — never artificially cut a task short
-because context is running low."#;
+token budget concerns. If a persistence tool is available to you (for example
+file system or memory tools), save any important progress or state through it
+before the window refreshes. Complete tasks fully — never artificially cut a
+task short because context is running low."#;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct InfinityContextConfig {

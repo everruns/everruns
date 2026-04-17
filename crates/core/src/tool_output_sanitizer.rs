@@ -68,7 +68,7 @@ If you need more detail, re-run with `output: \"verbose\"` or read the persisted
 pub const READ_ECONOMY_HINT: &str = "\n\n**File reading economy:** `read_file` returns at most 2000 lines by default.\n\
 - Locate the relevant region first with `grep_files`, then read that section with `read_file` using `offset` and `limit`.\n\
 - Use `list_directory` to understand file structure before reading.\n\
-- When a read is truncated, check `total_lines` to see how much remains and continue from the next offset.";
+- When a read is truncated, check `total_lines` to see how much remains and continue from `lines_shown.end` on the next call.";
 
 /// Strip ANSI escape sequences from text.
 ///
