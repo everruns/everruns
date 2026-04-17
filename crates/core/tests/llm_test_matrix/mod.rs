@@ -78,6 +78,12 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     "ANTHROPIC_API_KEY",
 );
 
+pub const ANTHROPIC_OPUS: ProviderModelConfig = ProviderModelConfig::new(
+    LlmProviderType::Anthropic,
+    "claude-opus-4-7-20260416",
+    "ANTHROPIC_API_KEY",
+);
+
 pub const ANTHROPIC_SONNET: ProviderModelConfig = ProviderModelConfig::new(
     LlmProviderType::Anthropic,
     "claude-sonnet-4-20250514",

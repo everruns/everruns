@@ -118,7 +118,8 @@ fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
     }
 }
 
-/// Adaptive thinking config for Claude 4.6+ models (Opus 4.6, Sonnet 4.6)
+/// Adaptive thinking config for recent Claude reasoning models
+/// (Opus 4.7, Opus 4.6, Sonnet 4.6)
 /// Uses thinking.type="adaptive" with effort parameter instead of budget_tokens
 /// Default: high, supports: low, medium, high, max (mapped to xhigh)
 fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
@@ -1375,7 +1376,42 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
     let base_id = normalize_anthropic_model_id(model_id);
 
     match base_id {
-        // Claude 4.6 series (newest)
+        // Claude 4.7 series (newest)
+        "claude-opus-4-7" => Some(LlmModelProfile {
+            name: "Claude Opus 4.7".into(),
+            family: "claude-opus-4-7".into(),
+            description: None,
+            release_date: Some("2026-04-16".into()),
+            last_updated: Some("2026-04-16".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2026-01-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 5.00,
+                output: 25.00,
+                cache_read: Some(0.50),
+                cost_tiers: vec![],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_000_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            tool_search: false,
+            supports_phases: false,
+        }),
+
+        // Claude 4.6 series
         "claude-opus-4-6" => Some(LlmModelProfile {
             name: "Claude Opus 4.6".into(),
             family: "claude-opus-4-6".into(),
@@ -2193,7 +2229,8 @@ fn normalize_model_id(model_id: &str) -> &str {
 fn normalize_anthropic_model_id(model_id: &str) -> &str {
     // Known base model patterns (order matters - more specific first)
     let patterns = [
-        // Claude 4.6
+        // Claude 4.7 / 4.6
+        "claude-opus-4-7",
         "claude-opus-4-6",
         "claude-sonnet-4-6",
         // Claude 4.5 series
@@ -2703,24 +2740,32 @@ mod tests {
         assert_eq!(effort.default, ReasoningEffort::Medium);
     }
 
-    // Claude 4.6 model tests
+    // Claude 4.7 / 4.6 model tests
 
     #[test]
-    fn test_claude_opus_46_profile() {
-        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-6").unwrap();
-        assert_eq!(profile.name, "Claude Opus 4.6");
-        assert_eq!(profile.family, "claude-opus-4-6");
+    fn test_claude_opus_47_profile() {
+        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-7").unwrap();
+        assert_eq!(profile.name, "Claude Opus 4.7");
+        assert_eq!(profile.family, "claude-opus-4-7");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
+        assert!(profile.temperature);
         assert!(profile.structured_output);
 
         let limits = profile.limits.unwrap();
         assert_eq!(limits.context, 1_000_000);
         assert_eq!(limits.output, 128_000);
+        assert_eq!(limits.max_media, None);
 
         let cost = profile.cost.unwrap();
         assert!((cost.input - 5.00).abs() < f64::EPSILON);
         assert!((cost.output - 25.00).abs() < f64::EPSILON);
+
+        let modalities = profile.modalities.unwrap();
+        assert_eq!(
+            modalities.input,
+            vec![Modality::Text, Modality::Image, Modality::Pdf]
+        );
 
         // Adaptive thinking: default high, supports low/medium/high/max(xhigh)
         let effort = profile.reasoning_effort.unwrap();
@@ -2732,6 +2777,33 @@ mod tests {
                 .iter()
                 .any(|v| v.value == ReasoningEffort::Xhigh)
         );
+    }
+
+    #[test]
+    fn test_claude_opus_46_profile() {
+        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-6").unwrap();
+        assert_eq!(profile.name, "Claude Opus 4.6");
+        assert_eq!(profile.family, "claude-opus-4-6");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+        assert!(profile.temperature);
+        assert!(profile.structured_output);
+
+        let limits = profile.limits.unwrap();
+        assert_eq!(limits.context, 1_000_000);
+        assert_eq!(limits.output, 128_000);
+        assert_eq!(limits.max_media, Some(600));
+
+        let cost = profile.cost.unwrap();
+        assert!((cost.input - 5.00).abs() < f64::EPSILON);
+        assert!((cost.output - 25.00).abs() < f64::EPSILON);
+
+        let modalities = profile.modalities.unwrap();
+        assert_eq!(modalities.input, vec![Modality::Text, Modality::Image]);
+
+        let effort = profile.reasoning_effort.unwrap();
+        assert_eq!(effort.default, ReasoningEffort::High);
+        assert_eq!(effort.values.len(), 4);
     }
 
     #[test]
@@ -2761,6 +2833,13 @@ mod tests {
                 .iter()
                 .any(|v| v.value == ReasoningEffort::Xhigh)
         );
+    }
+
+    #[test]
+    fn test_claude_opus_47_versioned() {
+        let profile =
+            get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-7-20260416").unwrap();
+        assert_eq!(profile.name, "Claude Opus 4.7");
     }
 
     #[test]
@@ -2857,7 +2936,15 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_claude_46_model_ids() {
+    fn test_normalize_claude_47_and_46_model_ids() {
+        assert_eq!(
+            normalize_anthropic_model_id("claude-opus-4-7"),
+            "claude-opus-4-7"
+        );
+        assert_eq!(
+            normalize_anthropic_model_id("claude-opus-4-7-20260416"),
+            "claude-opus-4-7"
+        );
         assert_eq!(
             normalize_anthropic_model_id("claude-opus-4-6"),
             "claude-opus-4-6"

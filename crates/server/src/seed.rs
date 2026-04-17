@@ -114,7 +114,7 @@ mod seed_ids {
     pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
 
     // Anthropic Models (0x300-0x3FF)
-    pub const CLAUDE_OPUS_4_6: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000309);
+    pub const CLAUDE_OPUS_4_7: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000309);
     pub const CLAUDE_SONNET_4_6: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030a);
     pub const CLAUDE_HAIKU_4_6: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030b);
     pub const CLAUDE_OPUS_4_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000301);
@@ -1599,12 +1599,12 @@ const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // Anthropic Claude 4.6 series
+    // Anthropic Claude 4.7 / 4.6 series
     SeedModel {
-        id: seed_ids::CLAUDE_OPUS_4_6,
+        id: seed_ids::CLAUDE_OPUS_4_7,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
-        model_id: "claude-opus-4-6",
-        display_name: "Claude Opus 4.6",
+        model_id: "claude-opus-4-7",
+        display_name: "Claude Opus 4.7",
         enabled: true,     // Enabled by default
         is_favorite: true, // Favorite model
     },

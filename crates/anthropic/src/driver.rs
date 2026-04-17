@@ -1244,6 +1244,9 @@ impl AnthropicModelInfo {
             if image_input {
                 input_mods.push(Modality::Image);
             }
+            if pdf_input {
+                input_mods.push(Modality::Pdf);
+            }
             Some(LlmModelModalities {
                 input: input_mods,
                 output: vec![Modality::Text],
@@ -1407,6 +1410,7 @@ impl AnthropicModelInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::llm_models::Modality;
 
     // These tests verify that empty text blocks are filtered out to avoid
     // Anthropic API error: "text content blocks must be non-empty"
@@ -1878,8 +1882,8 @@ mod tests {
     #[test]
     fn test_to_discovered_profile_with_capabilities() {
         let info = AnthropicModelInfo {
-            id: "claude-opus-4-6-20260205".into(),
-            display_name: "Claude Opus 4.6".into(),
+            id: "claude-opus-4-7-20260416".into(),
+            display_name: "Claude Opus 4.7".into(),
             created_at: None,
             max_input_tokens: Some(1_000_000),
             max_tokens: Some(128_000),
@@ -1906,9 +1910,15 @@ mod tests {
         };
 
         let profile = info.to_discovered_profile();
+        assert_eq!(profile.name, "Claude Opus 4.7");
+        assert_eq!(profile.family, "claude-opus-4-7");
         assert!(profile.attachment); // image + PDF
         assert!(profile.reasoning);
         assert!(profile.structured_output);
+        assert_eq!(
+            profile.modalities.as_ref().map(|m| m.input.clone()),
+            Some(vec![Modality::Text, Modality::Image, Modality::Pdf])
+        );
         assert!(profile.reasoning_effort.is_some());
         let effort = profile.reasoning_effort.unwrap();
         assert_eq!(effort.values.len(), 4); // low, medium, high, max

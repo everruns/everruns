@@ -68,7 +68,7 @@ export default function ThinkingAnimationsPage() {
         <div className="space-y-3">
           <h2 className="text-sm font-medium text-foreground">With model name</h2>
           <div className="flex items-center justify-center h-16 border border-dashed border-border bg-background">
-            <ThinkingIndicator model="claude-opus-4-6" />
+            <ThinkingIndicator model="claude-opus-4-7" />
           </div>
         </div>
       </div>
