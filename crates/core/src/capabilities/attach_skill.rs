@@ -86,6 +86,90 @@ pub struct SkillInstructions {
     pub files: Vec<(String, String)>,
 }
 
+/// A skill contributed by a capability in code.
+///
+/// During session startup, contributions are normalized into mount points under
+/// `/.agents/skills/{name}/` so the built-in `SkillsCapability` discovers them
+/// alongside user-uploaded and registry-based skills. This reuses the existing
+/// discovery, prompt listing, and activation path rather than introducing a
+/// parallel skill pipeline.
+#[derive(Debug, Clone)]
+pub struct SkillContribution {
+    /// Skill name — also used as the mount directory name.
+    pub name: String,
+    /// Short description shown in the skill list and prompt.
+    pub description: String,
+    /// SKILL.md body (markdown instructions).
+    pub instructions: String,
+    /// Bundled files mounted alongside SKILL.md (path -> content).
+    pub files: Vec<(String, String)>,
+    /// Whether this skill is user-invocable as a /slash command.
+    pub user_invocable: bool,
+    /// Whether the model is prevented from auto-invoking this skill.
+    pub disable_model_invocation: bool,
+}
+
+impl SkillContribution {
+    /// Create a new skill contribution with default flags
+    /// (`user_invocable = true`, `disable_model_invocation = false`).
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        instructions: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            instructions: instructions.into(),
+            files: Vec::new(),
+            user_invocable: true,
+            disable_model_invocation: false,
+        }
+    }
+
+    /// Attach bundled files that will be mounted alongside SKILL.md.
+    pub fn with_files(mut self, files: Vec<(String, String)>) -> Self {
+        self.files = files;
+        self
+    }
+
+    /// Set whether the skill is user-invocable as a /slash command.
+    pub fn with_user_invocable(mut self, flag: bool) -> Self {
+        self.user_invocable = flag;
+        self
+    }
+
+    /// Set whether the model is prevented from auto-invoking this skill.
+    pub fn with_disable_model_invocation(mut self, flag: bool) -> Self {
+        self.disable_model_invocation = flag;
+        self
+    }
+
+    /// Build a read-only mount at `/.agents/skills/{name}/` containing the
+    /// reconstructed `SKILL.md` and all bundled files. `owner_id` is recorded
+    /// as the mount's owning capability, typically the contributing capability's
+    /// ID.
+    pub fn to_mount(&self, owner_id: &str) -> MountPoint {
+        let skill_md = reconstruct_skill_md(
+            &self.name,
+            &self.description,
+            &self.instructions,
+            self.user_invocable,
+            self.disable_model_invocation,
+        );
+        let mut builder = MountDirectoryBuilder::new();
+        builder = builder.file("SKILL.md", &skill_md);
+        for (path, content) in &self.files {
+            builder = builder.file(path, content);
+        }
+        MountPoint::readonly(
+            format!("{}/{}", SKILLS_DISCOVERY_PATH, self.name),
+            builder.build(),
+            owner_id,
+        )
+    }
+}
+
 /// Attach Skill Virtual Capability.
 ///
 /// Mounts a database-registered skill into `/.agents/skills/{name}/` in the
@@ -256,7 +340,7 @@ impl Capability for AttachSkillCapability {
 ///
 /// <instructions body>
 /// ```
-fn reconstruct_skill_md(
+pub fn reconstruct_skill_md(
     name: &str,
     description: &str,
     instructions: &str,
@@ -592,6 +676,79 @@ mod tests {
 
         let parsed: SkillMeta = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.name, "test-skill");
+    }
+
+    fn inline_file_content<'a>(
+        entries: &'a std::collections::HashMap<String, crate::capability_types::MountEntry>,
+        name: &str,
+    ) -> &'a str {
+        use crate::capability_types::MountSource;
+        match &entries.get(name).expect("entry missing").source {
+            MountSource::InlineFile { content, .. } => content.as_str(),
+            _ => panic!("Expected InlineFile for {name}"),
+        }
+    }
+
+    #[test]
+    fn test_skill_contribution_to_mount_basic() {
+        let contribution = SkillContribution::new(
+            "search-playbook",
+            "Run a structured code search playbook",
+            "# Playbook\n1. Grep for symbol\n2. Read hits\n",
+        );
+
+        let mount = contribution.to_mount("cap:owner");
+
+        assert_eq!(mount.path, "/.agents/skills/search-playbook");
+        assert_eq!(mount.capability_id, "cap:owner");
+        assert!(mount.is_readonly());
+
+        use crate::capability_types::MountSource;
+        match &mount.source {
+            MountSource::InlineDirectory { entries } => {
+                let skill_md = inline_file_content(entries, "SKILL.md");
+                let parsed = crate::skill::parse_skill_md(skill_md).unwrap();
+                assert_eq!(parsed.name, "search-playbook");
+                assert_eq!(parsed.description, "Run a structured code search playbook");
+                assert!(parsed.user_invocable);
+                assert!(!parsed.disable_model_invocation);
+                assert!(parsed.instructions.contains("# Playbook"));
+                assert_eq!(entries.len(), 1);
+            }
+            _ => panic!("Expected InlineDirectory"),
+        }
+    }
+
+    #[test]
+    fn test_skill_contribution_to_mount_with_files_and_flags() {
+        let contribution = SkillContribution::new("ops", "Ops runbook", "# Ops\nRun the thing.")
+            .with_files(vec![
+                (
+                    "scripts/run.sh".to_string(),
+                    "#!/bin/sh\necho hi\n".to_string(),
+                ),
+                ("README.md".to_string(), "# Ops README".to_string()),
+            ])
+            .with_user_invocable(false)
+            .with_disable_model_invocation(true);
+
+        let mount = contribution.to_mount("gpt_image_gen");
+
+        use crate::capability_types::MountSource;
+        match &mount.source {
+            MountSource::InlineDirectory { entries } => {
+                assert_eq!(entries.len(), 3);
+                assert!(entries.contains_key("SKILL.md"));
+                assert!(entries.contains_key("scripts/run.sh"));
+                assert!(entries.contains_key("README.md"));
+
+                let parsed =
+                    crate::skill::parse_skill_md(inline_file_content(entries, "SKILL.md")).unwrap();
+                assert!(!parsed.user_invocable);
+                assert!(parsed.disable_model_invocation);
+            }
+            _ => panic!("Expected InlineDirectory"),
+        }
     }
 
     #[test]
