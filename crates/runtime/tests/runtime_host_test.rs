@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::MessageRetriever;
+use everruns_core::atoms::ReasonResult;
 use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput};
 use everruns_core::capabilities::{
     MemoryCapability, SystemPromptContext, TestMathCapability, collect_capabilities_with_configs,
@@ -22,7 +23,8 @@ use everruns_core::{
 };
 use everruns_runtime::{
     InMemorySessionFileStore, RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle,
-    execute_act_activity, execute_input_activity,
+    RuntimeTurnPlan, RuntimeTurnState, execute_act_activity, execute_input_activity,
+    plan_next_host_turn,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -294,6 +296,20 @@ fn session(session_id: SessionId, harness_id: HarnessId) -> Session {
     }
 }
 
+fn turn_state(session_id: SessionId, harness_id: HarnessId) -> RuntimeTurnState {
+    RuntimeTurnState {
+        org_id: 1,
+        session_id,
+        harness_id,
+        agent_id: None,
+        input_message_id: MessageId::from_uuid(Uuid::now_v7()),
+        turn_id: Some(TurnId::from_uuid(Uuid::now_v7())),
+        previous_response_id: None,
+        iteration: 1,
+        request_id: None,
+    }
+}
+
 fn mock_host() -> MockHostAdapter {
     let mut capability_registry = CapabilityRegistry::new();
     capability_registry.register(TestMathCapability);
@@ -503,4 +519,164 @@ async fn lifecycle_helper_sets_waiting_for_tool_results_status() {
         .unwrap()
         .unwrap();
     assert_eq!(session.status, SessionStatus::WaitingForToolResults);
+}
+
+#[tokio::test]
+async fn plan_next_host_turn_schedules_reason_after_process_input() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+
+    let input = turn_state(session_id, harness_id);
+    let turn_id = TurnId::from_uuid(Uuid::now_v7());
+    let output = serde_json::json!({ "turn_id": turn_id.to_string() });
+
+    let plan = plan_next_host_turn(&adapter, "process_input", &input, &output, 0)
+        .await
+        .unwrap();
+
+    match plan {
+        RuntimeTurnPlan::ScheduleReason(next) => {
+            assert_eq!(next.session_id, session_id);
+            assert_eq!(next.harness_id, harness_id);
+            assert_eq!(next.turn_id, Some(turn_id));
+            assert_eq!(next.iteration, 1);
+            assert_eq!(next.previous_response_id, None);
+        }
+        other => panic!("expected ScheduleReason, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+
+    let input = turn_state(session_id, harness_id);
+    let output = serde_json::to_value(ReasonResult {
+        success: true,
+        text: "Calling a tool".into(),
+        tool_calls: vec![ToolCall {
+            id: "call_mul".into(),
+            name: "multiply".into(),
+            arguments: serde_json::json!({ "a": 6, "b": 7 }),
+        }],
+        has_tool_calls: true,
+        tool_definitions: vec![],
+        max_iterations: 8,
+        error: None,
+        usage: None,
+        response_id: Some("resp_123".into()),
+        locale: Some("en-US".into()),
+        network_access: None,
+    })
+    .unwrap();
+
+    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+        .await
+        .unwrap();
+
+    match plan {
+        RuntimeTurnPlan::ScheduleAct(plan) => {
+            assert_eq!(plan.input.context.session_id, session_id);
+            assert_eq!(plan.input.context.turn_id, input.turn_id.unwrap());
+            assert_eq!(plan.input.harness_id, harness_id);
+            assert_eq!(plan.iteration, 1);
+            assert_eq!(plan.previous_response_id.as_deref(), Some("resp_123"));
+            assert_eq!(plan.input.tool_calls.len(), 1);
+        }
+        other => panic!("expected ScheduleAct, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+
+    let input = turn_state(session_id, harness_id);
+    let output = serde_json::to_value(ReasonResult {
+        success: true,
+        text: "Continuing".into(),
+        tool_calls: vec![],
+        has_tool_calls: false,
+        tool_definitions: vec![],
+        max_iterations: 8,
+        error: None,
+        usage: None,
+        response_id: Some("resp_steer".into()),
+        locale: None,
+        network_access: None,
+    })
+    .unwrap();
+
+    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 2)
+        .await
+        .unwrap();
+
+    match plan {
+        RuntimeTurnPlan::ScheduleReason(next) => {
+            assert_eq!(next.iteration, 2);
+            assert_eq!(next.previous_response_id.as_deref(), Some("resp_steer"));
+            assert_eq!(next.turn_id, input.turn_id);
+        }
+        other => panic!("expected ScheduleReason, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn plan_next_host_turn_waits_for_tool_results_when_session_hint_requests_it() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter.harness_store.add_harness(harness(harness_id)).await;
+
+    let mut host_session = session(session_id, harness_id);
+    host_session.hints = Some(std::collections::HashMap::from([(
+        "setup_connection".to_string(),
+        serde_json::json!(true),
+    )]));
+    adapter.session_store.insert(host_session).await;
+
+    let input = turn_state(session_id, harness_id);
+    let output = serde_json::json!({
+        "waiting_for_tool_results": true,
+        "blocked": false
+    });
+
+    let plan = plan_next_host_turn(&adapter, "act", &input, &output, 0)
+        .await
+        .unwrap();
+
+    match plan {
+        RuntimeTurnPlan::WaitForToolResults { resume } => {
+            assert_eq!(resume.iteration, 2);
+            assert_eq!(resume.turn_id, input.turn_id);
+            let session = adapter
+                .session_store
+                .get_session(session_id)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(session.status, SessionStatus::WaitingForToolResults);
+        }
+        other => panic!("expected WaitForToolResults, got {other:?}"),
+    }
 }

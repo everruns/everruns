@@ -13,14 +13,13 @@ use everruns_core::ActInput;
 use everruns_core::atoms::AtomContext;
 use everruns_core::typed_id::{ExecId, TurnId};
 use everruns_durable::{
-    ActivityOptions, ClaimedTask, WorkerInfo, WorkflowEvent, WorkflowEventStore, WorkflowStatus,
-    append_event, record_activity_completed, record_activity_failed, record_activity_started,
-    record_workflow_completed,
+    ClaimedTask, WorkerInfo, WorkflowEventStore, WorkflowStatus, record_activity_completed,
+    record_activity_failed, record_activity_started,
 };
 use everruns_runtime::{
-    RuntimeSessionLifecycle, execute_act_activity as runtime_execute_act_activity,
+    RuntimeActPlan, RuntimeTurnPlan, execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
-    execute_reason_activity as runtime_execute_reason_activity,
+    execute_reason_activity as runtime_execute_reason_activity, plan_next_host_turn,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -450,7 +449,6 @@ where
                 .filter(|&it| it > 0)
                 .unwrap_or(1);
 
-            // Extract request_id propagated from the originating HTTP request
             let act_request_id = task
                 .input
                 .get("request_id")
@@ -516,51 +514,6 @@ where
                         activity_type = %task.activity_type,
                         "Task completed successfully"
                     );
-
-                    // After act activity: if ActAtom signaled waiting_for_tool_results
-                    // (connection setup, client-side tools), check the setup_connection
-                    // client hint before pausing. When the hint is true, set the session
-                    // status so the client can handle the tool calls. When absent, skip
-                    // the pause — the LLM will see the tool errors and inform the user.
-                    if task.activity_type == "act"
-                        && let Some(ref ti) = turn_input_opt
-                    {
-                        let act_result: Option<everruns_core::ActResult> =
-                            serde_json::from_value(output.clone()).ok();
-                        let waiting = act_result
-                            .as_ref()
-                            .is_some_and(|r| r.waiting_for_tool_results);
-                        if waiting {
-                            // Check the setup_connection hint before pausing
-                            let hint_enabled =
-                                match adapters.get_session(ti.org_id, ti.session_id.uuid()).await {
-                                    Ok(Some(session)) => {
-                                        let hints = everruns_core::Controls::resolve_hints(
-                                            session.hints.as_ref(),
-                                            None,
-                                        );
-                                        hints
-                                            .get("setup_connection")
-                                            .and_then(|v| v.as_bool())
-                                            .unwrap_or(false)
-                                    }
-                                    _ => false,
-                                };
-
-                            if hint_enabled {
-                                let lifecycle = RuntimeSessionLifecycle::new(
-                                    WorkerRuntimeHost::new(adapters.clone()),
-                                    ti.org_id,
-                                    ti.session_id,
-                                );
-                                lifecycle.waiting_for_tool_results().await;
-                            } else {
-                                info!(
-                                    "setup_connection hint absent; skipping wait for tool results"
-                                );
-                            }
-                        }
-                    }
 
                     // Schedule next activity if needed (only for workflow-bound tasks)
                     if let (Some(turn_input), Some(wf_id)) = (turn_input_opt, task.workflow_id) {
@@ -732,300 +685,135 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
     input: &DurableTurnInput,
     output: &serde_json::Value,
 ) -> Result<()> {
-    use everruns_durable::TaskDefinition;
+    let pending_user_message_count = if completed_activity == "reason" {
+        store
+            .consume_pending_signals(workflow_id)
+            .await
+            .map_err(|error| anyhow::anyhow!("Failed to consume workflow signals: {}", error))?
+            .into_iter()
+            .filter(|signal| signal.signal_type == everruns_durable::signal_types::USER_MESSAGE)
+            .count()
+    } else {
+        0
+    };
 
-    match completed_activity {
-        "process_input" => {
-            // Extract turn_id from output
-            let turn_id: Option<TurnId> = output
-                .get("turn_id")
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse().ok());
-
-            // Create input with turn_id for subsequent activities
-            let input_with_turn = DurableTurnInput {
-                org_id: input.org_id,
-                session_id: input.session_id,
-                harness_id: input.harness_id,
-                agent_id: input.agent_id,
-                input_message_id: input.input_message_id,
-                turn_id,
-                previous_response_id: None,
-                iteration: 1,
-                request_id: input.request_id.clone(),
-            };
-            let input_json = serde_json::to_value(&input_with_turn)?;
-
-            // Schedule reason activity
-            let activity_id = format!("reason_{}", Uuid::now_v7());
-            let task = TaskDefinition {
-                workflow_id: Some(workflow_id),
-                activity_id: activity_id.clone(),
-                activity_type: "reason".to_string(),
-                input: input_json.clone(),
-                options: Default::default(),
-            };
+    match plan_next_host_turn(
+        &WorkerRuntimeHost::new(adapters.clone()),
+        completed_activity,
+        input,
+        output,
+        pending_user_message_count,
+    )
+    .await?
+    {
+        RuntimeTurnPlan::ScheduleReason(next) => {
+            enqueue_reason_task(store, workflow_id, &next).await?;
+        }
+        RuntimeTurnPlan::ScheduleAct(plan) => {
+            enqueue_act_task(store, workflow_id, &plan).await?;
+        }
+        RuntimeTurnPlan::Complete { error } => {
+            everruns_durable::record_workflow_completed(
+                store.as_ref(),
+                workflow_id,
+                output.clone(),
+            )
+            .await;
             store
-                .enqueue_task(task)
+                .update_workflow_status(
+                    workflow_id,
+                    WorkflowStatus::Completed,
+                    None,
+                    error.map(everruns_durable::WorkflowError::new),
+                )
                 .await
-                .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
-
-            // Record ActivityScheduled event
-            let scheduled_event = WorkflowEvent::ActivityScheduled {
-                activity_id,
-                activity_type: "reason".to_string(),
-                input: input_json,
-                options: ActivityOptions::default(),
-            };
-            let _ = append_event(store.as_ref(), workflow_id, scheduled_event).await;
-
-            debug!(workflow_id = %workflow_id, turn_id = ?turn_id, "Scheduled reason activity");
+                .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
         }
-        "reason" => {
-            let reason_result: everruns_core::ReasonResult = serde_json::from_value(output.clone())
-                .map_err(|e| anyhow::anyhow!("Failed to parse ReasonResult: {}", e))?;
-
-            let response_id = reason_result.response_id.clone();
-
-            // Check for pending user messages (steering signals) only when
-            // the turn would otherwise complete (no tool calls, success).
-            let has_pending_user_messages = if !reason_result.has_tool_calls
-                && reason_result.success
-            {
-                let signals = match store.consume_pending_signals(workflow_id).await {
-                    Ok(s) => s,
-                    Err(e) => {
-                        warn!(workflow_id = %workflow_id, error = ?e,
-                                "Failed to consume steering signals; treating as no pending messages");
-                        Vec::new()
-                    }
-                };
-                let count = signals
-                    .iter()
-                    .filter(|s| s.signal_type == everruns_durable::signal_types::USER_MESSAGE)
-                    .count();
-                if count > 1 {
-                    info!(
-                        workflow_id = %workflow_id,
-                        queued_count = count,
-                        "Multiple user messages arrived during turn"
-                    );
-                }
-                count > 0
-            } else {
-                false
-            };
-
-            if reason_result.has_tool_calls && reason_result.success {
-                let turn_id = input.turn_id.unwrap_or_default();
-
-                let act_input = ActInput {
-                    org_id: Some(input.org_id),
-                    context: AtomContext {
-                        session_id: input.session_id,
-                        turn_id,
-                        input_message_id: input.input_message_id,
-                        exec_id: ExecId::new(),
-                    },
-                    harness_id: input.harness_id,
-                    agent_id: input.agent_id,
-                    tool_calls: reason_result.tool_calls,
-                    tool_definitions: reason_result.tool_definitions,
-                    locale: reason_result.locale,
-                    blueprint_id: None,
-                    network_access: reason_result.network_access,
-                };
-                let mut act_input_json = serde_json::to_value(&act_input)?;
-                if let Some(rid) = &response_id {
-                    act_input_json["previous_response_id"] = serde_json::json!(rid);
-                }
-                act_input_json["iteration"] = serde_json::json!(input.iteration);
-                if let Some(rid) = &input.request_id {
-                    act_input_json["request_id"] = serde_json::json!(rid);
-                }
-                let activity_id = format!("act_{}", Uuid::now_v7());
-
-                let task = TaskDefinition {
-                    workflow_id: Some(workflow_id),
-                    activity_id: activity_id.clone(),
-                    activity_type: "act".to_string(),
-                    input: act_input_json.clone(),
-                    options: Default::default(),
-                };
-                store
-                    .enqueue_task(task)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
-
-                let scheduled_event = WorkflowEvent::ActivityScheduled {
-                    activity_id,
-                    activity_type: "act".to_string(),
-                    input: act_input_json,
-                    options: ActivityOptions::default(),
-                };
-                let _ = append_event(store.as_ref(), workflow_id, scheduled_event).await;
-
-                debug!(workflow_id = %workflow_id, "Scheduled act activity");
-            } else if has_pending_user_messages {
-                // User message(s) arrived during this turn. Continue the same
-                // turn — the message retriever re-queries the DB on next reason.
-                let next_iteration = input.iteration.saturating_add(1);
-                let continued_input = DurableTurnInput {
-                    org_id: input.org_id,
-                    session_id: input.session_id,
-                    harness_id: input.harness_id,
-                    agent_id: input.agent_id,
-                    input_message_id: input.input_message_id,
-                    turn_id: input.turn_id,
-                    previous_response_id: response_id,
-                    iteration: next_iteration,
-                    request_id: input.request_id.clone(),
-                };
-                let continued_json = serde_json::to_value(&continued_input)?;
-                let activity_id = format!("reason_{}", Uuid::now_v7());
-
-                let task = TaskDefinition {
-                    workflow_id: Some(workflow_id),
-                    activity_id: activity_id.clone(),
-                    activity_type: "reason".to_string(),
-                    input: continued_json.clone(),
-                    options: Default::default(),
-                };
-                store.enqueue_task(task).await.map_err(|e| {
-                    anyhow::anyhow!("Failed to enqueue steered reason iteration: {}", e)
-                })?;
-
-                let scheduled_event = WorkflowEvent::ActivityScheduled {
-                    activity_id,
-                    activity_type: "reason".to_string(),
-                    input: continued_json,
-                    options: ActivityOptions::default(),
-                };
-                let _ = append_event(store.as_ref(), workflow_id, scheduled_event).await;
-
-                info!(
-                    workflow_id = %workflow_id,
-                    iteration = next_iteration,
-                    "Steering: continuing turn with new reason iteration"
-                );
-            } else {
-                // Turn truly complete. Emit turn event + session.idled + mark done.
-                let turn_id = input.turn_id.unwrap_or_default();
-                let lifecycle = RuntimeSessionLifecycle::new(
-                    WorkerRuntimeHost::new(adapters.clone()),
-                    input.org_id,
-                    input.session_id,
-                );
-
-                if reason_result.success {
-                    lifecycle
-                        .emit_turn_completed(
-                            turn_id,
-                            input.input_message_id,
-                            input.iteration,
-                            reason_result.usage.clone(),
-                            None,
-                        )
-                        .await;
-                    lifecycle
-                        .emit_session_idled(
-                            turn_id,
-                            input.input_message_id,
-                            Some(input.iteration),
-                            reason_result.usage.clone(),
-                        )
-                        .await;
-                } else {
-                    lifecycle
-                        .turn_failed(
-                            turn_id,
-                            input.input_message_id,
-                            "An error occurred while processing your request.",
-                            Some("llm_error"),
-                        )
-                        .await;
-                }
-
-                record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
-                store
-                    .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
-
-                info!(workflow_id = %workflow_id, "Workflow completed");
-            }
-        }
-        "act" => {
-            let blocked = output
-                .get("blocked")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false);
-            if blocked {
-                record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
-                store
-                    .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
-                info!(workflow_id = %workflow_id, "Workflow completed after dependency block");
-                return Ok(());
-            }
-            // Check if act needs external input (connection setup, client-side tools).
-            // ActAtom sets waiting_for_tool_results via hooks; worker just checks the flag.
-            let waiting = output
-                .get("waiting_for_tool_results")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-
-            if waiting {
-                // Complete workflow — it will be resumed by tool-results endpoint
-                record_workflow_completed(store.as_ref(), workflow_id, output.clone()).await;
-                store
-                    .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
-
-                info!(
-                    workflow_id = %workflow_id,
-                    "Workflow completed — waiting for tool results"
-                );
-            } else {
-                // Normal flow: schedule another reason activity
-                // Increment iteration count for the next reason step
-                let mut next_input = input.clone();
-                next_input.iteration = next_input.iteration.saturating_add(1);
-                let input_json = serde_json::to_value(&next_input)?;
-                let activity_id = format!("reason_{}", Uuid::now_v7());
-                let task = TaskDefinition {
-                    workflow_id: Some(workflow_id),
-                    activity_id: activity_id.clone(),
-                    activity_type: "reason".to_string(),
-                    input: input_json.clone(),
-                    options: Default::default(),
-                };
-                store
-                    .enqueue_task(task)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
-
-                let scheduled_event = WorkflowEvent::ActivityScheduled {
-                    activity_id,
-                    activity_type: "reason".to_string(),
-                    input: input_json,
-                    options: ActivityOptions::default(),
-                };
-                let _ = append_event(store.as_ref(), workflow_id, scheduled_event).await;
-
-                debug!(workflow_id = %workflow_id, turn_id = ?input.turn_id, "Scheduled reason activity after act");
-            }
-        }
-        _ => {
-            warn!(
-                activity = completed_activity,
-                "Unknown activity type completed"
-            );
+        RuntimeTurnPlan::WaitForToolResults { resume } => {
+            everruns_durable::record_workflow_completed(
+                store.as_ref(),
+                workflow_id,
+                output.clone(),
+            )
+            .await;
+            store
+                .update_workflow_status(
+                    workflow_id,
+                    WorkflowStatus::Completed,
+                    Some(serde_json::to_value(&resume)?),
+                    None,
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to persist wait-for-tools state: {}", e))?;
         }
     }
 
+    Ok(())
+}
+
+async fn enqueue_reason_task<S: WorkflowEventStore>(
+    store: &Arc<S>,
+    workflow_id: Uuid,
+    input: &DurableTurnInput,
+) -> Result<()> {
+    let activity_id = format!("reason_{}", Uuid::now_v7());
+    let input_json = serde_json::to_value(input)?;
+    let task = everruns_durable::TaskDefinition {
+        workflow_id: Some(workflow_id),
+        activity_id: activity_id.clone(),
+        activity_type: "reason".to_string(),
+        input: input_json.clone(),
+        options: Default::default(),
+    };
+    store
+        .enqueue_task(task)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
+
+    let scheduled_event = everruns_durable::WorkflowEvent::ActivityScheduled {
+        activity_id,
+        activity_type: "reason".to_string(),
+        input: input_json,
+        options: everruns_durable::ActivityOptions::default(),
+    };
+    let _ = everruns_durable::append_event(store.as_ref(), workflow_id, scheduled_event).await;
+    Ok(())
+}
+
+async fn enqueue_act_task<S: WorkflowEventStore>(
+    store: &Arc<S>,
+    workflow_id: Uuid,
+    plan: &RuntimeActPlan,
+) -> Result<()> {
+    let mut act_input_json = serde_json::to_value(&plan.input)?;
+    if let Some(response_id) = &plan.previous_response_id {
+        act_input_json["previous_response_id"] = serde_json::json!(response_id);
+    }
+    act_input_json["iteration"] = serde_json::json!(plan.iteration);
+    if let Some(request_id) = &plan.request_id {
+        act_input_json["request_id"] = serde_json::json!(request_id);
+    }
+
+    let activity_id = format!("act_{}", Uuid::now_v7());
+    let task = everruns_durable::TaskDefinition {
+        workflow_id: Some(workflow_id),
+        activity_id: activity_id.clone(),
+        activity_type: "act".to_string(),
+        input: act_input_json.clone(),
+        options: Default::default(),
+    };
+    store
+        .enqueue_task(task)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
+
+    let scheduled_event = everruns_durable::WorkflowEvent::ActivityScheduled {
+        activity_id,
+        activity_type: "act".to_string(),
+        input: act_input_json,
+        options: everruns_durable::ActivityOptions::default(),
+    };
+    let _ = everruns_durable::append_event(store.as_ref(), workflow_id, scheduled_event).await;
     Ok(())
 }
 

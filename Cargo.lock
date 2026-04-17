@@ -1954,6 +1954,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",

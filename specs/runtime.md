@@ -32,10 +32,12 @@ so embedded execution stays behaviorally aligned with the main runtime.
 - `everruns-core` owns atoms, traits, capabilities, event types, and shared
   domain/runtime types.
 - `everruns-runtime` owns embedder-facing orchestration, in-memory stores, turn
-  execution, runtime seeding helpers, and reusable host-phase execution.
+  execution, runtime seeding helpers, reusable host-phase execution, and shared
+  turn-strategy planning.
 - `everruns-server` and `everruns-worker` remain control-plane and durable
-  execution hosts. They use runtime-owned host execution but still own queueing,
-  retries, workflows, and process boundaries.
+  execution hosts. They use runtime-owned host execution and turn-strategy
+  planning, while still owning the durable engine implementation, worker
+  polling, retries, and process boundaries.
 
 ## Public Contract
 
@@ -79,8 +81,19 @@ server-backed execution:
 - `execute_act_activity(...)`
 
 These APIs own phase-local orchestration, atom wiring, dependency blocker
-handling, and lifecycle event emission for the host runtime. Durable scheduling
-and workflow management remain outside this contract.
+handling, lifecycle event emission, and generic turn-strategy planning for
+server-backed hosts.
+
+Host planning APIs:
+
+- `RuntimeTurnState`
+- `RuntimeActPlan`
+- `RuntimeTurnPlan`
+- `plan_next_host_turn(...)`
+
+The planner contract is intentionally durable-agnostic. Runtime decides the
+next semantic step; the host owns queueing, retries, scheduling, persistence,
+and workflow resumption.
 
 ## Execution Semantics
 
@@ -102,6 +115,9 @@ Required behavior:
 7. Durable/server-backed workers must execute their per-phase host logic
    through `everruns-runtime` instead of maintaining a separate copy of atom
    wiring in the worker crate.
+8. Durable/server-backed workers must use runtime-owned turn-strategy planning
+   for `process_input -> reason -> act`, steering continuation,
+   dependency-blocked completion, and `waiting_for_tool_results` pause/resume.
 
 ## Shared Context Assembly
 
@@ -204,12 +220,13 @@ configuration error.
 
 This spec does not require runtime to own:
 
-- durable workflows
-- cross-process task recovery
-- task queues or workflow schedulers
+- durable workflow persistence schemas
+- durable runners or queue/store contracts
+- worker registration, polling, and heartbeat transport
+- scheduler daemons for cron/due-time task discovery
 - server route composition
 
-Those remain separate concerns outside the runtime host-phase contract.
+Those remain separate concerns outside the runtime host orchestration contract.
 
 ## Source Index
 

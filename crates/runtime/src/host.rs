@@ -145,13 +145,14 @@ pub struct RuntimeHostTurnContext {
 
 /// Public adapter contract for server-backed or durable runtime hosts.
 ///
-/// `everruns-runtime` owns the phase execution (`input -> reason -> act`).
-/// Host crates implement this trait to provide their own persistence,
-/// session-lifecycle plumbing, and tool registry construction.
+/// `everruns-runtime` owns shared host orchestration for both embedded and
+/// durable execution. That includes phase execution (`input -> reason -> act`),
+/// lifecycle emission, and the generic turn-strategy decisions used by durable
+/// or custom hosts.
 ///
-/// The durable scheduler still lives outside this crate. Hosts use this trait
-/// to delegate individual turn phases to `everruns-runtime`, while keeping
-/// queueing, retries, and workflow resumption in their own layer.
+/// Host crates implement this trait to provide persistence, session-lifecycle
+/// plumbing, event delivery, and their own orchestration backend. The durable
+/// engine itself remains outside this crate.
 #[async_trait]
 pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     async fn get_agent(
