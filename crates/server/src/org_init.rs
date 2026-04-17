@@ -25,6 +25,7 @@ mod harness_ids {
     pub const CODING_CONTAINER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000605);
     pub const CODING_SESSION_SANDBOX: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000606);
+    pub const DATA_ANALYST: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000607);
 }
 
 /// Well-known UUID for the Generic harness (org default harness for new orgs)
@@ -44,6 +45,9 @@ pub const CODING_CONTAINER_HARNESS_ID: Uuid = harness_ids::CODING_CONTAINER;
 
 /// Well-known UUID for the Coding (Session Sandbox) harness
 pub const CODING_SESSION_SANDBOX_HARNESS_ID: Uuid = harness_ids::CODING_SESSION_SANDBOX;
+
+/// Well-known UUID for the Data Analyst harness
+pub const DATA_ANALYST_HARNESS_ID: Uuid = harness_ids::DATA_ANALYST;
 
 pub(crate) fn default_harness_definitions() -> Vec<BuiltInHarnessDefinition> {
     crate::platform::oss_built_in_harnesses()

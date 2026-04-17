@@ -117,7 +117,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/commands.md` - Slash commands system (system + skill commands)
 - `specs/domains.md` - Domain modules: Command trait, feature-oriented structure, MCP catalog generation
 - `specs/issue-tracking.md` - Issue tracking (Linear, OSS project)
-- `specs/harness-types.md` - Built-in harness types (Base, Generic)
+- `specs/harness-types.md` - Built-in harness types (Base, Generic, Data Analyst)
 - `specs/client-side-tools.md` - Client-side tools for API/SDK consumers
 - `specs/infinity-context.md` - Unlimited conversation length via context management
 - `specs/compaction.md` - Context compaction capability, strategy selection, events, and UI
