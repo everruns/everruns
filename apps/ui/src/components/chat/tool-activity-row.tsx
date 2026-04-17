@@ -6,11 +6,15 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, Check, Loader2, MonitorSmartphone } from "lucide-react";
+import { AlertCircle, CalendarClock, Check, Loader2, MonitorSmartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ToolCompletedData } from "@/lib/api/types";
 import type { ToolCallContent } from "./tool-call-utils";
-import { formatResultDetails, getToolLabel } from "./tool-activity-utils";
+import {
+  formatResultDetails,
+  getToolActivitySummaryChip,
+  getToolLabel,
+} from "./tool-activity-utils";
 import { getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -36,6 +40,7 @@ export function ToolActivityRow({
   const hasToolError = Boolean(toolResult?.error);
   const isComplete = Boolean(toolResult);
   const isRunning = !isComplete && !hasToolError;
+  const summaryChip = isComplete ? getToolActivitySummaryChip(toolCall, toolResult) : null;
 
   return (
     <div
@@ -59,15 +64,30 @@ export function ToolActivityRow({
             {mode === "client" && (
               <MonitorSmartphone className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary/75" />
             )}
-            <span className="truncate text-sm text-foreground">
-              {getToolLabel(toolCall, locale)}
-            </span>
+            {summaryChip ? (
+              <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-[8px] border border-border/70 bg-background px-2.5 py-1 text-[13px] shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
+                <CalendarClock className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                <span className="shrink-0 text-muted-foreground">{summaryChip.status}</span>
+                <span className="shrink-0 text-muted-foreground/60">·</span>
+                <span className="truncate text-primary">{summaryChip.title}</span>
+                {summaryChip.schedule && (
+                  <>
+                    <span className="shrink-0 text-muted-foreground/60">·</span>
+                    <span className="shrink-0 text-muted-foreground">{summaryChip.schedule}</span>
+                  </>
+                )}
+              </div>
+            ) : (
+              <span className="truncate text-sm text-foreground">
+                {getToolLabel(toolCall, locale)}
+              </span>
+            )}
             {isRunning && (
               <span className="animate-tool-pulse text-[10px] uppercase tracking-[0.18em] text-accent-foreground/70">
                 {progressMessage ?? (mode === "client" ? t("waiting") : t("running"))}
               </span>
             )}
-            {!isRunning && hasOutput && (
+            {!isRunning && hasOutput && !summaryChip && (
               <button
                 type="button"
                 onClick={() => setIsExpanded((current) => !current)}

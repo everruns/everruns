@@ -7,6 +7,7 @@
 
 import type { ToolCompletedData } from "@/lib/api/types";
 import { isRecord } from "@/lib/api/types";
+import { formatScheduleCadence, getScheduleDisplayTitle } from "@/lib/schedule-display";
 import { basename } from "@/lib/path-utils";
 import {
   getToolCategory,
@@ -205,6 +206,12 @@ function parseStructuredText(text: string): unknown | null {
   }
 }
 
+export interface ToolActivitySummaryChip {
+  status: string;
+  title: string;
+  schedule?: string;
+}
+
 function maskSensitiveFields(toolName: string, value: unknown): unknown {
   if (toolName !== "secret_store" || !isRecord(value)) return value;
   if (!("value" in value) || value.value == null) return value;
@@ -252,6 +259,60 @@ function summarizeStructuredResult(toolCall: ToolCallContent, parsed: unknown): 
     .join(" · ");
 
   return preview.length > 120 ? `${preview.slice(0, 120)}...` : preview;
+}
+
+function scheduleLabelFromRecord(record: Record<string, unknown>): string | undefined {
+  const cronExpression =
+    typeof record.cron_expression === "string" ? record.cron_expression : undefined;
+  const scheduledAt = typeof record.scheduled_at === "string" ? record.scheduled_at : undefined;
+  const timezone = typeof record.timezone === "string" ? record.timezone : undefined;
+  return formatScheduleCadence({ cronExpression, scheduledAt, timezone }) ?? undefined;
+}
+
+export function getToolActivitySummaryChip(
+  toolCall: ToolCallContent,
+  toolResult?: ToolCompletedData,
+): ToolActivitySummaryChip | null {
+  const fullText = getFullText(toolResult?.result);
+  const parsed = parseStructuredText(fullText);
+  if (!isRecord(parsed)) return null;
+
+  if (toolCall.name === "spawn_background" && parsed.status === "scheduled") {
+    const title = typeof parsed.title === "string" ? parsed.title : null;
+    if (!title) return null;
+    return {
+      status: "Created",
+      title,
+      schedule: scheduleLabelFromRecord(parsed),
+    };
+  }
+
+  if (toolCall.name === "create_schedule" && parsed.created === true) {
+    const title =
+      typeof parsed.title === "string"
+        ? parsed.title
+        : typeof parsed.description === "string"
+          ? getScheduleDisplayTitle(parsed.description)
+          : null;
+    if (!title) return null;
+    return {
+      status: "Created",
+      title,
+      schedule: scheduleLabelFromRecord(parsed),
+    };
+  }
+
+  if (toolCall.name === "cancel_schedule" && parsed.cancelled === true) {
+    const title =
+      typeof parsed.description === "string" ? getScheduleDisplayTitle(parsed.description) : null;
+    if (!title) return null;
+    return {
+      status: "Deleted",
+      title,
+    };
+  }
+
+  return null;
 }
 
 /** Fields filtered from human-friendly details view (noise for the user). */

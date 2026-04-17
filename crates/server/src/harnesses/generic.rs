@@ -6,7 +6,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "generic",
         "Generic",
-        "General-purpose harness with file system, bash, web fetch, secrets, session management, long-context support, context compaction, budgeting, tool output persistence, and agent skills. Recommended default for most use cases.",
+        "General-purpose harness with file system, bash, web fetch, secrets, session management, session schedules, long-context support, context compaction, budgeting, tool output persistence, and agent skills. Recommended default for most use cases.",
         SYSTEM_PROMPT,
     )
     .with_seed_id(crate::org_init::GENERIC_HARNESS_ID)
@@ -21,6 +21,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         ),
         BuiltInCapabilityDefinition::new("session_storage"),
         BuiltInCapabilityDefinition::new("session"),
+        BuiltInCapabilityDefinition::new("session_schedule"),
         BuiltInCapabilityDefinition::new("agent_instructions"),
         BuiltInCapabilityDefinition::new("skills"),
         BuiltInCapabilityDefinition::new("infinity_context"),

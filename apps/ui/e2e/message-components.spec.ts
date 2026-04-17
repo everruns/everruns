@@ -71,6 +71,10 @@ test.describe("Tool Activity Page", () => {
     ).toBeVisible();
     await expect(page.getByText("/ship")).toBeVisible();
     await expect(page.getByText("Pick File")).toBeVisible();
+    await expect(page.getByText("Created")).toBeVisible();
+    await expect(page.getByText("Deleted")).toBeVisible();
+    await expect(page.getByText("Every 10m")).toBeVisible();
+    await expect(page.getByText("Watch PR 1319").first()).toBeVisible();
   });
 });
 

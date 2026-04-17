@@ -23,6 +23,11 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Clock, CalendarClock, Repeat, Play, Pause, Trash2, Zap, AlertCircle } from "lucide-react";
 import { formatRelativeTime } from "@/lib/formatting";
+import {
+  formatScheduleCadence,
+  formatScheduledDateTime,
+  getScheduleDisplayTitle,
+} from "@/lib/schedule-display";
 import type { SessionSchedule } from "@/lib/api/types";
 
 function ScheduleCard({ schedule, sessionId }: { schedule: SessionSchedule; sessionId: string }) {
@@ -32,6 +37,12 @@ function ScheduleCard({ schedule, sessionId }: { schedule: SessionSchedule; sess
   const triggerMutation = useTriggerSessionSchedule();
 
   const isRecurring = schedule.schedule_type === "recurring";
+  const scheduleTitle = getScheduleDisplayTitle(schedule.description);
+  const scheduleLabel = formatScheduleCadence({
+    cronExpression: schedule.cron_expression,
+    scheduledAt: schedule.scheduled_at,
+    timezone: schedule.timezone,
+  });
 
   const handleToggle = () => {
     updateMutation.mutate({
@@ -61,7 +72,7 @@ function ScheduleCard({ schedule, sessionId }: { schedule: SessionSchedule; sess
               ) : (
                 <CalendarClock className="h-4 w-4 text-muted-foreground" />
               )}
-              <CardTitle className="text-base">{schedule.description}</CardTitle>
+              <CardTitle className="text-base">{scheduleTitle}</CardTitle>
             </div>
             <div className="flex items-center gap-1">
               <Badge variant={schedule.enabled ? "default" : "secondary"}>
@@ -70,10 +81,15 @@ function ScheduleCard({ schedule, sessionId }: { schedule: SessionSchedule; sess
               <Badge variant="outline">{isRecurring ? "Recurring" : "One-shot"}</Badge>
             </div>
           </div>
-          {schedule.cron_expression && (
-            <CardDescription className="font-mono text-xs">
-              cron: {schedule.cron_expression}
-            </CardDescription>
+          {(scheduleLabel || schedule.cron_expression) && (
+            <div className="space-y-1">
+              {scheduleLabel && <CardDescription>{scheduleLabel}</CardDescription>}
+              {schedule.cron_expression && (
+                <div className="font-mono text-[11px] text-muted-foreground">
+                  cron: {schedule.cron_expression}
+                </div>
+              )}
+            </div>
           )}
         </CardHeader>
         <CardContent>
@@ -83,7 +99,7 @@ function ScheduleCard({ schedule, sessionId }: { schedule: SessionSchedule; sess
                 <div className="flex items-center gap-1">
                   <Clock className="h-3 w-3" />
                   <span>
-                    Next: {new Date(schedule.next_trigger_at).toLocaleString()} (
+                    Next: {formatScheduledDateTime(schedule.next_trigger_at, schedule.timezone)} (
                     {formatRelativeTime(schedule.next_trigger_at)})
                   </span>
                 </div>
