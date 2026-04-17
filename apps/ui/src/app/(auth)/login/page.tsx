@@ -18,6 +18,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useAuthConfig, useLogin } from "@/hooks/use-auth";
 import { getOAuthUrl, login } from "@/lib/api/auth";
+import { sanitizeReturnTo } from "@/lib/auth-redirect";
 import { Loader2 } from "lucide-react";
 
 // Session storage key for preserving return_to across OAuth redirects
@@ -39,7 +40,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const returnTo = searchParams.get("return_to");
+  // Sanitize to a safe relative path — prevents open-redirect into
+  // attacker-controlled origins (see specs/authentication.md).
+  const returnTo = sanitizeReturnTo(searchParams.get("return_to"));
 
   // Redirect to dashboard if auth is not required
   useEffect(() => {
@@ -49,10 +52,11 @@ export default function LoginPage() {
   }, [config, router]);
 
   const getRedirectTarget = (): string => {
-    // Check URL param first, then sessionStorage (for OAuth flow)
-    const target = returnTo || sessionStorage.getItem(RETURN_TO_KEY);
+    // Check URL param first, then sessionStorage (for OAuth flow).
+    // Both are sanitized so a poisoned sessionStorage can't redirect off-origin.
+    const stored = sanitizeReturnTo(sessionStorage.getItem(RETURN_TO_KEY));
     sessionStorage.removeItem(RETURN_TO_KEY);
-    return target || "/dashboard";
+    return returnTo || stored || "/dashboard";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

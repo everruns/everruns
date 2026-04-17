@@ -51,6 +51,34 @@ async fn test_cli_auth_start() {
         auth_url
     );
 
+    // Unified auth resume contract: CLI auth uses `return_to`, the single
+    // public login-page parameter. `redirect_to` must not appear.
+    assert!(
+        auth_url.contains("return_to="),
+        "auth_url must use return_to: {}",
+        auth_url
+    );
+    assert!(
+        !auth_url.contains("redirect_to"),
+        "auth_url must not use legacy redirect_to: {}",
+        auth_url
+    );
+
+    // The return_to value must be a relative path (no scheme leaked) so the
+    // login page stays same-origin.
+    let return_to_start = auth_url.find("return_to=").unwrap() + "return_to=".len();
+    let return_to = &auth_url[return_to_start..];
+    assert!(
+        return_to.starts_with("%2F") || return_to.starts_with('/'),
+        "return_to must be a relative path: {}",
+        return_to
+    );
+    assert!(
+        !return_to.contains("%3A%2F%2F") && !return_to.contains("://"),
+        "return_to must not embed a full URL: {}",
+        return_to
+    );
+
     let state = body["state"].as_str().unwrap();
     assert_eq!(state.len(), 32, "state should be 32 hex chars");
     assert!(

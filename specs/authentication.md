@@ -54,15 +54,17 @@ Interactive CLI authentication via `everruns login`. Flow:
 
 1. CLI calls `POST /v1/auth/cli/start` with `redirect_port`
 2. Server creates a pending `cli_auth_sessions` row (state + exchange_code, 5-min TTL)
-3. Server returns `auth_url` (login page with redirect to `/v1/auth/cli/callback?state=...`)
+3. Server returns `auth_url` pointing at the login page with `return_to=<api-prefix>/v1/auth/cli/callback?state=...` — the same `return_to` resume parameter used by every other login flow (see [Login Page Contract](#login-page-contract) below)
 4. CLI opens browser and starts one-shot localhost HTTP server
-5. User logs in, server calls `/v1/auth/cli/callback` which associates user and redirects to `localhost:{port}/callback?code=...`
+5. User logs in; the login page navigates to the `return_to` path, which hits `/v1/auth/cli/callback` on the server (through the frontend's standard API proxy). The server looks up the session by `state`, associates the authenticated user, and redirects to `localhost:{port}/callback?code=...`
 6. CLI receives code, redirects browser to `/cli/login-success` (branded success page)
 7. CLI calls `POST /v1/auth/cli/exchange` with code + hostname + os
 8. Server creates API key with metadata, returns key + user + orgs
 9. CLI prompts for org selection (if multiple), stores credentials in the platform config file (`~/.config/everruns/credentials.json` on Linux, `~/Library/Application Support/everruns/credentials.json` on macOS)
 
 Endpoints: `POST /v1/auth/cli/start`, `GET /v1/auth/cli/callback`, `POST /v1/auth/cli/exchange`, `GET /cli/login-success`
+
+The server identifies the CLI session via the opaque `state` token from `cli_auth_sessions`, not via a callback URL embedded in the login-page contract. This keeps the public login-page contract uniform across all auth flows.
 
 See `crates/server/src/auth/cli_auth.rs` for implementation.
 
@@ -71,6 +73,29 @@ See `crates/server/src/auth/cli_auth.rs` for implementation.
 - `access_token` cookie with JWT
 - `refresh_token` cookie (HTTP-only, secure)
 - Suitable for web UI authentication
+
+### Login Page Contract
+
+The login page accepts exactly one public query parameter for auth resume:
+
+- `return_to` — browser-relative path on the frontend origin that the UI navigates to after the user authenticates.
+
+**Rules:**
+
+- `return_to` is always a **relative path** on the frontend origin (starts with `/`, never `//`, never a scheme). Absolute URLs are rejected.
+- No other resume/redirect parameter is accepted. Historic names like `redirect_to` are not part of the contract and MUST NOT be emitted by any caller.
+- Backend-facing paths (e.g. `/oauth/authorize`, `/api/v1/auth/cli/callback`) are valid `return_to` values — the login page triggers a full-page navigation so the backend route handles the continuation.
+- Workflow-specific continuations (CLI login, OAuth authorize handshakes) MUST NOT leak raw callback URLs into the login-page contract. Instead, they use an opaque server-issued token (e.g. the CLI auth session `state`) encoded in a backend path, and the server resolves that token to complete the workflow.
+
+**Callers that emit `return_to`:**
+
+- UI middleware / main layout when redirecting unauthenticated users (via `getLoginRedirectPath`).
+- MCP OAuth `GET /oauth/authorize` when the caller has no session.
+- `POST /v1/auth/cli/start` when building the CLI login URL.
+
+**External auth backends:** External login pages only need to honor `return_to` — no other parameter. There is no need for a separate `redirect_to` path.
+
+Implementations: `apps/ui/src/lib/auth-redirect.ts` (`sanitizeReturnTo`) and `apps/ui/src/app/(auth)/login/page.tsx`.
 
 ### OAuth Providers
 
