@@ -146,6 +146,10 @@ If every piece of information in the prompt is already covered by tool definitio
 
 **Note**: `message_filter_provider()` returns an optional filter that modifies message retrieval. See [Message Filters](#message-filters).
 
+##### Capability-Contributed Skills
+
+Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The built-in `skills` capability then discovers and serves them through the same VFS scan used for filesystem and registry skills — no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `specs/skills-registry.md` for the discovery/activation contract and `crates/core/src/capabilities/attach_skill.rs` for `SkillContribution` and the underlying mount construction.
+
 ### Capability Dependencies
 
 Capabilities can declare dependencies on other capabilities. When a capability is selected, its dependencies are automatically resolved and applied.

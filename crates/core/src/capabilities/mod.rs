@@ -117,9 +117,9 @@ pub use agent_instructions::{
     MAX_AGENTS_MD_SIZE, format_agents_md_content,
 };
 pub use attach_skill::{
-    AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillInstructions,
-    SkillMeta, SkillSource, discover_skills_from_entries, is_skill_capability,
-    parse_skill_capability_id, skill_capability_id,
+    AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillContribution,
+    SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries, is_skill_capability,
+    parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
 };
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
@@ -492,6 +492,19 @@ pub trait Capability: Send + Sync {
     ///
     /// By default, returns an empty vector (no blueprints).
     fn agent_blueprints(&self) -> Vec<AgentBlueprint> {
+        vec![]
+    }
+
+    /// Returns skills contributed by this capability in code.
+    ///
+    /// Contributions are normalized during capability collection into read-only
+    /// mount points at `/.agents/skills/{name}/` so the built-in `skills`
+    /// capability discovers them alongside user-uploaded and registry-based
+    /// skills. This keeps discovery, prompt listing, and activation in one
+    /// place rather than adding a parallel skill pipeline.
+    ///
+    /// By default, returns an empty vector (no contributed skills).
+    fn contribute_skills(&self) -> Vec<SkillContribution> {
         vec![]
     }
 }
@@ -1316,6 +1329,13 @@ pub async fn collect_capabilities_with_configs(
 
             // Collect mount points
             mounts.extend(capability.mounts());
+
+            // Normalize capability-contributed skills into mount points under
+            // `/.agents/skills/{name}/`. Discovery/activation stays with the
+            // built-in `skills` capability — see specs/skills-registry.md.
+            for skill in capability.contribute_skills() {
+                mounts.push(skill.to_mount(cap_id));
+            }
 
             // Collect message filter provider
             if let Some(provider) = capability.message_filter_provider() {
@@ -3089,5 +3109,116 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ========================================================================
+    // contribute_skills() collection — EVE-311
+    // ========================================================================
+
+    struct SkillContributingCapability;
+
+    impl Capability for SkillContributingCapability {
+        fn id(&self) -> &str {
+            "contributes_skills"
+        }
+        fn name(&self) -> &str {
+            "Contributes Skills"
+        }
+        fn description(&self) -> &str {
+            "Test capability that contributes skills."
+        }
+        fn contribute_skills(&self) -> Vec<SkillContribution> {
+            vec![
+                SkillContribution::new("alpha-skill", "Alpha skill desc", "# Alpha\nDo alpha.")
+                    .with_files(vec![(
+                        "scripts/a.sh".to_string(),
+                        "#!/bin/sh\necho a\n".to_string(),
+                    )]),
+                SkillContribution::new("beta-skill", "Beta skill desc", "# Beta\nDo beta.")
+                    .with_user_invocable(false),
+            ]
+        }
+    }
+
+    fn skill_md_from_entries(entries: &HashMap<String, MountEntry>) -> &str {
+        match &entries.get("SKILL.md").expect("SKILL.md missing").source {
+            MountSource::InlineFile { content, .. } => content.as_str(),
+            _ => panic!("Expected InlineFile for SKILL.md"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_contribute_skills_normalized_to_mounts() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(SkillContributingCapability);
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("contributes_skills"),
+            config: serde_json::json!({}),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+
+        let skill_mounts: Vec<_> = collected
+            .mounts
+            .iter()
+            .filter(|m| m.path.starts_with("/.agents/skills/"))
+            .collect();
+        assert_eq!(skill_mounts.len(), 2);
+
+        // Every contributed skill mount is read-only and owned by the contributing
+        // capability so the VFS layer can attribute skill files correctly.
+        for m in &skill_mounts {
+            assert!(m.is_readonly());
+            assert_eq!(m.capability_id, "contributes_skills");
+        }
+
+        let alpha = skill_mounts
+            .iter()
+            .find(|m| m.path == "/.agents/skills/alpha-skill")
+            .expect("alpha-skill mount missing");
+        match &alpha.source {
+            MountSource::InlineDirectory { entries } => {
+                assert!(entries.contains_key("SKILL.md"));
+                assert!(entries.contains_key("scripts/a.sh"));
+                let parsed = crate::skill::parse_skill_md(skill_md_from_entries(entries)).unwrap();
+                assert_eq!(parsed.name, "alpha-skill");
+                assert!(parsed.user_invocable);
+            }
+            _ => panic!("Expected InlineDirectory"),
+        }
+
+        let beta = skill_mounts
+            .iter()
+            .find(|m| m.path == "/.agents/skills/beta-skill")
+            .expect("beta-skill mount missing");
+        match &beta.source {
+            MountSource::InlineDirectory { entries } => {
+                let parsed = crate::skill::parse_skill_md(skill_md_from_entries(entries)).unwrap();
+                assert!(!parsed.user_invocable);
+            }
+            _ => panic!("Expected InlineDirectory"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_contribute_skills_default_empty() {
+        // Registry-resident capability without a contribute_skills override
+        // must not add skill mounts.
+        let mut registry = CapabilityRegistry::new();
+        registry.register(FilterTestCapability { priority: 0 });
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("filter_test"),
+            config: serde_json::json!({}),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+        assert!(
+            collected
+                .mounts
+                .iter()
+                .all(|m| !m.path.starts_with("/.agents/skills/"))
+        );
     }
 }

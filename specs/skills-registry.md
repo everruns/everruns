@@ -352,6 +352,18 @@ This approach:
 
 **No `bundled_files` in tool result**: The `activate_skill` tool result does not include a separate list of companion file paths. The agent discovers referenced files from relative paths in the SKILL.md instructions (per the [agentskills.io progressive disclosure model](https://agentskills.io/specification)), or via `list_files` on the skill directory. A well-written SKILL.md already references every file the agent needs.
 
+### Capability-Contributed Skills
+
+Beyond user-uploaded (registry) and filesystem skills, any `Capability` can ship skills in code via `contribute_skills() -> Vec<SkillContribution>`. See `specs/capabilities.md` for the trait method and `crates/core/src/capabilities/attach_skill.rs` for `SkillContribution` fields.
+
+Contributed skills flow through the **same** discovery/activation path as other skills:
+
+1. During capability collection, each `SkillContribution` is normalized into a read-only `MountPoint` at `/.agents/skills/{name}/` with a reconstructed `SKILL.md` (frontmatter + body) and every bundled file.
+2. When the built-in `skills` capability is active, its VFS scan finds these mounts alongside `AttachSkillCapability` mounts and filesystem-resident skills.
+3. `list_skills`, `activate_skill`, prompt listing, and `/slash` command visibility all go through the existing path — the frontmatter flags `user-invocable` and `disable-model-invocation` are honored the same way.
+
+The mount's `capability_id` is set to the contributing capability's ID so the VFS layer attributes the mounted files correctly and so users can see which capability a skill came from. There is no separate database row and no parallel prompt-injection path: if a capability wants a skill, it returns a `SkillContribution` and the rest is shared pipeline.
+
 ## Database Schema
 
 ```sql
@@ -571,6 +583,8 @@ Skills can also be discovered from the session filesystem at `/.agents/skills/`.
 | Upload | API endpoints | Write files to VFS |
 | Capability ID | `skill:{uuid}` | `skills` (aggregate) |
 | Best for | Shared/reusable skills | Project-specific skills |
+
+A third source — **capability-contributed skills** — also feeds this pipeline. Any `Capability` can ship skills in code via `contribute_skills()` (see `specs/capabilities.md`); those contributions mount at the same `/.agents/skills/{name}/` path and are served through the same `skills` capability. They are per-session (scoped to the contributing capability's activation) and best for bundling a reusable workflow with the capability that powers it — e.g., a `gpt_image_gen` capability shipping a "prompt an image" skill alongside its tools.
 
 ## Example Skills
 
