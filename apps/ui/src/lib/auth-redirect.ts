@@ -43,3 +43,24 @@ export function sanitizeReturnTo(value: string | null | undefined): string | nul
   if (value.startsWith("/\\")) return null;
   return value;
 }
+
+/**
+ * Path prefixes that route to the backend (not Next.js). Navigating to one of
+ * these via `router.push` would render a 404 instead of hitting the backend
+ * handler — they must use full-page navigation (`window.location.assign`) so
+ * the reverse proxy / frontend root forwards to the backend route.
+ *
+ * Includes:
+ * - `/oauth/` — MCP OAuth handlers (mounted at server root)
+ * - `/api/` — backend mounted under the standard `/api` prefix (default layout)
+ * - `/v1/` — backend mounted at the frontend origin root with no API prefix
+ *   (used by `build_cli_callback_path` when `frontend_url == base_url`)
+ *
+ * Keep this in sync with the server's reverse-proxy routing and
+ * `crates/server/src/auth/cli_auth.rs::build_cli_callback_path`.
+ */
+const BACKEND_PATH_PREFIXES = ["/oauth/", "/api/", "/v1/"] as const;
+
+export function isBackendNavigationPath(path: string): boolean {
+  return BACKEND_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
+}

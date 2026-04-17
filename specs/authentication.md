@@ -84,7 +84,10 @@ The login page accepts exactly one public query parameter for auth resume:
 
 - `return_to` is always a **relative path** on the frontend origin (starts with `/`, never `//`, never a scheme). Absolute URLs are rejected.
 - No other resume/redirect parameter is accepted. Historic names like `redirect_to` are not part of the contract and MUST NOT be emitted by any caller.
-- Backend-facing paths (e.g. `/oauth/authorize`, `/api/v1/auth/cli/callback`) are valid `return_to` values — the login page triggers a full-page navigation so the backend route handles the continuation.
+- Backend-facing paths are valid `return_to` values — the login page triggers a full-page navigation so the reverse proxy / frontend root forwards them to the backend route. Concrete prefixes the UI treats as backend-facing:
+  - `/oauth/...` — MCP OAuth handlers mounted at the server root.
+  - `/api/...` — backend mounted under the standard `/api` API prefix (default deployment layout).
+  - `/v1/...` — backend mounted at the frontend origin root with **no** API prefix (used when `frontend_url == base_url`, so the API prefix derived by `build_cli_callback_path` is empty).
 - Workflow-specific continuations (CLI login, OAuth authorize handshakes) MUST NOT leak raw callback URLs into the login-page contract. Instead, they use an opaque server-issued token (e.g. the CLI auth session `state`) encoded in a backend path, and the server resolves that token to complete the workflow.
 
 **Callers that emit `return_to`:**

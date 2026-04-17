@@ -45,11 +45,20 @@ fn generate_random_hex() -> String {
 /// browser can reach the backend through the standard frontend proxy. When
 /// they differ (rare dev setup), no prefix is added and operators must ensure
 /// the backend is reachable from the frontend origin.
+///
+/// The result is always a relative path starting with `/`. We only accept the
+/// stripped remainder when it is empty or starts with `/` — otherwise the strip
+/// landed mid-path-segment (e.g. `frontend_url=https://app` against
+/// `base_url=https://app.example.com/api` would yield `.example.com/api`),
+/// which would produce a `return_to` rejected by the UI sanitizer.
 fn build_cli_callback_path(frontend_url: &str, base_url: &str, auth_state: &str) -> String {
-    let api_path_prefix = base_url
+    let stripped = base_url
         .strip_prefix(frontend_url)
-        .unwrap_or("")
-        .trim_end_matches('/');
+        .map(|s| s.trim_end_matches('/'));
+    let api_path_prefix = match stripped {
+        Some(s) if s.is_empty() || s.starts_with('/') => s,
+        _ => "",
+    };
     format!(
         "{}/v1/auth/cli/callback?state={}",
         api_path_prefix, auth_state
@@ -503,6 +512,16 @@ mod tests {
         // derive. Result is still a relative path (no host leak into return_to).
         let path =
             build_cli_callback_path("http://localhost:9300", "http://localhost:9301", "abcd1234");
+        assert_eq!(path, "/v1/auth/cli/callback?state=abcd1234");
+    }
+
+    #[test]
+    fn test_build_cli_callback_path_strip_lands_mid_segment() {
+        // `frontend_url` is a string-prefix of `base_url` but not a path-prefix
+        // (the strip would land mid-segment). We must fall back to no prefix
+        // rather than emit a `return_to` like ".example.com/api/v1/...".
+        let path =
+            build_cli_callback_path("https://app", "https://app.example.com/api", "abcd1234");
         assert_eq!(path, "/v1/auth/cli/callback?state=abcd1234");
     }
 

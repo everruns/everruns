@@ -18,7 +18,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useAuthConfig, useLogin } from "@/hooks/use-auth";
 import { getOAuthUrl, login } from "@/lib/api/auth";
-import { sanitizeReturnTo } from "@/lib/auth-redirect";
+import { isBackendNavigationPath, sanitizeReturnTo } from "@/lib/auth-redirect";
 import { Loader2 } from "lucide-react";
 
 // Session storage key for preserving return_to across OAuth redirects
@@ -69,7 +69,7 @@ export default function LoginPage() {
       // and navigate immediately — don't go through the mutation's onSuccess
       // which refetches auth state and can trigger React re-renders that
       // race with the navigation.
-      if (target.startsWith("/oauth/") || target.startsWith("/api/")) {
+      if (isBackendNavigationPath(target)) {
         await login({ email, password });
         window.location.assign(target);
         return;
