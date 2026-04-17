@@ -66,12 +66,9 @@ If you need more detail, re-run with `output: \"verbose\"` or read the persisted
 /// Appended to the FileSystem capability's `system_prompt_addition()` to guide
 /// the LLM toward efficient file reading with offset/limit pagination.
 pub const READ_ECONOMY_HINT: &str = "\n\n**File reading economy:** `read_file` returns at most 2000 lines by default.\n\
-Use `offset` and `limit` to read specific sections of large files.\n\
-- Use `grep_files` to find relevant lines before reading\n\
-- Use `list_directory` for file structure\n\
-- Don't read entire large files when you only need a specific section\n\
-- When a read is truncated, check `total_lines` to see how much remains\n\
-- For files you've already read, use offset to continue from where you left off";
+- Locate the relevant region first with `grep_files`, then read that section with `read_file` using `offset` and `limit`.\n\
+- Use `list_directory` to understand file structure before reading.\n\
+- When a read is truncated, check `total_lines` to see how much remains and continue from `lines_shown.end` on the next call.";
 
 /// Strip ANSI escape sequences from text.
 ///
