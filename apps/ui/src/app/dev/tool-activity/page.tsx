@@ -202,16 +202,12 @@ const monitorToolResults = new Map<string, ToolCompletedData>([
           type: "text",
           text: JSON.stringify({
             cancelled: true,
-            description: `This scheduled monitor fired. Start the background run now.
+            description: `Monitor: Watch PR 1319
 
-Use \`spawn_background\` with:
-- tool: \`github_watch_pr\`
-- title: \`Watch PR 1319\`
-- signal_on_completion: true
-- args:
-\`\`\`json
-{"pull_request":1319}
-\`\`\``,
+This scheduled monitor fired. Start the background run now.
+
+spawn_background payload:
+{"tool":"github_watch_pr","title":"Watch PR 1319","signal_on_completion":true,"args":{"pull_request":1319}}`,
           }),
         },
       ],

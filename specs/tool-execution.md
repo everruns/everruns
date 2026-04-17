@@ -123,7 +123,8 @@ Background eligibility rules:
 
 Contract:
 - Input: `{ "tool": "...", "args": { ... }, "title"?: "...", "signal_on_completion"?: true, "schedule"?: { "cron_expression"?: "...", "scheduled_at"?: "...", "timezone"?: "..." } }`
-- Immediate result: `run_id`, `resource_id`, target `tool`, and artifact paths under `/.background/{run_id}/`
+- Immediate result without `schedule`: `run_id`, `resource_id`, target `tool`, and artifact paths under `/.background/{run_id}/`
+- Immediate result with `schedule`: `schedule_id`, schedule cadence fields (`cron_expression` or `scheduled_at`, `timezone`, `next_trigger_at`), `enabled`, and `status = "scheduled"`
 - Execution happens in a detached worker task
 - Progress flows through `BackgroundEventSink`, which supports:
   - one-line status updates

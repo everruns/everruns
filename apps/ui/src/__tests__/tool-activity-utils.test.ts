@@ -2,10 +2,10 @@ import { getToolActivitySummaryChip } from "@/components/chat/tool-activity-util
 import type { ToolCompletedData } from "@/lib/api/types";
 import type { ToolCallContent } from "@/components/chat/tool-call-utils";
 
-function textResult(text: string): ToolCompletedData {
+function textResult(toolName: string, text: string): ToolCompletedData {
   return {
     tool_call_id: "tool-1",
-    tool_name: "spawn_background",
+    tool_name: toolName,
     success: true,
     status: "success",
     result: [{ type: "text", text }],
@@ -23,6 +23,7 @@ describe("getToolActivitySummaryChip", () => {
     const summary = getToolActivitySummaryChip(
       toolCall,
       textResult(
+        "spawn_background",
         JSON.stringify({
           status: "scheduled",
           title: "Watch PR 1319",
@@ -49,18 +50,15 @@ describe("getToolActivitySummaryChip", () => {
     const summary = getToolActivitySummaryChip(
       toolCall,
       textResult(
+        "cancel_schedule",
         JSON.stringify({
           cancelled: true,
-          description: `This scheduled monitor fired. Start the background run now.
+          description: `Monitor: Watch PR 1319
 
-Use \`spawn_background\` with:
-- tool: \`github\`
-- title: \`Watch PR 1319\`
-- signal_on_completion: true
-- args:
-\`\`\`json
-{}
-\`\`\``,
+This scheduled monitor fired. Start the background run now.
+
+spawn_background payload:
+{"tool":"github","title":"Watch PR 1319","signal_on_completion":true,"args":{}}`,
         }),
       ),
     );

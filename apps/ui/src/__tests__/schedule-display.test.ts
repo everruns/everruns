@@ -32,16 +32,12 @@ describe("schedule-display", () => {
 
   it("extracts background monitor titles from synthetic schedule descriptions", () => {
     expect(
-      getScheduleDisplayTitle(`This scheduled monitor fired. Start the background run now.
+      getScheduleDisplayTitle(`Monitor: Watch PR 1319
 
-Use \`spawn_background\` with:
-- tool: \`github\`
-- title: \`Watch PR 1319\`
-- signal_on_completion: true
-- args:
-\`\`\`json
-{}
-\`\`\``),
+This scheduled monitor fired. Start the background run now.
+
+spawn_background payload:
+{"tool":"github","title":"Watch PR 1319","signal_on_completion":true,"args":{}}`),
     ).toBe("Watch PR 1319");
   });
 });

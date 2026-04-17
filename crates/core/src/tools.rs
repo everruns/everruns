@@ -782,17 +782,36 @@ fn parse_background_schedule(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
-    let scheduled_at = schedule
-        .get("scheduled_at")
-        .and_then(Value::as_str)
-        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-        .map(|dt| dt.with_timezone(&chrono::Utc));
+    let scheduled_at = match schedule.get("scheduled_at").and_then(Value::as_str) {
+        Some(value) => {
+            let value = value.trim();
+            if value.is_empty() {
+                None
+            } else {
+                Some(
+                    chrono::DateTime::parse_from_rfc3339(value)
+                        .map_err(|_| "scheduled_at must be RFC3339".to_string())?
+                        .with_timezone(&chrono::Utc),
+                )
+            }
+        }
+        None => None,
+    };
 
-    if cron_expression.is_none() && scheduled_at.is_none() {
-        return Err(
-            "schedule must include either cron_expression (recurring) or scheduled_at (one-shot)"
-                .to_string(),
-        );
+    match (cron_expression.is_some(), scheduled_at.is_some()) {
+        (false, false) => {
+            return Err(
+                "schedule must include exactly one of cron_expression (recurring) or scheduled_at (one-shot)"
+                    .to_string(),
+            );
+        }
+        (true, true) => {
+            return Err(
+                "schedule must not include both cron_expression and scheduled_at; provide exactly one"
+                    .to_string(),
+            );
+        }
+        _ => {}
     }
 
     let timezone = schedule
@@ -816,16 +835,19 @@ fn build_background_schedule_description(
     title: &str,
     signal_on_completion: bool,
 ) -> String {
-    let args_json =
-        serde_json::to_string_pretty(tool_args).unwrap_or_else(|_| tool_args.to_string());
+    let payload = json!({
+        "tool": tool_name,
+        "title": title,
+        "signal_on_completion": signal_on_completion,
+        "args": tool_args,
+    });
+    let payload_json =
+        serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string());
 
     format!(
-        "This scheduled monitor fired. Start the background run now.\n\n\
-Use `spawn_background` with:\n\
-- tool: `{tool_name}`\n\
-- title: `{title}`\n\
-- signal_on_completion: {signal_on_completion}\n\
-- args:\n```json\n{args_json}\n```"
+        "Monitor: {title}\n\n\
+This scheduled monitor fired. Start the background run now.\n\n\
+spawn_background payload:\n{payload_json}"
     )
 }
 
@@ -2477,16 +2499,72 @@ mod tests {
             schedules[0].cron_expression.as_deref(),
             Some("*/10 * * * *")
         );
-        assert!(
-            schedules[0]
-                .description
-                .contains("This scheduled monitor fired.")
-        );
-        assert!(schedules[0].description.contains("Watch PR 1319"));
+        assert!(schedules[0].description.contains("Monitor: Watch PR 1319"));
         assert!(
             schedules[0]
                 .description
                 .contains("\"summary\": \"Background complete\"")
         );
+    }
+
+    #[tokio::test]
+    async fn test_spawn_background_rejects_invalid_scheduled_at() {
+        let session_id = SessionId::new();
+        let storage_store = Arc::new(NoopStorageStore);
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(TestBackgroundTool)
+            .build();
+        let context = ToolContext::with_storage_store(session_id, storage_store)
+            .with_tool_registry(Arc::new(tool_registry));
+
+        let result = SpawnBackgroundTool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background",
+                    "args": {},
+                    "schedule": {
+                        "scheduled_at": "tomorrow at noon"
+                    }
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("spawn_background should reject invalid scheduled_at");
+        };
+        assert!(message.contains("scheduled_at must be RFC3339"));
+    }
+
+    #[tokio::test]
+    async fn test_spawn_background_rejects_ambiguous_schedule_shape() {
+        let session_id = SessionId::new();
+        let storage_store = Arc::new(NoopStorageStore);
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(TestBackgroundTool)
+            .build();
+        let context = ToolContext::with_storage_store(session_id, storage_store)
+            .with_tool_registry(Arc::new(tool_registry));
+
+        let result = SpawnBackgroundTool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background",
+                    "args": {},
+                    "schedule": {
+                        "cron_expression": "*/10 * * * *",
+                        "scheduled_at": "2026-04-16T15:30:00Z"
+                    }
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("spawn_background should reject ambiguous schedule shape");
+        };
+        assert!(message.contains("must not include both cron_expression and scheduled_at"));
     }
 }
