@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: "docker"
+    directories:
+      - "/crates/server"
+      - "/crates/worker"
+      - "/apps/ui"
+      - "/docker"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"

@@ -5,7 +5,7 @@
 # ============================================================================
 FROM rust:1.92-slim AS chef
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
     curl \
@@ -49,7 +49,7 @@ RUN cargo build --release -p everruns-worker
 # ============================================================================
 # Stage 4: Runtime - Distroless production image (minimal size and security)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12 AS runtime
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:e2d29aec8061843706b7e484c444f78fafb05bfe47745505252b1769a05d14f1 AS runtime
 
 WORKDIR /app
 

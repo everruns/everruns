@@ -15,17 +15,20 @@
 FROM --platform=$BUILDPLATFORM rust:1.92-slim-bookworm AS builder-base
 
 # Install xx for cross-compilation support
-COPY --from=tonistiigi/xx / /
+# Pinned by digest so a mutated tag can't slip a compromised toolchain into
+# the build. Dependabot (`.github/dependabot.yml`, docker ecosystem) opens a
+# PR when a newer digest is published for `tonistiigi/xx:1.9.0`.
+COPY --from=tonistiigi/xx:1.9.0@sha256:c64defb9ed5a91eacb37f96ccc3d4cd72521c4bd18d5442905b95e2226b0e707 / /
 
 ARG TARGETPLATFORM
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     clang \
     lld \
     curl \
     libssl-dev \
-    && xx-apt-get install -y \
+    && xx-apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
     libssl-dev \
@@ -74,7 +77,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
 # ============================================================================
 # Stage 3a: Server Runtime image (distroless for minimal size and security)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12 AS server
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:e2d29aec8061843706b7e484c444f78fafb05bfe47745505252b1769a05d14f1 AS server
 
 WORKDIR /app
 
@@ -92,7 +95,7 @@ CMD ["/app/everruns-server"]
 # ============================================================================
 # Stage 3b: Worker Runtime image (distroless for minimal size and security)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12 AS worker
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:e2d29aec8061843706b7e484c444f78fafb05bfe47745505252b1769a05d14f1 AS worker
 
 WORKDIR /app
 
@@ -126,6 +129,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
 FROM debian:bookworm-slim AS admin
 
+# Create non-root user. Admin tasks (sqlx migrate, reencrypt-secrets) are
+# user-space DB/crypto operations and don't need root.
+RUN groupadd --system --gid 65532 admin \
+    && useradd --system --uid 65532 --gid admin --shell /bin/bash admin
+
 WORKDIR /app
 
 # Copy CA certificates from build platform stage (no QEMU needed)
@@ -144,6 +152,8 @@ COPY crates/server/migrations /app/migrations
 COPY --chmod=755 docker/admin-entrypoint.sh /app/entrypoint.sh
 
 ENV RUST_LOG=info
+
+USER admin
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["help"]
