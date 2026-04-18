@@ -1,11 +1,15 @@
 // Eval API routes
 // See specs/evals.md
 
+use axum::body::{Body, Bytes};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
+use futures::stream;
 use serde::Deserialize;
+use serde_json::{Map, Value};
 
 use everruns_core::eval::*;
 use everruns_core::typed_id::{EvalCaseId, EvalId, EvalResultId, EvalRunId};
@@ -18,6 +22,7 @@ use crate::services::EvalService;
 use crate::services::eval_runner::EvalRunContext;
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
+use std::io;
 use std::sync::Arc;
 
 use utoipa::{IntoParams, ToSchema};
@@ -98,6 +103,9 @@ pub struct CreateEvalCaseRequest {
     /// Verification messages sent after conversation completes and session idles.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub post: Option<Vec<EvalInputMessage>>,
+    /// Session files to capture after scoring completes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<Vec<ArtifactSpec>>,
     pub scorers: Vec<Scorer>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_turns: Option<u32>,
@@ -124,6 +132,9 @@ pub struct UpdateEvalCaseRequest {
     /// Verification messages sent after conversation completes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub post: Option<Vec<EvalInputMessage>>,
+    /// Session files to capture after scoring completes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<Vec<ArtifactSpec>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scorers: Option<Vec<Scorer>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -217,6 +228,10 @@ pub fn routes(state: AppState) -> Router {
         // Runs
         .route("/v1/evals/{eval_id}/runs", post(create_run).get(list_runs))
         .route("/v1/evals/{eval_id}/runs/{run_id}", get(get_run))
+        .route(
+            "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
+            get(export_run_artifacts),
+        )
         .route("/v1/evals/{eval_id}/runs/{run_id}/cancel", post(cancel_run))
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
@@ -489,6 +504,46 @@ async fn get_run(
     Ok(Json(run))
 }
 
+async fn export_run_artifacts(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id)): Path<(String, String)>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let eval_id: EvalId = eval_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
+    })?;
+    let run_id: EvalRunId = run_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid run ID: {e}")).into_response(StatusCode::BAD_REQUEST)
+    })?;
+    let caller = Caller::from(&org);
+    let run = state
+        .service
+        .get_run(&caller, &eval_id.to_string(), &run_id.to_string())
+        .await
+        .map_policy_or_internal("export eval run artifacts")?
+        .ok_or_not_found_json("EvalRun")?;
+    let body = Body::from_stream(stream::iter(run.results.into_iter().map(|result| {
+        serde_json::to_vec(&run_artifact_export_value(&result))
+            .map(|mut line| {
+                line.push(b'\n');
+                Bytes::from(line)
+            })
+            .map_err(|error| {
+                tracing::error!("Failed to serialize eval artifact export: {}", error);
+                io::Error::other(error)
+            })
+    })));
+
+    Ok((
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/x-ndjson".to_string(),
+        )],
+        body,
+    ))
+}
+
 async fn cancel_run(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -560,4 +615,110 @@ async fn bulk_update_run_scores(
         .await
         .map_policy_or_internal("bulk update eval result scores")?;
     Ok(Json(ListResponse::new(results)))
+}
+
+fn run_artifact_export_value(result: &EvalCaseResult) -> Value {
+    let mut export = Map::new();
+    export.insert(
+        "instance_id".to_string(),
+        Value::String(
+            result
+                .case_name
+                .clone()
+                .unwrap_or_else(|| result.eval_case_id.to_string()),
+        ),
+    );
+
+    if let Some(artifacts) = &result.artifacts {
+        for (name, content) in artifacts {
+            let key = if name == "patch" {
+                "model_patch"
+            } else {
+                name.as_str()
+            };
+            if export.contains_key(key) {
+                tracing::warn!(
+                    eval_case_id = %result.eval_case_id,
+                    artifact_name = %name,
+                    export_key = %key,
+                    "Skipping colliding eval artifact export field"
+                );
+                continue;
+            }
+            export.insert(key.to_string(), Value::String(content.clone()));
+        }
+    }
+
+    Value::Object(export)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+    use uuid::Uuid;
+
+    #[test]
+    fn run_artifact_export_maps_patch_to_model_patch() {
+        let result = EvalCaseResult {
+            public_id: everruns_core::typed_id::EvalResultId::from_uuid(Uuid::now_v7()),
+            internal_id: Uuid::nil(),
+            eval_case_id: EvalCaseId::from_uuid(Uuid::now_v7()),
+            case_name: Some("astropy__astropy-12907".to_string()),
+            session_id: None,
+            target: None,
+            target_snapshot: None,
+            status: CaseResultStatus::Passed,
+            scores: None,
+            metadata: None,
+            turns: None,
+            latency_ms: None,
+            input_tokens: None,
+            output_tokens: None,
+            error_message: None,
+            artifacts: Some(BTreeMap::from([
+                ("patch".to_string(), "diff --git a/file b/file".to_string()),
+                ("log".to_string(), "done".to_string()),
+            ])),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let value = run_artifact_export_value(&result);
+        assert_eq!(value["instance_id"], "astropy__astropy-12907");
+        assert_eq!(value["model_patch"], "diff --git a/file b/file");
+        assert_eq!(value["log"], "done");
+        assert!(value.get("patch").is_none());
+    }
+
+    #[test]
+    fn run_artifact_export_preserves_existing_model_patch() {
+        let result = EvalCaseResult {
+            public_id: everruns_core::typed_id::EvalResultId::from_uuid(Uuid::now_v7()),
+            internal_id: Uuid::nil(),
+            eval_case_id: EvalCaseId::from_uuid(Uuid::now_v7()),
+            case_name: Some("collision-case".to_string()),
+            session_id: None,
+            target: None,
+            target_snapshot: None,
+            status: CaseResultStatus::Passed,
+            scores: None,
+            metadata: None,
+            turns: None,
+            latency_ms: None,
+            input_tokens: None,
+            output_tokens: None,
+            error_message: None,
+            artifacts: Some(BTreeMap::from([
+                ("model_patch".to_string(), "kept".to_string()),
+                ("patch".to_string(), "ignored".to_string()),
+            ])),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let value = run_artifact_export_value(&result);
+        assert_eq!(value["model_patch"], "kept");
+        assert!(value.get("patch").is_none());
+    }
 }

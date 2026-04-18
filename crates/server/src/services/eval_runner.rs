@@ -17,6 +17,7 @@ use anyhow::Result;
 use everruns_core::eval::*;
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
 use everruns_core::typed_id::SessionId;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Semaphore;
@@ -231,6 +232,8 @@ async fn execute_case_inner(
     let conversation: Vec<EvalInputMessage> = serde_json::from_value(case_row.conversation)?;
     let post: Option<Vec<EvalInputMessage>> =
         case_row.post.map(serde_json::from_value).transpose()?;
+    let artifact_specs: Option<Vec<ArtifactSpec>> =
+        case_row.artifacts.map(serde_json::from_value).transpose()?;
     let scorers: Vec<Scorer> = serde_json::from_value(case_row.scorers)?;
     let timeout_secs = case_row.timeout_seconds.map(|v| v as u64).unwrap_or(120);
     let case_deadline = Instant::now()
@@ -399,6 +402,7 @@ async fn execute_case_inner(
     } else {
         0.0
     };
+    let artifacts = collect_case_artifacts(&ctx.db, session_uuid, artifact_specs.as_deref()).await;
 
     let status = if all_passed { "passed" } else { "failed" };
 
@@ -412,6 +416,7 @@ async fn execute_case_inner(
                 latency_ms: None, // Set by caller
                 input_tokens: Some(input_tokens as i64),
                 output_tokens: Some(output_tokens as i64),
+                artifacts: artifacts.map(serde_json::to_value).transpose()?,
                 ..Default::default()
             },
         )
@@ -425,6 +430,50 @@ async fn execute_case_inner(
         input_tokens,
         output_tokens,
     })
+}
+
+async fn collect_case_artifacts(
+    db: &StorageBackend,
+    session_uuid: Uuid,
+    specs: Option<&[ArtifactSpec]>,
+) -> Option<BTreeMap<String, String>> {
+    let mut artifacts = BTreeMap::new();
+
+    for spec in specs.unwrap_or(&[]) {
+        match db.get_session_file(session_uuid, &spec.path).await {
+            Ok(Some(file)) if !file.is_directory => {
+                let content = file
+                    .content
+                    .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                    .unwrap_or_default();
+                artifacts.insert(spec.name.clone(), content);
+            }
+            Ok(Some(_)) => {
+                tracing::warn!(
+                    session_id = %session_uuid,
+                    path = %spec.path,
+                    "Skipping directory artifact path"
+                );
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    session_id = %session_uuid,
+                    path = %spec.path,
+                    "Configured eval artifact not found"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    session_id = %session_uuid,
+                    path = %spec.path,
+                    error = %error,
+                    "Failed to read eval artifact"
+                );
+            }
+        }
+    }
+
+    (!artifacts.is_empty()).then_some(artifacts)
 }
 
 struct SessionCtx {
@@ -724,5 +773,52 @@ async fn run_single_scorer(
                 },
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::{CreateSessionFileRow, StorageBackend};
+
+    #[tokio::test]
+    async fn collect_case_artifacts_reads_named_files() {
+        let db = StorageBackend::in_memory();
+        let session_uuid = Uuid::now_v7();
+
+        db.create_session_file(CreateSessionFileRow {
+            session_id: SessionId::from_uuid(session_uuid),
+            path: "/workspace/fix.patch".to_string(),
+            content: Some(b"diff --git a/file b/file\n".to_vec()),
+            is_directory: false,
+            is_readonly: false,
+        })
+        .await
+        .unwrap();
+
+        let artifacts = collect_case_artifacts(
+            &db,
+            session_uuid,
+            Some(&[
+                ArtifactSpec {
+                    name: "patch".to_string(),
+                    path: "/workspace/fix.patch".to_string(),
+                },
+                ArtifactSpec {
+                    name: "missing".to_string(),
+                    path: "/workspace/missing.txt".to_string(),
+                },
+            ]),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            artifacts,
+            BTreeMap::from([(
+                "patch".to_string(),
+                "diff --git a/file b/file\n".to_string()
+            )])
+        );
     }
 }

@@ -141,9 +141,9 @@ impl Database {
     ) -> Result<EvalCaseRow> {
         let row = sqlx::query_as::<_, EvalCaseRow>(
             r#"
-            INSERT INTO eval_cases (eval_id, public_id, name, description, target, tags, conversation, post, scorers, max_turns, timeout_seconds, position)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, post, scorers,
+            INSERT INTO eval_cases (eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers, max_turns, timeout_seconds, position)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
                       max_turns, timeout_seconds, position, created_at, updated_at
             "#,
         )
@@ -155,6 +155,7 @@ impl Database {
         .bind(&input.tags)
         .bind(&input.conversation)
         .bind(&input.post)
+        .bind(&input.artifacts)
         .bind(&input.scorers)
         .bind(input.max_turns)
         .bind(input.timeout_seconds)
@@ -167,7 +168,7 @@ impl Database {
     pub async fn list_eval_cases(&self, eval_id: Uuid) -> Result<Vec<EvalCaseRow>> {
         let rows = sqlx::query_as::<_, EvalCaseRow>(
             r#"
-            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, scorers,
+            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
                    max_turns, timeout_seconds, position, created_at, updated_at
             FROM eval_cases
             WHERE eval_id = $1
@@ -183,7 +184,7 @@ impl Database {
     pub async fn get_eval_case(&self, id: Uuid) -> Result<Option<EvalCaseRow>> {
         let row = sqlx::query_as::<_, EvalCaseRow>(
             r#"
-            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, scorers,
+            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
                    max_turns, timeout_seconds, position, created_at, updated_at
             FROM eval_cases
             WHERE id = $1
@@ -202,7 +203,7 @@ impl Database {
     ) -> Result<Option<EvalCaseRow>> {
         let row = sqlx::query_as::<_, EvalCaseRow>(
             r#"
-            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, scorers,
+            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
                    max_turns, timeout_seconds, position, created_at, updated_at
             FROM eval_cases
             WHERE eval_id = $1 AND public_id = $2
@@ -230,13 +231,14 @@ impl Database {
                 tags = COALESCE($5, tags),
                 conversation = COALESCE($6, conversation),
                 post = COALESCE($7, post),
-                scorers = COALESCE($8, scorers),
-                max_turns = COALESCE($9, max_turns),
-                timeout_seconds = COALESCE($10, timeout_seconds),
-                position = COALESCE($11, position),
+                artifacts = COALESCE($8, artifacts),
+                scorers = COALESCE($9, scorers),
+                max_turns = COALESCE($10, max_turns),
+                timeout_seconds = COALESCE($11, timeout_seconds),
+                position = COALESCE($12, position),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, post, scorers,
+            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
                       max_turns, timeout_seconds, position, created_at, updated_at
             "#,
         )
@@ -247,6 +249,7 @@ impl Database {
         .bind(&input.tags)
         .bind(&input.conversation)
         .bind(&input.post)
+        .bind(&input.artifacts)
         .bind(&input.scorers)
         .bind(input.max_turns)
         .bind(input.timeout_seconds)
@@ -401,10 +404,10 @@ impl Database {
     ) -> Result<EvalCaseResultRow> {
         let row = sqlx::query_as::<_, EvalCaseResultRow>(
             r#"
-            INSERT INTO eval_case_results (eval_run_id, eval_case_id, public_id, target, target_snapshot)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO eval_case_results (eval_run_id, eval_case_id, public_id, target, target_snapshot, artifacts)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id, eval_run_id, eval_case_id, public_id, session_id, target, target_snapshot,
-                      status, scores, metadata, turns, latency_ms, input_tokens, output_tokens, error_message,
+                      status, scores, metadata, turns, latency_ms, input_tokens, output_tokens, error_message, artifacts,
                       created_at, updated_at
             "#,
         )
@@ -413,6 +416,7 @@ impl Database {
         .bind(&input.public_id)
         .bind(&input.target)
         .bind(&input.target_snapshot)
+        .bind(&input.artifacts)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -427,7 +431,7 @@ impl Database {
             SELECT ecr.id, ecr.eval_run_id, ecr.eval_case_id, ecr.public_id, ecr.session_id,
                    ecr.target, ecr.target_snapshot,
                    ecr.status, ecr.scores, ecr.metadata, ecr.turns, ecr.latency_ms,
-                   ecr.input_tokens, ecr.output_tokens, ecr.error_message,
+                   ecr.input_tokens, ecr.output_tokens, ecr.error_message, ecr.artifacts,
                    ecr.created_at, ecr.updated_at
             FROM eval_case_results ecr
             WHERE ecr.eval_run_id = $1
@@ -460,10 +464,11 @@ impl Database {
                 input_tokens = COALESCE($10, input_tokens),
                 output_tokens = COALESCE($11, output_tokens),
                 error_message = COALESCE($12, error_message),
+                artifacts = COALESCE($13, artifacts),
                 updated_at = NOW()
             WHERE id = $1
             RETURNING id, eval_run_id, eval_case_id, public_id, session_id, target, target_snapshot,
-                      status, scores, metadata, turns, latency_ms, input_tokens, output_tokens, error_message,
+                      status, scores, metadata, turns, latency_ms, input_tokens, output_tokens, error_message, artifacts,
                       created_at, updated_at
             "#,
         )
@@ -479,6 +484,7 @@ impl Database {
         .bind(input.input_tokens)
         .bind(input.output_tokens)
         .bind(&input.error_message)
+        .bind(&input.artifacts)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)

@@ -1628,6 +1628,7 @@ pub struct EvalCaseRow {
     pub tags: Vec<String>,
     pub conversation: serde_json::Value,
     pub post: Option<serde_json::Value>,
+    pub artifacts: Option<serde_json::Value>,
     pub scorers: serde_json::Value,
     pub max_turns: Option<i32>,
     pub timeout_seconds: Option<i32>,
@@ -1646,6 +1647,7 @@ pub struct CreateEvalCaseRow {
     pub tags: Vec<String>,
     pub conversation: serde_json::Value,
     pub post: Option<serde_json::Value>,
+    pub artifacts: Option<serde_json::Value>,
     pub scorers: serde_json::Value,
     pub max_turns: Option<i32>,
     pub timeout_seconds: Option<i32>,
@@ -1661,6 +1663,7 @@ pub struct UpdateEvalCaseRow {
     pub tags: Option<Vec<String>>,
     pub conversation: Option<serde_json::Value>,
     pub post: Option<serde_json::Value>,
+    pub artifacts: Option<serde_json::Value>,
     pub scorers: Option<serde_json::Value>,
     pub max_turns: Option<i32>,
     pub timeout_seconds: Option<i32>,
@@ -1715,6 +1718,7 @@ pub struct EvalCaseResultRow {
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
     pub error_message: Option<String>,
+    pub artifacts: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -1727,6 +1731,7 @@ pub struct CreateEvalCaseResultRow {
     pub eval_case_id: Uuid,
     pub target: Option<serde_json::Value>,
     pub target_snapshot: Option<serde_json::Value>,
+    pub artifacts: Option<serde_json::Value>,
 }
 
 /// Input for updating an eval case result
@@ -1743,6 +1748,7 @@ pub struct UpdateEvalCaseResultRow {
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
     pub error_message: Option<String>,
+    pub artifacts: Option<serde_json::Value>,
 }
 
 // ============================================================================

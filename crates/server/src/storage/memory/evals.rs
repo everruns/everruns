@@ -141,6 +141,7 @@ impl InMemoryDatabase {
             tags: input.tags,
             conversation: input.conversation,
             post: input.post,
+            artifacts: input.artifacts,
             scorers: input.scorers,
             max_turns: input.max_turns,
             timeout_seconds: input.timeout_seconds,
@@ -210,6 +211,9 @@ impl InMemoryDatabase {
         }
         if let Some(post) = input.post {
             case.post = Some(post);
+        }
+        if let Some(artifacts) = input.artifacts {
+            case.artifacts = Some(artifacts);
         }
         if let Some(scorers) = input.scorers {
             case.scorers = scorers;
@@ -351,6 +355,7 @@ impl InMemoryDatabase {
             input_tokens: None,
             output_tokens: None,
             error_message: None,
+            artifacts: input.artifacts,
             created_at: now,
             updated_at: now,
         };
@@ -413,6 +418,9 @@ impl InMemoryDatabase {
         }
         if let Some(error_message) = input.error_message {
             result.error_message = Some(error_message);
+        }
+        if let Some(artifacts) = input.artifacts {
+            result.artifacts = Some(artifacts);
         }
         result.updated_at = Self::now();
         Ok(Some(result.clone()))

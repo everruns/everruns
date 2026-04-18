@@ -45,12 +45,13 @@ Top-level entity. Contains cases that define expected behaviors.
 
 ### EvalCase
 
-A single test within an eval. Defines input messages, scoring criteria, and execution bounds.
+A single test within an eval. Defines input messages, scoring criteria, execution bounds, and optional artifact collection.
 
 - Each case has a `description` explaining what behavior it measures (self-documenting)
 - Optional `target` (EvalTarget) — per-case override
 - `conversation`: one or more input messages sent sequentially (multi-turn support)
 - `post`: optional verification messages sent after conversation completes and session idles, before scoring (e.g. running test scripts for SWE-bench)
+- `artifacts`: optional named session-file reads captured after post messages and scoring complete
 - `scorers`: list of scoring rules applied after execution completes
 - `max_turns`: optional bound on agent turns (default: 10)
 - `timeout_seconds`: per-case timeout (default: 120)
@@ -76,6 +77,7 @@ The outcome of a single case within a run.
 - `target_snapshot`: identical frozen copy for immutability (both set at run creation, both equal initially; `target_snapshot` must never be overwritten)
 - Contains per-scorer scores with pass/fail, value (0.0–1.0), and reason
 - Optional `metadata` records external scorer provenance for deferred write-back (scorer name, version, timestamps, raw output, reviewer notes)
+- Stores collected artifact contents keyed by the case's artifact names
 - Captures efficiency metrics: turn count, latency, token usage
 
 ### Scorer
@@ -134,6 +136,7 @@ See `crates/core/src/eval.rs` for full field definitions.
 | `tags` | Vec\<String\> | Tags for subset runs |
 | `conversation` | Vec\<InputMessage\> | Input messages (sequential) |
 | `post` | Option\<Vec\<InputMessage\>\> | Post-conversation verification messages (sent after session idles, before scoring) |
+| `artifacts` | Option\<Vec\<ArtifactSpec\>\> | Named session files to collect after the case finishes |
 | `scorers` | Vec\<Scorer\> | Scoring rules (JSONB) |
 | `max_turns` | Option\<u32\> | Turn limit (default: 10) |
 | `timeout_seconds` | Option\<u32\> | Timeout (default: 120) |
@@ -185,8 +188,9 @@ See `crates/core/src/eval.rs` for full field definitions.
 | `target` | EvalTarget | Resolved target at execution time (JSONB, always concrete) |
 | `target_snapshot` | EvalTarget | Frozen copy of resolved target (JSONB, immutable) |
 | `status` | CaseResultStatus | `pending`, `running`, `passed`, `failed`, `errored`, `timeout` |
-| `scores` | Option\<Vec\<Score\>\> | Per-scorer results (JSONB, scorer order preserved) |
+| `scores` | Option\<JSON\> | Per-scorer results (JSONB) |
 | `metadata` | Option\<JSON\> | External scorer provenance and audit details (JSONB) |
+| `artifacts` | Option\<Map\<String, String\>\> | Collected session file contents (JSONB) |
 | `turns` | Option\<u32\> | Turn count |
 | `latency_ms` | Option\<u64\> | Execution time |
 | `tokens` | Option\<TokenUsage\> | Token usage |
@@ -242,6 +246,7 @@ All endpoints under `/v1/evals`. See `crates/server/src/api/evals.rs`.
 | `POST` | `/v1/evals/{eval_id}/runs` | Trigger run (body: optional `model_override`, `filter_tags`) |
 | `GET` | `/v1/evals/{eval_id}/runs` | List runs with summaries |
 | `GET` | `/v1/evals/{eval_id}/runs/{run_id}` | Get run with case results |
+| `GET` | `/v1/evals/{eval_id}/runs/{run_id}/artifacts` | Export run artifacts as NDJSON (`instance_id` plus artifact fields, with `patch` exported as `model_patch`) |
 | `POST` | `/v1/evals/{eval_id}/runs/{run_id}/cancel` | Cancel running eval |
 | `PATCH` | `/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores` | Write external scores back to a completed result |
 | `PATCH` | `/v1/evals/{eval_id}/runs/{run_id}/scores` | Bulk write external scores back to a completed run |
@@ -269,7 +274,8 @@ POST /v1/evals/{eval_id}/runs
   │    5. Fetch session events (tool.completed, turn.completed)
   │    6. Fetch final assistant messages
   │    7. Run scorers → produce Score per scorer
-  │    8. Update CaseResult (status, scores, turns, latency, tokens)
+  │    8. Collect configured session files into CaseResult.artifacts
+  │    9. Update CaseResult (status, scores, artifacts, turns, latency, tokens)
   │
   ├─ Aggregate results → RunSummary
   ├─ Update EvalRun (status: completed, summary)
