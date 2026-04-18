@@ -13,10 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Highlights
 
+- **Embeddable Runtime** - New example demonstrates embedding Everruns as an in-process runtime host ([#1332](https://github.com/everruns/everruns/pull/1332))
 - **Scoped MCP Servers** - Remote MCP server configs can now be attached at harness, agent, or session scope and merge with precedence over org-scoped servers ([#1315](https://github.com/everruns/everruns/pull/1315))
-- **Capability Skills** - Capabilities can now contribute skills to the agents they are applied to ([#1328](https://github.com/everruns/everruns/pull/1328))
-- **Runtime Host Example** - New example showing how to embed Everruns as an in-process runtime host ([#1332](https://github.com/everruns/everruns/pull/1332))
-- **Durable Act Fix** - `ActInput.org_id` is now preserved through the durable act-task roundtrip, fixing org-context loss on retry ([#1330](https://github.com/everruns/everruns/pull/1330))
 
 ### What's Changed
 
