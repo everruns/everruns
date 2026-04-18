@@ -76,6 +76,7 @@ pub use crate::capability_types::{
 // Capability Modules
 // ============================================================================
 
+mod a2ui;
 mod agent_instructions;
 pub mod attach_skill;
 mod budgeting;
@@ -114,6 +115,7 @@ mod virtual_bash;
 mod web_fetch;
 
 // Re-export capabilities
+pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
     MAX_AGENTS_MD_SIZE, format_agents_md_content,
@@ -685,6 +687,7 @@ impl CapabilityRegistry {
 
         // OpenUI generative UI (all environments)
         registry.register(OpenUiCapability);
+        registry.register(A2UiCapability);
 
         // Demo capability with mount points (all environments)
         registry.register(SampleDataCapability);

@@ -1,33 +1,36 @@
 "use client";
 
 /**
- * MessageContent - Renders message text with inline OpenUI blocks.
+ * MessageContent — renders message text with inline generative-UI blocks.
  *
- * Splits message text on ```openui fenced code blocks and renders
- * alternating StreamdownMessage (markdown) and OpenUIBlock segments.
- * Falls back to pure markdown when no openui blocks are present.
+ * Splits message text on both ```openui and ```a2ui fenced code blocks and
+ * renders each segment with its matching renderer. Markdown segments render
+ * via StreamdownMessage. Falls back to pure markdown when no UI blocks are
+ * present.
  *
  * @see specs/openui.md
+ * @see specs/a2ui.md
  */
 
-import { splitOpenUIBlocks, hasOpenUIBlocks } from "@/lib/openui-utils";
+import { hasA2UIBlocks, splitA2UIBlocks } from "@/lib/a2ui-utils";
 import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import { OpenUIBlock } from "@/components/chat/openui-renderer";
+import { A2UIBlock } from "@/components/chat/a2ui-renderer";
 
 interface MessageContentProps {
-  /** Raw message text (may contain ```openui blocks) */
+  /** Raw message text (may contain ```openui or ```a2ui blocks) */
   text: string;
   /** Whether content is actively streaming */
   isStreaming?: boolean;
 }
 
 /**
- * Renders message text, splitting OpenUI code blocks into rendered UI
+ * Renders message text, splitting generative-UI code blocks into rendered UI
  * and surrounding markdown into Streamdown-rendered text.
  */
 export function MessageContent({ text, isStreaming = false }: MessageContentProps) {
-  // Fast path: no openui blocks → pure markdown
-  if (!hasOpenUIBlocks(text)) {
+  // Fast path: no generative-UI blocks → pure markdown.
+  if (!hasA2UIBlocks(text)) {
     return (
       <StreamdownMessage variant="inline" className="text-foreground">
         {text}
@@ -35,14 +38,18 @@ export function MessageContent({ text, isStreaming = false }: MessageContentProp
     );
   }
 
-  const segments = splitOpenUIBlocks(text);
+  const segments = splitA2UIBlocks(text);
 
   return (
     <div className="space-y-2">
-      {segments.map((segment, i) =>
-        segment.type === "openui" ? (
-          <OpenUIBlock key={i} code={segment.content} isStreaming={isStreaming} />
-        ) : (
+      {segments.map((segment, i) => {
+        if (segment.type === "openui") {
+          return <OpenUIBlock key={i} code={segment.content} isStreaming={isStreaming} />;
+        }
+        if (segment.type === "a2ui") {
+          return <A2UIBlock key={i} code={segment.content} isStreaming={isStreaming} />;
+        }
+        return (
           <StreamdownMessage
             key={i}
             variant="inline"
@@ -51,8 +58,8 @@ export function MessageContent({ text, isStreaming = false }: MessageContentProp
           >
             {segment.content}
           </StreamdownMessage>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }

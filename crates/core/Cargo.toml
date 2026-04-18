@@ -99,6 +99,9 @@ llmsim = "0.2.1"
 # OpenUI component definitions and prompt generator
 everruns-openui = { path = "../openui" }
 
+# A2UI component catalog and prompt generator
+everruns-a2ui = { path = "../a2ui" }
+
 # Compile-time directory embedding for virtual mounts (platform docs)
 include_dir = "0.7"
 

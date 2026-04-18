@@ -1,0 +1,19 @@
+# A2UI Component Catalog and Prompt Generator
+#
+# Decision: Separate crate from core — mirrors crates/openui/ and reusable elsewhere.
+# Decision: Static catalog definitions (no runtime validation) — we only need prompt text.
+# Decision: JSON wire format (not a DSL) — A2UI spec is JSON, enabling cross-framework renderers.
+# Ref: specs/a2ui.md
+# Ref: https://github.com/google/a2ui
+
+[package]
+name = "everruns-a2ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "A2UI component catalog and prompt generator for Everruns"
+
+[dependencies]
+
+[dev-dependencies]

@@ -15,6 +15,7 @@ members = [
     "crates/durable",
     "crates/config",
     "crates/openui",
+    "crates/a2ui",
     "crates/session-sqldb",
     "crates/container-sandbox",
     "integrations/docker",

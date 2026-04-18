@@ -75,6 +75,8 @@ Always make sure you are working on top of latest main from remote.
 - `specs/events.md` - Event types, SSE streaming, contract and compatibility guarantees
 - `specs/execution-phases.md` - Execution phases (Commentary/FinalAnswer) for multi-step tool flows
 - `specs/markdown-messages.md` - Chat message markdown rendering with llm-ui
+- `specs/openui.md` - OpenUI generative-UI capability (OpenUI Lang + `@openuidev/react-ui`)
+- `specs/a2ui.md` - A2UI generative-UI capability (Google A2UI JSON + native renderer)
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system
 - `specs/agent-instructions.md` - AGENTS.md support (dynamic project instructions)
