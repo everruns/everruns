@@ -8,6 +8,7 @@ mod base;
 mod coding_container;
 mod coding_daytona;
 mod coding_session_sandbox;
+mod data_analyst;
 mod generic;
 mod platform_chat;
 
@@ -18,6 +19,7 @@ pub fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
     let mut harnesses = vec![
         base::definition(),
         generic::definition(),
+        data_analyst::definition(),
         coding_daytona::definition(),
         coding_container::definition(),
         platform_chat::definition(),

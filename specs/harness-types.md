@@ -118,9 +118,36 @@ Built-in harnesses are managed by `crates/server/src/org_init.rs`:
 
 Harness seed UUIDs occupy the `0x600-0x6FF` range. These fixed UUIDs are only used for the default org; other orgs get auto-generated UUIDs. See `crates/server/src/seed.rs` for seed harness definitions and capability assignments.
 
+### Data Analyst
+
+Data analysis harness with SQL databases, persistent memory, interactive charts via OpenUI, and a structured analysis pipeline inspired by OpenAI's Kepler data agent and the open-source [Dash](https://github.com/agno-agi/dash) project. Inherits from Generic.
+
+| Property | Value |
+|----------|-------|
+| Name | `data-analyst` |
+| Display Name | Data Analyst |
+| Parent | `generic` |
+| System Prompt | Structured 6-step analysis pipeline (recall → inspect → plan → execute → visualize → learn) |
+| Tags | `data`, `sql`, `analytics`, `built-in` |
+
+**Effective capabilities:** Generic capabilities plus:
+
+| Capability | What it provides |
+|------------|-----------------|
+| Session SQL Database | `sql_execute`, `sql_query`, `sql_schema` — session-scoped SQLite databases |
+| Memory | `remember`, `recall`, `forget` — cross-session persistent learning (passive recall: 8) |
+| OpenUI | Rich charts, tables, dashboards via OpenUI Lang |
+| Todo List | `write_todos` — multi-step analysis task tracking |
+| Data Knowledge | Mounts `/knowledge/{tables,business,queries}/` scaffold for curated context |
+
+**Use cases:**
+- Natural-language data analysis (NL-to-SQL)
+- Interactive data exploration with visualization
+- Agents that learn from corrections across sessions
+- Analytics workflows with curated knowledge bases
+
 ## Future Harness Types
 
 The harness type system is designed for extension. Planned additions:
 - **Research** — Web fetch, todo list, file system for research workflows
-- **Data** — SQL database, file system, sample data for analytics
 - **Code** — Docker/sandbox execution with file system for coding tasks

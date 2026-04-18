@@ -81,6 +81,7 @@ pub mod attach_skill;
 mod budgeting;
 pub mod compaction;
 mod current_time;
+mod data_knowledge;
 mod fake_aws;
 mod fake_crm;
 mod fake_financial;
@@ -130,6 +131,7 @@ pub use compaction::{
     estimate_total_tokens, format_messages_for_summarization, should_compact_proactively,
 };
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
+pub use data_knowledge::DataKnowledgeCapability;
 pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
     AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,
@@ -683,6 +685,9 @@ impl CapabilityRegistry {
 
         // Demo capability with mount points (all environments)
         registry.register(SampleDataCapability);
+
+        // Data knowledge scaffold (all environments)
+        registry.register(DataKnowledgeCapability);
 
         // Fake demo capabilities (all environments)
         registry.register(FakeWarehouseCapability);
@@ -1495,6 +1500,7 @@ mod tests {
             "system_commands",
             "openui",
             "sample_data",
+            "data_knowledge",
             "tool_output_persistence",
             "fake_warehouse",
             "fake_aws",
