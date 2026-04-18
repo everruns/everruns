@@ -237,6 +237,7 @@ See also:
 
 - `cargo run -p everruns-runtime --example in_process_runtime`
 - `cargo run -p everruns-runtime --example inspect_context`
+- `cargo run --manifest-path examples/weekend-concierge-host/Cargo.toml` for a root-level host app example that defines its own capability, private tool data, seeded files, and in-process turn loop
 
 ## Seeding Behavior
 

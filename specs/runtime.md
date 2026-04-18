@@ -236,6 +236,8 @@ Those remain separate concerns outside the runtime host orchestration contract.
 - `crates/runtime/src/in_memory.rs`
 - `crates/runtime/examples/in_process_runtime.rs`
 - `crates/runtime/examples/inspect_context.rs`
+- `examples/weekend-concierge-host/src/lib.rs`
+- `examples/weekend-concierge-host/src/main.rs`
 - `crates/runtime/tests/in_process_runtime_test.rs`
 - `crates/runtime/tests/runtime_host_test.rs`
 - `crates/worker/src/runtime_host.rs`
