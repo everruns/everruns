@@ -240,7 +240,7 @@ dependencies = [
  "once_cell",
  "pin-project",
  "portable-atomic",
- "rand 0.8.5",
+ "rand 0.8.6",
  "regex",
  "ring",
  "rustls-native-certs 0.7.3",
@@ -1557,7 +1557,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1576,7 +1576,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "base64",
@@ -1603,14 +1603,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-config"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "everruns-container-sandbox"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "base64",
@@ -1629,7 +1629,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1680,7 +1680,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1715,7 +1715,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1733,7 +1733,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1749,7 +1749,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "base64",
@@ -1770,7 +1770,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1786,7 +1786,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "base64",
@@ -1809,7 +1809,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "base64",
@@ -1824,7 +1824,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -1839,7 +1839,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1868,7 +1868,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-pi"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1883,7 +1883,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1899,7 +1899,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -1916,7 +1916,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1926,7 +1926,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1945,11 +1945,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-openui"
-version = "0.8.14"
+version = "0.8.15"
 
 [[package]]
 name = "everruns-runtime"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1983,7 +1983,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "aes-gcm",
  "ag-ui-core",
@@ -2064,7 +2064,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-session-sqldb"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2083,7 +2083,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2132,7 +2132,7 @@ checksum = "fe5e43d0f78a42ad591453aedb1d7ae631ce7ee445c7643691055a9ed8d3b01c"
 dependencies = [
  "log",
  "once_cell",
- "rand 0.8.5",
+ "rand 0.8.6",
 ]
 
 [[package]]
@@ -2205,7 +2205,7 @@ dependencies = [
  "bytes",
  "ed25519-dalek",
  "futures",
- "rand 0.8.5",
+ "rand 0.8.6",
  "reqwest 0.13.2",
  "schemars",
  "serde",
@@ -2357,7 +2357,7 @@ dependencies = [
  "futures",
  "log",
  "parking_lot",
- "rand 0.8.5",
+ "rand 0.8.6",
  "redis-protocol",
  "rustls",
  "rustls-native-certs 0.8.3",
@@ -3892,7 +3892,7 @@ dependencies = [
  "ed25519-dalek",
  "getrandom 0.2.17",
  "log",
- "rand 0.8.5",
+ "rand 0.8.6",
  "signatory",
 ]
 
@@ -3968,7 +3968,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc895af95856f929163a0aa20c26a78d26bfdc839f51b9d5aa7a5b79e52b7e83"
 dependencies = [
- "rand 0.8.5",
+ "rand 0.8.6",
 ]
 
 [[package]]
@@ -3992,7 +3992,7 @@ dependencies = [
  "num-integer",
  "num-iter",
  "num-traits",
- "rand 0.8.5",
+ "rand 0.8.6",
  "smallvec",
  "zeroize",
 ]
@@ -4410,7 +4410,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c80231409c20246a13fddb31776fb942c38553c51e871f8cbd687a4cfb5843d"
 dependencies = [
  "phf_shared",
- "rand 0.8.5",
+ "rand 0.8.6",
 ]
 
 [[package]]
@@ -4795,9 +4795,9 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rand"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
  "libc",
  "rand_chacha 0.3.1",
@@ -6013,7 +6013,7 @@ dependencies = [
  "memchr",
  "once_cell",
  "percent-encoding",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rsa",
  "serde",
  "sha1 0.10.6",
@@ -6053,7 +6053,7 @@ dependencies = [
  "md-5 0.10.6",
  "memchr",
  "once_cell",
- "rand 0.8.5",
+ "rand 0.8.6",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -6606,7 +6606,7 @@ dependencies = [
  "futures-sink",
  "http",
  "httparse",
- "rand 0.8.5",
+ "rand 0.8.6",
  "ring",
  "rustls-pki-types",
  "tokio",
@@ -7244,11 +7244,11 @@ checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 
 [[package]]
 name = "wasip2"
-version = "1.0.2+wasi-0.2.9"
+version = "1.0.3+wasi-0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9517f9239f02c069db75e65f174b3da828fe5f5b945c4dd26bd25d89c03ebcf5"
+checksum = "20064672db26d7cdc89c7798c48a0fdfac8213434a1186e5ef29fd560ae223d6"
 dependencies = [
- "wit-bindgen",
+ "wit-bindgen 0.57.1",
 ]
 
 [[package]]
@@ -7257,7 +7257,7 @@ version = "0.4.0+wasi-0.3.0-rc-2026-01-06"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5428f8bf88ea5ddc08faddef2ac4a67e390b88186c703ce6dbd955e1c145aca5"
 dependencies = [
- "wit-bindgen",
+ "wit-bindgen 0.51.0",
 ]
 
 [[package]]
@@ -8083,6 +8083,12 @@ checksum = "d7249219f66ced02969388cf2bb044a09756a083d0fab1e566056b04d9fbcaa5"
 dependencies = [
  "wit-bindgen-rust-macro",
 ]
+
+[[package]]
+name = "wit-bindgen"
+version = "0.57.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "wit-bindgen-core"
