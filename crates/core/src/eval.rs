@@ -476,6 +476,9 @@ pub struct EvalCaseResult {
     /// Per-scorer results.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scores: Option<serde_json::Value>,
+    /// External scorer metadata captured during deferred write-back.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
     /// Turn count.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub turns: Option<u32>,

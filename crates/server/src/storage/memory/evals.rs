@@ -306,7 +306,7 @@ impl InMemoryDatabase {
         if status == "running" && run.started_at.is_none() {
             run.started_at = Some(now);
         }
-        if matches!(status, "completed" | "failed" | "cancelled") {
+        if matches!(status, "completed" | "failed" | "cancelled") && run.completed_at.is_none() {
             run.completed_at = Some(now);
         }
         run.status = status.to_string();
@@ -345,6 +345,7 @@ impl InMemoryDatabase {
             target_snapshot: input.target_snapshot,
             status: "pending".to_string(),
             scores: None,
+            metadata: None,
             turns: None,
             latency_ms: None,
             input_tokens: None,
@@ -394,6 +395,9 @@ impl InMemoryDatabase {
         }
         if let Some(scores) = input.scores {
             result.scores = Some(scores);
+        }
+        if let Some(metadata) = input.metadata {
+            result.metadata = Some(metadata);
         }
         if let Some(turns) = input.turns {
             result.turns = Some(turns);

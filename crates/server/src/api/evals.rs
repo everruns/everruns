@@ -3,12 +3,12 @@
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 
 use everruns_core::eval::*;
-use everruns_core::typed_id::{EvalCaseId, EvalId, EvalRunId};
+use everruns_core::typed_id::{EvalCaseId, EvalId, EvalResultId, EvalRunId};
 
 use crate::api::common::{
     ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse,
@@ -144,6 +144,49 @@ pub struct CreateEvalRunRequest {
     pub model_override: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ExternalScoreStatus {
+    Passed,
+    Failed,
+    Errored,
+}
+
+impl std::fmt::Display for ExternalScoreStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExternalScoreStatus::Passed => write!(f, "passed"),
+            ExternalScoreStatus::Failed => write!(f, "failed"),
+            ExternalScoreStatus::Errored => write!(f, "errored"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateEvalResultScoresRequest {
+    pub scores: Vec<Score>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<ExternalScoreStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct BulkUpdateEvalResultScoresItem {
+    #[schema(value_type = String)]
+    pub result_id: EvalResultId,
+    pub scores: Vec<Score>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<ExternalScoreStatus>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct BulkUpdateEvalRunScoresRequest {
+    pub results: Vec<BulkUpdateEvalResultScoresItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+}
+
 /// Query parameters for listing evals
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListEvalsQuery {
@@ -175,6 +218,14 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/evals/{eval_id}/runs", post(create_run).get(list_runs))
         .route("/v1/evals/{eval_id}/runs/{run_id}", get(get_run))
         .route("/v1/evals/{eval_id}/runs/{run_id}/cancel", post(cancel_run))
+        .route(
+            "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
+            patch(update_result_scores),
+        )
+        .route(
+            "/v1/evals/{eval_id}/runs/{run_id}/scores",
+            patch(bulk_update_run_scores),
+        )
         .with_state(state)
 }
 
@@ -457,4 +508,56 @@ async fn cancel_run(
         .map_policy_or_internal("cancel eval run")?
         .ok_or_not_found_json("EvalRun")?;
     Ok(Json(run))
+}
+
+async fn update_result_scores(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id, result_id)): Path<(String, String, String)>,
+    Json(req): Json<UpdateEvalResultScoresRequest>,
+) -> ApiResult<EvalCaseResult> {
+    let eval_id: EvalId = eval_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
+    })?;
+    let run_id: EvalRunId = run_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid run ID: {e}")).into_response(StatusCode::BAD_REQUEST)
+    })?;
+    let result_id: EvalResultId = result_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid result ID: {e}")).into_response(StatusCode::BAD_REQUEST)
+    })?;
+    let caller = Caller::from(&org);
+    let result = state
+        .service
+        .update_result_scores(
+            &caller,
+            &eval_id.to_string(),
+            &run_id.to_string(),
+            &result_id.to_string(),
+            req,
+        )
+        .await
+        .map_policy_or_internal("update eval result scores")?
+        .ok_or_not_found_json("EvalCaseResult")?;
+    Ok(Json(result))
+}
+
+async fn bulk_update_run_scores(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id)): Path<(String, String)>,
+    Json(req): Json<BulkUpdateEvalRunScoresRequest>,
+) -> ApiResult<ListResponse<EvalCaseResult>> {
+    let eval_id: EvalId = eval_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
+    })?;
+    let run_id: EvalRunId = run_id.parse().map_err(|e| {
+        ErrorResponse::new(format!("Invalid run ID: {e}")).into_response(StatusCode::BAD_REQUEST)
+    })?;
+    let caller = Caller::from(&org);
+    let results = state
+        .service
+        .bulk_update_run_scores(&caller, &eval_id.to_string(), &run_id.to_string(), req)
+        .await
+        .map_policy_or_internal("bulk update eval result scores")?;
+    Ok(Json(ListResponse::new(results)))
 }

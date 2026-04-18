@@ -162,6 +162,8 @@ impl<T> ApiPolicyResultExt<T> for Result<T, anyhow::Error> {
         self.map_err(|e| {
             if let Some(not_found) = e.downcast_ref::<crate::errors::ResourceNotFoundError>() {
                 ErrorResponse::not_found(not_found.resource())
+            } else if let Some(bad_request) = e.downcast_ref::<crate::errors::BadRequestError>() {
+                ErrorResponse::new(bad_request.message()).into_response(StatusCode::BAD_REQUEST)
             } else if let Some(policy_err) = e.downcast_ref::<everruns_core::PolicyError>() {
                 (
                     StatusCode::FORBIDDEN,

@@ -5,6 +5,24 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[error("{message}")]
+pub struct BadRequestError {
+    message: String,
+}
+
+impl BadRequestError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+#[derive(Debug, Error)]
 #[error("{resource} not found")]
 pub struct ResourceNotFoundError {
     resource: &'static str,

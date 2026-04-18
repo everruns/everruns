@@ -198,7 +198,8 @@ impl TestServer {
             event_delivery.clone(),
             vec![],
         ));
-        let feature_flags = everruns_core::FeatureFlags::from_env(&grade);
+        let mut feature_flags = everruns_core::FeatureFlags::from_env(&grade);
+        feature_flags.evals = true;
 
         // Create module-specific states
         let sessions_state = api::sessions::AppState::with_platform_definition(
@@ -283,6 +284,7 @@ impl TestServer {
             db: db.clone(),
             auth: auth_state.clone(),
         };
+        let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone());
         let durable_state = api::durable::AppState::new(
             Some(durable_store.clone()),
             auth_state.clone(),
@@ -416,6 +418,9 @@ impl TestServer {
 
         if let Some(notifications_state) = notifications_state {
             api_routes = api_routes.merge(api::notifications::routes(notifications_state));
+        }
+        if feature_flags.evals {
+            api_routes = api_routes.merge(api::evals::routes(evals_state));
         }
 
         let root_routes = Router::new()

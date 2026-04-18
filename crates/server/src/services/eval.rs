@@ -4,21 +4,22 @@
 // Decision: EvalTarget replaces harness_id + agent_id. Resolution: run → case → eval → org default.
 
 use crate::api::evals::{
-    CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest, UpdateEvalCaseRequest,
-    UpdateEvalRequest,
+    BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
+    ExternalScoreStatus, UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
-use crate::errors::ResourceNotFoundError;
+use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::services::eval_runner::{EvalRunContext, spawn_eval_run};
 use crate::storage::StorageBackend;
 use crate::storage::models::{
-    CreateEvalCaseResultRow, CreateEvalCaseRow, CreateEvalRow, CreateEvalRunRow, UpdateEvalCaseRow,
-    UpdateEvalRow,
+    CreateEvalCaseResultRow, CreateEvalCaseRow, CreateEvalRow, CreateEvalRunRow,
+    UpdateEvalCaseResultRow, UpdateEvalCaseRow, UpdateEvalRow,
 };
 use anyhow::Result;
 use everruns_core::eval::*;
 use everruns_core::typed_id::{EvalCaseId, EvalId, EvalResultId, EvalRunId, SessionId};
 use everruns_core::{Caller, Permission, Policy, Rule};
 use everruns_macros::policy;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -484,7 +485,9 @@ impl EvalService {
         }
 
         if !matches!(run_row.status.as_str(), "pending" | "running") {
-            anyhow::bail!("Can only cancel pending or running eval runs");
+            return Err(
+                BadRequestError::new("can only cancel pending or running eval runs").into(),
+            );
         }
 
         let updated = self
@@ -494,9 +497,202 @@ impl EvalService {
         Ok(updated.map(|r| run_row_to_run(r, vec![])))
     }
 
+    #[policy(EVAL_MANAGE)]
+    pub async fn update_result_scores(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+        result_public_id: &str,
+        req: UpdateEvalResultScoresRequest,
+    ) -> Result<Option<EvalCaseResult>> {
+        validate_scores_payload(&req.scores)?;
+        validate_metadata_payload(req.metadata.as_ref())?;
+
+        let (run_row, case_rows, mut result_rows) = self
+            .load_mutable_run_context(caller, eval_public_id, run_public_id)
+            .await?;
+        let case_rows_by_id: HashMap<Uuid, &crate::storage::models::EvalCaseRow> =
+            case_rows.iter().map(|case| (case.id, case)).collect();
+
+        let Some(existing_index) = result_rows
+            .iter()
+            .position(|result| result.public_id == result_public_id)
+        else {
+            return Ok(None);
+        };
+        let existing = result_rows[existing_index].clone();
+        validate_score_count(
+            case_rows_by_id.get(&existing.eval_case_id).copied(),
+            &req.scores,
+        )?;
+
+        let updated = self
+            .db
+            .update_eval_case_result(
+                existing.id,
+                UpdateEvalCaseResultRow {
+                    status: Some(
+                        resolve_external_score_status(&req.scores, req.status).to_string(),
+                    ),
+                    scores: Some(serde_json::to_value(&req.scores)?),
+                    metadata: req.metadata.clone(),
+                    ..Default::default()
+                },
+            )
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("EvalCaseResult"))?;
+
+        result_rows[existing_index] = updated.clone();
+        self.persist_run_summary(run_row.id, &case_rows, &result_rows)
+            .await?;
+
+        let case_name = case_rows_by_id
+            .get(&updated.eval_case_id)
+            .map(|case| case.name.clone());
+        Ok(Some(result_row_to_result(updated, case_name)))
+    }
+
+    #[policy(EVAL_MANAGE)]
+    pub async fn bulk_update_run_scores(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+        req: BulkUpdateEvalRunScoresRequest,
+    ) -> Result<Vec<EvalCaseResult>> {
+        if req.results.is_empty() {
+            return Err(BadRequestError::new("must provide at least one result update").into());
+        }
+        validate_metadata_payload(req.metadata.as_ref())?;
+
+        let (run_row, case_rows, mut result_rows) = self
+            .load_mutable_run_context(caller, eval_public_id, run_public_id)
+            .await?;
+        let shared_metadata = req.metadata.clone();
+        let case_rows_by_id: HashMap<Uuid, &crate::storage::models::EvalCaseRow> =
+            case_rows.iter().map(|case| (case.id, case)).collect();
+        let result_positions: HashMap<String, usize> = result_rows
+            .iter()
+            .enumerate()
+            .map(|(index, result)| (result.public_id.clone(), index))
+            .collect();
+        let mut seen_result_ids = HashSet::new();
+
+        for update in &req.results {
+            validate_scores_payload(&update.scores)?;
+            let result_public_id = update.result_id.to_string();
+            if !seen_result_ids.insert(result_public_id.clone()) {
+                return Err(BadRequestError::new(format!(
+                    "duplicate result_id in bulk request: {result_public_id}"
+                ))
+                .into());
+            }
+            let Some(existing_index) = result_positions.get(&result_public_id).copied() else {
+                return Err(ResourceNotFoundError::new("EvalCaseResult").into());
+            };
+            validate_score_count(
+                case_rows_by_id
+                    .get(&result_rows[existing_index].eval_case_id)
+                    .copied(),
+                &update.scores,
+            )?;
+        }
+
+        let mut updated_results = Vec::with_capacity(req.results.len());
+        for update in req.results {
+            let result_public_id = update.result_id.to_string();
+            let existing_index = result_positions
+                .get(&result_public_id)
+                .copied()
+                .ok_or_else(|| ResourceNotFoundError::new("EvalCaseResult"))?;
+            let existing = result_rows[existing_index].clone();
+            let updated = self
+                .db
+                .update_eval_case_result(
+                    existing.id,
+                    UpdateEvalCaseResultRow {
+                        status: Some(
+                            resolve_external_score_status(&update.scores, update.status)
+                                .to_string(),
+                        ),
+                        scores: Some(serde_json::to_value(&update.scores)?),
+                        metadata: shared_metadata.clone(),
+                        ..Default::default()
+                    },
+                )
+                .await?
+                .ok_or_else(|| ResourceNotFoundError::new("EvalCaseResult"))?;
+
+            result_rows[existing_index] = updated.clone();
+            updated_results.push(updated);
+        }
+
+        self.persist_run_summary(run_row.id, &case_rows, &result_rows)
+            .await?;
+
+        Ok(updated_results
+            .into_iter()
+            .map(|result| {
+                let case_name = case_rows_by_id
+                    .get(&result.eval_case_id)
+                    .map(|case| case.name.clone());
+                result_row_to_result(result, case_name)
+            })
+            .collect())
+    }
+
     // ============================================
     // Helpers
     // ============================================
+
+    async fn load_mutable_run_context(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+    ) -> Result<(
+        crate::storage::models::EvalRunRow,
+        Vec<crate::storage::models::EvalCaseRow>,
+        Vec<crate::storage::models::EvalCaseResultRow>,
+    )> {
+        let eval = self
+            .db
+            .get_eval_by_public_id(caller.org_id, eval_public_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Eval"))?;
+
+        let run_row = self
+            .db
+            .get_eval_run_by_public_id(caller.org_id, run_public_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("EvalRun"))?;
+        if run_row.eval_id != eval.id {
+            return Err(ResourceNotFoundError::new("EvalRun").into());
+        }
+        if run_row.status != "completed" {
+            return Err(
+                BadRequestError::new("can only write scores for completed eval runs").into(),
+            );
+        }
+
+        let case_rows = self.db.list_eval_cases(run_row.eval_id).await?;
+        let result_rows = self.db.list_eval_case_results(run_row.id).await?;
+        Ok((run_row, case_rows, result_rows))
+    }
+
+    async fn persist_run_summary(
+        &self,
+        run_id: Uuid,
+        case_rows: &[crate::storage::models::EvalCaseRow],
+        result_rows: &[crate::storage::models::EvalCaseResultRow],
+    ) -> Result<()> {
+        let summary = build_run_summary(case_rows, result_rows);
+        self.db
+            .update_eval_run_status(run_id, "completed", Some(serde_json::to_value(summary)?))
+            .await?;
+        Ok(())
+    }
 
     async fn row_to_eval(&self, row: crate::storage::models::EvalRow) -> Result<Eval> {
         let case_count = self.db.count_eval_cases(row.id).await?;
@@ -625,6 +821,7 @@ fn result_row_to_result(
         target_snapshot,
         status: CaseResultStatus::from(row.status.as_str()),
         scores: row.scores,
+        metadata: row.metadata,
         turns: row.turns.map(|v| v as u32),
         latency_ms: row.latency_ms.map(|v| v as u64),
         input_tokens: row.input_tokens.map(|v| v as u64),
@@ -632,5 +829,180 @@ fn result_row_to_result(
         error_message: row.error_message,
         created_at: row.created_at,
         updated_at: row.updated_at,
+    }
+}
+
+fn validate_scores_payload(scores: &[Score]) -> Result<()> {
+    if scores.is_empty() {
+        return Err(BadRequestError::new("must provide at least one score").into());
+    }
+    for (index, score) in scores.iter().enumerate() {
+        if !score.value.is_finite() {
+            return Err(BadRequestError::new(format!(
+                "score at index {index} must have a finite value"
+            ))
+            .into());
+        }
+        if !(0.0..=1.0).contains(&score.value) {
+            return Err(BadRequestError::new(format!(
+                "score at index {index} must have a value between 0.0 and 1.0"
+            ))
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn validate_metadata_payload(metadata: Option<&serde_json::Value>) -> Result<()> {
+    if let Some(metadata) = metadata
+        && !metadata.is_object()
+    {
+        return Err(BadRequestError::new("metadata must be a JSON object").into());
+    }
+    Ok(())
+}
+
+fn validate_score_count(
+    case_row: Option<&crate::storage::models::EvalCaseRow>,
+    scores: &[Score],
+) -> Result<()> {
+    let Some(case_row) = case_row else {
+        return Ok(());
+    };
+    let scorers = serde_json::from_value::<Vec<Scorer>>(case_row.scorers.clone())
+        .map_err(|e| anyhow::anyhow!("failed to parse eval case scorers: {e}"))?;
+    if scorers.len() != scores.len() {
+        return Err(BadRequestError::new(format!(
+            "score count ({}) must match configured scorer count ({})",
+            scores.len(),
+            scorers.len()
+        ))
+        .into());
+    }
+    Ok(())
+}
+
+fn resolve_external_score_status(
+    scores: &[Score],
+    status: Option<ExternalScoreStatus>,
+) -> CaseResultStatus {
+    match status {
+        Some(ExternalScoreStatus::Passed) => CaseResultStatus::Passed,
+        Some(ExternalScoreStatus::Failed) => CaseResultStatus::Failed,
+        Some(ExternalScoreStatus::Errored) => CaseResultStatus::Errored,
+        None if scores.iter().all(|score| score.pass) => CaseResultStatus::Passed,
+        None => CaseResultStatus::Failed,
+    }
+}
+
+fn build_run_summary(
+    case_rows: &[crate::storage::models::EvalCaseRow],
+    result_rows: &[crate::storage::models::EvalCaseResultRow],
+) -> RunSummary {
+    let total = result_rows.len() as u32;
+    let mut passed = 0u32;
+    let mut failed = 0u32;
+    let mut errored = 0u32;
+    let mut total_score = 0.0f64;
+    let mut total_turns = 0.0f64;
+    let mut total_latency = 0u64;
+    let mut total_input_tokens = 0u64;
+    let mut total_output_tokens = 0u64;
+
+    for result in result_rows {
+        let status = CaseResultStatus::from(result.status.as_str());
+        match status {
+            CaseResultStatus::Passed => passed += 1,
+            CaseResultStatus::Failed => failed += 1,
+            CaseResultStatus::Errored | CaseResultStatus::Timeout => errored += 1,
+            CaseResultStatus::Pending | CaseResultStatus::Running => {}
+        }
+
+        if matches!(status, CaseResultStatus::Passed | CaseResultStatus::Failed) {
+            total_score += case_result_avg_score(
+                result,
+                case_rows.iter().find(|case| case.id == result.eval_case_id),
+            );
+            total_turns += result.turns.unwrap_or_default() as f64;
+            total_latency += result.latency_ms.unwrap_or_default() as u64;
+            total_input_tokens += result.input_tokens.unwrap_or_default() as u64;
+            total_output_tokens += result.output_tokens.unwrap_or_default() as u64;
+        }
+    }
+
+    RunSummary {
+        total,
+        passed,
+        failed,
+        errored,
+        pass_rate: if total > 0 {
+            passed as f64 / total as f64
+        } else {
+            0.0
+        },
+        avg_score: if total > 0 {
+            total_score / total as f64
+        } else {
+            0.0
+        },
+        avg_turns: if total > 0 {
+            total_turns / total as f64
+        } else {
+            0.0
+        },
+        avg_latency_ms: if total > 0 {
+            total_latency / total as u64
+        } else {
+            0
+        },
+        total_input_tokens,
+        total_output_tokens,
+    }
+}
+
+fn case_result_avg_score(
+    result: &crate::storage::models::EvalCaseResultRow,
+    case_row: Option<&crate::storage::models::EvalCaseRow>,
+) -> f64 {
+    let Some(scores) = result
+        .scores
+        .clone()
+        .and_then(|value| serde_json::from_value::<Vec<Score>>(value).ok())
+    else {
+        return 0.0;
+    };
+    if scores.is_empty() {
+        return 0.0;
+    }
+
+    let scorers = case_row
+        .and_then(|case| serde_json::from_value::<Vec<Scorer>>(case.scorers.clone()).ok())
+        .unwrap_or_default();
+    if scorers.len() == scores.len() {
+        let total_weight: f64 = scorers.iter().map(scorer_weight).sum();
+        if total_weight > 0.0 {
+            let weighted_sum: f64 = scores
+                .iter()
+                .zip(scorers.iter())
+                .map(|(score, scorer)| score.value * scorer_weight(scorer))
+                .sum();
+            return weighted_sum / total_weight;
+        }
+    }
+
+    scores.iter().map(|score| score.value).sum::<f64>() / scores.len() as f64
+}
+
+fn scorer_weight(scorer: &Scorer) -> f64 {
+    match scorer {
+        Scorer::Contains { weight, .. } => *weight,
+        Scorer::NotContains { weight, .. } => *weight,
+        Scorer::Regex { weight, .. } => *weight,
+        Scorer::ToolCalled { weight, .. } => *weight,
+        Scorer::ToolNotCalled { weight, .. } => *weight,
+        Scorer::ToolCallCount { weight, .. } => *weight,
+        Scorer::TurnsWithin { weight, .. } => *weight,
+        Scorer::FileContains { weight, .. } => *weight,
+        Scorer::JsonSchema { weight, .. } => *weight,
     }
 }
