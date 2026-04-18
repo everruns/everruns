@@ -31,7 +31,7 @@ use uuid::Uuid;
 // ============================================
 
 /// Maximum image size in bytes (100 MB)
-const MAX_IMAGE_SIZE: usize = 100 * 1024 * 1024;
+pub(crate) const MAX_IMAGE_SIZE: usize = 100 * 1024 * 1024;
 
 /// Thumbnail max dimension (width or height)
 const THUMBNAIL_MAX_DIM: u32 = 200;

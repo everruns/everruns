@@ -74,7 +74,7 @@ impl Capability for GptImageGenCapability {
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
-        vec!["file_system", "session_storage"]
+        vec!["session_file_system", "session_storage"]
     }
 }
 
@@ -460,6 +460,28 @@ async fn resolve_client_config(
         if let Some(api_key) = api_key {
             return Ok(ResolvedClientConfig { api_key, base_url });
         }
+
+        if let Some(base_url) = base_url {
+            let Some(provider_store) = &context.provider_credential_store else {
+                return Err(ToolExecutionResult::tool_error(
+                    "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI provider.",
+                ));
+            };
+
+            return match provider_store
+                .get_default_provider_credentials("openai")
+                .await
+            {
+                Ok(Some(credentials)) => Ok(ResolvedClientConfig {
+                    api_key: credentials.api_key,
+                    base_url: Some(base_url),
+                }),
+                Ok(None) => Err(ToolExecutionResult::tool_error(
+                    "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI provider.",
+                )),
+                Err(error) => Err(ToolExecutionResult::internal_error(error)),
+            };
+        }
     }
 
     let Some(provider_store) = &context.provider_credential_store else {
@@ -800,5 +822,14 @@ mod tests {
         });
         let args: EditImageArgs = serde_json::from_value(value).unwrap();
         assert!(args.image_id.is_some());
+    }
+
+    #[test]
+    fn capability_declares_session_file_system_dependency() {
+        let capability = GptImageGenCapability;
+        assert_eq!(
+            capability.dependencies(),
+            vec!["session_file_system", "session_storage"]
+        );
     }
 }

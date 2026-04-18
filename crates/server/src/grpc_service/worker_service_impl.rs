@@ -2025,6 +2025,12 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<CreateImageArtifactRequest>,
     ) -> Result<Response<CreateImageArtifactResponse>, Status> {
         let req = request.into_inner();
+        if req.data.len() > crate::api::images::MAX_IMAGE_SIZE {
+            return Err(Status::invalid_argument(format!(
+                "Image exceeds maximum size of {}MB",
+                crate::api::images::MAX_IMAGE_SIZE / (1024 * 1024)
+            )));
+        }
         let metadata = req
             .metadata
             .as_ref()

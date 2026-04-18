@@ -45,14 +45,6 @@ Image generation and editing workflows.
 |---|---|---|
 | [OpenAI Image Generation](/capabilities/openai-image-generation/) | `gpt_image_gen` | 2 |
 
-### Media
-
-Image generation and editing workflows.
-
-| Capability | ID | Tools |
-|---|---|---|
-| [OpenAI Image Generation](/capabilities/openai-image-generation/) | `gpt_image_gen` | 2 |
-
 ### Orchestration
 
 Delegate and coordinate work across multiple agent sessions.
