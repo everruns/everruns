@@ -1,6 +1,6 @@
 # SWE-bench Lite on Everruns
 
-Status: **end-to-end eval workflow validated** (April 2026 rebase)
+Status: **tooling ready** — loader, runner, scorer scripts in `evals/swe-bench/`
 
 ## What is SWE-bench Lite?
 
@@ -12,7 +12,7 @@ Status: **end-to-end eval workflow validated** (April 2026 rebase)
 |---|---|
 | 300 task instances | EvalCases (one per instance) |
 | "Fix this issue" prompt | EvalCase `conversation` (single message) |
-| Test validation | Scorer (needs new `command` scorer type) |
+| Test validation | External SWE-bench Docker harness → score write-back API |
 | Repo checkout + env setup | Harness capability (Daytona / E2B) |
 | Agent strategy | Agent config (model, instructions, capabilities) |
 | Benchmark run | EvalRun across an Eval |
@@ -41,14 +41,9 @@ Status: **end-to-end eval workflow validated** (April 2026 rebase)
 
 Using the built-in `coding-daytona` harness (which extends `generic` with the `daytona` capability) removes the need for a custom agent. No custom agent needed at all.
 
-### 3. Sandbox Python version — BLOCKING
+### 3. ~~Sandbox Python version~~ — BYPASSED via external scoring
 
-Default Daytona snapshot uses Python 3.14. Most SWE-bench repos (2018-2022 code) require Python 3.8-3.10 for their C extensions and build systems. This is the primary remaining blocker. Confirmed: astropy 4.3 `pip install -e .` fails on Python 3.14 because `setuptools.dep_util` was removed and C extensions use incompatible NumPy ABI.
-
-Options:
-- **Daytona snapshots** with specific Python versions (one per SWE-bench `version` field)
-- **pyenv in post script** — `pyenv install 3.9.x && pyenv shell 3.9.x` before running tests
-- **Conda environments** — mirror the official SWE-bench harness approach (requires conda in snapshot)
+Default Daytona snapshot uses Python 3.14; SWE-bench repos need 3.8-3.10. **No longer blocking** — we don't run tests in the sandbox. The agent only produces a patch; the official SWE-bench Docker harness (which has all correct environments pre-built) scores externally. Scores are written back via the bulk PATCH API.
 
 ### 4. ~~No `command` scorer~~ — RESOLVED by `post` messages (#1248)
 
@@ -58,9 +53,9 @@ EvalCase now has an optional `post: Vec<EvalInputMessage>` field sent after the 
 
 `git apply` of the gold test_patch was failing because the patch content was truncated (missing trailing context lines). Root cause: WebFetch summarization dropped context. Fix: use the HuggingFace datasets API (`datasets-server.huggingface.co/rows`) to get the exact, byte-accurate test_patch. Confirmed working after using the correct patch content.
 
-### 6. Post script dependencies
+### 6. ~~Post script dependencies~~ — BYPASSED via external scoring
 
-The post verification script needs all test dependencies installed: `pytest`, `numpy`, `pyerfa`, `hypothesis`, and the package itself (`pip install -e .`). Different SWE-bench repos need different deps. The official harness uses per-repo conda environment specs.
+No longer needed — the agent doesn't run tests in the sandbox. External Docker harness handles all dependencies.
 
 ### 7. Agent reliability with sandbox creation
 
@@ -78,42 +73,36 @@ The Daytona `list_snapshots` API returns a format the integration doesn't expect
 
 ## What to build next
 
-1. ~~**EvalRun workflow**~~ - DONE (#1248), but not durable
-2. **Dataset loader** - script to bulk-create 300 EvalCases from HuggingFace dataset
-3. **Sandbox snapshots** - pre-bake Python 3.8/3.9/3.10 snapshots per SWE-bench repo
-4. ~~**EvalRun-level overrides**~~ - DONE (#1239: EvalTarget can be set at Eval, EvalCase, or EvalRun level)
-5. **Robust test_patch application** - use `git apply --3way` or fall back to `patch -p1` with fuzz
-6. **Durable eval runs** - replace `tokio::spawn` fire-and-forget with the durable execution engine
+1. ~~**EvalRun workflow**~~ — DONE (#1248), but not durable
+2. ~~**Dataset loader**~~ — DONE (`evals/swe-bench/swe_bench/loader.py`)
+3. ~~**Artifact collection**~~ — DONE (EVE-327, #1334)
+4. ~~**Score write-back API**~~ — DONE (EVE-328)
+5. ~~**EvalRun-level overrides**~~ — DONE (#1239: EvalTarget can be set at Eval, EvalCase, or EvalRun level)
+6. ~~**Runner + scorer scripts**~~ — DONE (`evals/swe-bench/swe_bench/runner.py`, `scorer.py`)
+7. **Durable eval runs** — replace `tokio::spawn` fire-and-forget with the durable execution engine
 
-## End-to-end example (current state)
+## Tooling
 
-Single `astropy__astropy-12907` case with Claude Sonnet + `coding-daytona` harness.
+Scripts live in `evals/swe-bench/`. See `evals/swe-bench/README.md` for full usage.
 
-**What works:**
-- Eval workflow runs end-to-end (create → execute → score → report)
-- Agent finds the correct one-line fix (matches gold patch) in every successful conversation turn
-- Post messages send the hidden test_patch + verification script
-- `git apply` of the test_patch succeeds (when using correct patch from HuggingFace API)
-- Scorer checks for `swe-result: pass` in final message
+```bash
+# Integration test (2 cases)
+python -m swe_bench.loader --integration -o manifest.json
+python -m swe_bench.runner --eval-id eval_xxx
+python -m swe_bench.scorer --eval-id eval_xxx --run-id evalrun_xxx --predictions predictions.jsonl
 
-**What fails (and why):**
-- `pip install -e .` fails because Python 3.14 can't build astropy 4.3 C extensions
-- So `python -m pytest` can't import astropy → score = 0.0
-- The fix is correct but unverifiable in this environment
-
+# Full benchmark (300 cases)
+python -m swe_bench.loader -o manifest.json
+python -m swe_bench.runner --eval-id eval_xxx --model claude-sonnet-4-20250514
+python -m swe_bench.scorer --eval-id eval_xxx --run-id evalrun_xxx --predictions predictions.jsonl
 ```
-POST /api/v1/evals
-  { name, target: { type: "session", harness_name: "coding-daytona" }, tags: ["swe-bench"] }
 
-POST /api/v1/evals/{eval_id}/cases
-  {
-    name: "astropy__astropy-12907",
-    conversation: [{ content: "<problem_statement + setup instructions>" }],
-    post: [{ content: "<verification script with hidden test_patch>" }],
-    scorers: [{ type: "contains", text: "swe-result: pass", weight: 1.0 }],
-    max_turns: 40, timeout_seconds: 900
-  }
+### Flow
 
-POST /api/v1/evals/{eval_id}/runs
-  { model_override: "claude-sonnet-4-20250514" }
-```
+1. **Loader** pulls HuggingFace dataset → creates Eval + EvalCases via API. Each case instructs agent to fix the issue and write `git diff > /workspace/fix.patch`. Cases declare `artifacts: [{name: "patch", path: "/workspace/fix.patch"}]`.
+2. **Runner** triggers an EvalRun, polls until completion, exports `predictions.jsonl` via the artifact NDJSON endpoint.
+3. **Scorer** feeds `predictions.jsonl` to the official SWE-bench Docker harness, then bulk-PATCHes scores back via the write-back API. RunSummary updates automatically.
+
+### Why external scoring?
+
+The sandbox uses Python 3.14; SWE-bench repos need 3.8-3.10 with repo-specific conda envs. The official Docker harness has all environments pre-built. Rather than replicating that inside Everruns, we produce patches and score externally.
