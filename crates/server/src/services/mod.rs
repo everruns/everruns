@@ -2,7 +2,6 @@
 // Services own business logic and validation, calling storage directly
 
 pub mod app;
-pub mod audit_log;
 pub mod budget;
 #[cfg(test)]
 mod budget_tests;
@@ -31,7 +30,6 @@ pub mod usage_tracking;
 pub mod virtual_mount_registry;
 
 pub use app::AppService;
-pub use audit_log::AuditLogService;
 pub use budget::BudgetService;
 pub use capability::CapabilityService;
 pub use eval::EvalService;

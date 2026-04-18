@@ -247,13 +247,13 @@ the logic. Once all callers are migrated, the service file is removed.
 
 **Migrated (commands + queries + MCP wired):**
 - `agents`, `harnesses`, `apps`, `mcp_servers`, `agent_identities`, `skills`,
-  `capabilities`
+  `capabilities`, `audit_logs`
 
 **Pending migration:**
 - `sessions`, `budgets`, `messages`, `events`, `harnesses` (sessions),
   `llm_models`, `llm_providers`, `schedules`, `notifications`,
   `session_files`, `session_databases`, `session_storage`,
-  `session_resources`, `session_sandbox`, `evals`, `audit_log`
+  `session_resources`, `session_sandbox`, `evals`
 
 ### Migration order for new domains
 
