@@ -222,8 +222,25 @@ impl GeminiLlmDriver {
         match value {
             Value::Object(obj) => {
                 obj.remove("additionalProperties");
-                for v in obj.values_mut() {
-                    Self::strip_unsupported(v);
+                for (key, v) in obj.iter_mut() {
+                    // Schema-composition keywords whose value is a map of
+                    // arbitrary name -> schema. The keys are caller-supplied
+                    // names, so we must not treat the map itself as a schema
+                    // (otherwise a property literally named
+                    // `additionalProperties` would be dropped). Recurse into
+                    // each value instead.
+                    if matches!(
+                        key.as_str(),
+                        "properties" | "patternProperties" | "definitions" | "$defs"
+                    ) {
+                        if let Value::Object(map) = v {
+                            for sub in map.values_mut() {
+                                Self::strip_unsupported(sub);
+                            }
+                        }
+                    } else {
+                        Self::strip_unsupported(v);
+                    }
                 }
             }
             Value::Array(arr) => {
@@ -1189,6 +1206,44 @@ mod tests {
         }
 
         assert_no_additional_properties(params);
+    }
+
+    #[test]
+    fn test_convert_tools_preserves_property_named_additional_properties() {
+        use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
+        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
+            name: "configure".to_string(),
+            display_name: None,
+            description: "Configure allowing extras".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "additionalProperties": {
+                        "type": "boolean",
+                        "description": "Allow extras in the request"
+                    }
+                },
+                "required": ["additionalProperties"],
+                "additionalProperties": false
+            }),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: everruns_core::tool_types::ToolHints::default(),
+        })];
+
+        let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();
+        let params = &gemini_tools[0].function_declarations[0].parameters;
+
+        assert!(params.get("additionalProperties").is_none());
+        let properties = params
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .unwrap();
+        let prop = properties
+            .get("additionalProperties")
+            .expect("property named additionalProperties must be preserved");
+        assert_eq!(prop["type"], "boolean");
     }
 
     #[test]
