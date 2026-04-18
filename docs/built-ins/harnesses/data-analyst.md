@@ -40,8 +40,8 @@ All [Generic harness capabilities](/built-ins/harnesses/generic/#bundled-capabil
 | Capability | What it provides |
 |------------|-----------------|
 | Session SQL Database | `sql_execute`, `sql_query`, `sql_schema` — session-scoped SQLite databases that auto-create on first write |
-| [Persistent Memory](/capabilities/memory/) | `remember`, `recall`, `forget` — cross-session memory with passive recall (8 memories auto-injected per turn) |
-| [OpenUI](/capabilities/openui/) | Rich interactive charts, tables, dashboards, and KPI cards rendered inline in chat |
+| Persistent Memory | `remember`, `recall`, `forget` — cross-session memory with passive recall (8 memories auto-injected per turn) |
+| OpenUI | Rich interactive charts, tables, dashboards, and KPI cards rendered inline in chat |
 | Todo List | `write_todos` — track multi-step analysis tasks |
 | Data Knowledge | Mounts `/knowledge/` scaffold with directories for table docs, business rules, and validated SQL patterns |
 
@@ -85,6 +85,5 @@ Agent: [recalls relevant memories] [inspects any existing schema]
 ## See Also
 
 - [Generic Harness](/built-ins/harnesses/generic/) — the parent harness this extends
-- [Persistent Memory](/capabilities/memory/) — cross-session learning
-- [OpenUI](/capabilities/openui/) — chart and dashboard rendering
+- [Capabilities overview](/features/capabilities/) — full capability catalog including memory and OpenUI
 - [Harnesses feature guide](/features/harnesses/) — harness selection and API management

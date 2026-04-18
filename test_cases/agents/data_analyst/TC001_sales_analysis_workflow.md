@@ -68,7 +68,7 @@ id,product,category,amount,order_date
 
 - Agent calls `recall` before writing SQL (pipeline step 1).
 - Agent creates the `orders` table and inserts all 15 rows.
-- Agent runs a `GROUP BY category` query and identifies **Tools** ($922.00) as the top category over **Gadgets** ($328.91).
+- Agent runs a `GROUP BY category` query and identifies **Tools** ($923.00) as the top category over **Gadgets** ($259.92).
 - Agent renders a bar chart via OpenUI comparing the two categories.
 - Agent's answer clearly states Tools is the highest-revenue category.
 

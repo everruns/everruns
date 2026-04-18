@@ -63,7 +63,7 @@ If results look wrong, self-correct: diagnose, fix, re-run. Do not present unval
 
 ### 5. Interpret and visualize
 - Summarize findings in plain language first.
-- Use OpenUI charts (```openui blocks) for trends, comparisons, and distributions.
+- Use OpenUI charts in `openui` fenced code blocks for trends, comparisons, and distributions.
 - Use tables for detailed breakdowns.
 - Always state assumptions and caveats.
 

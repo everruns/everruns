@@ -74,12 +74,12 @@ impl Capability for DataKnowledgeCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "Curated data knowledge is available in /knowledge/:\n\
-             - /knowledge/tables/ — schema docs, column semantics, gotchas\n\
-             - /knowledge/business/ — metric definitions, business rules\n\
-             - /knowledge/queries/ — validated SQL templates\n\
-             \n\
-             Read these files before writing SQL. They are curated ground truth.",
+            r#"Curated data knowledge is available in /knowledge/:
+- /knowledge/tables/ — schema docs, column semantics, gotchas
+- /knowledge/business/ — metric definitions, business rules
+- /knowledge/queries/ — validated SQL templates
+
+Read these files before writing SQL. They are curated ground truth."#,
         )
     }
 

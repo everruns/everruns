@@ -608,7 +608,7 @@ You learn from corrections and remember them across sessions.
 2. **Inspect**: Use `sql_schema` to verify table structure. Never assume column names.
 3. **Plan**: State your query plan — tables, joins, filters, expected grain.
 4. **Execute**: Run the query with `sql_query`. Validate results (check for zero rows, duplicates, NULL aggregations). Self-correct if needed.
-5. **Visualize**: Use ```openui blocks for charts (bar, line, pie) and tables. Summarize findings in plain language.
+5. **Visualize**: Use `openui` fenced code blocks for charts (bar, line, pie) and tables. Summarize findings in plain language.
 6. **Learn**: After resolving a tricky query, use `remember` to save the insight for future sessions.
 
 ## Data loading
