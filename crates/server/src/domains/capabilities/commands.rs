@@ -22,7 +22,9 @@ const MAX_LIMIT: u32 = 200;
 #[derive(Debug, Deserialize)]
 pub struct ListCapabilities {
     pub search: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
     pub offset: Option<u32>,
+    #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
     pub limit: Option<u32>,
 }
 
@@ -106,3 +108,29 @@ impl Command for GetCapability {
 }
 
 inventory::submit! { CommandDescriptor::of::<GetCapability>() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // Regression for EVE-324: bashkit's flag parser emits string values when
+    // the tool schema declares no per-property types (as inventory commands
+    // currently do). Before the lenient deserializer, `--limit 5` deserialized
+    // as `{"limit": "5"}` and failed with "invalid type: string".
+    #[test]
+    fn list_capabilities_accepts_string_numeric_limit() {
+        let cmd: ListCapabilities =
+            serde_json::from_value(json!({ "limit": "5", "offset": "10" })).unwrap();
+        assert_eq!(cmd.limit, Some(5));
+        assert_eq!(cmd.offset, Some(10));
+    }
+
+    #[test]
+    fn list_capabilities_accepts_native_numeric_limit() {
+        let cmd: ListCapabilities =
+            serde_json::from_value(json!({ "limit": 5, "offset": 10 })).unwrap();
+        assert_eq!(cmd.limit, Some(5));
+        assert_eq!(cmd.offset, Some(10));
+    }
+}

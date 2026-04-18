@@ -758,6 +758,55 @@ async fn test_mcp_execute_list_capabilities() {
     );
 }
 
+// Regression for EVE-324: `--limit 5` arrives at the command layer as a string
+// because inventory commands expose an open schema to bashkit. Without lenient
+// deserialization of `Option<u32>`, dispatch fails with an "invalid type: string"
+// error that the bashkit adapter sanitizes to "list_capabilities: callback failed".
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_execute_list_capabilities_with_limit_flag() {
+    let (_server, url) = TestServer::serving().await;
+
+    let resp = mcp_tool_call_http(
+        &url,
+        "execute",
+        json!({ "command": "list_capabilities --limit 5" }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "execute list_capabilities --limit 5 failed: {}",
+        tool_text(&resp)
+    );
+
+    let payload = tool_json(&resp);
+    assert_eq!(payload["limit"], 5);
+    assert!(payload["data"].is_array());
+    assert!(payload["data"].as_array().unwrap().len() <= 5);
+}
+
+// Regression for EVE-324: `include_archived` (bool) and `offset`/`limit` (u32)
+// must all survive the bashkit stringly-typed round-trip on list_agents.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_execute_list_agents_with_numeric_and_bool_flags() {
+    let (_server, url) = TestServer::serving().await;
+
+    let resp = mcp_tool_call_http(
+        &url,
+        "execute",
+        json!({ "command": "list_agents --include_archived true --offset 0 --limit 10" }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "execute list_agents with flags failed: {}",
+        tool_text(&resp)
+    );
+
+    let payload = tool_json(&resp);
+    assert_eq!(payload["offset"], 0);
+    assert_eq!(payload["limit"], 10);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_execute_list_mcp_servers() {
     let (_server, url) = TestServer::serving().await;
