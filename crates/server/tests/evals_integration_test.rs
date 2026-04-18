@@ -357,6 +357,7 @@ async fn seed_completed_run(server: &TestServer) -> SeededRun {
             eval_case_id: case_one_row.id,
             target: Some(target.clone()),
             target_snapshot: Some(target.clone()),
+            artifacts: None,
         })
         .await
         .expect("create result one");
@@ -371,6 +372,7 @@ async fn seed_completed_run(server: &TestServer) -> SeededRun {
                 "type": "session",
                 "harness_id": TEST_HARNESS_ID
             })),
+            artifacts: None,
         })
         .await
         .expect("create result two");

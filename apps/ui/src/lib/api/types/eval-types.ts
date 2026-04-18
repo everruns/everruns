@@ -60,6 +60,7 @@ export interface EvalCase {
   target?: EvalTarget;
   tags: string[];
   conversation: EvalInputMessage[];
+  artifacts?: ArtifactSpec[];
   scorers: Scorer[];
   max_turns?: number;
   timeout_seconds?: number;
@@ -70,6 +71,11 @@ export interface EvalCase {
 
 export interface EvalInputMessage {
   content: string;
+}
+
+export interface ArtifactSpec {
+  name: string;
+  path: string;
 }
 
 export type Scorer =
@@ -112,6 +118,7 @@ export interface EvalCaseResult {
   input_tokens?: number;
   output_tokens?: number;
   error_message?: string;
+  artifacts?: Record<string, string>;
   created_at: string;
   updated_at: string;
 }
@@ -139,6 +146,7 @@ export interface CreateEvalCaseRequest {
   target?: EvalTarget;
   tags?: string[];
   conversation: EvalInputMessage[];
+  artifacts?: ArtifactSpec[];
   scorers: Scorer[];
   max_turns?: number;
   timeout_seconds?: number;

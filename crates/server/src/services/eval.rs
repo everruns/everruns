@@ -19,7 +19,7 @@ use everruns_core::eval::*;
 use everruns_core::typed_id::{EvalCaseId, EvalId, EvalResultId, EvalRunId, SessionId};
 use everruns_core::{Caller, Permission, Policy, Rule};
 use everruns_macros::policy;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -199,6 +199,11 @@ impl EvalService {
         let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
         let post_json = req.post.as_ref().map(serde_json::to_value).transpose()?;
+        let artifacts_json = req
+            .artifacts
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()?;
 
         let input = CreateEvalCaseRow {
             public_id: case_public_id.to_string(),
@@ -208,6 +213,7 @@ impl EvalService {
             tags: req.tags.unwrap_or_default(),
             conversation: serde_json::to_value(&req.conversation)?,
             post: post_json,
+            artifacts: artifacts_json,
             scorers: serde_json::to_value(&req.scorers)?,
             max_turns: req.max_turns.map(|v| v as i32),
             timeout_seconds: req.timeout_seconds.map(|v| v as i32),
@@ -275,6 +281,7 @@ impl EvalService {
         let target_json = req.target.as_ref().map(serde_json::to_value).transpose()?;
 
         let post_json = req.post.map(serde_json::to_value).transpose()?;
+        let artifacts_json = req.artifacts.map(serde_json::to_value).transpose()?;
 
         let input = UpdateEvalCaseRow {
             name: req.name,
@@ -283,6 +290,7 @@ impl EvalService {
             tags: req.tags,
             conversation: req.conversation.map(serde_json::to_value).transpose()?,
             post: post_json,
+            artifacts: artifacts_json,
             scorers: req.scorers.map(serde_json::to_value).transpose()?,
             max_turns: req.max_turns.map(|v| v as i32),
             timeout_seconds: req.timeout_seconds.map(|v| v as i32),
@@ -390,6 +398,7 @@ impl EvalService {
                 eval_case_id: case.id,
                 target: Some(resolved_json.clone()),
                 target_snapshot: Some(resolved_json),
+                artifacts: None,
             };
             self.db.create_eval_case_result(result_input).await?;
         }
@@ -756,6 +765,7 @@ fn case_row_to_case(row: crate::storage::models::EvalCaseRow) -> EvalCase {
         tags: row.tags,
         conversation: serde_json::from_value(row.conversation).unwrap_or_default(),
         post: row.post.and_then(|v| serde_json::from_value(v).ok()),
+        artifacts: row.artifacts.and_then(|v| serde_json::from_value(v).ok()),
         scorers: serde_json::from_value(row.scorers).unwrap_or_default(),
         max_turns: row.max_turns.map(|v| v as u32),
         timeout_seconds: row.timeout_seconds.map(|v| v as u32),
@@ -807,6 +817,10 @@ fn result_row_to_result(
         .target_snapshot
         .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok());
+    let artifacts: Option<BTreeMap<String, String>> = row
+        .artifacts
+        .as_ref()
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
 
     EvalCaseResult {
         public_id: row
@@ -827,6 +841,7 @@ fn result_row_to_result(
         input_tokens: row.input_tokens.map(|v| v as u64),
         output_tokens: row.output_tokens.map(|v| v as u64),
         error_message: row.error_message,
+        artifacts,
         created_at: row.created_at,
         updated_at: row.updated_at,
     }

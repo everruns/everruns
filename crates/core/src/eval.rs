@@ -13,6 +13,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::typed_id::{
@@ -21,6 +22,16 @@ use crate::typed_id::{
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
+
+/// Named session file to collect after an eval case completes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ArtifactSpec {
+    /// Export key for this artifact (for example `patch` or `log`).
+    pub name: String,
+    /// Absolute path in the session filesystem.
+    pub path: String,
+}
 
 // ============================================
 // Eval Target
@@ -396,6 +407,9 @@ pub struct EvalCase {
     /// Scorers run after post messages complete (not after conversation).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub post: Option<Vec<EvalInputMessage>>,
+    /// Session files to collect after scoring completes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<Vec<ArtifactSpec>>,
     /// Scoring rules.
     pub scorers: Vec<Scorer>,
     /// Max agent turns (default: 10).
@@ -493,6 +507,9 @@ pub struct EvalCaseResult {
     /// Error message if errored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
+    /// Collected session file contents keyed by artifact name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<BTreeMap<String, String>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -724,5 +741,30 @@ mod tests {
         assert!(json.get("target").is_some());
         assert!(json.get("description").is_none());
         assert!(json.get("model_override").is_none());
+    }
+
+    #[test]
+    fn test_eval_case_artifacts_serde_roundtrip() {
+        let json = serde_json::json!({
+            "id": "evalcase_01933b5a000070008000000000000001",
+            "name": "case",
+            "conversation": [{"content": "hello"}],
+            "artifacts": [{"name": "patch", "path": "/workspace/fix.patch"}],
+            "scorers": [{"type": "contains", "text": "done", "weight": 1.0}],
+            "tags": [],
+            "position": 0,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+        });
+
+        let case: EvalCase = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(
+            case.artifacts,
+            Some(vec![ArtifactSpec {
+                name: "patch".to_string(),
+                path: "/workspace/fix.patch".to_string(),
+            }])
+        );
+        assert_eq!(serde_json::to_value(case).unwrap(), json);
     }
 }
