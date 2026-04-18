@@ -67,17 +67,19 @@ export function hasA2UIBlocks(text: string): boolean {
   return /```(?:a2ui|openui)\s*\n/.test(text);
 }
 
-/** True if `text` contains at least one ```a2ui fence. */
+/** True if `text` contains at least one ```a2ui fence and no ```openui fences. */
 export function hasOnlyA2UIBlocks(text: string): boolean {
-  return /```a2ui\s*\n/.test(text);
+  return /```a2ui\s*\n/.test(text) && !/```openui\s*\n/.test(text);
 }
 
 /**
  * Parse an A2UI JSON block with fault tolerance.
  *
  * Attempts JSON.parse first. If that fails (e.g. the block is still streaming
- * and has a trailing unterminated string), tries progressively shorter
- * prefixes to recover a partial tree. Returns `null` if no prefix parses.
+ * and has a trailing unterminated string), falls back to a single best-effort
+ * recovery pass (`tryPartialParse`) that truncates to the last syntactically
+ * safe position and auto-closes unbalanced brackets. Returns `null` if the
+ * recovery attempt also fails.
  */
 export function parseA2UI(code: string): unknown {
   const trimmed = code.trim();

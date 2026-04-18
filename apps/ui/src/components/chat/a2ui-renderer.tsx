@@ -702,7 +702,7 @@ function CheckboxNode({
 /**
  * Renders a single A2UI JSON block.
  */
-export function A2UIBlock({ code }: A2UIBlockProps) {
+export function A2UIBlock({ code, isStreaming }: A2UIBlockProps) {
   if (!code.trim()) return null;
 
   const fallback = (
@@ -716,16 +716,34 @@ export function A2UIBlock({ code }: A2UIBlockProps) {
   return (
     <div className="a2ui-block my-2 overflow-hidden rounded-md border border-border bg-card p-3">
       <A2UIErrorBoundary fallback={fallback}>
-        <A2UIRoot tree={tree} />
+        <A2UIRoot tree={tree} isStreaming={isStreaming} rawCode={code} />
       </A2UIErrorBoundary>
     </div>
   );
 }
 
-function A2UIRoot({ tree }: { tree: unknown }) {
+function A2UIRoot({
+  tree,
+  isStreaming,
+  rawCode,
+}: {
+  tree: unknown;
+  isStreaming?: boolean;
+  rawCode: string;
+}) {
   const dispatch = useActionDispatch();
   if (tree === null || tree === undefined) {
-    return <div className="text-xs text-muted-foreground">…</div>;
+    // While streaming, a null tree just means the JSON hasn't arrived yet.
+    // Once streaming is complete and parsing still fails, show the raw JSON
+    // so users aren't stuck on an indeterminate placeholder.
+    if (isStreaming) {
+      return <div className="text-xs text-muted-foreground">…</div>;
+    }
+    return (
+      <pre className="overflow-x-auto p-2 text-xs text-muted-foreground">
+        <code>{rawCode}</code>
+      </pre>
+    );
   }
   return <>{renderNode(tree, "root", dispatch)}</>;
 }

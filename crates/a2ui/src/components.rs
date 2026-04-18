@@ -113,7 +113,7 @@ pub fn all_components() -> Vec<ComponentDef> {
                 name: "text",
                 type_annotation: "string",
                 optional: false,
-                description: "Supports markdown inline.",
+                description: "",
             },
             PropDef {
                 name: "tone",

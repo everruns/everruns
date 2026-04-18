@@ -1506,6 +1506,7 @@ mod tests {
             "subagents",
             "system_commands",
             "openui",
+            "a2ui",
             "sample_data",
             "data_knowledge",
             "tool_output_persistence",
