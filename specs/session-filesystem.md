@@ -45,6 +45,7 @@ This document defines the session-level virtual filesystem for Everruns. Each se
 - Mount at `/home/agent`: Confusing with bash HOME directory
 - Mount at `/app/session`: Less intuitive
 **Rationale:** `/workspace` is a common convention (similar to VS Code DevContainers, GitHub Codespaces) and clearly indicates agent work area. All capabilities (file_system, virtual_bash) normalize paths by stripping/adding the `/workspace` prefix when interfacing with the session file store.
+Generated media can also be written here as base64-encoded binary files. The `gpt_image_gen` capability uses `/workspace/.outputs/images/` by default when the caller requests filesystem persistence.
 
 ## Requirements
 

@@ -148,6 +148,18 @@ V1 limitation:
 - Background runs are best-effort and worker-local. They are started with `tokio::spawn` inside the worker process and are not yet durable across worker restarts.
 - This is intentional for the first iteration; durable resumption can be layered later without changing the tool contract.
 
+### Tool-Side Service Stores
+
+`ToolContext` may carry worker-backed service stores in addition to filesystem and session metadata handles. These stores let tools perform org-scoped operations without bypassing worker authorization boundaries.
+
+Current examples:
+
+- `storage_store` for key/value and secret storage
+- `image_store` for durable image artifact persistence and lookup by `image_id`
+- `provider_credential_store` for default provider credentials used by tool-side API clients
+
+This pattern is intended for tools that must call an external API directly while still relying on the control plane for secrets, org scoping, and durable storage.
+
 ### PostToolExecHook (per-tool hooks)
 
 `PostToolExecHook` is an async hook that runs after each individual tool execution, before ActAtom emits events. Capabilities contribute hooks via `Capability::post_tool_exec_hooks()`.

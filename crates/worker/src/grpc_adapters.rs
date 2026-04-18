@@ -16,8 +16,10 @@ use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, Upser
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, LeasedResourceStore, LlmProviderStore,
-    ModelWithProvider, ResolvedImage, SessionFileStore, SessionStore,
+    AgentStore, CreateStoredImage, EventEmitter, HarnessStore, ImageArtifactStore,
+    LeasedResourceStore, LlmProviderStore, ModelWithProvider, ProviderCredentialStore,
+    ProviderCredentials, ResolvedImage, SessionFileStore, SessionStore, StoredImage,
+    StoredImageInfo,
 };
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{Agent, Harness, HarnessStatus, Message, Session};
@@ -213,6 +215,106 @@ impl GrpcClient {
         proto_session_to_session(proto_session)
     }
 
+    pub async fn create_image_artifact(
+        &self,
+        org_id: i64,
+        input: CreateStoredImage,
+    ) -> Result<StoredImageInfo> {
+        let request = proto::CreateImageArtifactRequest {
+            org_id,
+            filename: input.filename,
+            content_type: input.content_type,
+            data: input.data,
+            metadata: Some(json_to_proto_struct(&input.metadata)),
+        };
+
+        let mut client = self.inner.lock().await;
+        let response = client
+            .create_image_artifact(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        let proto_image = response
+            .into_inner()
+            .image
+            .ok_or_else(|| grpc_missing_field("No image in response"))?;
+
+        proto_stored_image_info_to_schema(proto_image)
+    }
+
+    pub async fn get_image_artifact(
+        &self,
+        org_id: i64,
+        image_id: everruns_core::ImageId,
+    ) -> Result<Option<StoredImage>> {
+        let request = proto::GetImageArtifactRequest {
+            org_id,
+            image_id: Some(uuid_to_proto(image_id.uuid())),
+        };
+
+        let mut client = self.inner.lock().await;
+        let response = client
+            .get_image_artifact(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        response
+            .into_inner()
+            .image
+            .map(proto_stored_image_to_schema)
+            .transpose()
+    }
+
+    pub async fn get_image_artifact_info(
+        &self,
+        org_id: i64,
+        image_id: everruns_core::ImageId,
+    ) -> Result<Option<StoredImageInfo>> {
+        let request = proto::GetImageArtifactInfoRequest {
+            org_id,
+            image_id: Some(uuid_to_proto(image_id.uuid())),
+        };
+
+        let mut client = self.inner.lock().await;
+        let response = client
+            .get_image_artifact_info(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        response
+            .into_inner()
+            .image
+            .map(proto_stored_image_info_to_schema)
+            .transpose()
+    }
+
+    pub async fn get_default_provider_credentials(
+        &self,
+        org_id: i64,
+        provider_type: &str,
+    ) -> Result<Option<ProviderCredentials>> {
+        let request = proto::GetDefaultProviderCredentialsRequest {
+            org_id,
+            provider_type: provider_type.to_string(),
+        };
+
+        let mut client = self.inner.lock().await;
+        let response = client
+            .get_default_provider_credentials(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        let response = response.into_inner();
+        if !response.found {
+            return Ok(None);
+        }
+
+        Ok(Some(ProviderCredentials {
+            api_key: response.api_key,
+            base_url: non_empty_string(response.base_url),
+        }))
+    }
+
     /// Get MCP server info by name prefix (for MCP tool execution)
     pub async fn get_mcp_server_by_prefix(
         &self,
@@ -376,6 +478,8 @@ pub type GrpcHarnessStore = GrpcOrgAdapter;
 pub type GrpcSessionStore = GrpcOrgAdapter;
 pub type GrpcLlmProviderStore = GrpcOrgAdapter;
 pub type GrpcImageResolver = GrpcOrgAdapter;
+pub type GrpcImageArtifactStore = GrpcOrgAdapter;
+pub type GrpcProviderCredentialStore = GrpcOrgAdapter;
 pub type GrpcSessionMutator = GrpcOrgAdapter;
 pub type GrpcScheduleStore = GrpcOrgAdapter;
 pub type GrpcPlatformStore = GrpcOrgAdapter;
@@ -438,6 +542,33 @@ fn proto_timestamp_or_now(ts: Option<&proto::Timestamp>) -> chrono::DateTime<chr
 /// Reduces the repeated `if s.is_empty() { None } else { Some(s) }` pattern.
 fn non_empty_string(s: String) -> Option<String> {
     if s.is_empty() { None } else { Some(s) }
+}
+
+fn proto_stored_image_info_to_schema(
+    proto_info: proto::StoredImageInfo,
+) -> Result<StoredImageInfo> {
+    Ok(StoredImageInfo {
+        id: proto_uuid_to_uuid(proto_info.id.as_ref())?.into(),
+        filename: proto_info.filename,
+        content_type: proto_info.content_type,
+        size_bytes: proto_info.size_bytes,
+        metadata: proto_info
+            .metadata
+            .as_ref()
+            .map(proto_struct_to_json)
+            .unwrap_or_else(|| serde_json::json!({})),
+        created_at: proto_timestamp_or_now(proto_info.created_at.as_ref()),
+    })
+}
+
+fn proto_stored_image_to_schema(proto_image: proto::StoredImage) -> Result<StoredImage> {
+    let info = proto_image
+        .info
+        .ok_or_else(|| grpc_missing_field("No image info in response"))?;
+    Ok(StoredImage {
+        info: proto_stored_image_info_to_schema(info)?,
+        data: proto_image.data,
+    })
 }
 
 // ============================================================================
@@ -910,6 +1041,38 @@ impl LlmProviderStore for GrpcOrgAdapter {
             }
             None => Ok(None),
         }
+    }
+}
+
+#[async_trait]
+impl ImageArtifactStore for GrpcOrgAdapter {
+    async fn create_image(&self, input: CreateStoredImage) -> Result<StoredImageInfo> {
+        self.client.create_image_artifact(self.org_id, input).await
+    }
+
+    async fn get_image(&self, image_id: everruns_core::ImageId) -> Result<Option<StoredImage>> {
+        self.client.get_image_artifact(self.org_id, image_id).await
+    }
+
+    async fn get_image_info(
+        &self,
+        image_id: everruns_core::ImageId,
+    ) -> Result<Option<StoredImageInfo>> {
+        self.client
+            .get_image_artifact_info(self.org_id, image_id)
+            .await
+    }
+}
+
+#[async_trait]
+impl ProviderCredentialStore for GrpcOrgAdapter {
+    async fn get_default_provider_credentials(
+        &self,
+        provider_type: &str,
+    ) -> Result<Option<ProviderCredentials>> {
+        self.client
+            .get_default_provider_credentials(self.org_id, provider_type)
+            .await
     }
 }
 

@@ -13,12 +13,15 @@
 // inversion - core has no knowledge of specific provider implementations.
 
 mod driver;
+mod image_capability;
+mod images;
 mod types;
 
 #[cfg(test)]
 mod tests;
 
 pub use driver::{OpenAICompletionsLlmDriver, OpenAILlmDriver, register_driver};
+pub use image_capability::{EditImageTool, GenerateImageTool, GptImageGenCapability};
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
 };

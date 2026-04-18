@@ -106,6 +106,13 @@ pub struct ResolvedModel {
     pub base_url: Option<String>,
 }
 
+/// Resolved provider credentials for tool-side API clients.
+#[derive(Debug, Clone)]
+pub struct ResolvedProviderCredentials {
+    pub api_key: String,
+    pub base_url: Option<String>,
+}
+
 /// Cache key: (org_id, model_uuid). Default-model lookups use DEFAULT_MODEL_SENTINEL.
 type CacheKey = (i64, Uuid);
 
@@ -158,6 +165,57 @@ impl LlmResolverService {
         let result = self.resolve_default_model_uncached(org_id).await?;
         self.cache.insert(key, result.clone()).await;
         Ok(result)
+    }
+
+    /// Resolve default credentials for a provider type.
+    ///
+    /// Preference order:
+    /// 1. Active providers matching the requested type, newest first
+    /// 2. Other matching providers, newest first
+    /// 3. Environment fallback for the provider type with no base URL
+    pub async fn resolve_provider_credentials(
+        &self,
+        org_id: i64,
+        provider_type: &str,
+    ) -> Result<Option<ResolvedProviderCredentials>> {
+        let providers = self.db.list_llm_providers(org_id).await?;
+        let provider_type_lower = provider_type.to_lowercase();
+
+        let matching: Vec<_> = providers
+            .into_iter()
+            .filter(|provider| {
+                provider
+                    .provider_type
+                    .eq_ignore_ascii_case(&provider_type_lower)
+            })
+            .collect();
+
+        let iter = matching
+            .iter()
+            .filter(|provider| provider.status.eq_ignore_ascii_case("active"))
+            .chain(
+                matching
+                    .iter()
+                    .filter(|provider| !provider.status.eq_ignore_ascii_case("active")),
+            );
+
+        for provider in iter {
+            if let Some(api_key) = self.resolve_api_key(provider)? {
+                return Ok(Some(ResolvedProviderCredentials {
+                    api_key,
+                    base_url: provider.base_url.clone(),
+                }));
+            }
+        }
+
+        Ok(
+            get_default_api_key_from_env(provider_type).map(|api_key| {
+                ResolvedProviderCredentials {
+                    api_key,
+                    base_url: None,
+                }
+            }),
+        )
     }
 
     /// Invalidate all cached resolutions for an org.

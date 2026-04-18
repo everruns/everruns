@@ -31,7 +31,7 @@ use uuid::Uuid;
 // ============================================
 
 /// Maximum image size in bytes (100 MB)
-const MAX_IMAGE_SIZE: usize = 100 * 1024 * 1024;
+pub(crate) const MAX_IMAGE_SIZE: usize = 100 * 1024 * 1024;
 
 /// Thumbnail max dimension (width or height)
 const THUMBNAIL_MAX_DIM: u32 = 200;
@@ -139,7 +139,7 @@ fn format_from_content_type(content_type: &str) -> Option<ImageFormat> {
 }
 
 /// Generate thumbnail from image data
-fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, String)> {
+pub(crate) fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, String)> {
     let format = format_from_content_type(content_type)?;
 
     // Load image

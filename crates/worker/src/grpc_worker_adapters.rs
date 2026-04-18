@@ -11,7 +11,9 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-use everruns_core::traits::{AgentStore, ModelWithProvider, ResolvedImage};
+use everruns_core::traits::{
+    AgentStore, ImageArtifactStore, ModelWithProvider, ProviderCredentialStore, ResolvedImage,
+};
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
@@ -24,8 +26,9 @@ use uuid::Uuid;
 
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcEventEmitter, GrpcHarnessStore,
-    GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore, GrpcMessageRetriever,
-    GrpcSessionFileStore, GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
+    GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore,
+    GrpcMessageRetriever, GrpcProviderCredentialStore, GrpcSessionFileStore, GrpcSessionSqlDbStore,
+    GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
@@ -377,6 +380,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore> {
         Arc::new(GrpcSessionStorageStore::new(self.client.clone()))
+    }
+
+    fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore> {
+        Arc::new(GrpcImageArtifactStore::new(self.client.clone(), org_id))
+    }
+
+    fn provider_credential_store(&self, org_id: i64) -> Arc<dyn ProviderCredentialStore> {
+        Arc::new(GrpcProviderCredentialStore::new(
+            self.client.clone(),
+            org_id,
+        ))
     }
 
     fn platform_store(&self, org_id: i64) -> Arc<dyn everruns_core::platform_store::PlatformStore> {

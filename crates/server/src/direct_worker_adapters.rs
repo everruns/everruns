@@ -15,7 +15,10 @@ use everruns_core::capabilities::{
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-use everruns_core::traits::{BudgetChecker, ModelWithProvider, ResolvedImage};
+use everruns_core::traits::{
+    BudgetChecker, CreateStoredImage, ImageArtifactStore, ModelWithProvider,
+    ProviderCredentialStore, ProviderCredentials, ResolvedImage, StoredImage, StoredImageInfo,
+};
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EventData, Harness, HarnessStatus,
@@ -58,6 +61,111 @@ struct DirectBudgetChecker {
     budget_service: Arc<BudgetService>,
     org_id: i64,
     agent_id: Option<String>,
+}
+
+struct DirectImageArtifactStore {
+    db: Arc<StorageBackend>,
+    org_id: i64,
+}
+
+#[async_trait]
+impl ImageArtifactStore for DirectImageArtifactStore {
+    async fn create_image(&self, input: CreateStoredImage) -> Result<StoredImageInfo> {
+        let (thumbnail_data, thumbnail_content_type) =
+            crate::api::images::generate_thumbnail(&input.data, &input.content_type)
+                .map(|(data, content_type)| (Some(data), Some(content_type)))
+                .unwrap_or((None, None));
+
+        let row = self
+            .db
+            .create_image(
+                self.org_id,
+                crate::storage::models::CreateImageRow {
+                    org_id: self.org_id,
+                    filename: input.filename,
+                    content_type: input.content_type,
+                    size_bytes: input.data.len() as i64,
+                    data: input.data,
+                    thumbnail_data,
+                    thumbnail_content_type,
+                    metadata: input.metadata,
+                },
+            )
+            .await
+            .map_err(|e| store_error(format!("Failed to create image artifact: {e}")))?;
+
+        Ok(StoredImageInfo {
+            id: row.id,
+            filename: row.filename,
+            content_type: row.content_type,
+            size_bytes: row.size_bytes,
+            metadata: row.metadata,
+            created_at: row.created_at,
+        })
+    }
+
+    async fn get_image(&self, image_id: everruns_core::ImageId) -> Result<Option<StoredImage>> {
+        let row = self
+            .db
+            .get_image(self.org_id, image_id.uuid())
+            .await
+            .map_err(|e| store_error(format!("Failed to get image artifact: {e}")))?;
+
+        Ok(row.map(|row| StoredImage {
+            info: StoredImageInfo {
+                id: row.id,
+                filename: row.filename,
+                content_type: row.content_type,
+                size_bytes: row.size_bytes,
+                metadata: row.metadata,
+                created_at: row.created_at,
+            },
+            data: row.data,
+        }))
+    }
+
+    async fn get_image_info(
+        &self,
+        image_id: everruns_core::ImageId,
+    ) -> Result<Option<StoredImageInfo>> {
+        let row = self
+            .db
+            .get_image_info(self.org_id, image_id.uuid())
+            .await
+            .map_err(|e| store_error(format!("Failed to get image artifact info: {e}")))?;
+
+        Ok(row.map(|row| StoredImageInfo {
+            id: row.id,
+            filename: row.filename,
+            content_type: row.content_type,
+            size_bytes: row.size_bytes,
+            metadata: row.metadata,
+            created_at: row.created_at,
+        }))
+    }
+}
+
+struct DirectProviderCredentialStore {
+    llm_resolver: Arc<LlmResolverService>,
+    org_id: i64,
+}
+
+#[async_trait]
+impl ProviderCredentialStore for DirectProviderCredentialStore {
+    async fn get_default_provider_credentials(
+        &self,
+        provider_type: &str,
+    ) -> Result<Option<ProviderCredentials>> {
+        Ok(self
+            .llm_resolver
+            .resolve_provider_credentials(self.org_id, provider_type)
+            .await
+            .map_err(|e| store_error(format!("Failed to resolve provider credentials: {e}")))?
+            .map(|resolved| ProviderCredentials {
+                api_key: resolved.api_key,
+                base_url: resolved.base_url,
+            }))
+    }
 }
 
 #[async_trait]
@@ -1192,6 +1300,20 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.storage_store
             .clone()
             .expect("DirectWorkerAdapters: storage_store not set (call with_storage_store)")
+    }
+
+    fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore> {
+        Arc::new(DirectImageArtifactStore {
+            db: self.db.clone(),
+            org_id,
+        })
+    }
+
+    fn provider_credential_store(&self, org_id: i64) -> Arc<dyn ProviderCredentialStore> {
+        Arc::new(DirectProviderCredentialStore {
+            llm_resolver: self.llm_resolver.clone(),
+            org_id,
+        })
     }
 
     fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {

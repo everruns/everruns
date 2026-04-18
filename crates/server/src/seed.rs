@@ -71,6 +71,7 @@ mod seed_ids {
     pub const KNOWLEDGE_BASE_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000112);
     pub const SESSION_SANDBOX_CODER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000113);
+    pub const IMAGE_STUDIO_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000114);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -693,6 +694,30 @@ Do not use raw provider tools when the managed sandbox tools can handle the task
                     }
                 })
             }),
+            SeedCapability::new("session_storage"),
+            SeedCapability::new("session_file_system"),
+        ],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::IMAGE_STUDIO_AGENT,
+        name: "image-studio-agent",
+        display_name: "Image Studio Agent",
+        description: "An agent specialized in generating and editing images, saving results to the workspace, and iterating on art direction.",
+        system_prompt: r#"You are an image generation specialist.
+
+Use `generate_image` for fresh concepts and `edit_image` when refining an existing artifact or workspace image.
+
+Workflow:
+1. Clarify the visual goal from the user's request.
+2. Prefer saving outputs into `/workspace/.outputs/images/` so the user can inspect and reuse them.
+3. When revising, keep track of which artifact ID or workspace file produced the best result and build on it.
+4. Use `secret_store` for per-session OpenAI overrides when the user provides alternate credentials or base URLs.
+
+Keep prompts concrete: subject, composition, lighting, materials, color palette, camera angle, and constraints."#,
+        tags: &["media", "images", "openai", "seed"],
+        capabilities: &[
+            SeedCapability::new("gpt_image_gen"),
             SeedCapability::new("session_storage"),
             SeedCapability::new("session_file_system"),
         ],

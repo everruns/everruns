@@ -16,10 +16,10 @@ use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::platform_store::PlatformStore;
 use everruns_core::session::SessionStatus;
 use everruns_core::traits::{
-    AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageResolver, LeasedResourceStore,
-    LlmProviderStore, ModelWithProvider, SessionFileStore, SessionMutator, SessionResourceRegistry,
-    SessionScheduleStore, SessionSqlDbStoreRef, SessionStorageStore, SessionStore,
-    UserConnectionResolver,
+    AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
+    LeasedResourceStore, LlmProviderStore, ModelWithProvider, ProviderCredentialStore,
+    SessionFileStore, SessionMutator, SessionResourceRegistry, SessionScheduleStore,
+    SessionSqlDbStoreRef, SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
@@ -213,6 +213,14 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     fn file_store(&self) -> Arc<dyn SessionFileStore>;
 
     fn image_resolver(&self, _org_id: i64) -> Option<Arc<dyn ImageResolver>> {
+        None
+    }
+
+    fn image_artifact_store(&self, _org_id: i64) -> Option<Arc<dyn ImageArtifactStore>> {
+        None
+    }
+
+    fn provider_credential_store(&self, _org_id: i64) -> Option<Arc<dyn ProviderCredentialStore>> {
         None
     }
 
@@ -687,6 +695,12 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
 
     if let Some(storage_store) = adapter.storage_store() {
         atom = atom.with_storage_store(storage_store);
+    }
+    if let Some(image_store) = adapter.image_artifact_store(org_id) {
+        atom = atom.with_image_store(image_store);
+    }
+    if let Some(provider_credential_store) = adapter.provider_credential_store(org_id) {
+        atom = atom.with_provider_credential_store(provider_credential_store);
     }
     if let Some(memory_store) = adapter.memory_store() {
         atom = atom.with_memory_store(memory_store);
