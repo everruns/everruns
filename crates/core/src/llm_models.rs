@@ -12,12 +12,15 @@ use crate::typed_id::{ModelId, ProviderId};
 use utoipa::ToSchema;
 
 /// LLM provider type
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LlmProviderType {
     /// OpenAI using Open Responses API (<https://www.openresponses.org/>)
     Openai,
+    /// Azure OpenAI using the Azure-hosted OpenAI v1 API
+    #[serde(rename = "azure_openai")]
+    AzureOpenai,
     /// OpenAI using Chat Completions API (for backward compatibility)
     #[serde(rename = "openai_completions")]
     OpenaiCompletions,
@@ -33,6 +36,7 @@ impl std::fmt::Display for LlmProviderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LlmProviderType::Openai => write!(f, "openai"),
+            LlmProviderType::AzureOpenai => write!(f, "azure_openai"),
             LlmProviderType::OpenaiCompletions => write!(f, "openai_completions"),
             LlmProviderType::Anthropic => write!(f, "anthropic"),
             LlmProviderType::Gemini => write!(f, "gemini"),
@@ -47,6 +51,7 @@ impl std::str::FromStr for LlmProviderType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "openai" => Ok(LlmProviderType::Openai),
+            "azure_openai" => Ok(LlmProviderType::AzureOpenai),
             "openai_completions" => Ok(LlmProviderType::OpenaiCompletions),
             "anthropic" => Ok(LlmProviderType::Anthropic),
             "gemini" => Ok(LlmProviderType::Gemini),
@@ -369,6 +374,10 @@ mod tests {
             "\"openai_completions\""
         );
         assert_eq!(
+            serde_json::to_string(&LlmProviderType::AzureOpenai).unwrap(),
+            "\"azure_openai\""
+        );
+        assert_eq!(
             serde_json::to_string(&LlmProviderType::Anthropic).unwrap(),
             "\"anthropic\""
         );
@@ -394,6 +403,10 @@ mod tests {
             LlmProviderType::OpenaiCompletions
         ));
         assert!(matches!(
+            serde_json::from_str::<LlmProviderType>("\"azure_openai\"").unwrap(),
+            LlmProviderType::AzureOpenai
+        ));
+        assert!(matches!(
             serde_json::from_str::<LlmProviderType>("\"anthropic\"").unwrap(),
             LlmProviderType::Anthropic
         ));
@@ -417,6 +430,10 @@ mod tests {
         assert!(matches!(
             "openai_completions".parse::<LlmProviderType>().unwrap(),
             LlmProviderType::OpenaiCompletions
+        ));
+        assert!(matches!(
+            "azure_openai".parse::<LlmProviderType>().unwrap(),
+            LlmProviderType::AzureOpenai
         ));
         assert!(matches!(
             "anthropic".parse::<LlmProviderType>().unwrap(),
@@ -469,6 +486,7 @@ mod tests {
     fn test_llm_provider_type_display() {
         // Verify Display works correctly
         assert_eq!(LlmProviderType::Openai.to_string(), "openai");
+        assert_eq!(LlmProviderType::AzureOpenai.to_string(), "azure_openai");
         assert_eq!(
             LlmProviderType::OpenaiCompletions.to_string(),
             "openai_completions"

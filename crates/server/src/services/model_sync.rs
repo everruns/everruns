@@ -69,20 +69,21 @@ impl ModelSyncService {
             .await?
             .context("Provider not found")?;
 
-        // Skip sync for providers with custom base URLs
-        if provider_row.base_url.is_some() {
+        // Parse provider type
+        let provider_type: LlmProviderType = provider_row
+            .provider_type
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Invalid provider type: {}", e))?;
+
+        // Skip sync for providers with custom base URLs unless the provider
+        // needs a tenant-specific endpoint for discovery.
+        if provider_row.base_url.is_some() && !supports_sync_with_base_url(&provider_type) {
             tracing::debug!(
                 provider_id = %provider_id,
                 "Skipping sync for provider with custom base URL"
             );
             return Ok(SyncResult::NotSupported);
         }
-
-        // Parse provider type
-        let provider_type: LlmProviderType = provider_row
-            .provider_type
-            .parse()
-            .map_err(|e| anyhow::anyhow!("Invalid provider type: {}", e))?;
 
         // Get API key (decrypt from DB first, then env fallback)
         let api_key = self.resolve_api_key(&provider_row)?;
@@ -95,6 +96,7 @@ impl ModelSyncService {
         // Create driver for the provider
         let driver_type = match provider_type {
             LlmProviderType::Openai => ProviderType::OpenAI,
+            LlmProviderType::AzureOpenai => ProviderType::AzureOpenAI,
             LlmProviderType::OpenaiCompletions => ProviderType::OpenAICompletions,
             LlmProviderType::Anthropic => ProviderType::Anthropic,
             LlmProviderType::Gemini => ProviderType::Gemini,
@@ -107,7 +109,7 @@ impl ModelSyncService {
         let config = ProviderConfig {
             provider_type: driver_type,
             api_key: Some(api_key),
-            base_url: None, // We already checked for custom URLs above
+            base_url: provider_row.base_url.clone(),
         };
 
         let driver = self
@@ -273,6 +275,10 @@ impl ModelSyncService {
     }
 }
 
+fn supports_sync_with_base_url(provider_type: &LlmProviderType) -> bool {
+    matches!(provider_type, LlmProviderType::AzureOpenai)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,6 +322,12 @@ mod tests {
 
         let deserialized: SyncResult = serde_json::from_str(&json).unwrap();
         assert!(matches!(deserialized, SyncResult::NotSupported));
+    }
+
+    #[test]
+    fn test_azure_openai_supports_sync_with_base_url() {
+        assert!(supports_sync_with_base_url(&LlmProviderType::AzureOpenai));
+        assert!(!supports_sync_with_base_url(&LlmProviderType::Openai));
     }
 
     #[test]

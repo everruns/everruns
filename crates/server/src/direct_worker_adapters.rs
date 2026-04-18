@@ -1557,6 +1557,7 @@ impl DirectWorkerAdapters {
 fn string_to_provider_type(s: &str) -> LlmProviderType {
     match s.to_lowercase().as_str() {
         "openai" => LlmProviderType::Openai,
+        "azure_openai" => LlmProviderType::AzureOpenai,
         "openai_completions" => LlmProviderType::OpenaiCompletions,
         "anthropic" => LlmProviderType::Anthropic,
         "gemini" => LlmProviderType::Gemini,

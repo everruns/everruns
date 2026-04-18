@@ -35,7 +35,9 @@ use crate::llm_driver_registry::{
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
-use crate::openai_protocol::{is_openai_model_not_found, is_openai_request_too_large};
+use crate::openai_protocol::{
+    apply_openai_api_auth, is_openai_model_not_found, is_openai_request_too_large,
+};
 use crate::openresponses_types::{self as types, StreamingEvent};
 use crate::tool_types::{ToolCall, ToolDefinition};
 
@@ -367,17 +369,15 @@ impl OpenResponsesProtocolLlmDriver {
         let mut last_error: Option<String> = None;
 
         let response = loop {
-            let response = self
-                .client
-                .post(&compact_url)
-                .header("Authorization", format!("Bearer {}", self.api_key))
-                .header("Content-Type", "application/json")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| {
-                    AgentLoopError::llm(format!("Failed to send compact request: {}", e))
-                })?;
+            let response =
+                apply_openai_api_auth(self.client.post(&compact_url), &compact_url, &self.api_key)
+                    .header("Content-Type", "application/json")
+                    .json(&request)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        AgentLoopError::llm(format!("Failed to send compact request: {}", e))
+                    })?;
 
             let status = response.status();
 
@@ -654,15 +654,16 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         let mut last_error: Option<String> = None;
 
         let response = loop {
-            let response = self
-                .client
-                .post(&self.api_url)
-                .header("Authorization", format!("Bearer {}", self.api_key))
-                .header("Content-Type", "application/json")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
+            let response = apply_openai_api_auth(
+                self.client.post(&self.api_url),
+                &self.api_url,
+                &self.api_key,
+            )
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
 
             let status = response.status();
 

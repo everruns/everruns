@@ -918,6 +918,7 @@ fn proto_model_with_provider_to_model(
 ) -> Result<ModelWithProvider> {
     let provider_type = match proto.provider_type.to_lowercase().as_str() {
         "openai" => everruns_core::LlmProviderType::Openai,
+        "azure_openai" => everruns_core::LlmProviderType::AzureOpenai,
         "openai_completions" => everruns_core::LlmProviderType::OpenaiCompletions,
         "anthropic" => everruns_core::LlmProviderType::Anthropic,
         "gemini" => everruns_core::LlmProviderType::Gemini,

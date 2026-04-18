@@ -25,6 +25,24 @@ mod driver_tests {
     }
 
     #[test]
+    fn test_driver_normalizes_v1_base_url() {
+        let driver = OpenAILlmDriver::with_base_url("test-key", "https://api.openai.com/v1");
+        assert_eq!(driver.api_url(), "https://api.openai.com/v1/responses");
+    }
+
+    #[test]
+    fn test_driver_normalizes_azure_v1_base_url() {
+        let driver = OpenAILlmDriver::with_base_url(
+            "test-key",
+            "https://resource.openai.azure.com/openai/v1/",
+        );
+        assert_eq!(
+            driver.api_url(),
+            "https://resource.openai.azure.com/openai/v1/responses"
+        );
+    }
+
+    #[test]
     fn test_completions_driver_with_api_key() {
         let driver = OpenAICompletionsLlmDriver::new("test-key");
         assert!(format!("{:?}", driver).contains("OpenAICompletionsLlmDriver"));
@@ -51,17 +69,25 @@ mod driver_tests {
     fn test_register_driver() {
         let mut registry = DriverRegistry::new();
         assert!(!registry.has_driver(&ProviderType::OpenAI));
+        assert!(!registry.has_driver(&ProviderType::AzureOpenAI));
         assert!(!registry.has_driver(&ProviderType::OpenAICompletions));
 
         register_driver(&mut registry);
 
         assert!(registry.has_driver(&ProviderType::OpenAI));
+        assert!(registry.has_driver(&ProviderType::AzureOpenAI));
         assert!(registry.has_driver(&ProviderType::OpenAICompletions));
 
         // Verify OpenAI driver can be created
         let config = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
         let driver = registry.create_driver(&config);
         assert!(driver.is_ok());
+
+        let azure_config = ProviderConfig::new(ProviderType::AzureOpenAI)
+            .with_api_key("test-key")
+            .with_base_url("https://resource.openai.azure.com/openai/v1");
+        let azure_driver = registry.create_driver(&azure_config);
+        assert!(azure_driver.is_ok());
 
         // Verify OpenAI Completions driver can be created
         let completions_config =
