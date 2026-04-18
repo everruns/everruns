@@ -562,10 +562,21 @@ impl DaytonaClient {
 
         loop {
             if std::time::Instant::now() >= deadline {
-                return Err(format!(
-                    "Command timed out after {timeout}ms. \
-                     Increase the timeout parameter or break the command into smaller steps."
-                ));
+                return match self.reset_session(sandbox_id).await {
+                    Ok(()) => Err(format!(
+                        "Command timed out after {timeout}ms. \
+                         The exec session has been automatically reset so \
+                         your next command will work. Increase the timeout \
+                         parameter or break the command into smaller steps."
+                    )),
+                    Err(e) => {
+                        debug!("Failed to reset session {EXEC_SESSION_ID} after timeout: {e}");
+                        Err(format!(
+                            "Command timed out after {timeout}ms. \
+                             Additionally, failed to reset the exec session: {e}"
+                        ))
+                    }
+                };
             }
 
             tokio::time::sleep(EXEC_POLL_INTERVAL).await;
@@ -1601,6 +1612,97 @@ mod tests {
         );
         let result = client.ensure_session("sb_test").await;
         assert!(result.is_ok(), "409 should be treated as success");
+    }
+
+    #[tokio::test]
+    async fn test_exec_timeout_resets_session_and_next_command_succeeds() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let mock_server = MockServer::start().await;
+        let exec_call_count = std::sync::Arc::new(AtomicU32::new(0));
+
+        Mock::given(method("POST"))
+            .and(path("/sb_timeout/process/session"))
+            .respond_with(ResponseTemplate::new(201))
+            .mount(&mock_server)
+            .await;
+
+        let counter = exec_call_count.clone();
+        Mock::given(method("POST"))
+            .and(path("/sb_timeout/process/session/everruns-exec/exec"))
+            .respond_with(move |_: &wiremock::Request| {
+                let n = counter.fetch_add(1, Ordering::SeqCst);
+                let cmd_id = if n == 0 { "cmd_timeout" } else { "cmd_ok" };
+                ResponseTemplate::new(202).set_body_json(json!({ "cmdId": cmd_id }))
+            })
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path(
+                "/sb_timeout/process/session/everruns-exec/command/cmd_timeout/logs",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![]))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(
+                "/sb_timeout/process/session/everruns-exec/command/cmd_timeout",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "cmd_timeout",
+                "command": "sleep 999"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let mut ok_log_bytes = vec![0x01, 0x01, 0x01];
+        ok_log_bytes.extend_from_slice(b"still works\n");
+        Mock::given(method("GET"))
+            .and(path(
+                "/sb_timeout/process/session/everruns-exec/command/cmd_ok/logs",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(ok_log_bytes))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(
+                "/sb_timeout/process/session/everruns-exec/command/cmd_ok",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "cmd_ok",
+                "command": "echo still works",
+                "exitCode": 0
+            })))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("DELETE"))
+            .and(path("/sb_timeout/process/session/everruns-exec"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+
+        let timeout_err = client
+            .exec("sb_timeout", "sleep 999", None, Some(1_200), |_| {})
+            .await
+            .unwrap_err();
+        assert!(timeout_err.contains("Command timed out after"));
+        assert!(timeout_err.contains("automatically reset"));
+
+        let result = client
+            .exec("sb_timeout", "echo still works", None, Some(5_000), |_| {})
+            .await
+            .unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.result, "still works\n");
+        assert_eq!(exec_call_count.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
