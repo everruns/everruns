@@ -259,6 +259,10 @@ impl Command for GetHarness {
         Some(&HARNESS_VIEW)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
         q::resolve(&ctx.db, ctx.org_id(), &self.id)
             .await
@@ -296,6 +300,10 @@ impl Command for UpdateHarnessCmd {
 
     fn policy() -> Option<&'static Policy> {
         Some(&HARNESS_MANAGE)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
@@ -471,6 +479,10 @@ impl Command for DeleteHarness {
         Some(&HARNESS_DANGEROUS)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let harness_id: HarnessId = self
             .id
@@ -530,6 +542,10 @@ impl Command for DestroyHarness {
 
     fn policy() -> Option<&'static Policy> {
         Some(&HARNESS_DANGEROUS)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
@@ -604,6 +620,10 @@ impl Command for CopyHarness {
 
     fn policy() -> Option<&'static Policy> {
         Some(&HARNESS_MANAGE)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {

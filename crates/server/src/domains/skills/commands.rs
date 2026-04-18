@@ -167,6 +167,10 @@ impl Command for GetSkill {
         Some(&SKILL_VIEW)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Skill, CommandError> {
         let skill_id: SkillId = self
             .id
@@ -212,6 +216,10 @@ impl Command for GetSkillContent {
 
     fn policy() -> Option<&'static Policy> {
         Some(&SKILL_VIEW)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<SkillContent, CommandError> {
@@ -306,6 +314,10 @@ impl Command for UpdateSkillCmd {
 
     fn policy() -> Option<&'static Policy> {
         Some(&SKILL_MANAGE)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Skill, CommandError> {
@@ -415,6 +427,10 @@ impl Command for DeleteSkill {
         Some(&SKILL_MANAGE)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let skill_id: SkillId = self
             .id
@@ -462,6 +478,10 @@ impl Command for DestroySkill {
 
     fn policy() -> Option<&'static Policy> {
         Some(&SKILL_DANGEROUS)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {

@@ -138,6 +138,10 @@ impl Command for GetAgentIdentity {
         Some(&AGENT_IDENTITY_VIEW)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<AgentIdentity, CommandError> {
         let identity_id: AgentIdentityId = self
             .id
@@ -180,6 +184,10 @@ impl Command for UpdateAgentIdentityCmd {
 
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_IDENTITY_MANAGE)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentIdentity, CommandError> {
@@ -250,6 +258,10 @@ impl Command for DeleteAgentIdentity {
         Some(&AGENT_IDENTITY_MANAGE)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let identity_id: AgentIdentityId = self
             .id
@@ -297,6 +309,10 @@ impl Command for DestroyAgentIdentity {
 
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_IDENTITY_DANGEROUS)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {

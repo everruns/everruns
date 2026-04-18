@@ -34,6 +34,7 @@ use std::sync::Arc;
 use super::common::impl_auth_state;
 
 mod catalog;
+mod positional;
 
 // ============================================================================
 // JSON-RPC 2.0 types
@@ -1104,8 +1105,12 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
         .unwrap_or(30000)
         .min(60000);
 
+    // EVE-323: rewrite `<cmd> <id>` → `<cmd> --<positional> <id>` so LLM
+    // callers don't hit bashkit's "expected --flag" rejection.
+    let rewritten = positional::rewrite(command, positional::positional_map());
+
     let toolset = build_toolset(org, state);
-    execute_script(&toolset, command, timeout_ms).await
+    execute_script(&toolset, &rewritten, timeout_ms).await
 }
 
 // ============================================================================

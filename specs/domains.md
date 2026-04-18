@@ -110,6 +110,7 @@ table are generated at runtime from the registry — no hand-maintained
 ```rust
 pub struct CommandDescriptor {
     pub meta: fn() -> CommandMeta,
+    pub positional_arg: fn() -> Option<&'static str>,
     pub dispatch: for<'a> fn(
         serde_json::Value,
         &'a Ctx,
@@ -121,6 +122,15 @@ inventory::collect!(CommandDescriptor);
 
 Adding a new command: implement `Command` for a struct, add `inventory::submit!`
 at the bottom. The catalog auto-updates. No other files to touch.
+
+### MCP `execute` positional args
+
+`Command::positional_arg()` lets a command opt in to accepting one positional
+argument under MCP's `execute` tool (bashkit). Returning `Some("id")` on
+`get_agent` means callers can write `get_agent <id>` instead of
+`get_agent --id <id>`; the mcp_endpoint rewrites the command string at
+statement boundaries before bashkit's flag parser runs. Only opt in when the
+command has exactly one required primary-key-like parameter. See EVE-323.
 
 ## Writing a Command
 

@@ -182,6 +182,15 @@ pub trait Command: DeserializeOwned + Send + 'static {
         None
     }
 
+    /// If set, allows MCP `execute` callers to pass the value for this field as
+    /// a single positional argument (e.g. `get_agent <id>` instead of
+    /// `get_agent --id <id>`). bashkit's flag parser hardcodes `expected --flag`
+    /// for positional args, so the command string is pre-rewritten to insert
+    /// `--<positional_arg>` before the value. See EVE-323.
+    fn positional_arg() -> Option<&'static str> {
+        None
+    }
+
     /// Execute the command. Validation + business logic + persistence.
     fn execute(self, ctx: &Ctx) -> impl Future<Output = Result<Self::Output, CommandError>> + Send;
 }
@@ -210,6 +219,7 @@ type DispatchFn =
 
 pub struct CommandDescriptor {
     pub meta: fn() -> CommandMeta,
+    pub positional_arg: fn() -> Option<&'static str>,
     pub dispatch: DispatchFn,
 }
 
@@ -220,6 +230,7 @@ impl CommandDescriptor {
     pub const fn of<C: Command>() -> Self {
         Self {
             meta: C::meta,
+            positional_arg: C::positional_arg,
             dispatch: dispatch_for::<C>,
         }
     }

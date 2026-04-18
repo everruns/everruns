@@ -807,6 +807,82 @@ async fn test_mcp_execute_list_agents_with_numeric_and_bool_flags() {
     assert_eq!(payload["limit"], 10);
 }
 
+// Regression for EVE-323: LLMs naturally type `get_agent <id>` instead of
+// `get_agent --id <id>`. Without positional-arg rewriting, bashkit's
+// `parse_flags` rejects the call with "expected --flag, got: <id>".
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_execute_get_agent_positional_id() {
+    let (_server, url) = TestServer::serving().await;
+
+    let resp = mcp_tool_call_http(
+        &url,
+        "execute",
+        json!({
+            "command": "create_agent --name 'eve323-positional-agent' --display_name 'EVE-323 Positional' --system_prompt 'Test'"
+        }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "create_agent failed: {}",
+        tool_text(&resp)
+    );
+    let agent_id = tool_json(&resp)["id"].as_str().unwrap().to_string();
+
+    // Positional form: `get_agent <id>` (no --id flag).
+    let resp = mcp_tool_call_http(
+        &url,
+        "execute",
+        json!({ "command": format!("get_agent {agent_id}") }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "get_agent <id> (positional) failed: {}",
+        tool_text(&resp)
+    );
+    let fetched = tool_json(&resp);
+    assert_eq!(fetched["name"], "eve323-positional-agent");
+    assert_eq!(fetched["id"], agent_id);
+}
+
+// Regression for EVE-323: positional `delete_agent <id>` must archive the
+// agent the same way `delete_agent --id <id>` does.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_execute_delete_agent_positional_id() {
+    let (_server, url) = TestServer::serving().await;
+
+    let resp = mcp_tool_call_http(
+        &url,
+        "execute",
+        json!({
+            "command": "create_agent --name 'eve323-delete-agent' --display_name 'EVE-323 Delete' --system_prompt 'Test'"
+        }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "create_agent failed: {}",
+        tool_text(&resp)
+    );
+    let agent_id = tool_json(&resp)["id"].as_str().unwrap().to_string();
+
+    // Positional form: `delete_agent <id>`.
+    let resp = mcp_tool_call_http(
+        &url,
+        "execute",
+        json!({ "command": format!("delete_agent {agent_id}") }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "delete_agent <id> (positional) failed: {}",
+        tool_text(&resp)
+    );
+    let payload = tool_json(&resp);
+    assert_eq!(payload["deleted"], true);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_execute_list_mcp_servers() {
     let (_server, url) = TestServer::serving().await;

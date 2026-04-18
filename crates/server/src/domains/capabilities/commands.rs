@@ -96,6 +96,10 @@ impl Command for GetCapability {
         }
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<CapabilityInfo, CommandError> {
         let cap_id = CapabilityId::new(&self.id);
 

@@ -225,6 +225,10 @@ impl Command for GetApp {
         Some(&APP_VIEW)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<App, CommandError> {
         let app_id: AppId = self
             .id
@@ -268,6 +272,10 @@ impl Command for UpdateAppCmd {
 
     fn policy() -> Option<&'static Policy> {
         Some(&APP_MANAGE)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<App, CommandError> {
@@ -367,6 +375,10 @@ impl Command for DeleteApp {
         Some(&APP_DANGEROUS)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let app_id: AppId = self
             .id
@@ -416,6 +428,10 @@ impl Command for DestroyApp {
 
     fn policy() -> Option<&'static Policy> {
         Some(&APP_DANGEROUS)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
@@ -473,6 +489,10 @@ impl Command for PublishApp {
 
     fn policy() -> Option<&'static Policy> {
         Some(&APP_DANGEROUS)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<App, CommandError> {
@@ -533,6 +553,10 @@ impl Command for UnpublishApp {
 
     fn policy() -> Option<&'static Policy> {
         Some(&APP_DANGEROUS)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<App, CommandError> {
