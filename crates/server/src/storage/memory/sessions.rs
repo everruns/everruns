@@ -201,6 +201,9 @@ impl InMemoryDatabase {
 
         let mut sessions = self.sessions.write();
         if let Some(session) = sessions.get_mut(&id) {
+            if let Some(harness_id) = input.harness_id {
+                session.harness_id = Some(harness_id);
+            }
             if let Some(title) = input.title {
                 session.title = Some(title);
             }

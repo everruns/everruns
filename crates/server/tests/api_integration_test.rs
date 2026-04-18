@@ -19,8 +19,8 @@ use test_harness::TestServer;
 
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::typed_id::ScheduleId;
-use everruns_core::{Agent, Harness, LlmModel, Session, SessionFile};
-use everruns_server::storage::models::CreateSessionScheduleRow;
+use everruns_core::{Agent, DEFAULT_ORG_ID, Harness, LlmModel, Session, SessionFile};
+use everruns_server::storage::models::{CreateSessionScheduleRow, UpdateSession};
 
 /// Seed harness ID from seed.rs (BASE_HARNESS = 0x01933b5a_0000_7000_8000_000000000601)
 const SEED_BASE_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
@@ -2583,6 +2583,57 @@ async fn test_global_chat_has_chat_harness() {
         session.harness_id.to_string(),
         SEED_CHAT_HARNESS_ID,
         "Chat session should use the Platform Chat harness"
+    );
+}
+
+#[tokio::test]
+async fn test_global_chat_repairs_stale_harness_binding() {
+    let server = TestServer::in_memory().await;
+
+    let original: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+
+    let other_harness: Harness = server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "chat-repair-test",
+                "display_name": "Chat Repair Test",
+                "system_prompt": "Test harness"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .db
+        .update_session(
+            DEFAULT_ORG_ID,
+            original.id,
+            UpdateSession {
+                harness_id: Some(other_harness.id),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("failed to mutate chat session")
+        .expect("chat session should exist");
+
+    let repaired: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+
+    assert_eq!(repaired.id, original.id);
+    assert_eq!(
+        repaired.harness_id.to_string(),
+        SEED_CHAT_HARNESS_ID,
+        "chat endpoint should repair stale session harness bindings"
     );
 }
 

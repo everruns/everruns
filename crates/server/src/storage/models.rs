@@ -590,6 +590,7 @@ pub struct CreateSessionRow {
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateSession {
+    pub harness_id: Option<HarnessId>,
     pub title: Option<String>,
     pub agent_identity_id: UpdateField<AgentIdentityId>,
     pub locale: Option<String>,

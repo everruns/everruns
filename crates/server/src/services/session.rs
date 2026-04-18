@@ -19,12 +19,14 @@ use crate::storage::{
 use anyhow::Result;
 use everruns_core::{
     AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry, HarnessId, InitialFile, ModelId,
-    Permission, Policy, Rule, Session, SessionId, SessionStatus, SubagentStatus, TokenUsage,
+    MountPoint, Permission, Policy, Rule, Session, SessionId, SessionStatus, SubagentStatus,
+    TokenUsage,
     capabilities::{SystemPromptContext, collect_capabilities, compute_features},
     merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
 use everruns_durable::UpdateField;
 use everruns_macros::policy;
+use std::collections::HashSet;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -336,27 +338,23 @@ impl SessionService {
     ) -> Result<()> {
         let session_id = session_id.into();
 
-        let capability_ids = self
-            .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
+        let mounts = self
+            .collect_capability_mounts(
+                org_id,
+                harness_id,
+                agent_id,
+                session_capabilities,
+                session_id,
+            )
             .await?;
-
-        if capability_ids.is_empty() {
-            return Ok(()); // No capabilities, nothing to mount
-        }
-
-        // Collect mounts from all capabilities
-        let ctx = SystemPromptContext::without_file_store(SessionId::from_uuid(session_id));
-        let collected =
-            collect_capabilities(&capability_ids, &self.capability_registry, &ctx).await;
-
-        if collected.mounts.is_empty() {
+        if mounts.is_empty() {
             return Ok(()); // No mounts to apply
         }
 
         // Apply mounts to session filesystem
         let result = self
             .session_file_service
-            .apply_capability_mounts(session_id, &collected.mounts)
+            .apply_capability_mounts(session_id, &mounts)
             .await?;
 
         if !result.is_success() {
@@ -374,6 +372,84 @@ impl SessionService {
                 directories_created = result.directories_created,
                 mount_points = result.mount_points_applied,
                 "Capability mounts applied successfully"
+            );
+        }
+
+        Ok(())
+    }
+
+    async fn collect_capability_mounts(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+        agent_id: Option<Uuid>,
+        session_capabilities: &[AgentCapabilityConfig],
+        session_id: Uuid,
+    ) -> Result<Vec<MountPoint>> {
+        let capability_ids = self
+            .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
+            .await?;
+        if capability_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let ctx = SystemPromptContext::without_file_store(SessionId::from_uuid(session_id));
+        Ok(
+            collect_capabilities(&capability_ids, &self.capability_registry, &ctx)
+                .await
+                .mounts,
+        )
+    }
+
+    async fn reconcile_capability_mounts(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+        agent_id: Option<Uuid>,
+        session_capabilities: &[AgentCapabilityConfig],
+        session_id: Uuid,
+    ) -> Result<()> {
+        let mounts = self
+            .collect_capability_mounts(
+                org_id,
+                harness_id,
+                agent_id,
+                session_capabilities,
+                session_id,
+            )
+            .await?;
+
+        self.session_file_service.evict_virtual_mounts(session_id);
+
+        let mut seen_paths = HashSet::new();
+        let mut mount_paths: Vec<String> = mounts
+            .iter()
+            .map(|mount| mount.path.clone())
+            .filter(|path| seen_paths.insert(path.clone()))
+            .collect();
+        mount_paths.sort_by_key(|path| path.len());
+        for path in mount_paths {
+            let _ = self
+                .db
+                .delete_session_file_recursive(session_id, &path)
+                .await?;
+        }
+
+        if mounts.is_empty() {
+            return Ok(());
+        }
+
+        let result = self
+            .session_file_service
+            .apply_capability_mounts(session_id, &mounts)
+            .await?;
+
+        if !result.is_success() {
+            tracing::warn!(
+                session_id = %session_id,
+                agent_id = ?agent_id,
+                errors = ?result.errors,
+                "Some capability mounts failed to apply after session repair"
             );
         }
 
@@ -653,9 +729,54 @@ impl SessionService {
         let org_public_id = &caller.org_public_id;
         let user_tag = format!("user:{}", user_id);
         let tags = vec!["global-chat".to_string(), user_tag.clone()];
+        let desired_harness_id = HarnessId::from_uuid(harness_id);
 
         // Look for existing chat session
-        if let Some(row) = self.db.find_session_by_tags(org_id, &tags).await? {
+        if let Some(mut row) = self.db.find_session_by_tags(org_id, &tags).await? {
+            if row.harness_id != Some(desired_harness_id) {
+                tracing::info!(
+                    session_id = %row.id,
+                    previous_harness_id = ?row.harness_id,
+                    desired_harness_id = %desired_harness_id,
+                    "Repairing global chat session harness binding"
+                );
+
+                row = self
+                    .db
+                    .update_session(
+                        org_id,
+                        row.id,
+                        UpdateSession {
+                            harness_id: Some(desired_harness_id),
+                            ..Default::default()
+                        },
+                    )
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("chat session disappeared during repair"))?;
+
+                let session_capabilities: Vec<AgentCapabilityConfig> = match serde_json::from_value(
+                    row.capabilities.clone(),
+                ) {
+                    Ok(capabilities) => capabilities,
+                    Err(error) => {
+                        tracing::error!(
+                            session_id = %row.id,
+                            error = %error,
+                            "Failed to deserialize session capabilities during global chat repair; continuing with empty capabilities"
+                        );
+                        Vec::new()
+                    }
+                };
+                self.reconcile_capability_mounts(
+                    org_id,
+                    desired_harness_id.uuid(),
+                    row.agent_id.map(|agent_id| agent_id.uuid()),
+                    &session_capabilities,
+                    row.id.uuid(),
+                )
+                .await?;
+            }
+
             let mut session = Self::row_to_session(row, org_public_id);
             self.populate_features(caller.org_id, &mut session).await?;
             self.resolve_session_agent_id(org_id, &mut session).await?;
