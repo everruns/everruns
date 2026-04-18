@@ -297,3 +297,183 @@ pub fn pagination(offset: Option<u32>, limit: Option<u32>) -> crate::api::common
     let limit = limit.unwrap_or(20).min(100);
     crate::api::common::Pagination::new(offset, limit)
 }
+
+// ============================================================================
+// Lenient deserializers — accept both typed JSON values and stringly-typed
+// values from the MCP CLI bridge (bashkit catalog).
+// ============================================================================
+//
+// Context (EVE-324): inventory-registered commands expose an open JSON schema
+// (`additionalProperties: true`) to bashkit because the request types own
+// their own serde shape. Without per-flag type hints, bashkit's flag parser
+// defaults every value to a string — so `list_capabilities --limit 5` arrives
+// at dispatch as `{"limit": "5"}`. Serde then rejects that string while
+// trying to populate `Option<u32>`, the dispatcher wraps the error as
+// `CommandError::BadRequest`, and the bashkit adapter sanitizes it into the
+// opaque "<cmd>: callback failed" the caller sees.
+//
+// The helpers below sit between the serde field and the raw JSON: they accept
+// the native typed shape (for programmatic callers) and also coerce the
+// string forms bashkit produces. They are intentionally scoped to the input
+// fields that are known to arrive from the flag parser — primarily pagination
+// (`offset`, `limit`) and boolean toggles (`include_archived`).
+/// Accept `Option<u32>` as `null`, an integer, or a numeric string.
+pub fn deserialize_opt_u32_lenient<'de, D>(d: D) -> Result<Option<u32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Either {
+        Num(u32),
+        Str(String),
+    }
+
+    match Option::<Either>::deserialize(d)? {
+        None => Ok(None),
+        Some(Either::Num(n)) => Ok(Some(n)),
+        Some(Either::Str(s)) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            trimmed
+                .parse::<u32>()
+                .map(Some)
+                .map_err(serde::de::Error::custom)
+        }
+    }
+}
+
+/// Accept `bool`, `"true"`/`"false"`/`"1"`/`"0"`/`"yes"`/`"no"` (case-insensitive),
+/// or integer `0`/`1`. Missing keys fall through to serde's default handling.
+pub fn deserialize_bool_lenient<'de, D>(d: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Either {
+        Bool(bool),
+        Num(i64),
+        Str(String),
+    }
+
+    match Either::deserialize(d)? {
+        Either::Bool(b) => Ok(b),
+        Either::Num(0) => Ok(false),
+        Either::Num(1) => Ok(true),
+        Either::Num(n) => Err(serde::de::Error::custom(format!(
+            "cannot coerce integer {n} to bool (expected 0 or 1)"
+        ))),
+        Either::Str(s) => match s.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" | "y" | "on" => Ok(true),
+            "false" | "0" | "no" | "n" | "off" => Ok(false),
+            other => Err(serde::de::Error::custom(format!(
+                "cannot coerce string {other:?} to bool"
+            ))),
+        },
+    }
+}
+
+#[cfg(test)]
+mod lenient_tests {
+    use super::*;
+    use serde::Deserialize;
+    use serde_json::json;
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct PageInput {
+        #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+        offset: Option<u32>,
+        #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+        limit: Option<u32>,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct FlagInput {
+        #[serde(default, deserialize_with = "deserialize_bool_lenient")]
+        include_archived: bool,
+    }
+
+    #[test]
+    fn opt_u32_lenient_accepts_integer() {
+        let v: PageInput = serde_json::from_value(json!({"offset": 0, "limit": 5})).unwrap();
+        assert_eq!(
+            v,
+            PageInput {
+                offset: Some(0),
+                limit: Some(5)
+            }
+        );
+    }
+
+    #[test]
+    fn opt_u32_lenient_accepts_numeric_string() {
+        let v: PageInput = serde_json::from_value(json!({"offset": "10", "limit": "20"})).unwrap();
+        assert_eq!(
+            v,
+            PageInput {
+                offset: Some(10),
+                limit: Some(20)
+            }
+        );
+    }
+
+    #[test]
+    fn opt_u32_lenient_accepts_missing_and_null() {
+        let missing: PageInput = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(
+            missing,
+            PageInput {
+                offset: None,
+                limit: None
+            }
+        );
+        let nulled: PageInput =
+            serde_json::from_value(json!({"offset": null, "limit": null})).unwrap();
+        assert_eq!(
+            nulled,
+            PageInput {
+                offset: None,
+                limit: None
+            }
+        );
+    }
+
+    #[test]
+    fn opt_u32_lenient_rejects_non_numeric_string() {
+        let err = serde_json::from_value::<PageInput>(json!({"limit": "abc"})).unwrap_err();
+        assert!(err.to_string().contains("invalid digit"), "got: {err}");
+    }
+
+    #[test]
+    fn bool_lenient_accepts_variants() {
+        for (input, expected) in [
+            (json!(true), true),
+            (json!(false), false),
+            (json!("true"), true),
+            (json!("FALSE"), false),
+            (json!("1"), true),
+            (json!("0"), false),
+            (json!("yes"), true),
+            (json!("no"), false),
+            (json!(1), true),
+            (json!(0), false),
+        ] {
+            let v: FlagInput = serde_json::from_value(json!({"include_archived": input})).unwrap();
+            assert_eq!(v.include_archived, expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn bool_lenient_rejects_garbage() {
+        let err =
+            serde_json::from_value::<FlagInput>(json!({"include_archived": "maybe"})).unwrap_err();
+        assert!(err.to_string().contains("coerce string"), "got: {err}");
+    }
+}

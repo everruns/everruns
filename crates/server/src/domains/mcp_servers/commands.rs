@@ -150,7 +150,7 @@ inventory::submit! { CommandDescriptor::of::<CreateMcpServer>() }
 #[derive(Debug, Deserialize)]
 pub struct ListMcpServers {
     pub search: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub include_archived: bool,
 }
 

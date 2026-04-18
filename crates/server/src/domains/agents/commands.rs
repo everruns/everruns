@@ -229,9 +229,11 @@ inventory::submit! { CommandDescriptor::of::<CreateAgent>() }
 #[derive(Debug, Deserialize)]
 pub struct ListAgents {
     pub search: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub include_archived: bool,
+    #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
     pub offset: Option<u32>,
+    #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
     pub limit: Option<u32>,
 }
 
