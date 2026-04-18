@@ -66,6 +66,8 @@ jobs:
               - '.github/workflows/ci.yml'
             docs:
               - 'apps/docs/**'
+              - 'docs/**'
+              - '.github/workflows/ci.yml'
             docker:
               - 'docker/**'
               - 'crates/**'
@@ -769,11 +771,61 @@ jobs:
           cache: 'npm'
           cache-dependency-path: apps/docs/package-lock.json
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
       - name: Install dependencies
         run: npm ci
 
       - name: Rebuild native dependencies
         run: npm rebuild --ignore-scripts=false
+
+      - name: Execute notebook tutorials
+        working-directory: .
+        env:
+          ADDR: 127.0.0.1:9301
+          DEV_MODE: "true"
+          OTEL_SDK_DISABLED: "true"
+          EVERRUNS_API_URL: http://127.0.0.1:9301/api
+          EVERRUNS_API_KEY: dev
+          EVERRUNS_NOTEBOOK_SKIP_PIP: "1"
+          EVERRUNS_NOTEBOOK_USE_LLMSIM: "1"
+        run: |
+          set -euo pipefail
+          cargo build -p everruns-server
+          ./target/debug/everruns-server > /tmp/everruns-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true; wait $SERVER_PID 2>/dev/null || true' EXIT
+
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:9301/health > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://127.0.0.1:9301/health > /dev/null || {
+            cat /tmp/everruns-server.log
+            exit 1
+          }
+
+          python3 -m venv /tmp/docs-notebooks-venv
+          . /tmp/docs-notebooks-venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install nbclient nbformat ipykernel everruns-sdk requests
+          cd apps/docs
+          npm run prepare-content
+          python scripts/execute-notebooks.py
 
       - name: Astro check
         run: npm run check

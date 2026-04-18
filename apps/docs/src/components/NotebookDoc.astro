@@ -1,0 +1,39 @@
+---
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import manifest from "../generated/notebooks/manifest.json";
+
+interface NotebookEntry {
+  htmlFile: string;
+  route: string;
+}
+
+interface Props {
+  source?: string;
+  route?: string;
+}
+
+const { source, route } = Astro.props;
+const entries = Object.entries(manifest as Record<string, NotebookEntry>);
+const normalizedRoute = (route ?? Astro.url.pathname).replace(/\/?$/, "/");
+const matchedEntry =
+  typeof source === "string" && source.length > 0
+    ? entries.find(([entrySource]) => entrySource === source)
+    : entries.find(([, entry]) => entry.route === normalizedRoute);
+const entry = matchedEntry?.[1];
+
+if (!entry) {
+  throw new Error(
+    source
+      ? `Notebook manifest entry not found for source: ${source}`
+      : `Notebook manifest entry not found for route: ${normalizedRoute}`
+  );
+}
+
+const renderedHtml = readFileSync(
+  path.join(process.cwd(), "src/generated/notebooks", entry.htmlFile),
+  "utf8"
+);
+---
+
+<div set:html={renderedHtml} />
