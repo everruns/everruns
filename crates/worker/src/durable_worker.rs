@@ -50,13 +50,22 @@ struct ActTaskInput {
 
 impl ActTaskInput {
     /// Returns the org_id carried by the inner `ActInput`, erroring if it is
-    /// missing. Used by all act-task dequeue paths.
+    /// missing. Used by paths that require a present org_id to execute (the
+    /// main `execute_task` act branch); some failure-emission paths
+    /// intentionally tolerate a missing value and fall back to 0 so they can
+    /// still surface an error event to the session.
     fn require_org_id(&self) -> Result<i64> {
         self.act_input
             .org_id
-            .ok_or_else(|| anyhow::anyhow!("ActTaskInput.act_input.org_id must be set"))
+            .ok_or_else(|| anyhow::anyhow!(MISSING_ACT_ORG_ID_ERROR))
     }
 }
+
+/// Error substring marking a missing `org_id` on an act task. Persisted into
+/// the task failure message so `is_non_retryable_task_error` can short-circuit
+/// the retry loop and DLQ the task immediately instead of burning attempts on
+/// a deterministic configuration failure.
+const MISSING_ACT_ORG_ID_ERROR: &str = "ActTaskInput.act_input.org_id must be set";
 
 // =============================================================================
 // Task Session Context Extraction
@@ -566,6 +575,7 @@ fn is_non_retryable_task_error(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
     lower.contains("user message not found")
         || (lower.contains("inputatom execution failed") && lower.contains("not found"))
+        || lower.contains(&MISSING_ACT_ORG_ID_ERROR.to_ascii_lowercase())
 }
 
 impl DurableWorker {
@@ -901,7 +911,8 @@ impl DurableWorker {
                 (res, Some(turn_input))
             }
             "act" => {
-                // Act activity uses ActTaskInput wrapper to include org_id
+                // Act activity uses ActTaskInput; org_id is read from the
+                // flattened ActInput payload via require_org_id().
                 let act_task_input: ActTaskInput = serde_json::from_value(task.input.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse ActTaskInput: {}", e))?;
                 let org_id = act_task_input.require_org_id()?;
@@ -1473,6 +1484,13 @@ mod tests {
         ));
         assert!(is_non_retryable_task_error(
             "InputAtom execution failed: Message store error: User message not found: msg_xyz"
+        ));
+    }
+
+    #[test]
+    fn test_is_non_retryable_task_error_detects_missing_act_org_id() {
+        assert!(is_non_retryable_task_error(
+            "ActAtom execution failed: ActTaskInput.act_input.org_id must be set"
         ));
     }
 
