@@ -14,8 +14,11 @@
 # ============================================================================
 FROM --platform=$BUILDPLATFORM rust:1.92-slim-bookworm AS builder-base
 
-# Install xx for cross-compilation support (pinned — unpinned tag resolves to :latest)
-COPY --from=tonistiigi/xx:1.9.0 / /
+# Install xx for cross-compilation support
+# Pinned by digest so a mutated tag can't slip a compromised toolchain into
+# the build. Dependabot (`.github/dependabot.yml`, docker ecosystem) opens a
+# PR when a newer digest is published for `tonistiigi/xx:1.9.0`.
+COPY --from=tonistiigi/xx:1.9.0@sha256:c64defb9ed5a91eacb37f96ccc3d4cd72521c4bd18d5442905b95e2226b0e707 / /
 
 ARG TARGETPLATFORM
 
@@ -74,7 +77,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
 # ============================================================================
 # Stage 3a: Server Runtime image (distroless for minimal size and security)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12:nonroot AS server
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:e2d29aec8061843706b7e484c444f78fafb05bfe47745505252b1769a05d14f1 AS server
 
 WORKDIR /app
 
@@ -92,7 +95,7 @@ CMD ["/app/everruns-server"]
 # ============================================================================
 # Stage 3b: Worker Runtime image (distroless for minimal size and security)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12:nonroot AS worker
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:e2d29aec8061843706b7e484c444f78fafb05bfe47745505252b1769a05d14f1 AS worker
 
 WORKDIR /app
 
