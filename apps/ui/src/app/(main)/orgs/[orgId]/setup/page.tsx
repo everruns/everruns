@@ -61,6 +61,7 @@ const STEP_DELAY_MS = 400;
 
 const PROVIDER_OPTIONS: { type: LlmProviderType; label: string }[] = [
   { type: "openai", label: "OpenAI" },
+  { type: "azure_openai", label: "Azure OpenAI" },
   { type: "anthropic", label: "Anthropic" },
 ];
 
@@ -69,6 +70,8 @@ function getProviderName(providerType: LlmProviderType): string {
     case "openai":
     case "openai_completions":
       return "OpenAI";
+    case "azure_openai":
+      return "Azure OpenAI";
     case "anthropic":
       return "Anthropic";
     case "gemini":

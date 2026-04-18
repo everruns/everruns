@@ -10,6 +10,8 @@
 
 use async_trait::async_trait;
 use chrono::TimeZone;
+use reqwest::RequestBuilder;
+use reqwest::Url;
 
 use everruns_core::OpenAIProtocolLlmDriver;
 use everruns_core::OpenResponsesProtocolLlmDriver;
@@ -18,6 +20,7 @@ use everruns_core::llm_driver_registry::{
     BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmDriver, LlmMessage,
     LlmResponseStream, ProviderType,
 };
+use everruns_core::openai_protocol::is_azure_openai_api_url;
 use everruns_core::{CompactRequest, CompactResponse};
 
 use crate::types::OpenAiModelsResponse;
@@ -80,6 +83,7 @@ impl OpenAILlmDriver {
 
     /// Create a new driver with a custom API URL
     pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
+        let api_url = normalize_api_url(&api_url.into(), "/responses");
         Self {
             inner: OpenResponsesProtocolLlmDriver::with_base_url(api_key, api_url),
             uses_custom_url: true,
@@ -134,12 +138,13 @@ impl LlmDriver for OpenAILlmDriver {
     }
 
     async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
-        // Skip discovery for custom URLs (proxies, self-hosted)
-        if self.uses_custom_url {
+        // Skip discovery for non-standard custom URLs (proxies, self-hosted)
+        if self.uses_custom_url && !supports_model_listing(self.api_url()) {
             return Ok(None);
         }
 
-        list_openai_models(self.inner.client(), self.inner.api_key()).await
+        let models_url = models_url_for_api_url(self.api_url());
+        list_openai_models(self.inner.client(), self.inner.api_key(), &models_url).await
     }
 
     fn supports_compact(&self) -> bool {
@@ -213,6 +218,7 @@ impl OpenAICompletionsLlmDriver {
 
     /// Create a new driver with a custom API URL
     pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
+        let api_url = normalize_api_url(&api_url.into(), "/chat/completions");
         Self {
             inner: OpenAIProtocolLlmDriver::with_base_url(api_key, api_url),
             uses_custom_url: true,
@@ -241,12 +247,13 @@ impl LlmDriver for OpenAICompletionsLlmDriver {
     }
 
     async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
-        // Skip discovery for custom URLs (proxies, self-hosted)
-        if self.uses_custom_url {
+        // Skip discovery for non-standard custom URLs (proxies, self-hosted)
+        if self.uses_custom_url && !supports_model_listing(self.api_url()) {
             return Ok(None);
         }
 
-        list_openai_models(self.inner.client(), self.inner.api_key()).await
+        let models_url = models_url_for_api_url(self.api_url());
+        list_openai_models(self.inner.client(), self.inner.api_key(), &models_url).await
     }
 }
 
@@ -268,10 +275,9 @@ impl std::fmt::Debug for OpenAICompletionsLlmDriver {
 async fn list_openai_models(
     client: &reqwest::Client,
     api_key: &str,
+    models_url: &str,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
-    let response = client
-        .get(OPENAI_MODELS_URL)
-        .bearer_auth(api_key)
+    let response = apply_models_auth(client.get(models_url), models_url, api_key)
         .send()
         .await
         .map_err(|e| AgentLoopError::llm(format!("Failed to fetch models: {}", e)))?;
@@ -307,6 +313,53 @@ async fn list_openai_models(
     Ok(Some(discovered))
 }
 
+fn normalize_api_url(base_url: &str, endpoint_suffix: &str) -> String {
+    let trimmed = base_url.trim_end_matches('/');
+    if trimmed.ends_with(endpoint_suffix) {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}{endpoint_suffix}")
+    }
+}
+
+fn models_url_for_api_url(api_url: &str) -> String {
+    let trimmed = api_url.trim_end_matches('/');
+
+    if let Some(prefix) = trimmed.strip_suffix("/responses") {
+        return format!("{prefix}/models");
+    }
+    if let Some(prefix) = trimmed.strip_suffix("/chat/completions") {
+        return format!("{prefix}/models");
+    }
+    if trimmed.ends_with("/models") {
+        return trimmed.to_string();
+    }
+    if trimmed.ends_with("/v1") || trimmed.ends_with("/openai/v1") {
+        return format!("{trimmed}/models");
+    }
+
+    OPENAI_MODELS_URL.to_string()
+}
+
+fn supports_model_listing(api_url: &str) -> bool {
+    is_openai_api_url(api_url) || is_azure_openai_api_url(api_url)
+}
+
+fn is_openai_api_url(api_url: &str) -> bool {
+    Url::parse(api_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .is_some_and(|host| host.eq_ignore_ascii_case("api.openai.com"))
+}
+
+fn apply_models_auth(request: RequestBuilder, api_url: &str, api_key: &str) -> RequestBuilder {
+    if is_azure_openai_api_url(api_url) {
+        request.header("api-key", api_key)
+    } else {
+        request.bearer_auth(api_key)
+    }
+}
+
 // ============================================================================
 // Driver Registration
 // ============================================================================
@@ -315,6 +368,7 @@ async fn list_openai_models(
 ///
 /// This registers:
 /// - `ProviderType::OpenAI` - Open Responses API (recommended)
+/// - `ProviderType::AzureOpenAI` - Azure OpenAI Responses API
 /// - `ProviderType::OpenAICompletions` - Chat Completions API (backward compatibility)
 ///
 /// # Example
@@ -336,6 +390,14 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         Box::new(driver) as BoxedLlmDriver
     });
 
+    registry.register(ProviderType::AzureOpenAI, |api_key, base_url| {
+        let driver = match base_url {
+            Some(url) => OpenAILlmDriver::with_base_url(api_key, url),
+            None => OpenAILlmDriver::new(api_key),
+        };
+        Box::new(driver) as BoxedLlmDriver
+    });
+
     // Register OpenAI Completions with Chat Completions API
     registry.register(ProviderType::OpenAICompletions, |api_key, base_url| {
         let driver = match base_url {
@@ -344,4 +406,21 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         };
         Box::new(driver) as BoxedLlmDriver
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_openai_api_url, supports_model_listing};
+
+    #[test]
+    fn supports_model_listing_for_openai_host_with_port() {
+        assert!(supports_model_listing(
+            "https://api.openai.com:443/v1/responses"
+        ));
+    }
+
+    #[test]
+    fn rejects_non_openai_hosts_for_model_listing() {
+        assert!(!is_openai_api_url("https://example.com/v1/responses"));
+    }
 }

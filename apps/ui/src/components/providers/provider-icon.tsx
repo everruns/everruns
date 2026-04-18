@@ -50,8 +50,26 @@ function GeminiIcon({ size }: { size: number }) {
   );
 }
 
+function AzureOpenAiIcon({ size }: { size: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+    >
+      <path
+        d="M13.05 4.24L6.56 18.05L2 18.22L7.68 7.32L13.05 4.24ZM14.15 5.56L16.65 10.25L12.38 18.04L22 18.25L14.15 5.56Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 const PROVIDER_ICON_COMPONENTS: Record<LlmProviderType, React.ComponentType<{ size: number }>> = {
   openai: OpenAiIcon,
+  azure_openai: AzureOpenAiIcon,
   openai_completions: OpenAiIcon,
   anthropic: AnthropicIcon,
   gemini: GeminiIcon,
@@ -59,6 +77,7 @@ const PROVIDER_ICON_COMPONENTS: Record<LlmProviderType, React.ComponentType<{ si
 
 const PROVIDER_LABELS: Record<LlmProviderType, string> = {
   openai: "OpenAI (Responses)",
+  azure_openai: "Azure OpenAI",
   openai_completions: "OpenAI (Completions)",
   anthropic: "Anthropic",
   gemini: "Google Gemini",

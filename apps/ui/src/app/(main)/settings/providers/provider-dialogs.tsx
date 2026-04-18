@@ -28,6 +28,7 @@ import type {
 
 const PROVIDER_TYPES: { value: LlmProviderType; label: string }[] = [
   { value: "openai", label: "OpenAI (Responses API)" },
+  { value: "azure_openai", label: "Azure OpenAI" },
   { value: "openai_completions", label: "OpenAI (Completions API)" },
   { value: "anthropic", label: "Anthropic" },
   { value: "gemini", label: "Google Gemini" },
@@ -39,10 +40,29 @@ function getApiKeyPlaceholder(providerType: LlmProviderType): string {
     case "openai":
     case "openai_completions":
       return "sk-...";
+    case "azure_openai":
+      return "Azure OpenAI resource key";
     case "anthropic":
       return "sk-ant-api03-...";
     default:
       return "your-api-key";
+  }
+}
+
+function getBaseUrlPlaceholder(providerType: LlmProviderType): string {
+  switch (providerType) {
+    case "azure_openai":
+      return "https://your-resource.openai.azure.com/openai/v1";
+    case "openai":
+      return "https://api.openai.com/v1";
+    case "openai_completions":
+      return "https://api.openai.com/v1/chat/completions";
+    case "anthropic":
+      return "https://api.anthropic.com/v1/messages";
+    case "gemini":
+      return "https://generativelanguage.googleapis.com";
+    default:
+      return "https://api.example.com";
   }
 }
 
@@ -126,8 +146,15 @@ export function AddProviderDialog({
               id="base-url"
               value={baseUrl}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBaseUrl(e.target.value)}
-              placeholder="https://api.openai.com/v1"
+              placeholder={getBaseUrlPlaceholder(providerType)}
+              required={providerType === "azure_openai"}
             />
+            {providerType === "azure_openai" ? (
+              <p className="text-sm text-muted-foreground">
+                Use your Azure OpenAI `.../openai/v1` endpoint on `openai.azure.com` or
+                `services.ai.azure.com`.
+              </p>
+            ) : null}
           </div>
           <div className="space-y-2">
             <Label htmlFor="api-key">API Key (optional)</Label>
@@ -143,7 +170,14 @@ export function AddProviderDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createProvider.isPending || !name}>
+            <Button
+              type="submit"
+              disabled={
+                createProvider.isPending ||
+                !name ||
+                (providerType === "azure_openai" && !baseUrl.trim())
+              }
+            >
               {createProvider.isPending ? "Creating..." : "Create Provider"}
             </Button>
           </DialogFooter>

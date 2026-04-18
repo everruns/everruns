@@ -115,6 +115,7 @@ fn classify_anyhow_error(message: &str) -> Option<(StatusCode, Json<ErrorRespons
     }
 
     let is_bad_request = [
+        "invalid base url",
         "cannot be assigned",
         "cannot be edited",
         "must be archived before deletion",

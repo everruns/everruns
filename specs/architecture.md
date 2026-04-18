@@ -396,7 +396,7 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
 OpenAI-specific LLM provider implementation:
 
 1. **Implements Core Traits**: `LlmDriver` trait from `everruns-core`
-2. **Dual API Support**: Supports both Chat Completions and Open Responses APIs
+2. **OpenAI + Azure OpenAI Support**: Supports OpenAI-hosted and Azure-hosted OpenAI v1 endpoints
 3. **Streaming Support**: Full SSE streaming with tool call support
 4. **Native API Access**: Direct methods for OpenAI-specific functionality
 

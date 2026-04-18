@@ -4,7 +4,12 @@
 // LLM Provider types
 // ============================================
 
-export type LlmProviderType = "openai" | "openai_completions" | "anthropic" | "gemini";
+export type LlmProviderType =
+  | "openai"
+  | "azure_openai"
+  | "openai_completions"
+  | "anthropic"
+  | "gemini";
 
 export type LlmProviderStatus = "active" | "disabled";
 export type LlmModelStatus = "active" | "disabled";

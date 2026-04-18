@@ -13,6 +13,7 @@ use everruns_core::llm_models::LlmProvider;
 use everruns_core::url_validation::validate_safe_url;
 use everruns_core::{Caller, LlmProviderStatus, LlmProviderType, Permission, Policy, Rule};
 use everruns_macros::policy;
+use reqwest::Url;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -67,10 +68,7 @@ impl LlmProviderService {
         caller: &Caller,
         req: CreateLlmProviderRequest,
     ) -> Result<LlmProvider> {
-        // SSRF prevention: validate base_url before persisting (EVE-69)
-        if let Some(ref url) = req.base_url {
-            validate_safe_url(url).map_err(|e| anyhow!("Invalid base URL: {e}"))?;
-        }
+        validate_provider_base_url(req.provider_type.clone(), req.base_url.as_deref())?;
 
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
@@ -115,10 +113,19 @@ impl LlmProviderService {
         id: Uuid,
         req: UpdateLlmProviderRequest,
     ) -> Result<Option<LlmProvider>> {
-        // SSRF prevention: validate base_url before persisting (EVE-69)
-        if let Some(ref url) = req.base_url {
-            validate_safe_url(url).map_err(|e| anyhow!("Invalid base URL: {e}"))?;
-        }
+        let existing = match self.db.get_llm_provider(caller.org_id, id).await? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let provider_type = req.provider_type.clone().unwrap_or_else(|| {
+            existing
+                .provider_type
+                .parse()
+                .unwrap_or(LlmProviderType::Openai)
+        });
+        let base_url = req.base_url.as_deref().or(existing.base_url.as_deref());
+        validate_provider_base_url(provider_type, base_url)?;
 
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
@@ -186,6 +193,52 @@ impl LlmProviderService {
     }
 }
 
+fn validate_provider_base_url(
+    provider_type: LlmProviderType,
+    base_url: Option<&str>,
+) -> Result<()> {
+    let parsed = match base_url {
+        Some(url) => Some(validate_safe_url(url).map_err(|e| anyhow!("Invalid base URL: {e}"))?),
+        None => None,
+    };
+
+    if provider_type == LlmProviderType::AzureOpenai {
+        let parsed = parsed.ok_or_else(|| {
+            anyhow!(
+                "Invalid base URL: Azure OpenAI providers require a base URL ending in /openai/v1 on an Azure host"
+            )
+        })?;
+        validate_azure_openai_base_url(&parsed).map_err(|e| anyhow!("Invalid base URL: {e}"))?;
+    }
+
+    Ok(())
+}
+
+fn validate_azure_openai_base_url(url: &Url) -> Result<()> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow!("Azure OpenAI base URL must include a host"))?
+        .to_ascii_lowercase();
+
+    let valid_host =
+        host.ends_with(".openai.azure.com") || host.ends_with(".services.ai.azure.com");
+    if !valid_host {
+        return Err(anyhow!(
+            "Azure OpenAI base URL must use *.openai.azure.com or *.services.ai.azure.com"
+        ));
+    }
+
+    let path = url.path().trim_end_matches('/');
+    let valid_path = matches!(path, "/openai/v1" | "/openai/v1/responses");
+    if !valid_path {
+        return Err(anyhow!(
+            "Azure OpenAI base URL must point to /openai/v1 or /openai/v1/responses"
+        ));
+    }
+
+    Ok(())
+}
+
 /// Check if a default API key is available from environment variable.
 ///
 /// Environment variables (for development convenience):
@@ -194,6 +247,7 @@ impl LlmProviderService {
 fn has_default_api_key_from_env(provider_type: &str) -> bool {
     let env_var = match provider_type.to_lowercase().as_str() {
         "openai" => "DEFAULT_OPENAI_API_KEY",
+        "azure_openai" => "DEFAULT_AZURE_OPENAI_API_KEY",
         "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
         "gemini" => "DEFAULT_GEMINI_API_KEY",
         _ => return false,
@@ -207,6 +261,8 @@ fn has_default_api_key_from_env(provider_type: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::validate_provider_base_url;
+    use everruns_core::LlmProviderType;
     use everruns_core::url_validation::validate_safe_url;
 
     // ---- SSRF prevention tests (EVE-69) ----
@@ -248,6 +304,57 @@ mod tests {
     fn create_accepts_valid_public_base_url() {
         assert!(validate_safe_url("https://api.openai.com/v1").is_ok());
         assert!(validate_safe_url("https://api.anthropic.com/v1").is_ok());
+        assert!(validate_safe_url("https://resource.openai.azure.com/openai/v1").is_ok());
+    }
+
+    #[test]
+    fn azure_openai_requires_base_url() {
+        let err = validate_provider_base_url(LlmProviderType::AzureOpenai, None).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Invalid base URL: Azure OpenAI providers require a base URL")
+        );
+    }
+
+    #[test]
+    fn azure_openai_rejects_non_azure_hosts() {
+        let err = validate_provider_base_url(
+            LlmProviderType::AzureOpenai,
+            Some("https://api.openai.com/v1"),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("*.openai.azure.com"));
+    }
+
+    #[test]
+    fn azure_openai_accepts_supported_domains() {
+        assert!(
+            validate_provider_base_url(
+                LlmProviderType::AzureOpenai,
+                Some("https://resource.openai.azure.com/openai/v1"),
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_provider_base_url(
+                LlmProviderType::AzureOpenai,
+                Some("https://resource.services.ai.azure.com/openai/v1/responses"),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn azure_openai_rejects_chat_completions_base_url() {
+        let err = validate_provider_base_url(
+            LlmProviderType::AzureOpenai,
+            Some("https://resource.openai.azure.com/openai/v1/chat/completions"),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("/openai/v1 or /openai/v1/responses")
+        );
     }
 
     /// Testable version with injectable env lookup (test-only).
@@ -257,6 +364,7 @@ mod tests {
     {
         let env_var = match provider_type.to_lowercase().as_str() {
             "openai" => "DEFAULT_OPENAI_API_KEY",
+            "azure_openai" => "DEFAULT_AZURE_OPENAI_API_KEY",
             "anthropic" => "DEFAULT_ANTHROPIC_API_KEY",
             "gemini" => "DEFAULT_GEMINI_API_KEY",
             _ => return false,
@@ -283,6 +391,18 @@ mod tests {
         let env = mock_env(&[("DEFAULT_OPENAI_API_KEY", "sk-test-key")]);
         assert!(has_default_api_key_with_lookup("openai", &env));
         assert!(has_default_api_key_with_lookup("OpenAI", &env));
+    }
+
+    #[test]
+    fn test_has_default_api_key_azure_openai() {
+        assert!(!has_default_api_key_with_lookup(
+            "azure_openai",
+            mock_env(&[])
+        ));
+
+        let env = mock_env(&[("DEFAULT_AZURE_OPENAI_API_KEY", "azure-test-key")]);
+        assert!(has_default_api_key_with_lookup("azure_openai", &env));
+        assert!(has_default_api_key_with_lookup("Azure_OpenAI", &env));
     }
 
     #[test]

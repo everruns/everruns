@@ -17,7 +17,7 @@
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
-use reqwest::Client;
+use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -33,6 +33,27 @@ use crate::llm_retry::{
 use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
+
+pub(crate) fn apply_openai_api_auth(
+    request: RequestBuilder,
+    api_url: &str,
+    api_key: &str,
+) -> RequestBuilder {
+    if is_azure_openai_api_url(api_url) {
+        request.header("api-key", api_key)
+    } else {
+        request.header("Authorization", format!("Bearer {}", api_key))
+    }
+}
+
+pub fn is_azure_openai_api_url(api_url: &str) -> bool {
+    Url::parse(api_url)
+        .ok()
+        .and_then(|url| url.host_str().map(|host| host.to_ascii_lowercase()))
+        .is_some_and(|host| {
+            host.ends_with(".openai.azure.com") || host.ends_with(".services.ai.azure.com")
+        })
+}
 
 /// OpenAI Protocol LLM Driver
 ///
@@ -246,15 +267,16 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
         let mut last_error: Option<String> = None;
 
         let response = loop {
-            let response = self
-                .client
-                .post(&self.api_url)
-                .header("Authorization", format!("Bearer {}", self.api_key))
-                .header("Content-Type", "application/json")
-                .json(&request)
-                .send()
-                .await
-                .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
+            let response = apply_openai_api_auth(
+                self.client.post(&self.api_url),
+                &self.api_url,
+                &self.api_key,
+            )
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
 
             let status = response.status();
 
@@ -768,6 +790,19 @@ mod tests {
         );
         assert!(format!("{:?}", driver).contains("OpenAIProtocolLlmDriver"));
         assert_eq!(driver.api_url(), "https://custom.api.com/v1/completions");
+    }
+
+    #[test]
+    fn test_is_azure_openai_api_url() {
+        assert!(is_azure_openai_api_url(
+            "https://example.openai.azure.com/openai/v1/chat/completions"
+        ));
+        assert!(is_azure_openai_api_url(
+            "https://example.services.ai.azure.com/openai/v1/responses"
+        ));
+        assert!(!is_azure_openai_api_url(
+            "https://api.openai.com/v1/chat/completions"
+        ));
     }
 
     #[test]

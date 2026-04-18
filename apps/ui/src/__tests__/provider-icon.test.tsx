@@ -3,7 +3,13 @@ import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-
 import type { LlmProviderType } from "@/lib/api/types";
 
 describe("ProviderIcon", () => {
-  const providerTypes: LlmProviderType[] = ["openai", "openai_completions", "anthropic", "gemini"];
+  const providerTypes: LlmProviderType[] = [
+    "openai",
+    "azure_openai",
+    "openai_completions",
+    "anthropic",
+    "gemini",
+  ];
 
   it.each(providerTypes)("renders inline SVG for %s provider", (providerType) => {
     const { container } = render(<ProviderIcon providerType={providerType} />);
@@ -79,6 +85,10 @@ describe("ProviderIcon", () => {
 describe("getProviderLabel", () => {
   it("returns correct label for openai", () => {
     expect(getProviderLabel("openai")).toBe("OpenAI (Responses)");
+  });
+
+  it("returns correct label for azure openai", () => {
+    expect(getProviderLabel("azure_openai")).toBe("Azure OpenAI");
   });
 
   it("returns correct label for anthropic", () => {

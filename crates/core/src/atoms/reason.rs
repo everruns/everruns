@@ -1695,6 +1695,7 @@ impl ReasonAtom {
     ) -> Result<crate::llm_driver_registry::BoxedLlmDriver> {
         let provider_type = match model.provider_type {
             crate::llm_models::LlmProviderType::Openai => ProviderType::OpenAI,
+            crate::llm_models::LlmProviderType::AzureOpenai => ProviderType::AzureOpenAI,
             crate::llm_models::LlmProviderType::OpenaiCompletions => {
                 ProviderType::OpenAICompletions
             }

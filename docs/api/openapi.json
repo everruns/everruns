@@ -10589,6 +10589,7 @@
         "description": "LLM provider type",
         "enum": [
           "openai",
+          "azure_openai",
           "openai_completions",
           "anthropic",
           "gemini",

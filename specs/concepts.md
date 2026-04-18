@@ -217,7 +217,7 @@ erDiagram
 
 A configured API provider such as OpenAI or Anthropic. Stores encrypted API keys.
 
-- Provider types: `openai`, `openai_completions`, `anthropic`
+- Provider types: `openai`, `azure_openai`, `openai_completions`, `anthropic`, `gemini`, `llmsim`
 - Each provider contains many models
 - Default providers are seeded on startup
 

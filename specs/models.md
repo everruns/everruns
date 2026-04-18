@@ -183,12 +183,12 @@ Configuration for LLM API providers. See `crates/core/src/llm_models.rs` for ful
 
 Key design points:
 - `provider_type` stored as plain string without CHECK constraint (forward compatibility)
-- Supported types: `openai`, `openai_completions`, `anthropic`, `gemini`, `llmsim`
+- Supported types: `openai`, `azure_openai`, `openai_completions`, `anthropic`, `gemini`, `llmsim`
 - API keys encrypted with AES-256-GCM envelope encryption (see `specs/encryption.md`)
 
 **API Key Resolution Order:**
 1. **Database** (priority): Encrypted in `llm_providers.api_key_encrypted`
-2. **Environment Variable** (fallback): `DEFAULT_OPENAI_API_KEY` or `DEFAULT_ANTHROPIC_API_KEY`
+2. **Environment Variable** (fallback): provider-specific `DEFAULT_*_API_KEY` (for example `DEFAULT_OPENAI_API_KEY`, `DEFAULT_AZURE_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`)
 
 Default providers and models seeded on startup. See `crates/server/src/seed.rs` for default model configurations (idempotent, well-known UUIDs).
 
