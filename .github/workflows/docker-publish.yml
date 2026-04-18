@@ -19,14 +19,16 @@ on:
         required: true
         type: string
   # Gate PR builds on Docker-relevant paths. PR validation exists to catch
-  # Dockerfile / workflow regressions before they land, not to produce
-  # pullable artifacts. Rust/UI source changes are validated by tag builds
-  # at release time.
+  # Dockerfile / workflow regressions before they land. Rust/UI source
+  # changes are validated by tag builds at release time. PR builds still
+  # push SHA-tagged images to GHCR (pre-existing behavior) — these are
+  # traceability artifacts, not a consumer-facing channel.
   pull_request:
     types: [opened, reopened, synchronize]
     paths:
       - 'docker/**'
       - 'apps/ui/Dockerfile'
+      - 'apps/ui/.dockerignore'
       - '.dockerignore'
       - '.github/workflows/docker-publish.yml'
 
