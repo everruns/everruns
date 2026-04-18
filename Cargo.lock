@@ -1930,10 +1930,12 @@ version = "0.8.15"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64",
  "chrono",
  "eventsource-stream",
  "everruns-core",
  "futures",
+ "inventory",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
@@ -1941,6 +1943,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "wiremock",
 ]
 
 [[package]]

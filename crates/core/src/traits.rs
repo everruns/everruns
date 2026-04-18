@@ -10,8 +10,9 @@ use crate::harness::Harness;
 use crate::llm_models::LlmProviderType;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+use crate::typed_id::{AgentId, HarnessId, ImageId, ModelId, SessionId};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -126,6 +127,72 @@ pub trait LlmProviderStore: Send + Sync {
     ///
     /// Returns the system default model when an agent has no default_model_id set.
     async fn get_default_model(&self) -> Result<Option<ModelWithProvider>>;
+}
+
+// ============================================================================
+// ImageArtifactStore - For durable image persistence from tools
+// ============================================================================
+
+/// Metadata for a stored image artifact.
+#[derive(Debug, Clone)]
+pub struct StoredImageInfo {
+    pub id: ImageId,
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Stored image artifact with binary data.
+#[derive(Debug, Clone)]
+pub struct StoredImage {
+    pub info: StoredImageInfo,
+    pub data: Vec<u8>,
+}
+
+/// Input for creating a stored image artifact.
+#[derive(Debug, Clone)]
+pub struct CreateStoredImage {
+    pub filename: String,
+    pub content_type: String,
+    pub data: Vec<u8>,
+    pub metadata: serde_json::Value,
+}
+
+#[async_trait]
+pub trait ImageArtifactStore: Send + Sync {
+    /// Persist an image artifact and return its durable metadata.
+    async fn create_image(&self, input: CreateStoredImage) -> Result<StoredImageInfo>;
+
+    /// Load a stored image artifact including bytes.
+    async fn get_image(&self, image_id: ImageId) -> Result<Option<StoredImage>>;
+
+    /// Load stored image metadata without binary data.
+    async fn get_image_info(&self, image_id: ImageId) -> Result<Option<StoredImageInfo>>;
+}
+
+// ============================================================================
+// ProviderCredentialStore - For tool-side provider credential resolution
+// ============================================================================
+
+/// Provider credentials resolved for tool-side API clients.
+#[derive(Debug, Clone)]
+pub struct ProviderCredentials {
+    pub api_key: String,
+    pub base_url: Option<String>,
+}
+
+#[async_trait]
+pub trait ProviderCredentialStore: Send + Sync {
+    /// Resolve default credentials for a provider type (for example `openai`).
+    ///
+    /// Implementations may apply environment fallbacks internally, but tools
+    /// should never read provider env vars directly.
+    async fn get_default_provider_credentials(
+        &self,
+        provider_type: &str,
+    ) -> Result<Option<ProviderCredentials>>;
 }
 
 // ============================================================================
@@ -559,6 +626,12 @@ pub struct ToolContext {
     /// Optional storage store for key/value and secret storage
     pub storage_store: Option<Arc<dyn SessionStorageStore>>,
 
+    /// Optional durable image artifact store for tool-side media persistence.
+    pub image_store: Option<Arc<dyn ImageArtifactStore>>,
+
+    /// Optional provider credential store for tool-side API clients.
+    pub provider_credential_store: Option<Arc<dyn ProviderCredentialStore>>,
+
     /// Optional session SQL database store
     pub sqldb_store: Option<SessionSqlDbStoreRef>,
 
@@ -632,6 +705,8 @@ impl ToolContext {
             session_id,
             file_store: None,
             storage_store: None,
+            image_store: None,
+            provider_credential_store: None,
             sqldb_store: None,
             message_retriever: None,
             session_store: None,
@@ -661,6 +736,8 @@ impl ToolContext {
             session_id,
             file_store: Some(file_store),
             storage_store: None,
+            image_store: None,
+            provider_credential_store: None,
             sqldb_store: None,
             message_retriever: None,
             session_store: None,
@@ -693,6 +770,8 @@ impl ToolContext {
             session_id,
             file_store: None,
             storage_store: Some(storage_store),
+            image_store: None,
+            provider_credential_store: None,
             sqldb_store: None,
             message_retriever: None,
             session_store: None,
@@ -727,6 +806,8 @@ impl ToolContext {
             file_store: Some(file_store),
             storage_store: Some(storage_store),
             sqldb_store: None,
+            image_store: None,
+            provider_credential_store: None,
             message_retriever: None,
             session_store: None,
             session_mutator: None,
@@ -785,6 +866,49 @@ impl ToolContext {
     /// Add a connection resolver to this context
     pub fn with_connection_resolver(mut self, resolver: Arc<dyn UserConnectionResolver>) -> Self {
         self.connection_resolver = Some(resolver);
+        self
+    }
+
+    /// Create a context with an image artifact store.
+    pub fn with_image_store(
+        session_id: SessionId,
+        image_store: Arc<dyn ImageArtifactStore>,
+    ) -> Self {
+        Self {
+            session_id,
+            file_store: None,
+            storage_store: None,
+            image_store: Some(image_store),
+            provider_credential_store: None,
+            sqldb_store: None,
+            message_retriever: None,
+            session_store: None,
+            session_mutator: None,
+            agent_store: None,
+            connection_resolver: None,
+            schedule_store: None,
+            platform_store: None,
+            leased_resource_store: None,
+            session_resource_registry: None,
+            event_emitter: None,
+            event_context: None,
+            tool_call_id: None,
+            capability_registry: None,
+            tool_registry: None,
+            memory_store: None,
+            org_id: None,
+            network_access: None,
+            locale: None,
+            budget_checker: None,
+        }
+    }
+
+    /// Set the provider credential store on this context.
+    pub fn with_provider_credential_store(
+        mut self,
+        store: Arc<dyn ProviderCredentialStore>,
+    ) -> Self {
+        self.provider_credential_store = Some(store);
         self
     }
 
@@ -919,6 +1043,11 @@ impl std::fmt::Debug for ToolContext {
             .field("session_id", &self.session_id)
             .field("file_store", &self.file_store.is_some())
             .field("storage_store", &self.storage_store.is_some())
+            .field("image_store", &self.image_store.is_some())
+            .field(
+                "provider_credential_store",
+                &self.provider_credential_store.is_some(),
+            )
             .field("sqldb_store", &self.sqldb_store.is_some())
             .field("message_retriever", &self.message_retriever.is_some())
             .field("session_store", &self.session_store.is_some())

@@ -17,7 +17,8 @@ use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    BudgetChecker, ImageResolver, LeasedResourceStore, ModelWithProvider, ResolvedImage,
+    BudgetChecker, ImageArtifactStore, ImageResolver, LeasedResourceStore, ModelWithProvider,
+    ProviderCredentialStore, ResolvedImage,
 };
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
@@ -269,6 +270,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get the session storage store for kv_store/secret_store tools.
     fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore>;
+
+    /// Get the image artifact store for tool-side image persistence.
+    fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore>;
+
+    /// Get the provider credential store for tool-side provider auth lookup.
+    fn provider_credential_store(&self, org_id: i64) -> Arc<dyn ProviderCredentialStore>;
 
     /// Get the platform store for org-level management tools.
     /// Takes org_id so the store is scoped to the current session's organization.

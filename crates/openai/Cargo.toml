@@ -21,7 +21,7 @@ tokio.workspace = true
 futures.workspace = true
 
 # HTTP client
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["multipart"] }
 eventsource-stream.workspace = true
 
 # Serialization
@@ -30,9 +30,11 @@ serde_json.workspace = true
 
 # Date/time
 chrono.workspace = true
+base64.workspace = true
 
 # Tracing
 tracing.workspace = true
+inventory.workspace = true
 
 # Internal dependencies
 everruns-core = { path = "../core" }
@@ -40,3 +42,4 @@ everruns-core = { path = "../core" }
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
+wiremock = "0.6"

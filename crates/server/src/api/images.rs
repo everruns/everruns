@@ -139,7 +139,7 @@ fn format_from_content_type(content_type: &str) -> Option<ImageFormat> {
 }
 
 /// Generate thumbnail from image data
-fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, String)> {
+pub(crate) fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, String)> {
     let format = format_from_content_type(content_type)?;
 
     // Load image

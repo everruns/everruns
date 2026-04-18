@@ -129,6 +129,14 @@ service WorkerService {
     // Resolve multiple images in a batch (more efficient for multimodal messages)
     rpc ResolveImages(ResolveImagesRequest) returns (ResolveImagesResponse);
 
+    // Persist and read image artifacts for tool-side image generation/editing.
+    rpc CreateImageArtifact(CreateImageArtifactRequest) returns (CreateImageArtifactResponse);
+    rpc GetImageArtifact(GetImageArtifactRequest) returns (GetImageArtifactResponse);
+    rpc GetImageArtifactInfo(GetImageArtifactInfoRequest) returns (GetImageArtifactInfoResponse);
+
+    // Resolve default provider credentials for tool-side API clients.
+    rpc GetDefaultProviderCredentials(GetDefaultProviderCredentialsRequest) returns (GetDefaultProviderCredentialsResponse);
+
     // === MCP server operations ===
     // Get MCP server info by name prefix (for tool execution)
     rpc GetMcpServerByPrefix(GetMcpServerByPrefixRequest) returns (GetMcpServerByPrefixResponse);
@@ -968,6 +976,61 @@ message ResolveImagesResponse {
     // Map from image_id string to resolved image
     // Only contains entries for found images
     map<string, ResolvedImageData> images = 1;
+}
+
+message StoredImageInfo {
+    Uuid id = 1;
+    string filename = 2;
+    string content_type = 3;
+    int64 size_bytes = 4;
+    optional google.protobuf.Struct metadata = 5;
+    optional Timestamp created_at = 6;
+}
+
+message StoredImage {
+    StoredImageInfo info = 1;
+    bytes data = 2;
+}
+
+message CreateImageArtifactRequest {
+    int64 org_id = 1;
+    string filename = 2;
+    string content_type = 3;
+    bytes data = 4;
+    optional google.protobuf.Struct metadata = 5;
+}
+
+message CreateImageArtifactResponse {
+    StoredImageInfo image = 1;
+}
+
+message GetImageArtifactRequest {
+    int64 org_id = 1;
+    Uuid image_id = 2;
+}
+
+message GetImageArtifactResponse {
+    optional StoredImage image = 1;
+}
+
+message GetImageArtifactInfoRequest {
+    int64 org_id = 1;
+    Uuid image_id = 2;
+}
+
+message GetImageArtifactInfoResponse {
+    optional StoredImageInfo image = 1;
+}
+
+message GetDefaultProviderCredentialsRequest {
+    int64 org_id = 1;
+    string provider_type = 2;
+}
+
+message GetDefaultProviderCredentialsResponse {
+    bool found = 1;
+    string api_key = 2;
+    string base_url = 3;
 }
 
 // Resolved image data for batch response

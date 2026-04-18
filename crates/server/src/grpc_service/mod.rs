@@ -56,6 +56,8 @@ use everruns_internal_protocol::proto::{
     CountActiveSessionSchedulesResponse,
     CreateDurableWorkflowRequest,
     CreateDurableWorkflowResponse,
+    CreateImageArtifactRequest,
+    CreateImageArtifactResponse,
     CreateSessionScheduleRequest,
     CreateSessionScheduleResponse,
     DeregisterDurableWorkerRequest,
@@ -84,10 +86,16 @@ use everruns_internal_protocol::proto::{
     GetConnectionUserResponse,
     GetDefaultModelRequest,
     GetDefaultModelResponse,
+    GetDefaultProviderCredentialsRequest,
+    GetDefaultProviderCredentialsResponse,
     GetDurableWorkflowStatusRequest,
     GetDurableWorkflowStatusResponse,
     GetHarnessRequest,
     GetHarnessResponse,
+    GetImageArtifactInfoRequest,
+    GetImageArtifactInfoResponse,
+    GetImageArtifactRequest,
+    GetImageArtifactResponse,
     GetMcpServerByPrefixRequest,
     GetMcpServerByPrefixResponse,
     GetMessageRequest,
@@ -623,6 +631,40 @@ impl WorkerServiceImpl {
             provider_type: resolved.provider_type,
             api_key: resolved.api_key,
             base_url: resolved.base_url,
+        }
+    }
+
+    fn image_info_row_to_proto(
+        row: crate::storage::models::ImageInfoRow,
+    ) -> proto::StoredImageInfo {
+        proto::StoredImageInfo {
+            id: Some(proto::Uuid {
+                value: row.id.to_string(),
+            }),
+            filename: row.filename,
+            content_type: row.content_type,
+            size_bytes: row.size_bytes,
+            metadata: Some(everruns_internal_protocol::json_to_proto_struct(
+                &row.metadata,
+            )),
+            created_at: Some(ip_datetime_to_proto_timestamp(row.created_at)),
+        }
+    }
+
+    fn image_row_to_proto(row: crate::storage::models::ImageRow) -> proto::StoredImage {
+        proto::StoredImage {
+            info: Some(Self::image_info_row_to_proto(
+                crate::storage::models::ImageInfoRow {
+                    id: row.id,
+                    org_id: row.org_id,
+                    filename: row.filename,
+                    content_type: row.content_type,
+                    size_bytes: row.size_bytes,
+                    metadata: row.metadata,
+                    created_at: row.created_at,
+                },
+            )),
+            data: row.data,
         }
     }
 

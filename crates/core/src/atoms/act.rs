@@ -158,6 +158,10 @@ where
     sqldb_store: Option<crate::traits::SessionSqlDbStoreRef>,
     /// Optional session storage store for kv_store/secret_store tools
     storage_store: Option<Arc<dyn crate::traits::SessionStorageStore>>,
+    /// Optional image artifact store for durable image persistence
+    image_store: Option<Arc<dyn crate::traits::ImageArtifactStore>>,
+    /// Optional provider credential store for tool-side API clients
+    provider_credential_store: Option<Arc<dyn crate::traits::ProviderCredentialStore>>,
     /// Optional resolver for user connection tokens
     connection_resolver: Option<Arc<dyn crate::traits::UserConnectionResolver>>,
     /// Optional session store for session metadata reads
@@ -210,6 +214,8 @@ where
             file_store: None,
             sqldb_store: None,
             storage_store: None,
+            image_store: None,
+            provider_credential_store: None,
             connection_resolver: None,
             session_store: None,
             session_mutator: None,
@@ -242,6 +248,8 @@ where
             file_store: Some(file_store),
             sqldb_store: None,
             storage_store: None,
+            image_store: None,
+            provider_credential_store: None,
             connection_resolver: None,
             session_store: None,
             session_mutator: None,
@@ -295,6 +303,21 @@ where
         store: Arc<dyn crate::traits::SessionStorageStore>,
     ) -> Self {
         self.storage_store = Some(store);
+        self
+    }
+
+    /// Set the image artifact store on this atom
+    pub fn with_image_store(mut self, store: Arc<dyn crate::traits::ImageArtifactStore>) -> Self {
+        self.image_store = Some(store);
+        self
+    }
+
+    /// Set the provider credential store on this atom
+    pub fn with_provider_credential_store(
+        mut self,
+        store: Arc<dyn crate::traits::ProviderCredentialStore>,
+    ) -> Self {
+        self.provider_credential_store = Some(store);
         self
     }
 
@@ -809,6 +832,12 @@ where
         }
         if let Some(ref store) = self.storage_store {
             tool_context.storage_store = Some(store.clone());
+        }
+        if let Some(ref store) = self.image_store {
+            tool_context.image_store = Some(store.clone());
+        }
+        if let Some(ref store) = self.provider_credential_store {
+            tool_context.provider_credential_store = Some(store.clone());
         }
         if let Some(ref resolver) = self.connection_resolver {
             tool_context.connection_resolver = Some(resolver.clone());

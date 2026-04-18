@@ -188,6 +188,16 @@ See `crates/core/src/capabilities/mod.rs` for `resolve_dependencies()` and `Reso
 | `sample_data` | `session_file_system` | `file_system` |
 | `skills` | `session_file_system` | *(none)* |
 | `virtual_bash` | `session_file_system` | `file_system` |
+| `gpt_image_gen` | `session_file_system`, `session_storage` | *(none)* |
+
+#### Tool-Side Provider Clients
+
+Some capabilities call provider APIs directly instead of routing through the LLM driver abstraction. For those cases the worker-side `ToolContext` may include:
+
+- `provider_credential_store` for resolving default provider credentials without reading provider environment variables in tool code
+- `image_store` for durable image artifact persistence and later reuse by ID
+
+`gpt_image_gen` is the first built-in example of this pattern: it resolves OpenAI credentials through session secrets or the provider credential store, persists generated outputs in org-scoped image storage, and can optionally mirror them into the session filesystem.
 
 ### Capability Features
 

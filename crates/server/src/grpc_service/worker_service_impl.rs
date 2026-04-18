@@ -2020,6 +2020,125 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(ResolveImagesResponse { images }))
     }
 
+    async fn create_image_artifact(
+        &self,
+        request: Request<CreateImageArtifactRequest>,
+    ) -> Result<Response<CreateImageArtifactResponse>, Status> {
+        let req = request.into_inner();
+        let metadata = req
+            .metadata
+            .as_ref()
+            .map(everruns_internal_protocol::proto_struct_to_json)
+            .unwrap_or_else(|| serde_json::json!({}));
+        let (thumbnail_data, thumbnail_content_type) =
+            crate::api::images::generate_thumbnail(&req.data, &req.content_type)
+                .map(|(data, content_type)| (Some(data), Some(content_type)))
+                .unwrap_or((None, None));
+
+        let row = self
+            .db
+            .create_image(
+                req.org_id,
+                crate::storage::models::CreateImageRow {
+                    org_id: req.org_id,
+                    filename: req.filename,
+                    content_type: req.content_type,
+                    size_bytes: req.data.len() as i64,
+                    data: req.data,
+                    thumbnail_data,
+                    thumbnail_content_type,
+                    metadata,
+                },
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to create image artifact");
+                Status::internal("Failed to create image artifact")
+            })?;
+
+        Ok(Response::new(CreateImageArtifactResponse {
+            image: Some(Self::image_info_row_to_proto(
+                crate::storage::models::ImageInfoRow {
+                    id: row.id,
+                    org_id: row.org_id,
+                    filename: row.filename,
+                    content_type: row.content_type,
+                    size_bytes: row.size_bytes,
+                    metadata: row.metadata,
+                    created_at: row.created_at,
+                },
+            )),
+        }))
+    }
+
+    async fn get_image_artifact(
+        &self,
+        request: Request<GetImageArtifactRequest>,
+    ) -> Result<Response<GetImageArtifactResponse>, Status> {
+        let req = request.into_inner();
+        let image_id = parse_uuid(req.image_id.as_ref())?;
+        let row = self.db.get_image(req.org_id, image_id).await.map_err(|e| {
+            tracing::error!(%image_id, error = %e, "Failed to get image artifact");
+            Status::internal("Failed to get image artifact")
+        })?;
+
+        Ok(Response::new(GetImageArtifactResponse {
+            image: row.map(Self::image_row_to_proto),
+        }))
+    }
+
+    async fn get_image_artifact_info(
+        &self,
+        request: Request<GetImageArtifactInfoRequest>,
+    ) -> Result<Response<GetImageArtifactInfoResponse>, Status> {
+        let req = request.into_inner();
+        let image_id = parse_uuid(req.image_id.as_ref())?;
+        let row = self
+            .db
+            .get_image_info(req.org_id, image_id)
+            .await
+            .map_err(|e| {
+                tracing::error!(%image_id, error = %e, "Failed to get image artifact info");
+                Status::internal("Failed to get image artifact info")
+            })?;
+
+        Ok(Response::new(GetImageArtifactInfoResponse {
+            image: row.map(Self::image_info_row_to_proto),
+        }))
+    }
+
+    async fn get_default_provider_credentials(
+        &self,
+        request: Request<GetDefaultProviderCredentialsRequest>,
+    ) -> Result<Response<GetDefaultProviderCredentialsResponse>, Status> {
+        let req = request.into_inner();
+        let resolved = self
+            .llm_resolver_service
+            .resolve_provider_credentials(req.org_id, &req.provider_type)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    provider_type = %req.provider_type,
+                    error = %e,
+                    "Failed to resolve provider credentials"
+                );
+                Status::internal("Failed to resolve provider credentials")
+            })?;
+
+        Ok(Response::new(match resolved {
+            Some(credentials) => GetDefaultProviderCredentialsResponse {
+                found: true,
+                api_key: credentials.api_key,
+                base_url: credentials.base_url.unwrap_or_default(),
+            },
+            None => GetDefaultProviderCredentialsResponse {
+                found: false,
+                api_key: String::new(),
+                base_url: String::new(),
+            },
+        }))
+    }
+
     // ========================================================================
     // MCP server operations
     // ========================================================================
