@@ -207,17 +207,32 @@ impl GeminiLlmDriver {
         (system_instruction, contents)
     }
 
-    /// Strip fields that Gemini doesn't accept in JSON Schema (e.g. `additionalProperties`).
+    /// Recursively strip fields that Gemini doesn't accept in JSON Schema.
+    ///
+    /// Gemini's function-calling API uses an OpenAPI 3.0 subset that rejects
+    /// `additionalProperties`. The field can appear at any depth — inside
+    /// `properties`, `items`, `anyOf`, etc. — so we walk the entire value
+    /// instead of only the top level.
     fn clean_schema(mut value: Value) -> Value {
-        if let Some(obj) = value.as_object_mut() {
-            obj.remove("additionalProperties");
-            if let Some(props_obj) = obj.get_mut("properties").and_then(|p| p.as_object_mut()) {
-                for v in props_obj.values_mut() {
-                    *v = Self::clean_schema(v.clone());
+        Self::strip_unsupported(&mut value);
+        value
+    }
+
+    fn strip_unsupported(value: &mut Value) {
+        match value {
+            Value::Object(obj) => {
+                obj.remove("additionalProperties");
+                for v in obj.values_mut() {
+                    Self::strip_unsupported(v);
                 }
             }
+            Value::Array(arr) => {
+                for v in arr.iter_mut() {
+                    Self::strip_unsupported(v);
+                }
+            }
+            _ => {}
         }
-        value
     }
 
     fn convert_tools(tools: &[ToolDefinition]) -> Option<Vec<GeminiTool>> {
@@ -1104,6 +1119,76 @@ mod tests {
                 .get("additionalProperties")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn test_convert_tools_strips_additional_properties_nested() {
+        use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
+        let tools = vec![ToolDefinition::Builtin(BuiltinTool {
+            name: "complex".to_string(),
+            display_name: None,
+            description: "Complex schema".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "nested": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "deep": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                }
+                            },
+                            "additionalProperties": false
+                        }
+                    },
+                    "variant": {
+                        "anyOf": [
+                            {"type": "string"},
+                            {"type": "object", "additionalProperties": false}
+                        ]
+                    }
+                },
+                "additionalProperties": false
+            }),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: everruns_core::tool_types::ToolHints::default(),
+        })];
+
+        let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();
+        let params = &gemini_tools[0].function_declarations[0].parameters;
+
+        fn assert_no_additional_properties(v: &Value) {
+            match v {
+                Value::Object(obj) => {
+                    assert!(
+                        !obj.contains_key("additionalProperties"),
+                        "additionalProperties still present in {obj:?}"
+                    );
+                    for child in obj.values() {
+                        assert_no_additional_properties(child);
+                    }
+                }
+                Value::Array(arr) => {
+                    for child in arr {
+                        assert_no_additional_properties(child);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        assert_no_additional_properties(params);
     }
 
     #[test]
