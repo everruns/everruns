@@ -182,6 +182,70 @@ async fn test_mcp_unknown_method() {
     assert_eq!(resp["error"]["code"], -32601);
 }
 
+// Regression for EVE-322: JSON-RPC requests without an `id` are notifications.
+// Per the spec the server MUST NOT reply. MCP clients send
+// `notifications/initialized` after the handshake; returning a JSON-RPC object
+// breaks strict clients. Verify 202 Accepted with an empty body.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_notifications_initialized_no_response() {
+    let server = TestServer::new().await;
+    let resp = server
+        .post(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized"
+            }),
+        )
+        .await;
+
+    assert_eq!(resp.status(), axum::http::StatusCode::ACCEPTED);
+    assert!(
+        resp.text().is_empty(),
+        "Notification response body must be empty, got: {}",
+        resp.text()
+    );
+}
+
+// Any method sent without an `id` is a notification and must be ignored
+// silently, even if the method is unknown or the params are malformed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_notification_unknown_method_no_response() {
+    let server = TestServer::new().await;
+    let resp = server
+        .post(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/cancelled",
+                "params": { "requestId": "abc" }
+            }),
+        )
+        .await;
+
+    assert_eq!(resp.status(), axum::http::StatusCode::ACCEPTED);
+    assert!(resp.text().is_empty());
+}
+
+// Even an invalid `jsonrpc` version must not produce a reply when `id` is
+// absent — the spec gives the server no way to address the error response.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_notification_invalid_jsonrpc_version_no_response() {
+    let server = TestServer::new().await;
+    let resp = server
+        .post(
+            "/mcp",
+            json!({
+                "jsonrpc": "1.0",
+                "method": "notifications/initialized"
+            }),
+        )
+        .await;
+
+    assert_eq!(resp.status(), axum::http::StatusCode::ACCEPTED);
+    assert!(resp.text().is_empty());
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_tools_call_unknown_tool() {
     let server = TestServer::new().await;

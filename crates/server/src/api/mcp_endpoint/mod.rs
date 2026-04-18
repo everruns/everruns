@@ -23,7 +23,13 @@ use crate::services::{
     BudgetService, CapabilityService, EventService, MessageService, SessionService,
 };
 use crate::storage::StorageBackend;
-use axum::{Json, Router, extract::State, routing::post};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::post,
+};
 use bashkit::ScriptingToolSet;
 use everruns_core::{Caller, OrgRole, PlatformDefinition, validate_org_public_id};
 use everruns_worker::AgentRunner;
@@ -384,13 +390,24 @@ async fn handle_mcp(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<JsonRpcRequest>,
-) -> Json<JsonRpcResponse> {
+) -> Response {
+    // Per JSON-RPC 2.0, a request without an `id` is a notification and the
+    // server MUST NOT reply. MCP lifecycle uses this for
+    // `notifications/initialized`, `notifications/cancelled`, etc. We're
+    // stateless, so there's nothing to do — acknowledge with 202 Accepted and
+    // no body. Short-circuit before the jsonrpc version check because the
+    // spec gives no addressable id to return an error against.
+    if req.id.is_none() {
+        return StatusCode::ACCEPTED.into_response();
+    }
+
     if req.jsonrpc != "2.0" {
         return Json(JsonRpcResponse::error(
             req.id,
             -32600,
             "Invalid Request: jsonrpc must be \"2.0\"",
-        ));
+        ))
+        .into_response();
     }
 
     let response = match req.method.as_str() {
@@ -405,7 +422,7 @@ async fn handle_mcp(
         _ => JsonRpcResponse::method_not_found(req.id),
     };
 
-    Json(response)
+    Json(response).into_response()
 }
 
 // ============================================================================
