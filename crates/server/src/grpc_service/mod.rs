@@ -11,9 +11,9 @@ mod worker_service_impl;
 #[cfg(test)]
 mod tests;
 
+use crate::domains::mcp_servers::McpServerService;
 use crate::services::{
-    CapabilityService, EventService, LlmResolverService, McpServerService, SessionFileService,
-    SessionService,
+    CapabilityService, EventService, LlmResolverService, SessionFileService, SessionService,
     session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
 };
 use crate::storage::{EncryptionService, StorageBackend};

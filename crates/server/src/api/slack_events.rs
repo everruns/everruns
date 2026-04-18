@@ -43,9 +43,7 @@ use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage,
 use crate::api::sessions::CreateSessionRequest;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
-use crate::services::{
-    AppService, CreateMessageContext, EventService, MessageService, SessionService,
-};
+use crate::services::{CreateMessageContext, EventService, MessageService, SessionService};
 use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
 use crate::storage::models::UpdateSession;
@@ -191,7 +189,7 @@ type SlackUserCache = Arc<RwLock<HashMap<String, Option<String>>>>;
 #[derive(Clone)]
 pub struct SlackState {
     pub db: Arc<StorageBackend>,
-    pub app_service: Arc<AppService>,
+    pub encryption: Option<Arc<crate::storage::EncryptionService>>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
@@ -211,7 +209,6 @@ impl SlackState {
         event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
-            app_service: Arc::new(AppService::new(db.clone(), encryption)),
             session_service: Arc::new(SessionService::new(db.clone())),
             message_service: Arc::new(MessageService::new(
                 db.clone(),
@@ -220,6 +217,7 @@ impl SlackState {
                 event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
+            encryption,
             db,
             user_name_cache: Arc::new(RwLock::new(HashMap::new())),
             delivery_dispatcher,
@@ -340,16 +338,17 @@ async fn handle_slack_event(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
     let request_id = req_id.map(|Extension(r)| r.0);
     // 1. Look up app (unscoped — no org context for webhooks)
-    let app = state
-        .app_service
-        .get_by_public_id_unscoped(&app_id)
-        .await
-        .map_err(|e| {
-            tracing::error!(app_id = %app_id, error = %e, "Failed to lookup app for Slack webhook");
-            ErrorResponse::new("Internal server error")
-                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-        })?
-        .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
+    let app = crate::domains::apps::queries::get_by_public_id_unscoped(
+        &state.db,
+        state.encryption.as_ref(),
+        &app_id,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!(app_id = %app_id, error = %e, "Failed to lookup app for Slack webhook");
+        ErrorResponse::new("Internal server error").into_response(StatusCode::INTERNAL_SERVER_ERROR)
+    })?
+    .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
 
     // 2. Verify app is published and has a Slack channel
     if app.status != AppStatus::Published {
@@ -392,10 +391,13 @@ async fn handle_slack_event(
                 let mut updated_config = slack_config.clone();
                 updated_config.webhook_verified_at = Some(Utc::now());
                 if let Ok(config_json) = serde_json::to_value(&updated_config)
-                    && let Err(e) = state
-                        .app_service
-                        .update_channel_config_unscoped(slack_channel_internal_id, &config_json)
-                        .await
+                    && let Err(e) = crate::domains::apps::queries::update_channel_config_unscoped(
+                        &state.db,
+                        state.encryption.as_ref(),
+                        slack_channel_internal_id,
+                        &config_json,
+                    )
+                    .await
                 {
                     tracing::warn!(app_id = %app_id, error = %e, "Failed to record webhook verification");
                 }
@@ -439,9 +441,13 @@ async fn handle_slack_event(
                     let mut updated_config = slack_config.clone();
                     updated_config.first_message_received_at = Some(Utc::now());
                     if let Ok(config_json) = serde_json::to_value(&updated_config)
-                        && let Err(e) = state
-                            .app_service
-                            .update_channel_config_unscoped(slack_channel_internal_id, &config_json)
+                        && let Err(e) =
+                            crate::domains::apps::queries::update_channel_config_unscoped(
+                                &state.db,
+                                state.encryption.as_ref(),
+                                slack_channel_internal_id,
+                                &config_json,
+                            )
                             .await
                     {
                         tracing::warn!(app_id = %app_id, error = %e, "Failed to record first message timestamp");
@@ -1410,15 +1416,17 @@ async fn handle_slack_manifest(
     Path(app_id): Path<String>,
 ) -> Result<Json<ManifestResponse>, (StatusCode, Json<ErrorResponse>)> {
     // Look up app (unscoped — no auth for this endpoint)
-    let app = state
-        .app_service
-        .get_by_public_id_unscoped(&app_id)
-        .await
-        .map_err(|e| {
-            tracing::error!(app_id = %app_id, error = %e, "Failed to lookup app for manifest");
-            ErrorResponse::internal_error()
-        })?
-        .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
+    let app = crate::domains::apps::queries::get_by_public_id_unscoped(
+        &state.db,
+        state.encryption.as_ref(),
+        &app_id,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!(app_id = %app_id, error = %e, "Failed to lookup app for manifest");
+        ErrorResponse::internal_error()
+    })?
+    .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
 
     let display_name = truncate_display_name(&app.name);
 

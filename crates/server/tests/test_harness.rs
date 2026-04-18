@@ -318,10 +318,12 @@ impl TestServer {
         let feature_flags_state = api::feature_flags::AppState {
             flags: feature_flags.clone(),
         };
-        let mcp_service = std::sync::Arc::new(everruns_server::services::McpServerService::new(
-            db.clone(),
-            encryption.clone(),
-        ));
+        let mcp_service = std::sync::Arc::new(
+            everruns_server::domains::mcp_servers::McpServerService::new(
+                db.clone(),
+                encryption.clone(),
+            ),
+        );
         let user_connections_state = api::user_connections::AppState::new(
             db.clone(),
             encryption.clone(),

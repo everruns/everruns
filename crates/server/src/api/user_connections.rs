@@ -8,8 +8,7 @@ use crate::auth::ResolvedOrg;
 use crate::auth::config::AuthConfig;
 use crate::auth::middleware::{AuthState, AuthUser};
 use crate::auth::oauth::GitHubAppService;
-use crate::services::McpServerService;
-use crate::services::mcp_server::{McpServerOAuthSettings, McpServerSettings};
+use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService, McpServerSettings};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,

@@ -4,9 +4,11 @@
 
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
+use crate::storage::models::UpdateAppChannel;
 use everruns_core::typed_id::{AgentId, AgentIdentityId, AppChannelId, HarnessId};
 use everruns_core::{App, AppChannel, AppId, AppStatus, ChannelType};
 use std::sync::Arc;
+use uuid::Uuid;
 
 use super::types::{AppChannelRow, AppRow};
 
@@ -222,4 +224,42 @@ pub async fn load_apps_list(
         apps.push(row_to_app(db, encryption, row, org_id).await);
     }
     Ok(apps)
+}
+
+/// Lookup app by public_id without org scoping (for unauthenticated webhooks).
+///
+/// Used by Slack/AG-UI webhooks where the caller has no org context. The
+/// returned `App` is populated with the owning org, so callers can still
+/// enforce per-org rules downstream.
+pub async fn get_by_public_id_unscoped(
+    db: &StorageBackend,
+    encryption: Option<&Arc<EncryptionService>>,
+    public_id: &str,
+) -> anyhow::Result<Option<App>> {
+    let row = db.get_app_by_public_id_unscoped(public_id).await?;
+    match row {
+        Some(row) if row.status != "deleted" => {
+            let org_id = row.org_id;
+            Ok(Some(row_to_app(db, encryption, row, org_id).await))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Update channel config with proper encryption handling.
+/// Used by webhook handlers (unauthenticated, no caller context).
+pub async fn update_channel_config_unscoped(
+    db: &StorageBackend,
+    encryption: Option<&Arc<EncryptionService>>,
+    channel_internal_id: Uuid,
+    config: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let (stored_plaintext, encrypted) = prepare_channel_config(encryption, config)?;
+    let input = UpdateAppChannel {
+        channel_config: Some(stored_plaintext),
+        channel_config_encrypted: encrypted,
+        ..Default::default()
+    };
+    db.update_app_channel(channel_internal_id, input).await?;
+    Ok(())
 }

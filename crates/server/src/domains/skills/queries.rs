@@ -2,7 +2,8 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
-use crate::storage::models::SkillRow;
+use crate::storage::{StorageBackend, models::SkillRow};
+use anyhow::Result;
 use everruns_core::{Skill, SkillSourceType, SkillStatus};
 use std::collections::HashMap;
 
@@ -44,4 +45,28 @@ pub fn row_to_skill(row: &SkillRow) -> Skill {
         archived_at: row.archived_at,
         deleted_at: row.deleted_at,
     }
+}
+
+// ============================================================================
+// Data access helpers
+// ============================================================================
+
+/// List skills for an org. Applies optional search + include_archived flag.
+pub async fn list_skills(
+    db: &StorageBackend,
+    org_id: i64,
+    search: Option<&str>,
+    include_archived: bool,
+) -> Result<Vec<Skill>> {
+    let rows = db.list_skills(org_id, search, include_archived).await?;
+    Ok(rows.iter().map(row_to_skill).collect())
+}
+
+/// Get a single skill by UUID (filtering out deleted).
+pub async fn get_skill(db: &StorageBackend, org_id: i64, id: uuid::Uuid) -> Result<Option<Skill>> {
+    let row = db.get_skill(org_id, id).await?;
+    Ok(row
+        .as_ref()
+        .filter(|row| row.status != "deleted")
+        .map(row_to_skill))
 }

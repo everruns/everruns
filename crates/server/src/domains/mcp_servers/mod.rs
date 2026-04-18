@@ -6,9 +6,14 @@ use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
 pub mod queries;
+pub mod service;
 pub mod types;
 
 pub use commands::*;
+pub use service::{
+    McpServerOAuthSettings, McpServerResolved, McpServerService, McpServerSettings,
+    McpServerWithTools,
+};
 
 pub const MCP_SERVER_VIEW: Policy = Policy {
     id: "mcp_server.view",

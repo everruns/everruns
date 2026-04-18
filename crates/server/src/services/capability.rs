@@ -11,22 +11,34 @@
 // discovers them at runtime.
 //
 // Note: Agent-specific capability management is handled by domains::agents commands.
+//
+// EVE-316: CapabilityService owns a Moka cache for skill listings (previously
+// held by SkillService). Skills change infrequently but are fetched on every
+// agent run (capability listing). Cache uses 5-min TTL, invalidated by
+// `invalidate_skills_cache` which commands call after mutations.
 
-use crate::services::mcp_server::McpServerService;
-use crate::services::skill::SkillService;
+use crate::domains::mcp_servers::McpServerService;
+use crate::domains::skills::queries as skill_q;
 use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::{
-    Caller, CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, RiskLevel,
+    Caller, CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, RiskLevel, Skill,
     mcp_capability_id, skill_capability_id,
 };
+use moka::future::Cache;
 use std::sync::Arc;
+use std::time::Duration;
+
+/// Cache TTL for skill listings per org
+const SKILL_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
 
 pub struct CapabilityService {
     registry: CapabilityRegistry,
     mcp_service: McpServerService,
-    skill_service: Arc<SkillService>,
+    db: Arc<StorageBackend>,
+    /// Cache: org_id -> Vec<Skill>
+    skill_list_cache: Cache<i64, Arc<Vec<Skill>>>,
 }
 
 impl CapabilityService {
@@ -39,11 +51,33 @@ impl CapabilityService {
         encryption: Option<Arc<EncryptionService>>,
         registry: CapabilityRegistry,
     ) -> Self {
+        let skill_list_cache = Cache::builder()
+            .time_to_live(SKILL_CACHE_TTL)
+            .max_capacity(1_000)
+            .build();
         Self {
             registry,
             mcp_service: McpServerService::new(db.clone(), encryption),
-            skill_service: Arc::new(SkillService::new(db)),
+            db,
+            skill_list_cache,
         }
+    }
+
+    /// Invalidate the cached skill list for an org. Called by skill mutation
+    /// commands after create/update/delete.
+    pub async fn invalidate_skills_cache(&self, org_id: i64) {
+        self.skill_list_cache.invalidate(&org_id).await;
+    }
+
+    /// Fetch active skills for an org, using the cache where possible.
+    async fn cached_active_skills(&self, org_id: i64) -> Result<Arc<Vec<Skill>>> {
+        if let Some(cached) = self.skill_list_cache.get(&org_id).await {
+            return Ok(cached);
+        }
+        let skills = skill_q::list_skills(&self.db, org_id, None, false).await?;
+        let arc = Arc::new(skills);
+        self.skill_list_cache.insert(org_id, arc.clone()).await;
+        Ok(arc)
     }
 
     /// List all available capabilities including MCP servers and skills (public info only)
@@ -96,11 +130,8 @@ impl CapabilityService {
         }
 
         // Get skill capabilities from the registry (mount-only, no prompt/tools)
-        let skills = self
-            .skill_service
-            .list(&internal_caller, None, false)
-            .await?;
-        for skill in &skills {
+        let skills = self.cached_active_skills(org_id).await?;
+        for skill in skills.iter() {
             if skill.status != everruns_core::SkillStatus::Active {
                 continue;
             }
@@ -176,7 +207,8 @@ impl CapabilityService {
 
         // Check if it's a skill capability (mount-only, no prompt/tools)
         if let Some(skill_uuid) = id.skill_id() {
-            let skill = self.skill_service.get(&internal_caller, skill_uuid).await?;
+            let _ = internal_caller; // kept for symmetry with other branches
+            let skill = skill_q::get_skill(&self.db, org_id, skill_uuid).await?;
             if let Some(skill) = skill {
                 return Ok(Some(CapabilityInfo {
                     id: CapabilityId::new(skill_capability_id(skill.id.uuid())),
@@ -239,13 +271,11 @@ impl CapabilityService {
         &self,
         org_id: i64,
     ) -> Result<Vec<everruns_core::command::CommandDescriptor>> {
-        let skills = self
-            .skill_service
-            .list(&Caller::internal(org_id), None, false)
-            .await?;
+        let skills = self.cached_active_skills(org_id).await?;
         let commands = skills
-            .into_iter()
+            .iter()
             .filter(|s| s.status == everruns_core::SkillStatus::Active && s.user_invocable)
+            .cloned()
             .map(|s| everruns_core::command::CommandDescriptor {
                 name: s.name,
                 description: s.description,

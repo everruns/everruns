@@ -11,7 +11,6 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::Command;
 use crate::domains::skills::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::services::CapabilityService;
-use crate::services::SkillService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -22,7 +21,7 @@ use axum::{
 use axum_extra::extract::Multipart;
 use everruns_core::{
     Caller, ResourceConfigResponse, Skill, SkillContent, SkillStatus, SkillValidationResult,
-    evaluate_policies_with,
+    evaluate_policies_with, validate_skill_md,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -83,7 +82,6 @@ pub struct ListSkillsQuery {
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
-    pub service: Arc<SkillService>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
 }
@@ -95,7 +93,6 @@ impl AppState {
         auth: AuthState,
     ) -> Self {
         Self {
-            service: Arc::new(SkillService::new(db.clone())),
             db,
             capability_service,
             auth,
@@ -231,26 +228,34 @@ pub async fn upload_skill(
     })?;
 
     let caller = Caller::from(&org);
-    let skill = state
-        .service
-        .create_from_archive(&caller, data)
-        .await
-        .map_err(|e| {
-            let msg = e.to_string();
-            if msg.contains("already exists") {
-                ErrorResponse::new(msg).into_response(StatusCode::CONFLICT)
-            } else if msg.contains("too large") {
-                ErrorResponse::new(msg).into_response(StatusCode::PAYLOAD_TOO_LARGE)
-            } else if msg.contains("Invalid")
-                || msg.contains("traversal")
-                || msg.contains("must contain")
-            {
-                ErrorResponse::new(msg).into_response(StatusCode::UNPROCESSABLE_ENTITY)
-            } else {
-                tracing::error!("Failed to upload skill: {}", e);
-                ErrorResponse::internal_error()
-            }
-        })?;
+    SKILL_MANAGE
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(|e| ErrorResponse::new(e.message).into_response(StatusCode::FORBIDDEN))?;
+
+    let skill =
+        crate::domains::skills::archive::create_from_archive(&state.db, caller.org_id, data)
+            .await
+            .map_err(|e| {
+                let msg = e.to_string();
+                if msg.contains("already exists") {
+                    ErrorResponse::new(msg).into_response(StatusCode::CONFLICT)
+                } else if msg.contains("too large") {
+                    ErrorResponse::new(msg).into_response(StatusCode::PAYLOAD_TOO_LARGE)
+                } else if msg.contains("Invalid")
+                    || msg.contains("traversal")
+                    || msg.contains("must contain")
+                {
+                    ErrorResponse::new(msg).into_response(StatusCode::UNPROCESSABLE_ENTITY)
+                } else {
+                    tracing::error!("Failed to upload skill: {}", e);
+                    ErrorResponse::internal_error()
+                }
+            })?;
+
+    state
+        .capability_service
+        .invalidate_skills_cache(caller.org_id)
+        .await;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(urls.wrap(skill))))
@@ -407,8 +412,8 @@ pub async fn destroy_skill(
 )]
 pub async fn validate_skill(
     _org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     Json(req): Json<ValidateSkillRequest>,
 ) -> Json<SkillValidationResult> {
-    Json(state.service.validate(&req.skill_md))
+    Json(validate_skill_md(&req.skill_md))
 }
