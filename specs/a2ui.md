@@ -167,6 +167,9 @@ unclosed blocks at end of string render as partial JSON.
   existing chat input
 - Wrapped in an error boundary that falls back to rendering the raw JSON as a
   code block
+- URLs in `Image.src` and `open_url` actions are restricted to
+  `http:`/`https:`/`mailto:` schemes to block `javascript:` and `data:` XSS
+  (see THREAT[TM-WEB-A2UI-01])
 
 ### Message content
 

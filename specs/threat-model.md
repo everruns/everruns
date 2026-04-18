@@ -586,6 +586,7 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 | TM-WEB-006 | Open redirect in OAuth flow | Medium | OAuth callbacks validated against configured redirect URIs | MITIGATED |
 | TM-WEB-007 | CORS wildcard exposure | Medium | `CORS_ALLOWED_ORIGINS` not set by default; must be explicitly configured | MITIGATED |
 | TM-WEB-008 | Open redirect via login page `return_to` | Medium | `sanitizeReturnTo` (`apps/ui/src/lib/auth-redirect.ts`) restricts `return_to` to relative paths on the frontend origin: must start with `/`, never `//` (protocol-relative), never `/\` (browser-normalized), never an absolute URL. Applied in login page and main layout (sessionStorage consumer). CLI auth start emits only relative `return_to` paths. See `specs/authentication.md` "Login Page Contract". | MITIGATED |
+| TM-WEB-A2UI-01 | XSS via `javascript:`/`data:` URL in A2UI `open_url` action or `Image.src` | High | A2UI JSON is LLM-emitted. `isSafeUrl` in `apps/ui/src/components/chat/a2ui-renderer.tsx` restricts action URLs and image sources to `http:`/`https:`/`mailto:` schemes; `window.open` also uses `noopener,noreferrer`. React auto-escapes all text props. See `specs/a2ui.md`. | MITIGATED |
 
 ### Mitigation Details
 

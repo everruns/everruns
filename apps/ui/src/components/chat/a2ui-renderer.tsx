@@ -107,6 +107,19 @@ class A2UIErrorBoundary extends Component<EBProps, EBState> {
 // Action dispatch
 // ---------------------------------------------------------------------------
 
+// THREAT[TM-WEB-A2UI-01]: LLM-emitted URLs could use `javascript:`, `data:`, or
+// other non-navigational schemes to execute script in the app origin. Restrict
+// both `open_url` actions and `Image` src to http/https/mailto.
+const SAFE_URL_SCHEMES = ["http:", "https:", "mailto:"] as const;
+function isSafeUrl(url: string): boolean {
+  try {
+    const scheme = new URL(url, window.location.origin).protocol.toLowerCase();
+    return (SAFE_URL_SCHEMES as readonly string[]).includes(scheme);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Hook returning an action dispatcher tied to the current session.
  * A2UI blocks only appear inside session-scoped pages, so the session context
@@ -121,7 +134,11 @@ function useActionDispatch(): (action: A2UIAction) => void {
     if (!action || typeof action !== "object") return;
     if (action.type === "message" && typeof action.text === "string" && sessionId) {
       ctx.sendMessage.mutate({ sessionId, content: action.text });
-    } else if (action.type === "open_url" && typeof action.url === "string") {
+    } else if (
+      action.type === "open_url" &&
+      typeof action.url === "string" &&
+      isSafeUrl(action.url)
+    ) {
       window.open(action.url, "_blank", "noopener,noreferrer");
     }
   };
@@ -323,7 +340,7 @@ function renderNode(
 
     case "Image": {
       const src = str(props.src);
-      if (!src) return null;
+      if (!src || !isSafeUrl(src)) return null;
       const caption = optStr(props.caption);
       return (
         <figure key={key} className="flex flex-col gap-1">
