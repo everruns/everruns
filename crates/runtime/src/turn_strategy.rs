@@ -174,7 +174,7 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                     .turn_failed(
                         turn_id,
                         state.input_message_id,
-                        "An error occurred while processing your request.",
+                        &reason_result.text,
                         Some("llm_error"),
                     )
                     .await;

@@ -270,13 +270,7 @@ impl BudgetService {
         // Rule 1: Hard stop at 0
         if budget.balance <= 0.0 {
             return BudgetAction::Stop {
-                message: format!(
-                    "Budget exhausted. {:.2} {} spent of {:.2} {} limit.",
-                    budget.limit - budget.balance,
-                    budget.currency,
-                    budget.limit,
-                    budget.currency
-                ),
+                message: self.format_exhausted_message(budget),
             };
         }
 
@@ -285,13 +279,7 @@ impl BudgetService {
             && budget.balance <= (budget.limit - soft_limit)
         {
             return BudgetAction::Pause {
-                message: format!(
-                    "Soft limit reached. {:.2} {} spent of {:.2} {} soft limit.",
-                    budget.limit - budget.balance,
-                    budget.currency,
-                    soft_limit,
-                    budget.currency
-                ),
+                message: self.format_paused_message(budget),
             };
         }
 
@@ -353,25 +341,9 @@ impl BudgetService {
         for budget in &all_matching {
             let (action_str, message, priority) =
                 if budget.status == "exhausted" || budget.balance <= 0.0 {
-                    (
-                        "stop",
-                        format!(
-                            "Budget exhausted ({} {})",
-                            budget.currency,
-                            BudgetId::from_uuid(budget.id)
-                        ),
-                        3u8,
-                    )
+                    ("stop", self.format_exhausted_message(budget), 3u8)
                 } else if budget.status == "paused" {
-                    (
-                        "pause",
-                        format!(
-                            "Budget paused ({} {})",
-                            budget.currency,
-                            BudgetId::from_uuid(budget.id)
-                        ),
-                        2u8,
-                    )
+                    ("pause", self.format_paused_message(budget), 2u8)
                 } else {
                     // Active budget — evaluate rules
                     match self.evaluate_rules(budget) {
@@ -395,6 +367,50 @@ impl BudgetService {
         }
 
         most_restrictive
+    }
+
+    fn spent_amount(&self, budget: &BudgetRow) -> f64 {
+        (budget.limit - budget.balance).max(0.0)
+    }
+
+    fn format_exhausted_message(&self, budget: &BudgetRow) -> String {
+        let spent = self.spent_amount(budget);
+        let comparison = if spent > budget.limit {
+            "exceeded"
+        } else {
+            "reached"
+        };
+        format!(
+            "Budget exhausted. {:.2} {} spent {} the {:.2} {} limit. Increase the budget to continue.",
+            spent, budget.currency, comparison, budget.limit, budget.currency
+        )
+    }
+
+    fn format_paused_message(&self, budget: &BudgetRow) -> String {
+        let spent = self.spent_amount(budget);
+        if let Some(soft_limit) = budget.soft_limit {
+            if spent > soft_limit {
+                format!(
+                    "Budget paused. {:.2} {} spent exceeded the {:.2} {} soft limit. Increase or resume the budget to continue.",
+                    spent, budget.currency, soft_limit, budget.currency
+                )
+            } else if spent >= soft_limit {
+                format!(
+                    "Budget paused. {:.2} {} spent reached the {:.2} {} soft limit. Increase or resume the budget to continue.",
+                    spent, budget.currency, soft_limit, budget.currency
+                )
+            } else {
+                format!(
+                    "Budget paused with {:.2} {} spent. Increase or resume the budget to continue.",
+                    spent, budget.currency
+                )
+            }
+        } else {
+            format!(
+                "Budget paused with {:.2} {} spent. Increase or resume the budget to continue.",
+                spent, budget.currency
+            )
+        }
     }
 }
 
