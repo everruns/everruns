@@ -43,5 +43,10 @@ build/
 # Local data (PostgreSQL, Valkey, etc.)
 .local/
 
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
 # Tools
 .sqlx.envrc
