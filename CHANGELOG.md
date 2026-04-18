@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+### Added
+
+- **Self-Budget capability** — New prompt-only `self_budget` capability teaches agents how to reason about a user-requested indicative budget (e.g. "you have $7") using `get_session_info` cumulative usage. Distinct from the platform-enforced `budgeting` capability; both are bundled in the Generic harness. See [`docs/capabilities/self-budget.md`](docs/capabilities/self-budget.md).
+
 ## [0.8.15] - 2026-04-18
 
 ### Highlights

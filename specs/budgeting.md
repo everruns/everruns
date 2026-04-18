@@ -206,6 +206,29 @@ The `budgeting` capability adds budget self-regulation to agents:
 
 Enable on an agent by adding `budgeting` to its capabilities list.
 
+## Self-Managed vs Platform-Enforced Budgets
+
+Everruns distinguishes two orthogonal concerns:
+
+| Concern | Capability | Source of truth | Enforcement |
+|---------|-----------|-----------------|-------------|
+| Platform-enforced limit | `budgeting` | Budgets table / ledger | Session paused/stopped automatically at exhaustion |
+| User-requested indicative target ("you have $7") | `self_budget` | Session cumulative usage (`get_session_info`) | None — agent adapts behavior via prompt guidance |
+
+The `self_budget` capability contributes prompt-only guidance. It ships no tools (cumulative usage is already exposed by `get_session_info` from the `session` capability, which is present in the Generic harness). The prompt:
+
+- frames the self-budget as an **agent-managed soft target**, not a hard limit
+- directs the agent to `get_session_info` for current spend
+- encourages periodic re-checks around expensive work rather than every turn
+- coaches the agent to adapt (shorter outputs, fewer retries, narrower exploration) as the target tightens
+- warns the agent not to claim exact cost certainty from token-only data
+- explicitly separates the two budget types so the agent does not conflate platform enforcement with user-stated targets
+- explicitly forbids creating or mutating platform budgets in response to a user-stated target
+
+The two capabilities are non-conflicting and co-exist in the built-in `generic` harness. Agents without a need for platform enforcement can still enable only `self_budget`; agents that need strict enforcement should enable `budgeting` (and typically both).
+
+File: `crates/core/src/capabilities/self_budget.rs`.
+
 ## Design Decisions
 
 | Question | Decision | Rationale |
