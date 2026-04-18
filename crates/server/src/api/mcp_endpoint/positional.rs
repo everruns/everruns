@@ -6,8 +6,9 @@
 // statement boundaries so the bash interpreter sees `get_agent --id <id>`.
 //
 // The rewrite is conservative: it only fires at statement-start positions
-// (start of string, after `;`, `|`, `&`, `\n`, `(`, `{`, comments) and only
-// when the next token is a single positional (not already `--flag`). Quoted
+// (start of string, after `;`, `|`, `&`, `\n`, `(`, `{`, comments), only when
+// the command name is followed by at least one space or tab, and only when
+// the next token is a single positional (not already `--flag`). Quoted
 // regions and backslash escapes are preserved as-is. See EVE-323.
 
 use std::collections::HashMap;
@@ -28,6 +29,8 @@ fn build_positional_map() -> HashMap<&'static str, &'static str> {
     let mut map: HashMap<&'static str, &'static str> = HashMap::new();
 
     // Inventory-registered commands that opt in via Command::positional_arg.
+    // Inventory takes precedence — the static catalog fills in anything that
+    // inventory doesn't already own.
     for desc in inventory::iter::<crate::domains::common::CommandDescriptor> {
         if let Some(flag) = (desc.positional_arg)() {
             map.insert((desc.meta)().name, flag);
@@ -38,6 +41,9 @@ fn build_positional_map() -> HashMap<&'static str, &'static str> {
     // `path` parameter (its primary key). Multiple path params (e.g. {id,
     // channel_id}) stay flag-only because positional ordering is ambiguous.
     for op in super::catalog::CATALOG {
+        if map.contains_key(op.name) {
+            continue;
+        }
         let path_params: Vec<&super::catalog::Param> =
             op.params.iter().filter(|p| p.typ == "path").collect();
         if path_params.len() == 1 {
@@ -50,10 +56,11 @@ fn build_positional_map() -> HashMap<&'static str, &'static str> {
 
 /// Rewrite `<cmd> <arg>` as `<cmd> --<positional> <arg>` at statement
 /// boundaries for commands in `map`. Commands not in `map` pass through.
-/// Quoted regions, backslash escapes, and comments are preserved verbatim.
+/// Quoted regions, backslash escapes, and comments are preserved verbatim
+/// (including multi-byte UTF-8 sequences).
 pub fn rewrite(input: &str, map: &HashMap<&'static str, &'static str>) -> String {
-    let mut out = String::with_capacity(input.len() + 32);
     let bytes = input.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len() + 32);
     let mut i = 0;
     let mut at_stmt_start = true;
 
@@ -66,26 +73,33 @@ pub fn rewrite(input: &str, map: &HashMap<&'static str, &'static str>) -> String
             while i < bytes.len() && is_name_cont(bytes[i]) {
                 i += 1;
             }
-            let name = &input[name_start..i];
-            out.push_str(name);
+            let name_end = i;
+            out.extend_from_slice(&bytes[name_start..name_end]);
 
-            if let Some(&positional) = map.get(name) {
+            if let Some(&positional) =
+                map.get(std::str::from_utf8(&bytes[name_start..name_end]).unwrap_or(""))
+            {
                 // Capture whitespace between command and next token.
                 let ws_start = i;
                 while i < bytes.len() && matches!(bytes[i], b' ' | b'\t') {
                     i += 1;
                 }
-                let ws = &input[ws_start..i];
+                let ws_len = i - ws_start;
 
-                let should_rewrite = i < bytes.len() && is_positional_value_start(bytes[i]);
+                // Only rewrite if the command name is actually separated from
+                // the next token by whitespace. `get_agent'abc'` and
+                // `get_agent$ID` are bash token concatenations that produce a
+                // different command name; leave them alone.
+                let should_rewrite =
+                    ws_len > 0 && i < bytes.len() && is_positional_value_start(bytes[i]);
 
                 if should_rewrite {
-                    out.push(' ');
-                    out.push_str("--");
-                    out.push_str(positional);
-                    out.push_str(ws);
+                    out.push(b' ');
+                    out.extend_from_slice(b"--");
+                    out.extend_from_slice(positional.as_bytes());
+                    out.extend_from_slice(&bytes[ws_start..i]);
                 } else {
-                    out.push_str(ws);
+                    out.extend_from_slice(&bytes[ws_start..i]);
                 }
             }
             at_stmt_start = false;
@@ -94,30 +108,30 @@ pub fn rewrite(input: &str, map: &HashMap<&'static str, &'static str>) -> String
 
         match b {
             b'\'' => {
-                // Single-quoted string: no escapes inside, copy verbatim to the
-                // next '.
-                out.push('\'');
+                // Single-quoted string: no escapes inside, copy verbatim to
+                // the next '.
+                out.push(b'\'');
                 i += 1;
                 while i < bytes.len() && bytes[i] != b'\'' {
-                    out.push(bytes[i] as char);
+                    out.push(bytes[i]);
                     i += 1;
                 }
                 if i < bytes.len() {
-                    out.push('\'');
+                    out.push(b'\'');
                     i += 1;
                 }
                 at_stmt_start = false;
             }
             b'"' => {
-                // Double-quoted string: backslash escapes one char.
-                out.push('"');
+                // Double-quoted string: backslash escapes one byte.
+                out.push(b'"');
                 i += 1;
                 while i < bytes.len() {
                     let c = bytes[i];
-                    out.push(c as char);
+                    out.push(c);
                     i += 1;
                     if c == b'\\' && i < bytes.len() {
-                        out.push(bytes[i] as char);
+                        out.push(bytes[i]);
                         i += 1;
                         continue;
                     }
@@ -129,10 +143,10 @@ pub fn rewrite(input: &str, map: &HashMap<&'static str, &'static str>) -> String
             }
             b'\\' => {
                 // Unquoted backslash: consume the next byte as literal.
-                out.push('\\');
+                out.push(b'\\');
                 i += 1;
                 if i < bytes.len() {
-                    out.push(bytes[i] as char);
+                    out.push(bytes[i]);
                     i += 1;
                 }
                 at_stmt_start = false;
@@ -141,56 +155,62 @@ pub fn rewrite(input: &str, map: &HashMap<&'static str, &'static str>) -> String
                 // Comment: copy through end-of-line; newline handling happens
                 // on the next iteration and keeps stmt_start=true.
                 while i < bytes.len() && bytes[i] != b'\n' {
-                    out.push(bytes[i] as char);
+                    out.push(bytes[i]);
                     i += 1;
                 }
             }
             b'#' => {
                 // Mid-token `#` (e.g. `get_agent a#b`) is a literal.
-                out.push('#');
+                out.push(b'#');
                 i += 1;
             }
             b'`' => {
                 // Legacy backtick command substitution. Treat as a quoted
                 // region with no nested rewrite. `$(...)` is the preferred
                 // form and does get rewritten inside.
-                out.push('`');
+                out.push(b'`');
                 i += 1;
                 while i < bytes.len() && bytes[i] != b'`' {
                     let c = bytes[i];
-                    out.push(c as char);
+                    out.push(c);
                     i += 1;
                     if c == b'\\' && i < bytes.len() {
-                        out.push(bytes[i] as char);
+                        out.push(bytes[i]);
                         i += 1;
                     }
                 }
                 if i < bytes.len() {
-                    out.push('`');
+                    out.push(b'`');
                     i += 1;
                 }
                 at_stmt_start = false;
             }
             b';' | b'|' | b'&' | b'\n' | b'(' | b'{' => {
-                out.push(b as char);
+                out.push(b);
                 i += 1;
                 at_stmt_start = true;
             }
             b' ' | b'\t' => {
-                out.push(b as char);
+                out.push(b);
                 i += 1;
                 // Whitespace doesn't reset at_stmt_start (it preserves the
                 // previous state so leading whitespace still counts as
                 // statement start).
             }
             _ => {
-                out.push(b as char);
+                out.push(b);
                 i += 1;
                 at_stmt_start = false;
             }
         }
     }
-    out
+
+    // Safety: the input is a valid UTF-8 `&str`; we only append ASCII bytes
+    // (`--<flag>` where <flag> is a compile-time ASCII identifier) and copy
+    // arbitrary input bytes verbatim. The concatenation preserves UTF-8
+    // because valid UTF-8 sub-slices joined with ASCII stay valid UTF-8.
+    debug_assert!(std::str::from_utf8(&out).is_ok());
+    unsafe { String::from_utf8_unchecked(out) }
 }
 
 fn is_name_start(b: u8) -> bool {
@@ -413,6 +433,31 @@ mod tests {
     }
 
     #[test]
+    fn no_whitespace_between_cmd_and_value_unchanged() {
+        // bash concatenation: `get_agent'abc'` tokenizes as the command name
+        // `get_agentabc`, not `get_agent` followed by `abc`. Likewise
+        // `get_agent$ID` is `get_agent<expanded>`. Rewriting these would
+        // change the command name bash ultimately sees, so the rewriter
+        // requires at least one whitespace separator.
+        let m = test_map();
+        assert_eq!(rewrite("get_agent'abc'", &m), "get_agent'abc'");
+        assert_eq!(rewrite("get_agent$ID", &m), "get_agent$ID");
+        assert_eq!(rewrite("get_agent\"a\"", &m), "get_agent\"a\"");
+    }
+
+    #[test]
+    fn utf8_payload_preserved() {
+        // The rewriter must not corrupt multi-byte UTF-8 sequences in
+        // quoted strings or comments. `é` is two bytes (0xC3 0xA9).
+        let m = test_map();
+        assert_eq!(
+            rewrite("echo 'é' ; get_agent a1", &m),
+            "echo 'é' ; get_agent --id a1"
+        );
+        assert_eq!(rewrite("get_agent 'id-é-1'", &m), "get_agent --id 'id-é-1'");
+    }
+
+    #[test]
     fn build_positional_map_contains_known_commands() {
         let map = positional_map();
         // Inventory commands with id: at least get_agent, get_capability.
@@ -428,5 +473,14 @@ mod tests {
         // Multi-path-param ops (e.g. delete_app_channel has two) must not be
         // present: positional ordering would be ambiguous.
         assert!(!map.contains_key("delete_app_channel"));
+    }
+
+    #[test]
+    fn inventory_takes_precedence_over_catalog() {
+        let map = build_positional_map();
+        // get_agent is in the inventory with positional_arg=Some("id"). If it
+        // also appears in the static catalog with a different flag, inventory
+        // must win — the catalog entry would shadow it otherwise.
+        assert_eq!(map.get("get_agent").copied(), Some("id"));
     }
 }
