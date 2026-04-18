@@ -88,15 +88,26 @@ After all CLI binaries are built and uploaded, the `Publish CLI Binaries` workfl
 
 ### Docker Image Tagging
 
-| Event | Tags Generated |
-|-------|----------------|
-| Version tag (v0.4.0) | `v0.4.0`, `latest`, SHA |
-| Main branch push | `development`, SHA |
-| Pull request | SHA only (no push) |
+| Event | Platforms | Tags Generated |
+|-------|-----------|----------------|
+| Version tag (`v*`) / `workflow_dispatch` | `linux/amd64` + `linux/arm64` | `vX.Y.Z`, `latest`, SHA |
+| Pull request (Docker-relevant paths only) | `linux/amd64` | SHA |
 
 - **`latest`**: Only updated on version tags. Safe for production use.
-- **`development`**: Tracks main branch. Updated on every commit to main.
-- **SHA tags**: Always generated for traceability (short + full SHA).
+- **SHA tags**: Generated on every build for traceability (short + full SHA).
+- **No `:development` tag and no per-main-commit images.** Docker images are a release artifact, not a per-commit artifact. Pin consumers to a released version (`vX.Y.Z` or `latest`).
+
+#### Trigger rationale
+
+Docker images are expensive to build — the slow path is `linux/arm64` via QEMU cross-compilation. Earlier versions of this workflow built on every push to `main` to keep a `:development` rolling tag, and on every PR to validate the build. That produced ~40–60 min of multi-arch build time per merge to main and ~18 min per PR, almost all of which was wasted when the change did not touch Docker infrastructure.
+
+The current trigger shape (`docker-publish.yml`):
+
+1. **Release-only publish.** Multi-arch images are built only on version tag pushes and the `workflow_dispatch` the Release workflow fires after creating the tag. The slow arm64 path runs a handful of times per week instead of on every merge.
+2. **Path-filtered PR validation.** The workflow still runs on PRs, but only when Docker-relevant paths change (`docker/**`, `apps/ui/Dockerfile`, `.dockerignore`, `.github/workflows/docker-publish.yml`). Rust/UI source changes are not validated per-PR; a broken Dockerfile will be caught by this gate, a source regression that only manifests inside the image is caught at release-tag time.
+3. **No rolling main-branch tag.** Dropping `:development` removes the hidden-drift problem where `:development` could silently lag main (e.g., under a paths-filter) or produce images for every commit (expensive). Consumers that need a mainline image should build locally or use a released tag.
+
+When a Dockerfile change is the *point* of a PR, the workflow runs and validates the amd64 build before merge. When the Dockerfile has not changed, the workflow is skipped entirely.
 
 ### Tooling
 

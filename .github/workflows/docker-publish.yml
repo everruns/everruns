@@ -1,8 +1,14 @@
 name: Docker Publish
 
+# Trigger strategy (see specs/release-process.md#docker-image-tagging):
+# - Tag push (v*) / workflow_dispatch: publish multi-arch release images.
+# - Pull request: validate Docker build only when Docker-relevant files change.
+# - No main-branch push: per-commit Docker images are intentionally not
+#   produced. Image builds (especially arm64 via QEMU) are expensive and the
+#   previous `:development` rolling tag hid tag drift behind a moving target.
+#   Consumers should pin to a released tag.
 on:
   push:
-    branches: [main]
     tags: ['v*']
   # Triggered by Release workflow after creating tag (GITHUB_TOKEN tag pushes
   # don't fire push events, so Release calls this via workflow_dispatch)
@@ -12,8 +18,17 @@ on:
         description: 'Git tag to build and publish (e.g., v0.8.0)'
         required: true
         type: string
+  # Gate PR builds on Docker-relevant paths. PR validation exists to catch
+  # Dockerfile / workflow regressions before they land, not to produce
+  # pullable artifacts. Rust/UI source changes are validated by tag builds
+  # at release time.
   pull_request:
-    types: [opened, reopened]
+    types: [opened, reopened, synchronize]
+    paths:
+      - 'docker/**'
+      - 'apps/ui/Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/docker-publish.yml'
 
 permissions:
   contents: read
@@ -77,8 +92,8 @@ jobs:
             echo "is_release=false" >> $GITHUB_OUTPUT
           fi
 
-      # Build ARM64 only on main push, version tags, and release dispatches
-      # PRs only build amd64 for faster CI
+      # Build ARM64 on version tags and release dispatches.
+      # PRs only build amd64 since PR validation only confirms the build works.
       - name: Determine platforms
         id: platforms
         run: |
@@ -98,7 +113,6 @@ jobs:
             type=ref,event=tag
             type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
             type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=development,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=raw,value=${{ steps.sha.outputs.sha_short }}
             type=raw,value=${{ steps.sha.outputs.sha }}
 
@@ -125,7 +139,6 @@ jobs:
             type=ref,event=tag
             type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
             type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=development,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=raw,value=${{ steps.sha.outputs.sha_short }}
             type=raw,value=${{ steps.sha.outputs.sha }}
 
@@ -153,7 +166,6 @@ jobs:
             type=ref,event=tag
             type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
             type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=development,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=raw,value=${{ steps.sha.outputs.sha_short }}
             type=raw,value=${{ steps.sha.outputs.sha }}
 
@@ -239,7 +251,6 @@ jobs:
             type=ref,event=tag
             type=raw,value=${{ steps.release_tag.outputs.tag }},enable=${{ steps.release_tag.outputs.is_release == 'true' }}
             type=raw,value=latest,enable=${{ steps.release_tag.outputs.is_release == 'true' }}
-            type=raw,value=development,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=raw,value=${{ steps.sha.outputs.sha_short }}
             type=raw,value=${{ steps.sha.outputs.sha }}
 
