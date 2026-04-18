@@ -96,6 +96,7 @@ pub mod persistent_memory;
 mod platform_management;
 mod research;
 mod sample_data;
+mod self_budget;
 mod session;
 mod session_sandbox;
 mod session_schedule;
@@ -179,6 +180,7 @@ pub use platform_management::{
 };
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
+pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
 pub use session::{GetSessionInfoTool, SessionCapability, WriteSessionTitleTool};
 pub use session_sandbox::{
     SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
@@ -657,6 +659,7 @@ impl CapabilityRegistry {
         registry.register(SessionScheduleCapability);
         registry.register(InfinityContextCapability);
         registry.register(budgeting::BudgetingCapability);
+        registry.register(SelfBudgetCapability);
         registry.register(CompactionCapability);
         registry.register(MemoryCapability);
 
@@ -1472,6 +1475,7 @@ mod tests {
         [
             "agent_instructions",
             "budgeting",
+            "self_budget",
             "noop",
             "current_time",
             "research",

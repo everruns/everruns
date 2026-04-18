@@ -1573,6 +1573,10 @@ async fn test_get_generic_harness() {
         "Should have OpenAI tool search"
     );
     assert!(cap_ids.contains(&"budgeting"), "Should have budgeting");
+    assert!(
+        cap_ids.contains(&"self_budget"),
+        "Should have self_budget guidance"
+    );
     assert!(cap_ids.contains(&"compaction"), "Should have compaction");
 }
 
