@@ -404,7 +404,7 @@ impl Database {
             INSERT INTO eval_case_results (eval_run_id, eval_case_id, public_id, target, target_snapshot)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id, eval_run_id, eval_case_id, public_id, session_id, target, target_snapshot,
-                      status, scores, turns, latency_ms, input_tokens, output_tokens, error_message,
+                      status, scores, metadata, turns, latency_ms, input_tokens, output_tokens, error_message,
                       created_at, updated_at
             "#,
         )
@@ -426,7 +426,7 @@ impl Database {
             r#"
             SELECT ecr.id, ecr.eval_run_id, ecr.eval_case_id, ecr.public_id, ecr.session_id,
                    ecr.target, ecr.target_snapshot,
-                   ecr.status, ecr.scores, ecr.turns, ecr.latency_ms,
+                   ecr.status, ecr.scores, ecr.metadata, ecr.turns, ecr.latency_ms,
                    ecr.input_tokens, ecr.output_tokens, ecr.error_message,
                    ecr.created_at, ecr.updated_at
             FROM eval_case_results ecr
@@ -454,15 +454,16 @@ impl Database {
                 target_snapshot = COALESCE($4, target_snapshot),
                 status = COALESCE($5, status),
                 scores = COALESCE($6, scores),
-                turns = COALESCE($7, turns),
-                latency_ms = COALESCE($8, latency_ms),
-                input_tokens = COALESCE($9, input_tokens),
-                output_tokens = COALESCE($10, output_tokens),
-                error_message = COALESCE($11, error_message),
+                metadata = COALESCE($7, metadata),
+                turns = COALESCE($8, turns),
+                latency_ms = COALESCE($9, latency_ms),
+                input_tokens = COALESCE($10, input_tokens),
+                output_tokens = COALESCE($11, output_tokens),
+                error_message = COALESCE($12, error_message),
                 updated_at = NOW()
             WHERE id = $1
             RETURNING id, eval_run_id, eval_case_id, public_id, session_id, target, target_snapshot,
-                      status, scores, turns, latency_ms, input_tokens, output_tokens, error_message,
+                      status, scores, metadata, turns, latency_ms, input_tokens, output_tokens, error_message,
                       created_at, updated_at
             "#,
         )
@@ -472,6 +473,7 @@ impl Database {
         .bind(&input.target_snapshot)
         .bind(&input.status)
         .bind(&input.scores)
+        .bind(&input.metadata)
         .bind(input.turns)
         .bind(input.latency_ms)
         .bind(input.input_tokens)

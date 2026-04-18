@@ -75,6 +75,7 @@ The outcome of a single case within a run.
 - `target`: resolved EvalTarget at execution time (always concrete, never NULL)
 - `target_snapshot`: identical frozen copy for immutability (both set at run creation, both equal initially; `target_snapshot` must never be overwritten)
 - Contains per-scorer scores with pass/fail, value (0.0–1.0), and reason
+- Optional `metadata` records external scorer provenance for deferred write-back (scorer name, version, timestamps, raw output, reviewer notes)
 - Captures efficiency metrics: turn count, latency, token usage
 
 ### Scorer
@@ -184,7 +185,8 @@ See `crates/core/src/eval.rs` for full field definitions.
 | `target` | EvalTarget | Resolved target at execution time (JSONB, always concrete) |
 | `target_snapshot` | EvalTarget | Frozen copy of resolved target (JSONB, immutable) |
 | `status` | CaseResultStatus | `pending`, `running`, `passed`, `failed`, `errored`, `timeout` |
-| `scores` | Option\<Map\<String, Score\>\> | Per-scorer results (JSONB) |
+| `scores` | Option\<Vec\<Score\>\> | Per-scorer results (JSONB, scorer order preserved) |
+| `metadata` | Option\<JSON\> | External scorer provenance and audit details (JSONB) |
 | `turns` | Option\<u32\> | Turn count |
 | `latency_ms` | Option\<u64\> | Execution time |
 | `tokens` | Option\<TokenUsage\> | Token usage |
@@ -241,6 +243,8 @@ All endpoints under `/v1/evals`. See `crates/server/src/api/evals.rs`.
 | `GET` | `/v1/evals/{eval_id}/runs` | List runs with summaries |
 | `GET` | `/v1/evals/{eval_id}/runs/{run_id}` | Get run with case results |
 | `POST` | `/v1/evals/{eval_id}/runs/{run_id}/cancel` | Cancel running eval |
+| `PATCH` | `/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores` | Write external scores back to a completed result |
+| `PATCH` | `/v1/evals/{eval_id}/runs/{run_id}/scores` | Bulk write external scores back to a completed run |
 
 ## Execution Flow
 
@@ -333,4 +337,3 @@ Cases added after creation on the detail page (simpler flow, avoids complex nest
 Fields: name, description, tags, messages (textarea per message, add more button), max turns, timeout.
 
 Scorers section: add scorer dropdown → type-specific config form. Each scorer shows a card with type, config, weight, remove button.
-
