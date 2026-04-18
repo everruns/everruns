@@ -312,6 +312,20 @@ async fn test_session_crud() {
         .expect("Session not found");
     assert_eq!(updated.title.as_deref(), Some("Updated Title"));
 
+    let rehomed = backend
+        .update_session(
+            TEST_ORG_ID,
+            session.id,
+            UpdateSession {
+                harness_id: Some(org_init::CHAT_HARNESS_ID.into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("Failed to update session harness")
+        .expect("Session not found");
+    assert_eq!(rehomed.harness_id, Some(org_init::CHAT_HARNESS_ID.into()));
+
     // List sessions with pagination
     let (sessions, total) = backend
         .list_sessions(

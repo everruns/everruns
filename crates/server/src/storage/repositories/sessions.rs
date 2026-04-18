@@ -268,14 +268,15 @@ impl Database {
             r#"
             UPDATE sessions
             SET
-                title = COALESCE($3, title),
-                agent_identity_id = CASE WHEN $4 THEN $5 ELSE agent_identity_id END,
-                locale = COALESCE($6, locale),
-                tags = COALESCE($7, tags),
-                model_id = COALESCE($8, model_id),
-                status = COALESCE($9, status),
-                started_at = COALESCE($10, started_at),
-                finished_at = COALESCE($11, finished_at)
+                harness_id = COALESCE($3, harness_id),
+                title = COALESCE($4, title),
+                agent_identity_id = CASE WHEN $5 THEN $6 ELSE agent_identity_id END,
+                locale = COALESCE($7, locale),
+                tags = COALESCE($8, tags),
+                model_id = COALESCE($9, model_id),
+                status = COALESCE($10, status),
+                started_at = COALESCE($11, started_at),
+                finished_at = COALESCE($12, finished_at)
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, harness_id, agent_id, agent_identity_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
@@ -284,6 +285,7 @@ impl Database {
         )
         .bind(org_id)
         .bind(id)
+        .bind(input.harness_id.map(|h| h.uuid()))
         .bind(&input.title)
         .bind(input.agent_identity_id.is_changed())
         .bind(input.agent_identity_id.into_value().map(|a: AgentIdentityId| a.uuid()))
