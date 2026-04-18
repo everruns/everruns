@@ -395,23 +395,19 @@ async fn handle_mcp(
     // server MUST NOT reply. MCP lifecycle uses this for
     // `notifications/initialized`, `notifications/cancelled`, etc. We're
     // stateless, so there's nothing to do — acknowledge with 202 Accepted and
-    // no body.
-    let is_notification = req.id.is_none();
+    // no body. Short-circuit before the jsonrpc version check because the
+    // spec gives no addressable id to return an error against.
+    if req.id.is_none() {
+        return StatusCode::ACCEPTED.into_response();
+    }
 
     if req.jsonrpc != "2.0" {
-        if is_notification {
-            return StatusCode::ACCEPTED.into_response();
-        }
         return Json(JsonRpcResponse::error(
             req.id,
             -32600,
             "Invalid Request: jsonrpc must be \"2.0\"",
         ))
         .into_response();
-    }
-
-    if is_notification {
-        return StatusCode::ACCEPTED.into_response();
     }
 
     let response = match req.method.as_str() {
