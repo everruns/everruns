@@ -8,7 +8,7 @@ Manual test case documentation format and organization.
 
 ### Location
 
-`test_cases/` is split by target into `api/`, `cli/`, and `ui/` subfolders. API and UI test cases are organized into feature subfolders; CLI test cases may be kept flat or grouped into feature subfolders as needed.
+`test_cases/` is split by target into `api/`, `cli/`, `ui/`, and `agents/` subfolders. API, UI, and agent test cases are organized into feature subfolders; CLI test cases may be kept flat or grouped into feature subfolders as needed.
 
 ```
 test_cases/
@@ -19,13 +19,16 @@ test_cases/
 ├── cli/          # CLI tests (everruns command invocations)
 │   ├── TC001_files_ls_list_session_files.md
 │   ├── ...
-└── ui/           # Browser/UI tests (navigation, form input, clicks)
-    ├── admin_login/
-    ├── mcp_servers/
+├── ui/           # Browser/UI tests (navigation, form input, clicks)
+│   ├── admin_login/
+│   ├── mcp_servers/
+│   ├── ...
+└── agents/       # End-to-end agent workflow tests (harness setup + agent run + assertions)
+    ├── data_analyst/
     ├── ...
 ```
 
-A feature may have test cases in multiple targets (e.g. `global_search` in both `api/` and `ui/`).
+A feature may have test cases in multiple targets (e.g. `global_search` in both `api/` and `ui/`). Agent-workflow test cases in `agents/` exercise a complete harness + agent + session interaction and assert on events, tool calls, and final state.
 
 ### Format
 
