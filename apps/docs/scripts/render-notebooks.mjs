@@ -5,13 +5,13 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import { marked } from "marked";
+import { createHighlighter } from "shiki";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const docsAppRoot = path.resolve(scriptDir, "..");
@@ -22,6 +22,35 @@ const generatedRoot = path.join(docsAppRoot, "src/generated/notebooks");
 const publicRoot = path.join(docsAppRoot, "public/notebooks");
 
 marked.setOptions({ gfm: true });
+
+const highlighter = await createHighlighter({
+  themes: ["github-light", "github-dark"],
+  langs: [
+    "python",
+    "bash",
+    "shellscript",
+    "json",
+    "yaml",
+    "javascript",
+    "typescript",
+    "tsx",
+    "jsx",
+    "markdown",
+    "text",
+    "plaintext",
+  ],
+});
+
+const loadedLanguages = new Set(highlighter.getLoadedLanguages());
+const languageAliases = new Map([
+  ["console", "bash"],
+  ["py", "python"],
+  ["python3", "python"],
+  ["sh", "bash"],
+  ["shell", "bash"],
+  ["text/plain", "text"],
+  ["zsh", "bash"],
+]);
 
 function parseFrontmatter(fileContent) {
   const match = fileContent.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
@@ -48,6 +77,29 @@ function escapeMarkdownHtml(value) {
   return value.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+function stripHtmlTags(value) {
+  return value.replace(/<[^>]+>/g, "");
+}
+
+function formatPublished(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+
+  const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const date = dateOnlyMatch
+    ? new Date(Date.UTC(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3])))
+    : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "long",
+    timeZone: "UTC",
+  }).format(date);
+}
+
 function toText(value) {
   if (Array.isArray(value)) {
     return value.join("");
@@ -55,23 +107,148 @@ function toText(value) {
   return value ?? "";
 }
 
+function normalizeStringList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry) => entry !== null && entry !== undefined)
+    .map((entry) => String(entry).trim())
+    .filter(Boolean);
+}
+
+function normalizeLanguage(value, fallback = "text") {
+  const normalized = (value ?? fallback).toString().trim().toLowerCase();
+  const aliased = languageAliases.get(normalized) ?? normalized;
+  return loadedLanguages.has(aliased) ? aliased : fallback;
+}
+
+function slugifyHeading(value, slugCounts) {
+  const base =
+    stripHtmlTags(value)
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "section";
+
+  const nextCount = (slugCounts.get(base) ?? 0) + 1;
+  slugCounts.set(base, nextCount);
+
+  return nextCount === 1 ? base : `${base}-${nextCount}`;
+}
+
+function buildTocTree(headings) {
+  const root = [];
+  const stack = [];
+
+  for (const heading of headings) {
+    const node = { ...heading, children: [] };
+
+    while (stack.length > 0 && stack.at(-1).depth >= node.depth) {
+      stack.pop();
+    }
+
+    if (stack.length === 0) {
+      root.push(node);
+    } else {
+      stack.at(-1).children.push(node);
+    }
+
+    stack.push(node);
+  }
+
+  return root;
+}
+
+function flattenTocDepths(items, depths = []) {
+  for (const item of items) {
+    depths.push(item.depth);
+    flattenTocDepths(item.children ?? [], depths);
+  }
+
+  return depths;
+}
+
+function renderHighlightedCode(source, language) {
+  return highlighter.codeToHtml(source, {
+    lang: normalizeLanguage(language),
+    themes: {
+      light: "github-light",
+      dark: "github-dark",
+    },
+    defaultColor: false,
+  });
+}
+
+function createMarkdownRenderer({ slugCounts, headings, includeTocHeadings, assignHeadingIds }) {
+  const renderer = new marked.Renderer();
+
+  renderer.heading = function heading(token) {
+    const content = this.parser.parseInline(token.tokens);
+    const text = stripHtmlTags(token.text ?? "").trim();
+    const shouldAssignId = assignHeadingIds && token.depth >= 2 && text.length > 0;
+    const slug = shouldAssignId ? slugifyHeading(text, slugCounts) : null;
+
+    if (includeTocHeadings && token.depth >= 2 && token.depth <= 3 && slug) {
+      headings.push({
+        depth: token.depth,
+        slug,
+        text,
+      });
+    }
+
+    return slug
+      ? `<h${token.depth} id="${escapeHtml(slug)}">${content}</h${token.depth}>`
+      : `<h${token.depth}>${content}</h${token.depth}>`;
+  };
+
+  renderer.code = function code(token) {
+    return `
+      <div class="cookbook-markdown-code not-content">
+        ${renderHighlightedCode(token.text, token.lang)}
+      </div>
+    `;
+  };
+
+  return renderer;
+}
+
+function renderMarkdownHtml(source, options) {
+  return marked.parse(escapeMarkdownHtml(source), {
+    renderer: createMarkdownRenderer(options),
+  });
+}
+
 function renderOutput(output) {
   if (output.output_type === "stream") {
-    return toText(output.text);
+    return { kind: "text", value: toText(output.text) };
   }
 
   if (output.output_type === "execute_result" || output.output_type === "display_data") {
-    return toText(output.data?.["text/plain"]);
+    if (typeof output.data?.["image/png"] === "string") {
+      return {
+        kind: "image",
+        value: `data:image/png;base64,${output.data["image/png"]}`,
+      };
+    }
+
+    if (output.data?.["text/markdown"]) {
+      return { kind: "markdown", value: toText(output.data["text/markdown"]) };
+    }
+
+    return { kind: "text", value: toText(output.data?.["text/plain"]) };
   }
 
   if (output.output_type === "error") {
     if (Array.isArray(output.traceback) && output.traceback.length > 0) {
-      return output.traceback.join("\n");
+      return { kind: "text", value: output.traceback.join("\n") };
     }
-    return [output.ename, output.evalue].filter(Boolean).join(": ");
+    return { kind: "text", value: [output.ename, output.evalue].filter(Boolean).join(": ") };
   }
 
-  return "";
+  return null;
 }
 
 function toPosix(filePath) {
@@ -116,30 +293,91 @@ function walkFiles(rootDir, predicate) {
   return files;
 }
 
-function renderNotebookHtml({ notebook, sourcePath, publicHref, modifiedAt }) {
+function stripLeadingTitle(markdownSource) {
+  const lines = markdownSource.split(/\r?\n/);
+  const firstContentIndex = lines.findIndex((line) => line.trim().length > 0);
+  if (firstContentIndex === -1 || !lines[firstContentIndex].startsWith("# ")) {
+    return markdownSource;
+  }
+
+  lines.splice(firstContentIndex, 1);
+
+  while (lines[firstContentIndex] !== undefined && lines[firstContentIndex].trim().length === 0) {
+    lines.splice(firstContentIndex, 1);
+  }
+
+  return lines.join("\n");
+}
+
+function renderNotebookHtml({ notebook, sourcePath, publicHref, frontmatter }) {
   const language =
     notebook.metadata?.language_info?.name ?? notebook.metadata?.kernelspec?.language ?? "python";
-  const kernelLabel =
-    notebook.metadata?.kernelspec?.display_name ?? notebook.metadata?.language_info?.version ?? "Python";
+  const kernelLabel = (
+    notebook.metadata?.kernelspec?.display_name ??
+    notebook.metadata?.language_info?.name ??
+    "Python"
+  ).toString();
+  const published = formatPublished(frontmatter.published);
+  const topics = normalizeStringList(frontmatter.topics);
+  const sourceUrl =
+    typeof frontmatter.github === "string" && frontmatter.github.length > 0
+      ? frontmatter.github
+      : `https://github.com/everruns/everruns/blob/main/${sourcePath}`;
+
+  const metaBlock = `
+    <section class="cookbook-meta not-content">
+      ${
+        topics.length > 0
+          ? `
+            <div class="cookbook-meta__topics">
+              ${topics
+                .map((topic) => `<span class="cookbook-meta__topic">${escapeHtml(topic)}</span>`)
+                .join("")}
+            </div>
+          `
+          : ""
+      }
+      <div class="cookbook-meta__row">
+        <div class="cookbook-meta__aside">
+          ${
+            published
+              ? `<p class="cookbook-meta__published">Published on ${escapeHtml(published)}</p>`
+              : ""
+          }
+          <div class="cookbook-meta__actions">
+            <a class="cookbook-meta__link" href="${escapeHtml(sourceUrl)}">View on GitHub</a>
+            <a class="cookbook-meta__link" href="${escapeHtml(publicHref)}" download>Download .ipynb</a>
+            <span class="cookbook-meta__kernel">${escapeHtml(kernelLabel)}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+
+  const slugCounts = new Map();
+  const tocHeadings = [];
 
   const cells = (notebook.cells ?? [])
     .map((cell, index) => {
-      const source = toText(cell.source).trimEnd();
       const outputs = (cell.outputs ?? []).map(renderOutput).filter(Boolean);
-      const prompt =
-        cell.cell_type === "code"
-          ? `In [${cell.execution_count ?? index + 1}]`
-          : "Md";
+      const source =
+        cell.cell_type === "markdown" && index === 0
+          ? stripLeadingTitle(toText(cell.source).trimEnd())
+          : toText(cell.source).trimEnd();
 
       if (cell.cell_type === "markdown") {
+        if (source.trim().length === 0) {
+          return "";
+        }
+
         return `
-          <section class="notebook-demo__cell notebook-demo__cell--markdown">
-            <div class="notebook-demo__prompt" aria-hidden="true">${escapeHtml(prompt)}</div>
-            <div class="notebook-demo__body">
-              <div class="notebook-demo__markdown sl-markdown-content">
-                ${marked.parse(escapeMarkdownHtml(source))}
-              </div>
-            </div>
+          <section class="cookbook-section sl-markdown-content">
+            ${renderMarkdownHtml(source, {
+              slugCounts,
+              headings: tocHeadings,
+              includeTocHeadings: true,
+              assignHeadingIds: true,
+            })}
           </section>
         `;
       }
@@ -148,24 +386,43 @@ function renderNotebookHtml({ notebook, sourcePath, publicHref, modifiedAt }) {
         outputs.length === 0
           ? ""
           : `
-            <div class="notebook-demo__outputs">
-              ${outputs
-                .map(
-                  (output) => `
-                    <pre class="notebook-demo__output"><code>${escapeHtml(output.trim())}</code></pre>
-                  `
-                )
-                .join("")}
+            <div class="cookbook-code__outputs">
+              ${outputs.map((output) => {
+                if (output.kind === "image") {
+                  return `<img class="cookbook-code__image" src="${escapeHtml(output.value)}" alt="Notebook output" />`;
+                }
+
+                if (output.kind === "markdown") {
+                  return `
+                    <div class="cookbook-code__output cookbook-code__output--markdown sl-markdown-content">
+                      ${renderMarkdownHtml(output.value, {
+                        slugCounts,
+                        headings: [],
+                        includeTocHeadings: false,
+                        assignHeadingIds: false,
+                      })}
+                    </div>
+                  `;
+                }
+
+                return `
+                  <div class="cookbook-code__output cookbook-code__output--text">
+                    ${renderHighlightedCode(output.value.trim(), "text")}
+                  </div>
+                `;
+              }).join("")}
             </div>
           `;
 
       return `
-        <section class="notebook-demo__cell notebook-demo__cell--code">
-          <div class="notebook-demo__prompt" aria-hidden="true">${escapeHtml(prompt)}</div>
-          <div class="notebook-demo__body">
-            <pre class="notebook-demo__code"><code class="language-${escapeHtml(language)}">${escapeHtml(
-              source
-            )}</code></pre>
+        <section class="cookbook-code not-content">
+          <div class="cookbook-code__header">
+            <span class="cookbook-code__language">${escapeHtml(language)}</span>
+          </div>
+          <div class="cookbook-code__body">
+            <div class="cookbook-code__pre">
+              ${renderHighlightedCode(source, language)}
+            </div>
             ${renderedOutputs}
           </div>
         </section>
@@ -173,46 +430,22 @@ function renderNotebookHtml({ notebook, sourcePath, publicHref, modifiedAt }) {
     })
     .join("");
 
-  return `
-    <div class="notebook-demo not-content">
-      <div class="notebook-demo__toolbar">
-        <div class="notebook-demo__meta">
-          <p class="notebook-demo__eyebrow">Interactive Notebook</p>
-          <h2 class="notebook-demo__title">Notebook Source</h2>
-          <p class="notebook-demo__description">
-            Pre-rendered from the checked-in \`.ipynb\` file during the docs build for static delivery and search indexing.
-          </p>
-          <dl class="notebook-demo__details">
-            <div>
-              <dt>Source</dt>
-              <dd><code>${escapeHtml(sourcePath)}</code></dd>
-            </div>
-            <div>
-              <dt>Default API</dt>
-              <dd><code>https://app.everruns.com/api</code></dd>
-            </div>
-            <div>
-              <dt>Notebook File Timestamp</dt>
-              <dd>${escapeHtml(modifiedAt)}</dd>
-            </div>
-          </dl>
-        </div>
-        <div class="notebook-demo__actions">
-          <span class="notebook-demo__kernel">${escapeHtml(kernelLabel)}</span>
-          <a class="notebook-demo__download" href="${escapeHtml(publicHref)}" download>
-            Download .ipynb
-          </a>
-          <a
-            class="notebook-demo__download"
-            href="https://github.com/everruns/everruns/blob/main/${escapeHtml(sourcePath)}"
-          >
-            View Source
-          </a>
-        </div>
-      </div>
-      <div class="notebook-demo__cells">${cells}</div>
-    </div>
-  `;
+  const toc = buildTocTree(tocHeadings);
+  const tocDepths = flattenTocDepths(toc);
+
+  return {
+    html: `
+      ${metaBlock}
+      <article class="cookbook-article">
+        ${cells}
+      </article>
+    `,
+    toc: {
+      items: toc,
+      minHeadingLevel: tocDepths.length > 0 ? Math.min(...tocDepths) : 2,
+      maxHeadingLevel: tocDepths.length > 0 ? Math.max(...tocDepths) : 3,
+    },
+  };
 }
 
 rmSync(generatedRoot, { recursive: true, force: true });
@@ -265,21 +498,20 @@ for (const docPath of docFiles) {
   const htmlRelativePath = notebookRelativeToDocs.replace(/\.ipynb$/, ".html");
   const htmlOutputPath = path.join(generatedRoot, htmlRelativePath);
   const publicNotebookPath = path.join(publicRoot, notebookRelativeToDocs);
-  const modifiedAt = statSync(notebookPath).mtime.toISOString();
   const publicHref = `/notebooks/${notebookRelativeToDocs}`;
 
   mkdirSync(path.dirname(htmlOutputPath), { recursive: true });
   mkdirSync(path.dirname(publicNotebookPath), { recursive: true });
   copyFileSync(notebookPath, publicNotebookPath);
 
-  const renderedHtml = renderNotebookHtml({
+  const renderedNotebook = renderNotebookHtml({
     notebook,
     sourcePath: notebookKey,
     publicHref,
-    modifiedAt,
+    frontmatter: data,
   });
 
-  writeFileSync(htmlOutputPath, renderedHtml, "utf8");
+  writeFileSync(htmlOutputPath, renderedNotebook.html, "utf8");
 
   manifest[notebookKey] = {
     htmlFile: toPosix(htmlRelativePath),
@@ -287,6 +519,7 @@ for (const docPath of docFiles) {
     route: deriveRoute(docPath, data),
     docPage: docRelativePath,
     notebookFile: notebookKey,
+    toc: renderedNotebook.toc,
   };
 }
 

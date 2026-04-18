@@ -9,6 +9,9 @@ export const collections = {
     schema: docsSchema({
       extend: z.object({
         notebook: z.string().optional(),
+        published: z.string().optional(),
+        topics: z.array(z.string()).optional(),
+        github: z.url().optional(),
       }),
     }),
   }),

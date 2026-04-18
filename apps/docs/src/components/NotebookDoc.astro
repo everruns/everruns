@@ -1,12 +1,7 @@
 ---
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import manifest from "../generated/notebooks/manifest.json";
-
-interface NotebookEntry {
-  htmlFile: string;
-  route: string;
-}
+import { findNotebookEntry, normalizeNotebookRoute } from "./notebook-manifest";
 
 interface Props {
   source?: string;
@@ -14,13 +9,8 @@ interface Props {
 }
 
 const { source, route } = Astro.props;
-const entries = Object.entries(manifest as Record<string, NotebookEntry>);
-const normalizedRoute = (route ?? Astro.url.pathname).replace(/\/?$/, "/");
-const matchedEntry =
-  typeof source === "string" && source.length > 0
-    ? entries.find(([entrySource]) => entrySource === source)
-    : entries.find(([, entry]) => entry.route === normalizedRoute);
-const entry = matchedEntry?.[1];
+const normalizedRoute = normalizeNotebookRoute(route ?? Astro.url.pathname);
+const entry = findNotebookEntry({ source, route: normalizedRoute });
 
 if (!entry) {
   throw new Error(

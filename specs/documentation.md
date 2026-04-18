@@ -81,11 +81,12 @@ hero: ../images/section/visual.png  # Optional: hero image for social card
 Notebook tutorials use a checked-in `.ipynb` file as the source of truth and a hand-authored MDX wrapper for page metadata.
 
 - The wrapper page lives in `docs/**/index.mdx`
-- The wrapper frontmatter owns durable page metadata such as `title`, `description`, and optional `slug`
+- The wrapper frontmatter owns durable page metadata such as `title`, `description`, optional `slug`, and cookbook metadata like `published`, `topics`, and `github`
 - Notebook-backed wrappers must set `notebook: ./relative-path.ipynb` in frontmatter
-- The wrapper must not duplicate notebook cell content inline; it should only provide metadata and surrounding docs copy
+- The wrapper must not duplicate notebook cell content inline; it should stay small and only provide durable metadata plus the renderer component
 - `apps/docs/scripts/render-notebooks.mjs` pre-renders referenced notebooks into static HTML before Astro runs
 - The pre-render step also copies raw notebooks into the built site as downloadable assets under `/notebooks/**`
+- Notebook-backed pages should read like cookbook articles, with the notebook markdown rendered as the main page content rather than as an embedded viewer widget
 - All notebook pages must render as static HTML in the final build for search indexing and fast delivery
 - Every `.ipynb` under `docs/tutorials/` must be referenced by exactly one MDX wrapper
 - The notebook source should default to `https://app.everruns.com/api`; local execution should override `EVERRUNS_API_URL` instead of editing the notebook

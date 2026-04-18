@@ -1,0 +1,20 @@
+---
+import DefaultTableOfContents from "@astrojs/starlight/components/TableOfContents.astro";
+import NotebookTocList from "./NotebookTocList.astro";
+import { findNotebookEntry } from "./notebook-manifest";
+
+const notebookEntry = findNotebookEntry({ route: Astro.url.pathname });
+const toc = notebookEntry?.toc?.items?.length ? notebookEntry.toc : null;
+---
+
+{
+  toc && (
+    <starlight-toc data-min-h={toc.minHeadingLevel} data-max-h={toc.maxHeadingLevel}>
+      <nav aria-labelledby="starlight__on-this-page">
+        <h2 id="starlight__on-this-page">{Astro.locals.t("tableOfContents.onThisPage")}</h2>
+        <NotebookTocList toc={toc.items} />
+      </nav>
+    </starlight-toc>
+  )
+}
+{!toc && <DefaultTableOfContents />}
