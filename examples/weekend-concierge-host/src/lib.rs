@@ -145,20 +145,30 @@ impl Tool for LookupNeighborhoodSpotTool {
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        let occasion = arguments
-            .get("occasion")
-            .and_then(Value::as_str)
-            .unwrap_or("outing")
-            .to_lowercase();
-        let group_size = arguments
-            .get("group_size")
-            .and_then(Value::as_u64)
-            .unwrap_or(4);
-        let vibe = arguments
-            .get("vibe")
-            .and_then(Value::as_str)
-            .unwrap_or("any")
-            .to_lowercase();
+        let occasion = match arguments.get("occasion").and_then(Value::as_str) {
+            Some(occasion) => occasion.to_lowercase(),
+            None => {
+                return ToolExecutionResult::tool_error(
+                    "Invalid arguments: 'occasion' is required and must be a string.",
+                );
+            }
+        };
+        let group_size = match arguments.get("group_size").and_then(Value::as_u64) {
+            Some(group_size) => group_size,
+            None => {
+                return ToolExecutionResult::tool_error(
+                    "Invalid arguments: 'group_size' is required and must be an unsigned integer.",
+                );
+            }
+        };
+        let vibe = match arguments.get("vibe").and_then(Value::as_str) {
+            Some(vibe) => vibe.to_lowercase(),
+            None => {
+                return ToolExecutionResult::tool_error(
+                    "Invalid arguments: 'vibe' is required and must be a string.",
+                );
+            }
+        };
 
         let mut matches: Vec<_> = curated_spots()
             .into_iter()
@@ -416,7 +426,9 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
 
 #[cfg(test)]
 mod tests {
-    use super::run_weekend_concierge_demo;
+    use super::{LookupNeighborhoodSpotTool, run_weekend_concierge_demo};
+    use everruns_core::tools::{Tool, ToolExecutionResult};
+    use serde_json::json;
 
     #[tokio::test]
     async fn weekend_concierge_demo_stays_deterministic() {
@@ -446,5 +458,25 @@ mod tests {
                 .iter()
                 .any(|event| event == "reason.completed")
         );
+    }
+
+    #[tokio::test]
+    async fn lookup_tool_rejects_missing_required_arguments() {
+        let result = LookupNeighborhoodSpotTool
+            .execute(json!({
+                "occasion": "team outing",
+                "group_size": 6
+            }))
+            .await;
+
+        match result {
+            ToolExecutionResult::ToolError(message) => {
+                assert_eq!(
+                    message,
+                    "Invalid arguments: 'vibe' is required and must be a string."
+                );
+            }
+            other => panic!("expected tool error, got {other:?}"),
+        }
     }
 }
