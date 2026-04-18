@@ -51,6 +51,13 @@ impl Command for ListAuditLogs {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<AuditLogEntry>, CommandError> {
+        // Enforce policy inside execute so HTTP and MCP paths are consistent.
+        // dispatch_for also evaluates Self::policy() for MCP; double-checking
+        // here costs nothing and makes this command safe to call directly.
+        AUDIT_LOG_VIEW
+            .evaluate(&ctx.caller)
+            .map_err(|e| CommandError::Forbidden(e.message))?;
+
         let limit = self.limit.unwrap_or(50).clamp(1, 200);
 
         // THREAT[TM-TENANT]: Always use caller's org_id, never trust client-supplied value.
@@ -85,7 +92,7 @@ mod tests {
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateAuditLogRow;
-    use everruns_core::{Caller, DEFAULT_ORG_ID, PolicyError, organization::OrgRole};
+    use everruns_core::{Caller, DEFAULT_ORG_ID, organization::OrgRole};
     use std::sync::Arc;
 
     fn caller_with_role(role: OrgRole) -> Caller {
@@ -131,35 +138,25 @@ mod tests {
         Ctx::new(caller_with_role(role), db, capability_service, None)
     }
 
-    async fn run_cmd(ctx: &Ctx, cmd: ListAuditLogs) -> Result<Vec<AuditLogEntry>, CommandError> {
-        // Explicitly run the dispatcher's policy check, since calling
-        // `execute` directly would bypass it.
-        if let Some(policy) = ListAuditLogs::policy() {
-            policy
-                .evaluate(&ctx.caller)
-                .map_err(|e: PolicyError| CommandError::Forbidden(e.message))?;
-        }
-        cmd.execute(ctx).await
-    }
-
     #[tokio::test]
     async fn owner_can_list_audit_logs() {
         let ctx = make_ctx(OrgRole::Owner).await;
-        let logs = run_cmd(&ctx, ListAuditLogs::default()).await.unwrap();
+        let logs = ListAuditLogs::default().execute(&ctx).await.unwrap();
         assert_eq!(logs.len(), 2);
     }
 
     #[tokio::test]
     async fn admin_can_list_audit_logs() {
         let ctx = make_ctx(OrgRole::Admin).await;
-        let logs = run_cmd(&ctx, ListAuditLogs::default()).await.unwrap();
+        let logs = ListAuditLogs::default().execute(&ctx).await.unwrap();
         assert_eq!(logs.len(), 2);
     }
 
     #[tokio::test]
     async fn member_cannot_list_audit_logs() {
         let ctx = make_ctx(OrgRole::Member).await;
-        let err = run_cmd(&ctx, ListAuditLogs::default())
+        let err = ListAuditLogs::default()
+            .execute(&ctx)
             .await
             .expect_err("member should be rejected by AUDIT_LOG_VIEW policy");
         assert!(matches!(err, CommandError::Forbidden(_)));
@@ -169,25 +166,21 @@ mod tests {
     async fn domain_filter() {
         let ctx = make_ctx(OrgRole::Owner).await;
 
-        let mgmt = run_cmd(
-            &ctx,
-            ListAuditLogs {
-                domain: Some("management".to_string()),
-                ..Default::default()
-            },
-        )
+        let mgmt = ListAuditLogs {
+            domain: Some("management".to_string()),
+            ..Default::default()
+        }
+        .execute(&ctx)
         .await
         .unwrap();
         assert_eq!(mgmt.len(), 1);
         assert_eq!(mgmt[0].domain, "management");
 
-        let agent = run_cmd(
-            &ctx,
-            ListAuditLogs {
-                domain: Some("agent".to_string()),
-                ..Default::default()
-            },
-        )
+        let agent = ListAuditLogs {
+            domain: Some("agent".to_string()),
+            ..Default::default()
+        }
+        .execute(&ctx)
         .await
         .unwrap();
         assert_eq!(agent.len(), 1);
@@ -197,13 +190,11 @@ mod tests {
     #[tokio::test]
     async fn action_filter() {
         let ctx = make_ctx(OrgRole::Owner).await;
-        let logs = run_cmd(
-            &ctx,
-            ListAuditLogs {
-                action: Some("management.member.invited".to_string()),
-                ..Default::default()
-            },
-        )
+        let logs = ListAuditLogs {
+            action: Some("management.member.invited".to_string()),
+            ..Default::default()
+        }
+        .execute(&ctx)
         .await
         .unwrap();
         assert_eq!(logs.len(), 1);
@@ -213,13 +204,11 @@ mod tests {
     #[tokio::test]
     async fn limit_is_clamped() {
         let ctx = make_ctx(OrgRole::Owner).await;
-        let logs = run_cmd(
-            &ctx,
-            ListAuditLogs {
-                limit: Some(10_000),
-                ..Default::default()
-            },
-        )
+        let logs = ListAuditLogs {
+            limit: Some(10_000),
+            ..Default::default()
+        }
+        .execute(&ctx)
         .await
         .unwrap();
         // Limit clamped to 200; storage backend returns all available rows.
