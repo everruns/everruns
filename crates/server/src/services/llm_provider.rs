@@ -229,13 +229,10 @@ fn validate_azure_openai_base_url(url: &Url) -> Result<()> {
     }
 
     let path = url.path().trim_end_matches('/');
-    let valid_path = matches!(
-        path,
-        "/openai/v1" | "/openai/v1/responses" | "/openai/v1/chat/completions"
-    );
+    let valid_path = matches!(path, "/openai/v1" | "/openai/v1/responses");
     if !valid_path {
         return Err(anyhow!(
-            "Azure OpenAI base URL must point to /openai/v1, /openai/v1/responses, or /openai/v1/chat/completions"
+            "Azure OpenAI base URL must point to /openai/v1 or /openai/v1/responses"
         ));
     }
 
@@ -344,6 +341,19 @@ mod tests {
                 Some("https://resource.services.ai.azure.com/openai/v1/responses"),
             )
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn azure_openai_rejects_chat_completions_base_url() {
+        let err = validate_provider_base_url(
+            LlmProviderType::AzureOpenai,
+            Some("https://resource.openai.azure.com/openai/v1/chat/completions"),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("/openai/v1 or /openai/v1/responses")
         );
     }
 

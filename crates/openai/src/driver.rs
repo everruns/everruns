@@ -11,6 +11,7 @@
 use async_trait::async_trait;
 use chrono::TimeZone;
 use reqwest::RequestBuilder;
+use reqwest::Url;
 
 use everruns_core::OpenAIProtocolLlmDriver;
 use everruns_core::OpenResponsesProtocolLlmDriver;
@@ -341,7 +342,14 @@ fn models_url_for_api_url(api_url: &str) -> String {
 }
 
 fn supports_model_listing(api_url: &str) -> bool {
-    api_url.contains("://api.openai.com/") || is_azure_openai_api_url(api_url)
+    is_openai_api_url(api_url) || is_azure_openai_api_url(api_url)
+}
+
+fn is_openai_api_url(api_url: &str) -> bool {
+    Url::parse(api_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .is_some_and(|host| host.eq_ignore_ascii_case("api.openai.com"))
 }
 
 fn apply_models_auth(request: RequestBuilder, api_url: &str, api_key: &str) -> RequestBuilder {
@@ -398,4 +406,21 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         };
         Box::new(driver) as BoxedLlmDriver
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_openai_api_url, supports_model_listing};
+
+    #[test]
+    fn supports_model_listing_for_openai_host_with_port() {
+        assert!(supports_model_listing(
+            "https://api.openai.com:443/v1/responses"
+        ));
+    }
+
+    #[test]
+    fn rejects_non_openai_hosts_for_model_listing() {
+        assert!(!is_openai_api_url("https://example.com/v1/responses"));
+    }
 }

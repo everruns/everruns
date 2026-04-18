@@ -276,7 +276,10 @@ impl ModelSyncService {
 }
 
 fn supports_sync_with_base_url(provider_type: &LlmProviderType) -> bool {
-    matches!(provider_type, LlmProviderType::AzureOpenai)
+    matches!(
+        provider_type,
+        LlmProviderType::Openai | LlmProviderType::AzureOpenai | LlmProviderType::OpenaiCompletions
+    )
 }
 
 #[cfg(test)]
@@ -327,7 +330,11 @@ mod tests {
     #[test]
     fn test_azure_openai_supports_sync_with_base_url() {
         assert!(supports_sync_with_base_url(&LlmProviderType::AzureOpenai));
-        assert!(!supports_sync_with_base_url(&LlmProviderType::Openai));
+        assert!(supports_sync_with_base_url(&LlmProviderType::Openai));
+        assert!(supports_sync_with_base_url(
+            &LlmProviderType::OpenaiCompletions
+        ));
+        assert!(!supports_sync_with_base_url(&LlmProviderType::Anthropic));
     }
 
     #[test]
