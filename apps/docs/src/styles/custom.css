@@ -260,3 +260,186 @@ h6 {
   background-size: 24px 24px;
   background-attachment: fixed;
 }
+
+/* Notebook tutorial renderer */
+.notebook-demo {
+  margin: 2rem 0;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--sl-color-bg);
+}
+
+.notebook-demo__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--sl-color-hairline);
+  background: color-mix(in srgb, var(--sl-color-bg-sidebar) 80%, transparent);
+}
+
+.notebook-demo__meta {
+  min-width: min(100%, 32rem);
+}
+
+.notebook-demo__eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9a7420;
+}
+
+.notebook-demo__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.notebook-demo__description {
+  margin: 0.4rem 0 0;
+  max-width: 42rem;
+  color: var(--sl-color-text-accent);
+}
+
+.notebook-demo__details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+}
+
+.notebook-demo__details div {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 8px;
+  background: var(--sl-color-bg);
+}
+
+.notebook-demo__details dt {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #9a7420;
+}
+
+.notebook-demo__details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.notebook-demo__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.notebook-demo__kernel,
+.notebook-demo__download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 8px;
+  background: var(--sl-color-bg);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.notebook-demo__download:hover {
+  background: var(--sl-color-bg-sidebar);
+}
+
+.notebook-demo__cells {
+  display: grid;
+}
+
+.notebook-demo__cell {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--sl-color-hairline);
+}
+
+.notebook-demo__cell:first-child {
+  border-top: 0;
+}
+
+.notebook-demo__prompt {
+  padding: 1rem 0.75rem;
+  border-right: 1px solid var(--sl-color-hairline);
+  background: color-mix(in srgb, var(--sl-color-bg-sidebar) 70%, transparent);
+  font-family: var(--sl-font-mono);
+  font-size: 0.82rem;
+  color: #9a7420;
+}
+
+.notebook-demo__body {
+  min-width: 0;
+  padding: 1rem 1.1rem;
+}
+
+.notebook-demo__markdown > :first-child {
+  margin-top: 0;
+}
+
+.notebook-demo__markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.notebook-demo__code,
+.notebook-demo__output {
+  margin: 0;
+  padding: 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.notebook-demo__code {
+  background: #fafafa;
+}
+
+.notebook-demo__code code,
+.notebook-demo__output code {
+  font-family: var(--sl-font-mono);
+}
+
+.notebook-demo__outputs {
+  margin-top: 0.85rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.notebook-demo__output {
+  background: color-mix(in srgb, var(--sl-color-bg-sidebar) 85%, transparent);
+}
+
+:root[data-theme="dark"] .notebook-demo__code {
+  background: #141414;
+}
+
+:root[data-theme="dark"] .notebook-demo__output {
+  background: #111111;
+}
+
+@media (max-width: 50rem) {
+  .notebook-demo__cell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .notebook-demo__prompt {
+    border-right: 0;
+    border-bottom: 1px solid var(--sl-color-hairline);
+    padding-bottom: 0.75rem;
+  }
+}

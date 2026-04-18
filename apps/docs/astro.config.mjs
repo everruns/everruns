@@ -24,6 +24,10 @@ export default defineConfig({
             "node_modules/@astrojs/starlight/components.ts"
           ),
         },
+        {
+          find: /^@docs-components\/(.*)$/,
+          replacement: `${path.resolve(__dirname, "src/components")}/$1`,
+        },
       ],
     },
   },
@@ -169,6 +173,7 @@ export default defineConfig({
                   label: "Tutorials",
                   items: [
                     { label: "Building Agents Using the SDK", slug: "tutorials/building-agents-using-sdk" },
+                    { label: "Run an Agent from a Notebook", slug: "tutorials/run-an-agent-from-a-notebook" },
                   ],
                 },
               ],

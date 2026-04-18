@@ -1,0 +1,44 @@
+---
+title: "Run an Agent from a Notebook"
+description: "A minimal Jupyter notebook that creates an Everruns agent with the Python SDK, starts a Generic harness session, and streams the first response."
+slug: tutorials/run-an-agent-from-a-notebook
+notebook: ./everruns-sdk-agent-quickstart.ipynb
+---
+
+import { LinkCard, CardGrid, Steps } from "@astrojs/starlight/components";
+import NotebookDoc from "@docs-components/NotebookDoc.astro";
+
+This tutorial is the fastest way to prove your SDK setup works. The notebook itself is the source of truth. This page keeps only the docs metadata and surrounding guidance, while the notebook body is rendered from the checked-in `.ipynb` during the docs build.
+
+<CardGrid>
+  <LinkCard
+    title="Hosted API first"
+    description="The notebook defaults to https://app.everruns.com/api and expects EVERRUNS_API_KEY when you run it there."
+    href="/features/sdk/"
+  />
+  <LinkCard
+    title="Local and CI override"
+    description="CI executes the same notebook against a local dev-mode server by overriding EVERRUNS_API_URL and enabling llmsim."
+    href="/tutorials/building-agents-using-sdk/"
+  />
+</CardGrid>
+
+## What you need
+
+<Steps>
+1. Open a Python 3.10+ notebook kernel
+2. Set `EVERRUNS_API_KEY` before running against `https://app.everruns.com/api`
+3. Override `EVERRUNS_API_URL` only when you want to point the notebook at a local or self-hosted Everruns instance
+</Steps>
+
+## Rendered notebook
+
+The page below is pre-rendered from the notebook source at docs build time, so the final HTML is static, fast to load, and indexed directly by search.
+
+<NotebookDoc />
+
+## Why this example uses `harness_name="generic"`
+
+The Generic harness is the default starting point for most Everruns sessions. It gives the session a sensible base environment without forcing notebook users to wire up custom harness data first.
+
+If you want to understand the rest of the SDK surface after this first pass, continue with [Building Agents Using the Everruns SDK](/tutorials/building-agents-using-sdk/).

@@ -32,19 +32,28 @@ export default function sitemapEnhance() {
         );
 
         const sitemapDest = join(outDir, "sitemap.xml");
+        const sitemapIndexDest = join(outDir, "sitemap-index.xml");
         writeFileSync(sitemapDest, enhanced);
+        writeFileSync(
+          sitemapIndexDest,
+          [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+            "  <sitemap>",
+            "    <loc>https://docs.everruns.com/sitemap.xml</loc>",
+            `    <lastmod>${lastmod}</lastmod>`,
+            "  </sitemap>",
+            "</sitemapindex>",
+            "",
+          ].join("\n")
+        );
 
         // Remove Starlight's intermediate sitemap files
         unlinkSync(sitemapSrc);
-        try {
-          unlinkSync(join(outDir, "sitemap-index.xml"));
-        } catch {
-          // may not exist
-        }
 
         const entryCount = (enhanced.match(/<url>/g) || []).length;
         console.log(
-          `[sitemap-enhance] sitemap.xml written with ${entryCount} entries (lastmod: ${lastmod})`
+          `[sitemap-enhance] sitemap.xml and sitemap-index.xml written with ${entryCount} entries (lastmod: ${lastmod})`
         );
       },
     },

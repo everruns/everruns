@@ -7,6 +7,8 @@ import { Tabs, TabItem } from "@astrojs/starlight/components";
 
 This tutorial walks you through building AI agents on Everruns using the official **everruns-sdk** Python package — from creating your first agent to orchestrating multi-turn conversations with tool execution and real-time event streaming.
 
+Prefer a notebook-first setup? Start with [Run an Agent from a Notebook](/tutorials/run-an-agent-from-a-notebook/) for the smallest runnable SDK example, then come back here for the longer walkthrough.
+
 ## What is Everruns?
 
 Everruns is a **durable agentic harness engine**. It provides the infrastructure layer between your application and LLM providers, handling the agent loop — the cycle of reasoning (calling an LLM) and acting (executing tools) — with durability guarantees backed by PostgreSQL.

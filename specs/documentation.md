@@ -76,6 +76,21 @@ hero: ../images/section/visual.png  # Optional: hero image for social card
 - `title` and `description` are required
 - `hero` is optional — relative path to an image that will be composited into the page's OG social card (see [Social Card Images](#social-card-images-og-images))
 
+#### Notebook-Backed Tutorials
+
+Notebook tutorials use a checked-in `.ipynb` file as the source of truth and a hand-authored MDX wrapper for page metadata.
+
+- The wrapper page lives in `docs/**/index.mdx`
+- The wrapper frontmatter owns durable page metadata such as `title`, `description`, and optional `slug`
+- Notebook-backed wrappers must set `notebook: ./relative-path.ipynb` in frontmatter
+- The wrapper must not duplicate notebook cell content inline; it should only provide metadata and surrounding docs copy
+- `apps/docs/scripts/render-notebooks.mjs` pre-renders referenced notebooks into static HTML before Astro runs
+- The pre-render step also copies raw notebooks into the built site as downloadable assets under `/notebooks/**`
+- All notebook pages must render as static HTML in the final build for search indexing and fast delivery
+- Every `.ipynb` under `docs/tutorials/` must be referenced by exactly one MDX wrapper
+- The notebook source should default to `https://app.everruns.com/api`; local execution should override `EVERRUNS_API_URL` instead of editing the notebook
+- CI must execute notebook-backed tutorials against a local Everruns dev-mode API using `EVERRUNS_API_URL=http://127.0.0.1:9301/api`, `EVERRUNS_API_KEY=dev`, and `EVERRUNS_NOTEBOOK_USE_LLMSIM=1`
+
 ### Design Requirements
 
 Design follows the brand guidelines defined in [specs/brand.md](brand.md) (colors, typography, visual principles).
@@ -264,4 +279,3 @@ Diagrams are hand-authored SVGs following `specs/diagrams.md`. Each SVG has a co
 1. SVGs live in `docs/images/<category>/` and are embedded via `![alt](../images/...)` in markdown
 2. No client-side rendering library is needed — SVGs are static assets processed by Astro's image pipeline
 3. The Mermaid `.mmd` files are source-of-truth for diagram content but are not rendered at build time
-

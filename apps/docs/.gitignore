@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 .astro/
+src/generated/
+public/notebooks/
+scripts/__pycache__/
 
 # Generated OG social card images (rebuilt by prebuild script)
 public/og/
