@@ -121,6 +121,7 @@ Executes a shell command in a sandbox with real-time output streaming.
   - `timeout`: integer (optional) — timeout in ms (default: 300000)
 - **Returns**: `{ exit_code, output }`
 - **Streaming**: Emits `tool.output.delta` events with partial combined stdout/stderr output (emitted on stream `"stdout"`) as the command runs (polled every ~1s). The final tool result contains the complete combined output.
+- **Recovery**: If a command times out or the shared exec shell is detected as dead, Everruns resets the Daytona exec session before returning the error so the next command can recover cleanly.
 
 ### daytona_read_file
 

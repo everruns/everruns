@@ -205,6 +205,34 @@ async fn test_live_exec_cwd_and_exit_code() {
     );
 }
 
+/// A timed-out command must not poison the next exec in the same sandbox.
+#[tokio::test]
+async fn test_live_exec_timeout_does_not_poison_next_command() {
+    let api_key = require_api_key!();
+    let (client, guard) = create_test_sandbox(api_key, "exec-timeout-recovery").await;
+    let id = &guard.sandbox_id;
+
+    let timeout_err = client
+        .exec(id, "sleep 10", None, Some(1_500), |_| {})
+        .await
+        .expect_err("sleep 10 should time out");
+    assert!(
+        timeout_err.contains("Command timed out after"),
+        "Expected timeout error, got: {timeout_err}"
+    );
+
+    let result = client
+        .exec(id, "echo timeout-recovered", None, None, |_| {})
+        .await
+        .expect("exec after timeout failed");
+    assert_eq!(result.exit_code, 0);
+    assert!(
+        result.result.contains("timeout-recovered"),
+        "Expected recovery output, got: {}",
+        result.result
+    );
+}
+
 /// Folder creation and file listing.
 #[tokio::test]
 async fn test_live_folder_and_list() {
