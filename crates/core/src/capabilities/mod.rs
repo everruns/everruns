@@ -1500,6 +1500,7 @@ mod tests {
             "system_commands",
             "openui",
             "sample_data",
+            "data_knowledge",
             "tool_output_persistence",
             "fake_warehouse",
             "fake_aws",
