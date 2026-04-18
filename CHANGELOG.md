@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.15] - 2026-04-18
+
+### Highlights
+
+- **Scoped MCP Servers** - Remote MCP server configs can now be attached at harness, agent, or session scope and merge with precedence over org-scoped servers ([#1315](https://github.com/everruns/everruns/pull/1315))
+- **Capability Skills** - Capabilities can now contribute skills to the agents they are applied to ([#1328](https://github.com/everruns/everruns/pull/1328))
+- **Runtime Host Example** - New example showing how to embed Everruns as an in-process runtime host ([#1332](https://github.com/everruns/everruns/pull/1332))
+- **Durable Act Fix** - `ActInput.org_id` is now preserved through the durable act-task roundtrip, fixing org-context loss on retry ([#1330](https://github.com/everruns/everruns/pull/1330))
+
+### What's Changed
+
+- fix(worker): preserve ActInput.org_id through durable act-task roundtrip ([#1330](https://github.com/everruns/everruns/pull/1330))
+- feat(examples): add runtime host example ([#1332](https://github.com/everruns/everruns/pull/1332))
+- chore(prompts): adopt Claude 4.7 prompting guidance in capability prompts ([#1329](https://github.com/everruns/everruns/pull/1329))
+- feat(capabilities): allow capabilities to contribute skills ([#1328](https://github.com/everruns/everruns/pull/1328))
+- feat(mcp): add scoped MCP servers ([#1315](https://github.com/everruns/everruns/pull/1315))
+- feat(ui): abstract SSE transport for downstream auth ([#1327](https://github.com/everruns/everruns/pull/1327))
+
 ## [0.8.14] - 2026-04-17
 
 ### Highlights
