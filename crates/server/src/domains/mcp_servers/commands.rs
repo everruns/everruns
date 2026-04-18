@@ -211,6 +211,10 @@ impl Command for GetMcpServer {
         Some(&MCP_SERVER_VIEW)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<McpServer, CommandError> {
         let server_id: McpServerId = self
             .id
@@ -253,6 +257,10 @@ impl Command for UpdateMcpServerCmd {
 
     fn policy() -> Option<&'static Policy> {
         Some(&MCP_SERVER_MANAGE)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<McpServer, CommandError> {
@@ -379,6 +387,10 @@ impl Command for DeleteMcpServer {
         Some(&MCP_SERVER_MANAGE)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let server_id: McpServerId = self
             .id
@@ -426,6 +438,10 @@ impl Command for DestroyMcpServer {
 
     fn policy() -> Option<&'static Policy> {
         Some(&MCP_SERVER_DANGEROUS)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {

@@ -307,6 +307,10 @@ impl Command for GetAgent {
         Some(&AGENT_VIEW)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         q::resolve(&ctx.db, ctx.org_id(), &self.id)
             .await
@@ -344,6 +348,10 @@ impl Command for UpdateAgentCmd {
 
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_MANAGE)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
@@ -492,6 +500,10 @@ impl Command for DeleteAgent {
         Some(&AGENT_MANAGE)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let agent_id: AgentId = self
             .id
@@ -551,6 +563,10 @@ impl Command for UpsertAgent {
 
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_MANAGE)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<UpsertResult, CommandError> {
@@ -649,6 +665,10 @@ impl Command for CopyAgent {
         Some(&AGENT_MANAGE)
     }
 
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         let source = q::resolve(&ctx.db, ctx.org_id(), &self.id)
             .await
@@ -707,6 +727,10 @@ impl Command for ExportAgent {
 
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_VIEW)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
@@ -901,6 +925,10 @@ impl Command for DestroyAgent {
 
     fn policy() -> Option<&'static Policy> {
         Some(&AGENT_DANGEROUS)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {

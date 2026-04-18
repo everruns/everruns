@@ -644,7 +644,7 @@ async fn test_mcp_discover_capabilities() {
 async fn test_mcp_execute_health_check() {
     let (_server, url) = TestServer::serving().await;
 
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "command": "health_check" })).await;
+    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "health_check" })).await;
     assert!(
         !tool_is_error(&resp),
         "execute health_check failed: {}",
@@ -659,7 +659,7 @@ async fn test_mcp_execute_health_check() {
 async fn test_mcp_execute_list_harnesses() {
     let (_server, url) = TestServer::serving().await;
 
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "command": "list_harnesses" })).await;
+    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_harnesses" })).await;
     assert!(
         !tool_is_error(&resp),
         "execute list_harnesses failed: {}",
@@ -683,7 +683,7 @@ async fn test_mcp_execute_list_harnesses() {
 async fn test_mcp_execute_list_agents() {
     let (_server, url) = TestServer::serving().await;
 
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "command": "list_agents" })).await;
+    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_agents" })).await;
     assert!(
         !tool_is_error(&resp),
         "execute list_agents failed: {}",
@@ -703,7 +703,7 @@ async fn test_mcp_execute_create_and_get_agent() {
         &url,
         "execute",
         json!({
-            "command": "create_agent --name 'mcp-execute-agent' --display_name 'MCP Execute Agent' --system_prompt 'Test prompt'"
+            "commands": "create_agent --name 'mcp-execute-agent' --display_name 'MCP Execute Agent' --system_prompt 'Test prompt'"
         }),
     )
     .await;
@@ -721,7 +721,7 @@ async fn test_mcp_execute_create_and_get_agent() {
     let resp = mcp_tool_call_http(
         &url,
         "execute",
-        json!({ "command": format!("get_agent --id {agent_id}") }),
+        json!({ "commands": format!("get_agent --id {agent_id}") }),
     )
     .await;
     assert!(
@@ -738,7 +738,7 @@ async fn test_mcp_execute_create_and_get_agent() {
 async fn test_mcp_execute_list_models() {
     let (_server, url) = TestServer::serving().await;
 
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "command": "list_models" })).await;
+    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_models" })).await;
     assert!(
         !tool_is_error(&resp),
         "execute list_models failed: {}",
@@ -750,7 +750,8 @@ async fn test_mcp_execute_list_models() {
 async fn test_mcp_execute_list_capabilities() {
     let (_server, url) = TestServer::serving().await;
 
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "command": "list_capabilities" })).await;
+    let resp =
+        mcp_tool_call_http(&url, "execute", json!({ "commands": "list_capabilities" })).await;
     assert!(
         !tool_is_error(&resp),
         "execute list_capabilities failed: {}",
@@ -769,7 +770,7 @@ async fn test_mcp_execute_list_capabilities_with_limit_flag() {
     let resp = mcp_tool_call_http(
         &url,
         "execute",
-        json!({ "command": "list_capabilities --limit 5" }),
+        json!({ "commands": "list_capabilities --limit 5" }),
     )
     .await;
     assert!(
@@ -793,7 +794,7 @@ async fn test_mcp_execute_list_agents_with_numeric_and_bool_flags() {
     let resp = mcp_tool_call_http(
         &url,
         "execute",
-        json!({ "command": "list_agents --include_archived true --offset 0 --limit 10" }),
+        json!({ "commands": "list_agents --include_archived true --offset 0 --limit 10" }),
     )
     .await;
     assert!(
@@ -807,11 +808,87 @@ async fn test_mcp_execute_list_agents_with_numeric_and_bool_flags() {
     assert_eq!(payload["limit"], 10);
 }
 
+// Regression for EVE-323: LLMs naturally type `get_agent <id>` instead of
+// `get_agent --id <id>`. Without positional-arg rewriting, bashkit's
+// `parse_flags` rejects the call with "expected --flag, got: <id>".
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_execute_get_agent_positional_id() {
+    let (_server, url) = TestServer::serving().await;
+
+    let resp = mcp_tool_call_http(
+        &url,
+        "execute",
+        json!({
+            "commands": "create_agent --name 'eve323-positional-agent' --display_name 'EVE-323 Positional' --system_prompt 'Test'"
+        }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "create_agent failed: {}",
+        tool_text(&resp)
+    );
+    let agent_id = tool_json(&resp)["id"].as_str().unwrap().to_string();
+
+    // Positional form: `get_agent <id>` (no --id flag).
+    let resp = mcp_tool_call_http(
+        &url,
+        "execute",
+        json!({ "commands": format!("get_agent {agent_id}") }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "get_agent <id> (positional) failed: {}",
+        tool_text(&resp)
+    );
+    let fetched = tool_json(&resp);
+    assert_eq!(fetched["name"], "eve323-positional-agent");
+    assert_eq!(fetched["id"], agent_id);
+}
+
+// Regression for EVE-323: positional `delete_agent <id>` must archive the
+// agent the same way `delete_agent --id <id>` does.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_execute_delete_agent_positional_id() {
+    let (_server, url) = TestServer::serving().await;
+
+    let resp = mcp_tool_call_http(
+        &url,
+        "execute",
+        json!({
+            "commands": "create_agent --name 'eve323-delete-agent' --display_name 'EVE-323 Delete' --system_prompt 'Test'"
+        }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "create_agent failed: {}",
+        tool_text(&resp)
+    );
+    let agent_id = tool_json(&resp)["id"].as_str().unwrap().to_string();
+
+    // Positional form: `delete_agent <id>`.
+    let resp = mcp_tool_call_http(
+        &url,
+        "execute",
+        json!({ "commands": format!("delete_agent {agent_id}") }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "delete_agent <id> (positional) failed: {}",
+        tool_text(&resp)
+    );
+    let payload = tool_json(&resp);
+    assert_eq!(payload["deleted"], true);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_execute_list_mcp_servers() {
     let (_server, url) = TestServer::serving().await;
 
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "command": "list_mcp_servers" })).await;
+    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_mcp_servers" })).await;
     assert!(
         !tool_is_error(&resp),
         "execute list_mcp_servers failed: {}",
@@ -835,7 +912,7 @@ async fn test_mcp_execute_create_mcp_server() {
         &url,
         "execute",
         json!({
-            "command": format!("create_mcp_server --name '{unique_name}' --url 'https://mcp.test.com/v1'")
+            "commands": format!("create_mcp_server --name '{unique_name}' --url 'https://mcp.test.com/v1'")
         }),
     )
     .await;
@@ -858,7 +935,7 @@ async fn test_mcp_execute_bash_pipe() {
     let resp = mcp_tool_call_http(
         &url,
         "execute",
-        json!({ "command": "list_harnesses | jq '.data | length'" }),
+        json!({ "commands": "list_harnesses | jq '.data | length'" }),
     )
     .await;
     assert!(!tool_is_error(&resp), "pipe failed: {}", tool_text(&resp));
@@ -877,7 +954,7 @@ async fn test_mcp_execute_bash_script() {
         list_agents | jq '.data | length'
     "#;
 
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "command": script })).await;
+    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": script })).await;
     assert!(
         !tool_is_error(&resp),
         "bash script failed: {}",
@@ -892,7 +969,7 @@ async fn test_mcp_execute_bash_script() {
 async fn test_mcp_execute_list_providers() {
     let (_server, url) = TestServer::serving().await;
 
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "command": "list_providers" })).await;
+    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_providers" })).await;
     assert!(
         !tool_is_error(&resp),
         "list_providers failed: {}",
@@ -904,7 +981,7 @@ async fn test_mcp_execute_list_providers() {
 async fn test_mcp_execute_list_orgs() {
     let (_server, url) = TestServer::serving().await;
 
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "command": "list_orgs" })).await;
+    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_orgs" })).await;
     assert!(
         !tool_is_error(&resp),
         "list_orgs failed: {}",
@@ -919,7 +996,7 @@ async fn test_mcp_execute_discover_categories() {
     let resp = mcp_tool_call_http(
         &url,
         "execute",
-        json!({ "command": "discover --categories" }),
+        json!({ "commands": "discover --categories" }),
     )
     .await;
     assert!(
@@ -938,7 +1015,7 @@ async fn test_mcp_execute_discover_categories() {
 async fn test_mcp_execute_discover_all() {
     let (_server, url) = TestServer::serving().await;
 
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "command": "discover --all" })).await;
+    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "discover --all" })).await;
     assert!(
         !tool_is_error(&resp),
         "discover --all failed: {}",
@@ -965,7 +1042,7 @@ async fn test_mcp_execute_agent_crud_workflow() {
         &url,
         "execute",
         json!({
-            "command": "create_agent --name 'crud-agent' --display_name 'CRUD Agent' --system_prompt 'CRUD test'"
+            "commands": "create_agent --name 'crud-agent' --display_name 'CRUD Agent' --system_prompt 'CRUD test'"
         }),
     )
     .await;
@@ -982,7 +1059,7 @@ async fn test_mcp_execute_agent_crud_workflow() {
         &url,
         "execute",
         json!({
-            "command": format!("update_agent --id {agent_id} --name 'updated-crud-agent'")
+            "commands": format!("update_agent --id {agent_id} --name 'updated-crud-agent'")
         }),
     )
     .await;
@@ -998,7 +1075,7 @@ async fn test_mcp_execute_agent_crud_workflow() {
     let resp = mcp_tool_call_http(
         &url,
         "execute",
-        json!({ "command": format!("delete_agent --id {agent_id}") }),
+        json!({ "commands": format!("delete_agent --id {agent_id}") }),
     )
     .await;
     assert!(
