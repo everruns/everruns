@@ -111,7 +111,17 @@ fn is_error_placeholder_message(msg: &Message) -> bool {
         return false;
     }
     let text = msg.text().unwrap_or("");
-    ERROR_PLACEHOLDER_MESSAGES.contains(&text)
+    ERROR_PLACEHOLDER_MESSAGES.contains(&text) || is_dynamic_error_placeholder(text)
+}
+
+fn is_dynamic_error_placeholder(text: &str) -> bool {
+    (text.starts_with("Budget exhausted.") && text.ends_with("Increase the budget to continue."))
+        || (text.starts_with("Budget paused.")
+            && text.ends_with("Increase or resume the budget to continue."))
+        || (text.starts_with("Budget paused with ")
+            && text.ends_with("Increase or resume the budget to continue."))
+        || (text.starts_with("Soft limit reached.") && text.ends_with("soft limit."))
+        || (text.starts_with("The model `") && text.ends_with("Please select a different model."))
 }
 
 // ============================================================================

@@ -27,7 +27,7 @@ use crate::grpc_durable_store::{
     ClaimedTask, GrpcDurableStore, TaskNotificationEvent, TaskNotificationStream, WorkflowStatus,
 };
 use crate::runtime_host::WorkerRuntimeHost;
-use crate::task_error::summarize_task_failure;
+use crate::task_error::{summarize_task_failure, user_facing_failure_message};
 use serde::{Deserialize, Serialize};
 
 // =============================================================================
@@ -698,7 +698,7 @@ impl DurableWorker {
                                     wf_id,
                                     WorkflowStatus::Completed,
                                     None,
-                                    Some(error_msg),
+                                    Some(error_msg.clone()),
                                 )
                                 .await;
                         }
@@ -708,7 +708,7 @@ impl DurableWorker {
                             "reason" | "process_input" | "act"
                         ) {
                             drop(store);
-                            worker.emit_dlq_error_event(&task).await;
+                            worker.emit_dlq_error_event(&task, &error_msg).await;
                         }
                     } else {
                         // Report failure to store (may retry)
@@ -729,7 +729,7 @@ impl DurableWorker {
                                                 wf_id,
                                                 WorkflowStatus::Completed,
                                                 None,
-                                                Some(error_msg),
+                                                Some(error_msg.clone()),
                                             )
                                             .await;
                                     }
@@ -743,7 +743,7 @@ impl DurableWorker {
                                         "reason" | "process_input" | "act"
                                     ) {
                                         drop(store);
-                                        worker.emit_dlq_error_event(&task).await;
+                                        worker.emit_dlq_error_event(&task, &error_msg).await;
                                     }
                                 }
                             }
@@ -1045,7 +1045,7 @@ impl DurableWorker {
     /// prevent duplicate "I encountered an error" messages in the UI. This method
     /// emits one final error event so the user sees exactly one error message,
     /// then emits session.idled + sets session status to idle so the UI unblocks.
-    async fn emit_dlq_error_event(&self, task: &ClaimedTask) {
+    async fn emit_dlq_error_event(&self, task: &ClaimedTask, persisted_error: &str) {
         // Extract session context from the task input. `act` task input is
         // wrapped in `ActTaskInput`, while `reason`/`process_input` use
         // `DurableTurnInput`; both shapes must be handled or act-task DLQs
@@ -1082,9 +1082,7 @@ impl DurableWorker {
             turn_id,
             input_message_id,
         } = ctx;
-        let error_message = Message::assistant(
-            "I encountered an error while processing your request. Please try again later.",
-        );
+        let error_message = Message::assistant(user_facing_failure_message(persisted_error));
         let context = EventContext::turn(turn_id, input_message_id);
 
         if let Err(e) = event_emitter

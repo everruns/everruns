@@ -55,6 +55,74 @@ pub(crate) fn summarize_task_failure(
     }
 }
 
+pub(crate) fn user_facing_failure_message(error: &str) -> String {
+    let error_chain = error.split("error_chain=").nth(1).unwrap_or(error).trim();
+
+    let normalized = trim_error_chain_prefixes(error_chain);
+    let lower = normalized.to_ascii_lowercase();
+
+    if normalized.starts_with("Budget exhausted.")
+        || normalized.starts_with("Budget paused.")
+        || normalized.starts_with("Soft limit reached.")
+    {
+        return normalized.to_string();
+    }
+
+    if normalized.starts_with("Budget exhausted (") {
+        return "Budget exhausted. Increase the budget to continue.".to_string();
+    }
+
+    if normalized.starts_with("Budget paused (") {
+        return "Budget paused. Increase or resume the budget to continue.".to_string();
+    }
+
+    if normalized.starts_with("Model not available: ") {
+        let model_id = normalized
+            .trim_start_matches("Model not available: ")
+            .trim();
+        return format!(
+            "The model `{}` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
+            model_id
+        );
+    }
+
+    if normalized.starts_with("Request too large:")
+        || lower.contains("context length")
+        || lower.contains("maximum context length")
+    {
+        return "The conversation has become too long for the model to process. Please start a new session or reduce the context size.".to_string();
+    }
+
+    if lower.contains("(429)")
+        || lower.contains("rate limit")
+        || lower.contains("too many requests")
+    {
+        return "Rate limited by the AI provider. Please wait a moment.".to_string();
+    }
+
+    if lower.contains("(401)") || lower.contains("(403)") {
+        return "There is a misconfiguration with the AI provider. Please contact support."
+            .to_string();
+    }
+
+    if ["(500)", "(502)", "(503)", "(504)", "(529)"]
+        .iter()
+        .any(|code| lower.contains(code))
+    {
+        return "The AI provider is experiencing issues. Please try again shortly.".to_string();
+    }
+
+    "I encountered an error while processing your request. Please try again later.".to_string()
+}
+
+fn trim_error_chain_prefixes(error_chain: &str) -> &str {
+    error_chain
+        .trim()
+        .trim_start_matches("InputAtom execution failed: ")
+        .trim_start_matches("ReasonAtom execution failed: ")
+        .trim_start_matches("ActAtom execution failed: ")
+}
+
 fn format_error_chain(error: &Error) -> String {
     let mut messages = Vec::new();
 
@@ -247,6 +315,78 @@ mod tests {
             summary
                 .persisted_message
                 .contains("session_id=session_top_level")
+        );
+    }
+
+    #[test]
+    fn user_facing_failure_message_extracts_budget_copy_from_persisted_error() {
+        let message = user_facing_failure_message(
+            "activity_type=reason | error_chain=ReasonAtom execution failed: Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue.",
+        );
+
+        assert_eq!(
+            message,
+            "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue."
+        );
+    }
+
+    #[test]
+    fn user_facing_failure_message_recognizes_rate_limit_errors() {
+        let message = user_facing_failure_message(
+            "activity_type=reason | error_chain=ReasonAtom execution failed: OpenAI API error (429): Rate limit exceeded",
+        );
+
+        assert_eq!(
+            message,
+            "Rate limited by the AI provider. Please wait a moment."
+        );
+    }
+
+    #[test]
+    fn user_facing_failure_message_recognizes_model_unavailable_errors() {
+        let message = user_facing_failure_message(
+            "activity_type=reason | error_chain=ReasonAtom execution failed: Model not available: gpt-99",
+        );
+
+        assert_eq!(
+            message,
+            "The model `gpt-99` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model."
+        );
+    }
+
+    #[test]
+    fn user_facing_failure_message_recognizes_request_too_large_errors() {
+        let message = user_facing_failure_message(
+            "activity_type=reason | error_chain=ReasonAtom execution failed: Request too large: OpenAI API error (429): Request too large for gpt-4o",
+        );
+
+        assert_eq!(
+            message,
+            "The conversation has become too long for the model to process. Please start a new session or reduce the context size."
+        );
+    }
+
+    #[test]
+    fn user_facing_failure_message_recognizes_provider_auth_errors() {
+        let message = user_facing_failure_message(
+            "activity_type=reason | error_chain=ReasonAtom execution failed: OpenAI API error (401): Invalid authentication",
+        );
+
+        assert_eq!(
+            message,
+            "There is a misconfiguration with the AI provider. Please contact support."
+        );
+    }
+
+    #[test]
+    fn user_facing_failure_message_recognizes_provider_5xx_errors() {
+        let message = user_facing_failure_message(
+            "activity_type=reason | error_chain=ReasonAtom execution failed: OpenAI API error (503): Service unavailable",
+        );
+
+        assert_eq!(
+            message,
+            "The AI provider is experiencing issues. Please try again shortly."
         );
     }
 }

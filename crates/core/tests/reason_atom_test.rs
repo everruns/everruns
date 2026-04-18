@@ -1750,6 +1750,147 @@ async fn test_reason_atom_strips_error_placeholder_messages() {
     );
 }
 
+#[tokio::test]
+async fn test_reason_atom_strips_dynamic_error_placeholder_messages() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(
+            session_id.into(),
+            vec![
+                Message::user("Create agents for me"),
+                Message::assistant(
+                    "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue.",
+                ),
+                Message::assistant(
+                    "The model `gpt-99` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
+                ),
+                Message::user("Try again"),
+            ],
+        )
+        .await;
+
+    let driver_registry = create_custom_driver_registry(LlmSimConfig::echo());
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should succeed");
+
+    assert!(result.success);
+    assert!(!result.text.contains("Budget exhausted."));
+    assert!(!result.text.contains("The model `gpt-99` is not available."));
+}
+
+#[tokio::test]
+async fn test_reason_atom_keeps_non_placeholder_messages_that_share_prefixes() {
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(
+            session_id.into(),
+            vec![
+                Message::user("Summarize the docs"),
+                Message::assistant(
+                    "The model `gpt-4.1` was recommended in the docs because of its context window.",
+                ),
+                Message::user("Repeat the recommendation"),
+            ],
+        )
+        .await;
+
+    let captured_messages = Arc::new(Mutex::new(Vec::new()));
+    let driver_registry = create_conversation_capturing_driver_registry(captured_messages.clone());
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("ReasonAtom should succeed");
+
+    assert!(result.success);
+
+    let captured = captured_messages.lock().await;
+    let assistant_messages: Vec<String> = captured
+        .iter()
+        .filter(|message| message.role == everruns_core::LlmMessageRole::Assistant)
+        .map(|message| message.content_as_text())
+        .collect();
+    assert!(
+        assistant_messages
+            .iter()
+            .any(|message| message.contains("The model `gpt-4.1` was recommended")),
+        "non-placeholder assistant message should remain in LLM input: {assistant_messages:?}"
+    );
+}
+
 /// A driver that captures the system message sent to the LLM for assertion.
 #[derive(Clone, Debug)]
 struct SystemPromptCapturingDriver {
@@ -1785,6 +1926,48 @@ impl everruns_core::LlmDriver for SystemPromptCapturingDriver {
             ))),
         ])))
     }
+}
+
+#[derive(Clone, Debug)]
+struct ConversationCapturingDriver {
+    captured_messages: Arc<Mutex<Vec<everruns_core::LlmMessage>>>,
+}
+
+#[async_trait]
+impl everruns_core::LlmDriver for ConversationCapturingDriver {
+    async fn chat_completion_stream(
+        &self,
+        messages: Vec<everruns_core::LlmMessage>,
+        config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        *self.captured_messages.lock().await = messages;
+
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_core::LlmStreamEvent::TextDelta("ok".to_string())),
+            Ok(everruns_core::LlmStreamEvent::Done(Box::new(
+                everruns_core::LlmCompletionMetadata {
+                    total_tokens: Some(4),
+                    prompt_tokens: Some(2),
+                    completion_tokens: Some(2),
+                    model: Some(config.model.clone()),
+                    finish_reason: Some("stop".to_string()),
+                    ..Default::default()
+                },
+            ))),
+        ])))
+    }
+}
+
+fn create_conversation_capturing_driver_registry(
+    captured_messages: Arc<Mutex<Vec<everruns_core::LlmMessage>>>,
+) -> DriverRegistry {
+    let mut registry = DriverRegistry::new();
+    registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
+        Box::new(ConversationCapturingDriver {
+            captured_messages: captured_messages.clone(),
+        })
+    });
+    registry
 }
 
 #[tokio::test]

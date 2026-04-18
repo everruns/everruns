@@ -615,6 +615,12 @@ mod tests {
         db.set_budget_status(budget.id, "exhausted").await.unwrap();
         let result = svc.check_budgets_for_session(1, "session_1", None).await;
         assert!(result.should_stop());
+        assert_eq!(
+            result.message.as_deref(),
+            Some(
+                "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue."
+            )
+        );
     }
 
     #[tokio::test]
@@ -627,15 +633,99 @@ mod tests {
                 subject_id: "session_1".into(),
                 currency: "usd".into(),
                 limit: 10.0,
-                soft_limit: None,
+                soft_limit: Some(8.0),
+                period: None,
+                metadata: None,
+            })
+            .await
+            .unwrap();
+        db.create_budget_ledger_entry(CreateBudgetLedgerRow {
+            budget_id: budget.id,
+            amount: 8.0,
+            meter_source: "llm_tokens".into(),
+            ref_type: None,
+            ref_id: None,
+            session_id: None,
+            description: None,
+        })
+        .await
+        .unwrap();
+        db.set_budget_status(budget.id, "paused").await.unwrap();
+        let result = svc.check_budgets_for_session(1, "session_1", None).await;
+        assert!(result.should_pause());
+        assert_eq!(
+            result.message.as_deref(),
+            Some(
+                "Budget paused. 8.00 usd spent reached the 8.00 usd soft limit. Increase or resume the budget to continue."
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_budgets_manually_paused_budget_uses_neutral_message() {
+        let (svc, db) = make_service();
+        let budget = db
+            .create_budget(CreateBudgetRow {
+                org_id: 1,
+                subject_type: "session".into(),
+                subject_id: "session_1".into(),
+                currency: "usd".into(),
+                limit: 10.0,
+                soft_limit: Some(8.0),
                 period: None,
                 metadata: None,
             })
             .await
             .unwrap();
         db.set_budget_status(budget.id, "paused").await.unwrap();
+
         let result = svc.check_budgets_for_session(1, "session_1", None).await;
+
         assert!(result.should_pause());
+        assert_eq!(
+            result.message.as_deref(),
+            Some("Budget paused with 0.00 usd spent. Increase or resume the budget to continue.")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_budgets_paused_budget_above_soft_limit_uses_exceeded_message() {
+        let (svc, db) = make_service();
+        let budget = db
+            .create_budget(CreateBudgetRow {
+                org_id: 1,
+                subject_type: "session".into(),
+                subject_id: "session_1".into(),
+                currency: "usd".into(),
+                limit: 10.0,
+                soft_limit: Some(8.0),
+                period: None,
+                metadata: None,
+            })
+            .await
+            .unwrap();
+        db.create_budget_ledger_entry(CreateBudgetLedgerRow {
+            budget_id: budget.id,
+            amount: 9.0,
+            meter_source: "llm_tokens".into(),
+            ref_type: None,
+            ref_id: None,
+            session_id: None,
+            description: None,
+        })
+        .await
+        .unwrap();
+        db.set_budget_status(budget.id, "paused").await.unwrap();
+
+        let result = svc.check_budgets_for_session(1, "session_1", None).await;
+
+        assert!(result.should_pause());
+        assert_eq!(
+            result.message.as_deref(),
+            Some(
+                "Budget paused. 9.00 usd spent exceeded the 8.00 usd soft limit. Increase or resume the budget to continue."
+            )
+        );
     }
 
     #[tokio::test]

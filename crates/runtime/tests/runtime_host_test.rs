@@ -18,8 +18,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, CapabilityRegistry, Harness, HarnessStatus, InputMessage,
-    Session, SessionStatus, ToolCall, ToolRegistry,
+    Agent, AgentCapabilityConfig, CapabilityRegistry, EventData, Harness, HarnessStatus,
+    InputMessage, Session, SessionStatus, ToolCall, ToolRegistry,
 };
 use everruns_runtime::{
     InMemorySessionFileStore, RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle,
@@ -641,6 +641,55 @@ async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending
         }
         other => panic!("expected ScheduleReason, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn plan_next_host_turn_preserves_reason_failure_message() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+
+    let input = turn_state(session_id, harness_id);
+    let output = serde_json::to_value(ReasonResult {
+        success: false,
+        text: "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue."
+            .into(),
+        tool_calls: vec![],
+        has_tool_calls: false,
+        tool_definitions: vec![],
+        max_iterations: 8,
+        error: Some("Budget exhausted".into()),
+        usage: None,
+        response_id: None,
+        locale: None,
+        network_access: None,
+    })
+    .unwrap();
+
+    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+        .await
+        .unwrap();
+
+    assert!(matches!(plan, RuntimeTurnPlan::Complete { .. }));
+
+    let events = adapter.event_emitter.events().await;
+    let turn_failed = events
+        .into_iter()
+        .find_map(|event| match event.data {
+            EventData::TurnFailed(data) => Some(data),
+            _ => None,
+        })
+        .expect("turn.failed event emitted");
+
+    assert_eq!(
+        turn_failed.error,
+        "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue."
+    );
 }
 
 #[tokio::test]
