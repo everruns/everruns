@@ -3,6 +3,59 @@
 
 use super::*;
 
+const COMMAND_API_VERSION_V1: &str = "v1";
+const MAX_EXECUTE_COMMAND_PARAMS_BYTES: usize = 1024 * 1024;
+
+fn command_error_kind(error: &crate::domains::common::CommandError) -> i32 {
+    match error {
+        crate::domains::common::CommandError::BadRequest(_) => 1,
+        crate::domains::common::CommandError::Forbidden(_) => 2,
+        crate::domains::common::CommandError::NotFound(message)
+            if message.starts_with("Unknown command:") =>
+        {
+            1
+        }
+        crate::domains::common::CommandError::NotFound(_) => 3,
+        crate::domains::common::CommandError::Conflict(_) => 4,
+        crate::domains::common::CommandError::Internal(_) => 5,
+    }
+}
+
+fn command_error_to_proto(error: crate::domains::common::CommandError) -> ProtoCommandError {
+    let message = match &error {
+        crate::domains::common::CommandError::Internal(inner) => inner.to_string(),
+        _ => error.to_string(),
+    };
+
+    ProtoCommandError {
+        kind: command_error_kind(&error),
+        message,
+    }
+}
+
+fn command_schema_hash(
+    meta: &crate::domains::common::CommandMeta,
+    positional_arg: Option<&str>,
+) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(meta.name.as_bytes());
+    hasher.update([0]);
+    hasher.update(meta.category.as_bytes());
+    hasher.update([0]);
+    hasher.update(meta.description.as_bytes());
+    hasher.update([0]);
+    hasher.update(meta.method.as_bytes());
+    hasher.update([0]);
+    hasher.update(meta.path.as_bytes());
+    hasher.update([0]);
+    if let Some(positional_arg) = positional_arg {
+        hasher.update(positional_arg.as_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
 #[tonic::async_trait]
 impl WorkerService for WorkerServiceImpl {
     // ========================================================================
@@ -3041,6 +3094,84 @@ impl WorkerService for WorkerServiceImpl {
     // ========================================================================
     // Platform management operations
     // ========================================================================
+
+    async fn execute_command(
+        &self,
+        request: Request<ExecuteCommandRequest>,
+    ) -> Result<Response<ExecuteCommandResponse>, Status> {
+        let req = request.into_inner();
+
+        if req.api_version != COMMAND_API_VERSION_V1 {
+            return Err(Status::invalid_argument(format!(
+                "Unsupported command api_version: {}",
+                req.api_version
+            )));
+        }
+
+        if req.params_json.len() > MAX_EXECUTE_COMMAND_PARAMS_BYTES {
+            return Err(Status::resource_exhausted(format!(
+                "Command params payload too large: size exceeds {} byte limit",
+                MAX_EXECUTE_COMMAND_PARAMS_BYTES
+            )));
+        }
+
+        let params = if req.params_json.is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::from_slice::<serde_json::Value>(&req.params_json)
+                .map_err(|e| Status::invalid_argument(format!("Invalid params_json: {e}")))?
+        };
+
+        let Some(_) = params.as_object() else {
+            return Err(Status::invalid_argument(
+                "Command params must be a JSON object",
+            ));
+        };
+
+        let ctx = self.domain_ctx(req.org_id);
+        let response = match crate::domains::common::dispatch(&req.name, params, &ctx).await {
+            Ok(ok_json) => ExecuteCommandResponse {
+                result: Some(proto::execute_command_response::Result::OkJson(
+                    ok_json.into_bytes(),
+                )),
+            },
+            Err(error) => ExecuteCommandResponse {
+                result: Some(proto::execute_command_response::Result::Error(
+                    command_error_to_proto(error),
+                )),
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn list_commands(
+        &self,
+        _request: Request<ListCommandsRequest>,
+    ) -> Result<Response<ListCommandsResponse>, Status> {
+        let mut commands: Vec<CommandCatalogEntry> =
+            inventory::iter::<crate::domains::common::CommandDescriptor>
+                .into_iter()
+                .map(|desc| {
+                    let meta = (desc.meta)();
+                    let positional_arg = (desc.positional_arg)();
+                    CommandCatalogEntry {
+                        name: meta.name.to_string(),
+                        api_version: COMMAND_API_VERSION_V1.to_string(),
+                        category: meta.category.to_string(),
+                        description: meta.description.to_string(),
+                        method: meta.method.to_string(),
+                        path: meta.path.to_string(),
+                        schema_hash: command_schema_hash(&meta, positional_arg),
+                        positional_arg: positional_arg.map(str::to_string),
+                    }
+                })
+                .collect();
+
+        commands.sort_by(|a, b| a.name.cmp(&b.name));
+
+        Ok(Response::new(ListCommandsResponse { commands }))
+    }
 
     async fn platform_list_harnesses(
         &self,

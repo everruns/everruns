@@ -237,6 +237,28 @@ pub async fn dispatch(name: &str, params: Value, ctx: &Ctx) -> Result<String, Co
 }
 ```
 
+## gRPC Command Transport
+
+gRPC workers execute inventory-registered management CRUD through the internal
+`ExecuteCommand` RPC instead of one bespoke RPC per command. This keeps the
+domain command registry as the single entry point across HTTP, MCP, and gRPC.
+
+`ExecuteCommand` contract:
+
+- `name` identifies the inventory command (for example `create_agent`)
+- `api_version` is required and currently fixed at `v1`
+- `params_json` is a UTF-8 JSON object payload with a 1 MiB limit
+- `org_id` scopes execution through `Ctx`
+- success returns serialized JSON bytes for the command output
+- domain failures return typed command errors (`bad_request`, `forbidden`,
+  `not_found`, `conflict`, `internal`) rather than bespoke response structs
+
+Workers can also call `ListCommands` to discover the current command catalog.
+Each entry mirrors `CommandMeta`, includes `positional_arg` when present, and
+publishes a `schema_hash` derived from command metadata plus positional-arg
+shape. That hash is a drift detector for transport consumers; a future
+non-backward-compatible command contract change should bump `api_version`.
+
 ## Migration Strategy
 
 Domains are migrated incrementally. During migration, both the old service and

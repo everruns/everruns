@@ -36,6 +36,14 @@ use uuid::Uuid;
 
 use crate::grpc_durable_store::GrpcClientAuth;
 
+const COMMAND_API_VERSION_V1: &str = "v1";
+
+#[derive(Debug, serde::Deserialize)]
+struct CommandPage<T> {
+    data: Vec<T>,
+    total: u32,
+}
+
 /// Map a tonic gRPC status to the appropriate AgentLoopError variant.
 ///
 /// Preserves the semantic meaning of gRPC status codes so that callers
@@ -81,6 +89,23 @@ fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
 /// Create a store error for issues in gRPC responses (e.g., missing fields).
 fn grpc_missing_field(field: &str) -> AgentLoopError {
     AgentLoopError::store(format!("gRPC response error: {field}"))
+}
+
+fn grpc_command_error_to_error(error: proto::CommandError) -> AgentLoopError {
+    match error.kind {
+        1 => AgentLoopError::config(error.message),
+        2 => AgentLoopError::config(format!("Permission denied: {}", error.message)),
+        3 => AgentLoopError::store(format!("Not found: {}", error.message)),
+        4 => AgentLoopError::store(format!("Conflict: {}", error.message)),
+        _ => AgentLoopError::store(error.message),
+    }
+}
+
+fn capability_refs_to_configs(capabilities: &[String]) -> Vec<serde_json::Value> {
+    capabilities
+        .iter()
+        .map(|capability| serde_json::json!({ "ref": capability, "config": {} }))
+        .collect()
 }
 
 /// Fetch image binary from a presigned URL and return as base64-encoded ResolvedImage.
@@ -460,6 +485,72 @@ pub struct GrpcOrgAdapter {
 impl GrpcOrgAdapter {
     pub fn new(client: GrpcClient, org_id: i64) -> Self {
         Self { client, org_id }
+    }
+
+    async fn execute_platform_command_raw(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+    ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .execute_command(proto::ExecuteCommandRequest {
+                name: name.to_string(),
+                api_version: COMMAND_API_VERSION_V1.to_string(),
+                params_json: serde_json::to_vec(&params).map_err(|e| {
+                    AgentLoopError::store(format!("JSON serialization failed: {}", e))
+                })?,
+                org_id: self.org_id,
+                user_id: None,
+                idempotency_key: None,
+                metadata: Default::default(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+
+        let result = response
+            .result
+            .ok_or_else(|| grpc_missing_field("No command result in response"))?;
+
+        match result {
+            proto::execute_command_response::Result::OkJson(ok_json) => {
+                let value = serde_json::from_slice(&ok_json).map_err(|e| {
+                    AgentLoopError::store(format!("Failed to decode command response: {}", e))
+                })?;
+                Ok(Ok(value))
+            }
+            proto::execute_command_response::Result::Error(error) => Ok(Err(error)),
+        }
+    }
+
+    async fn execute_platform_command<T>(&self, name: &str, params: serde_json::Value) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match self.execute_platform_command_raw(name, params).await? {
+            Ok(value) => serde_json::from_value(value).map_err(|e| {
+                AgentLoopError::store(format!("Failed to parse command response: {}", e))
+            }),
+            Err(error) => Err(grpc_command_error_to_error(error)),
+        }
+    }
+
+    async fn execute_platform_lookup<T>(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+    ) -> Result<Option<T>>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match self.execute_platform_command_raw(name, params).await? {
+            Ok(value) => serde_json::from_value(value).map(Some).map_err(|e| {
+                AgentLoopError::store(format!("Failed to parse command response: {}", e))
+            }),
+            Err(error) if error.kind == 3 => Ok(None),
+            Err(error) => Err(grpc_command_error_to_error(error)),
+        }
     }
 }
 
@@ -2259,43 +2350,13 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
     // =========================================================================
 
     async fn list_harnesses(&self) -> Result<Vec<Harness>> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_list_harnesses(proto::PlatformListHarnessesRequest {
-                org_id: self.org_id,
-            })
+        self.execute_platform_command("list_harnesses", serde_json::json!({}))
             .await
-            .map_err(grpc_status_to_error)?;
-
-        response
-            .into_inner()
-            .harnesses
-            .into_iter()
-            .map(|h| {
-                everruns_internal_protocol::proto_harness_to_schema(h)
-                    .map_err(|e| AgentLoopError::store(format!("Harness conversion failed: {}", e)))
-            })
-            .collect()
     }
 
     async fn get_harness(&self, id: everruns_core::HarnessId) -> Result<Option<Harness>> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .get_harness(proto::GetHarnessRequest {
-                harness_id: Some(uuid_to_proto(id.uuid())),
-                org_id: self.org_id,
-            })
+        self.execute_platform_lookup("get_harness", serde_json::json!({ "id": id.to_string() }))
             .await
-            .map_err(grpc_status_to_error)?;
-
-        match response.into_inner().harness {
-            Some(h) => Ok(Some(
-                everruns_internal_protocol::proto_harness_to_schema(h).map_err(|e| {
-                    AgentLoopError::store(format!("Harness conversion failed: {}", e))
-                })?,
-            )),
-            None => Ok(None),
-        }
     }
 
     async fn create_harness(
@@ -2307,27 +2368,18 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         parent_harness_id: Option<everruns_core::HarnessId>,
         capabilities: &[String],
     ) -> Result<Harness> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_create_harness(proto::PlatformCreateHarnessRequest {
-                org_id: self.org_id,
-                name: name.to_string(),
-                display_name: display_name.map(|s| s.to_string()),
-                description: description.map(|s| s.to_string()),
-                system_prompt: system_prompt.to_string(),
-                capabilities: capabilities.to_vec(),
-                parent_harness_id: parent_harness_id.map(|id| uuid_to_proto(id.uuid())),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        let harness = response
-            .into_inner()
-            .harness
-            .ok_or_else(|| grpc_missing_field("No harness in create response"))?;
-
-        everruns_internal_protocol::proto_harness_to_schema(harness)
-            .map_err(|e| AgentLoopError::store(format!("Harness conversion failed: {}", e)))
+        self.execute_platform_command(
+            "create_harness",
+            serde_json::json!({
+                "name": name,
+                "display_name": display_name,
+                "description": description,
+                "system_prompt": system_prompt,
+                "parent_harness_id": parent_harness_id.map(|id| id.to_string()),
+                "capabilities": capability_refs_to_configs(capabilities),
+            }),
+        )
+        .await
     }
 
     async fn update_harness(
@@ -2339,42 +2391,58 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         system_prompt: Option<&str>,
         parent_harness_id: Option<Option<everruns_core::HarnessId>>,
     ) -> Result<Harness> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_update_harness(proto::PlatformUpdateHarnessRequest {
-                org_id: self.org_id,
-                harness_id: Some(uuid_to_proto(id.uuid())),
-                name: name.map(|s| s.to_string()),
-                display_name: display_name.map(|s| s.to_string()),
-                description: description.map(|s| s.to_string()),
-                system_prompt: system_prompt.map(|s| s.to_string()),
-                parent_harness_id: parent_harness_id
-                    .flatten()
-                    .map(|parent_id| uuid_to_proto(parent_id.uuid())),
-                clear_parent_harness_id: parent_harness_id
-                    .and_then(|value| value.is_none().then_some(true)),
-            })
+        let mut params = serde_json::Map::from_iter([(
+            "id".to_string(),
+            serde_json::Value::String(id.to_string()),
+        )]);
+        if let Some(name) = name {
+            params.insert(
+                "name".to_string(),
+                serde_json::Value::String(name.to_string()),
+            );
+        }
+        if let Some(display_name) = display_name {
+            params.insert(
+                "display_name".to_string(),
+                serde_json::Value::String(display_name.to_string()),
+            );
+        }
+        if let Some(description) = description {
+            params.insert(
+                "description".to_string(),
+                serde_json::Value::String(description.to_string()),
+            );
+        }
+        if let Some(system_prompt) = system_prompt {
+            params.insert(
+                "system_prompt".to_string(),
+                serde_json::Value::String(system_prompt.to_string()),
+            );
+        }
+        match parent_harness_id {
+            Some(Some(parent_id)) => {
+                params.insert(
+                    "parent_harness_id".to_string(),
+                    serde_json::Value::String(parent_id.to_string()),
+                );
+            }
+            Some(None) => {
+                params.insert("parent_harness_id".to_string(), serde_json::Value::Null);
+            }
+            None => {}
+        }
+
+        self.execute_platform_command("update_harness", serde_json::Value::Object(params))
             .await
-            .map_err(grpc_status_to_error)?;
-
-        let harness = response
-            .into_inner()
-            .harness
-            .ok_or_else(|| grpc_missing_field("No harness in update response"))?;
-
-        everruns_internal_protocol::proto_harness_to_schema(harness)
-            .map_err(|e| AgentLoopError::store(format!("Harness conversion failed: {}", e)))
     }
 
     async fn delete_harness(&self, id: everruns_core::HarnessId) -> Result<()> {
-        let mut client = self.client.inner.lock().await;
-        client
-            .platform_delete_harness(proto::PlatformDeleteHarnessRequest {
-                org_id: self.org_id,
-                harness_id: Some(uuid_to_proto(id.uuid())),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
+        let _: serde_json::Value = self
+            .execute_platform_command(
+                "delete_harness",
+                serde_json::json!({ "id": id.to_string() }),
+            )
+            .await?;
         Ok(())
     }
 
@@ -2383,23 +2451,16 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         id: everruns_core::HarnessId,
         new_name: Option<&str>,
     ) -> Result<Harness> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_copy_harness(proto::PlatformCopyHarnessRequest {
-                org_id: self.org_id,
-                harness_id: Some(uuid_to_proto(id.uuid())),
-                new_name: new_name.map(|s| s.to_string()),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
+        let harness: Harness = self
+            .execute_platform_command("copy_harness", serde_json::json!({ "id": id.to_string() }))
+            .await?;
 
-        let harness = response
-            .into_inner()
-            .harness
-            .ok_or_else(|| grpc_missing_field("No harness in copy response"))?;
-
-        everruns_internal_protocol::proto_harness_to_schema(harness)
-            .map_err(|e| AgentLoopError::store(format!("Harness conversion failed: {}", e)))
+        if let Some(new_name) = new_name {
+            self.update_harness(harness.id, Some(new_name), None, None, None, None)
+                .await
+        } else {
+            Ok(harness)
+        }
     }
 
     // =========================================================================
@@ -2407,43 +2468,34 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
     // =========================================================================
 
     async fn list_agents(&self) -> Result<Vec<Agent>> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_list_agents(proto::PlatformListAgentsRequest {
-                org_id: self.org_id,
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
+        let mut agents = Vec::new();
+        let mut offset = 0usize;
+        let limit = 100usize;
 
-        response
-            .into_inner()
-            .agents
-            .into_iter()
-            .map(|a| {
-                everruns_internal_protocol::proto_agent_to_schema(a)
-                    .map_err(|e| AgentLoopError::store(format!("Agent conversion failed: {}", e)))
-            })
-            .collect()
+        loop {
+            let page: CommandPage<Agent> = self
+                .execute_platform_command(
+                    "list_agents",
+                    serde_json::json!({ "offset": offset, "limit": limit }),
+                )
+                .await?;
+            let page_len = page.data.len();
+            let total = page.total as usize;
+            agents.extend(page.data);
+
+            if page_len == 0 || agents.len() >= total {
+                break;
+            }
+
+            offset = agents.len();
+        }
+
+        Ok(agents)
     }
 
     async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<Agent>> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .get_agent(proto::GetAgentRequest {
-                agent_id: Some(uuid_to_proto(id.uuid())),
-                org_id: self.org_id,
-            })
+        self.execute_platform_lookup("get_agent", serde_json::json!({ "id": id.to_string() }))
             .await
-            .map_err(grpc_status_to_error)?;
-
-        match response.into_inner().agent {
-            Some(a) => Ok(Some(
-                everruns_internal_protocol::proto_agent_to_schema(a).map_err(|e| {
-                    AgentLoopError::store(format!("Agent conversion failed: {}", e))
-                })?,
-            )),
-            None => Ok(None),
-        }
     }
 
     async fn create_agent(
@@ -2454,26 +2506,17 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         system_prompt: &str,
         capabilities: &[String],
     ) -> Result<Agent> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_create_agent(proto::PlatformCreateAgentRequest {
-                org_id: self.org_id,
-                name: name.to_string(),
-                description: description.map(|s| s.to_string()),
-                system_prompt: system_prompt.to_string(),
-                capabilities: capabilities.to_vec(),
-                display_name: display_name.map(|s| s.to_string()),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        let agent = response
-            .into_inner()
-            .agent
-            .ok_or_else(|| grpc_missing_field("No agent in create response"))?;
-
-        everruns_internal_protocol::proto_agent_to_schema(agent)
-            .map_err(|e| AgentLoopError::store(format!("Agent conversion failed: {}", e)))
+        self.execute_platform_command(
+            "create_agent",
+            serde_json::json!({
+                "name": name,
+                "display_name": display_name,
+                "description": description,
+                "system_prompt": system_prompt,
+                "capabilities": capability_refs_to_configs(capabilities),
+            }),
+        )
+        .await
     }
 
     async fn update_agent(
@@ -2484,37 +2527,43 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         description: Option<&str>,
         system_prompt: Option<&str>,
     ) -> Result<Agent> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_update_agent(proto::PlatformUpdateAgentRequest {
-                org_id: self.org_id,
-                agent_id: Some(uuid_to_proto(id.uuid())),
-                name: name.map(|s| s.to_string()),
-                description: description.map(|s| s.to_string()),
-                system_prompt: system_prompt.map(|s| s.to_string()),
-                display_name: display_name.map(|s| s.to_string()),
-            })
+        let mut params = serde_json::Map::from_iter([(
+            "id".to_string(),
+            serde_json::Value::String(id.to_string()),
+        )]);
+        if let Some(name) = name {
+            params.insert(
+                "name".to_string(),
+                serde_json::Value::String(name.to_string()),
+            );
+        }
+        if let Some(display_name) = display_name {
+            params.insert(
+                "display_name".to_string(),
+                serde_json::Value::String(display_name.to_string()),
+            );
+        }
+        if let Some(description) = description {
+            params.insert(
+                "description".to_string(),
+                serde_json::Value::String(description.to_string()),
+            );
+        }
+        if let Some(system_prompt) = system_prompt {
+            params.insert(
+                "system_prompt".to_string(),
+                serde_json::Value::String(system_prompt.to_string()),
+            );
+        }
+
+        self.execute_platform_command("update_agent", serde_json::Value::Object(params))
             .await
-            .map_err(grpc_status_to_error)?;
-
-        let agent = response
-            .into_inner()
-            .agent
-            .ok_or_else(|| grpc_missing_field("No agent in update response"))?;
-
-        everruns_internal_protocol::proto_agent_to_schema(agent)
-            .map_err(|e| AgentLoopError::store(format!("Agent conversion failed: {}", e)))
     }
 
     async fn delete_agent(&self, id: AgentId) -> Result<()> {
-        let mut client = self.client.inner.lock().await;
-        client
-            .platform_delete_agent(proto::PlatformDeleteAgentRequest {
-                org_id: self.org_id,
-                agent_id: Some(uuid_to_proto(id.uuid())),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
+        let _: serde_json::Value = self
+            .execute_platform_command("delete_agent", serde_json::json!({ "id": id.to_string() }))
+            .await?;
         Ok(())
     }
 
@@ -2687,43 +2736,19 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         &self,
         search: Option<&str>,
     ) -> Result<Vec<everruns_core::CapabilityInfo>> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_list_capabilities(proto::PlatformListCapabilitiesRequest {
-                org_id: self.org_id,
-                search: search.map(|s| s.to_string()),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
+        let mut params = serde_json::Map::new();
+        params.insert("limit".to_string(), serde_json::json!(200));
+        if let Some(search) = search {
+            params.insert(
+                "search".to_string(),
+                serde_json::Value::String(search.to_string()),
+            );
+        }
 
-        let caps = response
-            .into_inner()
-            .capabilities
-            .into_iter()
-            .map(|c| everruns_core::CapabilityInfo {
-                id: everruns_core::CapabilityId::new(&c.id),
-                name: c.name,
-                description: c.description,
-                status: if c.status == "available" {
-                    everruns_core::CapabilityStatus::Available
-                } else if c.status == "coming_soon" {
-                    everruns_core::CapabilityStatus::ComingSoon
-                } else {
-                    everruns_core::CapabilityStatus::Deprecated
-                },
-                icon: c.icon,
-                category: c.category,
-                system_prompt: None,
-                tool_definitions: vec![], // Tool definitions not sent over gRPC (tool names suffice for listing)
-                is_mcp: c.is_mcp,
-                is_skill: c.is_skill,
-                dependencies: c.dependencies,
-                features: vec![],
-                risk_level: everruns_core::RiskLevel::Low,
-            })
-            .collect();
-
-        Ok(caps)
+        let page: CommandPage<everruns_core::CapabilityInfo> = self
+            .execute_platform_command("list_capabilities", serde_json::Value::Object(params))
+            .await?;
+        Ok(page.data)
     }
 
     // =========================================================================
@@ -3275,5 +3300,30 @@ mod tests {
         let err = grpc_missing_field("No session in response");
         assert!(matches!(err, AgentLoopError::MessageStore(_)));
         assert!(err.to_string().contains("No session in response"));
+    }
+
+    #[test]
+    fn test_capability_refs_to_configs_wraps_ids() {
+        let configs =
+            capability_refs_to_configs(&["session".to_string(), "platform_management".to_string()]);
+
+        assert_eq!(
+            configs,
+            vec![
+                serde_json::json!({ "ref": "session", "config": {} }),
+                serde_json::json!({ "ref": "platform_management", "config": {} }),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_grpc_command_error_to_error_not_found() {
+        let err = grpc_command_error_to_error(proto::CommandError {
+            kind: 3,
+            message: "Harness not found".into(),
+        });
+
+        assert!(matches!(err, AgentLoopError::MessageStore(_)));
+        assert!(err.to_string().contains("Harness not found"));
     }
 }

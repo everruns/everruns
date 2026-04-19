@@ -226,6 +226,10 @@ service WorkerService {
     // Used by the platform_management capability tools to manage org-wide entities
     // via gRPC workers (mirrors PlatformStore trait in core)
 
+    // Generic domain command transport for inventory-registered CRUD.
+    rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
+    rpc ListCommands(ListCommandsRequest) returns (ListCommandsResponse);
+
     // Harness operations
     rpc PlatformListHarnesses(PlatformListHarnessesRequest) returns (PlatformListHarnessesResponse);
     rpc PlatformCreateHarness(PlatformCreateHarnessRequest) returns (PlatformCreateHarnessResponse);
@@ -1516,6 +1520,56 @@ message PlatformMessage {
     string role = 1;
     string content = 2;
     Timestamp created_at = 3;
+}
+
+// === Generic domain command transport ===
+
+message ExecuteCommandRequest {
+    string name = 1;
+    string api_version = 2;
+    bytes params_json = 3;
+    int64 org_id = 4;
+    optional string user_id = 5;
+    optional string idempotency_key = 6;
+    map<string, string> metadata = 7;
+}
+
+message CommandError {
+    enum Kind {
+        KIND_UNSPECIFIED = 0;
+        KIND_BAD_REQUEST = 1;
+        KIND_FORBIDDEN = 2;
+        KIND_NOT_FOUND = 3;
+        KIND_CONFLICT = 4;
+        KIND_INTERNAL = 5;
+    }
+
+    Kind kind = 1;
+    string message = 2;
+}
+
+message ExecuteCommandResponse {
+    oneof result {
+        bytes ok_json = 1;
+        CommandError error = 2;
+    }
+}
+
+message ListCommandsRequest {}
+
+message CommandCatalogEntry {
+    string name = 1;
+    string api_version = 2;
+    string category = 3;
+    string description = 4;
+    string method = 5;
+    string path = 6;
+    string schema_hash = 7;
+    optional string positional_arg = 8;
+}
+
+message ListCommandsResponse {
+    repeated CommandCatalogEntry commands = 1;
 }
 
 // === Harness operations ===
