@@ -94,6 +94,8 @@ export default defineConfig({
       ],
       components: {
         Header: "./src/components/Header.astro",
+        TableOfContents: "./src/components/TableOfContents.astro",
+        MobileTableOfContents: "./src/components/MobileTableOfContents.astro",
       },
       customCss: ["./src/styles/custom.css"],
       plugins: [
@@ -172,8 +174,8 @@ export default defineConfig({
                 {
                   label: "Tutorials",
                   items: [
-                    { label: "Building Agents Using the SDK", slug: "tutorials/building-agents-using-sdk" },
-                    { label: "Run an Agent from a Notebook", slug: "tutorials/run-an-agent-from-a-notebook" },
+                    { label: "Build an Agent Guide", slug: "tutorials/building-agents-using-sdk" },
+                    { label: "Run an Agent", slug: "tutorials/run-an-agent" },
                   ],
                 },
               ],

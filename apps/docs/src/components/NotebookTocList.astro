@@ -1,0 +1,60 @@
+---
+import type { NotebookTocItem } from "./notebook-manifest";
+
+interface Props {
+  toc: NotebookTocItem[];
+  depth?: number;
+  isMobile?: boolean;
+}
+
+const { toc, isMobile = false, depth = 0 } = Astro.props;
+---
+
+<ul class:list={{ isMobile }}>
+  {
+    toc.map((heading) => (
+      <li>
+        <a href={"#" + heading.slug}>
+          <span>{heading.text}</span>
+        </a>
+        {heading.children.length > 0 && (
+          <Astro.self toc={heading.children} depth={depth + 1} isMobile={isMobile} />
+        )}
+      </li>
+    ))
+  }
+</ul>
+
+<style define:vars={{ depth }}>
+  ul {
+    padding: 0;
+    list-style: none;
+  }
+
+  a {
+    --pad-inline: 0.5rem;
+    display: block;
+    border-radius: 0.25rem;
+    padding-block: 0.25rem;
+    padding-inline: calc(1rem * var(--depth) + var(--pad-inline)) var(--pad-inline);
+    line-height: 1.25;
+  }
+
+  .isMobile a {
+    --pad-inline: 1rem;
+    display: flex;
+    justify-content: space-between;
+    gap: var(--pad-inline);
+    border-top: 1px solid var(--sl-color-gray-6);
+    border-radius: 0;
+    padding-block: 0.5rem;
+    color: var(--sl-color-text);
+    font-size: var(--sl-text-sm);
+    text-decoration: none;
+    outline-offset: var(--sl-outline-offset-inside);
+  }
+
+  .isMobile:first-child > li:first-child > a {
+    border-top: 0;
+  }
+</style>
