@@ -183,6 +183,8 @@ jobs:
       - name: Run pure unit tests
         run: |
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini -p everruns-internal-protocol -p everruns-core --lib --all-features
+          cargo test -p everruns-runtime --test in_process_runtime_test --test runtime_host_test -- --test-threads=1
+          cargo test -p everruns-cli --test auth_integration_test --test chat_integration_test --test files_integration_test -- --test-threads=1
           # Do not pass --all-features to integration crates: it enables their *-live-tests
           # features, which fail closed without real credentials. Live tests run in their
           # own dedicated jobs (e.g. `daytona-live-test`) that provide Doppler secrets.
@@ -385,6 +387,12 @@ jobs:
 
       - name: Run durable integration tests
         run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --features postgres-tests -- --test-threads=1
+
+      # `agent_reliability_test` was audited for EVE-349 but still fails on a
+      # clean PostgreSQL-backed run; keep it out of required CI until its
+      # restart/reclaim scenarios are stabilized.
+      - name: Run durable failpoint tests
+        run: cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1
 
       - name: Install Doppler CLI
         if: env.DOPPLER_TOKEN != ''

@@ -228,6 +228,18 @@ This spec does not require runtime to own:
 
 Those remain separate concerns outside the runtime host orchestration contract.
 
+## Validation
+
+The in-process runtime contract is regression-tested in CI with the pure Rust
+test binaries in `crates/runtime/tests/`.
+
+- `crates/runtime/tests/in_process_runtime_test.rs` proves embedded runtimes
+  can execute turns, persist message history, seed files, and emit the shared
+  event shapes without PostgreSQL or worker infrastructure.
+- `crates/runtime/tests/runtime_host_test.rs` proves the reusable host adapter
+  contract drives `input -> reason -> act` planning and lifecycle state changes
+  for server-backed or durable hosts.
+
 ## Source Index
 
 - `crates/runtime/src/lib.rs`
