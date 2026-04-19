@@ -48,16 +48,18 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        // Use older chromium that works in restricted environments
         launchOptions: {
+          // Allow overriding chromium for restricted sandbox environments.
           executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH,
+          // --single-process is intentionally omitted: it causes the browser
+          // context to be torn down mid-test on modern chromium, surfacing as
+          // flaky "Target page, context or browser has been closed" errors.
           args: [
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-gpu",
             "--disable-software-rasterizer",
             "--disable-dev-shm-usage",
-            "--single-process",
           ],
         },
       },
