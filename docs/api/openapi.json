@@ -2887,6 +2887,15 @@
             "example": "agent_01933b5a00007000800000000000001"
           },
           {
+            "name": "owned_by_me",
+            "in": "query",
+            "description": "Filter to sessions created by the current user.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "search",
             "in": "query",
             "description": "Search by title (case-insensitive substring match).",
