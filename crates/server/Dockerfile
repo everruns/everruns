@@ -3,7 +3,7 @@
 # ============================================================================
 # Stage 1: Chef - Prepare cargo-chef for dependency caching
 # ============================================================================
-FROM rust:1.92-slim AS chef
+FROM rust:1.95-slim AS chef
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
