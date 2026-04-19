@@ -9,6 +9,7 @@ use super::types::CapabilityInfo;
 use crate::domains::common::*;
 use everruns_core::CapabilityId;
 use serde::Deserialize;
+use utoipa::ToSchema;
 
 // Capabilities are a bounded set (~30-50 items), so default to showing all.
 const DEFAULT_LIMIT: u32 = 100;
@@ -19,7 +20,7 @@ const MAX_LIMIT: u32 = 200;
 // ============================================================================
 
 /// List available capabilities with optional search and pagination.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListCapabilities {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
@@ -78,7 +79,7 @@ inventory::submit! { CommandDescriptor::of::<ListCapabilities>() }
 // ============================================================================
 
 /// Get a specific capability by ID.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GetCapability {
     pub id: String,
 }

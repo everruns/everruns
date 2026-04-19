@@ -10,6 +10,7 @@ use crate::domains::common::*;
 use chrono::{DateTime, Utc};
 use everruns_core::Policy;
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 // ============================================================================
@@ -17,7 +18,7 @@ use uuid::Uuid;
 // ============================================================================
 
 /// List audit logs for the caller's organization. Policy-gated read.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListAuditLogs {
     /// Max entries to return (default 50, max 200).
     pub limit: Option<i64>,

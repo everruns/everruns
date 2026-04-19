@@ -100,16 +100,9 @@ pub fn build_toolset(ctx: CatalogContext) -> ScriptingToolSet {
     builder.build()
 }
 
-/// Convert a domain CommandDescriptor to a bashkit ToolDef.
-///
-/// Domain commands don't carry param schemas (the request types own them via
-/// serde), so the schema is open: any JSON object accepted.
 fn command_descriptor_to_def(desc: &crate::domains::common::CommandDescriptor) -> ToolDef {
     let meta = (desc.meta)();
-    let schema = json!({
-        "type": "object",
-        "additionalProperties": true,
-    });
+    let schema = (desc.param_schema)();
     ToolDef::new(meta.name, meta.description)
         .with_schema(schema)
         .with_category(meta.category)
@@ -841,3 +834,30 @@ pub static CATALOG: &[Operation] = &[
         handler: |p, c| Box::pin(handlers::health_check(p, c)),
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inventory_command_defs_expose_structured_param_schemas() {
+        let desc = inventory::iter::<crate::domains::common::CommandDescriptor>
+            .into_iter()
+            .find(|desc| (desc.meta)().name == "create_agent")
+            .expect("create_agent command descriptor");
+
+        let def = command_descriptor_to_def(desc);
+        let properties = def
+            .input_schema
+            .get("properties")
+            .and_then(|value| value.as_object())
+            .expect("create_agent schema properties");
+
+        assert!(properties.contains_key("name"));
+        assert!(properties.contains_key("system_prompt"));
+        assert_ne!(
+            def.input_schema.get("additionalProperties"),
+            Some(&serde_json::Value::Bool(true))
+        );
+    }
+}

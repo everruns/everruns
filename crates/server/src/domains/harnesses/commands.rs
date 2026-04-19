@@ -12,6 +12,7 @@ use everruns_core::{
     merge_scoped_mcp_servers,
 };
 use serde::Deserialize;
+use utoipa::ToSchema;
 
 // ============================================================================
 // Input validation
@@ -99,6 +100,12 @@ async fn persist_capabilities(
 /// Create a new harness with a name, system prompt, and optional capabilities.
 #[derive(Debug, Deserialize)]
 pub struct CreateHarness(pub CreateHarnessRequest);
+
+impl CommandSchema for CreateHarness {
+    fn param_schema() -> serde_json::Value {
+        delegated_param_schema::<CreateHarnessRequest>()
+    }
+}
 
 impl Command for CreateHarness {
     type Output = Harness;
@@ -194,7 +201,7 @@ inventory::submit! { CommandDescriptor::of::<CreateHarness>() }
 // ============================================================================
 
 /// List harnesses. Supports search and include_archived.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListHarnesses {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -237,7 +244,7 @@ inventory::submit! { CommandDescriptor::of::<ListHarnesses>() }
 // ============================================================================
 
 /// Get a single harness by ID or name.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GetHarness {
     pub id: String,
 }
@@ -278,7 +285,7 @@ inventory::submit! { CommandDescriptor::of::<GetHarness>() }
 // ============================================================================
 
 /// Update a harness. Only provided fields are changed.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateHarnessCmd {
     pub id: String,
     #[serde(flatten)]
@@ -457,7 +464,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateHarnessCmd>() }
 // ============================================================================
 
 /// Archive a harness (soft delete).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteHarness {
     pub id: String,
 }
@@ -522,7 +529,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteHarness>() }
 // ============================================================================
 
 /// Permanently delete an archived harness.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyHarness {
     pub id: String,
 }
@@ -600,7 +607,7 @@ inventory::submit! { CommandDescriptor::of::<DestroyHarness>() }
 // ============================================================================
 
 /// Copy a harness. Generates a unique name ({name}-copy, -copy-2, etc.)
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CopyHarness {
     pub id: String,
 }
@@ -662,7 +669,7 @@ inventory::submit! { CommandDescriptor::of::<CopyHarness>() }
 // ============================================================================
 
 /// Preview the final harness shape with capabilities applied.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct PreviewHarness {
     pub system_prompt: Option<String>,
     #[serde(default)]
@@ -739,7 +746,7 @@ inventory::submit! { CommandDescriptor::of::<PreviewHarness>() }
 // ============================================================================
 
 /// Check whether a harness name is available.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CheckHarnessName {
     pub name: String,
     pub exclude_id: Option<String>,
