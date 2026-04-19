@@ -13,6 +13,7 @@ use crate::domains::common::*;
 use everruns_core::typed_id::McpServerId;
 use everruns_core::{McpServer, McpServerAuthMode, Policy, validate_safe_url};
 use serde::Deserialize;
+use utoipa::ToSchema;
 
 // ============================================================================
 // Input validation
@@ -58,6 +59,12 @@ fn encrypt_api_key(ctx: &Ctx, api_key: &str) -> Result<Vec<u8>, CommandError> {
 /// Create a new MCP server with a name, URL, and optional authentication.
 #[derive(Debug, Deserialize)]
 pub struct CreateMcpServer(pub CreateMcpServerRequest);
+
+impl CommandSchema for CreateMcpServer {
+    fn param_schema() -> serde_json::Value {
+        delegated_param_schema::<CreateMcpServerRequest>()
+    }
+}
 
 impl Command for CreateMcpServer {
     type Output = McpServer;
@@ -147,7 +154,7 @@ inventory::submit! { CommandDescriptor::of::<CreateMcpServer>() }
 // ============================================================================
 
 /// List MCP servers. Supports search and include_archived.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListMcpServers {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -189,7 +196,7 @@ inventory::submit! { CommandDescriptor::of::<ListMcpServers>() }
 // ============================================================================
 
 /// Get a single MCP server by ID.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GetMcpServer {
     pub id: String,
 }
@@ -235,7 +242,7 @@ inventory::submit! { CommandDescriptor::of::<GetMcpServer>() }
 // ============================================================================
 
 /// Update an MCP server. Only provided fields are changed.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateMcpServerCmd {
     pub id: String,
     #[serde(flatten)]
@@ -365,7 +372,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateMcpServerCmd>() }
 // ============================================================================
 
 /// Archive an MCP server (soft delete).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteMcpServer {
     pub id: String,
 }
@@ -418,7 +425,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteMcpServer>() }
 // ============================================================================
 
 /// Permanently delete an archived MCP server.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyMcpServer {
     pub id: String,
 }

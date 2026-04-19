@@ -12,6 +12,7 @@ use everruns_core::{
     Agent, AgentCapabilityConfig, InitialFile, OrgRole, Policy, ScopedMcpServers, ToolDefinition,
 };
 use serde::Deserialize;
+use utoipa::ToSchema;
 
 // ============================================================================
 // Input validation
@@ -113,6 +114,12 @@ async fn persist_capabilities(
 /// Create a new agent with a name, system prompt, and optional capabilities.
 #[derive(Debug, Deserialize)]
 pub struct CreateAgent(pub CreateAgentRequest);
+
+impl CommandSchema for CreateAgent {
+    fn param_schema() -> serde_json::Value {
+        delegated_param_schema::<CreateAgentRequest>()
+    }
+}
 
 impl Command for CreateAgent {
     type Output = Agent;
@@ -226,7 +233,7 @@ inventory::submit! { CommandDescriptor::of::<CreateAgent>() }
 // ============================================================================
 
 /// List agents. Supports search, include_archived, pagination.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListAgents {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -285,7 +292,7 @@ inventory::submit! { CommandDescriptor::of::<ListAgents>() }
 // ============================================================================
 
 /// Get a single agent by ID or name.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GetAgent {
     pub id: String,
 }
@@ -326,7 +333,7 @@ inventory::submit! { CommandDescriptor::of::<GetAgent>() }
 // ============================================================================
 
 /// Update an agent. Only provided fields are changed.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAgentCmd {
     pub id: String,
     #[serde(flatten)]
@@ -478,7 +485,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateAgentCmd>() }
 // ============================================================================
 
 /// Archive an agent (soft delete).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteAgent {
     pub id: String,
 }
@@ -533,7 +540,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteAgent>() }
 // ============================================================================
 
 /// Upsert agent — create or update by ID.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpsertAgent {
     pub id: String,
     #[serde(flatten)]
@@ -643,7 +650,7 @@ inventory::submit! { CommandDescriptor::of::<UpsertAgent>() }
 // ============================================================================
 
 /// Copy an agent. Generates a unique name ({name}-copy, -copy-2, etc.)
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CopyAgent {
     pub id: String,
 }
@@ -707,7 +714,7 @@ inventory::submit! { CommandDescriptor::of::<CopyAgent>() }
 // ============================================================================
 
 /// Get agent data for export.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ExportAgent {
     pub id: String,
 }
@@ -751,6 +758,12 @@ inventory::submit! { CommandDescriptor::of::<ExportAgent>() }
 #[derive(Debug, Deserialize)]
 pub struct ImportAgent(pub CreateAgentRequest);
 
+impl CommandSchema for ImportAgent {
+    fn param_schema() -> serde_json::Value {
+        delegated_param_schema::<CreateAgentRequest>()
+    }
+}
+
 impl Command for ImportAgent {
     type Output = Agent;
 
@@ -780,7 +793,7 @@ inventory::submit! { CommandDescriptor::of::<ImportAgent>() }
 // ============================================================================
 
 /// Preview the final agent shape with capabilities applied.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct PreviewAgent {
     pub system_prompt: Option<String>,
     #[serde(default)]
@@ -842,7 +855,7 @@ inventory::submit! { CommandDescriptor::of::<PreviewAgent>() }
 // ============================================================================
 
 /// Check whether an agent name is available.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CheckAgentName {
     pub name: String,
     pub exclude_id: Option<String>,
@@ -905,7 +918,7 @@ inventory::submit! { CommandDescriptor::of::<CheckAgentName>() }
 // ============================================================================
 
 /// Permanently delete an archived agent.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyAgent {
     pub id: String,
 }

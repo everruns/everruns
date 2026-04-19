@@ -16,6 +16,7 @@ use everruns_core::typed_id::{AgentId, AppChannelId, HarnessId};
 use everruns_core::{App, AppChannel, AppId, Policy};
 use everruns_durable::UpdateField;
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 // ============================================================================
@@ -77,6 +78,12 @@ async fn validate_agent_identity(
 /// Create a new app with an agent, harness, and initial channel.
 #[derive(Debug, Deserialize)]
 pub struct CreateApp(pub CreateAppRequest);
+
+impl CommandSchema for CreateApp {
+    fn param_schema() -> serde_json::Value {
+        delegated_param_schema::<CreateAppRequest>()
+    }
+}
 
 impl Command for CreateApp {
     type Output = App;
@@ -159,7 +166,7 @@ inventory::submit! { CommandDescriptor::of::<CreateApp>() }
 // ============================================================================
 
 /// List apps. Supports search and include_archived.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListApps {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -203,7 +210,7 @@ inventory::submit! { CommandDescriptor::of::<ListApps>() }
 // ============================================================================
 
 /// Get a single app by ID.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GetApp {
     pub id: String,
 }
@@ -250,7 +257,7 @@ inventory::submit! { CommandDescriptor::of::<GetApp>() }
 // ============================================================================
 
 /// Update an app. Only provided fields are changed.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAppCmd {
     pub id: String,
     #[serde(flatten)]
@@ -353,7 +360,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateAppCmd>() }
 // ============================================================================
 
 /// Archive an app (soft delete).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteApp {
     pub id: String,
 }
@@ -408,7 +415,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteApp>() }
 // ============================================================================
 
 /// Permanently delete an archived app.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyApp {
     pub id: String,
 }
@@ -469,7 +476,7 @@ inventory::submit! { CommandDescriptor::of::<DestroyApp>() }
 // ============================================================================
 
 /// Publish an app (start accepting requests).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct PublishApp {
     pub id: String,
 }
@@ -533,7 +540,7 @@ inventory::submit! { CommandDescriptor::of::<PublishApp>() }
 // ============================================================================
 
 /// Unpublish an app (stop accepting requests).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UnpublishApp {
     pub id: String,
 }
@@ -596,7 +603,7 @@ inventory::submit! { CommandDescriptor::of::<UnpublishApp>() }
 // ============================================================================
 
 /// Add a channel to an app.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AddChannel {
     pub app_id: String,
     #[serde(flatten)]
@@ -671,7 +678,7 @@ inventory::submit! { CommandDescriptor::of::<AddChannel>() }
 // ============================================================================
 
 /// Update a channel on an app.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateChannelCmd {
     pub app_id: String,
     pub channel_id: String,
@@ -763,7 +770,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateChannelCmd>() }
 // ============================================================================
 
 /// Remove a channel from an app.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteChannel {
     pub app_id: String,
     pub channel_id: String,

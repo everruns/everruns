@@ -13,6 +13,7 @@ use crate::domains::common::*;
 use everruns_core::{Policy, Skill, SkillContent, SkillFileEntry, SkillId, parse_skill_md};
 use serde::Deserialize;
 use std::collections::HashMap;
+use utoipa::ToSchema;
 
 // ============================================================================
 // CreateSkill
@@ -21,6 +22,12 @@ use std::collections::HashMap;
 /// Create a new skill from SKILL.md content.
 #[derive(Debug, Deserialize)]
 pub struct CreateSkill(pub CreateSkillRequest);
+
+impl CommandSchema for CreateSkill {
+    fn param_schema() -> serde_json::Value {
+        delegated_param_schema::<CreateSkillRequest>()
+    }
+}
 
 impl Command for CreateSkill {
     type Output = Skill;
@@ -107,7 +114,7 @@ inventory::submit! { CommandDescriptor::of::<CreateSkill>() }
 // ============================================================================
 
 /// List skills. Supports search and include_archived.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListSkills {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -148,7 +155,7 @@ inventory::submit! { CommandDescriptor::of::<ListSkills>() }
 // ============================================================================
 
 /// Get a single skill by ID.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSkill {
     pub id: String,
 }
@@ -199,7 +206,7 @@ inventory::submit! { CommandDescriptor::of::<GetSkill>() }
 // ============================================================================
 
 /// Get full skill content (SKILL.md + files).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSkillContent {
     pub id: String,
 }
@@ -295,7 +302,7 @@ inventory::submit! { CommandDescriptor::of::<GetSkillContent>() }
 // ============================================================================
 
 /// Update a skill. Only provided fields are changed.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateSkillCmd {
     pub id: String,
     #[serde(flatten)]
@@ -411,7 +418,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateSkillCmd>() }
 // ============================================================================
 
 /// Archive a skill (soft delete).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteSkill {
     pub id: String,
 }
@@ -467,7 +474,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteSkill>() }
 // ============================================================================
 
 /// Permanently delete an archived skill.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroySkill {
     pub id: String,
 }

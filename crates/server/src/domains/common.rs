@@ -8,9 +8,11 @@ use axum::Json;
 use axum::http::StatusCode;
 use everruns_core::{Caller, Policy, PolicyError};
 use serde::{Serialize, de::DeserializeOwned};
+use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 use crate::api::common::ErrorResponse;
 
@@ -171,7 +173,7 @@ impl Ctx {
 // Command trait
 // ============================================================================
 
-pub trait Command: DeserializeOwned + Send + 'static {
+pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
     type Output: Serialize + Send;
 
     /// Static metadata — drives MCP catalog generation.
@@ -191,8 +193,116 @@ pub trait Command: DeserializeOwned + Send + 'static {
         None
     }
 
+    /// JSON Schema for the command input surfaced in the MCP catalog.
+    fn param_schema() -> Value {
+        json_schema_for_command::<Self>()
+    }
+
     /// Execute the command. Validation + business logic + persistence.
     fn execute(self, ctx: &Ctx) -> impl Future<Output = Result<Self::Output, CommandError>> + Send;
+}
+
+pub trait CommandSchema {
+    fn param_schema() -> Value;
+}
+
+impl<T> CommandSchema for T
+where
+    T: ToSchema,
+{
+    fn param_schema() -> Value {
+        json_schema_for::<T>()
+    }
+}
+
+fn json_schema_for_command<T>() -> Value
+where
+    T: Command + CommandSchema,
+{
+    <T as CommandSchema>::param_schema()
+}
+
+pub fn delegated_param_schema<T>() -> Value
+where
+    T: ToSchema,
+{
+    json_schema_for::<T>()
+}
+
+fn json_schema_for<T>() -> Value
+where
+    T: ToSchema,
+{
+    let mut schema = match serde_json::to_value(T::schema()) {
+        Ok(schema) => schema,
+        Err(err) => {
+            tracing::warn!(
+                schema_type = std::any::type_name::<T>(),
+                error = %err,
+                "failed to serialize command schema; falling back to open object schema"
+            );
+            return open_object_schema();
+        }
+    };
+
+    rewrite_schema_refs(&mut schema);
+
+    let mut defs = serde_json::Map::new();
+    let mut refs = Vec::new();
+    T::schemas(&mut refs);
+    for (name, ref_or_schema) in refs {
+        let mut value = match serde_json::to_value(ref_or_schema) {
+            Ok(value) => value,
+            Err(err) => {
+                tracing::warn!(
+                    schema_type = std::any::type_name::<T>(),
+                    schema_name = %name,
+                    error = %err,
+                    "failed to serialize referenced schema; using open object schema in $defs"
+                );
+                open_object_schema()
+            }
+        };
+        rewrite_schema_refs(&mut value);
+        defs.insert(name, value);
+    }
+
+    if !defs.is_empty()
+        && let Some(obj) = schema.as_object_mut()
+    {
+        obj.insert("$defs".to_string(), Value::Object(defs));
+    }
+
+    schema
+}
+
+fn open_object_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": true,
+    })
+}
+
+fn rewrite_schema_refs(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(reference)) = map.get_mut("$ref")
+                && let Some(name) = reference.strip_prefix("#/components/schemas/")
+            {
+                *reference = format!("#/$defs/{name}");
+            }
+
+            for child in map.values_mut() {
+                rewrite_schema_refs(child);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                rewrite_schema_refs(item);
+            }
+        }
+        _ => {}
+    }
 }
 
 // ============================================================================
@@ -220,6 +330,7 @@ type DispatchFn =
 pub struct CommandDescriptor {
     pub meta: fn() -> CommandMeta,
     pub positional_arg: fn() -> Option<&'static str>,
+    pub param_schema: fn() -> Value,
     pub dispatch: DispatchFn,
 }
 
@@ -231,6 +342,7 @@ impl CommandDescriptor {
         Self {
             meta: C::meta,
             positional_arg: C::positional_arg,
+            param_schema: <C as Command>::param_schema,
             dispatch: dispatch_for::<C>,
         }
     }

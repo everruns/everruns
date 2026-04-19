@@ -12,6 +12,7 @@ use super::{AGENT_IDENTITY_DANGEROUS, AGENT_IDENTITY_MANAGE, AGENT_IDENTITY_VIEW
 use crate::domains::common::*;
 use everruns_core::{AgentIdentity, AgentIdentityId, Policy};
 use serde::Deserialize;
+use utoipa::ToSchema;
 
 // ============================================================================
 // CreateAgentIdentity
@@ -20,6 +21,12 @@ use serde::Deserialize;
 /// Create a new agent identity (virtual principal for unattended execution).
 #[derive(Debug, Deserialize)]
 pub struct CreateAgentIdentity(pub CreateAgentIdentityRequest);
+
+impl CommandSchema for CreateAgentIdentity {
+    fn param_schema() -> serde_json::Value {
+        delegated_param_schema::<CreateAgentIdentityRequest>()
+    }
+}
 
 impl Command for CreateAgentIdentity {
     type Output = AgentIdentity;
@@ -75,7 +82,7 @@ inventory::submit! { CommandDescriptor::of::<CreateAgentIdentity>() }
 // ============================================================================
 
 /// List agent identities. Supports search and include_archived.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListAgentIdentities {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -116,7 +123,7 @@ inventory::submit! { CommandDescriptor::of::<ListAgentIdentities>() }
 // ============================================================================
 
 /// Get a single agent identity by ID.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GetAgentIdentity {
     pub id: String,
 }
@@ -162,7 +169,7 @@ inventory::submit! { CommandDescriptor::of::<GetAgentIdentity>() }
 // ============================================================================
 
 /// Update an agent identity. Only provided fields are changed.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAgentIdentityCmd {
     pub id: String,
     #[serde(flatten)]
@@ -236,7 +243,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateAgentIdentityCmd>() }
 // ============================================================================
 
 /// Archive an agent identity (soft delete).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteAgentIdentity {
     pub id: String,
 }
@@ -289,7 +296,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteAgentIdentity>() }
 // ============================================================================
 
 /// Permanently delete an agent identity.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyAgentIdentity {
     pub id: String,
 }
