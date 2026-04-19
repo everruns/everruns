@@ -31,14 +31,14 @@ impl Drop for SandboxGuard {
         let region = self.region.clone();
         let Some(token) = std::env::var("DENO_DEPLOY_TOKEN")
             .ok()
-            .filter(|t| !t.is_empty())
+            .filter(|t| !t.trim().is_empty())
         else {
             eprintln!("[cleanup] No DENO_DEPLOY_TOKEN, cannot delete sandbox {sandbox_id}");
             return;
         };
         let org = std::env::var("DENO_DEPLOY_ORG")
             .ok()
-            .filter(|v| !v.is_empty());
+            .filter(|v| !v.trim().is_empty());
         let handle = std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().expect("cleanup runtime");
             rt.block_on(async move {
@@ -58,13 +58,13 @@ impl Drop for SandboxGuard {
 fn token() -> Option<String> {
     std::env::var("DENO_DEPLOY_TOKEN")
         .ok()
-        .filter(|t| !t.is_empty())
+        .filter(|t| !t.trim().is_empty())
 }
 
 fn org() -> Option<String> {
     std::env::var("DENO_DEPLOY_ORG")
         .ok()
-        .filter(|v| !v.is_empty())
+        .filter(|v| !v.trim().is_empty())
 }
 
 /// Require `DENO_DEPLOY_TOKEN` (plus `DENO_DEPLOY_ORG` for personal `ddp_...`

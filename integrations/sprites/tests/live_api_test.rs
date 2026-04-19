@@ -63,7 +63,7 @@ impl Drop for SpriteGuard {
 fn get_api_token() -> Option<String> {
     std::env::var("SPRITES_API_TOKEN")
         .ok()
-        .filter(|k| !k.is_empty())
+        .filter(|k| !k.trim().is_empty())
 }
 
 /// Require `SPRITES_API_TOKEN` or panic. Live tests fail closed so CI cannot

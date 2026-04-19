@@ -66,7 +66,7 @@ impl Drop for SandboxGuard {
 fn get_api_key() -> Option<String> {
     std::env::var("DAYTONA_API_KEY")
         .ok()
-        .filter(|k| !k.is_empty())
+        .filter(|k| !k.trim().is_empty())
 }
 
 /// Require `DAYTONA_API_KEY` or panic. Live tests fail closed so CI cannot
