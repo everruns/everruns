@@ -767,11 +767,11 @@ pub struct SendSignalRequest {
 )]
 pub async fn durable_config(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<AuthState>,
 ) -> Json<ResourceConfigResponse> {
     let caller = Caller::from(&org);
     let policies = evaluate_policies_with(
-        state.auth.permission_resolver.as_ref(),
+        state.permission_resolver.as_ref(),
         &caller,
         &[&DURABLE_VIEW, &DURABLE_MANAGE],
     );
@@ -3527,7 +3527,7 @@ mod tests {
         use crate::auth::middleware::{AuthError, AuthMethod, AuthUser};
         use crate::auth::routes::AuthConfigResponse;
         use async_trait::async_trait;
-        use axum::body::Body;
+        use axum::body::{Body, to_bytes};
         use axum::http::Request;
         use everruns_core::{OrgMembership, OrgRole};
         use tower::ServiceExt;
@@ -3625,7 +3625,7 @@ mod tests {
             .status()
         }
 
-        // --- Non-platform user gets 403 on read endpoints ---
+        // --- Non-platform user gets 403 on protected read endpoints ---
 
         #[tokio::test]
         async fn non_platform_user_cannot_get_health() {
@@ -3670,9 +3670,24 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn non_platform_user_cannot_read_durable_config() {
-            let status = get_with_auth(test_app(false), "/v1/durable/config").await;
-            assert_eq!(status, StatusCode::OK);
+        async fn non_platform_user_can_read_durable_config() {
+            let response = test_app(false)
+                .oneshot(
+                    Request::builder()
+                        .uri("/v1/durable/config")
+                        .header("Authorization", "Bearer test-token")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::OK);
+
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(payload["policies"]["durable.view"], false);
+            assert_eq!(payload["policies"]["durable.manage"], false);
         }
 
         // --- Non-platform user gets 403 on mutate endpoints ---

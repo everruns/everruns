@@ -121,6 +121,12 @@ export const defaultNavigationSections: NavigationSection[] = [
   { label: "Dev", items: defaultDevNavigation, devOnly: true },
 ];
 
+function isDurableSection(section: NavigationSection) {
+  return section.items.some(
+    (item) => item.href === "/durable" || item.href.startsWith("/durable/"),
+  );
+}
+
 export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const pathname = usePathname();
   const {
@@ -145,9 +151,7 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const durableAllowed = durablePolicies.data ? durablePolicies.can("durable.view") : false;
   const baseSections = config?.navigation
     ? config.navigation
-    : defaultNavigationSections.filter(
-        (section) => section.label !== "Durable Execution" || durableAllowed,
-      );
+    : defaultNavigationSections.filter((section) => !isDurableSection(section) || durableAllowed);
   const sections = shouldShowChatWarning
     ? baseSections.map((section) => ({
         ...section,
