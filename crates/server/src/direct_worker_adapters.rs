@@ -31,11 +31,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::domains::mcp_servers::McpServerService;
 use crate::org_init::BASE_HARNESS_ID;
 use crate::services::scoped_mcp::{
     build_scoped_mcp_tool_definitions, resolve_scoped_mcp_server, validate_scoped_mcp_servers,
 };
-use crate::services::{BudgetService, EventService, LlmResolverService, McpServerService};
+use crate::services::{BudgetService, EventService, LlmResolverService};
 use crate::storage::StorageBackend;
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 
@@ -2532,7 +2533,10 @@ mod tests {
             crate::event_delivery::EventDelivery::in_memory(),
         ));
         let llm_resolver = Arc::new(crate::services::LlmResolverService::new(db.clone(), None));
-        let mcp_server_service = Arc::new(crate::services::McpServerService::new(db.clone(), None));
+        let mcp_server_service = Arc::new(crate::domains::mcp_servers::McpServerService::new(
+            db.clone(),
+            None,
+        ));
         let cap_registry = CapabilityRegistry::new();
         let driver_registry = everruns_worker::create_driver_registry();
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
@@ -2857,7 +2861,7 @@ mod tests {
             crate::event_delivery::EventDelivery::in_memory(),
         ));
         let llm_resolver = Arc::new(crate::services::LlmResolverService::new(db.clone(), None));
-        let mcp_server_service = Arc::new(crate::services::McpServerService::new(
+        let mcp_server_service = Arc::new(crate::domains::mcp_servers::McpServerService::new(
             db.clone(),
             Some(encryption),
         ));

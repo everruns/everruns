@@ -317,7 +317,11 @@ impl SlackDeliveryDispatcher {
     /// Finds sessions in 'active' status with slack:* tags, looks up the
     /// corresponding app for bot_token, and re-registers deliveries for
     /// any turns that haven't completed yet.
-    pub async fn recover(&self, app_service: &crate::services::AppService) {
+    pub async fn recover(
+        &self,
+        encryption: Option<&std::sync::Arc<crate::storage::EncryptionService>>,
+    ) {
+        let db = self.db.as_ref();
         let sessions = match self.db.find_active_slack_sessions().await {
             Ok(sessions) => sessions,
             Err(e) => {
@@ -345,7 +349,11 @@ impl SlackDeliveryDispatcher {
             };
 
             // Look up the app to get bot_token
-            let app = match app_service.get_by_public_id_unscoped(&app_id).await {
+            let app = match crate::domains::apps::queries::get_by_public_id_unscoped(
+                db, encryption, &app_id,
+            )
+            .await
+            {
                 Ok(Some(app)) => app,
                 Ok(None) => {
                     warn!(app_id = %app_id, "App not found during Slack recovery");

@@ -14,7 +14,8 @@ use everruns_core::{
 use std::collections::HashSet;
 use uuid::Uuid;
 
-use crate::services::mcp_server::{McpServerResolved, fetch_mcp_tools};
+use crate::domains::mcp_servers::McpServerResolved;
+use crate::domains::mcp_servers::service::fetch_mcp_tools;
 
 pub fn merge_effective_scoped_mcp_servers(
     harness: &Harness,

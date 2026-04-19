@@ -93,6 +93,9 @@ impl Command for CreateSkill {
             .create_skill(ctx.org_id(), input)
             .await
             .map_err(classify_anyhow)?;
+        ctx.capability_service
+            .invalidate_skills_cache(ctx.org_id())
+            .await;
         Ok(q::row_to_skill(&row))
     }
 }
@@ -394,6 +397,9 @@ impl Command for UpdateSkillCmd {
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Skill"))?;
 
+        ctx.capability_service
+            .invalidate_skills_cache(ctx.org_id())
+            .await;
         Ok(q::row_to_skill(&row))
     }
 }
@@ -447,6 +453,9 @@ impl Command for DeleteSkill {
             return Err(CommandError::not_found("Skill"));
         }
 
+        ctx.capability_service
+            .invalidate_skills_cache(ctx.org_id())
+            .await;
         Ok(serde_json::json!({"deleted": true}))
     }
 }
@@ -510,6 +519,9 @@ impl Command for DestroySkill {
             .await
             .map_err(classify_anyhow)?;
 
+        ctx.capability_service
+            .invalidate_skills_cache(ctx.org_id())
+            .await;
         Ok(serde_json::json!({"destroyed": true}))
     }
 }

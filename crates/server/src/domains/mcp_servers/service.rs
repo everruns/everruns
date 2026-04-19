@@ -2,8 +2,15 @@
 // Handles MCP server CRUD and tool discovery/caching
 //
 // Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (detail)
+//
+// Note (EVE-316): this module was moved from `crate::services::mcp_server` to
+// `crate::domains::mcp_servers::service`. The `McpServerService` type, the
+// settings structs (`McpServerSettings`, `McpServerOAuthSettings`), and the
+// resolved tool-cache structs (`McpServerResolved`, `McpServerWithTools`) all
+// live here together because they share internal helpers (encryption,
+// settings mapping, tool fetching).
 
-use crate::domains::mcp_servers::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
+use super::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::storage::{
     EncryptionService, McpServerRow, StorageBackend,
     models::{CreateMcpServerRow, UpdateMcpServer, UpdateMcpServerTools},

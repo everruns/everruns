@@ -2,7 +2,7 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
-use crate::services::mcp_server::{McpServerService, McpServerSettings};
+use super::service::{McpServerService, McpServerSettings};
 use crate::storage::StorageBackend;
 use everruns_core::{McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType};
 use std::collections::HashMap;

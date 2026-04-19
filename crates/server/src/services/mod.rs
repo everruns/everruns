@@ -1,7 +1,6 @@
 // Services layer for business logic (M2)
 // Services own business logic and validation, calling storage directly
 
-pub mod app;
 pub mod budget;
 #[cfg(test)]
 mod budget_tests;
@@ -14,7 +13,6 @@ pub mod leased_resource;
 pub mod llm_model;
 pub mod llm_provider;
 pub mod llm_resolver;
-pub mod mcp_server;
 pub mod message;
 pub mod model_sync;
 pub mod notification;
@@ -25,11 +23,9 @@ pub mod session_git;
 pub mod session_resource;
 pub mod session_sandbox;
 pub mod session_schedule;
-pub mod skill;
 pub mod usage_tracking;
 pub mod virtual_mount_registry;
 
-pub use app::AppService;
 pub use budget::BudgetService;
 pub use capability::CapabilityService;
 pub use eval::EvalService;
@@ -38,7 +34,6 @@ pub use leased_resource::LeasedResourceService;
 pub use llm_model::LlmModelService;
 pub use llm_provider::LlmProviderService;
 pub use llm_resolver::{LlmResolverService, ResolvedModel};
-pub use mcp_server::McpServerService;
 pub use message::{CreateMessageContext, MessageService};
 pub use model_sync::{ModelSyncService, SyncResult};
 pub use notification::{NotificationEventListener, NotificationService};
@@ -47,5 +42,4 @@ pub use session_file::SessionFileService;
 pub use session_resource::SessionResourceService;
 pub use session_sandbox::{SessionSandboxEventListener, SessionSandboxService};
 pub use session_schedule::SessionScheduleService;
-pub use skill::SkillService;
 pub use usage_tracking::UsageTrackingListener;

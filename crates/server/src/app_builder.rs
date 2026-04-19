@@ -773,7 +773,7 @@ impl ServerAppBuilder {
             auth_state.clone(),
             auth_config.clone(),
             platform_definition.connection_providers().clone(),
-            Arc::new(crate::services::McpServerService::new(
+            Arc::new(crate::domains::mcp_servers::McpServerService::new(
                 db.clone(),
                 encryption.clone(),
             )),
@@ -1273,10 +1273,11 @@ impl ServerAppBuilder {
                 tracing::info!("DEV MODE: Starting task worker for in-process execution");
 
                 // Reuse the shared llm_resolver from Phase 5
-                let mcp_server_service = Arc::new(services::McpServerService::new(
-                    db.clone(),
-                    encryption.clone(),
-                ));
+                let mcp_server_service =
+                    Arc::new(crate::domains::mcp_servers::McpServerService::new(
+                        db.clone(),
+                        encryption.clone(),
+                    ));
                 let session_storage_store: Arc<dyn everruns_core::traits::SessionStorageStore> =
                     match db.as_ref() {
                         crate::storage::StorageBackend::Postgres(database) => {
@@ -1343,11 +1344,9 @@ impl ServerAppBuilder {
         // -- Slack delivery recovery (re-register active Slack sessions after restart) --
         if let Some(ref dispatcher) = slack_dispatcher {
             let dispatcher = dispatcher.clone();
-            let recovery_db = db.clone();
             let recovery_enc = encryption.clone();
             tokio::spawn(async move {
-                let app_service = crate::services::AppService::new(recovery_db, recovery_enc);
-                dispatcher.recover(&app_service).await;
+                dispatcher.recover(recovery_enc.as_ref()).await;
             });
         }
 

@@ -67,15 +67,13 @@ use crate::api::sessions::CreateSessionRequest;
 use crate::api::sse::SseConnectionTracker;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
-use crate::services::{
-    AppService, CreateMessageContext, EventService, MessageService, SessionService,
-};
-use crate::storage::{DbMessageRetriever, StorageBackend};
+use crate::services::{CreateMessageContext, EventService, MessageService, SessionService};
+use crate::storage::{DbMessageRetriever, EncryptionService, StorageBackend};
 
 #[derive(Clone)]
 pub struct AgUiState {
     pub db: Arc<StorageBackend>,
-    pub app_service: Arc<AppService>,
+    pub encryption: Option<Arc<EncryptionService>>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
@@ -85,14 +83,13 @@ pub struct AgUiState {
 impl AgUiState {
     pub fn new(
         db: Arc<StorageBackend>,
-        encryption: Option<Arc<crate::storage::EncryptionService>>,
+        encryption: Option<Arc<EncryptionService>>,
         runner: Arc<dyn everruns_worker::AgentRunner>,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
     ) -> Self {
         Self {
-            app_service: Arc::new(AppService::new(db.clone(), encryption)),
             session_service: Arc::new(SessionService::new(db.clone())),
             message_service: Arc::new(MessageService::new(
                 db.clone(),
@@ -102,6 +99,7 @@ impl AgUiState {
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             sse_tracker,
+            encryption,
             db,
         }
     }
@@ -121,12 +119,14 @@ async fn run_agent(
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, (StatusCode, Json<ErrorResponse>)>
 {
     let request_id = req_id.map(|Extension(r)| r.0);
-    let app = state
-        .app_service
-        .get_by_public_id_unscoped(&app_id)
-        .await
-        .map_err(internal_error)?
-        .ok_or_else(not_found)?;
+    let app = crate::domains::apps::queries::get_by_public_id_unscoped(
+        &state.db,
+        state.encryption.as_ref(),
+        &app_id,
+    )
+    .await
+    .map_err(internal_error)?
+    .ok_or_else(not_found)?;
 
     // THREAT[TM-AUTHZ-005]: Anonymous AG-UI requests must not reach draft or
     // private app configurations.

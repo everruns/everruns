@@ -3,13 +3,13 @@
 // Each struct is the request type, catalog entry, and execution logic.
 // inventory::submit! auto-registers for MCP catalog.
 
+use super::McpServerSettings;
 use super::queries as q;
 use super::types::{
     CreateMcpServerRequest, CreateMcpServerRow, UpdateMcpServer, UpdateMcpServerRequest,
 };
 use super::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::domains::common::*;
-use crate::services::mcp_server::McpServerSettings;
 use everruns_core::typed_id::McpServerId;
 use everruns_core::{McpServer, McpServerAuthMode, Policy, validate_safe_url};
 use serde::Deserialize;

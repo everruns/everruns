@@ -11,22 +11,34 @@
 // discovers them at runtime.
 //
 // Note: Agent-specific capability management is handled by domains::agents commands.
+//
+// EVE-316: CapabilityService owns a Moka cache for skill listings (previously
+// held by SkillService). Skills change infrequently but are fetched on every
+// agent run (capability listing). Cache uses 5-min TTL, invalidated by
+// `invalidate_skills_cache` which commands call after mutations.
 
-use crate::services::mcp_server::McpServerService;
-use crate::services::skill::SkillService;
+use crate::domains::mcp_servers::McpServerService;
+use crate::domains::skills::queries as skill_q;
 use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::{
-    Caller, CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, RiskLevel,
+    Caller, CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, RiskLevel, Skill,
     mcp_capability_id, skill_capability_id,
 };
+use moka::future::Cache;
 use std::sync::Arc;
+use std::time::Duration;
+
+/// Cache TTL for skill listings per org
+const SKILL_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
 
 pub struct CapabilityService {
     registry: CapabilityRegistry,
     mcp_service: McpServerService,
-    skill_service: Arc<SkillService>,
+    db: Arc<StorageBackend>,
+    /// Cache: org_id -> Vec<Skill>
+    skill_list_cache: Cache<i64, Arc<Vec<Skill>>>,
 }
 
 impl CapabilityService {
@@ -39,11 +51,37 @@ impl CapabilityService {
         encryption: Option<Arc<EncryptionService>>,
         registry: CapabilityRegistry,
     ) -> Self {
+        let skill_list_cache = Cache::builder()
+            .time_to_live(SKILL_CACHE_TTL)
+            .max_capacity(1_000)
+            .build();
         Self {
             registry,
             mcp_service: McpServerService::new(db.clone(), encryption),
-            skill_service: Arc::new(SkillService::new(db)),
+            db,
+            skill_list_cache,
         }
+    }
+
+    /// Invalidate the cached skill list for an org. Called by skill mutation
+    /// commands after create/update/delete.
+    pub async fn invalidate_skills_cache(&self, org_id: i64) {
+        self.skill_list_cache.invalidate(&org_id).await;
+    }
+
+    /// Fetch non-archived skills for an org, using the cache where possible.
+    ///
+    /// Returns both `Active` and `Disabled` skills (everything not archived).
+    /// Callers are expected to filter by `SkillStatus::Active` if they only
+    /// want active entries — see `list_all` and `list_skill_commands_for_org`.
+    async fn cached_skills(&self, org_id: i64) -> Result<Arc<Vec<Skill>>> {
+        if let Some(cached) = self.skill_list_cache.get(&org_id).await {
+            return Ok(cached);
+        }
+        let skills = skill_q::list_skills(&self.db, org_id, None, false).await?;
+        let arc = Arc::new(skills);
+        self.skill_list_cache.insert(org_id, arc.clone()).await;
+        Ok(arc)
     }
 
     /// List all available capabilities including MCP servers and skills (public info only)
@@ -96,11 +134,8 @@ impl CapabilityService {
         }
 
         // Get skill capabilities from the registry (mount-only, no prompt/tools)
-        let skills = self
-            .skill_service
-            .list(&internal_caller, None, false)
-            .await?;
-        for skill in &skills {
+        let skills = self.cached_skills(org_id).await?;
+        for skill in skills.iter() {
             if skill.status != everruns_core::SkillStatus::Active {
                 continue;
             }
@@ -131,9 +166,9 @@ impl CapabilityService {
     /// This ensures viewing a capability doesn't fail if the MCP server is unreachable.
     /// Use the refresh tools endpoint to explicitly update cached tools.
     pub async fn get(&self, org_id: i64, id: &CapabilityId) -> Result<Option<CapabilityInfo>> {
-        let internal_caller = Caller::internal(org_id);
         // Check if it's an MCP capability
         if let Some(server_id) = id.mcp_server_id() {
+            let internal_caller = Caller::internal(org_id);
             // Use cached tools only - no external refresh on read
             let tools = self
                 .mcp_service
@@ -176,7 +211,7 @@ impl CapabilityService {
 
         // Check if it's a skill capability (mount-only, no prompt/tools)
         if let Some(skill_uuid) = id.skill_id() {
-            let skill = self.skill_service.get(&internal_caller, skill_uuid).await?;
+            let skill = skill_q::get_skill(&self.db, org_id, skill_uuid).await?;
             if let Some(skill) = skill {
                 return Ok(Some(CapabilityInfo {
                     id: CapabilityId::new(skill_capability_id(skill.id.uuid())),
@@ -239,13 +274,11 @@ impl CapabilityService {
         &self,
         org_id: i64,
     ) -> Result<Vec<everruns_core::command::CommandDescriptor>> {
-        let skills = self
-            .skill_service
-            .list(&Caller::internal(org_id), None, false)
-            .await?;
+        let skills = self.cached_skills(org_id).await?;
         let commands = skills
-            .into_iter()
+            .iter()
             .filter(|s| s.status == everruns_core::SkillStatus::Active && s.user_invocable)
+            .cloned()
             .map(|s| everruns_core::command::CommandDescriptor {
                 name: s.name,
                 description: s.description,
@@ -355,5 +388,99 @@ impl CapabilityService {
         };
 
         Ok((final_system_prompt, tool_definitions))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::memory::InMemoryDatabase;
+    use everruns_core::SkillId;
+
+    fn make_service() -> CapabilityService {
+        let db = Arc::new(StorageBackend::InMemory(Arc::new(InMemoryDatabase::new())));
+        CapabilityService::with_registry(db, None, CapabilityRegistry::with_builtins())
+    }
+
+    async fn insert_skill(svc: &CapabilityService, org_id: i64, name: &str) {
+        let input = crate::storage::models::CreateSkillRow {
+            public_id: SkillId::new().to_string(),
+            name: name.to_string(),
+            description: format!("{name} description"),
+            license: None,
+            compatibility: None,
+            metadata: serde_json::json!({}),
+            allowed_tools: None,
+            instructions: format!("Instructions for {name}"),
+            source_type: "markdown".to_string(),
+            archive_data: None,
+            version: "1.0.0".to_string(),
+        };
+        svc.db.create_skill(org_id, input).await.unwrap();
+    }
+
+    async fn is_cached(svc: &CapabilityService, org_id: i64) -> bool {
+        svc.skill_list_cache.get(&org_id).await.is_some()
+    }
+
+    #[tokio::test]
+    async fn test_cache_miss_populates_cache() {
+        let svc = make_service();
+        insert_skill(&svc, 1, "cache-test").await;
+
+        assert!(!is_cached(&svc, 1).await);
+        let skills = svc.cached_skills(1).await.unwrap();
+        assert_eq!(skills.len(), 1);
+        assert!(is_cached(&svc, 1).await);
+    }
+
+    #[tokio::test]
+    async fn test_cache_hit_returns_cached_skills() {
+        let svc = make_service();
+        insert_skill(&svc, 1, "cached-skill").await;
+
+        let first = svc.cached_skills(1).await.unwrap();
+        assert_eq!(first.len(), 1);
+
+        // Insert a second skill directly; cache should hide it until invalidated.
+        insert_skill(&svc, 1, "sneaky-skill").await;
+        let second = svc.cached_skills(1).await.unwrap();
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].name, "cached-skill");
+    }
+
+    #[tokio::test]
+    async fn test_invalidate_skills_cache_clears_entry() {
+        let svc = make_service();
+        insert_skill(&svc, 1, "one").await;
+        svc.cached_skills(1).await.unwrap();
+        assert!(is_cached(&svc, 1).await);
+
+        svc.invalidate_skills_cache(1).await;
+        assert!(!is_cached(&svc, 1).await);
+
+        // After invalidation, a newly inserted skill is visible.
+        insert_skill(&svc, 1, "two").await;
+        let skills = svc.cached_skills(1).await.unwrap();
+        assert_eq!(skills.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_cache_independent_per_org() {
+        let svc = make_service();
+        insert_skill(&svc, 1, "org-a").await;
+        insert_skill(&svc, 2, "org-b").await;
+
+        let a = svc.cached_skills(1).await.unwrap();
+        let b = svc.cached_skills(2).await.unwrap();
+        assert_eq!(a.len(), 1);
+        assert_eq!(b.len(), 1);
+        assert_eq!(a[0].name, "org-a");
+        assert_eq!(b[0].name, "org-b");
+
+        // Invalidating org 1 does not affect org 2.
+        svc.invalidate_skills_cache(1).await;
+        assert!(!is_cached(&svc, 1).await);
+        assert!(is_cached(&svc, 2).await);
     }
 }
