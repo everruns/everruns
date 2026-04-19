@@ -289,10 +289,14 @@ async fn import_from_file(
     };
 
     let http = reqwest::Client::new();
-    let resp = http
+    let mut req = http
         .post(format!("{}/v1/agents/import", api_url))
         .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", content_type)
+        .header("Content-Type", content_type);
+    if let Ok(org) = std::env::var("EVERRUNS_ORG_ID") {
+        req = req.header("X-Org-Id", org);
+    }
+    let resp = req
         .body(body)
         .send()
         .await
