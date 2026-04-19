@@ -319,9 +319,9 @@ impl SlackDeliveryDispatcher {
     /// any turns that haven't completed yet.
     pub async fn recover(
         &self,
-        db: &crate::storage::StorageBackend,
         encryption: Option<&std::sync::Arc<crate::storage::EncryptionService>>,
     ) {
+        let db = self.db.as_ref();
         let sessions = match self.db.find_active_slack_sessions().await {
             Ok(sessions) => sessions,
             Err(e) => {

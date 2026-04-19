@@ -1344,12 +1344,9 @@ impl ServerAppBuilder {
         // -- Slack delivery recovery (re-register active Slack sessions after restart) --
         if let Some(ref dispatcher) = slack_dispatcher {
             let dispatcher = dispatcher.clone();
-            let recovery_db = db.clone();
             let recovery_enc = encryption.clone();
             tokio::spawn(async move {
-                dispatcher
-                    .recover(&recovery_db, recovery_enc.as_ref())
-                    .await;
+                dispatcher.recover(recovery_enc.as_ref()).await;
             });
         }
 
