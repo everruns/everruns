@@ -4,6 +4,25 @@ use tonic::service::Interceptor;
 // Env-var-mutating tests must not run in parallel.
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+async fn test_worker_service() -> WorkerServiceImpl {
+    let db = Arc::new(StorageBackend::in_memory());
+    let grade = everruns_core::DeploymentGrade::Dev;
+    let platform_definition = crate::oss_platform_definition_for_grade(grade);
+    let encryption = Some(Arc::new(
+        EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+            .expect("valid test encryption key"),
+    ));
+
+    crate::seed::seed_all(&db, grade, &crate::seed::SeedAuthContext::default())
+        .await
+        .expect("seed test data");
+
+    let event_service =
+        EventService::with_listeners(db.clone(), crate::EventDelivery::in_memory(), vec![]);
+
+    WorkerServiceImpl::new(event_service, db, encryption, None, platform_definition)
+}
+
 #[test]
 fn test_interceptor_allows_when_no_token_configured() {
     let mut interceptor = GrpcAuthInterceptor::new(None);
@@ -51,6 +70,88 @@ fn test_interceptor_rejects_non_bearer_scheme() {
         .insert("authorization", "Basic secret123".parse().unwrap());
     let err = interceptor.call(request).unwrap_err();
     assert_eq!(err.code(), tonic::Code::Unauthenticated);
+}
+
+#[tokio::test]
+async fn test_list_commands_includes_platform_management_commands() {
+    let service = test_worker_service().await;
+
+    let response = service
+        .list_commands(Request::new(ListCommandsRequest {}))
+        .await
+        .expect("list_commands should succeed")
+        .into_inner();
+
+    assert!(
+        response
+            .commands
+            .iter()
+            .any(|command| command.name == "list_harnesses" && command.api_version == "v1")
+    );
+}
+
+#[tokio::test]
+async fn test_execute_command_lists_seeded_harnesses() {
+    let service = test_worker_service().await;
+
+    let response = service
+        .execute_command(Request::new(ExecuteCommandRequest {
+            name: "list_harnesses".to_string(),
+            api_version: "v1".to_string(),
+            params_json: br#"{}"#.to_vec(),
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            user_id: None,
+            idempotency_key: None,
+            metadata: Default::default(),
+        }))
+        .await
+        .expect("execute_command should succeed")
+        .into_inner();
+
+    let proto::execute_command_response::Result::OkJson(ok_json) =
+        response.result.expect("command result should be present")
+    else {
+        panic!("expected OkJson response");
+    };
+
+    let harnesses: serde_json::Value =
+        serde_json::from_slice(&ok_json).expect("response should be valid JSON");
+    let names: Vec<&str> = harnesses
+        .as_array()
+        .expect("list_harnesses should return an array")
+        .iter()
+        .filter_map(|h| h.get("name").and_then(|name| name.as_str()))
+        .collect();
+
+    assert!(names.contains(&"platform-chat"));
+}
+
+#[tokio::test]
+async fn test_execute_command_unknown_command_returns_bad_request_kind() {
+    let service = test_worker_service().await;
+
+    let response = service
+        .execute_command(Request::new(ExecuteCommandRequest {
+            name: "definitely_not_a_command".to_string(),
+            api_version: "v1".to_string(),
+            params_json: br#"{}"#.to_vec(),
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            user_id: None,
+            idempotency_key: None,
+            metadata: Default::default(),
+        }))
+        .await
+        .expect("execute_command should return a structured command error")
+        .into_inner();
+
+    let proto::execute_command_response::Result::Error(error) =
+        response.result.expect("command result should be present")
+    else {
+        panic!("expected Error response");
+    };
+
+    assert_eq!(error.kind, 1);
+    assert!(error.message.contains("Unknown command"));
 }
 
 /// Acquire env lock, tolerating poison from #[should_panic] tests.
