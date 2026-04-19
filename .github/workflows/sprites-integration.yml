@@ -46,7 +46,9 @@ jobs:
   live-test:
     name: Sprites Live API Tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && env.DOPPLER_TOKEN != ''
+    # `env` context is not available in job-level `if`; gate on event only.
+    # Secrets are validated by the Doppler step; see EVE-345 for missing-secret failure semantics.
+    if: github.event_name == 'push'
     timeout-minutes: 10
 
     steps:
