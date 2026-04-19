@@ -97,10 +97,16 @@ The container runtime (`runc`, `sysbox-runc`, `kata`, `gvisor`) is a deployment-
 crates/container-sandbox/
 ├── Cargo.toml
 ├── SPEC.md
-└── src/
-    ├── lib.rs           # ContainerSandboxCapability + tool registration
-    ├── client.rs        # Docker Engine REST API client
-    ├── config.rs        # Configuration with env var defaults
-    ├── state.rs         # Sandbox state + leased resources
-    └── tools.rs         # All 8 tool implementations
+├── src/
+│   ├── lib.rs           # ContainerSandboxCapability + tool registration
+│   ├── client.rs        # Docker Engine REST API client
+│   ├── config.rs        # Configuration with env var defaults
+│   ├── state.rs         # Sandbox state + leased resources
+│   └── tools.rs         # All 8 tool implementations
+└── tests/
+    └── live_api_test.rs # Feature-gated live Docker Engine API tests
 ```
+
+## Live API tests
+
+`tests/live_api_test.rs` is the canonical live-test entrypoint for the container-sandbox capability. It is gated behind the `container-sandbox-live-tests` cargo feature and expects an unauthenticated Docker daemon reachable via `CONTAINER_SANDBOX_DOCKER_HOST` (default `http://localhost:2375`). `.github/workflows/container-sandbox-integration.yml` runs these tests on pushes to `main` against a `docker:dind` service container with TLS disabled.

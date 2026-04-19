@@ -51,7 +51,17 @@ jobs:
     services:
       docker:
         image: docker:dind
+        env:
+          # Disable TLS so the daemon listens on plain HTTP :2375.
+          DOCKER_TLS_CERTDIR: ""
         options: --privileged
+        ports:
+          - 2375:2375
+
+    env:
+      # Steer the DockerClient at the service-mapped daemon. See
+      # `crates/container-sandbox/tests/live_api_test.rs` for the contract.
+      CONTAINER_SANDBOX_DOCKER_HOST: http://localhost:2375
 
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +73,18 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "debug"
+
+      - name: Wait for Docker daemon
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:2375/_ping >/dev/null 2>&1; then
+              echo "Docker daemon is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Docker daemon did not become ready within 60s" >&2
+          exit 1
 
       - name: Run live integration tests
         run: cargo test -p everruns-container-sandbox --features container-sandbox-live-tests --test live_api_test -- --test-threads=1
