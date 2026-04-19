@@ -19,6 +19,7 @@ import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Session, SessionStatus, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
+import { joinTags } from "@/lib/tags";
 
 /**
  * Format total tokens from usage
@@ -85,6 +86,7 @@ function SessionInfoIcon({ session }: { session: Session }) {
   const formattedStartedAt = session.started_at
     ? new Date(session.started_at).toLocaleString()
     : null;
+  const tagList = joinTags(session.tags);
 
   return (
     <Tooltip>
@@ -121,10 +123,10 @@ function SessionInfoIcon({ session }: { session: Session }) {
               <span>{formattedStartedAt}</span>
             </div>
           )}
-          {session.tags.length > 0 && (
+          {tagList && (
             <div className="flex gap-2">
               <span className="text-muted-foreground">Tags:</span>
-              <span>{session.tags.join(", ")}</span>
+              <span>{tagList}</span>
             </div>
           )}
         </div>

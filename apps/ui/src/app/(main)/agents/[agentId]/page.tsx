@@ -34,6 +34,7 @@ import {
 } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
 import { formatTokens } from "@/lib/formatting";
+import { normalizeTags } from "@/lib/tags";
 
 // Helper function to calculate total tokens
 function totalTokens(usage: TokenUsage): number {
@@ -68,6 +69,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
   // Get the agent's default model
   const defaultModel = agent?.default_model_id ? modelMap.get(agent.default_model_id) : undefined;
+  const agentTags = normalizeTags(agent?.tags);
 
   const handleNewSession = async () => {
     const harnessId = organization?.default_harness_id || harnesses?.[0]?.id;
@@ -318,11 +320,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                     </div>
                   )}
 
-                  {agent.tags.length > 0 && (
+                  {agentTags.length > 0 && (
                     <div>
                       <p className="text-sm font-medium mb-2">Tags</p>
                       <div className="flex flex-wrap gap-1">
-                        {agent.tags.map((tag) => (
+                        {agentTags.map((tag) => (
                           <Badge key={tag} variant="outline">
                             {tag}
                           </Badge>

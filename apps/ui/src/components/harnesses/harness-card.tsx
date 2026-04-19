@@ -15,6 +15,7 @@ import {
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
 } from "@/lib/entity-lifecycle";
+import { normalizeTags } from "@/lib/tags";
 
 interface HarnessCardProps {
   harness: Harness;
@@ -33,6 +34,7 @@ export function HarnessCard({
     allCapabilities?.find((c) => c.id === capabilityId);
 
   const harnessCapabilities = harness.capabilities ?? [];
+  const tags = normalizeTags(harness.tags);
 
   return (
     <Card className="bg-background transition-colors hover:bg-card">
@@ -90,9 +92,9 @@ export function HarnessCard({
         )}
 
         {/* Tags */}
-        {harness.tags.length > 0 && (
+        {tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
-            {harness.tags.map((tag) => (
+            {tags.map((tag) => (
               <Badge key={tag} variant="outline" className="text-xs">
                 {tag}
               </Badge>
