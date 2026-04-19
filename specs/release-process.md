@@ -41,7 +41,7 @@ As part of release preparation, all feature migrations added since the last rele
 Procedure:
 
 1. Identify the set of feature migrations added since the previous `NNN_vA.B.C.sql` release migration (all files with numbers strictly greater than the last version-named migration).
-2. Concatenate their DDL in execution order into a new file whose number is the lowest of that set and whose name is the release version, e.g. `016_v0.9.0.sql`.
+2. Concatenate their SQL statements (including any DDL/DML) in execution order into a new file whose number is the lowest of that set and whose name is the release version, e.g. `016_v0.9.0.sql`.
 3. Preserve section headers that reference each original migration filename as inline comments for traceability.
 4. Delete the original feature migration files so the final numbering stays strictly sequential with no gaps.
 5. Re-run the sequential-ordering validation from `specs/migrations.md` (no gaps, no duplicates).

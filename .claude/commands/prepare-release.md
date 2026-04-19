@@ -84,10 +84,10 @@ See `specs/release-process.md` for the full release process specification.
    - List `crates/server/migrations/*.sql` and find the last `NNN_vA.B.C.sql` file.
    - Identify every feature migration with a number strictly greater than that (these are the unsquashed feature migrations added since the last release).
    - If there are none, skip this step entirely — do not create an empty migration file.
-   - Otherwise, create `NNN_vX.Y.Z.sql` (using the lowest number of the unsquashed set and the new release version) containing the concatenated DDL of those migrations, in their original numeric order.
+   - Otherwise, create `NNN_vX.Y.Z.sql` (using the lowest number of the unsquashed set and the new release version) containing the concatenated SQL statements from those migrations, in their original numeric order, including any DDL/DML.
    - Preserve the origin of each block with an inline section header comment referencing the original filename, e.g. `-- from 016_eval_case_result_metadata.sql`.
    - Delete the original feature migration files so numbering stays strictly sequential with no gaps.
-   - Verify `ls crates/server/migrations/*.sql | sort` yields 001..N with no gaps or duplicates.
+   - Verify the sorted list of migration file basenames starts at `001_` and remains strictly sequential with no gaps or duplicates (matching `specs/migrations.md`).
 
 6. **Update lock files**:
    ```bash
