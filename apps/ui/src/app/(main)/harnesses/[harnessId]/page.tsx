@@ -299,6 +299,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
               ref: cap.ref,
               config: cap.config,
             }))}
+            initialFiles={harness.initial_files}
           />
         </TabsContent>
       </Tabs>

@@ -6,16 +6,28 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { AgentCapabilityConfig, AgentPreviewResponse, ToolDefinition } from "@/lib/api/types";
+import { InitialFilesPreview } from "@/components/files/initial-files-preview";
+import type {
+  AgentCapabilityConfig,
+  AgentPreviewResponse,
+  InitialFile,
+  ToolDefinition,
+} from "@/lib/api/types";
 import { Wrench, FileText, AlertCircle } from "lucide-react";
 
 interface AgentPreviewProps {
   systemPrompt: string;
   capabilities: AgentCapabilityConfig[];
+  initialFiles: InitialFile[];
   tools?: ToolDefinition[];
 }
 
-export function AgentPreview({ systemPrompt, capabilities, tools = [] }: AgentPreviewProps) {
+export function AgentPreview({
+  systemPrompt,
+  capabilities,
+  initialFiles,
+  tools = [],
+}: AgentPreviewProps) {
   const previewMutation = usePreviewAgent();
   const [preview, setPreview] = useState<AgentPreviewResponse | null>(null);
 
@@ -127,6 +139,8 @@ export function AgentPreview({ systemPrompt, capabilities, tools = [] }: AgentPr
           )}
         </CardContent>
       </Card>
+
+      <InitialFilesPreview files={initialFiles} />
     </div>
   );
 }
