@@ -14,6 +14,7 @@ jest.mock("next/link", () => ({
     href: string;
     [key: string]: unknown;
   }) => (
+    // eslint-disable-next-line @next/next/no-html-link-for-pages
     <a href={href} {...props}>
       {children}
     </a>
@@ -86,7 +87,7 @@ describe("EvalRunDetailPage", () => {
   it("opens result session links in a new tab", async () => {
     await renderWithSuspense({ evalId: "eval_123", runId: "evalrun_123" });
 
-    const link = screen.getByLabelText("Open session in new tab");
+    const link = screen.getByLabelText("Open session for Case with session in new tab");
     expect(link).toHaveAttribute("href", "/sessions/session_123");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");

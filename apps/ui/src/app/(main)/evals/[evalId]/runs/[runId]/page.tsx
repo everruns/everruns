@@ -75,7 +75,7 @@ function ResultRow({ result }: { result: EvalCaseResult }) {
               href={`/sessions/${result.session_id}`}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Open session in new tab"
+              aria-label={`Open session for ${result.case_name ?? result.eval_case_id} in new tab`}
             >
               <ExternalLink className="w-3 h-3 text-muted-foreground hover:text-foreground" />
             </Link>
