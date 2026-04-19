@@ -19,7 +19,7 @@ The run surfaced issues at two layers. This doc splits proposals accordingly:
 
 | # | Symptom | Root cause lives in |
 |---|---------|---------------------|
-| 1 | Daytona snapshot came up empty (no app, Playwright, axe-core) | **everruns** (snapshot image) + **a11y-nanny** (no probe) |
+| 1 | Daytona snapshot came up empty (no app, Playwright, axe-core) | **a11y-nanny** (own the bootstrap via a skill; treat the snapshot as bare metal). Platform-side snapshot refresh kept as a latency optimisation, not a blocker. |
 | 2 | First turn returned a plan, no action, until user said "Proceed" | **a11y-nanny** (SKILL Phase 1 wording) |
 | 3 | Defaulted to `http://localhost:9300` instead of `dev.everruns.com` | **a11y-nanny** (AGENTS.md + target spec) |
 | 4 | Gave up after 2 attempts on "execution context destroyed" | **a11y-nanny** (Resilience rule is soft) |
@@ -31,21 +31,64 @@ The run surfaced issues at two layers. This doc splits proposals accordingly:
 
 ## Part A — Changes in `a11y-nanny`
 
-### A1. Detect empty snapshot up front, fall back deterministically
+### A1. Own the sandbox bootstrap via a dedicated skill
 
-**File:** `agents/a11y-audit/specs/sandbox-setup.md`
+**New file:** `agents/a11y-audit/.agents/skills/bootstrap-sandbox/SKILL.md`
+(plus touches to `agents/a11y-audit/.agent.md` to declare the skill and to
+`agents/a11y-audit/specs/sandbox-setup.md` to point at it).
 
-Add an explicit probe as the first command after `create_sandbox`:
+The `everruns-a11y-nanny` Daytona snapshot is shared infra the agent doesn't
+own. Relying on it being correctly provisioned is the single biggest source
+of session-time waste and uncertainty. Instead, treat the snapshot as
+"bare metal" and have the agent install its own tooling on every cold
+start via a dedicated skill.
 
-```bash
-test -x /usr/bin/node && test -d /app && node -e "require('@axe-core/playwright')" \
-  || echo "SNAPSHOT_EMPTY"
-```
+The Daytona integration today exposes `daytona_create_sandbox` +
+`daytona_list_snapshots` (read) but no snapshot-write tool
+(`integrations/daytona/src/tools.rs`), so the agent cannot publish a shared
+image. A self-bootstrapping skill side-steps that constraint entirely.
 
-If `SNAPSHOT_EMPTY` is printed, branch to the documented fallback path
-(install Node, Playwright, `@axe-core/playwright`, Chromium) **before** any
-audit work. Today the fallback is documented but not gated on a probe, so the
-agent tries missing tools and burns tokens recovering.
+Proposed skill shape (`SKILL.md` phases):
+
+1. **Probe** — single `daytona_exec`:
+   ```bash
+   command -v node >/dev/null && command -v jq >/dev/null \
+     && node -e "require('@axe-core/playwright')" 2>/dev/null \
+     && echo READY || echo BOOTSTRAP
+   ```
+2. **Bootstrap** (only on `BOOTSTRAP`):
+   ```bash
+   # Minimal, pinned, idempotent.
+   apt-get update -qq && apt-get install -y --no-install-recommends jq curl
+   curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+   apt-get install -y --no-install-recommends nodejs
+   npm install -g --no-audit --no-fund \
+     playwright@1 @axe-core/playwright@4
+   npx playwright install --with-deps chromium
+   ```
+3. **Cache** — write a marker and the installed versions to
+   `/.outputs/bootstrap.ok` so subsequent `daytona_exec` calls in the same
+   sandbox hit the "already ready" path without re-probing.
+4. **Report** — log the probe outcome, bootstrap duration, and tool
+   versions in the session notes so later phases (and the final report)
+   can reference them.
+
+Pros:
+- No dependency on the platform team rebuilding the snapshot.
+- No dependency on a new Daytona snapshot-write tool.
+- Deterministic: the agent ships with its tooling recipe, pinned.
+- Works on any Daytona base image, not just `everruns-a11y-nanny`.
+
+Cost:
+- ~30–60 s on cold starts where the snapshot is bare (e.g. plain Ubuntu
+  or a stale image). Zero extra cost when the snapshot already has
+  everything (the probe returns `READY`).
+
+Follow-ups to keep separate:
+- Platform-side B1 (bake tooling into the snapshot) remains valid as a
+  latency optimisation — the skill makes it optional, not obsolete.
+- If Daytona ever exposes snapshot-commit, a second skill could commit
+  the bootstrapped state back under a versioned tag.
 
 ### A2. Bias the first turn toward execution, not planning
 
@@ -151,14 +194,16 @@ Disambiguate "global chat" without a user round-trip:
 
 ## Part B — Changes in `everruns`
 
-### B1. Ship a non-empty `everruns-a11y-nanny` Daytona snapshot
+### B1. Ship a non-empty `everruns-a11y-nanny` Daytona snapshot *(optional, latency optimisation)*
 
 **Where:** whoever owns the snapshot image (platform/infra).
 
 The snapshot named in `agents/a11y-audit/specs/sandbox-setup.md` came up with
-no Node, no Playwright, no axe-core, and no pre-provisioned app. The agent's
-fallback worked but cost ~30% of the session budget. Bake the following into
-the snapshot:
+no Node, no Playwright, no axe-core, and no pre-provisioned app. A11y-nanny's
+**A1 (self-bootstrap skill)** removes this as a blocker — the agent will
+install its own tooling. B1 is kept as a cold-start latency optimisation
+only: if the snapshot ships the following pre-installed, A1's probe short-
+circuits and saves ~30–60 s per cold start:
 
 - Node LTS + `npm`
 - `playwright` + `@playwright/test` + Chromium (installed via
@@ -167,51 +212,38 @@ the snapshot:
 - `jq`
 - Optional: a local copy of the everruns dev stack for offline audits.
 
-### B2. Stop truncating large tool outputs silently
+Alternative / longer-term: expose a `daytona_commit_sandbox` tool from the
+Daytona integration so agents can publish their own versioned snapshots
+after bootstrapping, rather than depending on a human-maintained image.
 
-**Where:** `crates/core/src/tools/...` (tool-result serialisation) and/or the
-agent runtime that relays `daytona_read_file` output.
+### B2. Stop truncating large tool outputs silently — **filed: [EVE-339](https://linear.app/everruns/issue/EVE-339/unified-truncation-contract-for-all-reading-tools)**
 
-When a tool returns a payload larger than the configured cap, the agent sees
-a truncated string with no marker and no pagination hint. In this run the
-agent assumed the `violations` list was unreadable and stopped.
+Generalised during review: the same gap exists across `read_file`,
+`sqldb_query`, `browserless_content`, the four sandbox `*_read_file`
+variants, and several others. EVE-339 defines a unified
+`ReadingToolOutput` envelope (`truncated`, `bytes_returned`,
+`bytes_total`, `next_offset`, `reason`), extends `specs/tool-execution.md`
+to describe it, and requires a conformance test harness.
 
-Proposal:
-- Emit an explicit `{"truncated": true, "bytes_returned": N, "bytes_total": M, "next_offset": N}` envelope.
-- Document a paginating `daytona_read_file(path, offset, length)` contract in
-  `specs/tool-execution.md`.
-- Surface `bytes_total` in the tool-call UI so operators can tell when a blob
-  is being lost.
-
-### B3. Make `activate_skill` idempotent within a session
-
-**Where:** `crates/core/src/skills/...` or wherever session skills state lives.
+### B3. Make `activate_skill` idempotent within a session — **filed: [EVE-337](https://linear.app/everruns/issue/EVE-337/make-activate-skill-idempotent-within-a-session)**
 
 Three activations of the same skill in one session is wasted tokens and
-latency. Track active skills on the session; on re-activation return the
-existing handle with a `{"already_active": true}` flag instead of replaying
-the full activation.
+latency. EVE-337 proposes tracking active skills on the session and
+returning `{"already_active": true}` on re-activation.
 
-### B4. `X-Org-Id` forwarding on CLI import — **done** (`ee17a05`)
+### B4. `X-Org-Id` forwarding on CLI import — **done (`ee17a05`), tracking: [EVE-338](https://linear.app/everruns/issue/EVE-338/cli-forward-x-org-id-on-v1agentsimport-already-fixed)**
 
-**File:** `crates/cli/src/commands/agents.rs`
+The CLI's direct `/v1/agents/import` POST did not propagate `X-Org-Id`,
+so API-key principals with access to multiple orgs got
+`Multiple organizations available. ...`. Fix landed on this branch.
+EVE-338 tracks the merge + the follow-up audit of remaining direct
+`reqwest` calls in `crates/cli/`.
 
-The CLI's direct `/v1/agents/import` POST did not propagate `X-Org-Id`, so
-API-key principals with access to multiple orgs got
-`Multiple organizations available. ...`. Already fixed on this branch.
+### B5. SDK: first-class `X-Org-Id` support — **filed: [everruns/sdk#82](https://github.com/everruns/sdk/issues/82)**
 
-Follow-up: audit remaining direct `reqwest` calls in `crates/cli/` for the
-same gap, and consider collapsing them through the SDK client so header
-policy stays in one place.
-
-### B5. SDK: first-class `X-Org-Id` support
-
-**Where:** `everruns-sdk` crate (`client.rs`).
-
-The workaround I used reads `EVERRUNS_ORG_ID` from the environment inside
-`headers()`. That should be a typed builder option on `Client::builder()`
-plus a documented precedence (explicit builder > env var). The env-var-only
-path is easy to miss and easy to forget to set.
+Replace the `EVERRUNS_ORG_ID` env-var workaround with a typed
+`Client::builder().org_id(...)` option and have `Everruns::from_env()`
+honour the env var. Precedence: builder > env > omitted.
 
 ### B6. Surface axe / Playwright as first-class tools or a toolkit
 
