@@ -12,7 +12,7 @@ Every sandbox/execution integration crate must ship with the following artifacts
 | **Connection provider** | User connection (OAuth or API-key form) with validation and fallback env vars for operator/test use. |
 | **Unit tests** | Plugin registration, parameter validation, state serialization, tool schemas. |
 | **Integration tests** | `tests/tool_integration.rs` — tool `execute_with_context` flows against mocked storage/connections (wiremock for HTTP APIs, mock storage for websocket APIs). |
-| **Live API tests** | `tests/live_api_test.rs` — feature-gated (`<name>-live-tests`), optional Doppler credentials. |
+| **Live API tests** | `tests/live_api_test.rs` — feature-gated (`<name>-live-tests`), credentials read from required environment variables. In CI, those env vars are injected via Doppler. Missing-credential behavior is **fail-closed**: when the feature flag is on but the required env var is missing or empty, the test must `panic!` (not `eprintln!` + `return`). CI live jobs must never silently pass. Reference implementations: `integrations/brave-search/tests/smoke_real_api.rs`, `integrations/daytona/tests/live_api_test.rs`. |
 | **CI: unit tests** | Crate listed in the `unit-test` job: `cargo test -p everruns-integrations-<name>`. |
 | **CI: change detection** | Path filter in `changes` job: `<name>: integrations/<name>/**`. |
 | **CI: live-test job** | Live API test job conditional on `push` event + Doppler token. New integrations: dedicated `.github/workflows/<name>-integration.yml` workflow, path-filtered to `integrations/<name>/**`. Legacy integrations (Daytona, Browserless, etc.) may still use a job in `ci.yml` gated on change detection. |

@@ -150,7 +150,10 @@ jobs:
       - name: Run pure unit tests
         run: |
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini -p everruns-internal-protocol -p everruns-core --lib --all-features
-          cargo test -p everruns-integrations-daytona --all-features
+          # Do not pass --all-features to integration crates: it enables their *-live-tests
+          # features, which fail closed without real credentials. Live tests run in their
+          # own dedicated jobs (e.g. `daytona-live-test`) that provide Doppler secrets.
+          cargo test -p everruns-integrations-daytona
           cargo test -p everruns-integrations-deno
           cargo test -p everruns-integrations-browserless
           cargo test -p everruns-integrations-e2b

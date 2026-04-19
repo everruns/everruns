@@ -145,4 +145,4 @@ Covers capability metadata, plugin registration, state serialization, and HTTP r
 E2B_API_KEY=<key> cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test
 ```
 
-Exercises sandbox create → file write/read → command exec → cleanup against the real E2B service.
+Exercises sandbox create → file write/read → command exec → cleanup against the real E2B service. Missing-credential behavior is **fail-closed**: with the feature flag on but `E2B_API_KEY` unset, the test panics (see `specs/integrations.md`).

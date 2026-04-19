@@ -334,7 +334,7 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 | `src/tools.rs` | 11 tool implementations (`DaytonaCreateSandboxTool`, `DaytonaApiCallTool`, etc.) |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration |
 | `tests/tool_integration.rs` | Integration tests: tool execution + wiremock Daytona API |
-| `tests/live_api_test.rs` | Live API integration tests (feature-gated: `daytona-live-tests`) |
+| `tests/live_api_test.rs` | Live API integration tests (feature-gated: `daytona-live-tests`; fail-closed on missing `DAYTONA_API_KEY` — see `specs/integrations.md`) |
 
 ## Capability Registration
 

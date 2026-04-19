@@ -118,3 +118,8 @@ Threat summary:
 - Session isolation relies on per-session secret names and leased-resource ownership.
 
 See `specs/threat-model.md` for the Deno-specific threat section.
+
+## Testing
+
+- `tests/live_api_test.rs` is feature-gated behind `deno-live-tests`.
+- Missing-credential behavior is **fail-closed**: with the feature flag on, the test panics when `DENO_DEPLOY_TOKEN` is missing, or when a personal `ddp_...` token is used without `DENO_DEPLOY_ORG`. See `specs/integrations.md`.

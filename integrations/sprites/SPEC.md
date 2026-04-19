@@ -84,3 +84,8 @@ This means sprite names must be unique per user account (not per session). The i
 | **Data persistence** | Filesystem persists — users should be aware data outlives sessions. |
 | **Leased resources** | Registered for cleanup; 30-min lease duration. |
 | **Metadata labels** | Sprites tagged with `everruns.*` metadata for audit and orphan cleanup. |
+
+## Testing
+
+- `tests/live_api_test.rs` is feature-gated behind `sprites-live-tests`.
+- Missing-credential behavior is **fail-closed**: with the feature flag on but `SPRITES_API_TOKEN` unset, the test panics. See `specs/integrations.md`.
