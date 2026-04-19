@@ -13,8 +13,6 @@ use test_harness::TestServer;
 
 use everruns_core::{Agent, Session};
 
-const SEED_BASE_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
-
 /// Helper: create an agent + session + populate files, return session ID
 async fn setup_session_with_files(server: &TestServer) -> String {
     let agent: Agent = server
@@ -29,7 +27,7 @@ async fn setup_session_with_files(server: &TestServer) -> String {
     let session: Session = server
         .post(
             "/v1/sessions",
-            json!({"harness_id": SEED_BASE_HARNESS_ID, "agent_id": agent.public_id}),
+            json!({"harness_id": server.seed_base_harness_id, "agent_id": agent.public_id}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -325,7 +323,7 @@ async fn test_git_empty_file_committed_in_memory() {
     let session: Session = server
         .post(
             "/v1/sessions",
-            json!({"harness_id": SEED_BASE_HARNESS_ID, "agent_id": agent.public_id}),
+            json!({"harness_id": server.seed_base_harness_id, "agent_id": agent.public_id}),
         )
         .await
         .assert_status(StatusCode::CREATED)
@@ -392,7 +390,7 @@ async fn test_git_binary_roundtrip_in_memory() {
     let session: Session = server
         .post(
             "/v1/sessions",
-            json!({"harness_id": SEED_BASE_HARNESS_ID, "agent_id": agent.public_id}),
+            json!({"harness_id": server.seed_base_harness_id, "agent_id": agent.public_id}),
         )
         .await
         .assert_status(StatusCode::CREATED)

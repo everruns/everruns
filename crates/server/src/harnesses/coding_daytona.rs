@@ -16,7 +16,6 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "Coding harness with Daytona cloud sandboxes. Provides real filesystem, full process execution, git integration, and all Generic capabilities for software development tasks.",
         SYSTEM_PROMPT,
     )
-    .with_seed_id(crate::org_init::CODING_DAYTONA_HARNESS_ID)
     .with_parent_name("generic")
     .with_tags(["coding", "daytona", "built-in"])
     .with_capabilities([BuiltInCapabilityDefinition::new("daytona")])

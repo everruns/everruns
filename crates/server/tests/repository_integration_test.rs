@@ -20,10 +20,11 @@ use everruns_durable::UpdateField;
 use everruns_server::api::common::Pagination;
 use everruns_server::org_init;
 use everruns_server::storage::{
-    CreateAgentCapabilityRow, CreateAgentRow, CreateEventRow, CreateImageRow, CreateLlmModelRow,
-    CreateLlmProviderRow, CreateMcpServerRow, CreateOrganizationRow, CreateSessionFileRow,
-    CreateSessionRow, Database, StorageBackend, UpdateAgent, UpdateLlmModel, UpdateLlmProvider,
-    UpdateOrganization, UpdateOrganizationSettings, UpdateSession, UpdateSessionFile,
+    CreateAgentCapabilityRow, CreateAgentRow, CreateEventRow, CreateHarnessRow, CreateImageRow,
+    CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow, CreateOrganizationRow,
+    CreateSessionFileRow, CreateSessionRow, Database, StorageBackend, UpdateAgent, UpdateLlmModel,
+    UpdateLlmProvider, UpdateOrganization, UpdateOrganizationSettings, UpdateSession,
+    UpdateSessionFile,
 };
 use test_harness::get_database_url;
 
@@ -312,19 +313,41 @@ async fn test_session_crud() {
         .expect("Session not found");
     assert_eq!(updated.title.as_deref(), Some("Updated Title"));
 
+    // Create a harness inline to exercise the rehoming update path — avoids
+    // coupling this test to any seeded/built-in harness UUIDs.
+    let harness = backend
+        .create_harness(
+            TEST_ORG_ID,
+            CreateHarnessRow {
+                name: format!("repo-test-harness-{}", &Uuid::now_v7().to_string()[..8]),
+                display_name: Some("Repo Test Harness".to_string()),
+                description: None,
+                system_prompt: "Test".to_string(),
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                is_built_in: false,
+            },
+        )
+        .await
+        .expect("Failed to create harness");
+
     let rehomed = backend
         .update_session(
             TEST_ORG_ID,
             session.id,
             UpdateSession {
-                harness_id: Some(org_init::CHAT_HARNESS_ID.into()),
+                harness_id: Some(harness.id),
                 ..Default::default()
             },
         )
         .await
         .expect("Failed to update session harness")
         .expect("Session not found");
-    assert_eq!(rehomed.harness_id, Some(org_init::CHAT_HARNESS_ID.into()));
+    assert_eq!(rehomed.harness_id, Some(harness.id));
 
     // List sessions with pagination
     let (sessions, total) = backend
@@ -351,6 +374,10 @@ async fn test_session_crud() {
 
     // Cleanup
     backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
+    backend
+        .delete_harness(TEST_ORG_ID, harness.id)
+        .await
+        .unwrap();
 }
 
 // ============================================

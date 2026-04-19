@@ -363,10 +363,17 @@ async fn find_or_create_session(
         .find_session_by_tags(app.org_id, routing_tags)
         .await?
     {
-        Some(row) => Ok(SessionResolution {
-            session: SessionService::row_to_session(row, &org_public_id),
-            is_new: false,
-        }),
+        Some(row) => {
+            let fallback = if row.harness_id.is_none() {
+                Some(crate::org_init::base_harness_id(&state.db, app.org_id).await?)
+            } else {
+                None
+            };
+            Ok(SessionResolution {
+                session: SessionService::row_to_session(row, &org_public_id, fallback),
+                is_new: false,
+            })
+        }
         None => {
             let title = format!("AG-UI thread {}", thread_id);
             let session = state

@@ -12,9 +12,6 @@ use test_harness::TestServer;
 
 use everruns_core::App;
 
-/// Seed harness ID (BASE_HARNESS)
-const SEED_BASE_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
-
 fn unique_id(prefix: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -94,7 +91,7 @@ async fn create_published_ag_ui_app(server: &TestServer) -> App {
             "/v1/apps",
             json!({
                 "name": unique_id("AG-UI App"),
-                "harness_id": SEED_BASE_HARNESS_ID,
+                "harness_id": server.seed_base_harness_id,
                 "agent_id": agent_id,
                 "channel_type": "ag_ui",
                 "channel_config": {
@@ -192,7 +189,7 @@ async fn test_ag_ui_unpublished_app_rejected() {
             "/v1/apps",
             json!({
                 "name": unique_id("Draft AG-UI App"),
-                "harness_id": SEED_BASE_HARNESS_ID,
+                "harness_id": server.seed_base_harness_id,
                 "agent_id": agent_id,
                 "channel_type": "ag_ui",
                 "channel_config": { "anonymous": true }

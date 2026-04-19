@@ -9,7 +9,6 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "General-purpose harness with file system, bash, web fetch, secrets, session management, session schedules, long-context support, context compaction, budgeting, self-managed budget guidance, tool output persistence, and agent skills. Recommended default for most use cases.",
         SYSTEM_PROMPT,
     )
-    .with_seed_id(crate::org_init::GENERIC_HARNESS_ID)
     .with_tags(["generic", "default", "built-in"])
     .with_roles([BuiltInHarnessRole::Default])
     .with_capabilities([

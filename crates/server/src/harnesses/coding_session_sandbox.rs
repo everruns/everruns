@@ -12,7 +12,6 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "Coding harness with one managed session-owned sandbox. Uses provider-neutral sandbox tools backed by Daytona.",
         SYSTEM_PROMPT,
     )
-    .with_seed_id(crate::org_init::CODING_SESSION_SANDBOX_HARNESS_ID)
     .with_parent_name("generic")
     .with_tags(["coding", "sandbox", "managed", "built-in"])
     .with_capabilities([BuiltInCapabilityDefinition::with_config(

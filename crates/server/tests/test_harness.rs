@@ -38,6 +38,16 @@ use everruns_server::{
 };
 use everruns_worker::{RunnerBackend, create_runner_with_backend};
 
+async fn lookup_built_in_harness(db: &Arc<StorageBackend>, name: &str) -> String {
+    use everruns_core::DEFAULT_ORG_ID;
+    db.get_harness_by_name(DEFAULT_ORG_ID, name)
+        .await
+        .expect("db error looking up built-in harness")
+        .filter(|h| h.is_built_in)
+        .map(|h| h.id.to_string())
+        .unwrap_or_else(|| panic!("built-in harness '{name}' not provisioned for default org"))
+}
+
 /// Get test database URL from environment or use default
 pub fn get_database_url() -> String {
     std::env::var("DATABASE_URL").unwrap_or_else(|_| {
@@ -59,6 +69,13 @@ pub struct TestServer {
     router: Router,
     pub db: Arc<StorageBackend>,
     pub pool: PgPool,
+    /// Public ID of the built-in `base` harness for the default org (resolved
+    /// at construction time; no hardcoded UUIDs).
+    pub seed_base_harness_id: String,
+    /// Public ID of the built-in `generic` harness for the default org.
+    pub seed_generic_harness_id: String,
+    /// Public ID of the built-in `platform-chat` harness for the default org.
+    pub seed_chat_harness_id: String,
 }
 
 impl TestServer {
@@ -454,7 +471,18 @@ impl TestServer {
             .merge(root_routes)
             .nest("/api", api_routes);
 
-        Self { router, db, pool }
+        let seed_base_harness_id = lookup_built_in_harness(&db, "base").await;
+        let seed_generic_harness_id = lookup_built_in_harness(&db, "generic").await;
+        let seed_chat_harness_id = lookup_built_in_harness(&db, "platform-chat").await;
+
+        Self {
+            router,
+            db,
+            pool,
+            seed_base_harness_id,
+            seed_generic_harness_id,
+            seed_chat_harness_id,
+        }
     }
 
     /// Make a GET request

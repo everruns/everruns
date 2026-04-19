@@ -8,6 +8,11 @@ api_key="${3:?usage: test-rust.sh <version> <base_url> <api_key>}"
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
+# Resolve the Generic harness by name — UUIDs are assigned at DB seed time
+# and are no longer stable across deployments.
+harness_id="$(curl -fsS -H "Authorization: Bearer $api_key" "$base_url/v1/harnesses/generic" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+
 cargo new --quiet --bin "$workdir/smoke"
 
 cat > "$workdir/smoke/Cargo.toml" <<TOML
@@ -58,9 +63,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  agent fetch verified");
 
     // 3. Create session with builder (harness_id optional in v0.1.4+)
-    let harness_id = "harness_01933b5a000070008000000000000602";
+    let harness_id = std::env::var("EVERRUNS_HARNESS_ID")?;
     let req = CreateSessionRequest::new()
-        .harness_id(harness_id)
+        .harness_id(&harness_id)
         .agent_id(&agent.id);
     let session = client.sessions().create_with_options(req).await?;
     println!("  session created: {}", session.id);
@@ -96,9 +101,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(fetched.id, agent.id, "agent id mismatch");
     println!("  agent fetch verified");
 
-    // 3. Create session with the well-known Generic harness (seeded in every org)
-    let harness_id = "harness_01933b5a000070008000000000000602";
-    let session = client.sessions().create(harness_id).await?;
+    // 3. Create session with the Generic harness (resolved by name at runtime)
+    let harness_id = std::env::var("EVERRUNS_HARNESS_ID")?;
+    let session = client.sessions().create(&harness_id).await?;
     println!("  session created: {}", session.id);
 
     // 4. Fetch session and verify
@@ -151,6 +156,7 @@ fi
   cd "$workdir/smoke"
   EVERRUNS_API_KEY="$api_key" \
   EVERRUNS_BASE_URL="$base_url" \
+  EVERRUNS_HARNESS_ID="$harness_id" \
   SDK_VERSION="$version" \
   cargo run --quiet
 )

@@ -13,7 +13,12 @@ source "$workdir/.venv/bin/activate"
 
 pip install --quiet "everruns-sdk==$version"
 
-EVERRUNS_BASE_URL="$base_url" EVERRUNS_API_KEY="$api_key" SDK_VERSION="$version" python3 - <<'PY'
+# Resolve the Generic harness by name — UUIDs are assigned at DB seed time
+# and are no longer stable across deployments.
+harness_id="$(curl -fsS -H "Authorization: Bearer $api_key" "$base_url/v1/harnesses/generic" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+
+EVERRUNS_BASE_URL="$base_url" EVERRUNS_API_KEY="$api_key" EVERRUNS_HARNESS_ID="$harness_id" SDK_VERSION="$version" python3 - <<'PY'
 import asyncio
 import inspect
 import os
@@ -51,8 +56,8 @@ async def main() -> None:
     params = list(sig.parameters.keys())
 
     if "harness_id" in params:
-        # Use the well-known Generic harness (seeded in every org)
-        harness_id = "harness_01933b5a000070008000000000000602"
+        # Generic harness ID resolved by name at runtime
+        harness_id = os.environ["EVERRUNS_HARNESS_ID"]
         session = await client.sessions.create(harness_id, agent_id=agent.id)
     else:
         session = await client.sessions.create(agent_id=agent.id)

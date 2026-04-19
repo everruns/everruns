@@ -17,7 +17,6 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "Coding harness with self-hosted container sandboxes. Provides real filesystem, full process execution, network access, and all Generic capabilities for software development tasks.",
         SYSTEM_PROMPT,
     )
-    .with_seed_id(crate::org_init::CODING_CONTAINER_HARNESS_ID)
     .with_parent_name("generic")
     .with_tags(["coding", "container", "built-in"])
     .with_capabilities([BuiltInCapabilityDefinition::new("container_sandbox")])
