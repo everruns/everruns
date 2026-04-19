@@ -335,9 +335,9 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
     capabilities.register(WeekendConciergeCapability);
     let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
 
-    let harness_id = "harness_00000000000000000000000000000090".parse()?;
-    let agent_id = "agent_00000000000000000000000000000090".parse()?;
-    let session_id = "session_00000000000000000000000000000090".parse()?;
+    let harness_id = everruns_core::HarnessId::new();
+    let agent_id = everruns_core::AgentId::new();
+    let session_id = everruns_core::typed_id::SessionId::new();
 
     let runtime = everruns_runtime::InProcessRuntimeBuilder::new()
         .platform_definition(platform)

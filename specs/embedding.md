@@ -40,9 +40,8 @@ See [specs/runtime.md](runtime.md) for the public embedded runtime contract.
 
 Built-in harness templates are data, not code plugins. Each template carries:
 
-- Stable internal key
-- Optional default-org seed UUID
-- Name, description, system prompt, tags
+- Stable `name` (the durable identifier — see "Harness Identity" below)
+- Display name, description, system prompt, tags
 - Built-in capability definitions with optional per-capability config
 - Explicit roles
 
@@ -51,6 +50,12 @@ Roles replace hard-coded harness names for platform behavior:
 - `Base`: fallback harness for session creation
 - `Default`: org default harness for new orgs
 - `Chat`: global chat harness
+
+### Harness Identity
+
+Built-in harnesses are identified by `name` (e.g. `base`, `generic`, `platform-chat`), not by UUID. Each org gets its own freshly-generated `harness_id` row at provisioning time; lookups, reconciliation, and tests must resolve harnesses by name + `is_built_in`, never by hardcoded UUID literals.
+
+Hardcoded harness UUIDs are forbidden in production code, tests, examples, fixtures, and migrations. See [`specs/harness-types.md`](harness-types.md) for the full rule and the narrow default-org seeding exception.
 
 ## Presets
 
@@ -120,7 +125,7 @@ This prevents broken seeded data such as agents referencing Daytona when Daytona
 
 Organization initialization must provision built-in harnesses from the supplied harness templates and resolve default/base settings through harness roles, not hard-coded harness names or global constants.
 
-Default-org fixed UUIDs remain allowed for backward compatibility when a template includes `seed_id`.
+Each org receives freshly-generated `harness_id` rows. The default org is the only place where pinned UUIDs are tolerated, and that exception exists solely to keep historical seed rows stable; all consumer code must still resolve harnesses by `name` + `is_built_in`.
 
 ## Builder Contract
 
