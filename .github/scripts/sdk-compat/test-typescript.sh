@@ -8,6 +8,11 @@ api_key="${3:?usage: test-typescript.sh <version> <base_url> <api_key>}"
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
+# Resolve the Generic harness by name — UUIDs are assigned at DB seed time
+# and are no longer stable across deployments.
+harness_id="$(curl -fsS -H "Authorization: Bearer $api_key" "$base_url/v1/harnesses/generic" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+
 cat > "$workdir/package.json" <<JSON
 {
   "name": "sdk-compat-ts",
@@ -44,8 +49,8 @@ if (fetchedAgent.id !== agent.id) {
 console.log("  agent fetch verified");
 
 // 3. Create session
-// Use the well-known Generic harness (seeded in every org).
-const harnessId = "harness_01933b5a000070008000000000000602";
+// Generic harness ID resolved by name at runtime.
+const harnessId = process.env.EVERRUNS_HARNESS_ID;
 const session = await client.sessions.create({ harnessId, agentId: agent.id });
 console.log(`  session created: ${session.id}`);
 
@@ -64,6 +69,7 @@ JS
   npm install --silent 2>&1
   EVERRUNS_API_KEY="$api_key" \
   EVERRUNS_BASE_URL="$base_url" \
+  EVERRUNS_HARNESS_ID="$harness_id" \
   SDK_VERSION="$version" \
   node test.mjs
 )
