@@ -67,6 +67,9 @@ pub use event_notifications::EventNotificationBroadcaster;
 pub mod event_delivery;
 pub use event_delivery::EventDelivery;
 
+// PostgreSQL LISTEN/NOTIFY listener connection guardrails
+pub mod pg_listener_config;
+
 // Notification broadcaster for push-based user inbox delivery
 pub mod notification_notifications;
 pub use notification_notifications::NotificationNotificationBroadcaster;

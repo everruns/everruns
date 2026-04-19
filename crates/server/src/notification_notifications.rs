@@ -3,7 +3,6 @@
 // across instances without falling back to short-polling.
 
 use serde::Deserialize;
-use sqlx::PgPool;
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -21,13 +20,13 @@ pub struct NotificationNotificationBroadcaster {
 }
 
 impl NotificationNotificationBroadcaster {
-    pub async fn new(pool: PgPool) -> Self {
+    pub async fn new(database_url: String) -> Self {
         let (sender, _) = broadcast::channel(4096);
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
         let sender_clone = sender.clone();
         tokio::spawn(async move {
-            Self::listen_loop(pool, sender_clone, shutdown_rx).await;
+            Self::listen_loop(database_url, sender_clone, shutdown_rx).await;
         });
 
         Self {
@@ -45,14 +44,14 @@ impl NotificationNotificationBroadcaster {
     }
 
     async fn listen_loop(
-        pool: PgPool,
+        database_url: String,
         sender: broadcast::Sender<NotificationNotificationPayload>,
         mut shutdown_rx: mpsc::Receiver<()>,
     ) {
         info!("Starting PostgreSQL NOTIFY listener for notifications");
 
         loop {
-            let mut listener = match sqlx::postgres::PgListener::connect_with(&pool).await {
+            let mut listener = match sqlx::postgres::PgListener::connect(&database_url).await {
                 Ok(listener) => listener,
                 Err(e) => {
                     error!(

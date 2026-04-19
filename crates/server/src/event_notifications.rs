@@ -1,8 +1,7 @@
-// Event notification broadcaster for push-based SSE delivery
-// Decision: Uses PostgreSQL NOTIFY/LISTEN to replace SSE polling (100-500ms) with
-// push notifications (<20ms). Mirrors TaskNotificationBroadcaster pattern.
+// Event notification broadcaster for legacy PG-backed wakeups.
+// Decision: Connect listeners through a direct PostgreSQL URL instead of the shared
+// query pool so LISTEN/NOTIFY never shares a pooled session with ordinary queries.
 
-use sqlx::PgPool;
 use tokio::sync::{broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -22,13 +21,13 @@ pub struct EventNotificationBroadcaster {
 
 impl EventNotificationBroadcaster {
     /// Create a new broadcaster and start listening for PostgreSQL NOTIFY events
-    pub async fn new(pool: PgPool) -> Self {
+    pub async fn new(database_url: String) -> Self {
         let (sender, _) = broadcast::channel(4096);
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
         let sender_clone = sender.clone();
         tokio::spawn(async move {
-            Self::listen_loop(pool, sender_clone, shutdown_rx).await;
+            Self::listen_loop(database_url, sender_clone, shutdown_rx).await;
         });
 
         Self {
@@ -50,14 +49,14 @@ impl EventNotificationBroadcaster {
 
     /// Background task that listens for PostgreSQL NOTIFY events
     async fn listen_loop(
-        pool: PgPool,
+        database_url: String,
         sender: broadcast::Sender<EventNotificationPayload>,
         mut shutdown_rx: mpsc::Receiver<()>,
     ) {
         info!("Starting PostgreSQL NOTIFY listener for event notifications");
 
         loop {
-            let mut listener = match sqlx::postgres::PgListener::connect_with(&pool).await {
+            let mut listener = match sqlx::postgres::PgListener::connect(&database_url).await {
                 Ok(listener) => listener,
                 Err(e) => {
                     error!("Failed to create PostgreSQL listener for events: {}", e);
