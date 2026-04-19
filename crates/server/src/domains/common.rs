@@ -233,12 +233,17 @@ fn json_schema_for<T>() -> Value
 where
     T: ToSchema,
 {
-    let mut schema = serde_json::to_value(T::schema()).unwrap_or_else(|_| {
-        serde_json::json!({
-            "type": "object",
-            "additionalProperties": true,
-        })
-    });
+    let mut schema = match serde_json::to_value(T::schema()) {
+        Ok(schema) => schema,
+        Err(err) => {
+            tracing::warn!(
+                schema_type = std::any::type_name::<T>(),
+                error = %err,
+                "failed to serialize command schema; falling back to open object schema"
+            );
+            return open_object_schema();
+        }
+    };
 
     rewrite_schema_refs(&mut schema);
 
@@ -246,7 +251,18 @@ where
     let mut refs = Vec::new();
     T::schemas(&mut refs);
     for (name, ref_or_schema) in refs {
-        let mut value = serde_json::to_value(ref_or_schema).unwrap_or(Value::Null);
+        let mut value = match serde_json::to_value(ref_or_schema) {
+            Ok(value) => value,
+            Err(err) => {
+                tracing::warn!(
+                    schema_type = std::any::type_name::<T>(),
+                    schema_name = %name,
+                    error = %err,
+                    "failed to serialize referenced schema; using open object schema in $defs"
+                );
+                open_object_schema()
+            }
+        };
         rewrite_schema_refs(&mut value);
         defs.insert(name, value);
     }
@@ -258,6 +274,13 @@ where
     }
 
     schema
+}
+
+fn open_object_schema() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": true,
+    })
 }
 
 fn rewrite_schema_refs(value: &mut Value) {

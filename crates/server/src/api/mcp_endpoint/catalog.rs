@@ -7,8 +7,10 @@
 use super::handlers;
 use bashkit::{ScriptingToolSet, ToolArgs, ToolDef};
 use serde_json::json;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::LazyLock;
 /// Handler function type for catalog operations.
 pub type Handler = for<'a> fn(
     &'a serde_json::Value,
@@ -39,6 +41,27 @@ pub struct CatalogContext {
     pub org_id: i64,
     pub user_id: Option<uuid::Uuid>,
 }
+
+static INVENTORY_NAMES: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    inventory::iter::<crate::domains::common::CommandDescriptor>
+        .into_iter()
+        .map(|d| (d.meta)().name)
+        .collect()
+});
+
+static INVENTORY_TOOL_DEFS: LazyLock<HashMap<&'static str, ToolDef>> = LazyLock::new(|| {
+    inventory::iter::<crate::domains::common::CommandDescriptor>
+        .into_iter()
+        .map(|desc| {
+            let meta = (desc.meta)();
+            let schema = (desc.param_schema)();
+            let def = ToolDef::new(meta.name, meta.description)
+                .with_schema(schema)
+                .with_category(meta.category);
+            (meta.name, def)
+        })
+        .collect()
+});
 
 impl CatalogContext {
     /// Convert to a domain Ctx for inventory-registered Command dispatch.
@@ -74,12 +97,6 @@ pub fn build_toolset(ctx: CatalogContext) -> ScriptingToolSet {
         );
 
     // Collect inventory command names so we can skip static CATALOG duplicates.
-    let inventory_names: std::collections::HashSet<&'static str> =
-        inventory::iter::<crate::domains::common::CommandDescriptor>
-            .into_iter()
-            .map(|d| (d.meta)().name)
-            .collect();
-
     // Inventory commands first — they own the namespace.
     for desc in inventory::iter::<crate::domains::common::CommandDescriptor> {
         let def = command_descriptor_to_def(desc);
@@ -89,7 +106,7 @@ pub fn build_toolset(ctx: CatalogContext) -> ScriptingToolSet {
 
     // Static CATALOG fills in everything not yet migrated.
     for op in CATALOG {
-        if inventory_names.contains(op.name) {
+        if INVENTORY_NAMES.contains(op.name) {
             continue;
         }
         let def = op_to_def(op);
@@ -102,10 +119,14 @@ pub fn build_toolset(ctx: CatalogContext) -> ScriptingToolSet {
 
 fn command_descriptor_to_def(desc: &crate::domains::common::CommandDescriptor) -> ToolDef {
     let meta = (desc.meta)();
-    let schema = (desc.param_schema)();
-    ToolDef::new(meta.name, meta.description)
-        .with_schema(schema)
-        .with_category(meta.category)
+    INVENTORY_TOOL_DEFS
+        .get(meta.name)
+        .cloned()
+        .unwrap_or_else(|| {
+            ToolDef::new(meta.name, meta.description)
+                .with_schema((desc.param_schema)())
+                .with_category(meta.category)
+        })
 }
 
 /// Build a callback that dispatches an inventory command via domain dispatch.
