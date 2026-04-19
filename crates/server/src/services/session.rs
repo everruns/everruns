@@ -9,7 +9,7 @@
 use crate::api::common::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
 use crate::errors::ResourceNotFoundError;
-use crate::org_init::BASE_HARNESS_ID;
+use crate::org_init;
 use crate::services::session_file::{CreateFileInput, SessionFileService};
 use crate::services::session_sandbox::SessionSandboxService;
 use crate::storage::{
@@ -210,7 +210,7 @@ impl SessionService {
             blueprint_config: None,
         };
         let row = self.db.create_session(input).await?;
-        let mut session = Self::row_to_session(row, org_public_id);
+        let mut session = Self::row_to_session(row, org_public_id, Some(harness_id));
 
         // Populate features before overriding agent_id (needs internal UUID)
         self.populate_features(org_id, &mut session).await?;
@@ -307,7 +307,7 @@ impl SessionService {
             blueprint_config,
         };
         let row = self.db.create_session(input).await?;
-        let mut session = Self::row_to_session(row, org_public_id);
+        let mut session = Self::row_to_session(row, org_public_id, Some(harness_id));
         self.populate_features(org_id, &mut session).await?;
 
         // Apply session-level initial files to the session filesystem
@@ -545,7 +545,12 @@ impl SessionService {
             .await?;
         match row {
             Some(r) => {
-                let mut session = Self::row_to_session(r, &caller.org_public_id);
+                let fallback = if r.harness_id.is_none() {
+                    Some(org_init::base_harness_id(&self.db, caller.org_id).await?)
+                } else {
+                    None
+                };
+                let mut session = Self::row_to_session(r, &caller.org_public_id, fallback);
                 // Populate features before resolving agent_id (needs internal UUID)
                 self.populate_features(caller.org_id, &mut session).await?;
                 self.resolve_session_agent_id(caller.org_id, &mut session)
@@ -599,9 +604,14 @@ impl SessionService {
             .db
             .list_sessions(org_id, agent_id, search, pagination)
             .await?;
+        let fallback = if rows.iter().any(|r| r.harness_id.is_none()) {
+            Some(org_init::base_harness_id(&self.db, org_id).await?)
+        } else {
+            None
+        };
         let mut sessions: Vec<Session> = rows
             .into_iter()
-            .map(|r| Self::row_to_session(r, org_public_id))
+            .map(|r| Self::row_to_session(r, org_public_id, fallback))
             .collect();
 
         // Populate features before resolving agent IDs (needs internal UUIDs)
@@ -677,7 +687,12 @@ impl SessionService {
             .await?;
         match row {
             Some(r) => {
-                let mut session = Self::row_to_session(r, &caller.org_public_id);
+                let fallback = if r.harness_id.is_none() {
+                    Some(org_init::base_harness_id(&self.db, caller.org_id).await?)
+                } else {
+                    None
+                };
+                let mut session = Self::row_to_session(r, &caller.org_public_id, fallback);
                 self.resolve_session_agent_id(caller.org_id, &mut session)
                     .await?;
                 Ok(Some(session))
@@ -704,7 +719,12 @@ impl SessionService {
             .await?;
         match row {
             Some(r) => {
-                let mut session = Self::row_to_session(r, &caller.org_public_id);
+                let fallback = if r.harness_id.is_none() {
+                    Some(org_init::base_harness_id(&self.db, caller.org_id).await?)
+                } else {
+                    None
+                };
+                let mut session = Self::row_to_session(r, &caller.org_public_id, fallback);
                 self.resolve_session_agent_id(caller.org_id, &mut session)
                     .await?;
                 Ok(Some(session))
@@ -777,7 +797,7 @@ impl SessionService {
                 .await?;
             }
 
-            let mut session = Self::row_to_session(row, org_public_id);
+            let mut session = Self::row_to_session(row, org_public_id, Some(desired_harness_id));
             self.populate_features(caller.org_id, &mut session).await?;
             self.resolve_session_agent_id(org_id, &mut session).await?;
             return Ok(session);
@@ -807,7 +827,7 @@ impl SessionService {
         };
         let row = self.db.create_session(input).await?;
         let session_id = row.id.uuid();
-        let mut session = Self::row_to_session(row, org_public_id);
+        let mut session = Self::row_to_session(row, org_public_id, Some(harness_id_typed));
         self.populate_features(org_id, &mut session).await?;
 
         // Apply capability mounts
@@ -936,7 +956,11 @@ impl SessionService {
         Ok(())
     }
 
-    pub fn row_to_session(row: crate::storage::SessionRow, org_public_id: &str) -> Session {
+    pub fn row_to_session(
+        row: crate::storage::SessionRow,
+        org_public_id: &str,
+        fallback_harness: Option<HarnessId>,
+    ) -> Session {
         // Convert database usage columns to TokenUsage
         let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
             Some(TokenUsage::with_cache(
@@ -964,9 +988,13 @@ impl SessionService {
         Session {
             id: row.id,
             organization_id: org_public_id.to_string(),
-            harness_id: row
-                .harness_id
-                .unwrap_or_else(|| HarnessId::from_uuid(BASE_HARNESS_ID)),
+            harness_id: row.harness_id.or(fallback_harness).unwrap_or_else(|| {
+                panic!(
+                    "session {} has no harness_id and no fallback was provided; \
+                     ensure the org has a built-in 'base' harness provisioned",
+                    row.id
+                )
+            }),
             agent_id: row.agent_id,
             agent_identity_id: row.agent_identity_id,
             title: row.title,
@@ -1625,7 +1653,7 @@ mod tests {
         let session_row = db
             .create_session(CreateSessionRow {
                 org_id: caller.org_id,
-                harness_id: Some(HarnessId::from_uuid(BASE_HARNESS_ID)),
+                harness_id: None,
                 agent_id: None,
                 agent_identity_id: None,
                 title: Some("Mount Test".to_string()),

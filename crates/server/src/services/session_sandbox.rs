@@ -8,7 +8,7 @@
 //   matching normal capability merge behavior.
 
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
-use crate::org_init::BASE_HARNESS_ID;
+use crate::org_init;
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use anyhow::Context;
 use async_trait::async_trait;
@@ -167,9 +167,12 @@ impl SessionSandboxService {
             return Ok(None);
         };
 
-        let harness_id = session_row
-            .harness_id
-            .unwrap_or_else(|| everruns_core::HarnessId::from_uuid(BASE_HARNESS_ID));
+        let harness_id = match session_row.harness_id {
+            Some(id) => id,
+            None => org_init::base_harness_id(&self.db, org_id)
+                .await
+                .context("failed to resolve base harness for session without harness_id")?,
+        };
         let Some(harness) = resolve_effective_harness(self.db.as_ref(), org_id, harness_id)
             .await
             .context("failed to resolve effective harness")?

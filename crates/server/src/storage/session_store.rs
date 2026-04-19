@@ -6,10 +6,9 @@
 // Decision: org_id and org_public_id are baked into the struct at
 // construction time, matching the Grpc/Adapter store pattern.
 
-use crate::org_init::BASE_HARNESS_ID;
 use async_trait::async_trait;
 use everruns_core::{
-    HarnessId, Result, SessionId, StoreResultExt, TokenUsage,
+    AgentLoopError, Result, SessionId, StoreResultExt, TokenUsage,
     session::{Session, SessionStatus, SubagentStatus},
     traits::SessionStore,
 };
@@ -52,6 +51,19 @@ impl SessionStore for DbSessionStore {
 
         match session_row {
             Some(row) => {
+                let fallback_harness = self
+                    .db
+                    .get_harness_by_name(self.org_id, "base")
+                    .await
+                    .store_err()?
+                    .filter(|h| h.is_built_in)
+                    .map(|h| h.id)
+                    .ok_or_else(|| {
+                        AgentLoopError::store(format!(
+                            "base harness not provisioned for org {}",
+                            self.org_id
+                        ))
+                    })?;
                 // Convert database usage columns to TokenUsage
                 let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
                     Some(TokenUsage::with_cache(
@@ -78,9 +90,7 @@ impl SessionStore for DbSessionStore {
                 Ok(Some(Session {
                     id: row.id,
                     organization_id: self.org_public_id.clone(),
-                    harness_id: row
-                        .harness_id
-                        .unwrap_or_else(|| HarnessId::from_uuid(BASE_HARNESS_ID)),
+                    harness_id: row.harness_id.unwrap_or(fallback_harness),
                     agent_id: row.agent_id,
                     agent_identity_id: row.agent_identity_id,
                     title: row.title,

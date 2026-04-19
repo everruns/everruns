@@ -11,7 +11,6 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "Conversational harness for the global chat interface with platform management capabilities.",
         SYSTEM_PROMPT,
     )
-    .with_seed_id(crate::org_init::CHAT_HARNESS_ID)
     .with_parent_name("generic")
     .with_tags(["chat", "built-in"])
     .with_roles([BuiltInHarnessRole::Chat])

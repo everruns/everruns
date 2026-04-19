@@ -117,9 +117,6 @@ async fn assert_no_sessions_with_tag(server: &TestServer, tag: &str) {
 /// Test signing secret (arbitrary, used for webhook signature tests)
 const TEST_SIGNING_SECRET: &str = "test_signing_secret_for_integration_tests";
 
-/// Seed harness ID (BASE_HARNESS)
-const SEED_BASE_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
-
 /// Compute Slack-compatible HMAC-SHA256 signature for a request body.
 fn sign_slack_request(signing_secret: &str, timestamp: &str, body: &[u8]) -> String {
     let sig_basestring = format!("v0:{}:{}", timestamp, std::str::from_utf8(body).unwrap());
@@ -159,7 +156,7 @@ async fn create_published_slack_app(server: &TestServer, signing_secret: &str) -
             "/v1/apps",
             json!({
                 "name": "Slack Test Bot",
-                "harness_id": SEED_BASE_HARNESS_ID,
+                "harness_id": server.seed_base_harness_id,
                 "agent_id": agent_id,
                 "channel_type": "slack",
                 "channel_config": {
@@ -330,7 +327,7 @@ async fn test_slack_report_progress_only_tags_session() {
             "/v1/apps",
             json!({
                 "name": "Slack Report Progress Bot",
-                "harness_id": SEED_BASE_HARNESS_ID,
+                "harness_id": server.seed_base_harness_id,
                 "agent_id": agent_id,
                 "channel_type": "slack",
                 "channel_config": {
@@ -487,7 +484,7 @@ async fn test_slack_unpublished_app_rejected() {
             "/v1/apps",
             json!({
                 "name": "Unpublished Bot",
-                "harness_id": SEED_BASE_HARNESS_ID,
+                "harness_id": server.seed_base_harness_id,
                 "agent_id": agent_id,
                 "channel_type": "slack",
                 "channel_config": {
@@ -567,7 +564,7 @@ async fn test_slack_per_channel_strategy() {
             "/v1/apps",
             json!({
                 "name": "Channel Bot",
-                "harness_id": SEED_BASE_HARNESS_ID,
+                "harness_id": server.seed_base_harness_id,
                 "agent_id": agent_id,
                 "channel_type": "slack",
                 "channel_config": {
@@ -647,7 +644,7 @@ async fn test_slack_per_user_strategy() {
             "/v1/apps",
             json!({
                 "name": "User Bot",
-                "harness_id": SEED_BASE_HARNESS_ID,
+                "harness_id": server.seed_base_harness_id,
                 "agent_id": agent_id,
                 "channel_type": "slack",
                 "channel_config": {
@@ -915,7 +912,7 @@ async fn test_real_slack_webhook_to_session() {
             "/v1/apps",
             json!({
                 "name": "Real Slack Test Bot",
-                "harness_id": SEED_BASE_HARNESS_ID,
+                "harness_id": server.seed_base_harness_id,
                 "agent_id": agent_id,
                 "channel_type": "slack",
                 "channel_config": {

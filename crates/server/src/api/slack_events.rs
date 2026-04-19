@@ -551,7 +551,12 @@ async fn process_slack_message(
                     tags = ?routing_tags,
                     "Found existing Slack session"
                 );
-                let session = SessionService::row_to_session(row, &org_public_id);
+                let fallback = if row.harness_id.is_none() {
+                    Some(crate::org_init::base_harness_id(&state.db, org_id).await?)
+                } else {
+                    None
+                };
+                let session = SessionService::row_to_session(row, &org_public_id, fallback);
                 let mut synced_tags = session.tags.clone();
                 sync_slack_reply_mode_tags(&mut synced_tags, slack_config.reply_mode);
                 if synced_tags != session.tags

@@ -25,12 +25,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-/// Well-known UUID for the Generic harness (default for sessions without explicit harness)
-pub const GENERIC_HARNESS_ID: Uuid = org_init::GENERIC_HARNESS_ID;
-
-/// Well-known UUID for the Chat harness (used by global chat endpoint)
-pub const CHAT_HARNESS_ID: Uuid = org_init::CHAT_HARNESS_ID;
-
 /// Well-known UUIDs for seed data
 /// Format: 01933b5a-0000-7000-8000-0000000001xx
 /// Range allocation:
@@ -2224,25 +2218,6 @@ mod tests {
     // --- Harness seed data ---
 
     #[test]
-    fn test_seed_harness_ids_are_unique() {
-        let ids: Vec<Uuid> = built_in_harnesses()
-            .iter()
-            .map(|h| {
-                h.seed_id
-                    .expect("OSS built-in harness should have a seed id")
-            })
-            .collect();
-        let mut unique_ids = ids.clone();
-        unique_ids.sort();
-        unique_ids.dedup();
-        assert_eq!(
-            ids.len(),
-            unique_ids.len(),
-            "Seed harness IDs must be unique"
-        );
-    }
-
-    #[test]
     fn test_seed_harness_names_are_unique() {
         let built_in_harnesses = built_in_harnesses();
         let names: Vec<&str> = built_in_harnesses.iter().map(|h| h.name.as_str()).collect();
@@ -2484,14 +2459,22 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(
-            settings.default_harness_id.unwrap().uuid(),
-            org_init::GENERIC_HARNESS_ID
-        );
-        assert_eq!(
-            settings.base_harness_id.unwrap().uuid(),
-            org_init::BASE_HARNESS_ID
-        );
+        let harnesses = db
+            .list_harnesses(DEFAULT_ORG_ID, None, false)
+            .await
+            .unwrap();
+        let generic_id = harnesses
+            .iter()
+            .find(|h| h.name == "generic")
+            .expect("generic harness")
+            .id;
+        let base_id = harnesses
+            .iter()
+            .find(|h| h.name == "base")
+            .expect("base harness")
+            .id;
+        assert_eq!(settings.default_harness_id, Some(generic_id));
+        assert_eq!(settings.base_harness_id, Some(base_id));
     }
 
     #[tokio::test]
@@ -2647,16 +2630,15 @@ mod tests {
         let pd = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
         reconcile_org_harnesses(&db, &pd).await;
 
-        // Mutate harness description via public API
-        let built_in_harnesses = built_in_harnesses();
-        let harness_id = everruns_core::HarnessId::from_uuid(
-            built_in_harnesses
-                .iter()
-                .find(|h| h.name == "base")
-                .unwrap()
-                .seed_id
-                .expect("OSS built-in harness should have a seed id"),
-        );
+        // Mutate harness description via public API. Resolve the base
+        // harness id by name from the DB — built-in harnesses no longer
+        // carry compile-time UUIDs.
+        let harness_id = db
+            .get_harness_by_name(DEFAULT_ORG_ID, "base")
+            .await
+            .unwrap()
+            .expect("base harness should be provisioned")
+            .id;
         db.update_harness(
             DEFAULT_ORG_ID,
             harness_id,

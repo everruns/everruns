@@ -4,7 +4,8 @@
 // Decision: Seed agents are NOT auto-seeded; they live as examples (GET /v1/agent-examples)
 //   and are adopted on demand (POST /v1/agent-examples/{slug}/use). This prevents duplicates.
 // Decision: Reconciliation ensures all orgs stay up-to-date with built-in harness definitions
-// Decision: Default org uses fixed seed UUIDs for backward compat; other orgs get fresh UUIDs
+// Decision: Built-in harness identity is the `name` string; UUIDs are assigned by the DB at
+//   provisioning time. No UUIDs are hardcoded anywhere (no per-org split-brain).
 // Decision: Org settings keep separate default and base harness pointers
 
 use crate::storage::{
@@ -12,51 +13,34 @@ use crate::storage::{
     models::{CreateHarnessRow, UpdateOrganizationSettings},
 };
 use anyhow::{Context, Result};
-use everruns_core::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
+use everruns_core::{
+    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, HarnessId,
+};
 use everruns_durable::UpdateField;
 use uuid::Uuid;
-/// Well-known seed IDs for default org harnesses (backward compat)
-mod harness_ids {
-    use uuid::Uuid;
-    pub const BASE: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
-    pub const GENERIC: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
-    pub const CHAT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
-    pub const CODING_DAYTONA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000604);
-    pub const CODING_CONTAINER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000605);
-    pub const CODING_SESSION_SANDBOX: Uuid =
-        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000606);
-    pub const DATA_ANALYST: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000607);
-}
-
-/// Well-known UUID for the Generic harness (org default harness for new orgs)
-pub const GENERIC_HARNESS_ID: Uuid = harness_ids::GENERIC;
-
-/// Well-known UUID for the Base harness (session fallback when no harness is provided)
-pub const BASE_HARNESS_ID: Uuid = harness_ids::BASE;
-
-/// Well-known UUID for the Chat harness (used by global chat endpoint)
-pub const CHAT_HARNESS_ID: Uuid = harness_ids::CHAT;
-
-/// Well-known UUID for the Coding (Daytona) harness
-pub const CODING_DAYTONA_HARNESS_ID: Uuid = harness_ids::CODING_DAYTONA;
-
-/// Well-known UUID for the Coding (Container) harness
-pub const CODING_CONTAINER_HARNESS_ID: Uuid = harness_ids::CODING_CONTAINER;
-
-/// Well-known UUID for the Coding (Session Sandbox) harness
-pub const CODING_SESSION_SANDBOX_HARNESS_ID: Uuid = harness_ids::CODING_SESSION_SANDBOX;
-
-/// Well-known UUID for the Data Analyst harness
-pub const DATA_ANALYST_HARNESS_ID: Uuid = harness_ids::DATA_ANALYST;
 
 pub(crate) fn default_harness_definitions() -> Vec<BuiltInHarnessDefinition> {
     crate::platform::oss_built_in_harnesses()
 }
 
+/// Resolve the `base` built-in harness ID for an org at runtime.
+///
+/// Callers that need a fallback harness (session creation without explicit
+/// harness, defensive construction from a DB row with `NULL harness_id`) use
+/// this instead of a compile-time constant.
+pub async fn base_harness_id(db: &StorageBackend, org_id: i64) -> Result<HarnessId> {
+    db.get_harness_by_name(org_id, "base")
+        .await?
+        .filter(|h| h.is_built_in)
+        .map(|h| h.id)
+        .with_context(|| format!("base harness not provisioned for org {org_id}"))
+}
+
 /// Initialize built-in harnesses for a specific organization.
 ///
-/// For `DEFAULT_ORG_ID`, uses fixed seed UUIDs for backward compatibility.
-/// For other orgs, generates fresh UUIDs.
+/// Built-in harnesses are identified by name. IDs are assigned by the DB on
+/// first provisioning and never hardcoded. All orgs (including the default
+/// org) follow the same path.
 ///
 /// Uses upsert semantics: creates if missing, updates if definition changed.
 pub async fn initialize_org_harnesses(db: &StorageBackend, org_id: i64) -> Result<InitResult> {
@@ -69,16 +53,12 @@ pub async fn initialize_org_harnesses_with_definitions(
     org_id: i64,
     harnesses: &[BuiltInHarnessDefinition],
 ) -> Result<InitResult> {
-    use everruns_core::DEFAULT_ORG_ID;
-
     let mut result = InitResult::default();
-    let is_default_org = org_id == DEFAULT_ORG_ID;
 
     for harness in harnesses {
-        let parent_harness_id =
-            resolve_built_in_parent_id(db, org_id, is_default_org, harnesses, harness)
-                .await
-                .with_context(|| format!("resolve parent for built-in harness {}", harness.name))?;
+        let parent_harness_id = resolve_built_in_parent_id(db, org_id, harnesses, harness)
+            .await
+            .with_context(|| format!("resolve parent for built-in harness {}", harness.name))?;
         let input = CreateHarnessRow {
             name: harness.name.to_string(),
             display_name: Some(harness.display_name.to_string()),
@@ -93,89 +73,48 @@ pub async fn initialize_org_harnesses_with_definitions(
             network_access: None,
         };
 
-        if is_default_org && let Some(seed_id) = harness.seed_id {
-            // Default org: use fixed seed UUIDs for backward compat
+        // Look up by name — every org (including the default org) has the same
+        // identity model: the `name` is stable, the UUID is DB-assigned.
+        let existing_row = db
+            .get_harness_by_name(org_id, &harness.name)
+            .await?
+            .filter(|h| h.is_built_in);
+
+        if let Some(existing_row) = existing_row {
             match db
-                .create_harness_with_id(org_id, seed_id.into(), input)
+                .create_harness_with_id(org_id, existing_row.id, input)
                 .await?
             {
-                Some(row) => {
-                    sync_harness_capabilities(db, row.id.uuid(), &harness.capabilities).await?;
-                    if row.created_at == row.updated_at {
-                        tracing::info!(name = harness.name, org_id, "Created built-in harness");
-                        result.created += 1;
-                    } else {
-                        tracing::info!(name = harness.name, org_id, "Updated built-in harness");
-                        result.updated += 1;
-                    }
+                Some(_) => {
+                    sync_harness_capabilities(db, existing_row.id.uuid(), &harness.capabilities)
+                        .await?;
+                    tracing::info!(name = harness.name, org_id, "Updated built-in harness");
+                    result.updated += 1;
                 }
                 None => {
-                    let caps_changed =
-                        sync_harness_capabilities(db, seed_id, &harness.capabilities).await?;
+                    let caps_changed = sync_harness_capabilities(
+                        db,
+                        existing_row.id.uuid(),
+                        &harness.capabilities,
+                    )
+                    .await?;
                     if caps_changed {
-                        tracing::info!(
-                            name = harness.name,
-                            org_id,
-                            "Updated built-in harness capabilities"
-                        );
                         result.updated += 1;
                     } else {
-                        tracing::debug!(name = harness.name, org_id, "Built-in harness up to date");
                         result.unchanged += 1;
                     }
                 }
             }
         } else {
-            // Non-default org: check if built-in harness already exists by name
-            let existing_row = db
-                .get_harness_by_name(org_id, &harness.name)
-                .await?
-                .filter(|h| h.is_built_in);
-
-            if let Some(existing_row) = existing_row {
-                // Already provisioned — update definition if changed
-                let existing_row = &existing_row;
-
-                match db
-                    .create_harness_with_id(org_id, existing_row.id, input)
-                    .await?
-                {
-                    Some(_) => {
-                        sync_harness_capabilities(
-                            db,
-                            existing_row.id.uuid(),
-                            &harness.capabilities,
-                        )
-                        .await?;
-                        tracing::info!(name = harness.name, org_id, "Updated built-in harness");
-                        result.updated += 1;
-                    }
-                    None => {
-                        let caps_changed = sync_harness_capabilities(
-                            db,
-                            existing_row.id.uuid(),
-                            &harness.capabilities,
-                        )
-                        .await?;
-                        if caps_changed {
-                            result.updated += 1;
-                        } else {
-                            result.unchanged += 1;
-                        }
-                    }
-                }
-            } else {
-                // Fresh org — create with new UUID
-                let row = db.create_harness(org_id, input).await?;
-                sync_harness_capabilities(db, row.id.uuid(), &harness.capabilities).await?;
-                tracing::info!(
-                    name = harness.name,
-                    org_id,
-                    id = %row.id,
-                    "Created built-in harness"
-                );
-                result.created += 1;
-            }
+            let row = db.create_harness(org_id, input).await?;
+            sync_harness_capabilities(db, row.id.uuid(), &harness.capabilities).await?;
+            tracing::info!(
+                name = harness.name,
+                org_id,
+                id = %row.id,
+                "Created built-in harness"
+            );
+            result.created += 1;
         }
     }
 
@@ -187,10 +126,9 @@ pub async fn initialize_org_harnesses_with_definitions(
 async fn resolve_built_in_parent_id(
     db: &StorageBackend,
     org_id: i64,
-    is_default_org: bool,
     harnesses: &[BuiltInHarnessDefinition],
     harness: &BuiltInHarnessDefinition,
-) -> Result<Option<everruns_core::HarnessId>> {
+) -> Result<Option<HarnessId>> {
     let Some(parent_name) = harness.parent_name.as_deref() else {
         return Ok(None);
     };
@@ -199,13 +137,6 @@ async fn resolve_built_in_parent_id(
         .iter()
         .find(|candidate| candidate.name == parent_name)
         .with_context(|| format!("unknown built-in parent {parent_name}"))?;
-
-    if is_default_org {
-        let parent_seed = parent
-            .seed_id
-            .with_context(|| format!("missing seed id for built-in parent {parent_name}"))?;
-        return Ok(Some(parent_seed.into()));
-    }
 
     let parent_row = db
         .get_harness_by_name(org_id, &parent.name)
@@ -399,26 +330,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_built_in_harness_seed_ids_unique() {
-        let built_in_harnesses = harnesses();
-        let ids: Vec<Uuid> = built_in_harnesses
-            .iter()
-            .map(|h| {
-                h.seed_id
-                    .expect("OSS built-in harness should have a seed id")
-            })
-            .collect();
-        let mut unique = ids.clone();
-        unique.sort();
-        unique.dedup();
-        assert_eq!(
-            ids.len(),
-            unique.len(),
-            "Duplicate built-in harness seed IDs"
-        );
-    }
-
     #[tokio::test]
     async fn test_initialize_default_org_creates_harnesses() {
         let db = make_db();
@@ -439,16 +350,23 @@ mod tests {
             assert!(h.is_built_in, "Harness {} should be built-in", h.name);
         }
 
+        let generic_id = provisioned_harnesses
+            .iter()
+            .find(|h| h.name == "generic")
+            .expect("generic harness")
+            .id;
+        let base_id = provisioned_harnesses
+            .iter()
+            .find(|h| h.name == "base")
+            .expect("base harness")
+            .id;
         let settings = db
             .get_organization_settings(DEFAULT_ORG_ID)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(
-            settings.default_harness_id.unwrap().uuid(),
-            GENERIC_HARNESS_ID
-        );
-        assert_eq!(settings.base_harness_id.unwrap().uuid(), BASE_HARNESS_ID);
+        assert_eq!(settings.default_harness_id, Some(generic_id));
+        assert_eq!(settings.base_harness_id, Some(base_id));
 
         let chat = provisioned_harnesses
             .iter()
@@ -590,107 +508,48 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_default_org_uses_seed_ids() {
-        let db = make_db();
-        seed_default_org(&db).await;
-
-        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
-
-        // Verify default org harnesses use the fixed seed UUIDs
-        for harness_def in harnesses() {
-            let seed_id = harness_def
-                .seed_id
-                .expect("OSS built-in harness should have a seed id");
-            let row = db
-                .get_harness(DEFAULT_ORG_ID, seed_id.into())
-                .await
-                .unwrap();
-            assert!(
-                row.is_some(),
-                "Default org should have harness with seed ID for {}",
-                harness_def.name
-            );
-            assert_eq!(row.unwrap().name, harness_def.name);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_new_org_gets_different_ids() {
-        let db = make_db();
-        seed_default_org(&db).await;
-
-        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
-
-        let org2 = db
-            .create_organization(crate::storage::models::CreateOrganizationRow {
-                public_id: "org_00000000000000000000000000000002".to_string(),
-                name: "Test Org 2".to_string(),
-                created_by: None,
-            })
-            .await
-            .unwrap();
-
-        initialize_org_harnesses(&db, org2.org_id).await.unwrap();
-
-        // Non-default org should NOT use seed UUIDs
-        let h_org2 = db.list_harnesses(org2.org_id, None, false).await.unwrap();
-        let built_in_harnesses = harnesses();
-        let seed_ids: Vec<Uuid> = built_in_harnesses
-            .iter()
-            .map(|h| {
-                h.seed_id
-                    .expect("OSS built-in harness should have a seed id")
-            })
-            .collect();
-        for h in &h_org2 {
-            assert!(
-                !seed_ids.contains(&h.id.uuid()),
-                "Non-default org harness {} should not use seed UUID",
-                h.name
-            );
-        }
-    }
-
-    #[tokio::test]
     async fn test_capabilities_synced() {
         let db = make_db();
         seed_default_org(&db).await;
 
         initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
 
-        // Check that Generic harness has the expected capabilities
+        let provisioned = db
+            .list_harnesses(DEFAULT_ORG_ID, None, false)
+            .await
+            .unwrap();
         let built_in_harnesses = harnesses();
-        let generic = built_in_harnesses
+
+        let generic_def = built_in_harnesses
             .iter()
             .find(|h| h.name == "generic")
             .unwrap();
+        let generic_id = provisioned
+            .iter()
+            .find(|h| h.name == "generic")
+            .expect("generic harness")
+            .id;
         let caps = db
-            .get_harness_capabilities(
-                generic
-                    .seed_id
-                    .expect("OSS built-in harness should have a seed id"),
-            )
+            .get_harness_capabilities(generic_id.uuid())
             .await
             .unwrap();
         let cap_ids: Vec<&str> = caps.iter().map(|c| c.capability_id.as_str()).collect();
-        let expected_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id.as_str()).collect();
+        let expected_ids: Vec<&str> = generic_def
+            .capabilities
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect();
         assert_eq!(
             cap_ids, expected_ids,
             "Generic harness capabilities should match definition"
         );
 
-        // Base harness should have no capabilities
-        let base = built_in_harnesses
+        let base_id = provisioned
             .iter()
             .find(|h| h.name == "base")
-            .unwrap();
-        let base_caps = db
-            .get_harness_capabilities(
-                base.seed_id
-                    .expect("OSS built-in harness should have a seed id"),
-            )
-            .await
-            .unwrap();
+            .expect("base harness")
+            .id;
+        let base_caps = db.get_harness_capabilities(base_id.uuid()).await.unwrap();
         assert!(
             base_caps.is_empty(),
             "Base harness should have no capabilities"

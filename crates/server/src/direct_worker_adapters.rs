@@ -32,7 +32,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::domains::mcp_servers::McpServerService;
-use crate::org_init::BASE_HARNESS_ID;
+use crate::org_init;
 use crate::services::scoped_mcp::{
     build_scoped_mcp_tool_definitions, resolve_scoped_mcp_server, validate_scoped_mcp_servers,
 };
@@ -1823,14 +1823,22 @@ impl DirectPlatformStore {
         }
     }
 
-    fn row_to_session(&self, row: crate::storage::SessionRow) -> Session {
+    fn row_to_session(
+        &self,
+        row: crate::storage::SessionRow,
+        fallback_harness: Option<HarnessId>,
+    ) -> Session {
         let capabilities = serde_json::from_value(row.capabilities).unwrap_or_default();
         Session {
             id: row.id,
             organization_id: everruns_core::org_public_id_from_internal(self.org_id),
-            harness_id: row
-                .harness_id
-                .unwrap_or_else(|| HarnessId::from_uuid(BASE_HARNESS_ID)),
+            harness_id: row.harness_id.or(fallback_harness).unwrap_or_else(|| {
+                panic!(
+                    "session {} has no harness_id and no fallback was provided; \
+                     ensure the org has a built-in 'base' harness provisioned",
+                    row.id
+                )
+            }),
             agent_id: row.agent_id,
             agent_identity_id: row.agent_identity_id,
             title: row.title,
@@ -2217,7 +2225,19 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             .await
             .map_err(|e| store_error(format!("Failed to list sessions: {e}")))?;
 
-        Ok(rows.into_iter().map(|r| self.row_to_session(r)).collect())
+        let fallback = if rows.iter().any(|r| r.harness_id.is_none()) {
+            Some(
+                org_init::base_harness_id(&self.db, self.org_id)
+                    .await
+                    .map_err(|e| store_error(format!("Failed to resolve base harness: {e}")))?,
+            )
+        } else {
+            None
+        };
+        Ok(rows
+            .into_iter()
+            .map(|r| self.row_to_session(r, fallback))
+            .collect())
     }
 
     async fn create_session(
@@ -2283,7 +2303,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             .await
             .map_err(|e| store_error(format!("Failed to create session: {e}")))?;
 
-        Ok(self.row_to_session(row))
+        Ok(self.row_to_session(row, Some(harness_id)))
     }
 
     async fn get_session_by_id(
@@ -2296,7 +2316,23 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             .await
             .map_err(|e| store_error(format!("Failed to get session: {e}")))?;
 
-        Ok(row.map(|r| self.row_to_session(r)))
+        match row {
+            Some(r) => {
+                let fallback = if r.harness_id.is_none() {
+                    Some(
+                        org_init::base_harness_id(&self.db, self.org_id)
+                            .await
+                            .map_err(|e| {
+                                store_error(format!("Failed to resolve base harness: {e}"))
+                            })?,
+                    )
+                } else {
+                    None
+                };
+                Ok(Some(self.row_to_session(r, fallback)))
+            }
+            None => Ok(None),
+        }
     }
 
     async fn delete_session(&self, id: SessionId) -> everruns_core::error::Result<()> {

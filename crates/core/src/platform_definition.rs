@@ -13,7 +13,6 @@ use crate::{
     Capability, CapabilityRegistry, ConnectionProvider, ConnectionProviderRegistry, DriverRegistry,
 };
 use serde_json::Value;
-use uuid::Uuid;
 
 /// Stable role assigned to a built-in harness template.
 ///
@@ -60,15 +59,13 @@ impl BuiltInCapabilityDefinition {
 }
 
 /// Built-in harness template provisioned by a platform definition.
+///
+/// Built-in harnesses are identified by `name` (unique per org). IDs are
+/// assigned by the seeder at provisioning time — never hardcoded.
 #[derive(Debug, Clone)]
 pub struct BuiltInHarnessDefinition {
     /// Name, unique per org (e.g. "generic").
     pub name: String,
-    /// Fixed UUID used for the default org when backward compatibility matters.
-    ///
-    /// Other organizations still receive fresh UUIDs; the template name and
-    /// `is_built_in` flag are used to reconcile them.
-    pub seed_id: Option<Uuid>,
     /// Human-readable display name shown in UI.
     pub display_name: String,
     /// Human-readable description.
@@ -95,7 +92,6 @@ impl BuiltInHarnessDefinition {
     ) -> Self {
         Self {
             name: name.into(),
-            seed_id: None,
             display_name: display_name.into(),
             description: description.into(),
             system_prompt: system_prompt.into(),
@@ -104,12 +100,6 @@ impl BuiltInHarnessDefinition {
             capabilities: Vec::new(),
             roles: Vec::new(),
         }
-    }
-
-    /// Set the default-org seed UUID used for backward compatibility.
-    pub fn with_seed_id(mut self, seed_id: Uuid) -> Self {
-        self.seed_id = Some(seed_id);
-        self
     }
 
     /// Replace the harness tags.
