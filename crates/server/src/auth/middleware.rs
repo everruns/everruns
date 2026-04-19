@@ -47,6 +47,13 @@ impl AuthError {
             status: StatusCode::FORBIDDEN,
         }
     }
+
+    pub fn unprocessable(message: &str) -> Self {
+        Self {
+            error: message.to_string(),
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+        }
+    }
 }
 
 impl IntoResponse for AuthError {

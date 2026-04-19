@@ -344,6 +344,15 @@ async fn cli_auth_exchange(
             AuthError::unauthorized("Failed to fetch organizations")
         })?;
 
+    // EVE-195: Reject CLI login for users with no organization membership.
+    // Falling back to DEFAULT_ORG_ID would silently cross tenant boundaries
+    // on self-hosted and cloud deployments, so require an explicit org first.
+    if orgs.is_empty() {
+        return Err(AuthError::unprocessable(
+            "You are not a member of any organization. Please create an organization in the web UI before using the CLI.",
+        ));
+    }
+
     // Generate API key with CLI metadata (user-scoped, no org)
     let generated = generate_api_key();
     let hostname = req.hostname.unwrap_or_else(|| "unknown".to_string());
