@@ -107,16 +107,11 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 
 ## Built-in Harness Identity
 
-**Built-in harnesses are identified by `name`, not by UUID.** The `harness_id` row is per-org and is generated when the harness is provisioned. Reconciliation, lookups, tests, examples, and migrations must resolve built-in harnesses by `name` + `is_built_in`.
+**Built-in harnesses are identified by `name`, not by UUID.** The `harness_id` row is per-org and is generated when the harness is provisioned. Reconciliation, lookups, tests, examples, and migrations must address built-in harnesses (`is_built_in = true`) by `name`.
 
-**Hardcoded harness UUID literals are forbidden** anywhere in the codebase, including:
+**Hardcoded UUID literals must not be used to address built-in harnesses.** This rule applies in production code, tests, examples, fixtures, and new migrations. It does not affect literals used for non-built-in harness fixtures (e.g. a test that creates an org-owned custom harness with a fixed ID for setup) — those are unaffected because they do not depend on the built-in identity.
 
-- production code (`crates/**/src/`)
-- integration and unit tests
-- example crates and fixtures
-- new database migrations
-
-The single exception is the historical default-org seed range (see "UUID Allocation" below) — those literals exist purely to keep already-provisioned default-org rows stable and must not grow.
+The single exception is the historical default-org seed range (see "UUID Allocation" below). Those literals exist purely to keep already-provisioned default-org rows stable and must not grow.
 
 ## Built-in Harness Lifecycle
 

@@ -53,9 +53,9 @@ Roles replace hard-coded harness names for platform behavior:
 
 ### Harness Identity
 
-Built-in harnesses are identified by `name` (e.g. `base`, `generic`, `platform-chat`), not by UUID. Each org gets its own freshly-generated `harness_id` row at provisioning time; lookups, reconciliation, and tests must resolve harnesses by name + `is_built_in`, never by hardcoded UUID literals.
+Built-in harnesses are identified by `name` (e.g. `base`, `generic`, `platform-chat`), not by UUID. Each org gets its own freshly-generated `harness_id` row at provisioning time; consumers must resolve built-in harnesses by name + `is_built_in`, never by hardcoded UUID literals.
 
-Hardcoded harness UUIDs are forbidden in production code, tests, examples, fixtures, and migrations. See [`specs/harness-types.md`](harness-types.md) for the full rule and the narrow default-org seeding exception.
+The rule is scoped to *built-in* harness identity. UUID literals used in tests, examples, or fixtures for org-owned (non-built-in) harnesses are unaffected. See [`specs/harness-types.md`](harness-types.md) for the full rule and the narrow default-org seeding exception.
 
 ## Presets
 
