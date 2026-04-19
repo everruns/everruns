@@ -6,11 +6,11 @@ Verify that built-in harnesses are provisioned for the new organisation by navig
 
 ## Preconditions
 
-- User just completed org setup (all three steps show checkmarks)
+- User just completed org setup (all four steps show checkmarks)
 
 ## Steps
 
-1. On the setup page, click "Go to dashboard"
+1. On the setup page, click "Skip for now" or finish provider setup and click "Continue"
 2. Navigate to the Harnesses page via the sidebar
 3. Review the list of harnesses displayed
 
