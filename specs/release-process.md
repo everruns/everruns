@@ -50,6 +50,8 @@ Squashing is a **BREAKING CHANGE** — it requires a fresh database, because `_s
 
 If no feature migrations were added since the last release, skip this step — do not create an empty `NNN_vX.Y.Z.sql`.
 
+CI enforces the squash via the `release-prep-check` job in `.github/workflows/ci.yml`, which fires whenever a PR changes `[workspace.package].version`. It runs `scripts/check-release-squash.sh`, which fails if any non-foundational migration under `crates/server/migrations/` has a stem other than `NNN_vX.Y.Z`. This catches the v0.8.15-style hole where feature-named migrations leaked into a release tag.
+
 ### Lock File Updates
 
 Lock files must be updated when preparing a release:
