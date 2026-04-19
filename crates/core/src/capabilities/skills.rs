@@ -26,6 +26,15 @@ pub const SKILLS_CAPABILITY_ID: &str = "skills";
 /// Path in session VFS where skills are discovered (reuse shared constant)
 use super::attach_skill::SKILLS_DISCOVERY_PATH as SKILLS_PATH;
 
+/// Kind tag used when registering activated skills in the session resource registry.
+/// Idempotence for `activate_skill` (EVE-337) is implemented by recording each activation
+/// under `resource_id = "skill_activation:{name}"` and reusing its metadata on re-entry.
+const SKILL_ACTIVATION_KIND: &str = "skill_activation";
+
+fn skill_activation_resource_id(name: &str) -> String {
+    format!("{SKILL_ACTIVATION_KIND}:{name}")
+}
+
 /// Max skills to include in the system prompt (rest via list_skills tool)
 const MAX_SKILLS_IN_PROMPT: usize = 15;
 
@@ -444,6 +453,58 @@ impl Tool for ActivateSkillFromVfsTool {
             );
         }
 
+        // Validate name against the skill naming rules (lowercase letters, digits,
+        // single hyphens, 1-64 chars). This also rejects `:` and any other
+        // non-spec character so the session-resource key `skill_activation:{name}`
+        // is unambiguous — see `skill_activation_resource_id`.
+        if let Err(errors) = crate::skill::validate_skill_name(name) {
+            return ToolExecutionResult::tool_error(format!(
+                "Invalid skill name '{name}': {}",
+                errors.join(", ")
+            ));
+        }
+
+        // Idempotence (EVE-337): if this skill has already been activated in this
+        // session, return the cached result with `already_active: true` instead of
+        // replaying the full parse/expand/preprocess pipeline. Requires a session
+        // resource registry; when no registry is wired in (unit tests, embedded
+        // runtime without session state) we fall back to non-cached activation.
+        if let Some(registry) = &context.session_resource_registry {
+            let resource_id = skill_activation_resource_id(name);
+            match registry.get(context.session_id, &resource_id).await {
+                Ok(Some(entry))
+                    if entry.status == crate::session_resource::SessionResourceStatus::Active =>
+                {
+                    if entry.kind != SKILL_ACTIVATION_KIND {
+                        tracing::warn!(
+                            skill = name,
+                            resource_id = %resource_id,
+                            entry_kind = %entry.kind,
+                            expected_kind = SKILL_ACTIVATION_KIND,
+                            "activate_skill: registry entry collides with unexpected kind; falling back to non-cached activation"
+                        );
+                    } else if let Value::Object(mut map) = entry.metadata {
+                        map.insert("already_active".to_string(), Value::Bool(true));
+                        return ToolExecutionResult::success(Value::Object(map));
+                    } else {
+                        tracing::warn!(
+                            skill = name,
+                            resource_id = %resource_id,
+                            "activate_skill: cached entry has non-object metadata; falling back to non-cached activation"
+                        );
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        skill = name,
+                        "activate_skill: failed to read session resource registry; falling back to non-cached activation"
+                    );
+                }
+            }
+        }
+
         let file_store = match &context.file_store {
             Some(fs) => fs,
             None => {
@@ -512,6 +573,33 @@ impl Tool for ActivateSkillFromVfsTool {
                     }
                 }
 
+                // Register this activation so subsequent `activate_skill` calls for the
+                // same skill in this session short-circuit (EVE-337). We store the full
+                // tool result as metadata; the cache hit path re-emits it verbatim and
+                // adds `already_active: true`.
+                if let Some(registry) = &context.session_resource_registry {
+                    // Key the registry entry on the tool-argument `name` (which is
+                    // also the skill directory name and matches the cache-lookup key
+                    // above). Using `parsed.name` here would diverge if the
+                    // frontmatter `name` ever drifts from the directory, breaking
+                    // the idempotence contract on the second activation.
+                    let entry = crate::session_resource::RegisterSessionResource {
+                        session_id: context.session_id,
+                        resource_id: skill_activation_resource_id(name),
+                        kind: SKILL_ACTIVATION_KIND.to_string(),
+                        display_name: format!("skill:{name}"),
+                        status: crate::session_resource::SessionResourceStatus::Active,
+                        metadata: result.clone(),
+                    };
+                    if let Err(e) = registry.register(entry).await {
+                        tracing::warn!(
+                            error = %e,
+                            skill = %parsed.name,
+                            "activate_skill: failed to record activation in session resource registry; skill still returned but re-activation will replay"
+                        );
+                    }
+                }
+
                 ToolExecutionResult::success(result)
             }
             Err(errors) => ToolExecutionResult::tool_error(format!(
@@ -533,9 +621,13 @@ mod tests {
     use crate::capabilities::Capability;
     use crate::error::Result;
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-    use crate::traits::SessionFileStore;
+    use crate::session_resource::{
+        RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
+    };
+    use crate::traits::{SessionFileStore, SessionResourceRegistry};
     use crate::typed_id::SessionId;
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
     // ========================================================================
@@ -548,6 +640,9 @@ mod tests {
         files: Mutex<HashMap<(SessionId, String), String>>,
         /// Directories: (session_id, path)
         dirs: Mutex<std::collections::HashSet<(SessionId, String)>>,
+        /// Counter used by the idempotence test to prove the cache-hit path
+        /// does not re-read SKILL.md on the second activation.
+        read_count: AtomicUsize,
     }
 
     impl MockFileStore {
@@ -555,7 +650,12 @@ mod tests {
             Self {
                 files: Mutex::new(HashMap::new()),
                 dirs: Mutex::new(std::collections::HashSet::new()),
+                read_count: AtomicUsize::new(0),
             }
+        }
+
+        fn read_count(&self) -> usize {
+            self.read_count.load(Ordering::SeqCst)
         }
 
         /// Add a file and auto-create parent directories
@@ -584,6 +684,7 @@ mod tests {
             session_id: SessionId,
             path: &str,
         ) -> Result<Option<SessionFile>> {
+            self.read_count.fetch_add(1, Ordering::SeqCst);
             let files = self.files.lock().unwrap();
             if let Some(content) = files.get(&(session_id, path.to_string())) {
                 Ok(Some(SessionFile {
@@ -738,6 +839,71 @@ mod tests {
     }
 
     // ========================================================================
+    // TestSessionResourceRegistry — in-memory registry for the idempotence test
+    // ========================================================================
+
+    #[derive(Default)]
+    struct TestSessionResourceRegistry {
+        entries: Mutex<HashMap<String, SessionResourceEntry>>,
+    }
+
+    #[async_trait]
+    impl SessionResourceRegistry for TestSessionResourceRegistry {
+        async fn register(&self, entry: RegisterSessionResource) -> Result<SessionResourceEntry> {
+            let stored = SessionResourceEntry {
+                resource_id: entry.resource_id.clone(),
+                session_id: entry.session_id,
+                kind: entry.kind,
+                display_name: entry.display_name,
+                status: entry.status,
+                metadata: entry.metadata,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            };
+            self.entries
+                .lock()
+                .unwrap()
+                .insert(entry.resource_id, stored.clone());
+            Ok(stored)
+        }
+
+        async fn update_status(
+            &self,
+            _session_id: SessionId,
+            resource_id: &str,
+            status: SessionResourceStatus,
+        ) -> Result<Option<SessionResourceEntry>> {
+            let mut entries = self.entries.lock().unwrap();
+            if let Some(entry) = entries.get_mut(resource_id) {
+                entry.status = status;
+                entry.updated_at = chrono::Utc::now();
+                return Ok(Some(entry.clone()));
+            }
+            Ok(None)
+        }
+
+        async fn get(
+            &self,
+            _session_id: SessionId,
+            resource_id: &str,
+        ) -> Result<Option<SessionResourceEntry>> {
+            Ok(self.entries.lock().unwrap().get(resource_id).cloned())
+        }
+
+        async fn list(
+            &self,
+            _session_id: SessionId,
+            _filter: Option<&SessionResourceFilter>,
+        ) -> Result<Vec<SessionResourceEntry>> {
+            Ok(self.entries.lock().unwrap().values().cloned().collect())
+        }
+
+        async fn deregister(&self, _session_id: SessionId, resource_id: &str) -> Result<bool> {
+            Ok(self.entries.lock().unwrap().remove(resource_id).is_some())
+        }
+    }
+
+    // ========================================================================
     // Capability Trait Tests
     // ========================================================================
 
@@ -876,6 +1042,27 @@ mod tests {
             .await;
         match result {
             ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid skill name")),
+            other => panic!("Expected ToolError, got: {:?}", other),
+        }
+    }
+
+    // Regression for EVE-337 review: names are validated against the skill
+    // naming rules before being used as part of the `skill_activation:{name}`
+    // resource-registry key. Reject the delimiter character explicitly.
+    #[tokio::test]
+    async fn test_activate_skill_rejects_resource_id_delimiter() {
+        let tool = ActivateSkillFromVfsTool;
+        let context = ToolContext::new(SessionId::new());
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({"name": "skill_activation:evil"}),
+                &context,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("Invalid skill name"), "got: {msg}");
+            }
             other => panic!("Expected ToolError, got: {:?}", other),
         }
     }
@@ -1059,6 +1246,67 @@ mod tests {
             }
             other => panic!("Expected Success, got: {:?}", other),
         }
+    }
+
+    // Regression test for EVE-337: activating the same skill twice within a
+    // session must short-circuit on the second call (cached handle, no VFS
+    // re-read) and annotate the response with `already_active: true`.
+    #[tokio::test]
+    async fn test_activate_skill_is_idempotent_within_session() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        fs.add_file(
+            session_id,
+            "/.agents/skills/pdf-tool/SKILL.md",
+            &valid_skill_md("pdf-tool", "Extract text from PDFs"),
+        );
+
+        let registry: Arc<dyn SessionResourceRegistry> =
+            Arc::new(TestSessionResourceRegistry::default());
+        let context = ToolContext::with_file_store(session_id, fs.clone())
+            .with_session_resource_registry(registry.clone());
+        let tool = ActivateSkillFromVfsTool;
+
+        let first = tool
+            .execute_with_context(serde_json::json!({"name": "pdf-tool"}), &context)
+            .await;
+        let first_val = match first {
+            ToolExecutionResult::Success(val) => val,
+            other => panic!("Expected Success, got: {:?}", other),
+        };
+        assert_eq!(first_val["skill"], "pdf-tool");
+        assert!(
+            first_val.get("already_active").is_none(),
+            "first activation must not carry already_active"
+        );
+        let reads_after_first = fs.read_count();
+        assert!(reads_after_first >= 1, "first call must read SKILL.md");
+
+        let second = tool
+            .execute_with_context(serde_json::json!({"name": "pdf-tool"}), &context)
+            .await;
+        let second_val = match second {
+            ToolExecutionResult::Success(val) => val,
+            other => panic!("Expected Success, got: {:?}", other),
+        };
+        assert_eq!(second_val["already_active"], serde_json::Value::Bool(true));
+        assert_eq!(second_val["skill"], first_val["skill"]);
+        assert_eq!(second_val["description"], first_val["description"]);
+        assert_eq!(second_val["instructions"], first_val["instructions"]);
+        assert_eq!(
+            fs.read_count(),
+            reads_after_first,
+            "cache hit must not re-read SKILL.md from the VFS"
+        );
+
+        // Registry holds exactly one entry, under the documented resource_id.
+        let entry = registry
+            .get(session_id, "skill_activation:pdf-tool")
+            .await
+            .unwrap()
+            .expect("registry should contain the activation entry");
+        assert_eq!(entry.kind, "skill_activation");
+        assert_eq!(entry.status, SessionResourceStatus::Active);
     }
 
     #[tokio::test]
