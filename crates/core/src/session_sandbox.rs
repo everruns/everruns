@@ -116,7 +116,9 @@ pub struct SessionSandboxExecRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SessionSandboxExecResponse {
     pub exit_code: i32,
-    pub output: String,
+    pub stdout: String,
+    pub stderr: String,
+    pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_output: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -480,7 +482,14 @@ pub async fn run_session_sandbox_init_if_needed(
             save_session_sandbox_state(context, state).await?;
             return Err(ToolExecutionResult::tool_error(format!(
                 "Session sandbox init failed for command '{}': {}",
-                command, response.output
+                command,
+                if response.stderr.is_empty() {
+                    response.stdout
+                } else if response.stdout.is_empty() {
+                    response.stderr
+                } else {
+                    format!("{}\n{}", response.stdout, response.stderr)
+                }
             )));
         }
     }

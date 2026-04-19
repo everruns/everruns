@@ -299,7 +299,7 @@ async fn test_live_exec_streaming_returns_output() {
     let mut chunks = Vec::new();
     let result = client
         .exec(id, "echo hello-streaming", None, Some(30_000), |chunk| {
-            chunks.push(chunk.to_string());
+            chunks.push(chunk);
         })
         .await
         .expect("exec_streaming failed");

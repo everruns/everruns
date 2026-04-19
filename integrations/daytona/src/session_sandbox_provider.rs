@@ -251,19 +251,36 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let result = result.map_err(ToolExecutionResult::tool_error)?;
         touch_sandbox_lease(context, &lease_state, instance.display_name.clone()).await?;
 
-        let clean_output = everruns_core::tool_output_sanitizer::clean_exec_output(&result.result);
-        let output = if let Some(budget) =
+        let clean_stdout = everruns_core::tool_output_sanitizer::clean_exec_output(&result.stdout);
+        let clean_stderr = everruns_core::tool_output_sanitizer::clean_exec_output(&result.stderr);
+        let (stdout, stderr) = if let Some(budget) =
             everruns_core::tool_output_sanitizer::output_verbosity_budget(&request.output_mode)
         {
-            everruns_core::tool_output_sanitizer::priority_aware_truncate(&clean_output, budget)
+            (
+                everruns_core::tool_output_sanitizer::priority_aware_truncate(
+                    &clean_stdout,
+                    budget,
+                ),
+                everruns_core::tool_output_sanitizer::priority_aware_truncate(
+                    &clean_stderr,
+                    budget.min(4096),
+                ),
+            )
         } else {
-            clean_output.clone()
+            (clean_stdout.clone(), clean_stderr.clone())
         };
+        let mut raw = clean_stdout;
+        if !clean_stderr.is_empty() {
+            raw.push_str("\n--- stderr ---\n");
+            raw.push_str(&clean_stderr);
+        }
 
         Ok(SessionSandboxExecResponse {
             exit_code: result.exit_code,
-            output,
-            raw_output: Some(clean_output),
+            stdout,
+            stderr,
+            success: result.exit_code == 0,
+            raw_output: Some(raw),
             hint: exit_code_hint(result.exit_code).map(ToString::to_string),
         })
     }

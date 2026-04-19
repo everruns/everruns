@@ -331,7 +331,9 @@ mod tests {
         ) -> Result<SessionSandboxExecResponse, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxExecResponse {
                 exit_code: 0,
-                output: "ok".to_string(),
+                stdout: "ok".to_string(),
+                stderr: String::new(),
+                success: true,
                 raw_output: Some("ok".to_string()),
                 hint: None,
             })

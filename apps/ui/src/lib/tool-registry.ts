@@ -37,6 +37,7 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   bash: { category: "shell", segmentMode: "standalone" },
   shell: { category: "shell", segmentMode: "standalone" },
   execute_bash: { category: "shell", segmentMode: "standalone" },
+  daytona_exec: { category: "shell", segmentMode: "standalone" },
 
   // Read tools
   read_file: { category: "read", segmentMode: "standalone" },

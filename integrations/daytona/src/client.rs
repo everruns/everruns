@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use tracing::debug;
 
-use crate::state::{ExecResult, SandboxInfo, SnapshotInfo};
+use crate::state::{ExecOutputChunk, ExecResult, ExecStream, SandboxInfo, SnapshotInfo};
 use crate::{EXEC_POLL_INTERVAL, SANDBOX_READY_MAX_WAIT, SANDBOX_READY_POLL_INTERVAL};
 
 /// Fixed session ID used for all command execution in a sandbox.
@@ -508,7 +508,7 @@ impl DaytonaClient {
         mut on_output: F,
     ) -> Result<ExecResult, String>
     where
-        F: FnMut(&str),
+        F: FnMut(ExecOutputChunk),
     {
         self.ensure_session(sandbox_id).await?;
 
@@ -555,8 +555,9 @@ impl DaytonaClient {
         // polls we probe with a heartbeat command; if it also stalls, we
         // know the session is dead and reset it.
         let deadline = std::time::Instant::now() + Duration::from_millis(timeout);
-        let mut output_emitted: usize = 0;
+        let mut raw_bytes_emitted: usize = 0;
         let mut stale_polls: u32 = 0;
+        let mut current_stream = ExecStream::Stdout;
         let logs_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}/logs");
         let status_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}");
 
@@ -584,14 +585,18 @@ impl DaytonaClient {
             // Fetch session command logs (raw bytes with stream markers).
             let logs_ok = self.toolbox_download(sandbox_id, &logs_path).await.ok();
 
-            let text = logs_ok
-                .as_deref()
-                .map(strip_stream_markers)
-                .unwrap_or_default();
-            let had_new_output = text.len() > output_emitted;
-            if had_new_output {
-                on_output(&text[output_emitted..]);
-                output_emitted = text.len();
+            let had_new_output = logs_ok
+                .as_ref()
+                .is_some_and(|bytes| bytes.len() > raw_bytes_emitted);
+            if let Some(raw_logs) = logs_ok.as_ref()
+                && raw_logs.len() > raw_bytes_emitted
+            {
+                let delta = parse_exec_output_delta(&raw_logs[raw_bytes_emitted..], current_stream);
+                for chunk in delta.chunks {
+                    on_output(chunk);
+                }
+                current_stream = delta.trailing_stream;
+                raw_bytes_emitted = raw_logs.len();
             }
 
             // Check if command completed (exitCode is present).
@@ -608,13 +613,19 @@ impl DaytonaClient {
                     .await
                     .unwrap_or_default();
 
-                let final_text = strip_stream_markers(&final_logs);
-                if final_text.len() > output_emitted {
-                    on_output(&final_text[output_emitted..]);
+                if final_logs.len() > raw_bytes_emitted {
+                    let delta =
+                        parse_exec_output_delta(&final_logs[raw_bytes_emitted..], current_stream);
+                    for chunk in delta.chunks {
+                        on_output(chunk);
+                    }
                 }
+                let final_output = split_stream_markers(&final_logs);
 
                 return Ok(ExecResult {
-                    result: final_text,
+                    stdout: final_output.stdout,
+                    stderr: final_output.stderr,
+                    result: final_output.combined,
                     exit_code: exit_code as i32,
                 });
             }
@@ -738,29 +749,109 @@ impl DaytonaClient {
     }
 }
 
-/// Strip Daytona session log stream multiplexing markers from raw output.
+const STDOUT_MARKER: [u8; 3] = [0x01, 0x01, 0x01];
+const STDERR_MARKER: [u8; 3] = [0x02, 0x02, 0x02];
+
+struct ParsedExecOutput {
+    stdout: String,
+    stderr: String,
+    combined: String,
+}
+
+struct ParsedExecDelta {
+    chunks: Vec<ExecOutputChunk>,
+    trailing_stream: ExecStream,
+}
+
+/// Split Daytona session log stream multiplexing markers into stdout/stderr.
 ///
 /// The session API multiplexes stdout/stderr with 3-byte prefix markers:
 /// - `\x01\x01\x01` = stdout data follows
 /// - `\x02\x02\x02` = stderr data follows
 ///
-/// We strip the markers and return combined text (matching the previous
-/// behavior where `ExecResult.result` contains combined stdout+stderr).
-pub(crate) fn strip_stream_markers(raw: &[u8]) -> String {
-    let mut result = Vec::with_capacity(raw.len());
+/// The returned `combined` output matches the legacy `ExecResult.result`
+/// behavior so existing textual consumers can continue using it.
+fn split_stream_markers(raw: &[u8]) -> ParsedExecOutput {
+    let mut stdout = Vec::with_capacity(raw.len());
+    let mut stderr = Vec::new();
+    let mut combined = Vec::with_capacity(raw.len());
+    let mut current_stream = ExecStream::Stdout;
     let mut i = 0;
+
     while i < raw.len() {
-        if i + 3 <= raw.len()
-            && ((raw[i] == 0x01 && raw[i + 1] == 0x01 && raw[i + 2] == 0x01)
-                || (raw[i] == 0x02 && raw[i + 1] == 0x02 && raw[i + 2] == 0x02))
-        {
+        if i + 3 <= raw.len() && raw[i..i + 3] == STDOUT_MARKER {
+            current_stream = ExecStream::Stdout;
             i += 3;
             continue;
         }
-        result.push(raw[i]);
+        if i + 3 <= raw.len() && raw[i..i + 3] == STDERR_MARKER {
+            current_stream = ExecStream::Stderr;
+            i += 3;
+            continue;
+        }
+
+        let byte = raw[i];
+        combined.push(byte);
+        match current_stream {
+            ExecStream::Stdout => stdout.push(byte),
+            ExecStream::Stderr => stderr.push(byte),
+        }
         i += 1;
     }
-    String::from_utf8_lossy(&result).into_owned()
+
+    ParsedExecOutput {
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        combined: String::from_utf8_lossy(&combined).into_owned(),
+    }
+}
+
+fn parse_exec_output_delta(raw: &[u8], starting_stream: ExecStream) -> ParsedExecDelta {
+    let mut chunks: Vec<ExecOutputChunk> = Vec::new();
+    let mut current_stream = starting_stream;
+    let mut buffer = Vec::new();
+    let mut i = 0;
+
+    let flush_buffer =
+        |chunks: &mut Vec<ExecOutputChunk>, stream: ExecStream, buffer: &mut Vec<u8>| {
+            if buffer.is_empty() {
+                return;
+            }
+            let text = String::from_utf8_lossy(buffer).into_owned();
+            if let Some(last) = chunks.last_mut()
+                && last.stream == stream
+            {
+                last.text.push_str(&text);
+            } else {
+                chunks.push(ExecOutputChunk { stream, text });
+            }
+            buffer.clear();
+        };
+
+    while i < raw.len() {
+        if i + 3 <= raw.len() && raw[i..i + 3] == STDOUT_MARKER {
+            flush_buffer(&mut chunks, current_stream, &mut buffer);
+            current_stream = ExecStream::Stdout;
+            i += 3;
+            continue;
+        }
+        if i + 3 <= raw.len() && raw[i..i + 3] == STDERR_MARKER {
+            flush_buffer(&mut chunks, current_stream, &mut buffer);
+            current_stream = ExecStream::Stderr;
+            i += 3;
+            continue;
+        }
+
+        buffer.push(raw[i]);
+        i += 1;
+    }
+
+    flush_buffer(&mut chunks, current_stream, &mut buffer);
+
+    ParsedExecDelta {
+        chunks,
+        trailing_stream: current_stream,
+    }
 }
 
 pub(crate) mod urlencoding {
@@ -944,6 +1035,8 @@ mod tests {
         assert!(result.is_ok());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 0);
+        assert_eq!(exec_result.stdout, "hello world\n");
+        assert_eq!(exec_result.stderr, "");
         assert_eq!(exec_result.result, "hello world\n");
     }
 
@@ -1347,6 +1440,8 @@ mod tests {
         assert!(result.is_ok());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 1);
+        assert_eq!(exec_result.stdout, "output");
+        assert_eq!(exec_result.stderr, "");
         assert_eq!(exec_result.result, "output");
     }
 
@@ -1570,7 +1665,7 @@ mod tests {
             mock_server.uri(),
         );
 
-        let chunks: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let chunks: Arc<Mutex<Vec<ExecOutputChunk>>> = Arc::new(Mutex::new(Vec::new()));
         let chunks_clone = chunks.clone();
 
         let result = client
@@ -1580,7 +1675,7 @@ mod tests {
                 None,
                 Some(30_000),
                 |chunk| {
-                    chunks_clone.lock().unwrap().push(chunk.to_string());
+                    chunks_clone.lock().unwrap().push(chunk);
                 },
             )
             .await;
@@ -1588,10 +1683,14 @@ mod tests {
         assert!(result.is_ok(), "exec_streaming failed: {:?}", result.err());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 0);
+        assert_eq!(exec_result.stdout, "hello streaming\n");
+        assert_eq!(exec_result.stderr, "");
         assert_eq!(exec_result.result, "hello streaming\n");
 
         let collected = chunks.lock().unwrap();
         assert!(!collected.is_empty(), "should have received output chunks");
+        assert_eq!(collected[0].stream, ExecStream::Stdout);
+        assert_eq!(collected[0].text, "hello streaming\n");
     }
 
     #[tokio::test]
@@ -1701,6 +1800,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, "still works\n");
+        assert_eq!(result.stderr, "");
         assert_eq!(result.result, "still works\n");
         assert_eq!(exec_call_count.load(Ordering::SeqCst), 2);
     }
@@ -1820,7 +1921,10 @@ mod tests {
     fn test_strip_stream_markers_stdout_only() {
         let mut raw = vec![0x01, 0x01, 0x01];
         raw.extend_from_slice(b"hello world\n");
-        assert_eq!(strip_stream_markers(&raw), "hello world\n");
+        let parsed = split_stream_markers(&raw);
+        assert_eq!(parsed.stdout, "hello world\n");
+        assert_eq!(parsed.stderr, "");
+        assert_eq!(parsed.combined, "hello world\n");
     }
 
     #[test]
@@ -1832,19 +1936,50 @@ mod tests {
         raw.extend_from_slice(b"stderr line\n");
         raw.extend_from_slice(&[0x01, 0x01, 0x01]);
         raw.extend_from_slice(b"more stdout\n");
-        assert_eq!(
-            strip_stream_markers(&raw),
-            "stdout line\nstderr line\nmore stdout\n"
-        );
+        let parsed = split_stream_markers(&raw);
+        assert_eq!(parsed.stdout, "stdout line\nmore stdout\n");
+        assert_eq!(parsed.stderr, "stderr line\n");
+        assert_eq!(parsed.combined, "stdout line\nstderr line\nmore stdout\n");
     }
 
     #[test]
     fn test_strip_stream_markers_no_markers() {
-        assert_eq!(strip_stream_markers(b"plain text\n"), "plain text\n");
+        let parsed = split_stream_markers(b"plain text\n");
+        assert_eq!(parsed.stdout, "plain text\n");
+        assert_eq!(parsed.stderr, "");
+        assert_eq!(parsed.combined, "plain text\n");
     }
 
     #[test]
     fn test_strip_stream_markers_empty() {
-        assert_eq!(strip_stream_markers(b""), "");
+        let parsed = split_stream_markers(b"");
+        assert_eq!(parsed.stdout, "");
+        assert_eq!(parsed.stderr, "");
+        assert_eq!(parsed.combined, "");
+    }
+
+    #[test]
+    fn test_parse_exec_output_delta_preserves_streams() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&STDOUT_MARKER);
+        raw.extend_from_slice(b"stdout line\n");
+        raw.extend_from_slice(&STDERR_MARKER);
+        raw.extend_from_slice(b"stderr line\n");
+
+        let parsed = parse_exec_output_delta(&raw, ExecStream::Stdout);
+        assert_eq!(
+            parsed.chunks,
+            vec![
+                ExecOutputChunk {
+                    stream: ExecStream::Stdout,
+                    text: "stdout line\n".to_string(),
+                },
+                ExecOutputChunk {
+                    stream: ExecStream::Stderr,
+                    text: "stderr line\n".to_string(),
+                },
+            ]
+        );
+        assert_eq!(parsed.trailing_stream, ExecStream::Stderr);
     }
 }

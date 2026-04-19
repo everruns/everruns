@@ -147,6 +147,49 @@ describe("ToolActivityGroup", () => {
     expect(shellCard.className).not.toContain("bg-red");
   });
 
+  it("renders daytona_exec as a standalone shell row with metadata", () => {
+    const toolCalls: ToolCallContent[] = [
+      {
+        id: "tool-daytona",
+        name: "daytona_exec",
+        arguments: { command: "cargo test", sandbox_id: "sb_123", cwd: "/workspace" },
+      },
+    ];
+
+    const toolResultsMap = new Map<string, ToolCompletedData>([
+      [
+        "tool-daytona",
+        {
+          tool_call_id: "tool-daytona",
+          tool_name: "daytona_exec",
+          success: false,
+          status: "error",
+          result: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                stdout: "running 4 tests\n3 passed",
+                stderr: "thread 'tests' panicked",
+                exit_code: 101,
+                success: false,
+                cwd: "/workspace",
+                sandbox_id: "sb_123",
+              }),
+            },
+          ],
+        },
+      ],
+    ]);
+
+    render(<ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />);
+
+    expect(
+      screen.getByRole("button", { name: /\$ cargo test exit code 101/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("/workspace, sandbox sb_123")).toBeInTheDocument();
+    expect(screen.queryByText(/^Shell$/)).not.toBeInTheDocument();
+  });
+
   it("renders read_file as a standalone row and shows parsed file content", () => {
     const toolCalls: ToolCallContent[] = [
       {

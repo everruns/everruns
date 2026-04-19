@@ -451,19 +451,19 @@ impl Tool for DaytonaExecTool {
         // Use streaming exec to emit real-time output via tool.output.delta events.
         // Send chunks over an mpsc channel to a single emitter task to preserve
         // ordering and avoid unbounded task spawning.
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::state::ExecOutputChunk>();
         let streaming_ctx = context.clone();
         let emitter = tokio::spawn(async move {
             while let Some(delta) = rx.recv().await {
                 streaming_ctx
-                    .emit_tool_output("daytona_exec", &delta, "stdout")
+                    .emit_tool_output("daytona_exec", &delta.text, delta.stream.as_str())
                     .await;
             }
         });
 
         let result = client
             .exec(sandbox_id, command, cwd, Some(timeout), |chunk| {
-                let _ = tx.send(chunk.to_string());
+                let _ = tx.send(chunk);
             })
             .await;
         drop(tx); // Close the channel so the emitter task finishes.
@@ -479,16 +479,35 @@ impl Tool for DaytonaExecTool {
                     use everruns_core::tool_output_sanitizer::{
                         clean_exec_output, output_verbosity_budget, priority_aware_truncate,
                     };
-                    let clean_output = clean_exec_output(&result.result);
-                    let output = if let Some(budget) = output_verbosity_budget(output_mode) {
-                        priority_aware_truncate(&clean_output, budget)
-                    } else {
-                        clean_output.clone()
-                    };
-                    let raw = clean_output;
+                    let clean_stdout = clean_exec_output(&result.stdout);
+                    let clean_stderr = clean_exec_output(&result.stderr);
+                    let (stdout, stderr) =
+                        if let Some(budget) = output_verbosity_budget(output_mode) {
+                            (
+                                priority_aware_truncate(&clean_stdout, budget),
+                                priority_aware_truncate(&clean_stderr, budget.min(4096)),
+                            )
+                        } else {
+                            (clean_stdout.clone(), clean_stderr.clone())
+                        };
+                    let truncated = stdout != clean_stdout || stderr != clean_stderr;
+                    let stdout_lines = clean_stdout.lines().count();
+                    let stderr_lines = clean_stderr.lines().count();
+                    let mut raw = clean_stdout;
+                    if !clean_stderr.is_empty() {
+                        raw.push_str("\n--- stderr ---\n");
+                        raw.push_str(&clean_stderr);
+                    }
                     let mut response = json!({
+                        "sandbox_id": sandbox_id,
+                        "cwd": cwd.unwrap_or(&state.workspace_path),
+                        "stdout": stdout,
+                        "stderr": stderr,
                         "exit_code": result.exit_code,
-                        "output": output
+                        "success": result.exit_code == 0,
+                        "truncated": truncated,
+                        "stdout_lines": stdout_lines,
+                        "stderr_lines": stderr_lines,
                     });
                     // Add diagnostic hint for signal-based exit codes so agents
                     // can adapt their retry strategy. See EVE-252.
