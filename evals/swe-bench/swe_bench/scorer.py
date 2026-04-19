@@ -117,7 +117,7 @@ def write_scores_back(
 
         resolved = case_name in resolved_ids
         bulk_items.append({
-            "result_id": r.get("public_id", r["id"]),
+            "result_id": r["id"],
             "scores": build_scores(resolved),
             "status": "passed" if resolved else "failed",
         })

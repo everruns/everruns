@@ -116,7 +116,7 @@ def run(args: argparse.Namespace) -> None:
     }
 
     ev = client.create_eval(eval_name, target=target, tags=eval_tags)
-    eval_id = ev["public_id"]
+    eval_id = ev["id"]
     print(f"Created eval: {eval_id} — {eval_name}")
 
     case_tags = []
@@ -126,7 +126,7 @@ def run(args: argparse.Namespace) -> None:
     for i, instance in enumerate(instances):
         case = build_case(instance, tags=case_tags or None)
         result = client.create_case(eval_id, case)
-        case_id = result.get("public_id", result.get("id", "?"))
+        case_id = result.get("id", "?")
         print(f"  [{i + 1}/{len(instances)}] {instance['instance_id']} → {case_id}")
 
     print(f"\nDone. Eval {eval_id} has {len(instances)} cases.")

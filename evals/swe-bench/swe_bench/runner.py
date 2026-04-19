@@ -64,7 +64,7 @@ def print_summary(run: dict) -> None:
         return
 
     print(f"\n{'=' * 50}")
-    print(f"Run {run.get('public_id', run.get('id', '?'))}")
+    print(f"Run {run.get('id', '?')}")
     print(f"{'=' * 50}")
     print(f"  Status:       {run['status']}")
     print(f"  Total:        {summary['total']}")
@@ -92,7 +92,7 @@ def run(args: argparse.Namespace) -> None:
         target=target,
         model_override=args.model,
     )
-    run_id = run_resp.get("public_id", run_resp.get("id"))
+    run_id = run_resp["id"]
     print(f"Run created: {run_id}")
 
     print("Polling for completion...")
