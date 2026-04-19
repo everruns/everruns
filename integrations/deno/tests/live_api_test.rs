@@ -1,5 +1,16 @@
 //! Live Deno sandbox integration tests.
 //!
+//! Gated behind:
+//! - Feature flag: `deno-live-tests`
+//! - Environment variable: `DENO_DEPLOY_TOKEN` (required; missing ⇒ panic)
+//! - Environment variable: `DENO_DEPLOY_ORG` (required when the token is a
+//!   personal `ddp_...` token; missing in that case ⇒ panic)
+//!
+//! Missing-credential policy: these tests fail closed. If the feature flag is
+//! set but credentials are missing or inconsistent, the tests panic rather
+//! than silently passing, so CI live jobs cannot report false-green.
+//! See `specs/integrations.md`.
+//!
 //! Run with:
 //!   doppler run -- cargo test -p everruns-integrations-deno \
 //!     --features deno-live-tests --test live_api_test -- --test-threads=1 --nocapture
@@ -56,20 +67,23 @@ fn org() -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+/// Require `DENO_DEPLOY_TOKEN` (plus `DENO_DEPLOY_ORG` for personal `ddp_...`
+/// tokens) or panic. Live tests fail closed so CI cannot silently pass when
+/// credentials are missing. See `specs/integrations.md`.
 macro_rules! require_token {
     () => {{
         match token() {
             Some(token) => {
                 if token.starts_with("ddp_") && org().is_none() {
-                    eprintln!("[skip] DENO_DEPLOY_TOKEN is personal (ddp_...) but DENO_DEPLOY_ORG is unset; skipping live test");
-                    return;
+                    panic!(
+                        "DENO_DEPLOY_TOKEN is personal (ddp_...) but DENO_DEPLOY_ORG is unset — live tests require real credentials (fail-closed policy)"
+                    );
                 }
                 token
             }
-            None => {
-                eprintln!("[skip] DENO_DEPLOY_TOKEN not set, skipping live test");
-                return;
-            }
+            None => panic!(
+                "DENO_DEPLOY_TOKEN not set — live tests require real credentials (fail-closed policy)"
+            ),
         }
     }};
 }

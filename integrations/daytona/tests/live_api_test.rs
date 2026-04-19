@@ -2,11 +2,15 @@
 //!
 //! These tests hit the real Daytona API and are gated behind:
 //! - Feature flag: `daytona-live-tests`
-//! - Environment variable: `DAYTONA_API_KEY`
+//! - Environment variable: `DAYTONA_API_KEY` (required; missing ⇒ panic)
 //!
 //! Run locally:
 //!   DAYTONA_API_KEY=<key> cargo test -p everruns-integrations-daytona \
 //!       --features daytona-live-tests --test live_api_test -- --test-threads=1
+//!
+//! Missing-credential policy: these tests fail closed. If the feature flag is
+//! set but the credential is missing, the tests panic rather than silently
+//! passing, so CI live jobs cannot report false-green. See `specs/integrations.md`.
 //!
 //! Cleanup guarantee: Each test uses a `SandboxGuard` that deletes the sandbox
 //! on drop (both success and panic paths).
@@ -65,15 +69,15 @@ fn get_api_key() -> Option<String> {
         .filter(|k| !k.is_empty())
 }
 
-/// Skip test if DAYTONA_API_KEY is not set. Returns the key.
+/// Require `DAYTONA_API_KEY` or panic. Live tests fail closed so CI cannot
+/// silently pass when the credential is missing. See `specs/integrations.md`.
 macro_rules! require_api_key {
     () => {
         match get_api_key() {
             Some(key) => key,
-            None => {
-                eprintln!("[skip] DAYTONA_API_KEY not set, skipping live test");
-                return;
-            }
+            None => panic!(
+                "DAYTONA_API_KEY not set — live tests require real credentials (fail-closed policy)"
+            ),
         }
     };
 }

@@ -2,11 +2,15 @@
 //!
 //! These tests hit the real Sprites API and are gated behind:
 //! - Feature flag: `sprites-live-tests`
-//! - Environment variable: `SPRITES_API_TOKEN`
+//! - Environment variable: `SPRITES_API_TOKEN` (required; missing ⇒ panic)
 //!
 //! Run locally:
 //!   SPRITES_API_TOKEN=<token> cargo test -p everruns-integrations-sprites \
 //!       --features sprites-live-tests --test live_api_test -- --test-threads=1
+//!
+//! Missing-credential policy: these tests fail closed. If the feature flag is
+//! set but the credential is missing, the tests panic rather than silently
+//! passing, so CI live jobs cannot report false-green. See `specs/integrations.md`.
 //!
 //! Cleanup guarantee: Each test uses a `SpriteGuard` that deletes the sprite
 //! on drop (both success and panic paths).
@@ -62,14 +66,15 @@ fn get_api_token() -> Option<String> {
         .filter(|k| !k.is_empty())
 }
 
+/// Require `SPRITES_API_TOKEN` or panic. Live tests fail closed so CI cannot
+/// silently pass when the credential is missing. See `specs/integrations.md`.
 macro_rules! require_api_token {
     () => {
         match get_api_token() {
             Some(token) => token,
-            None => {
-                eprintln!("[skip] SPRITES_API_TOKEN not set, skipping live test");
-                return;
-            }
+            None => panic!(
+                "SPRITES_API_TOKEN not set — live tests require real credentials (fail-closed policy)"
+            ),
         }
     };
 }

@@ -1,3 +1,13 @@
+//! Live E2B API integration tests.
+//!
+//! Gated behind:
+//! - Feature flag: `e2b-live-tests`
+//! - Environment variable: `E2B_API_KEY` (required; missing ⇒ panic)
+//!
+//! Missing-credential policy: these tests fail closed. If the feature flag is
+//! set but the credential is missing, the tests panic rather than silently
+//! passing, so CI live jobs cannot report false-green. See `specs/integrations.md`.
+
 #![cfg(feature = "e2b-live-tests")]
 
 use everruns_integrations_e2b::client::E2BClient;
@@ -11,15 +21,15 @@ fn get_api_key() -> Option<String> {
         .filter(|value| !value.trim().is_empty())
 }
 
-/// Skip test if E2B_API_KEY is not set. Returns the key.
+/// Require `E2B_API_KEY` or panic. Live tests fail closed so CI cannot
+/// silently pass when the credential is missing. See `specs/integrations.md`.
 macro_rules! require_api_key {
     () => {
         match get_api_key() {
             Some(key) => key,
-            None => {
-                eprintln!("[skip] E2B_API_KEY not set, skipping live test");
-                return;
-            }
+            None => panic!(
+                "E2B_API_KEY not set — live tests require real credentials (fail-closed policy)"
+            ),
         }
     };
 }
