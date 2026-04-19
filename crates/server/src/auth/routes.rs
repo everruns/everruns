@@ -314,6 +314,10 @@ pub async fn login(
         email: user.email,
         name: user.name,
         roles,
+        is_platform_user: user
+            .roles
+            .as_array()
+            .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations: builtin::organizations_or_default(organizations),
     };
@@ -409,6 +413,7 @@ pub async fn register(
         email: user.email,
         name: user.name,
         roles: vec!["user".to_string()],
+        is_platform_user: false,
         auth_method: AuthMethod::Jwt,
         organizations: builtin::organizations_or_default(organizations),
     };
@@ -497,6 +502,10 @@ pub async fn refresh_token(
         email: user.email,
         name: user.name,
         roles,
+        is_platform_user: user
+            .roles
+            .as_array()
+            .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations: builtin::organizations_or_default(organizations),
     };
@@ -788,6 +797,10 @@ pub async fn oauth_callback(
         email: user.email,
         name: user.name,
         roles,
+        is_platform_user: user
+            .roles
+            .as_array()
+            .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations: builtin::organizations_or_default(organizations),
     };
@@ -980,6 +993,10 @@ async fn get_or_create_admin_user(
         email: user.email,
         name: user.name,
         roles,
+        is_platform_user: user
+            .roles
+            .as_array()
+            .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
         organizations: builtin::organizations_or_default(organizations),
     })

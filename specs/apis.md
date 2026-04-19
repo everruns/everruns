@@ -396,10 +396,11 @@ The spec is defined in `crates/server/src/openapi.rs` using `utoipa` derive macr
 
 ### Durable Execution Admin
 
-Administrative endpoints for monitoring and managing the durable execution engine.
+Platform-user endpoints for monitoring and managing the durable execution engine.
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/v1/durable/config` | Durable policy results for UI gating |
 | GET | `/v1/durable/workers` | List registered workers |
 | POST | `/v1/durable/workers/{id}/drain` | Drain worker (stop accepting tasks) |
 | POST | `/v1/durable/workers/{id}/resume` | Resume draining worker |

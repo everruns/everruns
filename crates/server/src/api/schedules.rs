@@ -1,7 +1,7 @@
 // Durable Scheduled Tasks API routes
 //
-// Decision: All endpoints require authentication via AuthUser extractor.
-//   Matches the pattern used by durable control plane handlers (api/durable.rs).
+// Decision: All endpoints require explicit platform-user auth.
+//   Matches the durable control-plane contract for global/system surfaces.
 //
 // Provides CRUD operations and management for scheduled tasks:
 // - Schedule creation, listing, updates, and deletion
@@ -27,10 +27,10 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::common::{ApiResult, ErrorResponse, impl_auth_state};
-use crate::auth::middleware::{AuthState, AuthUser};
+use crate::auth::{AuthState, PlatformUser};
 
 /// App state for schedule routes
-/// All schedule endpoints require authentication.
+/// All schedule endpoints require platform-user auth.
 #[derive(Clone)]
 pub struct ScheduleAppState {
     store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
@@ -397,7 +397,7 @@ pub struct ListExecutionsQuery {
     tag = "durable-schedules"
 )]
 pub async fn create_schedule(
-    _auth: AuthUser,
+    _auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Json(req): Json<CreateScheduleRequest>,
 ) -> Result<(StatusCode, Json<ScheduleResponse>), (StatusCode, Json<ErrorResponse>)> {
@@ -507,7 +507,7 @@ pub async fn create_schedule(
     tag = "durable-schedules"
 )]
 pub async fn list_schedules(
-    _auth: AuthUser,
+    _auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Query(query): Query<ListSchedulesQuery>,
 ) -> ApiResult<SchedulesListResponse> {
@@ -573,7 +573,7 @@ pub async fn list_schedules(
     tag = "durable-schedules"
 )]
 pub async fn get_schedule(
-    _auth: AuthUser,
+    _auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleResponse> {
@@ -618,7 +618,7 @@ pub async fn get_schedule(
     tag = "durable-schedules"
 )]
 pub async fn update_schedule(
-    _auth: AuthUser,
+    _auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
     Json(req): Json<UpdateScheduleRequest>,
@@ -724,7 +724,7 @@ pub async fn update_schedule(
     tag = "durable-schedules"
 )]
 pub async fn delete_schedule(
-    _auth: AuthUser,
+    _auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -770,7 +770,7 @@ pub async fn delete_schedule(
     tag = "durable-schedules"
 )]
 pub async fn pause_schedule(
-    _auth: AuthUser,
+    _auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleResponse> {
@@ -837,7 +837,7 @@ pub async fn pause_schedule(
     tag = "durable-schedules"
 )]
 pub async fn resume_schedule(
-    _auth: AuthUser,
+    _auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleResponse> {
@@ -924,7 +924,7 @@ pub async fn resume_schedule(
     tag = "durable-schedules"
 )]
 pub async fn trigger_schedule(
-    _auth: AuthUser,
+    _auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<TriggerResponse> {
@@ -988,7 +988,7 @@ pub async fn trigger_schedule(
     tag = "durable-schedules"
 )]
 pub async fn list_schedule_executions(
-    _auth: AuthUser,
+    _auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
     Query(query): Query<ListExecutionsQuery>,
@@ -1070,7 +1070,7 @@ pub async fn list_schedule_executions(
     tag = "durable-schedules"
 )]
 pub async fn get_execution(
-    _auth: AuthUser,
+    _auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(execution_id): Path<Uuid>,
 ) -> ApiResult<ScheduleExecutionResponse> {
@@ -1116,7 +1116,7 @@ pub async fn get_execution(
     tag = "durable-schedules"
 )]
 pub async fn get_schedule_stats(
-    _auth: AuthUser,
+    _auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleStatsResponse> {
@@ -1172,11 +1172,16 @@ fn calculate_next_trigger(cron_expression: &str) -> Result<Option<DateTime<Utc>>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::backend::AuthBackend;
+    use async_trait::async_trait;
     use axum::body::Body;
     use axum::http::Request;
+    use everruns_core::{OrgMembership, OrgRole};
     use tower::ServiceExt;
 
     use crate::auth::config::{AuthConfig, AuthMode, JwtConfig};
+    use crate::auth::middleware::{AuthError, AuthMethod, AuthUser};
+    use crate::auth::routes::AuthConfigResponse;
 
     /// AuthState with auth disabled (anonymous admin user)
     fn test_auth_state_none() -> AuthState {
@@ -1375,6 +1380,111 @@ mod tests {
     async fn test_get_stats_authenticated() {
         let id = Uuid::now_v7();
         assert_authenticated_passes("GET", &format!("/v1/durable/schedules/{id}/stats")).await;
+    }
+
+    #[derive(Clone)]
+    struct MockAuthBackend {
+        is_platform_user: bool,
+    }
+
+    #[async_trait]
+    impl AuthBackend for MockAuthBackend {
+        async fn validate_token(&self, _token: &str) -> Result<AuthUser, AuthError> {
+            Ok(AuthUser {
+                id: Uuid::new_v4(),
+                email: "test@example.com".to_string(),
+                name: "Test User".to_string(),
+                roles: vec!["user".to_string()],
+                is_platform_user: self.is_platform_user,
+                auth_method: AuthMethod::Jwt,
+                organizations: vec![OrgMembership {
+                    org_id: 1,
+                    public_id: "org_00000000000000000000000000000001".to_string(),
+                    name: "Test Org".to_string(),
+                    role: OrgRole::Owner,
+                }],
+            })
+        }
+
+        async fn validate_api_key(&self, _key: &str) -> Result<AuthUser, AuthError> {
+            Err(AuthError::unauthorized("not supported"))
+        }
+
+        fn auth_routes(&self) -> Option<Router> {
+            None
+        }
+
+        fn auth_config_response(&self) -> AuthConfigResponse {
+            AuthConfigResponse {
+                mode: "full".to_string(),
+                password_auth_enabled: false,
+                signup_enabled: false,
+                oauth_providers: vec![],
+            }
+        }
+    }
+
+    fn app_with_platform_user(is_platform_user: bool) -> Router {
+        let config = AuthConfig {
+            mode: AuthMode::Full,
+            jwt: JwtConfig {
+                secret: "test-secret-for-unit-tests-only".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let auth = AuthState::new(config, Arc::new(MockAuthBackend { is_platform_user }));
+        routes(ScheduleAppState::new(None, auth))
+    }
+
+    #[tokio::test]
+    async fn non_platform_user_cannot_list_schedules() {
+        let response = app_with_platform_user(false)
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/durable/schedules")
+                    .header("Authorization", "Bearer test-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn platform_user_can_list_schedules() {
+        let response = app_with_platform_user(true)
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/durable/schedules")
+                    .header("Authorization", "Bearer test-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn non_platform_user_cannot_create_schedule() {
+        let response = app_with_platform_user(false)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/durable/schedules")
+                    .header("Authorization", "Bearer test-token")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
     // ---- Existing unit tests ----

@@ -89,6 +89,7 @@ use utoipa::OpenApi;
         api::mcp_servers::update_mcp_server,
         api::mcp_servers::delete_mcp_server,
         // Durable schedules
+        api::durable::durable_config,
         api::schedules::create_schedule,
         api::schedules::list_schedules,
         api::schedules::get_schedule,

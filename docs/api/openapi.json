@@ -685,6 +685,27 @@
         }
       }
     },
+    "/v1/durable/config": {
+      "get": {
+        "tags": [
+          "durable"
+        ],
+        "summary": "GET /v1/durable/config - Durable policy results for UI gating.",
+        "operationId": "durable_config",
+        "responses": {
+          "200": {
+            "description": "Resource config for durable surfaces",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/durable/executions/{execution_id}": {
       "get": {
         "tags": [

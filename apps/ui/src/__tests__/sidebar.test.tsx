@@ -85,10 +85,22 @@ jest.mock("@/hooks/use-llm-providers", () => ({
   useLlmProviders: () => mockUseLlmProviders(),
 }));
 
+const mockUsePolicies = jest.fn(() => ({
+  data: { policies: { "durable.view": true } },
+  can: (policyId: string) => policyId === "durable.view",
+}));
+jest.mock("@/hooks/use-policies", () => ({
+  usePolicies: () => mockUsePolicies(),
+}));
+
 describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
     mockPush.mockClear();
+    mockUsePolicies.mockReturnValue({
+      data: { policies: { "durable.view": true } },
+      can: (policyId: string) => policyId === "durable.view",
+    });
     mockUseAuth.mockReturnValue({
       user: null,
       requiresAuth: false,
@@ -295,6 +307,17 @@ describe("Sidebar", () => {
     const workersLink = screen.getByRole("link", { name: /workers/i });
     expect(workersLink).toHaveClass("border-l-primary");
     expect(workersLink).toHaveClass("bg-card");
+  });
+
+  it("hides Durable Execution when durable policy is denied", () => {
+    mockUsePolicies.mockReturnValue({
+      data: { policies: { "durable.view": false } },
+      can: () => false,
+    });
+
+    render(<Sidebar />);
+
+    expect(screen.queryByText("Durable Execution")).not.toBeInTheDocument();
   });
 });
 

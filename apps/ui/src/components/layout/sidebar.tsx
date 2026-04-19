@@ -41,6 +41,7 @@ import {
 import { capabilityIconMap } from "@/lib/capability-icons";
 import { useCommandPalette } from "@/hooks/use-command-palette";
 import { useLlmProviders } from "@/hooks/use-llm-providers";
+import { usePolicies } from "@/hooks/use-policies";
 import { useAuth } from "@/providers/auth-provider";
 import { useFeatureFlags } from "@/providers/feature-flags-provider";
 import type { FeatureFlags } from "@/lib/api/types";
@@ -120,6 +121,12 @@ export const defaultNavigationSections: NavigationSection[] = [
   { label: "Dev", items: defaultDevNavigation, devOnly: true },
 ];
 
+function isDurableSection(section: NavigationSection) {
+  return section.items.some(
+    (item) => item.href === "/durable" || item.href.startsWith("/durable/"),
+  );
+}
+
 export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const pathname = usePathname();
   const {
@@ -135,12 +142,16 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
     isLoading: llmProvidersLoading,
     isError: llmProvidersError,
   } = useLlmProviders();
+  const durablePolicies = usePolicies("durable");
   const { setOpen: openCommandPalette } = useCommandPalette();
 
   const llmProvidersReady = !llmProvidersLoading && !llmProvidersError;
   const shouldShowChatWarning = llmProvidersReady && (!llmProviders || llmProviders.length === 0);
 
-  const baseSections = config?.navigation ?? defaultNavigationSections;
+  const durableAllowed = durablePolicies.data ? durablePolicies.can("durable.view") : false;
+  const baseSections = config?.navigation
+    ? config.navigation
+    : defaultNavigationSections.filter((section) => !isDurableSection(section) || durableAllowed);
   const sections = shouldShowChatWarning
     ? baseSections.map((section) => ({
         ...section,

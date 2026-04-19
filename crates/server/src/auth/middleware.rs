@@ -66,6 +66,8 @@ pub struct AuthUser {
     pub name: String,
     /// User roles
     pub roles: Vec<String>,
+    /// Whether this user may access global/platform surfaces.
+    pub is_platform_user: bool,
     /// Authentication method used
     pub auth_method: AuthMethod,
     /// Organizations the user belongs to
@@ -82,6 +84,7 @@ impl AuthUser {
             email: ANONYMOUS_USER_EMAIL.to_string(),
             name: ANONYMOUS_USER_NAME.to_string(),
             roles: vec!["admin".to_string()], // Full access in no-auth mode
+            is_platform_user: true,
             auth_method: AuthMethod::None,
             organizations: vec![OrgMembership {
                 org_id: DEFAULT_ORG_ID,
@@ -287,6 +290,28 @@ where
     }
 }
 
+/// Require platform-user access for global/system surfaces.
+#[derive(Debug, Clone)]
+pub struct PlatformUser(pub AuthUser);
+
+impl<S> FromRequestParts<S> for PlatformUser
+where
+    S: Send + Sync,
+    AuthState: FromRef<S>,
+{
+    type Rejection = AuthError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let user = AuthUser::from_request_parts(parts, state).await?;
+
+        if !user.is_platform_user {
+            return Err(AuthError::forbidden("Platform user access required"));
+        }
+
+        Ok(PlatformUser(user))
+    }
+}
+
 // ============================================================================
 // OrgContext - Organization context extractor
 // ============================================================================
@@ -453,6 +478,8 @@ pub struct ResolvedOrg {
     pub user_id: Option<Uuid>,
     /// User's role in this organization
     pub role: OrgRole,
+    /// Whether the authenticated user may access global/platform surfaces.
+    pub is_platform_user: bool,
 }
 
 impl From<&ResolvedOrg> for Caller {
@@ -462,7 +489,7 @@ impl From<&ResolvedOrg> for Caller {
             org_public_id: org.public_id.clone(),
             user_id: org.user_id,
             role: org.role,
-            is_platform_user: false,
+            is_platform_user: org.is_platform_user,
         }
     }
 }
@@ -506,6 +533,7 @@ where
                         name: org.name.clone(),
                         user_id: Some(user.id),
                         role: org.role,
+                        is_platform_user: user.is_platform_user,
                     });
                 }
 
@@ -518,6 +546,7 @@ where
                         name: org.name.clone(),
                         user_id: Some(user.id),
                         role: org.role,
+                        is_platform_user: user.is_platform_user,
                     });
                 }
 
@@ -548,6 +577,7 @@ where
                         name: org_row.name,
                         user_id: None,
                         role: OrgRole::Owner, // Anonymous user is owner of all orgs
+                        is_platform_user: user.is_platform_user,
                     });
                 }
 
@@ -562,6 +592,7 @@ where
                     name: org.name.clone(),
                     user_id: None,
                     role: org.role,
+                    is_platform_user: user.is_platform_user,
                 })
             }
             AuthMethod::Jwt => {
@@ -584,6 +615,7 @@ where
                         name: org.name.clone(),
                         user_id: Some(user.id),
                         role: org.role,
+                        is_platform_user: user.is_platform_user,
                     });
                 }
 
@@ -612,6 +644,7 @@ where
                             name: org_row.name.clone(),
                             user_id: Some(user.id),
                             role,
+                            is_platform_user: user.is_platform_user,
                         });
                     }
                     // DB available, user not a member → 404
@@ -634,6 +667,7 @@ where
                     name: org.name.clone(),
                     user_id: Some(user.id),
                     role: org.role,
+                    is_platform_user: user.is_platform_user,
                 })
             }
         }
@@ -651,6 +685,7 @@ mod tests {
         assert!(!user.id.is_nil(), "anonymous user should not use nil UUID");
         assert!(user.is_admin());
         assert!(user.has_role("admin"));
+        assert!(user.is_platform_user);
         assert_eq!(user.auth_method, AuthMethod::None);
         // Anonymous user should belong to default org with Owner role
         assert_eq!(user.organizations.len(), 1);
@@ -666,6 +701,7 @@ mod tests {
             email: "test@example.com".to_string(),
             name: "Test".to_string(),
             roles: vec!["user".to_string(), "editor".to_string()],
+            is_platform_user: false,
             auth_method: AuthMethod::Jwt,
             organizations: vec![],
         };
@@ -683,6 +719,7 @@ mod tests {
             email: "admin@example.com".to_string(),
             name: "Admin".to_string(),
             roles: vec!["admin".to_string()],
+            is_platform_user: true,
             auth_method: AuthMethod::Jwt,
             organizations: vec![],
         };
@@ -699,6 +736,7 @@ mod tests {
             email: "test@example.com".to_string(),
             name: "Test".to_string(),
             roles: vec!["user".to_string()],
+            is_platform_user: false,
             auth_method: AuthMethod::Jwt,
             organizations: vec![
                 OrgMembership {
@@ -949,6 +987,7 @@ mod tests {
             email: "test@example.com".to_string(),
             name: "Test User".to_string(),
             roles: vec!["user".to_string()],
+            is_platform_user: false,
             auth_method: AuthMethod::Jwt,
             organizations: vec![OrgMembership {
                 org_id: 1,
@@ -1007,6 +1046,7 @@ mod tests {
             email: "test@example.com".to_string(),
             name: "Test User".to_string(),
             roles: vec!["user".to_string()],
+            is_platform_user: false,
             auth_method: AuthMethod::Jwt,
             organizations: vec![OrgMembership {
                 org_id: 1,
@@ -1055,6 +1095,7 @@ mod tests {
             email: "test@example.com".to_string(),
             name: "Test User".to_string(),
             roles: vec!["user".to_string()],
+            is_platform_user: false,
             auth_method: AuthMethod::Jwt,
             organizations: vec![OrgMembership {
                 org_id: 1,
@@ -1152,6 +1193,7 @@ mod tests {
             email: "apiuser@example.com".to_string(),
             name: "API User".to_string(),
             roles: vec!["user".to_string()],
+            is_platform_user: false,
             auth_method: AuthMethod::ApiKey,
             organizations: vec![
                 OrgMembership {
@@ -1179,6 +1221,7 @@ mod tests {
             email: "apiuser@example.com".to_string(),
             name: "API User".to_string(),
             roles: vec!["user".to_string()],
+            is_platform_user: false,
             auth_method: AuthMethod::ApiKey,
             organizations: vec![OrgMembership {
                 org_id: 1,

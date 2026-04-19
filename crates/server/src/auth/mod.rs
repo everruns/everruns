@@ -24,6 +24,7 @@ pub use cli_auth::CliAuthState;
 pub use config::AuthConfig;
 pub use mcp_oauth::McpOAuthState;
 pub use middleware::{
-    AuthError, AuthMethod, AuthState, AuthUser, OrgAdmin, OrgContext, OrgOwner, ResolvedOrg,
+    AuthError, AuthMethod, AuthState, AuthUser, OrgAdmin, OrgContext, OrgOwner, PlatformUser,
+    ResolvedOrg,
 };
 pub use routes::routes;
