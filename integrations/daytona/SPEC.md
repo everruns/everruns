@@ -119,7 +119,7 @@ Executes a shell command in a sandbox with real-time output streaming.
   - `command`: string (required) — shell command
   - `cwd`: string (optional) — working directory
   - `timeout`: integer (optional) — timeout in ms (default: 300000)
-- **Returns**: `{ stdout, stderr, exit_code, success, cwd, sandbox_id, truncated?, stdout_lines?, stderr_lines?, hint?, full_output?, output_files? }`
+- **Returns**: `{ stdout, stderr, exit_code, success, cwd?, sandbox_id, truncated?, total_lines?, hint?, full_output?, output_files? }`
 - **Streaming**: Emits `tool.output.delta` events on the correct `stream` (`"stdout"` or `"stderr"`) as the command runs (polled every ~1s). The final tool result is the authoritative structured stdout/stderr snapshot.
 - **Recovery**: If a command times out or the shared exec shell is detected as dead, Everruns resets the Daytona exec session before returning the error so the next command can recover cleanly.
 - **Human representation**: Follows the shared exec-tool contract in `specs/tool-execution.md`. Command text is primary; sandbox metadata is secondary.

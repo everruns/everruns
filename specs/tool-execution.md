@@ -132,8 +132,7 @@ Human-facing exec tools should return a structured result instead of a single co
 | `cwd` | string | Effective working directory shown as secondary metadata |
 | `hint` | string | Short diagnostic hint for signal exits or common recovery advice |
 | `truncated` | boolean | Whether stdout or stderr was truncated for the inline result |
-| `stdout_lines` | integer | Total stdout line count before truncation |
-| `stderr_lines` | integer | Total stderr line count before truncation |
+| `total_lines` | integer | Total stdout line count before truncation |
 | `output_files` | string[] | Session VFS files containing full persisted output |
 | `full_output` | string | Canonical stdout path in session VFS when persisted |
 

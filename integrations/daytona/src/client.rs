@@ -557,7 +557,7 @@ impl DaytonaClient {
         let deadline = std::time::Instant::now() + Duration::from_millis(timeout);
         let mut raw_bytes_emitted: usize = 0;
         let mut stale_polls: u32 = 0;
-        let mut current_stream = ExecStream::Stdout;
+        let mut delta_parser = ExecDeltaParserState::new(ExecStream::Stdout);
         let logs_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}/logs");
         let status_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}");
 
@@ -591,11 +591,11 @@ impl DaytonaClient {
             if let Some(raw_logs) = logs_ok.as_ref()
                 && raw_logs.len() > raw_bytes_emitted
             {
-                let delta = parse_exec_output_delta(&raw_logs[raw_bytes_emitted..], current_stream);
+                let delta =
+                    parse_exec_output_delta(&raw_logs[raw_bytes_emitted..], &mut delta_parser);
                 for chunk in delta.chunks {
                     on_output(chunk);
                 }
-                current_stream = delta.trailing_stream;
                 raw_bytes_emitted = raw_logs.len();
             }
 
@@ -614,11 +614,16 @@ impl DaytonaClient {
                     .unwrap_or_default();
 
                 if final_logs.len() > raw_bytes_emitted {
-                    let delta =
-                        parse_exec_output_delta(&final_logs[raw_bytes_emitted..], current_stream);
+                    let delta = parse_exec_output_delta(
+                        &final_logs[raw_bytes_emitted..],
+                        &mut delta_parser,
+                    );
                     for chunk in delta.chunks {
                         on_output(chunk);
                     }
+                }
+                for chunk in finish_exec_output_delta(&mut delta_parser).chunks {
+                    on_output(chunk);
                 }
                 let final_output = split_stream_markers(&final_logs);
 
@@ -760,7 +765,21 @@ struct ParsedExecOutput {
 
 struct ParsedExecDelta {
     chunks: Vec<ExecOutputChunk>,
-    trailing_stream: ExecStream,
+}
+
+#[derive(Debug, Clone)]
+struct ExecDeltaParserState {
+    current_stream: ExecStream,
+    pending_marker_prefix: Vec<u8>,
+}
+
+impl ExecDeltaParserState {
+    fn new(starting_stream: ExecStream) -> Self {
+        Self {
+            current_stream: starting_stream,
+            pending_marker_prefix: Vec::new(),
+        }
+    }
 }
 
 /// Split Daytona session log stream multiplexing markers into stdout/stderr.
@@ -806,52 +825,74 @@ fn split_stream_markers(raw: &[u8]) -> ParsedExecOutput {
     }
 }
 
-fn parse_exec_output_delta(raw: &[u8], starting_stream: ExecStream) -> ParsedExecDelta {
+fn flush_exec_output_buffer(
+    chunks: &mut Vec<ExecOutputChunk>,
+    stream: ExecStream,
+    buffer: &mut Vec<u8>,
+) {
+    if buffer.is_empty() {
+        return;
+    }
+    let text = String::from_utf8_lossy(buffer).into_owned();
+    if let Some(last) = chunks.last_mut()
+        && last.stream == stream
+    {
+        last.text.push_str(&text);
+    } else {
+        chunks.push(ExecOutputChunk { stream, text });
+    }
+    buffer.clear();
+}
+
+fn is_partial_stream_marker_prefix(bytes: &[u8]) -> bool {
+    if bytes.is_empty() || bytes.len() >= STDOUT_MARKER.len() {
+        return false;
+    }
+
+    bytes.iter().all(|b| *b == STDOUT_MARKER[0]) || bytes.iter().all(|b| *b == STDERR_MARKER[0])
+}
+
+fn parse_exec_output_delta(raw: &[u8], state: &mut ExecDeltaParserState) -> ParsedExecDelta {
     let mut chunks: Vec<ExecOutputChunk> = Vec::new();
-    let mut current_stream = starting_stream;
     let mut buffer = Vec::new();
+    let mut bytes = Vec::with_capacity(state.pending_marker_prefix.len() + raw.len());
+    bytes.extend_from_slice(&state.pending_marker_prefix);
+    bytes.extend_from_slice(raw);
+    state.pending_marker_prefix.clear();
     let mut i = 0;
 
-    let flush_buffer =
-        |chunks: &mut Vec<ExecOutputChunk>, stream: ExecStream, buffer: &mut Vec<u8>| {
-            if buffer.is_empty() {
-                return;
-            }
-            let text = String::from_utf8_lossy(buffer).into_owned();
-            if let Some(last) = chunks.last_mut()
-                && last.stream == stream
-            {
-                last.text.push_str(&text);
-            } else {
-                chunks.push(ExecOutputChunk { stream, text });
-            }
-            buffer.clear();
-        };
-
-    while i < raw.len() {
-        if i + 3 <= raw.len() && raw[i..i + 3] == STDOUT_MARKER {
-            flush_buffer(&mut chunks, current_stream, &mut buffer);
-            current_stream = ExecStream::Stdout;
+    while i < bytes.len() {
+        if i + 3 <= bytes.len() && bytes[i..i + 3] == STDOUT_MARKER {
+            flush_exec_output_buffer(&mut chunks, state.current_stream, &mut buffer);
+            state.current_stream = ExecStream::Stdout;
             i += 3;
             continue;
         }
-        if i + 3 <= raw.len() && raw[i..i + 3] == STDERR_MARKER {
-            flush_buffer(&mut chunks, current_stream, &mut buffer);
-            current_stream = ExecStream::Stderr;
+        if i + 3 <= bytes.len() && bytes[i..i + 3] == STDERR_MARKER {
+            flush_exec_output_buffer(&mut chunks, state.current_stream, &mut buffer);
+            state.current_stream = ExecStream::Stderr;
             i += 3;
             continue;
         }
+        if is_partial_stream_marker_prefix(&bytes[i..]) {
+            state.pending_marker_prefix.extend_from_slice(&bytes[i..]);
+            break;
+        }
 
-        buffer.push(raw[i]);
+        buffer.push(bytes[i]);
         i += 1;
     }
 
-    flush_buffer(&mut chunks, current_stream, &mut buffer);
+    flush_exec_output_buffer(&mut chunks, state.current_stream, &mut buffer);
 
-    ParsedExecDelta {
-        chunks,
-        trailing_stream: current_stream,
-    }
+    ParsedExecDelta { chunks }
+}
+
+fn finish_exec_output_delta(state: &mut ExecDeltaParserState) -> ParsedExecDelta {
+    let mut chunks = Vec::new();
+    let mut buffer = std::mem::take(&mut state.pending_marker_prefix);
+    flush_exec_output_buffer(&mut chunks, state.current_stream, &mut buffer);
+    ParsedExecDelta { chunks }
 }
 
 pub(crate) mod urlencoding {
@@ -1966,7 +2007,8 @@ mod tests {
         raw.extend_from_slice(&STDERR_MARKER);
         raw.extend_from_slice(b"stderr line\n");
 
-        let parsed = parse_exec_output_delta(&raw, ExecStream::Stdout);
+        let mut parser = ExecDeltaParserState::new(ExecStream::Stdout);
+        let parsed = parse_exec_output_delta(&raw, &mut parser);
         assert_eq!(
             parsed.chunks,
             vec![
@@ -1980,6 +2022,43 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(parsed.trailing_stream, ExecStream::Stderr);
+        assert_eq!(parser.current_stream, ExecStream::Stderr);
+        assert!(parser.pending_marker_prefix.is_empty());
+    }
+
+    #[test]
+    fn test_parse_exec_output_delta_handles_split_marker_across_polls() {
+        let mut parser = ExecDeltaParserState::new(ExecStream::Stdout);
+
+        let mut first = Vec::new();
+        first.extend_from_slice(&STDOUT_MARKER);
+        first.extend_from_slice(b"stdout line\n");
+        first.extend_from_slice(&STDERR_MARKER[..2]);
+
+        let parsed_first = parse_exec_output_delta(&first, &mut parser);
+        assert_eq!(
+            parsed_first.chunks,
+            vec![ExecOutputChunk {
+                stream: ExecStream::Stdout,
+                text: "stdout line\n".to_string(),
+            }]
+        );
+        assert_eq!(parser.current_stream, ExecStream::Stdout);
+        assert_eq!(parser.pending_marker_prefix, STDERR_MARKER[..2].to_vec());
+
+        let mut second = Vec::new();
+        second.extend_from_slice(&STDERR_MARKER[2..]);
+        second.extend_from_slice(b"stderr line\n");
+
+        let parsed_second = parse_exec_output_delta(&second, &mut parser);
+        assert_eq!(
+            parsed_second.chunks,
+            vec![ExecOutputChunk {
+                stream: ExecStream::Stderr,
+                text: "stderr line\n".to_string(),
+            }]
+        );
+        assert_eq!(parser.current_stream, ExecStream::Stderr);
+        assert!(parser.pending_marker_prefix.is_empty());
     }
 }

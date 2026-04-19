@@ -64,6 +64,53 @@ fn exit_code_hint(exit_code: i32) -> Option<&'static str> {
     }
 }
 
+fn build_exec_tool_result(
+    sandbox_id: &str,
+    cwd: Option<&str>,
+    result: &crate::state::ExecResult,
+    output_mode: &str,
+) -> ToolExecutionResult {
+    use everruns_core::tool_output_sanitizer::{
+        clean_exec_output, output_verbosity_budget, priority_aware_truncate,
+    };
+
+    let clean_stdout = clean_exec_output(&result.stdout);
+    let clean_stderr = clean_exec_output(&result.stderr);
+    let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
+        (
+            priority_aware_truncate(&clean_stdout, budget),
+            priority_aware_truncate(&clean_stderr, budget.min(4096)),
+        )
+    } else {
+        (clean_stdout.clone(), clean_stderr.clone())
+    };
+    let truncated = stdout != clean_stdout || stderr != clean_stderr;
+    let total_lines = clean_stdout.lines().count();
+    let mut raw = clean_stdout;
+    if !clean_stderr.is_empty() {
+        raw.push_str("\n--- stderr ---\n");
+        raw.push_str(&clean_stderr);
+    }
+
+    let mut response = json!({
+        "sandbox_id": sandbox_id,
+        "stdout": stdout,
+        "stderr": stderr,
+        "exit_code": result.exit_code,
+        "success": result.exit_code == 0,
+        "truncated": truncated,
+        "total_lines": total_lines,
+    });
+    if let Some(cwd) = cwd {
+        response["cwd"] = json!(cwd);
+    }
+    if let Some(hint) = exit_code_hint(result.exit_code) {
+        response["hint"] = json!(hint);
+    }
+
+    ToolExecutionResult::success_with_raw_output(response, raw)
+}
+
 /// Parse an optional integer resource parameter, validating type and range.
 fn parse_resource_param(
     arguments: &Value,
@@ -475,47 +522,7 @@ impl Tool for DaytonaExecTool {
                 if let Err(e) = touch_sandbox_lease(context, &state, None).await {
                     return e;
                 }
-                {
-                    use everruns_core::tool_output_sanitizer::{
-                        clean_exec_output, output_verbosity_budget, priority_aware_truncate,
-                    };
-                    let clean_stdout = clean_exec_output(&result.stdout);
-                    let clean_stderr = clean_exec_output(&result.stderr);
-                    let (stdout, stderr) =
-                        if let Some(budget) = output_verbosity_budget(output_mode) {
-                            (
-                                priority_aware_truncate(&clean_stdout, budget),
-                                priority_aware_truncate(&clean_stderr, budget.min(4096)),
-                            )
-                        } else {
-                            (clean_stdout.clone(), clean_stderr.clone())
-                        };
-                    let truncated = stdout != clean_stdout || stderr != clean_stderr;
-                    let stdout_lines = clean_stdout.lines().count();
-                    let stderr_lines = clean_stderr.lines().count();
-                    let mut raw = clean_stdout;
-                    if !clean_stderr.is_empty() {
-                        raw.push_str("\n--- stderr ---\n");
-                        raw.push_str(&clean_stderr);
-                    }
-                    let mut response = json!({
-                        "sandbox_id": sandbox_id,
-                        "cwd": cwd.unwrap_or(&state.workspace_path),
-                        "stdout": stdout,
-                        "stderr": stderr,
-                        "exit_code": result.exit_code,
-                        "success": result.exit_code == 0,
-                        "truncated": truncated,
-                        "stdout_lines": stdout_lines,
-                        "stderr_lines": stderr_lines,
-                    });
-                    // Add diagnostic hint for signal-based exit codes so agents
-                    // can adapt their retry strategy. See EVE-252.
-                    if let Some(hint) = exit_code_hint(result.exit_code) {
-                        response["hint"] = json!(hint);
-                    }
-                    ToolExecutionResult::success_with_raw_output(response, raw)
-                }
+                build_exec_tool_result(sandbox_id, cwd, &result, output_mode)
             }
             Err(e) => ToolExecutionResult::tool_error(e),
         }
@@ -2782,6 +2789,30 @@ mod tests {
         assert!(exit_code_hint(130).unwrap().contains("signal"));
         // Outside signal range
         assert!(exit_code_hint(200).is_none());
+    }
+
+    #[test]
+    fn test_build_exec_tool_result_omits_unknown_cwd_and_uses_total_lines() {
+        let result = crate::state::ExecResult {
+            stdout: "line one\nline two\n".to_string(),
+            stderr: "warning\n".to_string(),
+            result: "line one\nline two\nwarning\n".to_string(),
+            exit_code: 0,
+        };
+
+        let output = build_exec_tool_result("sb_test", None, &result, "normal");
+        match output {
+            ToolExecutionResult::Success(value) => {
+                assert_eq!(value["sandbox_id"], "sb_test");
+                assert_eq!(value["stdout"], "line one\nline two\n");
+                assert_eq!(value["stderr"], "warning\n");
+                assert_eq!(value["total_lines"], 2);
+                assert!(value.get("cwd").is_none(), "cwd should be omitted");
+                assert!(value.get("stdout_lines").is_none());
+                assert!(value.get("stderr_lines").is_none());
+            }
+            other => panic!("Expected Success, got {other:?}"),
+        }
     }
 
     // ========================================================================
