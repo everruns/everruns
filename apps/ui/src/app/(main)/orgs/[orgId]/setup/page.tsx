@@ -20,6 +20,8 @@ import { useOrg } from "@/providers/org-provider";
 import type { ApiError } from "@/lib/api/client";
 import type { LlmProviderType } from "@/lib/api/types";
 
+type SetupProviderType = Extract<LlmProviderType, "openai" | "anthropic">;
+
 interface SetupStep {
   label: string;
   description: string;
@@ -59,25 +61,17 @@ const SETUP_STEPS: SetupStep[] = [
 
 const STEP_DELAY_MS = 400;
 
-const PROVIDER_OPTIONS: { type: LlmProviderType; label: string }[] = [
+const PROVIDER_OPTIONS: { type: SetupProviderType; label: string }[] = [
   { type: "openai", label: "OpenAI" },
-  { type: "azure_openai", label: "Azure OpenAI" },
   { type: "anthropic", label: "Anthropic" },
 ];
 
-function getProviderName(providerType: LlmProviderType): string {
+function getProviderName(providerType: SetupProviderType): string {
   switch (providerType) {
     case "openai":
-    case "openai_completions":
       return "OpenAI";
-    case "azure_openai":
-      return "Azure OpenAI";
     case "anthropic":
       return "Anthropic";
-    case "gemini":
-      return "Gemini";
-    default:
-      return providerType;
   }
 }
 
@@ -171,7 +165,7 @@ export default function OrgSetupPage() {
   const allAnimated = completedCount >= SETUP_STEPS.length;
 
   // --- LLM provider form state ---
-  const [selectedProvider, setSelectedProvider] = useState<LlmProviderType>("openai");
+  const [selectedProvider, setSelectedProvider] = useState<SetupProviderType>("openai");
   const [apiKey, setApiKey] = useState("");
   const createProvider = useCreateLlmProvider();
   const [providerError, setProviderError] = useState<string | null>(null);
