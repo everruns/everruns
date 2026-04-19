@@ -219,6 +219,7 @@ async fn run_agent(
                 session_id: session.session.id.uuid(),
                 event_metadata: Some(execution_metadata::app_message_metadata(
                     app.public_id,
+                    app.owner_principal_id,
                     app.agent_identity_id,
                 )),
                 request_id,

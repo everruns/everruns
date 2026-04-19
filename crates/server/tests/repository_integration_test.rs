@@ -22,9 +22,9 @@ use everruns_server::org_init;
 use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentRow, CreateEventRow, CreateHarnessRow, CreateImageRow,
     CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow, CreateOrganizationRow,
-    CreateSessionFileRow, CreateSessionRow, Database, StorageBackend, UpdateAgent, UpdateLlmModel,
-    UpdateLlmProvider, UpdateOrganization, UpdateOrganizationSettings, UpdateSession,
-    UpdateSessionFile,
+    CreatePrincipalRow, CreateSessionFileRow, CreateSessionRow, Database, StorageBackend,
+    UpdateAgent, UpdateLlmModel, UpdateLlmProvider, UpdateOrganization, UpdateOrganizationSettings,
+    UpdateSession, UpdateSessionFile,
 };
 use test_harness::get_database_url;
 
@@ -44,6 +44,25 @@ async fn create_test_backend() -> StorageBackend {
 
 /// Test organization ID (default org)
 const TEST_ORG_ID: i64 = 1;
+
+async fn create_test_principal(
+    backend: &StorageBackend,
+    org_id: i64,
+) -> everruns_core::PrincipalId {
+    backend
+        .create_principal(CreatePrincipalRow {
+            id: everruns_core::PrincipalId::new(),
+            org_id,
+            kind: "system".to_string(),
+            subject_id: Some(Uuid::now_v7()),
+            parent_principal_id: None,
+            resolved_user_id: None,
+            metadata: json!({ "source": "repository_integration_test" }),
+        })
+        .await
+        .expect("Failed to create test principal")
+        .id
+}
 
 // ============================================
 // Agent Repository Tests
@@ -264,12 +283,15 @@ async fn test_session_crud() {
         .expect("Failed to create agent");
 
     // Create session
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
             title: Some("Test Session".to_string()),
             locale: None,
             tags: vec![],
@@ -410,12 +432,15 @@ async fn test_event_crud() {
         .await
         .expect("Failed to create agent");
 
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
             title: None,
             locale: None,
             tags: vec![],
@@ -497,12 +522,15 @@ async fn test_event_exclude_types() {
         .await
         .expect("Failed to create agent");
 
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
             title: None,
             locale: None,
             tags: vec![],
@@ -592,12 +620,15 @@ async fn test_event_filter_types() {
         .await
         .expect("Failed to create agent");
 
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
             title: None,
             locale: None,
             tags: vec![],
@@ -889,12 +920,15 @@ async fn test_session_file_crud() {
         .await
         .expect("Failed to create agent");
 
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
             title: None,
             locale: None,
             tags: vec![],
@@ -1347,12 +1381,15 @@ async fn test_session_usage_tracking() {
         .await
         .expect("Failed to create agent");
 
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
             title: None,
             locale: None,
             tags: vec![],
@@ -1440,12 +1477,15 @@ async fn test_session_previews() {
         .await
         .expect("Failed to create agent");
 
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
             title: None,
             locale: None,
             tags: vec![],

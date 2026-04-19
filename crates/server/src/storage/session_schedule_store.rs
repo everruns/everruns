@@ -21,6 +21,10 @@ pub fn row_to_domain(row: &SessionScheduleRow) -> SessionSchedule {
     SessionSchedule {
         id: row.id,
         session_id: row.session_id,
+        owner_principal_id: row.owner_principal_id,
+        resolved_owner_user_id: row.resolved_owner_user_id,
+        owner: None,
+        effective_owner: None,
         description: row.description.clone(),
         schedule_type: SessionSchedule::derive_type(&row.cron_expression),
         cron_expression: row.cron_expression.clone(),
@@ -64,12 +68,20 @@ impl SessionScheduleStore for DbSessionScheduleStore {
         let next_trigger =
             compute_next_trigger(cron_expression.as_deref(), scheduled_at, &timezone)
                 .map_err(|e| AgentLoopError::tool(e.to_string()))?;
+        let session = self
+            .db
+            .get_session(self.org_id, session_id)
+            .await
+            .store_err()?
+            .ok_or_else(|| AgentLoopError::tool("Session not found".to_string()))?;
 
         let row = self
             .db
             .create_session_schedule(CreateSessionScheduleRow {
                 org_id: self.org_id,
                 session_id,
+                owner_principal_id: session.owner_principal_id,
+                resolved_owner_user_id: session.resolved_owner_user_id,
                 description,
                 cron_expression,
                 scheduled_at,

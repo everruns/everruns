@@ -10,6 +10,7 @@ use crate::api::common::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
 use crate::errors::ResourceNotFoundError;
 use crate::org_init;
+use crate::services::PrincipalService;
 use crate::services::session_file::{CreateFileInput, SessionFileService};
 use crate::services::session_sandbox::SessionSandboxService;
 use crate::storage::{
@@ -56,6 +57,7 @@ pub struct SessionStats {
 
 pub struct SessionService {
     db: Arc<StorageBackend>,
+    principal_service: PrincipalService,
     capability_registry: CapabilityRegistry,
     session_file_service: SessionFileService,
     session_sandbox_service: Option<Arc<SessionSandboxService>>,
@@ -64,6 +66,7 @@ pub struct SessionService {
 impl SessionService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
+            principal_service: PrincipalService::new(db.clone()),
             capability_registry: CapabilityRegistry::with_builtins(),
             session_file_service: SessionFileService::new(db.clone()),
             db,
@@ -74,6 +77,7 @@ impl SessionService {
     /// Create a new SessionService with a custom capability registry.
     pub fn with_registry(db: Arc<StorageBackend>, registry: CapabilityRegistry) -> Self {
         Self {
+            principal_service: PrincipalService::new(db.clone()),
             capability_registry: registry,
             session_file_service: SessionFileService::new(db.clone()),
             db,
@@ -185,12 +189,18 @@ impl SessionService {
             .hints
             .as_ref()
             .map(|h| serde_json::to_value(h).unwrap_or_default());
+        let owner_principal = self
+            .principal_service
+            .default_owner_principal(caller, agent_identity_id)
+            .await?;
 
         let input = CreateSessionRow {
             org_id,
             harness_id: Some(harness_id),
             agent_id,
             agent_identity_id,
+            owner_principal_id: owner_principal.id,
+            resolved_owner_user_id: owner_principal.resolved_user_id,
             title: req.title,
             locale: req.locale.clone(),
             tags: req.tags,
@@ -211,6 +221,7 @@ impl SessionService {
         };
         let row = self.db.create_session(input).await?;
         let mut session = Self::row_to_session(row, org_public_id, Some(harness_id));
+        self.hydrate_ownership(org_id, &mut session).await?;
 
         // Populate features before overriding agent_id (needs internal UUID)
         self.populate_features(org_id, &mut session).await?;
@@ -282,12 +293,18 @@ impl SessionService {
             &effective_harness.mcp_servers,
             &req.mcp_servers,
         ])?;
+        let owner_principal = self
+            .principal_service
+            .default_owner_principal(caller, None)
+            .await?;
 
         let input = CreateSessionRow {
             org_id,
             harness_id: Some(harness_id),
             agent_id: None,
             agent_identity_id: None,
+            owner_principal_id: owner_principal.id,
+            resolved_owner_user_id: owner_principal.resolved_user_id,
             title: req.title,
             locale: req.locale,
             tags: req.tags,
@@ -551,6 +568,7 @@ impl SessionService {
                     None
                 };
                 let mut session = Self::row_to_session(r, &caller.org_public_id, fallback);
+                self.hydrate_ownership(caller.org_id, &mut session).await?;
                 // Populate features before resolving agent_id (needs internal UUID)
                 self.populate_features(caller.org_id, &mut session).await?;
                 self.resolve_session_agent_id(caller.org_id, &mut session)
@@ -614,6 +632,10 @@ impl SessionService {
             .map(|r| Self::row_to_session(r, org_public_id, fallback))
             .collect();
 
+        for session in &mut sessions {
+            self.hydrate_ownership(org_id, session).await?;
+        }
+
         // Populate features before resolving agent IDs (needs internal UUIDs)
         for session in &mut sessions {
             self.populate_features(org_id, session).await?;
@@ -674,9 +696,66 @@ impl SessionService {
             UpdateField::Clear => UpdateField::Clear,
             UpdateField::Unchanged => UpdateField::Unchanged,
         };
+        let existing = if !matches!(agent_identity_id, UpdateField::Unchanged) {
+            Some(
+                self.db
+                    .get_session(caller.org_id, SessionId::from_uuid(id))
+                    .await?
+                    .ok_or_else(|| ResourceNotFoundError::new("Session"))?,
+            )
+        } else {
+            None
+        };
+        let (owner_principal_id, resolved_owner_user_id) = match agent_identity_id {
+            UpdateField::Set(identity_id) => {
+                let owner = self
+                    .principal_service
+                    .owner_for_entity(
+                        caller.org_id,
+                        existing
+                            .as_ref()
+                            .expect("existing session loaded for ownership update")
+                            .owner_principal_id,
+                        existing
+                            .as_ref()
+                            .expect("existing session loaded for ownership update")
+                            .resolved_owner_user_id,
+                        Some(identity_id),
+                    )
+                    .await?;
+                (
+                    Some(owner.id),
+                    UpdateField::from_option(owner.resolved_user_id),
+                )
+            }
+            UpdateField::Clear => {
+                let owner = self
+                    .principal_service
+                    .owner_for_entity(
+                        caller.org_id,
+                        existing
+                            .as_ref()
+                            .expect("existing session loaded for ownership update")
+                            .owner_principal_id,
+                        existing
+                            .as_ref()
+                            .expect("existing session loaded for ownership update")
+                            .resolved_owner_user_id,
+                        None,
+                    )
+                    .await?;
+                (
+                    Some(owner.id),
+                    UpdateField::from_option(owner.resolved_user_id),
+                )
+            }
+            UpdateField::Unchanged => (None, UpdateField::Unchanged),
+        };
         let input = UpdateSession {
             title: req.title,
             agent_identity_id,
+            owner_principal_id,
+            resolved_owner_user_id,
             locale: req.locale,
             tags: req.tags,
             ..Default::default()
@@ -693,6 +772,7 @@ impl SessionService {
                     None
                 };
                 let mut session = Self::row_to_session(r, &caller.org_public_id, fallback);
+                self.hydrate_ownership(caller.org_id, &mut session).await?;
                 self.resolve_session_agent_id(caller.org_id, &mut session)
                     .await?;
                 Ok(Some(session))
@@ -725,6 +805,7 @@ impl SessionService {
                     None
                 };
                 let mut session = Self::row_to_session(r, &caller.org_public_id, fallback);
+                self.hydrate_ownership(caller.org_id, &mut session).await?;
                 self.resolve_session_agent_id(caller.org_id, &mut session)
                     .await?;
                 Ok(Some(session))
@@ -798,6 +879,7 @@ impl SessionService {
             }
 
             let mut session = Self::row_to_session(row, org_public_id, Some(desired_harness_id));
+            self.hydrate_ownership(org_id, &mut session).await?;
             self.populate_features(caller.org_id, &mut session).await?;
             self.resolve_session_agent_id(org_id, &mut session).await?;
             return Ok(session);
@@ -805,11 +887,17 @@ impl SessionService {
 
         // Create a new chat session
         let harness_id_typed = HarnessId::from_uuid(harness_id);
+        let owner_principal = self
+            .principal_service
+            .ensure_user_principal(org_id, user_id)
+            .await?;
         let input = CreateSessionRow {
             org_id,
             harness_id: Some(harness_id_typed),
             agent_id: None,
             agent_identity_id: None,
+            owner_principal_id: owner_principal.id,
+            resolved_owner_user_id: owner_principal.resolved_user_id,
             title: Some(title.to_string()),
             locale,
             tags: vec!["global-chat".to_string(), user_tag],
@@ -828,6 +916,7 @@ impl SessionService {
         let row = self.db.create_session(input).await?;
         let session_id = row.id.uuid();
         let mut session = Self::row_to_session(row, org_public_id, Some(harness_id_typed));
+        self.hydrate_ownership(org_id, &mut session).await?;
         self.populate_features(org_id, &mut session).await?;
 
         // Apply capability mounts
@@ -956,6 +1045,18 @@ impl SessionService {
         Ok(())
     }
 
+    async fn hydrate_ownership(&self, org_id: i64, session: &mut Session) -> Result<()> {
+        session.owner = self
+            .principal_service
+            .get_summary(org_id, session.owner_principal_id)
+            .await?;
+        session.effective_owner = self
+            .principal_service
+            .effective_owner_summary(org_id, session.resolved_owner_user_id)
+            .await?;
+        Ok(())
+    }
+
     pub fn row_to_session(
         row: crate::storage::SessionRow,
         org_public_id: &str,
@@ -997,6 +1098,10 @@ impl SessionService {
             }),
             agent_id: row.agent_id,
             agent_identity_id: row.agent_identity_id,
+            owner_principal_id: row.owner_principal_id,
+            resolved_owner_user_id: row.resolved_owner_user_id,
+            owner: None,
+            effective_owner: None,
             title: row.title,
             locale: row.locale,
             preview: None,        // Populated separately in list()
@@ -1561,6 +1666,8 @@ mod tests {
                 harness_id: Some(other_harness.id),
                 agent_id: Some(AgentId::from_uuid(other_agent.internal_id)),
                 agent_identity_id: None,
+                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
                 title: Some("Corrupt Session".to_string()),
                 locale: None,
                 tags: vec![],
@@ -1656,6 +1763,8 @@ mod tests {
                 harness_id: None,
                 agent_id: None,
                 agent_identity_id: None,
+                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
                 title: Some("Mount Test".to_string()),
                 locale: None,
                 tags: vec![],

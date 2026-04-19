@@ -22,6 +22,15 @@ export interface InitialFile {
   is_readonly: boolean;
 }
 
+export type PrincipalKind = "user" | "agent_identity" | "system";
+
+export interface PrincipalSummary {
+  id: string;
+  kind: PrincipalKind;
+  subject_id?: string | null;
+  metadata: Record<string, unknown>;
+}
+
 // ============================================
 // Network access list (used by agents, harnesses, sessions)
 // ============================================

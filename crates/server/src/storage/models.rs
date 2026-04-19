@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use everruns_core::{
     AgentId, AgentIdentityId, EventId, HarnessId, ImageId, LeasedResourceId, McpServerId,
-    MessageId, ModelId, NotificationId, ProviderId, ScheduleId, SessionId, SkillId,
+    MessageId, ModelId, NotificationId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId,
 };
 use everruns_durable::UpdateField;
 use sqlx::FromRow;
@@ -494,6 +494,9 @@ pub struct SessionRow {
     pub agent_id: Option<AgentId>,
     #[sqlx(default)]
     pub agent_identity_id: Option<AgentIdentityId>,
+    pub owner_principal_id: PrincipalId,
+    #[sqlx(default)]
+    pub resolved_owner_user_id: Option<Uuid>,
     pub title: Option<String>,
     #[sqlx(default)]
     pub locale: Option<String>,
@@ -562,6 +565,8 @@ pub struct CreateSessionRow {
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
     pub agent_identity_id: Option<AgentIdentityId>,
+    pub owner_principal_id: PrincipalId,
+    pub resolved_owner_user_id: Option<Uuid>,
     pub title: Option<String>,
     pub locale: Option<String>,
     pub tags: Vec<String>,
@@ -593,6 +598,8 @@ pub struct UpdateSession {
     pub harness_id: Option<HarnessId>,
     pub title: Option<String>,
     pub agent_identity_id: UpdateField<AgentIdentityId>,
+    pub owner_principal_id: Option<PrincipalId>,
+    pub resolved_owner_user_id: UpdateField<Uuid>,
     pub locale: Option<String>,
     pub tags: Option<Vec<String>>,
     pub model_id: Option<ModelId>,
@@ -1329,6 +1336,9 @@ pub struct SessionScheduleRow {
     pub public_id: String,
     pub org_id: i64,
     pub session_id: SessionId,
+    pub owner_principal_id: PrincipalId,
+    #[sqlx(default)]
+    pub resolved_owner_user_id: Option<Uuid>,
     pub description: String,
     pub cron_expression: Option<String>,
     pub scheduled_at: Option<DateTime<Utc>>,
@@ -1345,6 +1355,8 @@ pub struct SessionScheduleRow {
 pub struct CreateSessionScheduleRow {
     pub org_id: i64,
     pub session_id: SessionId,
+    pub owner_principal_id: PrincipalId,
+    pub resolved_owner_user_id: Option<Uuid>,
     pub description: String,
     pub cron_expression: Option<String>,
     pub scheduled_at: Option<DateTime<Utc>>,
@@ -1494,6 +1506,9 @@ pub struct AppRow {
     pub harness_id: Uuid,
     pub agent_id: Uuid,
     pub agent_identity_id: Option<Uuid>,
+    pub owner_principal_id: PrincipalId,
+    #[sqlx(default)]
+    pub resolved_owner_user_id: Option<Uuid>,
     pub channel_type: String,
     pub channel_config: serde_json::Value,
     pub channel_config_encrypted: Option<Vec<u8>>,
@@ -1514,6 +1529,8 @@ pub struct CreateAppRow {
     pub harness_id: Uuid,
     pub agent_id: Uuid,
     pub agent_identity_id: Option<Uuid>,
+    pub owner_principal_id: PrincipalId,
+    pub resolved_owner_user_id: Option<Uuid>,
     pub channel_type: String,
     pub channel_config: serde_json::Value,
     /// Encrypted channel_config bytes (envelope-encrypted JSON).
@@ -1528,6 +1545,8 @@ pub struct UpdateApp {
     pub harness_id: Option<Uuid>,
     pub agent_id: Option<Uuid>,
     pub agent_identity_id: UpdateField<Uuid>,
+    pub owner_principal_id: Option<PrincipalId>,
+    pub resolved_owner_user_id: UpdateField<Uuid>,
     pub channel_type: Option<String>,
     pub channel_config: Option<serde_json::Value>,
     /// Encrypted channel_config bytes (envelope-encrypted JSON).
@@ -1552,6 +1571,46 @@ pub struct AppChannelRow {
     pub enabled: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+// ============================================
+// Principal models
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct PrincipalRow {
+    pub id: PrincipalId,
+    pub public_id: String,
+    pub org_id: i64,
+    pub kind: String,
+    pub subject_id: Option<Uuid>,
+    pub parent_principal_id: Option<PrincipalId>,
+    pub resolved_user_id: Option<Uuid>,
+    pub metadata: serde_json::Value,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreatePrincipalRow {
+    pub id: PrincipalId,
+    pub org_id: i64,
+    pub kind: String,
+    pub subject_id: Option<Uuid>,
+    pub parent_principal_id: Option<PrincipalId>,
+    pub resolved_user_id: Option<Uuid>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdatePrincipalRow {
+    pub parent_principal_id: UpdateField<PrincipalId>,
+    pub resolved_user_id: UpdateField<Uuid>,
+    pub metadata: Option<serde_json::Value>,
+    pub status: Option<String>,
 }
 
 /// Input for creating an app channel

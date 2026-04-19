@@ -11,6 +11,7 @@ use super::types::{
 use super::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
 use crate::domains::common::*;
 use crate::errors::ResourceNotFoundError;
+use crate::services::PrincipalService;
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, AppChannelId, HarnessId};
 use everruns_core::{App, AppChannel, AppId, Policy};
@@ -114,6 +115,10 @@ impl Command for CreateApp {
         } else {
             None
         };
+        let owner_principal = PrincipalService::new(ctx.db.clone())
+            .default_owner_principal(&ctx.caller, req.agent_identity_id)
+            .await
+            .map_err(classify_anyhow)?;
 
         // Prepare channel config
         let channel_config = req.channel_config.clone().unwrap_or_default();
@@ -130,6 +135,8 @@ impl Command for CreateApp {
             harness_id: harness_uuid,
             agent_id: agent_uuid,
             agent_identity_id: agent_identity_uuid,
+            owner_principal_id: owner_principal.id,
+            resolved_owner_user_id: owner_principal.resolved_user_id,
             channel_type: req.channel_type.to_string(),
             channel_config: stored_plaintext.clone(),
             channel_config_encrypted: channel_config_encrypted.clone(),
@@ -327,6 +334,41 @@ impl Command for UpdateAppCmd {
             UpdateField::Clear => UpdateField::Clear,
             UpdateField::Unchanged => UpdateField::Unchanged,
         };
+        let (owner_principal_id, resolved_owner_user_id) = match agent_identity_id {
+            UpdateField::Set(identity_uuid) => {
+                let owner = PrincipalService::new(ctx.db.clone())
+                    .owner_for_entity(
+                        ctx.org_id(),
+                        existing.owner_principal_id,
+                        existing.resolved_owner_user_id,
+                        Some(everruns_core::typed_id::AgentIdentityId::from_uuid(
+                            identity_uuid,
+                        )),
+                    )
+                    .await
+                    .map_err(classify_anyhow)?;
+                (
+                    Some(owner.id),
+                    UpdateField::from_option(owner.resolved_user_id),
+                )
+            }
+            UpdateField::Clear => {
+                let owner = PrincipalService::new(ctx.db.clone())
+                    .owner_for_entity(
+                        ctx.org_id(),
+                        existing.owner_principal_id,
+                        existing.resolved_owner_user_id,
+                        None,
+                    )
+                    .await
+                    .map_err(classify_anyhow)?;
+                (
+                    Some(owner.id),
+                    UpdateField::from_option(owner.resolved_user_id),
+                )
+            }
+            UpdateField::Unchanged => (None, UpdateField::Unchanged),
+        };
 
         let input = UpdateApp {
             name: req.name,
@@ -334,6 +376,8 @@ impl Command for UpdateAppCmd {
             harness_id,
             agent_id,
             agent_identity_id,
+            owner_principal_id,
+            resolved_owner_user_id,
             channel_type: None,
             channel_config: None,
             channel_config_encrypted: None,

@@ -103,6 +103,7 @@ mod tests {
             user_id: Some(Uuid::nil()),
             role,
             is_platform_user: false,
+            is_internal: false,
         }
     }
 

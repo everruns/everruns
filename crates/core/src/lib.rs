@@ -65,6 +65,7 @@ pub mod mcp_server;
 pub mod memory_store;
 pub mod network_access;
 pub mod organization;
+pub mod principal;
 pub mod session;
 pub mod session_file;
 pub mod session_resource;
@@ -312,6 +313,7 @@ pub use organization::{
     DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, Organization, generate_org_public_id,
     org_public_id_from_internal, validate_org_public_id,
 };
+pub use principal::{Principal, PrincipalKind, PrincipalStatus, PrincipalSummary};
 pub use session::{Session, SessionStatus, SubagentStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, InitialFile, SessionFile};
 pub use session_resource::{
@@ -328,8 +330,8 @@ pub use skill::{
 pub use typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, EvalCaseId, EvalId, EvalResultId, EvalRunId,
     EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, LeasedResourceId, McpServerId,
-    MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId, OrgId, ProviderId, ScheduleId,
-    SessionId, SkillId, TurnId, TypedId,
+    MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId, OrgId, PrincipalId, ProviderId,
+    ScheduleId, SessionId, SkillId, TurnId, TypedId,
 };
 
 // Audit logging re-exports

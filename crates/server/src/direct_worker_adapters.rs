@@ -36,7 +36,7 @@ use crate::org_init;
 use crate::services::scoped_mcp::{
     build_scoped_mcp_tool_definitions, resolve_scoped_mcp_server, validate_scoped_mcp_servers,
 };
-use crate::services::{BudgetService, EventService, LlmResolverService};
+use crate::services::{BudgetService, EventService, LlmResolverService, PrincipalService};
 use crate::storage::StorageBackend;
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 
@@ -469,6 +469,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                 agent_id: r.agent_id,
                 agent_identity_id: r.agent_identity_id,
+                owner_principal_id: r.owner_principal_id,
+                resolved_owner_user_id: r.resolved_owner_user_id,
+                owner: None,
+                effective_owner: None,
                 title: r.title,
                 locale: r.locale,
                 preview: None,
@@ -1841,6 +1845,10 @@ impl DirectPlatformStore {
             }),
             agent_id: row.agent_id,
             agent_identity_id: row.agent_identity_id,
+            owner_principal_id: row.owner_principal_id,
+            resolved_owner_user_id: row.resolved_owner_user_id,
+            owner: None,
+            effective_owner: None,
             title: row.title,
             locale: row.locale,
             preview: None,
@@ -2276,12 +2284,18 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
                 return Err(store_error("Archived or deleted agents cannot be assigned"));
             }
         }
+        let owner_principal = PrincipalService::new(self.db.clone())
+            .default_owner_principal(&Caller::internal(self.org_id), None)
+            .await
+            .map_err(|e| store_error(format!("Failed to resolve session owner: {e}")))?;
 
         let input = CreateSessionRow {
             org_id: self.org_id,
             harness_id: Some(harness_id),
             agent_id,
             agent_identity_id: None,
+            owner_principal_id: owner_principal.id,
+            resolved_owner_user_id: owner_principal.resolved_user_id,
             title: title.map(|s| s.to_string()),
             locale: locale.map(|value| value.to_string()),
             tags: vec!["managed".to_string()],
@@ -3366,6 +3380,8 @@ mod tests {
                 agent_id: Some(AgentId::from_uuid(agent_id)),
                 agent_identity_id: None,
                 harness_id: Some(HarnessId::from_seed(1)),
+                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
                 title: None,
                 locale: None,
                 tags: vec![],

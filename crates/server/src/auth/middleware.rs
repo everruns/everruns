@@ -497,6 +497,7 @@ impl From<&ResolvedOrg> for Caller {
             user_id: org.user_id,
             role: org.role,
             is_platform_user: org.is_platform_user,
+            is_internal: false,
         }
     }
 }

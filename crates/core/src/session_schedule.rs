@@ -5,8 +5,10 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::typed_id::{ScheduleId, SessionId};
+use crate::principal::PrincipalSummary;
+use crate::typed_id::{PrincipalId, ScheduleId, SessionId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -35,6 +37,18 @@ pub struct SessionSchedule {
     /// Session this schedule belongs to.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "session_01933b5a00007000800000000000001"))]
     pub session_id: SessionId,
+    /// Owning principal for this schedule.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "principal_01933b5a000070008000000000000001"))]
+    pub owner_principal_id: PrincipalId,
+    /// Denormalized effective human owner of the owning principal lineage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_owner_user_id: Option<Uuid>,
+    /// Owning principal summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<PrincipalSummary>,
+    /// Effective human owner summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_owner: Option<PrincipalSummary>,
     /// What the agent should do when the schedule fires.
     pub description: String,
     /// Cron expression for recurring schedules (None for one-shot).

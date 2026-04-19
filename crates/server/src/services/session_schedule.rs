@@ -11,6 +11,7 @@ use everruns_core::{
 use everruns_durable::UpdateField;
 use std::sync::Arc;
 
+use crate::services::PrincipalService;
 use crate::storage::backend::StorageBackend;
 use crate::storage::models::{CreateSessionScheduleRow, UpdateSessionScheduleRow};
 use crate::storage::session_schedule_store::row_to_domain;
@@ -46,11 +47,15 @@ use std::str::FromStr;
 /// Service for managing session schedules.
 pub struct SessionScheduleService {
     db: Arc<StorageBackend>,
+    principal_service: PrincipalService,
 }
 
 impl SessionScheduleService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self { db }
+        Self {
+            principal_service: PrincipalService::new(db.clone()),
+            db,
+        }
     }
 
     pub async fn create(
@@ -74,12 +79,19 @@ impl SessionScheduleService {
         let next_trigger =
             compute_next_trigger(cron_expression.as_deref(), scheduled_at, &timezone)
                 .context("Failed to compute next trigger")?;
+        let session = self
+            .db
+            .get_session(org_id, session_id)
+            .await?
+            .ok_or_else(|| anyhow!("Session not found"))?;
 
         let row = self
             .db
             .create_session_schedule(CreateSessionScheduleRow {
                 org_id,
                 session_id,
+                owner_principal_id: session.owner_principal_id,
+                resolved_owner_user_id: session.resolved_owner_user_id,
                 description,
                 cron_expression,
                 scheduled_at,
@@ -88,7 +100,9 @@ impl SessionScheduleService {
             })
             .await?;
 
-        Ok(row_to_domain(&row))
+        let mut schedule = row_to_domain(&row);
+        self.hydrate_ownership(org_id, &mut schedule).await?;
+        Ok(schedule)
     }
 
     pub async fn get(
@@ -97,12 +111,25 @@ impl SessionScheduleService {
         schedule_id: ScheduleId,
     ) -> Result<Option<SessionSchedule>> {
         let row = self.db.get_session_schedule(org_id, schedule_id).await?;
-        Ok(row.as_ref().map(row_to_domain))
+        match row {
+            Some(row) => {
+                let mut schedule = row_to_domain(&row);
+                self.hydrate_ownership(org_id, &mut schedule).await?;
+                Ok(Some(schedule))
+            }
+            None => Ok(None),
+        }
     }
 
     pub async fn list(&self, org_id: i64, session_id: SessionId) -> Result<Vec<SessionSchedule>> {
         let rows = self.db.list_session_schedules(org_id, session_id).await?;
-        Ok(rows.iter().map(row_to_domain).collect())
+        let mut schedules = Vec::with_capacity(rows.len());
+        for row in rows {
+            let mut schedule = row_to_domain(&row);
+            self.hydrate_ownership(org_id, &mut schedule).await?;
+            schedules.push(schedule);
+        }
+        Ok(schedules)
     }
 
     pub async fn update_enabled(
@@ -130,7 +157,14 @@ impl SessionScheduleService {
             .db
             .update_session_schedule(org_id, schedule_id, input)
             .await?;
-        Ok(row.as_ref().map(row_to_domain))
+        match row {
+            Some(row) => {
+                let mut schedule = row_to_domain(&row);
+                self.hydrate_ownership(org_id, &mut schedule).await?;
+                Ok(Some(schedule))
+            }
+            None => Ok(None),
+        }
     }
 
     pub async fn delete(&self, org_id: i64, schedule_id: ScheduleId) -> Result<bool> {
@@ -166,6 +200,25 @@ impl SessionScheduleService {
             .db
             .update_session_schedule(org_id, schedule_id, input)
             .await?;
-        Ok(updated.as_ref().map(row_to_domain))
+        match updated {
+            Some(row) => {
+                let mut schedule = row_to_domain(&row);
+                self.hydrate_ownership(org_id, &mut schedule).await?;
+                Ok(Some(schedule))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn hydrate_ownership(&self, org_id: i64, schedule: &mut SessionSchedule) -> Result<()> {
+        schedule.owner = self
+            .principal_service
+            .get_summary(org_id, schedule.owner_principal_id)
+            .await?;
+        schedule.effective_owner = self
+            .principal_service
+            .effective_owner_summary(org_id, schedule.resolved_owner_user_id)
+            .await?;
+        Ok(())
     }
 }

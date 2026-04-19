@@ -22,8 +22,15 @@ This keeps interactive chat semantics intact: the human user still initiates and
 New work that injects messages autonomously should record both:
 - `initiator`
 - `acting_principal`
+- `initiator_principal_id`
+- `acting_principal_id`
 
 These values belong in event metadata, not in message content. `external_actor` remains a separate concept for channel speakers.
+
+Agent identities also participate in durable ownership through the principal graph:
+- each `AgentIdentity` has a corresponding `agent_identity` principal
+- that principal keeps its existing parent/effective user when the identity is edited
+- sessions and apps that reference the identity can use the identity principal as their durable owner without losing the effective human owner
 
 ### Scheduling
 

@@ -399,6 +399,10 @@ message Session {
     optional string system_prompt = 14;
     // Session-level initial files (JSON-encoded Vec<InitialFile>)
     string initial_files_json = 15;
+    // Principal that owns the session for authorization and attribution
+    optional Uuid owner_principal_id = 16;
+    // Resolved user owner, when the principal ultimately maps to a user
+    optional Uuid resolved_owner_user_id = 17;
 }
 
 message GetSessionRequest {
@@ -1356,6 +1360,8 @@ message SessionScheduleProto {
     int32 trigger_count = 11;
     Timestamp created_at = 12;
     Timestamp updated_at = 13;
+    optional Uuid owner_principal_id = 14;
+    optional Uuid resolved_owner_user_id = 15;
 }
 
 message CreateSessionScheduleRequest {

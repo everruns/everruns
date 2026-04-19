@@ -110,35 +110,12 @@ impl WorkerService for WorkerServiceImpl {
         })?;
 
         // Convert to proto types
-        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+        use everruns_internal_protocol::schema_session_to_proto;
 
         let proto_agent = agent.as_ref().map(schema_agent_to_proto);
         let proto_harness = harness.as_ref().map(schema_harness_to_proto);
 
-        let proto_session = proto::Session {
-            id: Some(uuid_to_proto_uuid(session.id.uuid())),
-            agent_id: session.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
-            harness_id: Some(uuid_to_proto_uuid(session.harness_id.uuid())),
-            title: session.title.clone().unwrap_or_default(),
-            locale: session.locale.clone().unwrap_or_default(),
-            status: session.status.to_string(),
-            created_at: Some(datetime_to_proto_timestamp(session.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(session.updated_at)),
-            default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
-            organization_id: session.organization_id.clone(),
-            capabilities: session
-                .capabilities
-                .iter()
-                .filter_map(|c| serde_json::to_string(c).ok())
-                .collect(),
-            tags: session.tags.clone(),
-            hints: session.hints.as_ref().map(|h| {
-                let json = serde_json::to_value(h).unwrap_or_default();
-                everruns_internal_protocol::json_to_proto_struct(&json)
-            }),
-            system_prompt: session.system_prompt.clone(),
-            initial_files_json: serde_json::to_string(&session.initial_files).unwrap_or_default(),
-        };
+        let proto_session = schema_session_to_proto(&session);
 
         // Load messages from events using EventService with limit
         let default_limit: i32 = std::env::var("TURN_CONTEXT_MESSAGE_LIMIT")
@@ -375,32 +352,9 @@ impl WorkerService for WorkerServiceImpl {
                 Status::internal("Failed to get session")
             })?;
 
-        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+        use everruns_internal_protocol::schema_session_to_proto;
 
-        let proto_session = session.map(|s| proto::Session {
-            id: Some(uuid_to_proto_uuid(s.id.uuid())),
-            agent_id: s.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
-            harness_id: Some(uuid_to_proto_uuid(s.harness_id.uuid())),
-            title: s.title.clone().unwrap_or_default(),
-            locale: s.locale.clone().unwrap_or_default(),
-            status: s.status.to_string(),
-            created_at: Some(datetime_to_proto_timestamp(s.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
-            default_model_id: s.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
-            organization_id: s.organization_id.clone(),
-            capabilities: s
-                .capabilities
-                .iter()
-                .filter_map(|c| serde_json::to_string(c).ok())
-                .collect(),
-            tags: s.tags.clone(),
-            hints: s.hints.as_ref().map(|h| {
-                let json = serde_json::to_value(h).unwrap_or_default();
-                everruns_internal_protocol::json_to_proto_struct(&json)
-            }),
-            system_prompt: s.system_prompt.clone(),
-            initial_files_json: serde_json::to_string(&s.initial_files).unwrap_or_default(),
-        });
+        let proto_session = session.map(|s| schema_session_to_proto(&s));
 
         Ok(Response::new(GetSessionResponse {
             session: proto_session,
@@ -411,7 +365,7 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         request: Request<SetSessionStatusRequest>,
     ) -> Result<Response<SetSessionStatusResponse>, Status> {
-        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+        use everruns_internal_protocol::schema_session_to_proto;
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
@@ -436,30 +390,7 @@ impl WorkerService for WorkerServiceImpl {
             })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
-        let proto_session = proto::Session {
-            id: Some(uuid_to_proto_uuid(session.id.uuid())),
-            agent_id: session.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
-            harness_id: Some(uuid_to_proto_uuid(session.harness_id.uuid())),
-            title: session.title.clone().unwrap_or_default(),
-            locale: session.locale.clone().unwrap_or_default(),
-            status: session.status.to_string(),
-            created_at: Some(datetime_to_proto_timestamp(session.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(session.updated_at)),
-            default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
-            organization_id: session.organization_id.clone(),
-            capabilities: session
-                .capabilities
-                .iter()
-                .filter_map(|c| serde_json::to_string(c).ok())
-                .collect(),
-            tags: session.tags.clone(),
-            hints: session.hints.as_ref().map(|h| {
-                let json = serde_json::to_value(h).unwrap_or_default();
-                everruns_internal_protocol::json_to_proto_struct(&json)
-            }),
-            system_prompt: session.system_prompt.clone(),
-            initial_files_json: serde_json::to_string(&session.initial_files).unwrap_or_default(),
-        };
+        let proto_session = schema_session_to_proto(&session);
 
         Ok(Response::new(SetSessionStatusResponse {
             session: Some(proto_session),
@@ -470,7 +401,7 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         request: Request<SetSessionTitleRequest>,
     ) -> Result<Response<SetSessionTitleResponse>, Status> {
-        use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
+        use everruns_internal_protocol::schema_session_to_proto;
 
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
@@ -495,30 +426,7 @@ impl WorkerService for WorkerServiceImpl {
             })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
-        let proto_session = proto::Session {
-            id: Some(uuid_to_proto_uuid(session.id.uuid())),
-            agent_id: session.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
-            harness_id: Some(uuid_to_proto_uuid(session.harness_id.uuid())),
-            title: session.title.clone().unwrap_or_default(),
-            locale: session.locale.clone().unwrap_or_default(),
-            status: session.status.to_string(),
-            created_at: Some(datetime_to_proto_timestamp(session.created_at)),
-            updated_at: Some(datetime_to_proto_timestamp(session.updated_at)),
-            default_model_id: session.model_id.map(|id| uuid_to_proto_uuid(id.uuid())),
-            organization_id: session.organization_id.clone(),
-            capabilities: session
-                .capabilities
-                .iter()
-                .filter_map(|c| serde_json::to_string(c).ok())
-                .collect(),
-            tags: session.tags.clone(),
-            hints: session.hints.as_ref().map(|h| {
-                let json = serde_json::to_value(h).unwrap_or_default();
-                everruns_internal_protocol::json_to_proto_struct(&json)
-            }),
-            system_prompt: session.system_prompt.clone(),
-            initial_files_json: serde_json::to_string(&session.initial_files).unwrap_or_default(),
-        };
+        let proto_session = schema_session_to_proto(&session);
 
         Ok(Response::new(SetSessionTitleResponse {
             session: Some(proto_session),

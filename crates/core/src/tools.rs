@@ -1916,6 +1916,10 @@ mod tests {
             let schedule = crate::session_schedule::SessionSchedule {
                 id: crate::typed_id::ScheduleId::new(),
                 session_id,
+                owner_principal_id: crate::PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                owner: None,
+                effective_owner: None,
                 description,
                 cron_expression: cron_expression.clone(),
                 scheduled_at,

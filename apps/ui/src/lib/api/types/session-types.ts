@@ -1,6 +1,12 @@
 // Session, Schedule, and Leased Resource types
 
-import type { InitialFile, NetworkAccessList, ToolDefinition, TokenUsage } from "./common-types";
+import type {
+  InitialFile,
+  NetworkAccessList,
+  PrincipalSummary,
+  ToolDefinition,
+  TokenUsage,
+} from "./common-types";
 
 // ============================================
 // Session types (M2)
@@ -20,6 +26,10 @@ export interface Session {
   harness_id: string;
   agent_id: string | null;
   agent_identity_id?: string | null;
+  owner_principal_id: string;
+  resolved_owner_user_id?: string | null;
+  owner?: PrincipalSummary | null;
+  effective_owner?: PrincipalSummary | null;
   title: string | null;
   locale?: string | null;
   /** Preview text from the first user message (truncated) */
@@ -102,6 +112,10 @@ export type ScheduleType = "oneshot" | "recurring";
 export interface SessionSchedule {
   id: string;
   session_id: string;
+  owner_principal_id: string;
+  resolved_owner_user_id?: string | null;
+  owner?: PrincipalSummary | null;
+  effective_owner?: PrincipalSummary | null;
   description: string;
   cron_expression?: string;
   scheduled_at?: string;

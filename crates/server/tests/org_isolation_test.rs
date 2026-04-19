@@ -935,6 +935,8 @@ async fn create_session_in_org(backend: &StorageBackend, org_id: i64) -> everrun
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
             title: Some("Test Session".to_string()),
             locale: None,
             tags: vec![],

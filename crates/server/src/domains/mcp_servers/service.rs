@@ -639,6 +639,7 @@ mod tests {
             user_id: None,
             role: OrgRole::Owner,
             is_platform_user: false,
+            is_internal: false,
         }
     }
 

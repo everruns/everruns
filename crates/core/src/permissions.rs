@@ -351,6 +351,8 @@ pub struct Caller {
     pub role: OrgRole,
     /// Whether the caller is a platform user (email allowlist).
     pub is_platform_user: bool,
+    /// Whether the caller originates from an internal server path.
+    pub is_internal: bool,
 }
 
 impl Caller {
@@ -366,6 +368,7 @@ impl Caller {
             user_id: None,
             role: OrgRole::Owner,
             is_platform_user: true,
+            is_internal: true,
         }
     }
 }
@@ -623,6 +626,7 @@ mod tests {
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Owner,
             is_platform_user: false,
+            is_internal: false,
         }
     }
 
@@ -633,6 +637,7 @@ mod tests {
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Admin,
             is_platform_user: false,
+            is_internal: false,
         }
     }
 
@@ -643,6 +648,7 @@ mod tests {
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Member,
             is_platform_user: false,
+            is_internal: false,
         }
     }
 
@@ -895,6 +901,7 @@ mod tests {
             user_id: None,
             role: OrgRole::Admin,
             is_platform_user: false,
+            is_internal: false,
         };
         // API key callers without user_id should still evaluate policies
         assert!(TEST_MANAGE.evaluate(&caller).is_ok());

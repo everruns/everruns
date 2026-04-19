@@ -786,6 +786,12 @@ fn session_schedule_to_proto(
         trigger_count: s.trigger_count as i32,
         created_at: Some(datetime_to_proto_timestamp(s.created_at)),
         updated_at: Some(datetime_to_proto_timestamp(s.updated_at)),
+        owner_principal_id: Some(proto::Uuid {
+            value: s.owner_principal_id.uuid().to_string(),
+        }),
+        resolved_owner_user_id: s.resolved_owner_user_id.map(|id| proto::Uuid {
+            value: id.to_string(),
+        }),
     }
 }
 

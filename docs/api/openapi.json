@@ -11148,6 +11148,7 @@
                 "id",
                 "organization_id",
                 "harness_id",
+                "owner_principal_id",
                 "status",
                 "created_at",
                 "updated_at"
@@ -11199,6 +11200,17 @@
                   "type": "string",
                   "format": "date-time",
                   "description": "Timestamp when the session was created."
+                },
+                "effective_owner": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PrincipalSummary",
+                      "description": "Effective human owner summary."
+                    }
+                  ]
                 },
                 "features": {
                   "type": "array",
@@ -11300,6 +11312,22 @@
                   ],
                   "description": "Preview text from the last assistant response (truncated)."
                 },
+                "owner": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PrincipalSummary",
+                      "description": "Owning principal summary."
+                    }
+                  ]
+                },
+                "owner_principal_id": {
+                  "type": "string",
+                  "description": "Owning principal for this session.",
+                  "example": "principal_01933b5a000070008000000000000001"
+                },
                 "parent_session_id": {
                   "type": [
                     "string",
@@ -11313,6 +11341,14 @@
                     "null"
                   ],
                   "description": "Preview text from the first user message (truncated)."
+                },
+                "resolved_owner_user_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid",
+                  "description": "Denormalized effective human owner of the owning principal lineage."
                 },
                 "started_at": {
                   "type": [
@@ -11775,6 +11811,7 @@
                     "id",
                     "organization_id",
                     "harness_id",
+                    "owner_principal_id",
                     "status",
                     "created_at",
                     "updated_at"
@@ -11826,6 +11863,17 @@
                       "type": "string",
                       "format": "date-time",
                       "description": "Timestamp when the session was created."
+                    },
+                    "effective_owner": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/components/schemas/PrincipalSummary",
+                          "description": "Effective human owner summary."
+                        }
+                      ]
                     },
                     "features": {
                       "type": "array",
@@ -11927,6 +11975,22 @@
                       ],
                       "description": "Preview text from the last assistant response (truncated)."
                     },
+                    "owner": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/components/schemas/PrincipalSummary",
+                          "description": "Owning principal summary."
+                        }
+                      ]
+                    },
+                    "owner_principal_id": {
+                      "type": "string",
+                      "description": "Owning principal for this session.",
+                      "example": "principal_01933b5a000070008000000000000001"
+                    },
                     "parent_session_id": {
                       "type": [
                         "string",
@@ -11940,6 +12004,14 @@
                         "null"
                       ],
                       "description": "Preview text from the first user message (truncated)."
+                    },
+                    "resolved_owner_user_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "description": "Denormalized effective human owner of the owning principal lineage."
                     },
                     "started_at": {
                       "type": [
@@ -12134,6 +12206,38 @@
           "system_prompt": {
             "type": "string",
             "example": "You are a research assistant."
+          }
+        }
+      },
+      "PrincipalKind": {
+        "type": "string",
+        "enum": [
+          "user",
+          "agent_identity",
+          "system"
+        ]
+      },
+      "PrincipalSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "principal_01933b5a000070008000000000000001"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PrincipalKind"
+          },
+          "metadata": {},
+          "subject_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -12715,6 +12819,7 @@
           "id",
           "organization_id",
           "harness_id",
+          "owner_principal_id",
           "status",
           "created_at",
           "updated_at"
@@ -12766,6 +12871,17 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when the session was created."
+          },
+          "effective_owner": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PrincipalSummary",
+                "description": "Effective human owner summary."
+              }
+            ]
           },
           "features": {
             "type": "array",
@@ -12867,6 +12983,22 @@
             ],
             "description": "Preview text from the last assistant response (truncated)."
           },
+          "owner": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PrincipalSummary",
+                "description": "Owning principal summary."
+              }
+            ]
+          },
+          "owner_principal_id": {
+            "type": "string",
+            "description": "Owning principal for this session.",
+            "example": "principal_01933b5a000070008000000000000001"
+          },
           "parent_session_id": {
             "type": [
               "string",
@@ -12880,6 +13012,14 @@
               "null"
             ],
             "description": "Preview text from the first user message (truncated)."
+          },
+          "resolved_owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Denormalized effective human owner of the owning principal lineage."
           },
           "started_at": {
             "type": [
@@ -15704,6 +15844,7 @@
               "id",
               "organization_id",
               "harness_id",
+              "owner_principal_id",
               "status",
               "created_at",
               "updated_at"
@@ -15755,6 +15896,17 @@
                 "type": "string",
                 "format": "date-time",
                 "description": "Timestamp when the session was created."
+              },
+              "effective_owner": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PrincipalSummary",
+                    "description": "Effective human owner summary."
+                  }
+                ]
               },
               "features": {
                 "type": "array",
@@ -15856,6 +16008,22 @@
                 ],
                 "description": "Preview text from the last assistant response (truncated)."
               },
+              "owner": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PrincipalSummary",
+                    "description": "Owning principal summary."
+                  }
+                ]
+              },
+              "owner_principal_id": {
+                "type": "string",
+                "description": "Owning principal for this session.",
+                "example": "principal_01933b5a000070008000000000000001"
+              },
               "parent_session_id": {
                 "type": [
                   "string",
@@ -15869,6 +16037,14 @@
                   "null"
                 ],
                 "description": "Preview text from the first user message (truncated)."
+              },
+              "resolved_owner_user_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Denormalized effective human owner of the owning principal lineage."
               },
               "started_at": {
                 "type": [

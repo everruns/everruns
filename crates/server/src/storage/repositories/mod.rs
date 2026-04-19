@@ -16,6 +16,7 @@ mod llm;
 mod mcp_servers;
 mod notifications;
 mod organizations;
+mod principals;
 mod schedules;
 mod session_files;
 mod session_git;
