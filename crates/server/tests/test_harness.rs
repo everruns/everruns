@@ -38,6 +38,21 @@ use everruns_server::{
 };
 use everruns_worker::{RunnerBackend, create_runner_with_backend};
 
+pub fn extract_cookie(headers: &HeaderMap, name: &str) -> String {
+    headers
+        .get_all(axum::http::header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find_map(|cookie| {
+            let prefix = format!("{name}=");
+            cookie
+                .strip_prefix(&prefix)
+                .and_then(|rest| rest.split(';').next())
+                .map(|value| format!("{name}={value}"))
+        })
+        .unwrap_or_else(|| panic!("{name} cookie must be set"))
+}
+
 async fn lookup_built_in_harness(db: &Arc<StorageBackend>, name: &str) -> String {
     use everruns_core::DEFAULT_ORG_ID;
     db.get_harness_by_name(DEFAULT_ORG_ID, name)
@@ -441,6 +456,12 @@ impl TestServer {
         if feature_flags.evals {
             api_routes = api_routes.merge(api::evals::routes(evals_state));
         }
+
+        api_routes = api_routes.merge(auth::api_key_routes(auth::ApiKeyState {
+            db: db.clone(),
+            auth: auth_state.clone(),
+            resource_limits: everruns_server::server::ResourceLimitsConfig::from_env(),
+        }));
 
         let root_routes = Router::new()
             .merge(api::mcp_endpoint::routes(mcp_endpoint_state))

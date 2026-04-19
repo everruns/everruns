@@ -87,6 +87,7 @@ describe("OrgProvider", () => {
   it("switches to a different existing org after cookie sync", async () => {
     mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
     mockAuthLoading = false;
+    const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
 
     const { result } = renderHook(() => useOrg(), { wrapper });
 
@@ -100,6 +101,7 @@ describe("OrgProvider", () => {
     });
     expect(storageMap.get("everruns_current_org")).toBe(SECOND_ORG.public_id);
     expect(mockSwitchOrg).toHaveBeenCalledWith(SECOND_ORG.public_id);
+    expect(invalidateSpy).toHaveBeenCalled();
   });
 
   it("rolls back on failed org switch", async () => {
