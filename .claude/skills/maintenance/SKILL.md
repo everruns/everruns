@@ -44,7 +44,7 @@ Use this skill when the task is about repo maintenance rather than a single feat
 - Start from goals and risk surface, not checklist order.
 - Prefer the highest-signal path first: recent diffs, flaky areas, failing checks, stale specs, outdated dependencies, or known security/performance hotspots.
 - Always run `cargo outdated` (or `cargo search` per-crate) and `npm outdated` during release-readiness or dependency-scoped maintenance — even when no security advisory exists. Patch/minor bumps are cheap to miss and cheap to apply; skipping them silently accumulates drift.
-- Check Linear issues in the OSS project (EVE team) already in `In Progress` when maintenance covers release readiness or workflow hygiene. Treat issues whose `updatedAt` is older than 2 days as stale by default, then triage or report them.
+- Check Linear issues in the OSS project (EVE team) already in `In Progress` when maintenance covers release readiness or workflow hygiene. Treat issues whose `updatedAt` is older than 1 day as stale by default, then triage or report them.
 - Skip untouched areas when there is a clear reason. Say why they were skipped.
 - Prefer fixing over reporting.
 - For bugs uncovered during maintenance, prefer a failing test before the fix when practical.
@@ -125,7 +125,7 @@ Goal: Linear reflects reality closely enough that active work is visible, stalle
 
 Good evidence:
 - OSS project issues already in `In Progress` were reviewed for stale ownership or stalled execution
-- issues whose `updatedAt` was older than 2 days were triaged, commented, re-scoped, or moved out of `In Progress`
+- issues whose `updatedAt` was older than 1 day were triaged, commented, re-scoped, or moved out of `In Progress`
 - maintenance findings that should not be fixed immediately were captured as actionable Linear issues or comments instead of left implicit
 
 ### Repo Workflow Hygiene
@@ -150,7 +150,7 @@ Pick only what matches the task:
 - `./scripts/export-openapi.sh`
 - `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh api repos/everruns/everruns/dependabot/alerts --jq "[.[] | select(.state==\"open\")] | length"'` — open Dependabot alert count
 - `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh api repos/everruns/everruns/secret-scanning/alerts --jq "[.[] | select(.state==\"open\")] | length"'` — open secret scanning alert count
-- Linear MCP: list OSS project issues in `In Progress`, compare each issue's `updatedAt` to current time, and flag items older than 2 days for triage
+- Linear MCP: list OSS project issues in `In Progress`, compare each issue's `updatedAt` to current time, and flag items older than 1 day for triage
 
 ## Deliverable
 

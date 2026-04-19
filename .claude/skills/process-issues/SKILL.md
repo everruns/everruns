@@ -38,16 +38,23 @@ Use this skill when the user asks to:
 
 3. **Issues are fully resolved or explicitly skipped.**
    - Resolved: PR merged via `/ship`, issue marked **Done** in Linear with a comment linking the merged PR.
-   - Skipped: Linear comment explaining why (blocked, ambiguous requirements, missing access). Issue left as **In Progress** or unchanged.
+   - Skipped: leave a Linear comment only when the current run investigated the issue and the skip is due to a blocker, missing clarification, or missing access. For ownership-only skips, raise the issue to the human user without leaving an automated takeover comment. Leave the issue as **In Progress** or unchanged.
 
-4. **Sequential merging prevents conflicts.**
+4. **Ownership is checked before pickup.**
+   - Before touching an issue, inspect its Linear state, `updatedAt`, recent comments, and linked PRs to detect active ownership.
+   - If the issue is already **In Progress** and was updated within the last 1 day, treat it as actively owned by somebody else and skip it.
+   - If the issue is already **In Progress** and `updatedAt` is older than 1 day, raise it to the human user as a stale-ownership conflict. Do not auto-take over, auto-reassign, or silently reset the issue.
+   - If the issue is available to pick up, immediately move it to **In Progress** and assign it before starting implementation.
+
+5. **Sequential merging prevents conflicts.**
    - After `/ship` merges each PR, rebase remaining open PRs onto updated `main` before shipping the next.
    - When multiple PRs touch `Cargo.toml` workspace deps, the second merge can create duplicate key errors — rebase catches this.
    - Never ship a PR whose CI ran against a stale base.
 
-5. **A summary report is delivered.**
+6. **A summary report is delivered.**
    - Issues completed (with PR links)
    - Issues skipped (with reasons)
+   - Issues raised to the human because stale **In Progress** ownership needed a decision
    - Issues that failed (with error details)
 
 ## Operating Model
@@ -66,15 +73,19 @@ Linear MCP server must be configured in `.mcp.json`.
 ### Query and Prioritize
 
 1. Query open issues from the **OSS** project via Linear MCP (apply `$ARGUMENTS` filters if provided)
-2. Read each issue's title, description, labels, priority, and linked PRs
-3. Sort by priority (Urgent > Critical > High > Medium > Low), then oldest first within same priority
-4. Select up to **5 issues** to process
+2. Read each issue's title, description, labels, priority, state, `updatedAt`, recent comments, and linked PRs
+3. Check ownership before pickup:
+   - **In Progress**, updated within 1 day: somebody else is actively working on it; skip
+   - **In Progress**, updated more than 1 day ago: raise to the human user for a takeover decision; do not auto-claim it
+   - Any other state: eligible to pick up
+4. Sort eligible issues by priority (Urgent > Critical > High > Medium > Low), then oldest first within same priority
+5. Select up to **5 issues** to process
 
 ### Per-Issue Execution
 
 For each issue, process up to 5 concurrently using subagents:
 
-1. **Pick up** — mark as **In Progress** in Linear, assign if unassigned
+1. **Pick up** — only after the ownership check passes, mark as **In Progress** in Linear and assign it
 2. **Analyze** — parse requirements, search codebase, identify root cause or scope. If ambiguous: comment in Linear requesting clarification, skip
 3. **Branch** — `git fetch origin main && git checkout -b {issue-id}-{short-description} origin/main`
 4. **Implement** — write the code change:
@@ -98,11 +109,13 @@ When multiple issues produce PRs, merge sequentially (not in parallel):
 
 Skip an issue if:
 
+- Already **In Progress** and updated within the last 1 day (active owner)
+- Already **In Progress** and older than 1 day until a human decides whether to take it over
 - Blocked by external dependency
 - Requirements ambiguous and clarification pending
 - Requires access/permissions not available
 
-Always add a Linear comment explaining why.
+Leave a Linear comment explaining the skip only when the current run actively investigated the issue and the skip is due to a blocker, missing clarification, or missing access. Do **not** leave an automated Linear comment for ownership-only skips: if the issue is already **In Progress** and stale, raise it to the human user for a takeover decision instead.
 
 ## Constraints
 
