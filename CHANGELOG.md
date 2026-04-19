@@ -9,13 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
-### Added
+## [0.8.16] - 2026-04-19
 
-- **Self-Budget capability** — New prompt-only `self_budget` capability teaches agents how to reason about a user-requested indicative budget (e.g. "you have $7") using `get_session_info` cumulative usage. Distinct from the platform-enforced `budgeting` capability; both are bundled in the Generic harness. See [`docs/capabilities/self-budget.md`](docs/capabilities/self-budget.md).
+### Highlights
 
-### Changed
+- **Data Analyst harness** - New built-in harness tuned for data-analysis workflows ([#1340](https://github.com/everruns/everruns/pull/1340))
+- **Azure OpenAI provider** - First-class LLM driver for Azure OpenAI deployments ([#1339](https://github.com/everruns/everruns/pull/1339))
+- **A2UI generative UI** - Google A2UI JSON added as a parallel generative-UI capability alongside OpenUI ([#1354](https://github.com/everruns/everruns/pull/1354))
+- **Image generation** - New `gpt_image_gen` capability exposes OpenAI image generation to agents ([#1350](https://github.com/everruns/everruns/pull/1350))
+- **Self-Budget capability** - Prompt-only `self_budget` teaches agents to reason about user-indicated budgets using cumulative usage from `get_session_info` ([#1342](https://github.com/everruns/everruns/pull/1342))
 
-- **Domain pattern** — Migrated `audit_logs` to the `domains/` pattern. `AuditLogService` was removed; the `list_audit_logs` command now owns validation, policy, and persistence, and is surfaced automatically through both the HTTP route and the MCP catalog. See [`specs/domains.md`](specs/domains.md).
+### What's Changed
+
+- refactor(server): drop hardcoded built-in harness UUIDs ([#1360](https://github.com/everruns/everruns/pull/1360)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): expose command param schemas ([#1363](https://github.com/everruns/everruns/pull/1363)) by [@chaliy](https://github.com/chaliy)
+- docs(docs): render notebooks as cookbook pages ([#1352](https://github.com/everruns/everruns/pull/1352)) by [@chaliy](https://github.com/chaliy)
+- refactor(worker): unify platform CRUD via execute_command ([#1357](https://github.com/everruns/everruns/pull/1357)) by [@chaliy](https://github.com/chaliy)
+- docs(test-cases): add Platform Chat create-and-run agent manual test ([#1362](https://github.com/everruns/everruns/pull/1362)) by [@chaliy](https://github.com/chaliy)
+- chore(harness): scrub hardcoded UUID refs from specs and examples ([#1359](https://github.com/everruns/everruns/pull/1359)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): add A2UI as parallel generative-UI capability ([#1354](https://github.com/everruns/everruns/pull/1354)) by [@chaliy](https://github.com/chaliy)
+- chore(release): document migration squashing in release process ([#1358](https://github.com/everruns/everruns/pull/1358)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): delete App/McpServer/Skill services ([#1356](https://github.com/everruns/everruns/pull/1356)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump rust from 1.92-slim-bookworm to 1.95-slim-bookworm in /docker ([#1347](https://github.com/everruns/everruns/pull/1347))
+- chore(deps): bump rust from 1.92-slim to 1.95-slim in /crates/worker ([#1346](https://github.com/everruns/everruns/pull/1346))
+- chore(deps): bump rust from 1.92-slim to 1.95-slim in /crates/server ([#1345](https://github.com/everruns/everruns/pull/1345))
+- chore(deps): bump node from 22-alpine to 25-alpine in /apps/ui ([#1344](https://github.com/everruns/everruns/pull/1344))
+- fix(mcp): return 202 for JSON-RPC notifications ([#1355](https://github.com/everruns/everruns/pull/1355)) by [@chaliy](https://github.com/chaliy)
+- fix(gemini): strip additionalProperties recursively from tool schemas ([#1353](https://github.com/everruns/everruns/pull/1353)) by [@chaliy](https://github.com/chaliy)
+- fix(daytona): reset exec session after timeout ([#1351](https://github.com/everruns/everruns/pull/1351)) by [@chaliy](https://github.com/chaliy)
+- feat(media): add gpt_image_gen capability ([#1350](https://github.com/everruns/everruns/pull/1350)) by [@chaliy](https://github.com/chaliy)
+- fix(server): repair stale platform chat sessions ([#1349](https://github.com/everruns/everruns/pull/1349)) by [@chaliy](https://github.com/chaliy)
+- ci(docker): publish on release only, gate PR builds by paths ([#1343](https://github.com/everruns/everruns/pull/1343)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): migrate audit_logs to domains/ pattern ([#1348](https://github.com/everruns/everruns/pull/1348)) by [@chaliy](https://github.com/chaliy)
+- fix(docker): harden images against common Dockerfile footguns ([#1331](https://github.com/everruns/everruns/pull/1331)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): add prompt-only self_budget capability ([#1342](https://github.com/everruns/everruns/pull/1342)) by [@chaliy](https://github.com/chaliy)
+- docs(docs): add notebook-backed tutorial pipeline ([#1341](https://github.com/everruns/everruns/pull/1341)) by [@chaliy](https://github.com/chaliy)
+- feat(harness): add Data Analyst built-in harness ([#1340](https://github.com/everruns/everruns/pull/1340)) by [@chaliy](https://github.com/chaliy)
+- feat(llm): add Azure OpenAI provider ([#1339](https://github.com/everruns/everruns/pull/1339)) by [@chaliy](https://github.com/chaliy)
+- fix(server): accept positional id args on MCP execute commands ([#1338](https://github.com/everruns/everruns/pull/1338)) by [@chaliy](https://github.com/chaliy)
 
 ## [0.8.15] - 2026-04-18
 

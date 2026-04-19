@@ -34,7 +34,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.8.15"
+version = "0.8.16"
 edition = "2024"
 license = "MIT"
 authors = ["Everruns Contributors"]
