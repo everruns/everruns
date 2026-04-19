@@ -147,6 +147,7 @@ cargo clippy -p everruns-server -- -D warnings
 Currently configured via environment variables:
 
 - `DATABASE_URL` - PostgreSQL connection string (required)
+- `DATABASE_UNPOOLED_URL` - direct PostgreSQL URL for `LISTEN/NOTIFY` listeners when `DATABASE_URL` uses a pooler/proxy
 
 Default: `postgres://everruns:everruns@localhost:5432/everruns`
 

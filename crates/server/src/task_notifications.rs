@@ -7,7 +7,7 @@
 // The TaskBroadcaster enum wraps both backends with the same API.
 
 use crate::nats_task_notifications::NatsTaskNotificationBroadcaster;
-use sqlx::PgPool;
+use crate::pg_listener_config::resolve_pg_listener_database_url;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, mpsc};
@@ -39,7 +39,7 @@ pub struct TaskNotificationBroadcaster {
 
 impl TaskNotificationBroadcaster {
     /// Create a new broadcaster and start listening for PostgreSQL NOTIFY events
-    pub async fn new(pool: PgPool) -> Self {
+    pub async fn new(database_url: String) -> Self {
         // Create broadcast channel with reasonable capacity
         // If workers are slow to consume, older notifications are dropped (acceptable since
         // workers will poll as fallback)
@@ -49,9 +49,8 @@ impl TaskNotificationBroadcaster {
 
         // Start the LISTEN loop in a background task
         let sender_clone = sender.clone();
-        let pool_clone = pool.clone();
         tokio::spawn(async move {
-            Self::listen_loop(pool_clone, sender_clone, shutdown_rx).await;
+            Self::listen_loop(database_url, sender_clone, shutdown_rx).await;
         });
 
         Self {
@@ -105,15 +104,14 @@ impl TaskNotificationBroadcaster {
 
     /// Background task that listens for PostgreSQL NOTIFY events
     async fn listen_loop(
-        pool: PgPool,
+        database_url: String,
         sender: broadcast::Sender<TaskNotificationPayload>,
         mut shutdown_rx: mpsc::Receiver<()>,
     ) {
         info!("Starting PostgreSQL NOTIFY listener for task notifications");
 
         loop {
-            // Acquire a dedicated connection for LISTEN
-            let mut listener = match sqlx::postgres::PgListener::connect_with(&pool).await {
+            let mut listener = match sqlx::postgres::PgListener::connect(&database_url).await {
                 Ok(listener) => listener,
                 Err(e) => {
                     error!("Failed to create PostgreSQL listener: {}", e);
@@ -204,7 +202,10 @@ pub enum TaskBroadcaster {
 impl TaskBroadcaster {
     /// Create from environment: NATS if `NATS_URL` is set, otherwise PG NOTIFY.
     /// Returns None if neither is available (dev mode without PG).
-    pub async fn from_env(pool: Option<&PgPool>) -> Option<Self> {
+    pub async fn from_env(
+        database_url: Option<&str>,
+        database_unpooled_url: Option<&str>,
+    ) -> Option<Self> {
         // Try NATS first (preferred when configured)
         if let Ok(nats_url) = std::env::var("NATS_URL") {
             match NatsTaskNotificationBroadcaster::new(&nats_url).await {
@@ -222,8 +223,24 @@ impl TaskBroadcaster {
         }
 
         // Fall back to PG NOTIFY
-        if let Some(pool) = pool {
-            let broadcaster = TaskNotificationBroadcaster::new(pool.clone()).await;
+        let listener_database_url = match database_url {
+            Some(database_url) => {
+                match resolve_pg_listener_database_url(database_url, database_unpooled_url) {
+                    Ok(listener_database_url) => Some(listener_database_url),
+                    Err(error) => {
+                        error!(
+                            error = %error,
+                            "Task notifications unavailable: listener database URL is not usable"
+                        );
+                        None
+                    }
+                }
+            }
+            None => None,
+        };
+
+        if let Some(database_url) = listener_database_url {
+            let broadcaster = TaskNotificationBroadcaster::new(database_url).await;
             info!("Task notifications: PostgreSQL NOTIFY");
             return Some(Self::Postgres(broadcaster));
         }

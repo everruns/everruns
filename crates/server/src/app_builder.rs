@@ -11,8 +11,10 @@
 
 use crate::auth::{self, AuthBackend};
 use crate::direct_worker_adapters::DirectWorkerAdapters;
+use crate::event_delivery::EventDelivery;
 use crate::grpc_service;
 use crate::openapi::ApiDoc;
+use crate::pg_listener_config::resolve_pg_listener_database_url;
 use crate::server::{ServerConfig, build_router_with_prefix};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::{api, seed, services};
@@ -221,7 +223,7 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 1: Storage backend & runner
         // =====================================================================
-        let (db, runner, shared_durable_store) = if self.config.dev_mode {
+        let (db, runner, shared_durable_store, database_url) = if self.config.dev_mode {
             tracing::info!("Starting in DEV MODE (in-memory storage, no PostgreSQL required)");
 
             let db = Arc::new(StorageBackend::in_memory());
@@ -234,7 +236,7 @@ impl ServerAppBuilder {
             tracing::info!(
                 "Using in-memory storage and durable execution engine with in-process worker"
             );
-            (db, runner, Some(shared_store))
+            (db, runner, Some(shared_store), None)
         } else {
             let database_url = std::env::var("DATABASE_URL")
                 .context("DATABASE_URL environment variable required")?;
@@ -292,7 +294,7 @@ impl ServerAppBuilder {
                 .context("Failed to create agent runner")?;
 
             tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
-            (Arc::new(backend), runner, None)
+            (Arc::new(backend), runner, None, Some(database_url))
         };
 
         // =====================================================================
@@ -483,6 +485,15 @@ impl ServerAppBuilder {
         } else {
             crate::event_delivery::EventDelivery::from_env().await
         };
+        let database_unpooled_url = std::env::var("DATABASE_UNPOOLED_URL").ok();
+        let resolve_listener_database_url = || {
+            database_url
+                .as_deref()
+                .map(|database_url| {
+                    resolve_pg_listener_database_url(database_url, database_unpooled_url.as_deref())
+                })
+                .transpose()
+        };
 
         let event_service = Arc::new(services::EventService::with_listeners(
             db.clone(),
@@ -494,9 +505,15 @@ impl ServerAppBuilder {
             crate::api::sse::SseConnectionLimits::from_env(),
         ));
 
-        let event_broadcaster = if let Some(pool) = db.pool() {
+        let event_broadcaster = if matches!(event_delivery, EventDelivery::Nats(_)) {
+            tracing::info!(
+                "Skipping legacy PostgreSQL event listener; NATS event delivery is active"
+            );
+            None
+        } else if let Some(database_url) = resolve_listener_database_url()?.as_ref() {
             let broadcaster =
-                crate::event_notifications::EventNotificationBroadcaster::new(pool.clone()).await;
+                crate::event_notifications::EventNotificationBroadcaster::new(database_url.clone())
+                    .await;
             tracing::info!("Event notification broadcaster initialized for push-based SSE");
             Some(Arc::new(broadcaster))
         } else {
@@ -506,10 +523,10 @@ impl ServerAppBuilder {
             None
         };
         let notification_broadcaster = if notifications_enabled {
-            if let Some(pool) = db.pool() {
+            if let Some(database_url) = resolve_listener_database_url()?.as_ref() {
                 let broadcaster =
                     crate::notification_notifications::NotificationNotificationBroadcaster::new(
-                        pool.clone(),
+                        database_url.clone(),
                     )
                     .await;
                 tracing::info!("Notification broadcaster initialized for push-based SSE");
@@ -729,9 +746,12 @@ impl ServerAppBuilder {
             };
         // Create TaskBroadcaster early so it can be shared between durable_state and gRPC service
         let task_broadcaster = if !self.config.dev_mode {
-            crate::task_notifications::TaskBroadcaster::from_env(db.pool())
-                .await
-                .map(Arc::new)
+            crate::task_notifications::TaskBroadcaster::from_env(
+                database_url.as_deref(),
+                database_unpooled_url.as_deref(),
+            )
+            .await
+            .map(Arc::new)
         } else {
             None
         };

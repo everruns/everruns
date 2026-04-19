@@ -148,6 +148,29 @@ VALKEY_URL=rediss://user:password@valkey.example.com:6380
 - Only used by control-plane (server); workers don't need this variable
 - Uses sliding-window counters via Lua scripts for atomic rate limit checks
 
+## DATABASE_UNPOOLED_URL
+
+Direct PostgreSQL connection URL used only for session-scoped `LISTEN/NOTIFY` listeners.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | Not set (listeners reuse `DATABASE_URL` if it is a direct connection) |
+
+**Example:**
+
+```bash
+# Query traffic through a pooler, listeners through a direct endpoint
+DATABASE_URL=postgres://app:secret@ep-foo-pooler.us-east-1.aws.neon.tech/everruns?sslmode=require
+DATABASE_UNPOOLED_URL=postgres://app:secret@ep-foo.us-east-1.aws.neon.tech/everruns?sslmode=require
+```
+
+**Notes:**
+- Use this when `DATABASE_URL` points at Neon `-pooler`, PgBouncer, or another proxy that does not preserve session-scoped `LISTEN/NOTIFY` semantics.
+- Listener paths include PostgreSQL-backed event wakeups, notification SSE, and PG task notification fallback when NATS is unavailable.
+- If `DATABASE_URL` or `DATABASE_UNPOOLED_URL` appears to point at a pooled/proxied endpoint, startup now fails fast with guidance to set a direct listener URL.
+- Ordinary query traffic still uses `DATABASE_URL`.
+
 ## NATS_URL
 
 Connection URL for NATS with JetStream, used for push-based event delivery and task notifications.
@@ -172,6 +195,7 @@ NATS_URL=nats://nats1:4222,nats://nats2:4222,nats://nats3:4222
 - When set, enables two features:
   - **Ephemeral event delivery**: delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL and flow only through NATS JetStream. SSE streams subscribe to NATS instead of polling PG.
   - **Task notifications**: `task.available.{activity_type}` subjects replace PG NOTIFY for push-based worker notification. Lower latency (~1ms vs ~30ms), supports multi-instance deployments.
+- When NATS event delivery is active, the server skips the legacy PostgreSQL event listener used only for SSE wakeups.
 - NATS JetStream must be enabled on the server (`--jetstream` flag)
 - Fail-graceful: if NATS connection fails at startup, falls back to PG NOTIFY + in-memory delivery with a warning
 - Only used by control-plane (server); workers communicate via gRPC and don't need NATS access
