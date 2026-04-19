@@ -6,18 +6,26 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { AgentCapabilityConfig, AgentPreviewResponse, ToolDefinition } from "@/lib/api/types";
+import { InitialFilesPreview } from "@/components/files/initial-files-preview";
+import type {
+  AgentCapabilityConfig,
+  AgentPreviewResponse,
+  InitialFile,
+  ToolDefinition,
+} from "@/lib/api/types";
 import { Wrench, FileText, AlertCircle } from "lucide-react";
 
 interface HarnessPreviewProps {
   systemPrompt: string;
   capabilities: AgentCapabilityConfig[];
+  initialFiles: InitialFile[];
   parentHarnessId?: string;
 }
 
 export function HarnessPreview({
   systemPrompt,
   capabilities,
+  initialFiles,
   parentHarnessId,
 }: HarnessPreviewProps) {
   const previewMutation = usePreviewHarness();
@@ -128,6 +136,8 @@ export function HarnessPreview({
           )}
         </CardContent>
       </Card>
+
+      <InitialFilesPreview files={initialFiles} />
     </div>
   );
 }

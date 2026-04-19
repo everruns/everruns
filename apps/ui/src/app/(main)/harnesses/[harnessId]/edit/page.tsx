@@ -488,6 +488,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
               <HarnessPreview
                 systemPrompt={formData.system_prompt}
                 capabilities={selectedCapabilities}
+                initialFiles={selectedInitialFiles}
                 parentHarnessId={formData.parent_harness_id || undefined}
               />
             </div>

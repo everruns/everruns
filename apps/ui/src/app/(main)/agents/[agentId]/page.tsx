@@ -377,6 +377,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               ref: cap.ref,
               config: cap.config,
             }))}
+            initialFiles={agent.initial_files}
             tools={agent.tools ?? []}
           />
         </TabsContent>

@@ -49,6 +49,10 @@ jest.mock("@/components/chat/streamdown-message", () => ({
   ),
 }));
 
+jest.mock("@/components/agents/agent-preview", () => ({
+  AgentPreview: () => <div data-testid="agent-preview">agent preview</div>,
+}));
+
 // Mock data
 const mockAgent: Agent = {
   id: "agent-1",
