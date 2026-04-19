@@ -453,6 +453,17 @@ impl Tool for ActivateSkillFromVfsTool {
             );
         }
 
+        // Validate name against the skill naming rules (lowercase letters, digits,
+        // single hyphens, 1-64 chars). This also rejects `:` and any other
+        // non-spec character so the session-resource key `skill_activation:{name}`
+        // is unambiguous — see `skill_activation_resource_id`.
+        if let Err(errors) = crate::skill::validate_skill_name(name) {
+            return ToolExecutionResult::tool_error(format!(
+                "Invalid skill name '{name}': {}",
+                errors.join(", ")
+            ));
+        }
+
         // Idempotence (EVE-337): if this skill has already been activated in this
         // session, return the cached result with `already_active: true` instead of
         // replaying the full parse/expand/preprocess pipeline. Requires a session
@@ -464,9 +475,23 @@ impl Tool for ActivateSkillFromVfsTool {
                 Ok(Some(entry))
                     if entry.status == crate::session_resource::SessionResourceStatus::Active =>
                 {
-                    if let Value::Object(mut map) = entry.metadata {
+                    if entry.kind != SKILL_ACTIVATION_KIND {
+                        tracing::warn!(
+                            skill = name,
+                            resource_id = %resource_id,
+                            entry_kind = %entry.kind,
+                            expected_kind = SKILL_ACTIVATION_KIND,
+                            "activate_skill: registry entry collides with unexpected kind; falling back to non-cached activation"
+                        );
+                    } else if let Value::Object(mut map) = entry.metadata {
                         map.insert("already_active".to_string(), Value::Bool(true));
                         return ToolExecutionResult::success(Value::Object(map));
+                    } else {
+                        tracing::warn!(
+                            skill = name,
+                            resource_id = %resource_id,
+                            "activate_skill: cached entry has non-object metadata; falling back to non-cached activation"
+                        );
                     }
                 }
                 Ok(_) => {}
@@ -553,11 +578,16 @@ impl Tool for ActivateSkillFromVfsTool {
                 // tool result as metadata; the cache hit path re-emits it verbatim and
                 // adds `already_active: true`.
                 if let Some(registry) = &context.session_resource_registry {
+                    // Key the registry entry on the tool-argument `name` (which is
+                    // also the skill directory name and matches the cache-lookup key
+                    // above). Using `parsed.name` here would diverge if the
+                    // frontmatter `name` ever drifts from the directory, breaking
+                    // the idempotence contract on the second activation.
                     let entry = crate::session_resource::RegisterSessionResource {
                         session_id: context.session_id,
-                        resource_id: skill_activation_resource_id(&parsed.name),
+                        resource_id: skill_activation_resource_id(name),
                         kind: SKILL_ACTIVATION_KIND.to_string(),
-                        display_name: format!("skill:{}", parsed.name),
+                        display_name: format!("skill:{name}"),
                         status: crate::session_resource::SessionResourceStatus::Active,
                         metadata: result.clone(),
                     };
@@ -1012,6 +1042,27 @@ mod tests {
             .await;
         match result {
             ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid skill name")),
+            other => panic!("Expected ToolError, got: {:?}", other),
+        }
+    }
+
+    // Regression for EVE-337 review: names are validated against the skill
+    // naming rules before being used as part of the `skill_activation:{name}`
+    // resource-registry key. Reject the delimiter character explicitly.
+    #[tokio::test]
+    async fn test_activate_skill_rejects_resource_id_delimiter() {
+        let tool = ActivateSkillFromVfsTool;
+        let context = ToolContext::new(SessionId::new());
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({"name": "skill_activation:evil"}),
+                &context,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("Invalid skill name"), "got: {msg}");
+            }
             other => panic!("Expected ToolError, got: {:?}", other),
         }
     }
