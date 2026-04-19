@@ -77,7 +77,19 @@ See `specs/release-process.md` for the full release process specification.
    -->
    ```
 
-5. **Update lock files**:
+5. **Squash feature migrations into a version-named migration**:
+
+   See `specs/release-process.md` ("Migration Squashing") and `specs/migrations.md`.
+
+   - List `crates/server/migrations/*.sql` and find the last `NNN_vA.B.C.sql` file.
+   - Identify every feature migration with a number strictly greater than that (these are the unsquashed feature migrations added since the last release).
+   - If there are none, skip this step entirely — do not create an empty migration file.
+   - Otherwise, create `NNN_vX.Y.Z.sql` (using the lowest number of the unsquashed set and the new release version) containing the concatenated DDL of those migrations, in their original numeric order.
+   - Preserve the origin of each block with an inline section header comment referencing the original filename, e.g. `-- from 016_eval_case_result_metadata.sql`.
+   - Delete the original feature migration files so numbering stays strictly sequential with no gaps.
+   - Verify `ls crates/server/migrations/*.sql | sort` yields 001..N with no gaps or duplicates.
+
+6. **Update lock files**:
    ```bash
    # Regenerate Cargo.lock with new workspace version
    cargo generate-lockfile
@@ -85,18 +97,18 @@ See `specs/release-process.md` for the full release process specification.
    cd apps/ui && npm install --package-lock-only
    ```
 
-6. **Skip migration notes unless necessary**:
+7. **Skip migration notes unless necessary**:
    - Do not add a dedicated migration section by default
    - Add one only when a release needs user-facing upgrade guidance
    - If migration behavior only needs engineering discussion, capture it in the canonical migration locations, for example `crates/server/migrations/` and/or `specs/migrations.md`, instead of the changelog
 
-7. **Create commit**:
+8. **Create commit**:
    ```bash
    git add -A
    git commit -m "chore(release): prepare vX.Y.Z"
    ```
 
-8. **Create PR**:
+9. **Create PR**:
    ```bash
    git push -u origin <current-branch>
    gh pr create --title "chore(release): prepare vX.Y.Z" --body "$(cat <<'EOF'
@@ -119,7 +131,7 @@ See `specs/release-process.md` for the full release process specification.
    )"
    ```
 
-9. **Remind user**:
+10. **Remind user**:
    - Review the PR, especially CHANGELOG.md
    - Add any highlights or screenshots by editing CHANGELOG.md
    - Merge when CI is green
