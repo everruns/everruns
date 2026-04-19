@@ -3,6 +3,7 @@
   "version": "0.8.16",
   "private": true,
   "exports": {
+    "./route-manifest": "./src/lib/ui-route-manifest.ts",
     "./providers/*": "./src/providers/*.tsx",
     "./components/*": "./src/components/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",

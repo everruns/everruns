@@ -147,6 +147,56 @@ Embedders may extend execution by:
 - Replacing the `PlatformDefinition`
 - Reusing Everruns worker runtime and lifecycle handling
 
+## UI Route Manifest Contract
+
+UI embedders and SaaS wrappers must discover the OSS App Router tree through the published route manifest instead of mirroring `apps/ui/src/app` by hand.
+
+### Stable export
+
+`apps/ui/package.json` must export the manifest module at `everruns-ui/route-manifest`.
+
+This module is a build-time/server-side contract. It is not part of the browser bundle.
+
+### Manifest API
+
+The manifest module lives at `apps/ui/src/lib/ui-route-manifest.ts` and exposes:
+
+- `UI_ROUTE_MANIFEST_VERSION` - current schema version (`1`)
+- `createUiRouteManifest()` - derives the current manifest from `src/app`
+- `getOssUiRouteManifest()` - lazily returns the manifest for the bundled OSS route tree
+- `mergeUiRouteManifests(base, overrides)` - applies wrapper override precedence
+- `resolveUiRouteArtifactFilePath()` / `loadUiRouteArtifactModule()` - OSS helper APIs for build-time access to discovered artifacts
+
+### Artifact shape
+
+Each manifest artifact includes:
+
+- `artifactId` - stable override key, formed from `appPath + ":" + fileName`
+- `sourcePackage` - owning package name (`everruns-ui` for OSS artifacts)
+- `kind` - App Router artifact kind (`page`, `layout`, `loading`, `error`, `template`, `route`, `not-found`, metadata assets)
+- `appPath` - App Router tree path including route groups (example: `/(main)/dashboard`)
+- `pathname` - public URL path with route groups removed (example: `/dashboard`)
+- `fileName` - concrete artifact filename (example: `page.tsx`, `icon.svg`)
+- `sourcePath` / `packageRelativePath` - stable package-relative source location under `src/app`
+
+At the manifest level, `sourcePackage` identifies the package providing the effective override layer for the returned manifest. Artifact-level `sourcePackage` identifies the owner of each winning artifact.
+
+`appPath` is required because public pathname alone is not enough to identify layout ownership. Route groups can share the same URL space while applying different `layout.tsx` or `error.tsx` files.
+
+### Override precedence
+
+Wrapper manifests override OSS manifests by exact `artifactId`.
+
+- Same `artifactId`: wrapper artifact wins
+- New `artifactId`: wrapper artifact is appended
+- Missing wrapper artifact: OSS artifact remains in effect
+
+This keeps OSS as the owner of the default route topology while allowing wrappers to replace specific routes or layouts intentionally.
+
+### Wrapper-added routes
+
+Wrappers add new routes by publishing additional manifest artifacts with new `artifactId` values, then merging them with the OSS manifest. They must not fork or manually duplicate the full OSS `src/app` tree just to preserve parity with OSS routes.
+
 ## CLI Auth Extension Point
 
 CLI authentication routes (`/v1/auth/cli/*`) are decoupled from any specific auth backend via `CliAuthState`. Embedders with external auth providers can mount CLI login without duplicating handler code.
@@ -193,3 +243,5 @@ Those may be added later, but they are outside the current embedding contract.
 - `crates/worker/src/platform.rs`
 - `crates/worker/src/durable_worker.rs`
 - `crates/worker/src/activities.rs`
+- `apps/ui/src/lib/ui-route-manifest.ts`
+- `apps/ui/package.json`
