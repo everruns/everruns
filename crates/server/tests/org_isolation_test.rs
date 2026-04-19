@@ -929,6 +929,7 @@ async fn create_session_in_org(backend: &StorageBackend, org_id: i64) -> everrun
     let row = backend
         .create_session(CreateSessionRow {
             org_id,
+            created_by: None,
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,

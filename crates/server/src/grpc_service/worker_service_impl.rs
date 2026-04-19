@@ -3487,7 +3487,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let (sessions, _total) = self
             .session_service
-            .list(&internal_caller, agent_id, None, None, pagination)
+            .list(&internal_caller, agent_id, None, None, None, pagination)
             .await
             .map_err(|e| Status::internal(format!("Failed to list sessions: {}", e)))?;
 

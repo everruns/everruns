@@ -52,6 +52,7 @@ See `specs/localization.md` for locale/timezone resolution and durable preferenc
 
 Key design points:
 - Sessions are direct children of organizations (not agents). The `agent_id` specifies which agent is assigned.
+- UI naming is starting to split: **Chats** are user-owned conversational sessions, while **Sessions** remains the broader execution record used for debugging, tracing, and review. Both still point at the same underlying session model today.
 - `locale` is an optional session-level BCP 47 tag (for example `uk-UA`). The worker carries it through turn loading and prompt construction so scheduled runs, resumed runs, and subagents can inherit localized behavior.
 - `timezone` should be a separate optional session-level IANA timezone for unattended execution defaults. Interactive turns may override it with live browser timezone for that turn.
 - `features` field is computed at read time by aggregating `features()` from all active capabilities (not stored). See `specs/capabilities.md#capability-features`.

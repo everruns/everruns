@@ -509,10 +509,19 @@ impl StorageBackend {
         &self,
         org_id: i64,
         agent_id: Option<AgentId>,
+        created_by: Option<uuid::Uuid>,
         search: Option<&str>,
         pagination: Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
-        dispatch!(self, list_sessions, org_id, agent_id, search, pagination)
+        dispatch!(
+            self,
+            list_sessions,
+            org_id,
+            agent_id,
+            created_by,
+            search,
+            pagination
+        )
     }
 
     /// List child sessions (subagents) for a parent session.

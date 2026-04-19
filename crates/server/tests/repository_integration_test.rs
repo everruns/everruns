@@ -267,6 +267,7 @@ async fn test_session_crud() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -355,6 +356,7 @@ async fn test_session_crud() {
             TEST_ORG_ID,
             Some(agent.id),
             None,
+            None,
             Pagination {
                 limit: 10,
                 offset: 0,
@@ -413,6 +415,7 @@ async fn test_event_crud() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -500,6 +503,7 @@ async fn test_event_exclude_types() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -595,6 +599,7 @@ async fn test_event_filter_types() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -892,6 +897,7 @@ async fn test_session_file_crud() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -1350,6 +1356,7 @@ async fn test_session_usage_tracking() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -1443,6 +1450,7 @@ async fn test_session_previews() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,

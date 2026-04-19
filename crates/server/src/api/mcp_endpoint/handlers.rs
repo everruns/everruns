@@ -131,6 +131,7 @@ pub async fn list_sessions(params: &Value, ctx: &CatalogContext) -> Result<Strin
             &ctx.caller,
             agent_id.as_ref().map(|id| id.uuid()),
             ctx.user_id,
+            None,
             search.as_deref(),
             pg,
         )

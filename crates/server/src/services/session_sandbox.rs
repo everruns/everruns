@@ -433,6 +433,7 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 org_id: DEFAULT_ORG_ID,
+                created_by: None,
                 harness_id: Some(harness_id),
                 agent_id: None,
                 agent_identity_id: None,
@@ -486,6 +487,7 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 org_id: DEFAULT_ORG_ID,
+                created_by: None,
                 harness_id: Some(harness_id),
                 agent_id: None,
                 agent_identity_id: None,

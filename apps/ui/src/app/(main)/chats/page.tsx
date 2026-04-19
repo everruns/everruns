@@ -10,11 +10,11 @@ import {
   serverGetPaginated,
 } from "@/lib/server-query";
 import type { Agent, Harness, LlmModelWithProvider, Organization, Session } from "@/lib/api/types";
-import SessionsPageClient from "./sessions-page-client";
+import SessionsPageClient from "../sessions/sessions-page-client";
 
 const PAGE_SIZE = 20;
 
-export default async function SessionsPage() {
+export default async function ChatsPage() {
   const queryClient = createServerQueryClient();
   const requestContext = await getServerRequestContext();
   const { currentOrgId } = await prefetchAuthBootstrap(queryClient, requestContext);
@@ -32,9 +32,12 @@ export default async function SessionsPage() {
       ),
       seedQueryData(
         queryClient,
-        queryKeys.sessions.list(currentOrgId, undefined, false, 0, PAGE_SIZE),
+        queryKeys.sessions.list(currentOrgId, undefined, true, 0, PAGE_SIZE),
         () =>
-          serverGetPaginated<Session>(requestContext, `/v1/sessions?offset=0&limit=${PAGE_SIZE}`),
+          serverGetPaginated<Session>(
+            requestContext,
+            `/v1/sessions?owned_by_me=true&offset=0&limit=${PAGE_SIZE}`,
+          ),
       ),
       seedQueryData(queryClient, [...queryKeys.llmModels.list(), currentOrgId], () =>
         serverGetList<LlmModelWithProvider>(requestContext, "/v1/llm-models"),
@@ -44,7 +47,12 @@ export default async function SessionsPage() {
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <SessionsPageClient />
+      <SessionsPageClient
+        title="Chats"
+        ownedByMe
+        newSessionLabel="New Chat"
+        emptyStateText="No chats yet. Start a new chat to begin."
+      />
     </HydrationBoundary>
   );
 }

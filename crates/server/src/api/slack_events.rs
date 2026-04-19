@@ -2265,6 +2265,7 @@ mod tests {
 
         let row = CreateSessionRow {
             org_id: 1,
+            created_by: None,
             harness_id: Some(everruns_core::typed_id::HarnessId::from_uuid(
                 uuid::Uuid::nil(),
             )),

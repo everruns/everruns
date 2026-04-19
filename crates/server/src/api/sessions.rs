@@ -169,6 +169,9 @@ pub struct ListSessionsQuery {
     /// Filter sessions by agent ID.
     #[param(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
+    /// Filter to sessions created by the current user.
+    #[serde(default)]
+    pub owned_by_me: bool,
     /// Search by title (case-insensitive substring match).
     pub search: Option<String>,
     /// Number of items to skip (for pagination).
@@ -577,12 +580,17 @@ pub async fn list_sessions(
     };
 
     let caller = Caller::from(&org);
+    let created_by = if query.owned_by_me { org.user_id } else { None };
+    if query.owned_by_me && created_by.is_none() {
+        return Ok(Json(PaginatedResponse::new(vec![], 0, offset, limit)));
+    }
     let (sessions, total) = state
         .session_service
         .list(
             &caller,
             agent_internal_id,
             org.user_id,
+            created_by,
             query.search.as_deref(),
             pagination,
         )

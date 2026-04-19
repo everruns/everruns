@@ -33,12 +33,18 @@ import { createEventStream, type EventStreamLike } from "@/lib/event-stream";
  * Optionally filter by agentId.
  * Returns { data, total, offset, limit } for pagination controls.
  */
-export function useSessions(agentId?: string, params?: PaginationParams) {
+export function useSessions(agentId?: string, params?: PaginationParams & { ownedByMe?: boolean }) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: queryKeys.sessions.list(org, agentId, params?.offset ?? 0, params?.limit ?? 20),
+    queryKey: queryKeys.sessions.list(
+      org,
+      agentId,
+      params?.ownedByMe ?? false,
+      params?.offset ?? 0,
+      params?.limit ?? 20,
+    ),
     queryFn: () => listSessions({ ...params, agentId }),
     enabled: !!org,
   });

@@ -32,11 +32,11 @@ export const queryKeys = {
     detail: (harnessId: string) => ["harness", harnessId] as const,
   },
 
-  // Session queries (sessions are org-level, with optional agent filter)
+  // Session queries (sessions are org-level, with optional agent/owner filters)
   sessions: {
     all: () => ["sessions"] as const,
-    list: (org?: string, agentId?: string, offset?: number, limit?: number) =>
-      ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20] as const,
+    list: (org?: string, agentId?: string, ownedByMe?: boolean, offset?: number, limit?: number) =>
+      ["sessions", org, agentId ?? "all", ownedByMe ?? false, offset ?? 0, limit ?? 20] as const,
     byAgent: (agentId: string) => ["sessions", "agent", agentId] as const,
     detail: (org?: string, sessionId?: string) => ["session", org, sessionId] as const,
     stats: (org?: string) => ["sessions", "stats", org] as const,

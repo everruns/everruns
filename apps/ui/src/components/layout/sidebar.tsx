@@ -82,6 +82,7 @@ export interface SidebarConfig {
 export const defaultTopNavigation: NavigationItem[] = [
   { name: "Chat", href: "/chat", icon: MessageCircle, flag: "global_chat", experimental: true },
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Chats", href: "/chats", icon: MessageSquare },
   { name: "Sessions", href: "/sessions", icon: MessageSquare },
 ];
 

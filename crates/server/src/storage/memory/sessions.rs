@@ -19,6 +19,7 @@ impl InMemoryDatabase {
         let row = SessionRow {
             id,
             org_id: input.org_id,
+            created_by: input.created_by,
             harness_id: input.harness_id,
             agent_id: input.agent_id,
             agent_identity_id: input.agent_identity_id,
@@ -78,6 +79,7 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         agent_id: Option<AgentId>,
+        created_by: Option<Uuid>,
         search: Option<&str>,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
@@ -96,7 +98,11 @@ impl InMemoryDatabase {
         let sessions = self.sessions.read();
         let mut result: Vec<_> = sessions
             .values()
-            .filter(|s| s.org_id == org_id && agent_id.is_none_or(|aid| s.agent_id == Some(aid)))
+            .filter(|s| {
+                s.org_id == org_id
+                    && agent_id.is_none_or(|aid| s.agent_id == Some(aid))
+                    && created_by.is_none_or(|uid| s.created_by == Some(uid))
+            })
             .filter(|s| matches_search_tokens(search, &[s.title.as_deref().unwrap_or("")]))
             .cloned()
             .collect();

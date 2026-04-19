@@ -73,6 +73,7 @@ async fn test_create_and_list_sessions() {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -96,7 +97,7 @@ async fn test_create_and_list_sessions() {
 
     let pagination = crate::api::common::Pagination::new(0, 20);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, None, pagination)
         .await
         .unwrap();
     assert_eq!(sessions.len(), 1);
@@ -133,6 +134,7 @@ async fn test_session_updated_at() {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -208,6 +210,7 @@ async fn test_events_sequence() {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -280,6 +283,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -767,6 +771,7 @@ async fn test_list_events_empty_session_with_limit() {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -825,6 +830,7 @@ async fn test_sessions_pagination() {
     for i in 0..15 {
         db.create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -850,7 +856,7 @@ async fn test_sessions_pagination() {
     // Test default pagination (all sessions fit within limit)
     let pagination = crate::api::common::Pagination::new(0, 20);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, None, pagination)
         .await
         .unwrap();
     assert_eq!(total, 15);
@@ -859,7 +865,7 @@ async fn test_sessions_pagination() {
     // Test with limit=5
     let pagination = crate::api::common::Pagination::new(0, 5);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, None, pagination)
         .await
         .unwrap();
     assert_eq!(total, 15);
@@ -868,7 +874,7 @@ async fn test_sessions_pagination() {
     // Test with offset=5, limit=5
     let pagination = crate::api::common::Pagination::new(5, 5);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, None, pagination)
         .await
         .unwrap();
     assert_eq!(total, 15);
@@ -877,7 +883,7 @@ async fn test_sessions_pagination() {
     // Test last partial page (offset=10, limit=10 should return 5)
     let pagination = crate::api::common::Pagination::new(10, 10);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, None, pagination)
         .await
         .unwrap();
     assert_eq!(total, 15);
@@ -886,7 +892,7 @@ async fn test_sessions_pagination() {
     // Test beyond range (offset=20)
     let pagination = crate::api::common::Pagination::new(20, 10);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, None, pagination)
         .await
         .unwrap();
     assert_eq!(total, 15);
@@ -922,6 +928,7 @@ async fn test_sessions_pagination_ordering() {
     for i in 1..=5 {
         db.create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -949,7 +956,7 @@ async fn test_sessions_pagination_ordering() {
     // Sessions should be ordered by created_at DESC (newest first)
     let pagination = crate::api::common::Pagination::new(0, 10);
     let (sessions, _) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, None, pagination)
         .await
         .unwrap();
 
@@ -1648,6 +1655,7 @@ async fn test_search_sessions_by_title() {
 
     db.create_session(CreateSessionRow {
         org_id: DEFAULT_ORG_ID,
+        created_by: None,
         harness_id: None,
         agent_id: Some(agent.id),
         agent_identity_id: None,
@@ -1671,6 +1679,7 @@ async fn test_search_sessions_by_title() {
 
     db.create_session(CreateSessionRow {
         org_id: DEFAULT_ORG_ID,
+        created_by: None,
         harness_id: None,
         agent_id: Some(agent.id),
         agent_identity_id: None,
@@ -1694,7 +1703,7 @@ async fn test_search_sessions_by_title() {
 
     let pagination = crate::api::common::Pagination::new(0, 20);
     let (results, total) = db
-        .list_sessions(DEFAULT_ORG_ID, None, Some("memory leak"), pagination)
+        .list_sessions(DEFAULT_ORG_ID, None, None, Some("memory leak"), pagination)
         .await
         .unwrap();
     assert_eq!(total, 1);
@@ -1710,6 +1719,7 @@ async fn test_search_sessions_with_agent_filter() {
 
     db.create_session(CreateSessionRow {
         org_id: DEFAULT_ORG_ID,
+        created_by: None,
         harness_id: None,
         agent_id: Some(agent1.id),
         agent_identity_id: None,
@@ -1733,6 +1743,7 @@ async fn test_search_sessions_with_agent_filter() {
 
     db.create_session(CreateSessionRow {
         org_id: DEFAULT_ORG_ID,
+        created_by: None,
         harness_id: None,
         agent_id: Some(agent2.id),
         agent_identity_id: None,
@@ -1760,6 +1771,7 @@ async fn test_search_sessions_with_agent_filter() {
         .list_sessions(
             DEFAULT_ORG_ID,
             Some(agent1.id),
+            None,
             Some("shared keyword"),
             pagination,
         )
@@ -1779,11 +1791,107 @@ async fn test_search_sessions_poem_input() {
                     Rough winds do shake the darling buds of May, \
                     And summer's lease hath all too short a date.";
     let (results, total) = db
-        .list_sessions(DEFAULT_ORG_ID, None, Some(poem), pagination)
+        .list_sessions(DEFAULT_ORG_ID, None, None, Some(poem), pagination)
         .await
         .unwrap();
     assert_eq!(total, 0);
     assert!(results.is_empty());
+}
+
+#[tokio::test]
+async fn test_list_sessions_filters_by_creator() {
+    let db = InMemoryDatabase::new();
+    let agent = create_test_agent(&db, "Agent", None).await;
+    let first_user = uuid::Uuid::now_v7();
+    let second_user = uuid::Uuid::now_v7();
+
+    db.create_session(CreateSessionRow {
+        org_id: DEFAULT_ORG_ID,
+        created_by: Some(first_user),
+        harness_id: None,
+        agent_id: Some(agent.id),
+        agent_identity_id: None,
+        title: Some("First user's session".to_string()),
+        locale: None,
+        tags: vec![],
+        model_id: None,
+        capabilities: serde_json::json!([]),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        system_prompt: None,
+        initial_files: serde_json::Value::Array(vec![]),
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        blueprint_id: None,
+        blueprint_config: None,
+    })
+    .await
+    .unwrap();
+
+    db.create_session(CreateSessionRow {
+        org_id: DEFAULT_ORG_ID,
+        created_by: Some(second_user),
+        harness_id: None,
+        agent_id: Some(agent.id),
+        agent_identity_id: None,
+        title: Some("Second user's session".to_string()),
+        locale: None,
+        tags: vec![],
+        model_id: None,
+        capabilities: serde_json::json!([]),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        system_prompt: None,
+        initial_files: serde_json::Value::Array(vec![]),
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        blueprint_id: None,
+        blueprint_config: None,
+    })
+    .await
+    .unwrap();
+
+    db.create_session(CreateSessionRow {
+        org_id: DEFAULT_ORG_ID,
+        created_by: None,
+        harness_id: None,
+        agent_id: Some(agent.id),
+        agent_identity_id: None,
+        title: Some("Legacy session".to_string()),
+        locale: None,
+        tags: vec![],
+        model_id: None,
+        capabilities: serde_json::json!([]),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        system_prompt: None,
+        initial_files: serde_json::Value::Array(vec![]),
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        blueprint_id: None,
+        blueprint_config: None,
+    })
+    .await
+    .unwrap();
+
+    let (results, total) = db
+        .list_sessions(
+            DEFAULT_ORG_ID,
+            Some(agent.id),
+            Some(first_user),
+            None,
+            default_pagination(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(total, 1);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].created_by, Some(first_user));
+    assert_eq!(results[0].title.as_deref(), Some("First user's session"));
 }
 
 #[tokio::test]
@@ -1949,6 +2057,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -2109,6 +2218,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
     let s1 = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,
@@ -2132,6 +2242,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
     let s2 = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,
@@ -2155,6 +2266,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
     let s3 = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,
@@ -2230,6 +2342,7 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,
@@ -2277,6 +2390,7 @@ async fn test_session_system_prompt_defaults_to_none() {
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            created_by: None,
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,

@@ -188,6 +188,7 @@ impl SessionService {
 
         let input = CreateSessionRow {
             org_id,
+            created_by: caller.user_id,
             harness_id: Some(harness_id),
             agent_id,
             agent_identity_id,
@@ -285,6 +286,7 @@ impl SessionService {
 
         let input = CreateSessionRow {
             org_id,
+            created_by: caller.user_id,
             harness_id: Some(harness_id),
             agent_id: None,
             agent_identity_id: None,
@@ -594,6 +596,7 @@ impl SessionService {
         caller: &Caller,
         agent_id: Option<Uuid>,
         user_id: Option<Uuid>,
+        created_by: Option<Uuid>,
         search: Option<&str>,
         pagination: Pagination,
     ) -> Result<(Vec<Session>, u32)> {
@@ -602,7 +605,7 @@ impl SessionService {
         let agent_id = agent_id.map(AgentId::from_uuid);
         let (rows, total) = self
             .db
-            .list_sessions(org_id, agent_id, search, pagination)
+            .list_sessions(org_id, agent_id, created_by, search, pagination)
             .await?;
         let fallback = if rows.iter().any(|r| r.harness_id.is_none()) {
             Some(org_init::base_harness_id(&self.db, org_id).await?)
@@ -807,6 +810,7 @@ impl SessionService {
         let harness_id_typed = HarnessId::from_uuid(harness_id);
         let input = CreateSessionRow {
             org_id,
+            created_by: Some(user_id),
             harness_id: Some(harness_id_typed),
             agent_id: None,
             agent_identity_id: None,
@@ -1558,6 +1562,7 @@ mod tests {
         let session_row = db
             .create_session(CreateSessionRow {
                 org_id: caller.org_id,
+                created_by: None,
                 harness_id: Some(other_harness.id),
                 agent_id: Some(AgentId::from_uuid(other_agent.internal_id)),
                 agent_identity_id: None,
@@ -1653,6 +1658,7 @@ mod tests {
         let session_row = db
             .create_session(CreateSessionRow {
                 org_id: caller.org_id,
+                created_by: None,
                 harness_id: None,
                 agent_id: None,
                 agent_identity_id: None,

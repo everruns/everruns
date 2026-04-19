@@ -88,10 +88,16 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["home", "overview"],
   },
   {
+    title: "Chats",
+    href: "/chats",
+    icon: MessageSquare,
+    keywords: ["my chats", "my sessions", "conversation"],
+  },
+  {
     title: "Sessions",
     href: "/sessions",
     icon: MessageSquare,
-    keywords: ["chat", "conversation"],
+    keywords: ["session", "debug", "trace", "review"],
   },
   {
     title: "Chat",

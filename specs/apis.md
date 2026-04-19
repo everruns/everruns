@@ -184,13 +184,16 @@ Returns the calling user's singleton global chat session. Creates one with the P
 
 #### List Sessions
 
-Supports optional filtering by agent:
+Supports optional filtering by agent and by the current user:
 
 ```
 GET /v1/sessions?agent_id=agent_01234567-...
+GET /v1/sessions?owned_by_me=true
 ```
 
-Without the `agent_id` query parameter, returns all sessions in the organization.
+Without filters, returns all sessions in the organization.
+
+`owned_by_me=true` powers the Chats surface: today Chats are just user-owned sessions rendered with a narrower list filter, while the broader Sessions view continues to include debugging, tracing, and review-oriented session records.
 
 #### Cancel Turn
 
@@ -431,7 +434,7 @@ Endpoints that return lists support pagination via query parameters:
 
 | Endpoint | Default Limit | Notes |
 |----------|---------------|-------|
-| `GET /v1/sessions` | 20 | Ordered by `created_at DESC`, optional `agent_id` filter |
+| `GET /v1/sessions` | 20 | Ordered by `created_at DESC`, optional `agent_id` and `owned_by_me` filters |
 
 **Non-Paginated List Endpoints:**
 

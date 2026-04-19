@@ -36,7 +36,19 @@ import { useOrganization } from "@/hooks/use-organizations";
 
 const PAGE_SIZE = 20;
 
-export default function SessionsPageClient() {
+interface SessionsPageClientProps {
+  title?: string;
+  ownedByMe?: boolean;
+  newSessionLabel?: string;
+  emptyStateText?: string;
+}
+
+export default function SessionsPageClient({
+  title = "Sessions",
+  ownedByMe = false,
+  newSessionLabel = "New Session",
+  emptyStateText = "No sessions yet. Start a new session to begin chatting.",
+}: SessionsPageClientProps) {
   const router = useRouter();
   const [page, setPage] = useState(0);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
@@ -53,7 +65,7 @@ export default function SessionsPageClient() {
   const { data: harnesses } = useHarnesses();
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(
     selectedAgentId || undefined,
-    { offset, limit: PAGE_SIZE },
+    { offset, limit: PAGE_SIZE, ownedByMe },
   );
   const { data: llmModels } = useLlmModels();
   const createSession = useCreateSession();
@@ -139,10 +151,10 @@ export default function SessionsPageClient() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Sessions</h1>
+        <h1 className="text-2xl font-bold">{title}</h1>
         <Button variant="accent" onClick={handleOpenNewSessionDialog} disabled={!harnesses?.length}>
           <Plus className="w-4 h-4 mr-2" />
-          New Session
+          {newSessionLabel}
         </Button>
       </div>
 
@@ -168,9 +180,7 @@ export default function SessionsPageClient() {
               ))}
             </div>
           ) : sessions.length === 0 ? (
-            <p className="text-center py-8 text-muted-foreground">
-              No sessions yet. Start a new session to begin chatting.
-            </p>
+            <p className="text-center py-8 text-muted-foreground">{emptyStateText}</p>
           ) : (
             <div className="space-y-2">
               {sessions.map((session) => {
@@ -235,7 +245,7 @@ export default function SessionsPageClient() {
       <Dialog open={newSessionDialogOpen} onOpenChange={setNewSessionDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New Session</DialogTitle>
+            <DialogTitle>{newSessionLabel}</DialogTitle>
             <DialogDescription>
               Select a harness and optionally an agent to start a new conversation.
             </DialogDescription>
@@ -275,7 +285,7 @@ export default function SessionsPageClient() {
               onClick={handleCreateSession}
               disabled={!newSessionHarnessId || createSession.isPending}
             >
-              {createSession.isPending ? "Creating..." : "Create Session"}
+              {createSession.isPending ? "Creating..." : newSessionLabel}
             </Button>
           </DialogFooter>
         </DialogContent>

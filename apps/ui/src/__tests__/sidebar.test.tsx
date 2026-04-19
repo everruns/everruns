@@ -150,6 +150,8 @@ describe("Sidebar", () => {
 
     expect(screen.getByText("Chat")).toBeInTheDocument();
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Chats")).toBeInTheDocument();
+    expect(screen.getByText("Sessions")).toBeInTheDocument();
     expect(screen.getByText("Harnesses")).toBeInTheDocument();
     expect(screen.getByText("Agents")).toBeInTheDocument();
     expect(screen.getByText("Capabilities")).toBeInTheDocument();
@@ -160,12 +162,16 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
+    const chatsLink = screen.getByRole("link", { name: "Chats" });
+    const sessionsLink = screen.getByRole("link", { name: "Sessions" });
     const harnessesLink = screen.getByRole("link", { name: "Harnesses" });
     const agentsLink = screen.getByRole("link", { name: "Agents" });
     const capabilitiesLink = screen.getByRole("link", { name: "Capabilities" });
     const settingsLink = screen.getByRole("link", { name: "Settings" });
 
     expect(dashboardLink).toHaveAttribute("href", "/dashboard");
+    expect(chatsLink).toHaveAttribute("href", "/chats");
+    expect(sessionsLink).toHaveAttribute("href", "/sessions");
     expect(harnessesLink).toHaveAttribute("href", "/harnesses");
     expect(agentsLink).toHaveAttribute("href", "/agents");
     expect(capabilitiesLink).toHaveAttribute("href", "/capabilities");
@@ -219,7 +225,7 @@ describe("Sidebar", () => {
     expect(dashboardLink).toHaveClass("text-[13px]");
   });
 
-  it("has exactly 6 navigation items", () => {
+  it("has exactly 8 navigation items", () => {
     render(<Sidebar />);
 
     // Get nav links (excluding logo link)
@@ -229,12 +235,21 @@ describe("Sidebar", () => {
         (link) =>
           link.getAttribute("href") !== "/dashboard" || link.textContent?.includes("Dashboard"),
       );
-    // Filter to only nav items (Chat, Dashboard, Harnesses, Agents, Capabilities, Settings)
-    const navItems = ["Chat", "Dashboard", "Harnesses", "Agents", "Capabilities", "Settings"];
+    // Filter to only nav items (Chat, Dashboard, Chats, Sessions, Harnesses, Agents, Capabilities, Settings)
+    const navItems = [
+      "Chat",
+      "Dashboard",
+      "Chats",
+      "Sessions",
+      "Harnesses",
+      "Agents",
+      "Capabilities",
+      "Settings",
+    ];
     const foundNavLinks = navLinks.filter((link) =>
       navItems.some((item) => link.textContent?.includes(item)),
     );
-    expect(foundNavLinks).toHaveLength(6);
+    expect(foundNavLinks).toHaveLength(8);
   });
 
   it("renders section labels for Building Blocks and Durable Execution", () => {

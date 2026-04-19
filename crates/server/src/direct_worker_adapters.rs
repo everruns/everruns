@@ -2221,7 +2221,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         };
         let (rows, _total) = self
             .db
-            .list_sessions(self.org_id, agent_id, None, pagination)
+            .list_sessions(self.org_id, agent_id, None, None, pagination)
             .await
             .map_err(|e| store_error(format!("Failed to list sessions: {e}")))?;
 
@@ -2279,6 +2279,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 
         let input = CreateSessionRow {
             org_id: self.org_id,
+            created_by: None,
             harness_id: Some(harness_id),
             agent_id,
             agent_identity_id: None,
@@ -3363,6 +3364,7 @@ mod tests {
             .db
             .create_session(CreateSessionRow {
                 org_id: everruns_core::DEFAULT_ORG_ID,
+                created_by: None,
                 agent_id: Some(AgentId::from_uuid(agent_id)),
                 agent_identity_id: None,
                 harness_id: Some(HarnessId::from_seed(1)),
