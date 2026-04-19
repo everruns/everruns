@@ -71,7 +71,12 @@ function ResultRow({ result }: { result: EvalCaseResult }) {
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{result.case_name ?? result.eval_case_id}</span>
           {result.session_id && (
-            <Link href={`/sessions/${result.session_id}`}>
+            <Link
+              href={`/sessions/${result.session_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open session in new tab"
+            >
               <ExternalLink className="w-3 h-3 text-muted-foreground hover:text-foreground" />
             </Link>
           )}
