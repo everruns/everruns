@@ -21,15 +21,15 @@ if [ ! -d "$MIG_DIR" ]; then
   exit 0
 fi
 
-# Foundational baseline migrations exist before the version-named convention
-# was adopted. They are the only allowed non-version names.
-#
-# `016_eval_case_result_metadata.sql` and `017_eval_artifacts.sql` are frozen
-# feature migrations: v0.8.16 originally squashed them into `016_v0.8.16.sql`,
-# but that rename broke deployments that had already recorded the original
-# filenames in `_sqlx_migrations`. See #1382 and
-# `crates/server/tests/migration_history_test.rs`, which lock their names and
-# SQL bodies so they cannot be renamed or rewritten in future squashes.
+# Allowlist of migrations that are exempt from the `NNN_vX.Y.Z.sql` rule.
+# Two kinds:
+#   1. Foundational baseline migrations — predate the version-named convention.
+#   2. Frozen historical feature migrations — their filenames are locked by
+#      `crates/server/tests/migration_history_test.rs` so that `_sqlx_migrations`
+#      rows in existing deployments keep validating. v0.8.16 originally squashed
+#      `016_eval_case_result_metadata.sql` + `017_eval_artifacts.sql` into
+#      `016_v0.8.16.sql`, but the rename broke deployments; see #1382.
+# Every other non-baseline migration must still match `NNN_vX.Y.Z.sql`.
 FOUNDATIONAL=(
   "001_base_schema.sql"
   "002_durable_execution.sql"
