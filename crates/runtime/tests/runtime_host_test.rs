@@ -1,10 +1,12 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::MessageRetriever;
+use everruns_core::ToolContext;
 use everruns_core::atoms::ReasonResult;
 use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput};
 use everruns_core::capabilities::{
-    MemoryCapability, SystemPromptContext, TestMathCapability, collect_capabilities_with_configs,
+    Capability, CapabilityStatus, MemoryCapability, SystemPromptContext, TestMathCapability,
+    collect_capabilities_with_configs,
 };
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::memory::{
@@ -18,14 +20,16 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, CapabilityRegistry, EventData, Harness, HarnessStatus,
-    InputMessage, Session, SessionStatus, ToolCall, ToolRegistry,
+    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, EventData, Harness,
+    HarnessStatus, InputMessage, LlmProviderType, ModelWithProvider, Session, SessionStatus, Tool,
+    ToolCall, ToolExecutionResult, ToolRegistry, ToolResult, inspect_turn_context,
 };
 use everruns_runtime::{
     InMemorySessionFileStore, RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle,
     RuntimeTurnPlan, RuntimeTurnState, execute_act_activity, execute_input_activity,
     plan_next_host_turn,
 };
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -146,44 +150,6 @@ impl RuntimeHostAdapter for MockHostAdapter {
         self.driver_registry.clone()
     }
 
-    async fn build_tool_registry_for_agent(
-        &self,
-        _org_id: i64,
-        agent_id: AgentId,
-    ) -> everruns_core::error::Result<ToolRegistry> {
-        let agent = self
-            .agent_store
-            .get_agent(agent_id)
-            .await?
-            .expect("agent exists");
-        build_registry(
-            &self.capability_registry,
-            SessionId::new(),
-            &agent.capabilities,
-        )
-        .await
-    }
-
-    async fn build_tool_registry_for_harness(
-        &self,
-        _org_id: i64,
-        harness_id: HarnessId,
-    ) -> everruns_core::error::Result<ToolRegistry> {
-        let harness = self
-            .harness_store
-            .get_harness_chain(harness_id)
-            .await?
-            .into_iter()
-            .last()
-            .expect("harness exists");
-        build_registry(
-            &self.capability_registry,
-            SessionId::new(),
-            &harness.capabilities,
-        )
-        .await
-    }
-
     fn harness_store(&self, _org_id: i64) -> Arc<dyn HarnessStore> {
         self.harness_store.clone()
     }
@@ -234,6 +200,109 @@ async fn build_registry(
         registry.register_boxed(tool);
     }
     Ok(registry)
+}
+
+struct OverlayEchoTool;
+
+#[async_trait]
+impl Tool for OverlayEchoTool {
+    fn name(&self) -> &str {
+        "overlay_echo"
+    }
+
+    fn description(&self) -> &str {
+        "Returns the provided value."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "value": {"type": "string"}
+            },
+            "required": ["value"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, arguments: serde_json::Value) -> ToolExecutionResult {
+        ToolExecutionResult::success(json!({
+            "value": arguments["value"].as_str().unwrap_or_default(),
+        }))
+    }
+}
+
+struct OverlayHook;
+
+#[async_trait]
+impl everruns_core::atoms::PostToolExecHook for OverlayHook {
+    async fn after_exec(
+        &self,
+        _tool_call: &ToolCall,
+        _tool_def: &everruns_core::ToolDefinition,
+        result: &mut ToolResult,
+        _context: &ToolContext,
+    ) {
+        if let Some(value) = result
+            .result
+            .as_mut()
+            .and_then(|value| value.as_object_mut())
+        {
+            value.insert("hooked".to_string(), json!(true));
+        }
+    }
+}
+
+struct OverlayEchoCapability;
+
+impl Capability for OverlayEchoCapability {
+    fn id(&self) -> &str {
+        "overlay_echo"
+    }
+
+    fn name(&self) -> &str {
+        "Overlay Echo"
+    }
+
+    fn description(&self) -> &str {
+        "Test capability that contributes a tool and a post-tool hook."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(OverlayEchoTool)]
+    }
+
+    fn post_tool_exec_hooks(&self) -> Vec<Arc<dyn everruns_core::atoms::PostToolExecHook>> {
+        vec![Arc::new(OverlayHook)]
+    }
+}
+
+struct OverlayAliasCapability;
+
+impl Capability for OverlayAliasCapability {
+    fn id(&self) -> &str {
+        "overlay_alias"
+    }
+
+    fn name(&self) -> &str {
+        "Overlay Alias"
+    }
+
+    fn description(&self) -> &str {
+        "Test capability that depends on overlay_echo."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn dependencies(&self) -> Vec<&'static str> {
+        vec!["overlay_echo"]
+    }
 }
 
 fn harness(harness_id: HarnessId) -> Harness {
@@ -302,6 +371,31 @@ fn session(session_id: SessionId, harness_id: HarnessId) -> Session {
     }
 }
 
+fn agent(agent_id: AgentId, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
+    Agent {
+        public_id: agent_id,
+        internal_id: Uuid::nil(),
+        name: "test-agent".into(),
+        display_name: Some("Test Agent".into()),
+        description: None,
+        system_prompt: "Use tools when needed.".into(),
+        default_model_id: None,
+        tags: vec![],
+        capabilities,
+        initial_files: vec![],
+        network_access: None,
+        max_iterations: Some(8),
+        tools: vec![],
+        mcp_servers: Default::default(),
+        status: AgentStatus::Active,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        archived_at: None,
+        deleted_at: None,
+        usage: None,
+    }
+}
+
 fn turn_state(session_id: SessionId, harness_id: HarnessId) -> RuntimeTurnState {
     RuntimeTurnState {
         org_id: 1,
@@ -331,6 +425,43 @@ fn mock_host() -> MockHostAdapter {
         file_store: Arc::new(InMemorySessionFileStore::new()),
         memory_store: None,
     }
+}
+
+async fn set_default_model(adapter: &MockHostAdapter) {
+    adapter
+        .provider_store
+        .set_default_model(ModelWithProvider {
+            model: "llmsim-model".into(),
+            provider_type: LlmProviderType::LlmSim,
+            api_key: None,
+            base_url: None,
+        })
+        .await;
+}
+
+async fn reason_tool_definitions(
+    adapter: &MockHostAdapter,
+    session_id: SessionId,
+    harness_id: HarnessId,
+    agent_id: Option<AgentId>,
+) -> Vec<everruns_core::ToolDefinition> {
+    inspect_turn_context(
+        adapter.harness_store.as_ref(),
+        adapter.agent_store.as_ref(),
+        adapter.session_store.as_ref(),
+        adapter.message_store.as_ref(),
+        adapter.provider_store.as_ref(),
+        &adapter.capability_registry,
+        session_id,
+        harness_id,
+        agent_id,
+        &[],
+        Some(adapter.file_store.clone()),
+    )
+    .await
+    .expect("reason context")
+    .runtime_agent
+    .tools
 }
 
 #[tokio::test]
@@ -428,6 +559,205 @@ async fn act_activity_executes_capability_tools_from_harness_registry() {
     assert_eq!(result.success_count, 1);
     assert_eq!(result.error_count, 0);
     assert_eq!(result.results.len(), 1);
+}
+
+#[tokio::test]
+async fn act_activity_agent_session_executes_harness_overlay_tools_from_reason_path() {
+    let mut adapter = mock_host();
+    adapter.capability_registry.register(OverlayEchoCapability);
+    set_default_model(&adapter).await;
+
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let agent_id = AgentId::from_uuid(Uuid::now_v7());
+    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
+
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![AgentCapabilityConfig::new("overlay_echo")],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
+    adapter
+        .session_store
+        .insert(Session {
+            agent_id: Some(agent_id),
+            ..session(session_id, harness_id)
+        })
+        .await;
+
+    let result = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(
+                session_id,
+                TurnId::from_uuid(Uuid::now_v7()),
+                input_message_id,
+            ),
+            harness_id,
+            agent_id: Some(agent_id),
+            tool_calls: vec![ToolCall {
+                id: "call_overlay_echo".into(),
+                name: "overlay_echo".into(),
+                arguments: json!({"value": "merged"}),
+            }],
+            tool_definitions: reason_tool_definitions(
+                &adapter,
+                session_id,
+                harness_id,
+                Some(agent_id),
+            )
+            .await,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.success_count, 1);
+    assert_eq!(result.error_count, 0);
+    assert_eq!(
+        result.results[0].result.result.as_ref().unwrap()["value"],
+        "merged"
+    );
+}
+
+#[tokio::test]
+async fn act_activity_agent_session_resolves_transitive_overlay_capabilities() {
+    let mut adapter = mock_host();
+    adapter.capability_registry.register(OverlayEchoCapability);
+    adapter.capability_registry.register(OverlayAliasCapability);
+    set_default_model(&adapter).await;
+
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let agent_id = AgentId::from_uuid(Uuid::now_v7());
+    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
+
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![AgentCapabilityConfig::new("overlay_alias")],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
+    adapter
+        .session_store
+        .insert(Session {
+            agent_id: Some(agent_id),
+            ..session(session_id, harness_id)
+        })
+        .await;
+
+    let result = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(
+                session_id,
+                TurnId::from_uuid(Uuid::now_v7()),
+                input_message_id,
+            ),
+            harness_id,
+            agent_id: Some(agent_id),
+            tool_calls: vec![ToolCall {
+                id: "call_overlay_dep".into(),
+                name: "overlay_echo".into(),
+                arguments: json!({"value": "dependency"}),
+            }],
+            tool_definitions: reason_tool_definitions(
+                &adapter,
+                session_id,
+                harness_id,
+                Some(agent_id),
+            )
+            .await,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.success_count, 1);
+    assert_eq!(result.error_count, 0);
+    assert_eq!(
+        result.results[0].result.result.as_ref().unwrap()["value"],
+        "dependency"
+    );
+}
+
+#[tokio::test]
+async fn act_activity_agent_session_runs_post_tool_hooks_from_merged_overlay() {
+    let mut adapter = mock_host();
+    adapter.capability_registry.register(OverlayEchoCapability);
+    set_default_model(&adapter).await;
+
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let agent_id = AgentId::from_uuid(Uuid::now_v7());
+    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
+
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![AgentCapabilityConfig::new("overlay_echo")],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
+    adapter
+        .session_store
+        .insert(Session {
+            agent_id: Some(agent_id),
+            ..session(session_id, harness_id)
+        })
+        .await;
+
+    let result = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(
+                session_id,
+                TurnId::from_uuid(Uuid::now_v7()),
+                input_message_id,
+            ),
+            harness_id,
+            agent_id: Some(agent_id),
+            tool_calls: vec![ToolCall {
+                id: "call_overlay_hook".into(),
+                name: "overlay_echo".into(),
+                arguments: json!({"value": "hook"}),
+            }],
+            tool_definitions: reason_tool_definitions(
+                &adapter,
+                session_id,
+                harness_id,
+                Some(agent_id),
+            )
+            .await,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.success_count, 1);
+    assert_eq!(result.error_count, 0);
+    assert_eq!(
+        result.results[0].result.result.as_ref().unwrap()["hooked"],
+        true
+    );
 }
 
 #[tokio::test]

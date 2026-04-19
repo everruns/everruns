@@ -7,6 +7,7 @@ use everruns_core::atoms::{
     ActAtom, ActInput, ActResult, Atom, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
     ReasonInput, ReasonResult,
 };
+use everruns_core::capabilities::{SystemPromptContext, collect_capabilities_with_configs};
 use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     TurnCompletedData, TurnFailedData, TurnStartedData,
@@ -24,7 +25,7 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     Agent, CapabilityRegistry, DependencyBlocker, DriverRegistry, Harness, Session, TokenUsage,
-    ToolDefinition, ToolRegistry, org_public_id_from_internal,
+    ToolDefinition, ToolRegistry, org_public_id_from_internal, resolve_runtime_capabilities,
 };
 use std::sync::Arc;
 use tracing::warn;
@@ -184,18 +185,6 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     fn driver_registry(&self) -> DriverRegistry;
 
-    async fn build_tool_registry_for_agent(
-        &self,
-        org_id: i64,
-        agent_id: AgentId,
-    ) -> everruns_core::error::Result<ToolRegistry>;
-
-    async fn build_tool_registry_for_harness(
-        &self,
-        org_id: i64,
-        harness_id: HarnessId,
-    ) -> everruns_core::error::Result<ToolRegistry>;
-
     fn harness_store(&self, org_id: i64) -> Arc<dyn HarnessStore>;
 
     fn agent_store(&self, org_id: i64) -> Arc<dyn AgentStore>;
@@ -263,72 +252,104 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     ) -> Option<Arc<dyn BudgetChecker>> {
         None
     }
+}
 
-    async fn build_tool_registry(
-        &self,
-        org_id: i64,
-        harness_id: HarnessId,
-        agent_id: Option<AgentId>,
-        blueprint_id: Option<&str>,
-    ) -> everruns_core::error::Result<ToolRegistry> {
-        if let Some(blueprint_id) = blueprint_id {
-            let mut registry = ToolRegistry::with_defaults();
-            let capability_registry = self.capability_registry();
-            let blueprint = capability_registry.blueprint(blueprint_id).ok_or_else(|| {
-                everruns_core::error::AgentLoopError::config(format!(
-                    "Blueprint \"{blueprint_id}\" not found in registry"
-                ))
-            })?;
-            for tool in blueprint.tools {
-                registry.register_boxed(tool);
-            }
-            return Ok(registry);
-        }
+struct RuntimeExecutionCapabilities {
+    tool_registry: ToolRegistry,
+    post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>>,
+}
 
-        match agent_id {
-            Some(agent_id) => self.build_tool_registry_for_agent(org_id, agent_id).await,
-            None => {
-                self.build_tool_registry_for_harness(org_id, harness_id)
-                    .await
-            }
+async fn load_execution_capabilities<A: RuntimeHostAdapter>(
+    adapter: &A,
+    org_id: i64,
+    session_id: SessionId,
+    harness_id: HarnessId,
+    agent_id: Option<AgentId>,
+    locale: Option<String>,
+    blueprint_id: Option<&str>,
+) -> everruns_core::error::Result<RuntimeExecutionCapabilities> {
+    let capability_registry = adapter.capability_registry();
+    if let Some(blueprint_id) = blueprint_id {
+        let mut registry = ToolRegistry::with_defaults();
+        let blueprint = capability_registry.blueprint(blueprint_id).ok_or_else(|| {
+            everruns_core::error::AgentLoopError::config(format!(
+                "Blueprint \"{blueprint_id}\" not found in registry"
+            ))
+        })?;
+        for tool in blueprint.tools {
+            registry.register_boxed(tool);
         }
+        return Ok(RuntimeExecutionCapabilities {
+            tool_registry: registry,
+            post_tool_hooks: Vec::new(),
+        });
     }
 
-    async fn post_tool_hooks(
-        &self,
-        org_id: i64,
-        harness_id: HarnessId,
-        agent_id: Option<AgentId>,
-        blueprint_id: Option<&str>,
-    ) -> everruns_core::error::Result<Vec<Arc<dyn everruns_core::PostToolExecHook>>> {
-        if blueprint_id.is_some() {
-            return Ok(Vec::new());
-        }
-
-        let capability_registry = self.capability_registry();
-        let capability_configs = match agent_id {
-            Some(agent_id) => self
-                .get_agent(org_id, agent_id)
-                .await?
-                .map(|agent| agent.capabilities)
-                .unwrap_or_default(),
-            None => self
-                .get_harness(org_id, harness_id)
-                .await?
-                .map(|harness| harness.capabilities)
-                .unwrap_or_default(),
-        };
-
-        Ok(capability_configs
-            .iter()
-            .flat_map(|config| {
-                capability_registry
-                    .get(config.capability_id())
-                    .map(|capability| capability.post_tool_exec_hooks())
-                    .unwrap_or_default()
-            })
-            .collect())
+    let harness_chain = adapter
+        .harness_store(org_id)
+        .get_harness_chain(harness_id)
+        .await?;
+    if harness_chain.is_empty() {
+        return Err(everruns_core::error::AgentLoopError::harness_not_found(
+            harness_id,
+        ));
     }
+
+    let session = adapter
+        .session_store(org_id)
+        .get_session(session_id)
+        .await?
+        .ok_or_else(|| everruns_core::error::AgentLoopError::session_not_found(session_id))?;
+
+    let agent_store = adapter.agent_store(org_id);
+    let agent = match agent_id {
+        Some(agent_id) => Some(
+            agent_store
+                .get_agent(agent_id)
+                .await?
+                .ok_or_else(|| everruns_core::error::AgentLoopError::agent_not_found(agent_id))?,
+        ),
+        None => None,
+    };
+
+    let resolved = resolve_runtime_capabilities(
+        &harness_chain,
+        agent.as_ref(),
+        &session,
+        &capability_registry,
+    );
+    let prompt_ctx = SystemPromptContext {
+        session_id,
+        locale: locale.or(session.locale.clone()),
+        file_store: Some(adapter.file_store()),
+    };
+    let collected = collect_capabilities_with_configs(
+        &resolved.resolved_capability_configs,
+        &capability_registry,
+        &prompt_ctx,
+    )
+    .await;
+
+    let mut registry = ToolRegistry::with_defaults();
+    for tool in collected.tools {
+        registry.register_boxed(tool);
+    }
+
+    let post_tool_hooks = resolved
+        .resolved_capability_configs
+        .iter()
+        .flat_map(|config| {
+            capability_registry
+                .get(config.capability_id())
+                .map(|capability| capability.post_tool_exec_hooks())
+                .unwrap_or_default()
+        })
+        .collect();
+
+    Ok(RuntimeExecutionCapabilities {
+        tool_registry: registry,
+        post_tool_hooks,
+    })
 }
 
 /// Shared lifecycle helper for runtime-backed hosts.
@@ -657,14 +678,17 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         });
     }
 
-    let tool_registry = adapter
-        .build_tool_registry(
-            org_id,
-            input.harness_id,
-            input.agent_id,
-            input.blueprint_id.as_deref(),
-        )
-        .await?;
+    let execution_capabilities = load_execution_capabilities(
+        adapter,
+        org_id,
+        input.context.session_id,
+        input.harness_id,
+        input.agent_id,
+        input.locale.clone(),
+        input.blueprint_id.as_deref(),
+    )
+    .await?;
+    let tool_registry = execution_capabilities.tool_registry;
     let builtin_tool_registry = Arc::new(tool_registry.clone());
 
     let mut atom = ActAtom::with_file_store(
@@ -682,16 +706,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             .expect("internal org id converts to valid public org id"),
     )
     .with_capability_registry(adapter.capability_registry())
-    .with_post_tool_hooks(
-        adapter
-            .post_tool_hooks(
-                org_id,
-                input.harness_id,
-                input.agent_id,
-                input.blueprint_id.as_deref(),
-            )
-            .await?,
-    );
+    .with_post_tool_hooks(execution_capabilities.post_tool_hooks);
 
     if let Some(storage_store) = adapter.storage_store() {
         atom = atom.with_storage_store(storage_store);

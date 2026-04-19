@@ -8,10 +8,7 @@
 
 use async_trait::async_trait;
 use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
-use everruns_core::capabilities::{
-    AgentCapabilityConfig, CapabilityRegistry, SystemPromptContext, collect_capabilities,
-    is_mcp_capability,
-};
+use everruns_core::capabilities::{AgentCapabilityConfig, CapabilityRegistry};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
@@ -22,7 +19,7 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EventData, Harness, HarnessStatus,
-    LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition, ToolRegistry,
+    LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition,
     ToolResultContentPart, merge_harness,
 };
 use everruns_worker::mcp_executor::McpServerInfo;
@@ -1425,31 +1422,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
             })?
             .is_some())
     }
-
-    async fn build_tool_registry(&self, org_id: i64, agent_id: Uuid) -> Result<ToolRegistry> {
-        // Resolve public UUID → internal UUID for capability lookup (org-scoped)
-        let public_id = AgentId::from_uuid(agent_id).to_string();
-        let capability_rows = match self
-            .db
-            .get_agent_by_public_id(org_id, &public_id)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to resolve agent: {}", e);
-                store_error("Failed to resolve agent")
-            })? {
-            Some(row) => self
-                .db
-                .get_agent_capabilities(row.id.uuid())
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to get agent capabilities: {}", e);
-                    store_error("Failed to get agent capabilities")
-                })?,
-            None => vec![],
-        };
-        self.build_tool_registry_with_capabilities(&capability_rows)
-            .await
-    }
 }
 
 impl DirectWorkerAdapters {
@@ -1569,39 +1541,6 @@ impl DirectWorkerAdapters {
             deleted_at: r.deleted_at,
             usage: None,
         }
-    }
-
-    /// Build a tool registry from pre-loaded capability rows.
-    ///
-    /// Shared logic for `build_tool_registry` (standalone, loads its own rows)
-    /// and `load_turn_context` (passes pre-loaded rows).
-    async fn build_tool_registry_with_capabilities(
-        &self,
-        capability_rows: &[AgentCapabilityRow],
-    ) -> Result<ToolRegistry> {
-        let mut registry = ToolRegistry::with_defaults();
-
-        let builtin_cap_ids: Vec<String> = capability_rows
-            .iter()
-            .map(|r| r.capability_id.clone())
-            .filter(|id| !is_mcp_capability(id))
-            .collect();
-
-        if !builtin_cap_ids.is_empty() {
-            let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
-            let collected =
-                collect_capabilities(&builtin_cap_ids, &self.capability_registry, &ctx).await;
-            for tool in collected.tools {
-                registry.register_boxed(tool);
-            }
-            tracing::debug!(
-                capability_count = builtin_cap_ids.len(),
-                tool_count = collected.tool_definitions.len(),
-                "Registered capability tools"
-            );
-        }
-
-        Ok(registry)
     }
 
     /// Build MCP tool definitions from pre-loaded capability rows.
@@ -2627,18 +2566,6 @@ mod tests {
             .expect("agent should exist");
 
         assert_eq!(agent.name, "test-agent");
-    }
-
-    #[tokio::test]
-    async fn build_tool_registry_with_empty_capabilities() {
-        let adapters = test_adapters();
-        let registry = adapters
-            .build_tool_registry_with_capabilities(&[])
-            .await
-            .unwrap();
-        // Default registry has built-in tools; verify it returns a valid
-        // registry without panicking.
-        assert!(!registry.is_empty());
     }
 
     #[tokio::test]
