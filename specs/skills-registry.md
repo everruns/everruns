@@ -322,6 +322,12 @@ When the agent calls `activate_skill`:
 3. Agent uses the loaded instructions to perform the task
 4. For archive-based skills, file paths in instructions can be resolved via additional tool calls
 
+#### Idempotence
+
+`activate_skill` is idempotent within a session. The first successful activation is recorded in the session resource registry under `resource_id = "skill_activation:{name}"` with the tool result stored as metadata. Subsequent calls for the same skill short-circuit and return the cached result with an extra `already_active: true` flag — no VFS re-read, no re-parse, no re-mount. This keeps the handle contract stable across retries and planner loops that re-emit the same activation.
+
+Fallback: when the runtime does not wire a session resource registry into the tool context (embedded callers, unit tests), `activate_skill` skips the cache and re-executes normally. The user-visible semantics are unchanged; only the "already active" signal is suppressed.
+
 ### Bundled File Access via VFS Mounting
 
 For archive-based skills, extracted files are mounted into the session's virtual filesystem when the skill is activated. This reuses the existing `MountPoint` / `MountSource` system that capabilities already use.
