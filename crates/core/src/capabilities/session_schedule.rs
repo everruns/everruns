@@ -383,6 +383,10 @@ mod tests {
             let schedule = SessionSchedule {
                 id: ScheduleId::new(),
                 session_id,
+                owner_principal_id: crate::PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                owner: None,
+                effective_owner: None,
                 description,
                 schedule_type: SessionSchedule::derive_type(&cron_expression),
                 cron_expression,

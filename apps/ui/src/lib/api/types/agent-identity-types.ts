@@ -1,3 +1,5 @@
+import type { PrincipalSummary } from "./common-types";
+
 // Agent Identity types
 
 export type AgentIdentityStatus = "active" | "archived" | "deleted";
@@ -9,6 +11,8 @@ export interface AgentIdentity {
   avatar_url?: string | null;
   locale?: string | null;
   timezone?: string | null;
+  principal?: PrincipalSummary | null;
+  effective_owner?: PrincipalSummary | null;
   status: AgentIdentityStatus;
   created_at: string;
   updated_at: string;

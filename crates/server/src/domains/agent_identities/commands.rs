@@ -10,7 +10,8 @@ use super::types::{
 };
 use super::{AGENT_IDENTITY_DANGEROUS, AGENT_IDENTITY_MANAGE, AGENT_IDENTITY_VIEW};
 use crate::domains::common::*;
-use everruns_core::{AgentIdentity, AgentIdentityId, Policy};
+use crate::services::PrincipalService;
+use everruns_core::{AgentIdentity, AgentIdentityId, Policy, PrincipalStatus};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -70,8 +71,18 @@ impl Command for CreateAgentIdentity {
             })
             .await
             .map_err(classify_anyhow)?;
+        let parent = PrincipalService::new(ctx.db.clone())
+            .default_owner_principal(&ctx.caller, None)
+            .await
+            .map_err(classify_anyhow)?;
+        PrincipalService::new(ctx.db.clone())
+            .ensure_agent_identity_principal(ctx.org_id(), row.id, parent.id)
+            .await
+            .map_err(classify_anyhow)?;
 
-        Ok(q::row_to_identity(row))
+        q::row_to_identity(&ctx.db, ctx.org_id(), row)
+            .await
+            .map_err(classify_anyhow)
     }
 }
 
@@ -112,7 +123,15 @@ impl Command for ListAgentIdentities {
             .list_agent_identities(ctx.org_id(), self.search.as_deref(), self.include_archived)
             .await
             .map_err(classify_anyhow)?;
-        Ok(rows.into_iter().map(q::row_to_identity).collect())
+        let mut identities = Vec::with_capacity(rows.len());
+        for row in rows {
+            identities.push(
+                q::row_to_identity(&ctx.db, ctx.org_id(), row)
+                    .await
+                    .map_err(classify_anyhow)?,
+            );
+        }
+        Ok(identities)
     }
 }
 
@@ -231,8 +250,31 @@ impl Command for UpdateAgentIdentityCmd {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Agent identity"))?;
+        let principal_service = PrincipalService::new(ctx.db.clone());
+        let parent = match ctx
+            .db
+            .get_principal_by_subject(ctx.org_id(), "agent_identity", row.id.uuid())
+            .await
+            .map_err(classify_anyhow)?
+            .and_then(|principal| principal.parent_principal_id)
+        {
+            Some(parent_id) => parent_id,
+            None => {
+                principal_service
+                    .default_owner_principal(&ctx.caller, None)
+                    .await
+                    .map_err(classify_anyhow)?
+                    .id
+            }
+        };
+        principal_service
+            .ensure_agent_identity_principal(ctx.org_id(), row.id, parent)
+            .await
+            .map_err(classify_anyhow)?;
 
-        Ok(q::row_to_identity(row))
+        q::row_to_identity(&ctx.db, ctx.org_id(), row)
+            .await
+            .map_err(classify_anyhow)
     }
 }
 
@@ -282,6 +324,10 @@ impl Command for DeleteAgentIdentity {
             .map_err(classify_anyhow)?;
 
         if deleted {
+            PrincipalService::new(ctx.db.clone())
+                .sync_agent_identity_status(ctx.org_id(), identity_id, PrincipalStatus::Archived)
+                .await
+                .map_err(classify_anyhow)?;
             Ok(serde_json::json!({"deleted": true}))
         } else {
             Err(CommandError::not_found("Agent identity"))
@@ -335,6 +381,10 @@ impl Command for DestroyAgentIdentity {
             .map_err(classify_anyhow)?;
 
         if destroyed {
+            PrincipalService::new(ctx.db.clone())
+                .sync_agent_identity_status(ctx.org_id(), identity_id, PrincipalStatus::Deleted)
+                .await
+                .map_err(classify_anyhow)?;
             Ok(serde_json::json!({"destroyed": true}))
         } else {
             Err(CommandError::not_found("Agent identity"))

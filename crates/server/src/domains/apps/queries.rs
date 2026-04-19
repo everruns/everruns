@@ -2,6 +2,7 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
+use crate::services::row_to_principal;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use crate::storage::models::UpdateAppChannel;
@@ -172,6 +173,37 @@ pub async fn row_to_app(
             .map(|ch| channel_row_to_channel(encryption, ch))
             .collect()
     };
+    let owner = match db.get_principal(org_id, row.owner_principal_id).await {
+        Ok(row) => row
+            .map(row_to_principal)
+            .map(|principal| principal.summary()),
+        Err(err) => {
+            tracing::warn!(
+                app_id = %row.public_id,
+                owner_principal_id = %row.owner_principal_id,
+                error = %err,
+                "Failed to load app owner principal summary"
+            );
+            None
+        }
+    };
+    let effective_owner = match row.resolved_owner_user_id {
+        Some(user_id) => match db.get_principal_by_subject(org_id, "user", user_id).await {
+            Ok(row) => row
+                .map(row_to_principal)
+                .map(|principal| principal.summary()),
+            Err(err) => {
+                tracing::warn!(
+                    app_id = %row.public_id,
+                    resolved_owner_user_id = %user_id,
+                    error = %err,
+                    "Failed to load app effective owner summary"
+                );
+                None
+            }
+        },
+        None => None,
+    };
 
     App {
         public_id,
@@ -182,6 +214,10 @@ pub async fn row_to_app(
         harness_id,
         agent_id,
         agent_identity_id: row.agent_identity_id.map(AgentIdentityId::from_uuid),
+        owner_principal_id: row.owner_principal_id,
+        resolved_owner_user_id: row.resolved_owner_user_id,
+        owner,
+        effective_owner,
         channels,
         status: AppStatus::from(row.status.as_str()),
         published_at: row.published_at,

@@ -20,8 +20,8 @@ impl Database {
 
         let row = sqlx::query_as::<_, SessionScheduleRow>(
             r#"
-            INSERT INTO session_schedules (id, public_id, org_id, session_id, description, cron_expression, scheduled_at, timezone, next_trigger_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            INSERT INTO session_schedules (id, public_id, org_id, session_id, owner_principal_id, resolved_owner_user_id, description, cron_expression, scheduled_at, timezone, next_trigger_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *
             "#,
         )
@@ -29,6 +29,8 @@ impl Database {
         .bind(&public_id)
         .bind(input.org_id)
         .bind(input.session_id)
+        .bind(input.owner_principal_id)
+        .bind(input.resolved_owner_user_id)
         .bind(&input.description)
         .bind(&input.cron_expression)
         .bind(input.scheduled_at)

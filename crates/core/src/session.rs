@@ -10,8 +10,9 @@ use crate::capability_types::AgentCapabilityConfig;
 use crate::events::TokenUsage;
 use crate::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use crate::network_access::NetworkAccessList;
+use crate::principal::PrincipalSummary;
 use crate::tool_types::ToolDefinition;
-use crate::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId, SessionId};
+use crate::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId, PrincipalId, SessionId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -126,6 +127,18 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001"))]
     pub agent_identity_id: Option<AgentIdentityId>,
+    /// Owning principal for this session.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "principal_01933b5a000070008000000000000001"))]
+    pub owner_principal_id: PrincipalId,
+    /// Denormalized effective human owner of the owning principal lineage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_owner_user_id: Option<uuid::Uuid>,
+    /// Owning principal summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<PrincipalSummary>,
+    /// Effective human owner summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_owner: Option<PrincipalSummary>,
     /// Human-readable title for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,

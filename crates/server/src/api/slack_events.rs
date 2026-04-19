@@ -732,6 +732,7 @@ async fn process_slack_message(
                 session_id: session.id.uuid(),
                 event_metadata: Some(execution_metadata::app_message_metadata(
                     app.public_id,
+                    app.owner_principal_id,
                     app.agent_identity_id,
                 )),
                 request_id,
@@ -1912,6 +1913,10 @@ mod tests {
             harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
             agent_id: AgentId::from_uuid(uuid::Uuid::nil()),
             agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            owner: None,
+            effective_owner: None,
             channels: vec![AppChannel {
                 public_id: AppChannelId::from_uuid(uuid::Uuid::nil()),
                 internal_id: uuid::Uuid::nil(),
@@ -2272,6 +2277,8 @@ mod tests {
                 uuid::Uuid::nil(),
             )),
             agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
             title: Some("test".to_string()),
             locale: None,
             tags: vec![],

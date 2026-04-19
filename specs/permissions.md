@@ -71,6 +71,15 @@ Built-in OSS auth preserves previous behavior by deriving `is_platform_user` fro
 
 Services receive a `Caller` context (replacing raw `org_id`). Policy checks happen at the start of each service method. See `crates/core/src/permissions.rs` for the `Caller` struct definition.
 
+### Durable Ownership
+
+Policy evaluation and durable ownership are separate concerns.
+
+- `Caller.user_id` is request-time auth context.
+- Durable resources use `owner_principal_id` to capture who owns the resource over time.
+- Ownership resolution is principal-based, not direct-user-based: `agent_identity` and `system` principals must resolve through lineage to an effective human owner when the resource is user-scoped.
+- Ownership transfer is entity-scoped. Updating a resident `agent_identity_id` must not silently transfer the effective human owner.
+
 ### Policy Evaluation
 
 See `crates/core/src/permissions.rs` for evaluation logic. Policies support both default and custom resolvers via `evaluate()` / `evaluate_with()`. Config endpoints can use `evaluate_policies_with(resolver, caller, policies)` when they need policy results derived from a custom resolver instead of the default role map.

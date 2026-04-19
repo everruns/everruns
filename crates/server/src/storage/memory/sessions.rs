@@ -22,6 +22,8 @@ impl InMemoryDatabase {
             harness_id: input.harness_id,
             agent_id: input.agent_id,
             agent_identity_id: input.agent_identity_id,
+            owner_principal_id: input.owner_principal_id,
+            resolved_owner_user_id: input.resolved_owner_user_id,
             title: input.title,
             locale: input.locale,
             tags: input.tags,
@@ -210,6 +212,12 @@ impl InMemoryDatabase {
             input
                 .agent_identity_id
                 .apply(&mut session.agent_identity_id);
+            if let Some(owner_principal_id) = input.owner_principal_id {
+                session.owner_principal_id = owner_principal_id;
+            }
+            input
+                .resolved_owner_user_id
+                .apply(&mut session.resolved_owner_user_id);
             if let Some(locale) = input.locale {
                 session.locale = Some(locale);
             }

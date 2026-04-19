@@ -24,6 +24,8 @@ impl InMemoryDatabase {
             public_id,
             org_id: input.org_id,
             session_id: input.session_id,
+            owner_principal_id: input.owner_principal_id,
+            resolved_owner_user_id: input.resolved_owner_user_id,
             description: input.description,
             cron_expression: input.cron_expression,
             scheduled_at: input.scheduled_at,

@@ -315,6 +315,13 @@ impl IdMarker for AgentIdentityIdMarker {
     const PREFIX: &'static str = "identity";
 }
 
+/// Marker for principal IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PrincipalIdMarker;
+impl IdMarker for PrincipalIdMarker {
+    const PREFIX: &'static str = "principal";
+}
+
 /// Marker for Session IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SessionIdMarker;
@@ -488,6 +495,8 @@ pub type AgentId = TypedId<AgentIdMarker>;
 pub type HarnessId = TypedId<HarnessIdMarker>;
 /// Agent identity ID
 pub type AgentIdentityId = TypedId<AgentIdentityIdMarker>;
+/// Principal ID
+pub type PrincipalId = TypedId<PrincipalIdMarker>;
 /// Session ID
 pub type SessionId = TypedId<SessionIdMarker>;
 /// Message ID

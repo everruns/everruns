@@ -23,7 +23,7 @@ use everruns_core::memory::{
 use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{Session, SessionStatus};
 use everruns_core::traits::{ModelWithProvider, NoopEventEmitter};
-use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
+use everruns_core::typed_id::{HarnessId, MessageId, PrincipalId, SessionId, TurnId};
 use everruns_core::{Message, ToolCall};
 use futures::stream;
 use serde_json::json;
@@ -108,6 +108,10 @@ async fn setup_test_environment() -> (
         harness_id,
         agent_id: Some(agent_id.into()),
         agent_identity_id: None,
+        owner_principal_id: PrincipalId::from_seed(1),
+        resolved_owner_user_id: None,
+        owner: None,
+        effective_owner: None,
         title: Some("Test Session".to_string()),
         locale: None,
         preview: None,
@@ -481,6 +485,10 @@ async fn test_reason_atom_with_different_configs() {
         harness_id,
         agent_id: Some(agent_id.into()),
         agent_identity_id: None,
+        owner_principal_id: PrincipalId::from_seed(1),
+        resolved_owner_user_id: None,
+        owner: None,
+        effective_owner: None,
         title: Some("Test Session 2".to_string()),
         locale: None,
         preview: None,
@@ -1995,6 +2003,10 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
                 harness_id,
                 agent_id: Some(agent_id.into()),
                 agent_identity_id: None,
+                owner_principal_id: PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                owner: None,
+                effective_owner: None,
                 title: Some("Test Session".to_string()),
                 locale: None,
                 preview: None,
@@ -2116,6 +2128,10 @@ async fn test_empty_session_system_prompt_is_ignored() {
                 harness_id,
                 agent_id: Some(agent_id.into()),
                 agent_identity_id: None,
+                owner_principal_id: PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                owner: None,
+                effective_owner: None,
                 title: Some("Test Session".to_string()),
                 locale: None,
                 preview: None,

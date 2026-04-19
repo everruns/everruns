@@ -54,6 +54,7 @@ const sampleSessions = {
     organization_id: "org_default",
     harness_id: "harness-default",
     agent_id: "agent-123",
+    owner_principal_id: "principal-123",
     title:
       "Working on implementing user authentication with OAuth 2.0 support for Google and GitHub providers",
     preview:
@@ -79,6 +80,7 @@ const sampleSessions = {
     organization_id: "org_default",
     harness_id: "harness-default",
     agent_id: "agent-123",
+    owner_principal_id: "principal-123",
     title: "Completed code review for the API endpoints",
     preview: "Please review the changes in src/api/routes.ts and check for any issues",
     output_preview:
@@ -102,6 +104,7 @@ const sampleSessions = {
     organization_id: "org_default",
     harness_id: "harness-default",
     agent_id: "agent-123",
+    owner_principal_id: "principal-123",
     title: null,
     preview: null,
     output_preview: null,
@@ -119,6 +122,7 @@ const sampleSessions = {
     organization_id: "org_default",
     harness_id: "harness-default",
     agent_id: "agent-123",
+    owner_principal_id: "principal-123",
     title: null,
     preview: "Help me debug this failing test in the authentication module",
     output_preview:
@@ -142,6 +146,7 @@ const sampleSessions = {
     organization_id: "org_default",
     harness_id: "harness-default",
     agent_id: "agent-123",
+    owner_principal_id: "principal-123",
     title: "Investigating the performance bottleneck in the database query layer",
     preview:
       "I noticed our API is slow when fetching related entities. Can you investigate the database query layer and identify the bottleneck?",

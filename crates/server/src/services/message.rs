@@ -5,8 +5,7 @@
 // - Listing messages by querying message events
 // - Workflow triggering for user messages
 
-use super::EventService;
-use super::NotificationService;
+use super::{EventService, NotificationService, PrincipalService};
 use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
 use crate::execution_metadata;
 use crate::storage::StorageBackend;
@@ -109,9 +108,29 @@ impl MessageService {
         let message_id_typed = MessageId::from_uuid(message_id);
 
         // Emit as typed event using EventService
-        let event_metadata = ctx
-            .event_metadata
-            .or_else(|| execution_metadata::interactive_user_metadata(ctx.user_id));
+        let event_metadata = if let Some(metadata) = ctx.event_metadata {
+            Some(metadata)
+        } else if let Some(user_id) = ctx.user_id {
+            let principal_id = match PrincipalService::new(self.db.clone())
+                .ensure_user_principal(ctx.org_id, user_id)
+                .await
+            {
+                Ok(principal) => Some(principal.id),
+                Err(err) => {
+                    tracing::warn!(
+                        org_id = ctx.org_id,
+                        user_id = %user_id,
+                        session_id = %ctx.session_id,
+                        error = %err,
+                        "Failed to resolve user principal for message metadata"
+                    );
+                    None
+                }
+            };
+            execution_metadata::interactive_user_metadata(Some(user_id), principal_id)
+        } else {
+            None
+        };
         let mut event_request = EventRequest::new(
             session_id_typed,
             EventContext::empty(),

@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, EventId, HarnessId, LeasedResourceId, MessageId, NotificationId,
-    ScheduleId, SessionId,
+    PrincipalId, ScheduleId, SessionId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -133,6 +133,48 @@ impl StorageBackend {
     /// Export all user-owned data as a structured JSON value.
     pub async fn export_user_data(&self, user_id: Uuid) -> Result<Option<serde_json::Value>> {
         dispatch!(self, export_user_data, user_id)
+    }
+
+    // ============================================
+    // Principals
+    // ============================================
+
+    pub async fn create_principal(&self, input: CreatePrincipalRow) -> Result<PrincipalRow> {
+        dispatch!(self, create_principal, input)
+    }
+
+    pub async fn get_principal(
+        &self,
+        org_id: i64,
+        id: PrincipalId,
+    ) -> Result<Option<PrincipalRow>> {
+        dispatch!(self, get_principal, org_id, id)
+    }
+
+    pub async fn get_principal_by_subject(
+        &self,
+        org_id: i64,
+        kind: &str,
+        subject_id: Uuid,
+    ) -> Result<Option<PrincipalRow>> {
+        dispatch!(self, get_principal_by_subject, org_id, kind, subject_id)
+    }
+
+    pub async fn list_principals_by_resolved_user(
+        &self,
+        org_id: i64,
+        user_id: Uuid,
+    ) -> Result<Vec<PrincipalRow>> {
+        dispatch!(self, list_principals_by_resolved_user, org_id, user_id)
+    }
+
+    pub async fn update_principal(
+        &self,
+        org_id: i64,
+        id: PrincipalId,
+        input: UpdatePrincipalRow,
+    ) -> Result<Option<PrincipalRow>> {
+        dispatch!(self, update_principal, org_id, id, input)
     }
 
     // ============================================

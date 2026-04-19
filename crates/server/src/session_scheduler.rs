@@ -151,6 +151,7 @@ async fn poll_and_trigger(
                 )
                 .with_metadata(execution_metadata::scheduled_run_metadata(
                     schedule_id,
+                    session.owner_principal_id,
                     session.agent_identity_id,
                 )),
             )

@@ -1014,6 +1014,17 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         .as_ref()
         .map(|u| proto_uuid_to_uuid(Some(u)))
         .transpose()?;
+    let owner_principal_id = proto_session
+        .owner_principal_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)))
+        .transpose()?
+        .ok_or_else(|| anyhow::anyhow!("Missing owner_principal_id in session proto"))?;
+    let resolved_owner_user_id = proto_session
+        .resolved_owner_user_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)))
+        .transpose()?;
 
     let status = match proto_session.status.to_lowercase().as_str() {
         "started" => everruns_core::SessionStatus::Started,
@@ -1041,6 +1052,10 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         agent_id: agent_id.map(|u| u.into()),
         agent_identity_id: None,
         harness_id: harness_id.into(),
+        owner_principal_id: owner_principal_id.into(),
+        resolved_owner_user_id,
+        owner: None,
+        effective_owner: None,
         title: non_empty_string(proto_session.title),
         locale: non_empty_string(proto_session.locale),
         preview: None,
@@ -2226,6 +2241,12 @@ fn proto_schedule_to_schema(
 
     let id_uuid = proto_uuid_to_uuid(s.id.as_ref())?;
     let session_uuid = proto_uuid_to_uuid(s.session_id.as_ref())?;
+    let owner_principal_uuid = proto_uuid_to_uuid(s.owner_principal_id.as_ref())?;
+    let resolved_owner_user_id = s
+        .resolved_owner_user_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)))
+        .transpose()?;
 
     let schedule_type = match s.schedule_type.as_str() {
         "recurring" => ScheduleType::Recurring,
@@ -2235,6 +2256,10 @@ fn proto_schedule_to_schema(
     Ok(SessionSchedule {
         id: ScheduleId::from_uuid(id_uuid),
         session_id: SessionId::from_uuid(session_uuid),
+        owner_principal_id: everruns_core::PrincipalId::from_uuid(owner_principal_uuid),
+        resolved_owner_user_id,
+        owner: None,
+        effective_owner: None,
         description: s.description,
         cron_expression: s.cron_expression,
         scheduled_at: s.scheduled_at.as_ref().map(proto_timestamp_to_datetime),

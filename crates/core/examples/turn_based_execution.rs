@@ -37,7 +37,7 @@ use everruns_core::{
     },
     session::{Session, SessionStatus},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
-    typed_id::{AgentId, HarnessId, TurnId},
+    typed_id::{AgentId, HarnessId, PrincipalId, TurnId},
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -167,6 +167,10 @@ async fn main() -> anyhow::Result<()> {
         harness_id,
         agent_id: Some(AgentId::from_uuid(agent_id)),
         agent_identity_id: None,
+        owner_principal_id: PrincipalId::from_seed(1),
+        resolved_owner_user_id: None,
+        owner: None,
+        effective_owner: None,
         title: Some("Weather Query".to_string()),
         locale: None,
         preview: None,

@@ -59,6 +59,20 @@ Key design points:
 - Status transitions: `started` → `active` (processing) → `idle` (waiting for input)
 - Sessions work indefinitely — after processing, status returns to `idle`.
 
+### Principal Ownership
+
+Durable ownership is modeled through org-scoped `Principal` records instead of raw user IDs.
+
+See `crates/core/src/principal.rs` for the durable principal type and `crates/server/src/services/principal.rs` for ownership resolution rules.
+
+Key design points:
+- `Principal.kind` is currently `user`, `agent_identity`, or `system`.
+- Principals form a bounded same-org tree. `user` principals resolve to themselves; non-user principals resolve through `parent_principal_id`.
+- First-wave owned entities store `owner_principal_id` plus denormalized `resolved_owner_user_id` for efficient filtering.
+- `Session`, `SessionSchedule`, and `App` expose both the direct owner summary and the effective human owner summary in API responses.
+- Ownership is separate from execution provenance. Event metadata may record who initiated or acted in a turn without changing the durable owner.
+- Reassigning or clearing `agent_identity_id` must preserve the existing effective human owner unless an explicit transfer path says otherwise.
+
 ### Message
 
 Conversation data stored as events in the `events` table. Messages are reconstructed from events when loaded.

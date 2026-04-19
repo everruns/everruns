@@ -4,21 +4,27 @@
 // - Keep provenance in event.metadata so it does not change message payload shape.
 // - Record both initiator and acting_principal, but keep external_actor separate.
 
-use everruns_core::typed_id::{AgentIdentityId, AppId, ScheduleId};
+use everruns_core::typed_id::{AgentIdentityId, AppId, PrincipalId, ScheduleId};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-pub fn interactive_user_metadata(user_id: Option<Uuid>) -> Option<Value> {
+pub fn interactive_user_metadata(
+    user_id: Option<Uuid>,
+    principal_id: Option<PrincipalId>,
+) -> Option<Value> {
     user_id.map(|user_id| {
         json!({
             "initiator": { "type": "user", "user_id": user_id },
             "acting_principal": { "type": "user", "user_id": user_id },
+            "initiator_principal_id": principal_id,
+            "acting_principal_id": principal_id,
         })
     })
 }
 
 pub fn scheduled_run_metadata(
     schedule_id: ScheduleId,
+    owner_principal_id: PrincipalId,
     agent_identity_id: Option<AgentIdentityId>,
 ) -> Value {
     let acting_principal = agent_identity_id
@@ -27,15 +33,23 @@ pub fn scheduled_run_metadata(
     json!({
         "initiator": { "type": "schedule", "schedule_id": schedule_id },
         "acting_principal": acting_principal,
+        "initiator_principal_id": owner_principal_id,
+        "acting_principal_id": owner_principal_id,
     })
 }
 
-pub fn app_message_metadata(app_id: AppId, agent_identity_id: Option<AgentIdentityId>) -> Value {
+pub fn app_message_metadata(
+    app_id: AppId,
+    owner_principal_id: PrincipalId,
+    agent_identity_id: Option<AgentIdentityId>,
+) -> Value {
     let acting_principal = agent_identity_id
         .map(|identity_id| json!({ "type": "agent_identity", "agent_identity_id": identity_id }))
         .unwrap_or_else(|| json!({ "type": "app", "app_id": app_id }));
     json!({
         "initiator": { "type": "app", "app_id": app_id },
         "acting_principal": acting_principal,
+        "initiator_principal_id": owner_principal_id,
+        "acting_principal_id": owner_principal_id,
     })
 }

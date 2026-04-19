@@ -417,6 +417,11 @@ pub fn proto_session_to_schema(
         .default_model_id
         .as_ref()
         .map(|u| format!("model_{}", u.value.replace("-", "")));
+    let owner_principal_id_str = value
+        .owner_principal_id
+        .as_ref()
+        .map(|u| format!("principal_{}", u.value.replace("-", "")))
+        .ok_or(ConversionError::MissingField("owner_principal_id"))?;
 
     let capabilities: Vec<serde_json::Value> = value
         .capabilities
@@ -429,6 +434,13 @@ pub fn proto_session_to_schema(
         "organization_id": value.organization_id,
         "harness_id": harness_id_str,
         "agent_id": agent_id_str,
+        "owner_principal_id": owner_principal_id_str,
+        "resolved_owner_user_id": value
+            .resolved_owner_user_id
+            .as_ref()
+            .map(|u| u.value.clone()),
+        "owner": Option::<serde_json::Value>::None,
+        "effective_owner": Option::<serde_json::Value>::None,
         "title": if value.title.is_empty() { None } else { Some(&value.title) },
         "locale": if value.locale.is_empty() { None } else { Some(&value.locale) },
         "tags": tags,
@@ -463,6 +475,8 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
             .collect(),
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
         tags: value.tags.clone(),
+        owner_principal_id: Some(uuid_to_proto_uuid(value.owner_principal_id.uuid())),
+        resolved_owner_user_id: value.resolved_owner_user_id.map(uuid_to_proto_uuid),
         hints: value.hints.as_ref().map(|h| {
             let json = serde_json::to_value(h).unwrap_or_default();
             json_to_proto_struct(&json)
@@ -1360,6 +1374,10 @@ mod tests {
             harness_id: everruns_core::HarnessId::new(),
             agent_id: None,
             agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            owner: None,
+            effective_owner: None,
             title: Some("Test Session".to_string()),
             locale: None,
             preview: None,
@@ -1408,6 +1426,10 @@ mod tests {
         );
         assert_eq!(schema_session.id, session.id);
         assert_eq!(schema_session.harness_id, session.harness_id);
+        assert_eq!(
+            schema_session.owner_principal_id,
+            session.owner_principal_id
+        );
         assert_eq!(
             schema_session.tags,
             vec!["slack:thread:123.456".to_string()]

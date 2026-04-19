@@ -15,12 +15,16 @@ jest.mock("next/link", () => ({
 // Mock data
 const mockSession: Session = {
   id: "session-1",
+  organization_id: "org_default",
+  harness_id: "harness-default",
   agent_id: "agent-1",
+  owner_principal_id: "principal-1",
   title: "Test Session",
   tags: [],
   model_id: "model-1",
   status: "idle",
   created_at: "2025-01-01T00:00:00Z",
+  updated_at: "2025-01-01T00:00:02Z",
   started_at: "2025-01-01T00:00:01Z",
   finished_at: null,
 };

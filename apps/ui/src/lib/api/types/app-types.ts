@@ -1,5 +1,7 @@
 // App types (deployable agent+harness bundles with multi-channel support)
 
+import type { PrincipalSummary } from "./common-types";
+
 export type AppStatus = "draft" | "published" | "archived" | "deleted";
 export type ChannelType = "slack" | "ag_ui";
 export type SessionStrategy = "per_thread" | "per_channel" | "per_user";
@@ -36,6 +38,10 @@ export interface App {
   harness_id: string;
   agent_id: string;
   agent_identity_id?: string | null;
+  owner_principal_id: string;
+  resolved_owner_user_id?: string | null;
+  owner?: PrincipalSummary | null;
+  effective_owner?: PrincipalSummary | null;
   channels: AppChannel[];
   status: AppStatus;
   published_at: string | null;

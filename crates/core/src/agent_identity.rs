@@ -8,6 +8,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::principal::PrincipalSummary;
 use crate::typed_id::AgentIdentityId;
 
 #[cfg(feature = "openapi")]
@@ -56,6 +57,12 @@ pub struct AgentIdentity {
     /// Optional description shown in management UI.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Principal row representing this identity as a durable owner/executor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub principal: Option<PrincipalSummary>,
+    /// Effective human owner summary derived from the principal lineage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_owner: Option<PrincipalSummary>,
     /// Optional avatar URL for UI surfaces.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,

@@ -14,7 +14,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId};
+use crate::principal::PrincipalSummary;
+use crate::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, PrincipalId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -115,6 +116,18 @@ pub struct App {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001"))]
     pub agent_identity_id: Option<AgentIdentityId>,
+    /// Owning principal for this app.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "principal_01933b5a000070008000000000000001"))]
+    pub owner_principal_id: PrincipalId,
+    /// Denormalized effective human owner of the owning principal lineage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_owner_user_id: Option<Uuid>,
+    /// Owning principal summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<PrincipalSummary>,
+    /// Effective human owner summary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_owner: Option<PrincipalSummary>,
     /// Distribution channels attached to this app.
     #[serde(default)]
     pub channels: Vec<AppChannel>,
@@ -494,6 +507,10 @@ mod tests {
             harness_id: HarnessId::from_uuid(Uuid::nil()),
             agent_id: AgentId::from_uuid(Uuid::nil()),
             agent_identity_id: None,
+            owner_principal_id: PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            owner: None,
+            effective_owner: None,
             channels,
             status: AppStatus::Draft,
             published_at: None,

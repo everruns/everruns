@@ -493,6 +493,8 @@ async fn seed_session_schedule(server: &TestServer, session: &Session) -> Schedu
         .create_session_schedule(CreateSessionScheduleRow {
             org_id: 1,
             session_id: session.id,
+            owner_principal_id: session.owner_principal_id,
+            resolved_owner_user_id: session.resolved_owner_user_id,
             description: "Mismatch test schedule".to_string(),
             cron_expression: None,
             scheduled_at: Some(scheduled_at),
