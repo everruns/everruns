@@ -224,6 +224,7 @@ Capabilities declare UI features they contribute to via `features()`. Features a
 | `session_sql_database` | `sql_database` |
 
 | `openui` | `openui` |
+| `a2ui` | `a2ui` |
 
 MCP and Skill virtual capabilities currently declare no features.
 
@@ -238,6 +239,7 @@ MCP and Skill virtual capabilities currently declare no features.
 | `schedules` | Schedules tab | Session can create/manage schedules |
 | `sql_database` | *(reserved)* | Session has SQL database access |
 | `openui` | OpenUI rendering | Session can render OpenUI Lang components |
+| `a2ui` | A2UI rendering | Session can render A2UI JSON component trees |
 
 #### compute_features()
 
@@ -456,6 +458,25 @@ OpenUI is a pure system prompt capability — it provides no tools. It instructs
 The system prompt is generated from the `everruns-openui` crate which defines the full component library (50+ components across 7 groups: Content, Tables, Charts 2D, Charts 1D, Forms, Buttons, Layout). Component signatures are included in the prompt so the LLM knows valid props.
 
 See `specs/openui.md` for full architecture and UI integration details.
+
+#### A2UI
+
+- **ID**: `a2ui`
+- **Purpose**: Enables agents to emit Google A2UI JSON component trees, rendered by the UI with native shadcn/ui primitives
+- **Tools**: None (prompt-only capability)
+- **Features**: `a2ui`
+- **Icon**: `layout-grid`
+- **Category**: `UI`
+
+##### Design Decision: Parallel to OpenUI
+
+A2UI is a *parallel* capability to `openui`, not a replacement. Both are opt-in per agent; neither is enabled by default. A2UI uses JSON (portable across frameworks) while OpenUI uses a custom DSL with a richer prebuilt React library. Enabling both is legal but usually wasteful.
+
+##### Design Decision: Prompt-First, Native Renderer
+
+Follows the A2UI v0.9 prompt-first model: the catalog is embedded in the system prompt and the LLM emits JSON freely, validated lightly at render time. The UI renderer is implemented using the project's own shadcn/ui primitives — no third-party npm dependency. This preserves design-system consistency and is A2UI's canonical pattern (the client owns the rendering).
+
+See `specs/a2ui.md` for full architecture, the canonical catalog, and the wire format.
 
 #### SkillsDiscovery
 

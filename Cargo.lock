@@ -1556,6 +1556,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-a2ui"
+version = "0.8.15"
+
+[[package]]
 name = "everruns-anthropic"
 version = "0.8.15"
 dependencies = [
@@ -1638,6 +1642,7 @@ dependencies = [
  "chrono",
  "ed25519-dalek",
  "eventsource-stream",
+ "everruns-a2ui",
  "everruns-anthropic",
  "everruns-config",
  "everruns-gemini",
