@@ -504,7 +504,7 @@ Indirect prompt injection via tool results or user messages is an inherent LLM l
 | TM-DURABLE-007 | Task state manipulation | Medium | Tasks immutable after creation; only status transitions allowed via state machine | MITIGATED |
 | TM-DURABLE-008 | Worker impersonation | High | Bearer token auth + optional mTLS prevents unauthorized access (see TM-DURABLE-002) | MITIGATED |
 | TM-DURABLE-009 | Replay attack on workflow events | Low | Event store is append-only; events processed in sequence order | MITIGATED |
-| TM-DURABLE-010 | Durable API endpoints unauthenticated | High | All `/v1/durable/*` endpoints require `AuthUser` extractor | MITIGATED |
+| TM-DURABLE-010 | Durable API endpoints accessible to ordinary tenant users | High | All `/v1/durable/*` endpoints require explicit platform-user auth; `ResolvedOrg -> Caller` preserves `is_platform_user` for policy/config evaluation | MITIGATED |
 | TM-DURABLE-011 | Presigned image URL forgery | Medium | HMAC-SHA256 signed with `WORKER_GRPC_AUTH_TOKEN`; 5-min expiry; signature covers image_id + org_id + expires; constant-time comparison | MITIGATED |
 
 ### Mitigation Details
@@ -532,13 +532,13 @@ Workers authenticate to control plane gRPC (port 9001) via two layered mechanism
 **Design decision:** Workers are intentionally cross-org. They are stateless task executors that process work from any organization's queue. Org-scoping is enforced at the application layer (HTTP API), not the internal gRPC transport.
 
 **TM-DURABLE-010 — Durable API Endpoints (MITIGATED):**
-All `/v1/durable/*` HTTP endpoints require `AuthUser` extractor. Unauthenticated requests are rejected.
+All `/v1/durable/*` HTTP endpoints require explicit platform-user auth. The auth backend returns `AuthUser.is_platform_user`, HTTP caller construction preserves it through `ResolvedOrg`, and `/v1/durable/config` exposes the same policy result for UI gating.
 
 ## 10. Scheduled Tasks (TM-SCHED)
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-SCHED-001 | Malicious schedule creation | Medium | Only authenticated users with appropriate permissions can create schedules | MITIGATED |
+| TM-SCHED-001 | Malicious schedule creation | Medium | Only platform users can create or manage durable schedules | MITIGATED |
 | TM-SCHED-002 | Catch-up explosion on restart | High | `max_catch_up` limits catch-up runs (default: 1); prevents hundreds of executions on restart | MITIGATED |
 | TM-SCHED-003 | Concurrent execution overload | Medium | `max_concurrent` field enforced; trigger skipped if limit reached | MITIGATED |
 | TM-SCHED-004 | Invalid cron expression DoS | Low | Cron parser validates expression at creation time; invalid expressions rejected | MITIGATED |

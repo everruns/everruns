@@ -58,6 +58,10 @@ fn root_url_from_api_base(api_base_url: &str) -> String {
     trimmed.strip_suffix("/api").unwrap_or(trimmed).to_string()
 }
 
+fn platform_user_from_roles(roles: &[String]) -> bool {
+    roles.iter().any(|role| role == "admin")
+}
+
 impl BuiltinAuthBackend {
     /// Create with in-memory rate limiting (per-instance).
     pub fn new(config: AuthConfig, db: Arc<StorageBackend>) -> Self {
@@ -170,6 +174,7 @@ impl BuiltinAuthBackend {
             id: user.id,
             email: user.email,
             name: user.name,
+            is_platform_user: platform_user_from_roles(&roles),
             roles,
             auth_method: AuthMethod::ApiKey,
             organizations,
@@ -200,11 +205,14 @@ impl AuthBackend for BuiltinAuthBackend {
         }
         let organizations = organizations_or_default(organizations);
 
+        let is_platform_user = platform_user_from_roles(&claims.roles);
+
         Ok(AuthUser {
             id: user_id,
             email: claims.email,
             name: claims.name,
             roles: claims.roles,
+            is_platform_user,
             auth_method: AuthMethod::Jwt,
             organizations,
         })
@@ -342,6 +350,7 @@ mod tests {
             email: "test@example.com".to_string(),
             name: "Test User".to_string(),
             roles: vec!["user".to_string()],
+            is_platform_user: false,
             auth_method: AuthMethod::ApiKey,
             organizations: vec![OrgMembership {
                 org_id: 1,

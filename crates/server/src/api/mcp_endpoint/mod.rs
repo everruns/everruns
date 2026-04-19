@@ -739,6 +739,7 @@ async fn resolve_org_by_id(
         name: org_row.name.clone(),
         user_id: Some(auth_user.id),
         role,
+        is_platform_user: auth_user.is_platform_user,
     })
 }
 

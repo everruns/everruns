@@ -17,6 +17,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
+use everruns_core::{Caller, Policy, ResourceConfigResponse, Rule, evaluate_policies_with};
 use everruns_durable::{
     CircuitBreakerState, CircuitState, DlqEntry, DlqFilter, Pagination, SystemHealth, TaskFilter,
     TaskInfo, TaskStatus, WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore,
@@ -35,10 +36,20 @@ use uuid::Uuid;
 
 use super::common::{ApiResult, ErrorResponse, impl_auth_state};
 use super::sse::{DisconnectReason, SseStreamConfig};
-use crate::auth::middleware::{AdminUser, AuthState};
+use crate::auth::{AuthState, PlatformUser, ResolvedOrg};
+
+pub const DURABLE_VIEW: Policy = Policy {
+    id: "durable.view",
+    rules: &[Rule::IsPlatformUser],
+};
+
+pub const DURABLE_MANAGE: Policy = Policy {
+    id: "durable.manage",
+    rules: &[Rule::IsPlatformUser],
+};
 
 /// App state for durable routes
-/// TM-DURABLE-010: All durable endpoints require admin role (not just authentication).
+/// TM-DURABLE-010: All durable endpoints require platform-user auth, not tenant admin inference.
 #[derive(Clone)]
 pub struct AppState {
     store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
@@ -169,6 +180,7 @@ impl AppState {
 /// Create durable routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .route("/v1/durable/config", get(durable_config))
         // SSE streaming
         .route("/v1/durable/sse", get(stream_durable_sse))
         .route(
@@ -744,6 +756,28 @@ pub struct SendSignalRequest {
 // Route handlers
 // ============================================================================
 
+/// GET /v1/durable/config - Durable policy results for UI gating.
+#[utoipa::path(
+    get,
+    path = "/v1/durable/config",
+    responses(
+        (status = 200, description = "Resource config for durable surfaces", body = ResourceConfigResponse),
+    ),
+    tag = "durable"
+)]
+pub async fn durable_config(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> Json<ResourceConfigResponse> {
+    let caller = Caller::from(&org);
+    let policies = evaluate_policies_with(
+        state.auth.permission_resolver.as_ref(),
+        &caller,
+        &[&DURABLE_VIEW, &DURABLE_MANAGE],
+    );
+    Json(ResourceConfigResponse { policies })
+}
+
 /// GET /v1/durable/health - Get system health
 #[utoipa::path(
     get,
@@ -755,7 +789,7 @@ pub struct SendSignalRequest {
     tag = "durable"
 )]
 pub async fn get_health(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
 ) -> ApiResult<HealthResponse> {
     let store = state.get_store()?;
@@ -784,7 +818,7 @@ pub async fn get_health(
     tag = "durable"
 )]
 pub async fn get_metrics_timeseries(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
 ) -> ApiResult<MetricsTimeSeriesResponse> {
     let points = state.metrics.get_points().await;
@@ -815,7 +849,7 @@ pub async fn get_metrics_timeseries(
     tag = "durable"
 )]
 pub async fn list_workers(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Query(query): Query<ListWorkersQuery>,
 ) -> ApiResult<WorkersListResponse> {
@@ -875,7 +909,7 @@ pub async fn list_workers(
     tag = "durable"
 )]
 pub async fn drain_worker(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(worker_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -907,7 +941,7 @@ pub async fn drain_worker(
     tag = "durable"
 )]
 pub async fn resume_worker(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(worker_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -942,7 +976,7 @@ pub async fn resume_worker(
     tag = "durable"
 )]
 pub async fn list_workflows(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Query(query): Query<ListWorkflowsQuery>,
 ) -> ApiResult<WorkflowsListResponse> {
@@ -1001,7 +1035,7 @@ pub async fn list_workflows(
     tag = "durable"
 )]
 pub async fn get_workflow(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
 ) -> ApiResult<WorkflowResponse> {
@@ -1051,7 +1085,7 @@ pub async fn get_workflow(
     tag = "durable"
 )]
 pub async fn get_workflow_events(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
 ) -> ApiResult<WorkflowEventsListResponse> {
@@ -1090,7 +1124,7 @@ pub async fn get_workflow_events(
     tag = "durable"
 )]
 pub async fn cancel_workflow(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -1135,7 +1169,7 @@ pub async fn cancel_workflow(
     tag = "durable"
 )]
 pub async fn send_signal(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
     Json(req): Json<SendSignalRequest>,
@@ -1178,7 +1212,7 @@ pub async fn send_signal(
     tag = "durable"
 )]
 pub async fn list_tasks(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Query(query): Query<ListTasksQuery>,
 ) -> ApiResult<TasksListResponse> {
@@ -1260,7 +1294,7 @@ pub struct EnqueueTaskResponse {
     tag = "durable"
 )]
 pub async fn enqueue_task(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Json(body): Json<EnqueueTaskRequest>,
 ) -> Result<(StatusCode, Json<EnqueueTaskResponse>), (StatusCode, Json<ErrorResponse>)> {
@@ -1320,7 +1354,7 @@ pub async fn enqueue_task(
     tag = "durable"
 )]
 pub async fn list_dlq(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Query(query): Query<ListDlqQuery>,
 ) -> ApiResult<DlqListResponse> {
@@ -1366,7 +1400,7 @@ pub async fn list_dlq(
     tag = "durable"
 )]
 pub async fn retry_dlq(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(dlq_id): Path<Uuid>,
 ) -> ApiResult<Uuid> {
@@ -1403,7 +1437,7 @@ pub async fn retry_dlq(
     tag = "durable"
 )]
 pub async fn list_circuit_breakers(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
 ) -> ApiResult<CircuitBreakersListResponse> {
     let store = state.get_store()?;
@@ -1441,7 +1475,7 @@ pub async fn list_circuit_breakers(
     tag = "durable"
 )]
 pub async fn get_circuit_breaker(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(key): Path<String>,
 ) -> ApiResult<CircuitBreakerResponse> {
@@ -1483,7 +1517,7 @@ pub async fn get_circuit_breaker(
     tag = "durable"
 )]
 pub async fn force_open_circuit_breaker(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(key): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -1517,7 +1551,7 @@ pub async fn force_open_circuit_breaker(
     tag = "durable"
 )]
 pub async fn force_close_circuit_breaker(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(key): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -1562,7 +1596,7 @@ pub async fn force_close_circuit_breaker(
     tag = "durable"
 )]
 pub async fn delete_circuit_breaker(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(key): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -1647,7 +1681,7 @@ struct WorkflowSnapshot {
     tag = "durable"
 )]
 pub async fn stream_durable_sse(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, StatusCode> {
     // Verify store is available
@@ -1985,7 +2019,7 @@ pub async fn stream_durable_sse(
     tag = "durable"
 )]
 pub async fn stream_workflow_sse(
-    _auth: AdminUser,
+    _auth: PlatformUser,
     State(state): State<AppState>,
     Path(workflow_id): Path<Uuid>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, StatusCode> {
@@ -3483,10 +3517,10 @@ mod tests {
     }
 
     // ============================================
-    // Admin-only access control tests (EVE-64)
+    // Platform-user access control tests
     // ============================================
 
-    mod admin_access {
+    mod platform_user_access {
         use super::*;
         use crate::auth::backend::AuthBackend;
         use crate::auth::config::{AuthConfig, AuthMode};
@@ -3495,12 +3529,13 @@ mod tests {
         use async_trait::async_trait;
         use axum::body::Body;
         use axum::http::Request;
+        use everruns_core::{OrgMembership, OrgRole};
         use tower::ServiceExt;
 
-        /// Mock auth backend returning user with configurable roles
+        /// Mock auth backend returning user with configurable platform access.
         #[derive(Clone)]
         struct MockAuthBackend {
-            roles: Vec<String>,
+            is_platform_user: bool,
         }
 
         #[async_trait]
@@ -3510,9 +3545,15 @@ mod tests {
                     id: Uuid::new_v4(),
                     email: "test@example.com".to_string(),
                     name: "Test User".to_string(),
-                    roles: self.roles.clone(),
+                    roles: vec!["user".to_string()],
+                    is_platform_user: self.is_platform_user,
                     auth_method: AuthMethod::Jwt,
-                    organizations: vec![],
+                    organizations: vec![OrgMembership {
+                        org_id: 1,
+                        public_id: "org_00000000000000000000000000000001".to_string(),
+                        name: "Test Org".to_string(),
+                        role: OrgRole::Owner,
+                    }],
                 })
             }
 
@@ -3534,8 +3575,8 @@ mod tests {
             }
         }
 
-        /// Build test router with given roles for the authenticated user
-        fn test_app(roles: Vec<String>) -> axum::Router {
+        /// Build test router with configurable platform-user access.
+        fn test_app(is_platform_user: bool) -> axum::Router {
             let config = AuthConfig {
                 mode: AuthMode::Full,
                 jwt: crate::auth::config::JwtConfig {
@@ -3544,7 +3585,7 @@ mod tests {
                 },
                 ..Default::default()
             };
-            let backend = Arc::new(MockAuthBackend { roles });
+            let backend = Arc::new(MockAuthBackend { is_platform_user });
             let auth = AuthState::new(config, backend);
             let state = AppState::new(None, auth, None, "in_memory".to_string());
             routes(state)
@@ -3584,77 +3625,70 @@ mod tests {
             .status()
         }
 
-        // --- Non-admin user gets 403 on read endpoints ---
+        // --- Non-platform user gets 403 on read endpoints ---
 
         #[tokio::test]
-        async fn non_admin_cannot_get_health() {
-            let status = get_with_auth(test_app(vec!["user".into()]), "/v1/durable/health").await;
+        async fn non_platform_user_cannot_get_health() {
+            let status = get_with_auth(test_app(false), "/v1/durable/health").await;
             assert_eq!(status, StatusCode::FORBIDDEN);
         }
 
         #[tokio::test]
-        async fn non_admin_cannot_list_workers() {
-            let status = get_with_auth(test_app(vec!["user".into()]), "/v1/durable/workers").await;
+        async fn non_platform_user_cannot_list_workers() {
+            let status = get_with_auth(test_app(false), "/v1/durable/workers").await;
             assert_eq!(status, StatusCode::FORBIDDEN);
         }
 
         #[tokio::test]
-        async fn non_admin_cannot_list_workflows() {
+        async fn non_platform_user_cannot_list_workflows() {
+            let status = get_with_auth(test_app(false), "/v1/durable/workflows").await;
+            assert_eq!(status, StatusCode::FORBIDDEN);
+        }
+
+        #[tokio::test]
+        async fn non_platform_user_cannot_list_tasks() {
+            let status = get_with_auth(test_app(false), "/v1/durable/tasks").await;
+            assert_eq!(status, StatusCode::FORBIDDEN);
+        }
+
+        #[tokio::test]
+        async fn non_platform_user_cannot_list_dlq() {
+            let status = get_with_auth(test_app(false), "/v1/durable/dlq").await;
+            assert_eq!(status, StatusCode::FORBIDDEN);
+        }
+
+        #[tokio::test]
+        async fn non_platform_user_cannot_list_circuit_breakers() {
+            let status = get_with_auth(test_app(false), "/v1/durable/circuit-breakers").await;
+            assert_eq!(status, StatusCode::FORBIDDEN);
+        }
+
+        #[tokio::test]
+        async fn non_platform_user_cannot_get_metrics() {
+            let status = get_with_auth(test_app(false), "/v1/durable/metrics/timeseries").await;
+            assert_eq!(status, StatusCode::FORBIDDEN);
+        }
+
+        #[tokio::test]
+        async fn non_platform_user_cannot_read_durable_config() {
+            let status = get_with_auth(test_app(false), "/v1/durable/config").await;
+            assert_eq!(status, StatusCode::OK);
+        }
+
+        // --- Non-platform user gets 403 on mutate endpoints ---
+
+        #[tokio::test]
+        async fn non_platform_user_cannot_drain_worker() {
             let status =
-                get_with_auth(test_app(vec!["user".into()]), "/v1/durable/workflows").await;
+                post_with_auth(test_app(false), "/v1/durable/workers/w1/drain", "{}").await;
             assert_eq!(status, StatusCode::FORBIDDEN);
         }
 
         #[tokio::test]
-        async fn non_admin_cannot_list_tasks() {
-            let status = get_with_auth(test_app(vec!["user".into()]), "/v1/durable/tasks").await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_admin_cannot_list_dlq() {
-            let status = get_with_auth(test_app(vec!["user".into()]), "/v1/durable/dlq").await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_admin_cannot_list_circuit_breakers() {
-            let status = get_with_auth(
-                test_app(vec!["user".into()]),
-                "/v1/durable/circuit-breakers",
-            )
-            .await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_admin_cannot_get_metrics() {
-            let status = get_with_auth(
-                test_app(vec!["user".into()]),
-                "/v1/durable/metrics/timeseries",
-            )
-            .await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        // --- Non-admin user gets 403 on mutate endpoints ---
-
-        #[tokio::test]
-        async fn non_admin_cannot_drain_worker() {
-            let status = post_with_auth(
-                test_app(vec!["user".into()]),
-                "/v1/durable/workers/w1/drain",
-                "{}",
-            )
-            .await;
-            assert_eq!(status, StatusCode::FORBIDDEN);
-        }
-
-        #[tokio::test]
-        async fn non_admin_cannot_cancel_workflow() {
+        async fn non_platform_user_cannot_cancel_workflow() {
             let wf_id = Uuid::nil();
             let status = post_with_auth(
-                test_app(vec!["user".into()]),
+                test_app(false),
                 &format!("/v1/durable/workflows/{wf_id}/cancel"),
                 "{}",
             )
@@ -3663,10 +3697,10 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn non_admin_cannot_send_signal() {
+        async fn non_platform_user_cannot_send_signal() {
             let wf_id = Uuid::nil();
             let status = post_with_auth(
-                test_app(vec!["user".into()]),
+                test_app(false),
                 &format!("/v1/durable/workflows/{wf_id}/signal"),
                 r#"{"signal_type":"test","payload":{}}"#,
             )
@@ -3675,9 +3709,9 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn non_admin_cannot_enqueue_task() {
+        async fn non_platform_user_cannot_enqueue_task() {
             let status = post_with_auth(
-                test_app(vec!["user".into()]),
+                test_app(false),
                 "/v1/durable/tasks",
                 r#"{"activity_type":"test","input":{}}"#,
             )
@@ -3686,10 +3720,10 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn non_admin_cannot_retry_dlq() {
+        async fn non_platform_user_cannot_retry_dlq() {
             let dlq_id = Uuid::nil();
             let status = post_with_auth(
-                test_app(vec!["user".into()]),
+                test_app(false),
                 &format!("/v1/durable/dlq/{dlq_id}/retry"),
                 "{}",
             )
@@ -3698,9 +3732,9 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn non_admin_cannot_force_open_circuit_breaker() {
+        async fn non_platform_user_cannot_force_open_circuit_breaker() {
             let status = post_with_auth(
-                test_app(vec!["user".into()]),
+                test_app(false),
                 "/v1/durable/circuit-breakers/test-key/open",
                 "{}",
             )
@@ -3708,61 +3742,72 @@ mod tests {
             assert_eq!(status, StatusCode::FORBIDDEN);
         }
 
-        // --- Non-admin user gets 403 on SSE ---
+        // --- Non-platform user gets 403 on SSE ---
 
         #[tokio::test]
-        async fn non_admin_cannot_stream_durable_sse() {
-            let status = get_with_auth(test_app(vec!["user".into()]), "/v1/durable/sse").await;
+        async fn non_platform_user_cannot_stream_durable_sse() {
+            let status = get_with_auth(test_app(false), "/v1/durable/sse").await;
             assert_eq!(status, StatusCode::FORBIDDEN);
         }
 
-        // --- Admin user gets access (503 = store unavailable, not 403) ---
+        // --- Platform user gets access (503 = store unavailable, not 403) ---
 
         #[tokio::test]
-        async fn admin_can_get_health() {
-            let status = get_with_auth(test_app(vec!["admin".into()]), "/v1/durable/health").await;
+        async fn platform_user_can_get_health() {
+            let status = get_with_auth(test_app(true), "/v1/durable/health").await;
             assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         }
 
         #[tokio::test]
-        async fn admin_can_list_workers() {
-            let status = get_with_auth(test_app(vec!["admin".into()]), "/v1/durable/workers").await;
+        async fn platform_user_can_list_workers() {
+            let status = get_with_auth(test_app(true), "/v1/durable/workers").await;
             assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         }
 
         #[tokio::test]
-        async fn admin_can_list_workflows() {
-            let status =
-                get_with_auth(test_app(vec!["admin".into()]), "/v1/durable/workflows").await;
+        async fn platform_user_can_list_workflows() {
+            let status = get_with_auth(test_app(true), "/v1/durable/workflows").await;
             assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         }
 
         #[tokio::test]
-        async fn admin_can_list_tasks() {
-            let status = get_with_auth(test_app(vec!["admin".into()]), "/v1/durable/tasks").await;
+        async fn platform_user_can_list_tasks() {
+            let status = get_with_auth(test_app(true), "/v1/durable/tasks").await;
             assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         }
 
         #[tokio::test]
-        async fn admin_can_list_dlq() {
-            let status = get_with_auth(test_app(vec!["admin".into()]), "/v1/durable/dlq").await;
+        async fn platform_user_can_list_dlq() {
+            let status = get_with_auth(test_app(true), "/v1/durable/dlq").await;
             assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         }
 
         #[tokio::test]
-        async fn admin_can_list_circuit_breakers() {
-            let status = get_with_auth(
-                test_app(vec!["admin".into()]),
-                "/v1/durable/circuit-breakers",
-            )
-            .await;
+        async fn platform_user_can_list_circuit_breakers() {
+            let status = get_with_auth(test_app(true), "/v1/durable/circuit-breakers").await;
             assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         }
 
         #[tokio::test]
-        async fn admin_can_stream_durable_sse() {
-            let status = get_with_auth(test_app(vec!["admin".into()]), "/v1/durable/sse").await;
+        async fn platform_user_can_stream_durable_sse() {
+            let status = get_with_auth(test_app(true), "/v1/durable/sse").await;
             assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        }
+
+        #[tokio::test]
+        async fn durable_config_exposes_platform_policy_from_resolved_org() {
+            let response = test_app(true)
+                .oneshot(
+                    Request::builder()
+                        .uri("/v1/durable/config")
+                        .header("Authorization", "Bearer test-token")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::OK);
         }
     }
 }
