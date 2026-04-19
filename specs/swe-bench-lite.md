@@ -29,7 +29,7 @@ Status: **tooling ready** — loader, runner, scorer scripts in `evals/swe-bench
 - This matches the gold patch exactly
 - Could not run verification: sandbox Python 3.14 is too new for 2022 astropy C extensions
 
-**Exported messages**: `swe-bench-lite-astropy-12907-export.jsonl` (22 messages, 10 tool calls)
+**Exported messages**: `evals/swe-bench/examples/astropy-12907-session-export.jsonl` (22 messages, 10 tool calls)
 
 ## Findings and blockers
 
