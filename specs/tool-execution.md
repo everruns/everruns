@@ -112,6 +112,57 @@ Default is `concise`. Budgets apply to stdout; stderr is capped at `min(budget, 
 
 This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 
+### Standard Exec-Tool Result Contract (EVE-371)
+
+All exec tools (bash, daytona_exec, e2b_exec, deno_exec, sprites_exec, docker_exec, and any future shell-like tool) share a common result shape so the agent, the streaming pipeline, and the UI can treat them uniformly.
+
+**Required fields** (every exec tool MUST return these):
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `stdout` | string | Sanitized standard-output stream. Empty string if none. |
+| `stderr` | string | Sanitized standard-error stream. Empty string if none. |
+| `exit_code` | integer | Process exit status. `0` means success. Non-zero or negative codes indicate failure per the underlying runtime. |
+| `success` | boolean | `true` iff the command ran to completion with `exit_code == 0` and was not terminated by the runtime. |
+
+Tools MUST NOT merge stdout and stderr into a single `output` field. Preserving the split lets the UI visually emphasize stderr, lets the LLM disambiguate warnings from results, and keeps parity with the bash card renderer in `apps/ui/src/components/chat/bash-tool-call-card.tsx`.
+
+**Recommended metadata** (exec tools SHOULD return these when meaningful):
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `cwd` | string | Working directory the command ran in, when the runtime can report it. |
+| `sandbox_id` | string | Opaque identifier for the sandbox or container that executed the command. |
+| `timed_out` | boolean | `true` when the runtime killed the process due to a timeout. |
+| `signal` | string | Name of the terminating signal (e.g. `"SIGTERM"`) when the process was killed rather than exited. |
+| `truncated` | boolean | `true` when the returned `stdout` or `stderr` were shortened by the sanitizer or verbosity budget. |
+| `output_files` | object | Map of `{ "stdout": "/.outputs/{tool_call_id}.stdout", "stderr": "..." }` when the full output was persisted to session VFS. |
+| `hint` | string | Short LLM-facing hint when truncation or timeout occurred (e.g. `"Output was truncated; read the stdout file for the full log."`). |
+
+Tools that already use `tool_output_persistence` get `output_files` for free via the `PersistOutputHook`.
+
+**Streaming contract:**
+
+While the command runs, exec tools stream partial output via `tool.output.delta` events. Each event MUST carry a `stream` field set to `"stdout"` or `"stderr"` so the UI can route the delta into the correct lane. Combined-stream tools (where the underlying runtime does not expose the split, e.g. Daytona's shared exec shell) SHOULD still pick the best match per delta rather than collapsing everything to `"stdout"`.
+
+**Narration expectations:**
+
+The generic exec narration is command-first: the visible line should read `"Ran <first-token-of-command>"` (e.g. `"Ran cargo"`, `"Ran pytest"`), matching the existing bash narration in `crates/core/src/tool_narration.rs`. Infrastructure metadata (sandbox id, runtime name) belongs in secondary UI surfaces (tooltips, details), not the narration line. New exec tools inherit this behavior by keeping their `display_name` generic (`"Run shell command"`, not `"Daytona Exec"`) and relying on the shared narration path.
+
+**UI presentation expectations:**
+
+Exec tools render through the shared shell card:
+
+- Tool registry entry MUST declare `category: "shell"` and `segmentMode: "standalone"` (see `apps/ui/src/lib/tool-registry.ts`). This prevents exec calls from being folded into grouped read/edit segments.
+- The card renders `stdout` and `stderr` as distinct panes, with stderr visually emphasized (color/background) when non-empty.
+- Exit status is shown as a badge: green for `exit_code == 0`, red for non-zero, with the numeric code displayed.
+- Duration, `cwd`, and `sandbox_id` (when present) are rendered in the card header or details drawer.
+- When `truncated` is `true`, the card surfaces a link to the persisted `output_files.stdout` / `.stderr` paths so the user can read the full log.
+
+**Rationale:**
+
+Keeping the contract shared rather than per-integration means: (1) the LLM sees a uniform shape across sandboxes; (2) the UI needs one exec card, not one per backend; (3) new exec tools (future runtimes, custom toolkits) become automatically first-class without plumbing changes. Integration-specific specs reference this section rather than documenting their own exec shape. Backend alignment work is tracked under EVE-372 (daytona_exec field split) and EVE-373 (UI shell treatment for daytona_exec).
+
 ### Background Tool Execution
 
 `spawn_background` is a built-in meta-tool that schedules another built-in tool to run asynchronously and returns immediately with a run handle. It is generic: the caller passes `tool` plus `args`; the target tool determines whether background execution is supported.
