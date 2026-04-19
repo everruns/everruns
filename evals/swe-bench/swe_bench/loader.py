@@ -38,6 +38,7 @@ def build_conversation(instance: dict) -> list[dict]:
     problem = instance["problem_statement"]
     repo = instance["repo"]
     base_commit = instance["base_commit"]
+    repo_name = repo.split("/")[-1]
 
     prompt = textwrap.dedent(f"""\
         You are a software engineer working on the {repo} repository.
@@ -47,14 +48,15 @@ def build_conversation(instance: dict) -> list[dict]:
         </problem_statement>
 
         <instructions>
-        1. The repository is already cloned at /workspace/{repo.split("/")[-1]}
+        1. Create a Daytona sandbox and clone {repo} into it
         2. Checkout commit {base_commit}
         3. Read the relevant source code to understand the bug
         4. Implement the fix
-        5. When done, run: cd /workspace/{repo.split("/")[-1]} && git diff > {PATCH_PATH}
+        5. Run `cd /home/daytona/{repo_name} && git diff > /tmp/fix.patch` in the sandbox
+        6. Use `daytona_download_workspace` to download `/tmp/fix.patch` from the sandbox to `{PATCH_PATH}` in the session filesystem
         </instructions>
 
-        Important: You MUST write the git diff to {PATCH_PATH} when finished.
+        Important: The sandbox filesystem and session filesystem are separate. After creating the patch inside the sandbox, you MUST use `daytona_download_workspace` to copy it to `{PATCH_PATH}` in the session filesystem. This is how your answer is collected.
     """)
     return [{"content": prompt}]
 
