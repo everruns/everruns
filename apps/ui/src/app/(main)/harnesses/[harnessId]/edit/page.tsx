@@ -43,6 +43,7 @@ import {
 } from "@/lib/form-validation";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
+import { joinTags } from "@/lib/tags";
 
 interface FormData {
   display_name: string;
@@ -90,7 +91,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
       description: harness.description || "",
       system_prompt: harness.system_prompt,
       parent_harness_id: harness.parent_harness_id || "",
-      tags: harness.tags.join(", "),
+      tags: joinTags(harness.tags),
       default_model_id: harness.default_model_id || "",
     };
   }, [harness]);

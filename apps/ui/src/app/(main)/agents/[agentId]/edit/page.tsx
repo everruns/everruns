@@ -41,6 +41,7 @@ import {
 } from "@/lib/form-validation";
 import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
+import { joinTags } from "@/lib/tags";
 
 interface FormData {
   display_name: string;
@@ -90,7 +91,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
       name: agent.name,
       description: agent.description || "",
       system_prompt: agent.system_prompt,
-      tags: agent.tags.join(", "),
+      tags: joinTags(agent.tags),
       default_model_id: agent.default_model_id || "",
     };
   }, [agent]);

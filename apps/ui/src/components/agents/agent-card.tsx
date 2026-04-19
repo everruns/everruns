@@ -15,6 +15,7 @@ import {
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
 } from "@/lib/entity-lifecycle";
+import { normalizeTags } from "@/lib/tags";
 
 interface AgentCardProps {
   agent: Agent;
@@ -35,6 +36,7 @@ export function AgentCard({
 
   // Capabilities are now directly on the agent
   const agentCapabilities = agent.capabilities ?? [];
+  const tags = normalizeTags(agent.tags);
 
   return (
     <Card className="bg-background transition-colors hover:bg-card">
@@ -88,9 +90,9 @@ export function AgentCard({
         )}
 
         {/* Tags */}
-        {agent.tags.length > 0 && (
+        {tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
-            {agent.tags.map((tag) => (
+            {tags.map((tag) => (
               <Badge key={tag} variant="outline" className="text-xs">
                 {tag}
               </Badge>

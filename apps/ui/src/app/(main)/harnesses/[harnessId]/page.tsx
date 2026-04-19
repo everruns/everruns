@@ -29,6 +29,7 @@ import {
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
 } from "@/lib/entity-lifecycle";
+import { normalizeTags } from "@/lib/tags";
 
 export default function HarnessDetailPage({ params }: { params: Promise<{ harnessId: string }> }) {
   const { harnessId } = use(params);
@@ -52,6 +53,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   const parentHarness = harness?.parent_harness_id
     ? harnesses.find((candidate) => candidate.id === harness.parent_harness_id)
     : undefined;
+  const harnessTags = normalizeTags(harness?.tags);
 
   const getCapabilityInfo = (capabilityId: string): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
@@ -259,11 +261,11 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
                     </div>
                   )}
 
-                  {harness.tags.length > 0 && (
+                  {harnessTags.length > 0 && (
                     <div>
                       <p className="text-sm font-medium mb-2">Tags</p>
                       <div className="flex flex-wrap gap-1">
-                        {harness.tags.map((tag) => (
+                        {harnessTags.map((tag) => (
                           <Badge key={tag} variant="outline">
                             {tag}
                           </Badge>
