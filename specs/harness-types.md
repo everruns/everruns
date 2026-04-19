@@ -105,6 +105,14 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 | How are built-in harnesses upgraded? | Reconciliation runs at startup — iterates all orgs and upserts built-in harness definitions. Changes to `org_init::BUILT_IN_HARNESSES` propagate automatically. |
 | How do starter files interact with capabilities? | Starter files are first-class harness or agent data, not capability config. If starter files exist, `session_file_system` is automatically retained so the session has a visible workspace and file tools. |
 
+## Built-in Harness Identity
+
+**Built-in harnesses are identified by `name`, not by UUID.** The `harness_id` row is per-org and is generated when the harness is provisioned. Reconciliation, lookups, tests, examples, and migrations must address built-in harnesses (`is_built_in = true`) by `name`.
+
+**Hardcoded UUID literals must not be used to address built-in harnesses.** This rule applies in production code, tests, examples, fixtures, and new migrations. It does not affect literals used for non-built-in harness fixtures (e.g. a test that creates an org-owned custom harness with a fixed ID for setup) — those are unaffected because they do not depend on the built-in identity.
+
+The single exception is the historical default-org seed range (see "UUID Allocation" below). Those literals exist purely to keep already-provisioned default-org rows stable and must not grow.
+
 ## Built-in Harness Lifecycle
 
 Built-in harnesses are managed by `crates/server/src/org_init.rs`:
@@ -116,7 +124,7 @@ Built-in harnesses are managed by `crates/server/src/org_init.rs`:
 
 ### UUID Allocation (Default Org Only)
 
-Harness seed UUIDs occupy the `0x600-0x6FF` range. These fixed UUIDs are only used for the default org; other orgs get auto-generated UUIDs. See `crates/server/src/seed.rs` for seed harness definitions and capability assignments.
+Harness seed UUIDs occupy the `0x600-0x6FF` range. These fixed UUIDs exist solely so historical default-org rows stay stable across upgrades; they are an implementation detail of org seeding and are not addressable identity. New code, tests, and migrations must always use name-based lookups. See `crates/server/src/seed.rs` for seed harness definitions and capability assignments.
 
 ### Data Analyst
 

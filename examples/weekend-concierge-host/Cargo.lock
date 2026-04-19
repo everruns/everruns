@@ -948,14 +948,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-config"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "everruns-core"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -994,11 +994,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-openui"
-version = "0.8.14"
+version = "0.8.15"
 
 [[package]]
 name = "everruns-runtime"
-version = "0.8.14"
+version = "0.8.15"
 dependencies = [
  "async-trait",
  "chrono",
