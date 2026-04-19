@@ -305,15 +305,43 @@ npm test -- --watch         # Watch mode for development
 
 **CI Integration:** UI tests run as part of the `ui-build` job in GitHub Actions CI. Tests must pass before PRs can be merged.
 
+### UI Playwright Smoke
+
+Framework: Playwright (`@playwright/test`), chromium-only.
+
+Test files location: `apps/ui/e2e/`
+
+Configuration: `apps/ui/playwright.config.ts`
+
+**Scope:** PR-gated smoke coverage of shared chat primitives via the `/dev/*` reference gallery pages. These pages render without a running backend (pure Next.js, no API calls), which keeps the suite stable in CI. Product flows requiring authentication and backend state remain out of scope until we add dedicated test fixtures.
+
+**Layering (when to put a test where):**
+
+- Jest + React Testing Library — component-level behavior, hook mocking, dialog interactions.
+- Playwright smoke — end-to-end rendering of shared primitives as composed pages; catches regressions that unit-rendered components do not (routing, SSR/CSR hydration, CSS load, provider wiring).
+- Durable workflow tests (Rust `workflow-test`) — backend-side end-to-end flows.
+
+**CI Integration:** runs as the `ui-e2e` job on every PR where `apps/ui/**` changes. The job installs Playwright chromium, starts `npm run dev` via the Playwright webServer config, and executes `npm run e2e`.
+
+```bash
+cd apps/ui
+npm run e2e          # Run all Playwright tests
+npm run e2e:ui       # Run with UI mode
+npm run e2e:headed   # Run in headed mode
+```
+
 ### CI Jobs
 
 | Job | What it tests | Dependencies |
 |-----|---------------|--------------|
 | `unit-test` | Pure logic, no dependencies | None |
+| `worker-test` | Worker durable execution lib tests | None |
 | `integration-test` | PostgreSQL, in-process API | None |
 | `build-binaries` | Builds release binaries, uploads artifacts | None |
 | `workflow-test` | Server + worker E2E | `build-binaries` |
 | `cli-e2e-test` | CLI binary against DEV_MODE server | `build-binaries` |
+| `ui-build` | UI format, lint, Jest, Next.js build | None |
+| `ui-e2e` | Playwright smoke against `/dev/*` reference pages | None |
 
 ### CI Caching Strategy
 

@@ -811,6 +811,54 @@ jobs:
       - name: Type check & build
         run: npm run build
 
+  ui-e2e:
+    name: UI Playwright Smoke
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
+
+    defaults:
+      run:
+        working-directory: apps/ui
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild native dependencies
+        run: npm rebuild --ignore-scripts=false
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('apps/ui/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright smoke tests
+        run: npm run e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/ui/e2e/playwright-report
+          retention-days: 7
+
   docs-build:
     name: Docs Build & Check
     runs-on: ubuntu-latest
@@ -950,6 +998,7 @@ jobs:
       - sdk-compat-matrix
       - sdk-compat-test
       - ui-build
+      - ui-e2e
       - docs-build
       - docker-build
       - browserless-live-test
