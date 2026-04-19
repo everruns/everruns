@@ -101,8 +101,25 @@ just test-unit  # Runs in ~30s, no Docker needed
 **Test files:**
 - `crates/server/tests/api_integration_test.rs` - HTTP API tests (in-process, no TCP)
 - `crates/server/tests/repository_integration_test.rs` - Direct repository layer tests
+- `crates/server/tests/ag_ui_integration_test.rs` - AG-UI embedding + publish gating
+- `crates/server/tests/auth_integration_test.rs` - Refresh/revocation, cookie flags, JWT paths
+- `crates/server/tests/cli_auth_test.rs` - CLI login flow (start/callback/success)
+- `crates/server/tests/cli_auth_no_org_test.rs` - CLI exchange rejects no-org users (EVE-195)
+- `crates/server/tests/client_side_tools_test.rs` - Tool call / result wire format
+- `crates/server/tests/evals_integration_test.rs` - Eval case/score/run HTTP surface
+- `crates/server/tests/llm_model_default_test.rs` - Org default model upsert/clear
+- `crates/server/tests/org_creation_test.rs` - Organization + membership reconciliation
+- `crates/server/tests/org_isolation_test.rs` - Cross-org isolation (agents, mcp, models, sessions)
+- `crates/server/tests/org_lifecycle_test.rs` - Switch org, cookie scoping, unknown org rejection
+- `crates/server/tests/schedule_integration_test.rs` - Scheduled-task CRUD + pause/resume
+- `crates/server/tests/session_git_integration_test.rs` - Per-session git log/diff/refs
 - `crates/durable/tests/postgres_integration_test.rs` - Durable execution task queue, workflows
 - `crates/durable/tests/postgres_repository_test.rs` - Durable SQL queries, circuit breakers
+
+> Not yet CI-wired: `mcp_endpoint_test.rs` and `skills_integration_test.rs` fail
+> due to shared-fixture name collisions and stale catalog expectations; tracked
+> as follow-ups. `workflow_test.rs` requires a live server+worker and stays a
+> manual/live test.
 
 **What to test:**
 - CRUD operations for all entities

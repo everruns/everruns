@@ -785,8 +785,8 @@ async fn test_default_model_org_isolation() {
         .await
         .unwrap();
 
-    // Set default model in org1
-    let _model = db
+    // Create a model in org1 and register it as the org's default
+    let model = db
         .create_llm_model(
             ORG1,
             CreateLlmModelRow {
@@ -800,6 +800,9 @@ async fn test_default_model_org_isolation() {
                 provider_metadata: None,
             },
         )
+        .await
+        .unwrap();
+    db.upsert_organization_settings(ORG1, Some(model.id.into()))
         .await
         .unwrap();
 

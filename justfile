@@ -74,6 +74,20 @@ test-integration: start-infra
     cargo test -p everruns-server --lib
     cargo test -p everruns-server --test api_integration_test -- --test-threads=1
     cargo test -p everruns-server --test repository_integration_test -- --test-threads=1
+    cargo test -p everruns-server \
+        --test ag_ui_integration_test \
+        --test auth_integration_test \
+        --test cli_auth_test \
+        --test cli_auth_no_org_test \
+        --test client_side_tools_test \
+        --test evals_integration_test \
+        --test llm_model_default_test \
+        --test org_creation_test \
+        --test org_isolation_test \
+        --test org_lifecycle_test \
+        --test schedule_integration_test \
+        --test session_git_integration_test \
+        -- --test-threads=1
     cargo test -p everruns-durable --test postgres_integration_test --features postgres-tests -- --test-threads=1
     cargo test -p everruns-durable --test postgres_repository_test --features postgres-tests -- --test-threads=1
 
