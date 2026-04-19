@@ -6,7 +6,7 @@
 -- ============================================
 
 ALTER TABLE eval_case_results
-ADD COLUMN metadata JSONB;
+    ADD COLUMN metadata JSONB;
 
 -- ============================================
 -- from 017_eval_artifacts.sql

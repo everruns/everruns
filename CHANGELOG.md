@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### What's Changed
 
 - refactor(server): drop hardcoded built-in harness UUIDs ([#1360](https://github.com/everruns/everruns/pull/1360)) by [@chaliy](https://github.com/chaliy)
-- feat(mcp): expose command param schemas by [@chaliy](https://github.com/chaliy)
+- feat(mcp): expose command param schemas ([#1363](https://github.com/everruns/everruns/pull/1363)) by [@chaliy](https://github.com/chaliy)
 - docs(docs): render notebooks as cookbook pages ([#1352](https://github.com/everruns/everruns/pull/1352)) by [@chaliy](https://github.com/chaliy)
 - refactor(worker): unify platform CRUD via execute_command ([#1357](https://github.com/everruns/everruns/pull/1357)) by [@chaliy](https://github.com/chaliy)
 - docs(test-cases): add Platform Chat create-and-run agent manual test ([#1362](https://github.com/everruns/everruns/pull/1362)) by [@chaliy](https://github.com/chaliy)
@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix(gemini): strip additionalProperties recursively from tool schemas ([#1353](https://github.com/everruns/everruns/pull/1353)) by [@chaliy](https://github.com/chaliy)
 - fix(daytona): reset exec session after timeout ([#1351](https://github.com/everruns/everruns/pull/1351)) by [@chaliy](https://github.com/chaliy)
 - feat(media): add gpt_image_gen capability ([#1350](https://github.com/everruns/everruns/pull/1350)) by [@chaliy](https://github.com/chaliy)
-- fix(server): repair stale platform chat sessions by [@chaliy](https://github.com/chaliy)
+- fix(server): repair stale platform chat sessions ([#1349](https://github.com/everruns/everruns/pull/1349)) by [@chaliy](https://github.com/chaliy)
 - ci(docker): publish on release only, gate PR builds by paths ([#1343](https://github.com/everruns/everruns/pull/1343)) by [@chaliy](https://github.com/chaliy)
 - refactor(server): migrate audit_logs to domains/ pattern ([#1348](https://github.com/everruns/everruns/pull/1348)) by [@chaliy](https://github.com/chaliy)
 - fix(docker): harden images against common Dockerfile footguns ([#1331](https://github.com/everruns/everruns/pull/1331)) by [@chaliy](https://github.com/chaliy)
