@@ -59,6 +59,26 @@ Events are classified as **ephemeral** or **durable**:
 
 `EventService.emit()` routes automatically based on `EventRequest::is_ephemeral()`. Ephemeral events (~80% of volume) never hit PostgreSQL, reducing write pressure significantly. SSE reconnection replays durable events from PG; missed deltas are acceptable since the completed event has the full content.
 
+### Listener Transport Boundary
+
+Push-style PostgreSQL listeners are intentionally separated from the ordinary sqlx query pool.
+
+- regular reads and writes may use pooled database connections
+- PostgreSQL `LISTEN/NOTIFY` listeners must use a direct session-scoped connection
+- `DATABASE_UNPOOLED_URL` is the deployment-facing override for those listener paths when `DATABASE_URL` points at a pooler/proxy
+
+Reasoning:
+
+- `LISTEN/NOTIFY` is bound to a backend session, not just a database endpoint
+- pooled/proxied PostgreSQL endpoints can surface `NotificationResponse` frames on connections that the application expects to be ordinary query channels
+- when that happens, the failure appears as intermittent query protocol errors rather than an obvious deployment misconfiguration
+
+Production event routing therefore prefers:
+
+- NATS JetStream for event push delivery when `NATS_URL` is configured
+- no legacy PostgreSQL event wakeup listener when NATS event delivery is active
+- direct PostgreSQL listener connections only for the remaining PostgreSQL-backed push paths, such as notification SSE and task notification fallback
+
 ## Requirements
 
 ### Core Architecture
@@ -225,7 +245,7 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
 1. **Runner Abstraction**: `AgentRunner` trait provides the execution backend interface
 2. **Durable Execution**: Workflows run via PostgreSQL-backed durable execution engine
 3. **Workflow Isolation**: Backend concepts (workflow IDs, task queues) never exposed in public API
-4. **Event Streaming**: SSE for real-time event delivery via database-backed events
+4. **Event Streaming**: SSE for real-time event delivery via PostgreSQL-backed durable events plus `EventDelivery` push channels
 
 See [specs/durable-execution-engine.md](durable-execution-engine.md) for the durable engine architecture.
 

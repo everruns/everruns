@@ -106,3 +106,13 @@ This avoids flicker while keeping the server model simple.
 - SSE for incremental `notification.upsert` delivery
 - PostgreSQL `LISTEN/NOTIFY` wakes streams in production
 - DEV mode falls back to timeout-based polling
+
+Deployment constraint:
+
+- notification SSE wakeups use a dedicated PostgreSQL listener connection
+- if the deployment pools `DATABASE_URL`, operators should provide `DATABASE_UNPOOLED_URL` for notification listener traffic
+
+Reasoning:
+
+- notification wakeups are session-scoped PostgreSQL listener traffic
+- sharing them with pooled query sessions can produce intermittent protocol-level failures that are hard to attribute from the notification surface alone

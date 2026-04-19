@@ -92,7 +92,19 @@ Workers claim tasks partitioned by `activity_type`. See `crates/durable/src/pers
 
 ### Task Notifications
 
-Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by PostgreSQL NOTIFY or NATS. Falls back to polling (10s) on disconnect.
+Push-based via gRPC streaming (`SubscribeTaskNotifications`), backed by NATS when available and PostgreSQL `NOTIFY` otherwise. Falls back to polling (10s) on disconnect.
+
+Operational contract:
+
+- NATS is the preferred backend when configured
+- PostgreSQL fallback must use a direct session-scoped listener connection, not an ordinary pooled query connection
+- deployments that pool `DATABASE_URL` for regular queries should provide `DATABASE_UNPOOLED_URL` for PostgreSQL listener traffic
+
+Reasoning:
+
+- task notifications are latency-sensitive, but correctness matters more than transport choice
+- PostgreSQL `LISTEN/NOTIFY` through a pooler/proxy can fail intermittently and surface as protocol errors on unrelated query traffic
+- failing fast on an invalid listener URL is better than allowing a deployment that corrupts the control-plane's normal database interactions
 
 ### Generic Queue (Standalone Tasks)
 
@@ -166,4 +178,3 @@ Workers heartbeat every 5s. `WORKER_HEARTBEAT_TIMEOUT_SECS` (60s, in `crates/dur
 2. Mutual TLS (`WORKER_GRPC_TLS_*`) -- optional transport encryption
 
 **Design decision**: Workers are intentionally cross-org. Org-scoping is enforced at the HTTP API layer, not the gRPC transport.
-

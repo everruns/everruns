@@ -45,6 +45,7 @@ Every production deployment must make explicit decisions for:
 - ingress / reverse proxy
 - TLS termination
 - database connectivity and TLS mode
+- listener connectivity for PostgreSQL `LISTEN/NOTIFY` paths
 - auth mode
 - worker authentication
 - secrets encryption keys
@@ -58,6 +59,33 @@ See:
 - [`specs/prometheus-metrics.md`](./prometheus-metrics.md)
 - [`specs/observability.md`](./observability.md)
 - [`specs/threat-model.md`](./threat-model.md)
+
+### PostgreSQL Listener Connectivity
+
+Production deployments may use a pooled `DATABASE_URL` for ordinary query traffic, but any server path that relies on PostgreSQL `LISTEN/NOTIFY` must use a direct session-scoped connection.
+
+Canonical operator contract:
+
+- `DATABASE_URL` may point at a pooler/proxy for normal queries
+- `DATABASE_UNPOOLED_URL` is the canonical override for PostgreSQL listener traffic
+- if the selected listener URL still points at an obvious pooler/proxy endpoint, startup must fail fast instead of silently accepting a broken deployment
+
+Reasoning:
+
+- PostgreSQL `LISTEN/NOTIFY` is session-scoped
+- pooled/proxied endpoints can interleave notification frames with ordinary query traffic
+- that failure mode is intermittent and looks like storage corruption or driver protocol errors even when the underlying writes are correct
+
+NATS changes the requirement only partially:
+
+- when NATS event delivery is active, the legacy PostgreSQL event wakeup listener is skipped
+- PostgreSQL-backed notification SSE and PostgreSQL task-notification fallback still require a direct listener connection when those paths are active
+
+See:
+- [`specs/architecture.md`](./architecture.md)
+- [`specs/durable-execution-engine.md`](./durable-execution-engine.md)
+- [`specs/notifications.md`](./notifications.md)
+- [`docs/sre/environment-variables.md`](../docs/sre/environment-variables.md)
 
 ## Production Reverse Proxy Setup
 
