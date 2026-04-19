@@ -1639,4 +1639,154 @@ mod tests {
         let decoded: ActTaskInput = serde_json::from_value(json).unwrap();
         assert_eq!(decoded.act_input.org_id, Some(7));
     }
+
+    /// Regression guard: `ActTaskInput` carries a `request_id` alongside the
+    /// flattened `ActInput`. A serde round-trip must preserve both without
+    /// collisions so durable act-task replay observes the same correlation ID.
+    #[test]
+    fn act_task_input_roundtrip_preserves_request_id_and_inner_context() {
+        use everruns_core::atoms::{ActInput, AtomContext};
+        use everruns_core::typed_id::ExecId;
+
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+        let exec_id = ExecId::new();
+
+        let input = ActTaskInput {
+            request_id: Some("req_abc".to_string()),
+            act_input: ActInput {
+                org_id: Some(42),
+                context: AtomContext {
+                    session_id,
+                    turn_id,
+                    input_message_id,
+                    exec_id,
+                },
+                harness_id: HarnessId::new(),
+                agent_id: None,
+                tool_calls: vec![],
+                tool_definitions: vec![],
+                locale: None,
+                blueprint_id: None,
+                network_access: None,
+            },
+        };
+        let json = serde_json::to_value(&input).unwrap();
+        let decoded: ActTaskInput = serde_json::from_value(json).unwrap();
+        assert_eq!(decoded.request_id.as_deref(), Some("req_abc"));
+        assert_eq!(decoded.act_input.org_id, Some(42));
+        assert_eq!(decoded.act_input.context.session_id, session_id);
+        assert_eq!(decoded.act_input.context.turn_id, turn_id);
+        assert_eq!(decoded.act_input.context.input_message_id, input_message_id);
+        assert_eq!(decoded.act_input.context.exec_id, exec_id);
+    }
+
+    /// When an act task reaches DLQ with its inner `org_id` missing, the
+    /// extractor still returns a usable session context so the worker can
+    /// emit `session.idled` and unblock the UI. The wrapper falls back to 0
+    /// on purpose — `require_org_id` handles the refusal on the execution
+    /// path, but DLQ emission must tolerate the missing value.
+    #[test]
+    fn test_extract_task_session_context_act_tolerates_missing_inner_org_id() {
+        use everruns_core::atoms::{ActInput, AtomContext};
+        use everruns_core::typed_id::ExecId;
+
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+        let act_task_input = ActTaskInput {
+            request_id: None,
+            act_input: ActInput {
+                org_id: None,
+                context: AtomContext {
+                    session_id,
+                    turn_id,
+                    input_message_id,
+                    exec_id: ExecId::new(),
+                },
+                harness_id: HarnessId::new(),
+                agent_id: None,
+                tool_calls: vec![],
+                tool_definitions: vec![],
+                locale: None,
+                blueprint_id: None,
+                network_access: None,
+            },
+        };
+        let value = serde_json::to_value(&act_task_input).unwrap();
+
+        let ctx = extract_task_session_context("act", &value)
+            .expect("act input without inner org_id must still parse for DLQ path");
+
+        assert_eq!(ctx.org_id, 0);
+        assert_eq!(ctx.session_id, session_id);
+        assert_eq!(ctx.turn_id, turn_id);
+        assert_eq!(ctx.input_message_id, input_message_id);
+    }
+
+    /// `process_input`/`reason` tasks may land without a `turn_id` (very
+    /// early lifecycle). Extraction must return a default rather than
+    /// erroring so the DLQ path can still surface user-facing events.
+    #[test]
+    fn test_extract_task_session_context_reason_defaults_missing_turn_id() {
+        let session_id = SessionId::new();
+        let input_message_id = MessageId::new();
+        let turn_input = DurableTurnInput {
+            org_id: 3,
+            session_id,
+            harness_id: HarnessId::new(),
+            agent_id: None,
+            input_message_id,
+            turn_id: None,
+            previous_response_id: None,
+            iteration: 0,
+            request_id: None,
+        };
+        let value = serde_json::to_value(&turn_input).unwrap();
+
+        let ctx =
+            extract_task_session_context("reason", &value).expect("turn_id=None still parses");
+
+        assert_eq!(ctx.org_id, 3);
+        assert_eq!(ctx.session_id, session_id);
+        assert_eq!(ctx.input_message_id, input_message_id);
+        // A synthesised TurnId is used so downstream EventContext::turn
+        // still accepts the value and DLQ emission is not short-circuited.
+        // We only assert the context was constructed successfully above.
+        let _ = ctx.turn_id;
+    }
+
+    /// Guard against classifier drift: transient LLM failures that the
+    /// worker retries must not be marked non-retryable. Missing-user-message
+    /// and missing-act-org-id remain the only non-retryable patterns.
+    #[test]
+    fn test_is_non_retryable_task_error_does_not_match_generic_not_found() {
+        // A 404 from the LLM provider is not the same as a missing user
+        // message — the retry loop must keep handling those.
+        assert!(!is_non_retryable_task_error(
+            "OpenAI API error (404): model not found"
+        ));
+        assert!(!is_non_retryable_task_error(
+            "ReasonAtom execution failed: OpenAI API error (404): model not found"
+        ));
+        // Budget exhausted surfaces as a task failure, but the worker still
+        // funnels it through the single DLQ emission path rather than
+        // short-circuiting retries here.
+        assert!(!is_non_retryable_task_error(
+            "ReasonAtom execution failed: Budget exhausted. 1.00 tokens spent reached the 1.00 tokens limit."
+        ));
+    }
+
+    /// Non-retryable detection is case-insensitive so the classifier keeps
+    /// matching even if upstream error wrapping changes casing.
+    #[test]
+    fn test_is_non_retryable_task_error_is_case_insensitive() {
+        assert!(is_non_retryable_task_error(
+            "Message store error: USER MESSAGE NOT FOUND: msg_abc"
+        ));
+        assert!(is_non_retryable_task_error(
+            "ACTTASKINPUT.ACT_INPUT.ORG_ID MUST BE SET"
+        ));
+    }
 }

@@ -515,11 +515,20 @@ fn is_browserless_already_gone(error: &str) -> bool {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::sync::Mutex;
+    use std::sync::{Mutex, OnceLock};
 
     use async_trait::async_trait;
     use everruns_core::{KeyInfo, LeasedResourceStatus, SecretInfo};
     use uuid::Uuid;
+
+    // Tests that mutate process-wide env vars (e.g. E2B_API_KEY) must not run
+    // in parallel; `cargo test` schedules them on separate threads by default.
+    // The async-aware tokio Mutex is required because the guard is held
+    // across `.await` points while env-var state has to remain stable.
+    fn env_mutex() -> &'static tokio::sync::Mutex<()> {
+        static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+    }
 
     struct TestSessionStorageStore {
         secrets: Mutex<HashMap<(String, String), String>>,
@@ -646,6 +655,7 @@ mod tests {
 
     #[tokio::test]
     async fn e2b_cleanup_prefers_session_secret_override() {
+        let _guard = env_mutex().lock().await;
         let session_id = SessionId::from_uuid(Uuid::nil());
         let storage =
             TestSessionStorageStore::with_secret(session_id, "E2B_API_KEY", "session-key");
@@ -685,6 +695,7 @@ mod tests {
 
     #[tokio::test]
     async fn e2b_cleanup_falls_back_to_env_key() {
+        let _guard = env_mutex().lock().await;
         let session_id = SessionId::from_uuid(Uuid::nil());
         let storage = TestSessionStorageStore::empty();
         let resource = LeasedResource {
@@ -723,6 +734,7 @@ mod tests {
 
     #[tokio::test]
     async fn e2b_cleanup_rejects_blank_env_key() {
+        let _guard = env_mutex().lock().await;
         let session_id = SessionId::from_uuid(Uuid::nil());
         let storage = TestSessionStorageStore::empty();
         let resource = LeasedResource {

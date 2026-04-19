@@ -389,4 +389,102 @@ mod tests {
             "The AI provider is experiencing issues. Please try again shortly."
         );
     }
+
+    #[test]
+    fn user_facing_failure_message_preserves_soft_limit_copy() {
+        // Soft-limit copy is authored downstream (budgeting). The task-error
+        // extractor must pass it through verbatim rather than falling back to
+        // the generic copy.
+        let message = user_facing_failure_message(
+            "activity_type=reason | error_chain=ReasonAtom execution failed: Soft limit reached. Continue to keep going past the budget.",
+        );
+
+        assert_eq!(
+            message,
+            "Soft limit reached. Continue to keep going past the budget."
+        );
+    }
+
+    #[test]
+    fn user_facing_failure_message_falls_back_for_unclassified_errors() {
+        // Anything the classifier cannot recognise must funnel to the
+        // generic copy so the UI never shows raw error chains.
+        let message = user_facing_failure_message(
+            "activity_type=reason | error_chain=mysterious bug: something internal broke",
+        );
+
+        assert_eq!(
+            message,
+            "I encountered an error while processing your request. Please try again later."
+        );
+    }
+
+    #[test]
+    fn user_facing_failure_message_normalizes_rate_limit_variants() {
+        // Providers surface rate limits in a few shapes; all collapse to the
+        // same user-facing copy.
+        for raw in [
+            "activity_type=reason | error_chain=ReasonAtom execution failed: Rate limit exceeded",
+            "activity_type=reason | error_chain=Too Many Requests",
+            "activity_type=reason | error_chain=OpenAI API error (429): slow down",
+        ] {
+            assert_eq!(
+                user_facing_failure_message(raw),
+                "Rate limited by the AI provider. Please wait a moment.",
+                "unexpected mapping for: {raw}"
+            );
+        }
+    }
+
+    /// Tool identifiers are capped so a pathological turn with many tool
+    /// calls cannot blow up the persisted failure message or leak every tool
+    /// name into the log line. The extractor truncates and records an
+    /// `+N more` marker instead.
+    #[test]
+    fn summarize_task_failure_truncates_long_tool_identifier_lists() {
+        let mut tool_calls = Vec::new();
+        for i in 0..10 {
+            tool_calls.push(json!({"name": format!("tool_{i}")}));
+        }
+        let input = json!({
+            "context": { "session_id": "session_truncate" },
+            "tool_calls": tool_calls,
+        });
+        let error = anyhow::anyhow!("boom");
+
+        let summary = summarize_task_failure(Uuid::nil(), None, "act", 1, Some(1), &input, &error);
+
+        assert_eq!(summary.tool_identifiers.len(), 6);
+        assert_eq!(summary.tool_identifiers[0], "tool_0");
+        assert_eq!(summary.tool_identifiers[5], "+5 more");
+        assert!(
+            summary.persisted_message.contains("+5 more"),
+            "persisted message should surface truncation marker: {}",
+            summary.persisted_message
+        );
+    }
+
+    /// Missing attempt limits still produce a readable summary — the
+    /// attempt field is written as a plain counter rather than `N/None`.
+    #[test]
+    fn summarize_task_failure_without_max_attempts_emits_plain_counter() {
+        let input = json!({
+            "context": { "session_id": "session_plain" },
+            "tool_calls": []
+        });
+        let error = anyhow::anyhow!("retryable transient");
+
+        let summary = summarize_task_failure(Uuid::nil(), None, "reason", 4, None, &input, &error);
+
+        assert!(
+            summary.persisted_message.contains("attempt=4"),
+            "expected plain counter, got: {}",
+            summary.persisted_message
+        );
+        assert!(
+            !summary.persisted_message.contains("attempt=4/"),
+            "should omit the `/max` suffix when max_attempts is None: {}",
+            summary.persisted_message
+        );
+    }
 }
