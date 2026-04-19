@@ -22,9 +22,9 @@ use everruns_server::org_init;
 use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentRow, CreateEventRow, CreateHarnessRow, CreateImageRow,
     CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow, CreateOrganizationRow,
-    CreateSessionFileRow, CreateSessionRow, Database, StorageBackend, UpdateAgent, UpdateLlmModel,
-    UpdateLlmProvider, UpdateOrganization, UpdateOrganizationSettings, UpdateSession,
-    UpdateSessionFile,
+    CreateSessionFileRow, CreateSessionRow, CreateUserRow, Database, StorageBackend, UpdateAgent,
+    UpdateLlmModel, UpdateLlmProvider, UpdateOrganization, UpdateOrganizationSettings,
+    UpdateSession, UpdateSessionFile,
 };
 use test_harness::get_database_url;
 
@@ -380,6 +380,158 @@ async fn test_session_crud() {
         .delete_harness(TEST_ORG_ID, harness.id)
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn test_list_sessions_filters_by_creator() {
+    let backend = create_test_backend().await;
+
+    let first_user = backend
+        .create_user(CreateUserRow {
+            email: format!("repo-sessions-a-{}@example.com", Uuid::now_v7()),
+            name: "Repo Sessions A".to_string(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .expect("Failed to create first user");
+
+    let second_user = backend
+        .create_user(CreateUserRow {
+            email: format!("repo-sessions-b-{}@example.com", Uuid::now_v7()),
+            name: "Repo Sessions B".to_string(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .expect("Failed to create second user");
+
+    let agent = backend
+        .create_agent(
+            TEST_ORG_ID,
+            CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
+                name: format!("session-owner-agent-{}", &Uuid::now_v7().to_string()[..8]),
+                display_name: Some("Session Owner Agent".to_string()),
+                description: None,
+                system_prompt: "Test".to_string(),
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                max_iterations: None,
+            },
+        )
+        .await
+        .expect("Failed to create agent");
+
+    let first_session = backend
+        .create_session(CreateSessionRow {
+            org_id: TEST_ORG_ID,
+            created_by: Some(first_user.id),
+            harness_id: None,
+            agent_id: Some(agent.id),
+            agent_identity_id: None,
+            title: Some("First User Session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .expect("Failed to create first session");
+
+    backend
+        .create_session(CreateSessionRow {
+            org_id: TEST_ORG_ID,
+            created_by: Some(second_user.id),
+            harness_id: None,
+            agent_id: Some(agent.id),
+            agent_identity_id: None,
+            title: Some("Second User Session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .expect("Failed to create second session");
+
+    backend
+        .create_session(CreateSessionRow {
+            org_id: TEST_ORG_ID,
+            created_by: None,
+            harness_id: None,
+            agent_id: Some(agent.id),
+            agent_identity_id: None,
+            title: Some("Unowned Session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .expect("Failed to create unowned session");
+
+    let (sessions, total) = backend
+        .list_sessions(
+            TEST_ORG_ID,
+            None,
+            Some(first_user.id),
+            None,
+            Pagination {
+                limit: 10,
+                offset: 0,
+            },
+        )
+        .await
+        .expect("Failed to list sessions");
+
+    assert_eq!(total, 1);
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].id, first_session.id);
+    assert_eq!(sessions[0].created_by, Some(first_user.id));
+
+    backend.delete_agent(TEST_ORG_ID, agent.id).await.unwrap();
 }
 
 // ============================================
