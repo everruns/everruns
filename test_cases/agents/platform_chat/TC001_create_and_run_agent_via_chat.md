@@ -38,7 +38,7 @@ This test exercises the Platform Chat harness's `platform_management` capability
    - Confirm the agent was created.
    - Include a **clickable link to the agent** (e.g. the agent's display name rendered as an `<a>` tag pointing at `/agents/{id}`), not a bare `agent_...` prefixed ID copy-pasted into the prose.
 
-4. **Click the agent link.** The agents detail page for `weather-bot` should load and show the configured harness (`generic`) and display name (`Weather Bot`). Navigate back to chat.
+4. **Click the agent link.** The agent detail page for `weather-bot` should load and show the display name (`Weather Bot`) plus any capabilities Platform Chat configured. Navigate back to chat. (Harness is per-session, not per-agent — verify the harness on the spawned session page in step 6 instead.)
 
 5. **Send the run message** in the same Platform Chat session:
 
@@ -50,6 +50,7 @@ This test exercises the Platform Chat harness's `platform_management` capability
    - Create a new session against `weather-bot` (or reuse one via tag), send the prompt, wait for idle, and fetch the reply.
    - Surface a **clickable link to the spawned session**, not a raw `session_...` ID.
    - Echo a coherent answer to the Paris weather question (typical/seasonal answer is fine — model-dependent).
+   - On the linked session page, the harness should be `generic`.
 
 ### Negative path A — empty agent name
 
@@ -76,14 +77,14 @@ This test exercises the Platform Chat harness's `platform_management` capability
 ### Capability Wiring
 
 - Platform Chat session uses the `platform-chat` built-in harness (which inherits from `generic` and adds `platform_management`).
-- Platform Chat tool calls (`create_agent`, `create_session`, `send_message`, `wait_for_idle`, `get_messages`, etc.) succeed without auth, multitenancy, or quota errors.
+- Platform Chat tool calls (`manage_agents`, `manage_sessions`, `session_send_message`, `session_read_response`, `session_read_messages`) succeed without auth, multitenancy, or quota errors.
 
 ### Happy Path Rendering
 
 - The created-agent confirmation message contains an `<a href="/agents/...">Weather Bot</a>` (or equivalent route) — the rendered text must be the human-readable name, not the raw `agent_01...` ID.
 - The run-agent confirmation message contains an `<a href="/sessions/...">` link — again, no bare `session_01...` prefix in the visible prose.
 - The agent's reply ("Paris weather…") appears in the chat and reads as a normal assistant message.
-- Tool calls in the chat transcript render as **structured tool blocks** (the standard tool-call UI element), NOT as literal `to=functions.create_agent` / `to=functions.send_message` strings or raw JSON dumps.
+- Tool calls in the chat transcript render as **structured tool blocks** (the standard tool-call UI element), NOT as literal `to=manage_agents` / `to=session_send_message` strings or raw JSON dumps.
 - No red error banner is shown.
 - The chat does NOT contain the string `Execution stopped because the assigned harness was deleted` anywhere in the transcript.
 
