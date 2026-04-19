@@ -4,6 +4,11 @@
 
 End-to-end reliability tests that verify agent execution survives infrastructure failures. Four failure domains: worker crashes, control plane restarts, worker↔CP network partitions, and CP↔DB network partitions.
 
+Status: audited in EVE-349. This binary is not part of required CI coverage
+yet because a clean PostgreSQL-backed run still fails several restart/reclaim
+scenarios; keep it as an explicit manual harness until those cases are
+stabilized.
+
 ## Goals
 
 1. Verify workflow completion when workers crash mid-task (stale reclamation path)
@@ -95,6 +100,10 @@ cargo test -p everruns-durable --test agent_reliability_test --features "failpoi
 # Specific scenario
 cargo test -p everruns-durable --test agent_reliability_test worker_crash --features "failpoints,postgres-tests"
 ```
+
+These tests are still manual reliability harnesses. Do not claim durable
+recovery coverage from CI until this binary passes consistently under a clean
+PostgreSQL-backed run.
 
 ## Decisions
 

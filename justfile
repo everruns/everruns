@@ -58,24 +58,37 @@ test-unit:
     cargo test -p everruns-openai --lib --all-features
     cargo test -p everruns-internal-protocol --lib --all-features
     cargo test -p everruns-core --lib --all-features
+    cargo test -p everruns-runtime --test in_process_runtime_test --test runtime_host_test -- --test-threads=1
+    cargo test -p everruns-cli --test auth_integration_test --test chat_integration_test --test files_integration_test -- --test-threads=1
 
 # Run integration tests (requires PostgreSQL via start-infra or externally)
 test-integration: start-infra
     #!/usr/bin/env bash
     set -e
-    # Wait for postgres
-    for i in {1..30}; do
-        if pg_isready -h localhost -p "${DB_PORT:-9332}" -U everruns 2>/dev/null; then break; fi
-        sleep 1
-    done
+    if [ -z "${DATABASE_URL:-}" ]; then
+        DB_HOST="${DB_HOST:-localhost}"
+        DB_PORT="${DB_PORT:-${PORT_PREFIX:+${PORT_PREFIX}32}}"
+        DB_PORT="${DB_PORT:-9332}"
+        DB_USER="${DB_USER:-everruns}"
+        DB_NAME="${DB_NAME:-everruns_test}"
+        export DB_HOST DB_PORT DB_USER DB_NAME
+        export DATABASE_URL="postgres://everruns:everruns@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+        # Wait for postgres
+        for i in {1..30}; do
+            if pg_isready -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" 2>/dev/null; then break; fi
+            sleep 1
+        done
+        createdb -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" "${DB_NAME}" 2>/dev/null || true
+    fi
     # Run migrations
-    sqlx migrate run --source crates/server/migrations 2>/dev/null || true
+    sqlx migrate run --source crates/server/migrations
     # Run tests
     cargo test -p everruns-server --lib
     cargo test -p everruns-server --test api_integration_test -- --test-threads=1
     cargo test -p everruns-server --test repository_integration_test -- --test-threads=1
     cargo test -p everruns-durable --test postgres_integration_test --features postgres-tests -- --test-threads=1
     cargo test -p everruns-durable --test postgres_repository_test --features postgres-tests -- --test-threads=1
+    cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1
 
 # Run workflow tests (requires running server + worker)
 test-workflow:

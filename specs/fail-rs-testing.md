@@ -100,11 +100,14 @@ async fn test_failure_scenario() {
 
 ```bash
 # Run all failure injection tests
-cargo test -p everruns-durable --test failure_injection_test --features failpoints -- --test-threads=1
+cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1
 
 # Run specific test
-cargo test -p everruns-durable --test failure_injection_test test_append_events_failure --features failpoints
+cargo test -p everruns-durable --test failure_injection_test test_append_events_failure --features "failpoints,postgres-tests"
 ```
+
+These tests are expected to run in CI anywhere PostgreSQL-backed durable
+integration coverage runs; do not leave them as manual-only coverage.
 
 ## Decisions
 

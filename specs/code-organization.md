@@ -81,8 +81,12 @@ Tests are organized by dependency requirements and execution speed:
 - `everruns-openai` - LLM client SDK, request/response parsing
 - `everruns-internal-protocol` - Protobuf definitions
 - `everruns-core` - Agent logic, tool handling, prompt building
+- `everruns-runtime` - in-process runtime and shared host-phase orchestration
+- `everruns-cli` - subprocess integration tests for help text, auth profile handling, and file-sync argument validation
 
-Note: `everruns-cli` is binary-only (no lib target) and tested via CLI E2E tests.
+Note: `everruns-cli` is binary-only (no lib target). Keep its lightweight subprocess
+coverage in `crates/cli/tests/*.rs`; use CLI E2E tests for full round-trip flows
+against a running server.
 
 **What to test:**
 - Serialization/deserialization
@@ -103,6 +107,8 @@ just test-unit  # Runs in ~30s, no Docker needed
 - `crates/server/tests/repository_integration_test.rs` - Direct repository layer tests
 - `crates/durable/tests/postgres_integration_test.rs` - Durable execution task queue, workflows
 - `crates/durable/tests/postgres_repository_test.rs` - Durable SQL queries, circuit breakers
+- `crates/durable/tests/failure_injection_test.rs` - fail-rs rollback and retry coverage (`failpoints,postgres-tests`)
+- `crates/durable/tests/agent_reliability_test.rs` - manual executor/store reliability harness; not CI-gated until the restart/reclaim scenarios pass cleanly
 
 **What to test:**
 - CRUD operations for all entities
