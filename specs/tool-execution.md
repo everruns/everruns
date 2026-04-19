@@ -136,10 +136,10 @@ Tools MUST NOT merge stdout and stderr into a single `output` field. Preserving 
 | `timed_out` | boolean | `true` when the runtime killed the process due to a timeout. |
 | `signal` | string | Name of the terminating signal (e.g. `"SIGTERM"`) when the process was killed rather than exited. |
 | `truncated` | boolean | `true` when the returned `stdout` or `stderr` were shortened by the sanitizer or verbosity budget. |
-| `output_files` | object | Map of `{ "stdout": "/.outputs/{tool_call_id}.stdout", "stderr": "..." }` when the full output was persisted to session VFS. |
+| `output_files` | array | Array of persisted output file paths (for example `["/workspace/.outputs/{tool_call_id}.stdout", "/workspace/.outputs/{tool_call_id}.stderr"]`) when the full output was written to the session VFS. |
 | `hint` | string | Short LLM-facing hint when truncation or timeout occurred (e.g. `"Output was truncated; read the stdout file for the full log."`). |
 
-Tools that already use `tool_output_persistence` get `output_files` for free via the `PersistOutputHook`.
+Tools that already use `tool_output_persistence` get the currently injected persistence fields for free via the `PersistOutputHook`, including `output_files` plus related metadata such as `full_output` (path to the stdout file) and `total_lines`.
 
 **Streaming contract:**
 

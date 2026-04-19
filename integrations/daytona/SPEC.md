@@ -119,10 +119,10 @@ Executes a shell command in a sandbox with real-time output streaming.
   - `command`: string (required) — shell command
   - `cwd`: string (optional) — working directory
   - `timeout`: integer (optional) — timeout in ms (default: 300000)
-- **Returns**: Conforms to the [Standard Exec-Tool Result Contract](../../specs/tool-execution.md#standard-exec-tool-result-contract-eve-371) — required `{ stdout, stderr, exit_code, success }` plus the recommended metadata (`cwd`, `sandbox_id`, `timed_out`, `signal`, `truncated`, `output_files`, `hint`) when available.
-- **Streaming**: Emits `tool.output.delta` events with the `stream` field set per the shared contract. Daytona's underlying exec shell serializes stdout and stderr into a single stream; the tool still tags deltas per that contract.
+- **Returns (current)**: Historical Daytona exec result: `{ exit_code, output }`, plus optional `hint` (diagnostic text for signal-based exit codes, see EVE-252).
+- **Streaming (current)**: Emits `tool.output.delta` events with `stream: "stdout"` for all deltas. Daytona's underlying exec shell serializes stdout and stderr into a single combined stream, so the tool does not currently distinguish stdout from stderr in streamed output.
 - **Recovery**: If a command times out or the shared exec shell is detected as dead, Everruns resets the Daytona exec session before returning the error so the next command can recover cleanly.
-- **Contract alignment**: Historical `{ exit_code, output }` shape is being migrated to the standard contract under EVE-372 (backend) and EVE-373 (UI shell card). Until migration lands, the combined `output` field is still returned alongside `exit_code`.
+- **Contract alignment (target)**: Migration to the [Standard Exec-Tool Result Contract](../../specs/tool-execution.md#standard-exec-tool-result-contract-eve-371) is tracked under EVE-372 (backend: split `output` into `stdout`/`stderr`, add `success`, attach recommended metadata such as `cwd`, `sandbox_id`, `timed_out`, `signal`, `truncated`, `output_files`) and EVE-373 (UI shell card). Per-stream delta tagging is covered by the same follow-ups.
 
 ### daytona_read_file
 
