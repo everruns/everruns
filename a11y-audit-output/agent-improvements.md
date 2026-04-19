@@ -21,7 +21,7 @@ The run surfaced issues at two layers. This doc splits proposals accordingly:
 |---|---------|---------------------|
 | 1 | Daytona snapshot came up empty (no app, Playwright, axe-core) | **a11y-nanny** (own the bootstrap via a skill; treat the snapshot as bare metal). Platform-side snapshot refresh kept as a latency optimisation, not a blocker. |
 | 2 | First turn returned a plan, no action, until user said "Proceed" | **a11y-nanny** (SKILL Phase 1 wording) |
-| 3 | Defaulted to `http://localhost:9300` instead of `dev.everruns.com` | **a11y-nanny** (AGENTS.md + target spec) |
+| 3 | Local stack wasn't running; agent had no repair strategy and hung on Playwright (operator manually redirected to a remote URL) | **a11y-nanny** (bootstrap skill must start/repair the local stack, not retarget). Default stays `localhost:9300`. |
 | 4 | Gave up after 2 attempts on "execution context destroyed" | **a11y-nanny** (Resilience rule is soft) |
 | 5 | axe wrote `reports/chat/axe-results.json` but agent could not read `violations` | **everruns** (tool output truncation) + **a11y-nanny** (no jq-summary step) |
 | 6 | `activate_skill` invoked 3x for one skill | **everruns** (no session-level idempotency) + **a11y-nanny** (no guidance) |
@@ -100,19 +100,50 @@ Replace Phase 1 "propose a plan" with:
 > skip the plan and proceed directly to Phase 2. Only produce a plan when
 > the target is ambiguous or spans more than one surface.
 
-### A3. Prefer the user-supplied public URL over `localhost`
+### A3. Ensure the local stack is running — start or repair it, don't retarget
 
-**File:** `agents/a11y-audit/AGENTS.md` and `agents/a11y-audit/specs/target.md`
+**Files:** `agents/a11y-audit/AGENTS.md`, `agents/a11y-audit/specs/target.md`,
+and a new phase inside `bootstrap-sandbox/SKILL.md` (the skill introduced in
+A1).
 
-Change target precedence to:
+The agent's design target is **local**. Default remains `http://localhost:9300`.
+The failure mode the observed run exposed wasn't that the default was wrong —
+the default was fine — it's that the agent had no strategy for the case where
+the stack wasn't up, so it waited until Playwright hung and then the operator
+had to redirect it manually.
 
-1. URL explicitly named in the prompt (e.g. "dev.everruns.com").
-2. URL in `EVERRUNS_TARGET_URL` env var.
-3. `http://localhost:9300` **only** if neither is set and the sandbox has
-   the app running locally.
+Correct behaviour: **if the local stack isn't up, the agent fixes it.**
+Retargeting to a remote URL is not an option in this agent.
 
-Add a one-line sanity check: `curl -sSf --max-time 5 "$TARGET/healthz"` before
-launching Playwright. If the target 4xx/5xx or times out, stop and report.
+Pre-flight contract inside the skill (runs once, after tool bootstrap in A1):
+
+```bash
+TARGET="${EVERRUNS_TARGET_URL:-http://localhost:9300}"
+if curl -sSf --max-time 5 "$TARGET/healthz" >/dev/null; then
+  echo "STACK_READY"
+else
+  echo "STACK_DOWN"
+fi
+```
+
+On `STACK_DOWN`, the skill owns the repair:
+
+1. **Locate the repo** — if `/workspace/everruns` (or the snapshot's chosen
+   path) isn't present, `git clone` it.
+2. **Bring it up** — `just start-dev --no-watch` under `doppler run --` when
+   secrets are required, otherwise plain `just start-dev`.
+3. **Wait for health** — poll `/healthz` with a 60-second ceiling, backing
+   off `1s, 2s, 4s, 8s`.
+4. **Report** — log the repair action and the time it took to the session
+   notes, so the final audit report can say "stack was cold-started by the
+   agent".
+5. **If repair fails after three bounded attempts**, report the diagnostic
+   output (`just start-dev` tail, last `/healthz` response, port state)
+   and stop. Do **not** silently fall back to a public URL.
+
+`EVERRUNS_TARGET_URL` stays as an override for advanced use (pointing at a
+sibling port prefix, or a pre-running instance in a different container),
+but it's not a remote-fallback mechanism.
 
 ### A4. Enforce "minimum 3 attempts" mechanically
 
