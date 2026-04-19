@@ -63,6 +63,7 @@ jest.mock("@/providers/feature-flags-provider", () => ({
 describe("MainLayout auth availability", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    sessionStorage.clear();
     mockPathname.mockReturnValue("/settings/providers");
     mockSearchParams.mockReturnValue(new URLSearchParams("tab=models"));
 
@@ -138,5 +139,20 @@ describe("MainLayout auth availability", () => {
       );
     });
     expect(screen.queryByText("Authentication unavailable")).not.toBeInTheDocument();
+  });
+
+  it("resumes a stored frontend return_to after auth completes", async () => {
+    sessionStorage.setItem("everruns_return_to", "/settings/providers?tab=models");
+
+    render(
+      <MainLayout>
+        <div>Secret App</div>
+      </MainLayout>,
+    );
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith("/settings/providers?tab=models");
+    });
+    expect(sessionStorage.getItem("everruns_return_to")).toBeNull();
   });
 });

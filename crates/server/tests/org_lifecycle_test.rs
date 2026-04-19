@@ -11,10 +11,11 @@
 
 mod test_harness;
 
+use axum::http::Method;
 use axum::http::StatusCode;
 use axum::http::header::SET_COOKIE;
 use serde_json::{Value, json};
-use test_harness::TestServer;
+use test_harness::{TestServer, extract_cookie};
 
 // ============================================
 // Bug regression: created org must appear in list
@@ -319,5 +320,185 @@ async fn test_switch_org_cookie_has_secure_flag() {
     assert!(
         org_cookie.contains("Secure"),
         "everruns_org cookie must have Secure flag, got: {org_cookie}"
+    );
+}
+
+#[tokio::test]
+async fn test_switch_org_cookie_lists_built_in_harnesses_for_fresh_org() {
+    let server = TestServer::in_memory().await;
+
+    let created_org: Value = server
+        .post("/v1/orgs", json!({"name": "Matrix Org"}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let org_id = created_org["id"].as_str().expect("org id");
+
+    let switch_resp = server
+        .post("/v1/users/me/switch-org", json!({"org_id": org_id}))
+        .await
+        .assert_status(StatusCode::OK);
+    let org_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
+
+    let switched_harnesses: Value = server
+        .request_raw(
+            Method::GET,
+            "/v1/harnesses",
+            vec![("cookie", org_cookie.as_str())],
+            vec![],
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let switched_names: Vec<&str> = switched_harnesses["data"]
+        .as_array()
+        .expect("data array")
+        .iter()
+        .map(|item| item["name"].as_str().expect("harness name"))
+        .collect();
+    assert!(
+        switched_names.contains(&"base"),
+        "freshly created org should have base harness after switch"
+    );
+    assert!(
+        switched_names.contains(&"generic"),
+        "freshly created org should have generic harness after switch"
+    );
+}
+
+#[tokio::test]
+async fn test_switch_org_cookie_allows_creating_and_listing_harnesses() {
+    let server = TestServer::in_memory().await;
+
+    let created_org: Value = server
+        .post("/v1/orgs", json!({"name": "Scoped Harness Org"}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let org_id = created_org["id"].as_str().expect("org id");
+
+    let switch_resp = server
+        .post("/v1/users/me/switch-org", json!({"org_id": org_id}))
+        .await
+        .assert_status(StatusCode::OK);
+    let org_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
+
+    let created_harness: Value = server
+        .request_raw(
+            Method::POST,
+            "/v1/harnesses",
+            vec![
+                ("content-type", "application/json"),
+                ("cookie", org_cookie.as_str()),
+            ],
+            serde_json::to_vec(&json!({
+                "name": "matrix-org-harness",
+                "display_name": "Matrix Org Harness",
+                "system_prompt": "Test org-scoped harness"
+            }))
+            .expect("serialize harness request"),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    assert_eq!(created_harness["name"], "matrix-org-harness");
+
+    let switched_after_create: Value = server
+        .request_raw(
+            Method::GET,
+            "/v1/harnesses",
+            vec![("cookie", org_cookie.as_str())],
+            vec![],
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert!(
+        switched_after_create["data"]
+            .as_array()
+            .expect("data array")
+            .iter()
+            .any(|item| item["name"] == "matrix-org-harness"),
+        "switched org should see the harness created under its cookie scope"
+    );
+}
+
+#[tokio::test]
+async fn test_api_keys_remain_visible_across_active_org_switches() {
+    let server = TestServer::in_memory().await;
+
+    let default_key: Value = server
+        .post("/v1/auth/api-keys", json!({"name": "default-org-key"}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let default_key_id = default_key["id"].as_str().expect("api key id");
+
+    let created_org: Value = server
+        .post("/v1/orgs", json!({"name": "API Key Org"}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let org_id = created_org["id"].as_str().expect("org id");
+
+    let switch_resp = server
+        .post("/v1/users/me/switch-org", json!({"org_id": org_id}))
+        .await
+        .assert_status(StatusCode::OK);
+    let org_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
+
+    let switched_list: Value = server
+        .request_raw(
+            Method::GET,
+            "/v1/auth/api-keys",
+            vec![("cookie", org_cookie.as_str())],
+            vec![],
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert!(
+        switched_list["data"]
+            .as_array()
+            .expect("data array")
+            .iter()
+            .any(|item| item["id"] == default_key_id),
+        "user-scoped API keys should stay visible after switching orgs"
+    );
+
+    let switched_key: Value = server
+        .request_raw(
+            Method::POST,
+            "/v1/auth/api-keys",
+            vec![
+                ("content-type", "application/json"),
+                ("cookie", org_cookie.as_str()),
+            ],
+            serde_json::to_vec(&json!({"name": "switched-org-key"}))
+                .expect("serialize api key request"),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let switched_key_id = switched_key["id"].as_str().expect("api key id");
+
+    let default_list: Value = server
+        .get("/v1/auth/api-keys")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let default_ids: Vec<&str> = default_list["data"]
+        .as_array()
+        .expect("data array")
+        .iter()
+        .map(|item| item["id"].as_str().expect("api key id"))
+        .collect();
+    assert!(
+        default_ids.contains(&default_key_id),
+        "default-org list should keep pre-switch keys"
+    );
+    assert!(
+        default_ids.contains(&switched_key_id),
+        "keys created while another org is active should still be visible to the user"
     );
 }
