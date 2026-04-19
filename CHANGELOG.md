@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.17] - 2026-04-19
+
+### Highlights
+
+- **Principal-based ownership** - Durable entities (sessions, schedules, apps) now track ownership via principals, with backfill from existing agent identities, users, and session metadata ([#1367](https://github.com/everruns/everruns/pull/1367))
+- **Initial files editor** - Agents and harnesses can be configured with initial files through a new editor and preview flow ([#1380](https://github.com/everruns/everruns/pull/1380), [#1377](https://github.com/everruns/everruns/pull/1377))
+- **Idempotent skill activation** - `activate_skill` is now idempotent within a session, eliminating duplicate skill registrations on repeated calls ([#1373](https://github.com/everruns/everruns/pull/1373))
+- **UI route manifest** - Wrappers can consume the UI route manifest via a stable export, enabling downstream customization ([#1381](https://github.com/everruns/everruns/pull/1381))
+- **Migration-history safety** - Restored `016_eval_case_result_metadata.sql` and `017_eval_artifacts.sql` to preserve compatibility with existing deployments; regression test locks filenames and SQL bodies ([#1382](https://github.com/everruns/everruns/pull/1382))
+
+### What's Changed
+
+- fix(evals): open session links in new tab ([#1365](https://github.com/everruns/everruns/pull/1365)) by [@chaliy](https://github.com/chaliy)
+- test(platform_chat): add execute-discover and docs cases ([#1368](https://github.com/everruns/everruns/pull/1368)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): repair sprites live-test job-level if ([#1369](https://github.com/everruns/everruns/pull/1369)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): add missing container-sandbox live_api_test target ([#1370](https://github.com/everruns/everruns/pull/1370)) by [@chaliy](https://github.com/chaliy)
+- test(integrations): fail closed on missing live-test credentials ([#1371](https://github.com/everruns/everruns/pull/1371)) by [@chaliy](https://github.com/chaliy)
+- fix(cli): forward EVERRUNS_ORG_ID as X-Org-Id on agent import ([#1372](https://github.com/everruns/everruns/pull/1372)) by [@chaliy](https://github.com/chaliy)
+- feat(skills): make activate_skill idempotent within a session ([#1373](https://github.com/everruns/everruns/pull/1373)) by [@chaliy](https://github.com/chaliy)
+- feat(authz): make platform-user authz first-class ([#1367](https://github.com/everruns/everruns/pull/1367)) by [@chaliy](https://github.com/chaliy)
+- ci: guard release-prep PRs from un-squashed migrations ([#1374](https://github.com/everruns/everruns/pull/1374)) by [@chaliy](https://github.com/chaliy)
+- test(ci): add worker PR coverage for durable execution ([#1375](https://github.com/everruns/everruns/pull/1375)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): preview initial files for agents and harnesses ([#1377](https://github.com/everruns/everruns/pull/1377)) by [@chaliy](https://github.com/chaliy)
+- test(ci): wire UI Playwright smoke into PR CI ([#1376](https://github.com/everruns/everruns/pull/1376)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): remove Azure OpenAI from org setup ([#1379](https://github.com/everruns/everruns/pull/1379)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add initial files editor ([#1380](https://github.com/everruns/everruns/pull/1380)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): expose route manifest for wrappers ([#1381](https://github.com/everruns/everruns/pull/1381)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): harden malformed tag rendering ([#1383](https://github.com/everruns/everruns/pull/1383)) by [@chaliy](https://github.com/chaliy)
+- fix(server): restore v0.8.16 migration history ([#1382](https://github.com/everruns/everruns/pull/1382)) by [@chaliy](https://github.com/chaliy)
+- test(auth): expand org-scoped integration matrix ([#1384](https://github.com/everruns/everruns/pull/1384)) by [@chaliy](https://github.com/chaliy)
+- test(ci): wire runtime, CLI, and durable failpoint coverage ([#1385](https://github.com/everruns/everruns/pull/1385)) by [@chaliy](https://github.com/chaliy)
+- test(ci): wire 12 server integration tests + fix EVE-195 cli no-org path ([#1378](https://github.com/everruns/everruns/pull/1378)) by [@chaliy](https://github.com/chaliy)
+- chore(issue-tracking): tighten issue pickup ownership by [@chaliy](https://github.com/chaliy)
+- fix(ui): position notification submenu flyout ([#1392](https://github.com/everruns/everruns/pull/1392)) by [@chaliy](https://github.com/chaliy)
+- fix(server): use direct postgres listener urls ([#1389](https://github.com/everruns/everruns/pull/1389)) by [@chaliy](https://github.com/chaliy)
+- chore(specs): document postgres listener deployment ([#1393](https://github.com/everruns/everruns/pull/1393)) by [@chaliy](https://github.com/chaliy)
+- feat(authz): add principal ownership metadata by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.16] - 2026-04-19
 
 ### Highlights

@@ -23,7 +23,19 @@ fi
 
 # Foundational baseline migrations exist before the version-named convention
 # was adopted. They are the only allowed non-version names.
-FOUNDATIONAL=("001_base_schema.sql" "002_durable_execution.sql")
+#
+# `016_eval_case_result_metadata.sql` and `017_eval_artifacts.sql` are frozen
+# feature migrations: v0.8.16 originally squashed them into `016_v0.8.16.sql`,
+# but that rename broke deployments that had already recorded the original
+# filenames in `_sqlx_migrations`. See #1382 and
+# `crates/server/tests/migration_history_test.rs`, which lock their names and
+# SQL bodies so they cannot be renamed or rewritten in future squashes.
+FOUNDATIONAL=(
+  "001_base_schema.sql"
+  "002_durable_execution.sql"
+  "016_eval_case_result_metadata.sql"
+  "017_eval_artifacts.sql"
+)
 
 bad=()
 shopt -s nullglob
