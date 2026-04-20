@@ -12,6 +12,7 @@ use serde_json::json;
 use tracing::{debug, warn};
 
 use crate::client::DaytonaClient;
+use crate::naming::create_sandbox_with_unique_name;
 use crate::state::{SandboxState, get_api_key, release_sandbox_lease, touch_sandbox_lease};
 use crate::{
     AUTO_ARCHIVE_INTERVAL_MINUTES, AUTO_DELETE_INTERVAL_MINUTES, AUTO_STOP_INTERVAL_MINUTES,
@@ -33,7 +34,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
     ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
         let api_key = get_api_key(context).await?;
         let client = build_client(api_key, config);
-        let title = config
+        let requested_name = config
             .provider_config
             .get("title")
             .and_then(|v| v.as_str())
@@ -66,17 +67,21 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             }
         }
 
-        let sandbox_info = client
-            .create_sandbox(json!({
-                "name": title,
+        let (sandbox_info, sandbox_name) = create_sandbox_with_unique_name(
+            &client,
+            &requested_name,
+            json!({
+                "name": requested_name,
                 "snapshot": snapshot,
                 "autoStopInterval": auto_stop,
                 "autoArchiveInterval": AUTO_ARCHIVE_INTERVAL_MINUTES,
                 "autoDeleteInterval": AUTO_DELETE_INTERVAL_MINUTES,
                 "labels": labels,
-            }))
-            .await
-            .map_err(ToolExecutionResult::tool_error)?;
+            }),
+        )
+        .await
+        .map_err(ToolExecutionResult::tool_error)?;
+        let canonical_name = sandbox_name.canonical_name;
 
         if let Err(err) = client.wait_for_ready(&sandbox_info.id).await {
             warn!(
@@ -108,11 +113,11 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             workspace_path: workspace_path.clone(),
             started_at: chrono::Utc::now().to_rfc3339(),
         };
-        touch_sandbox_lease(context, &state, sandbox_info.name.clone()).await?;
+        touch_sandbox_lease(context, &state, Some(canonical_name.clone())).await?;
 
         Ok(SessionSandboxInstance {
             external_id: sandbox_info.id,
-            display_name: sandbox_info.name.or(Some(title)),
+            display_name: Some(canonical_name),
             workspace_path: Some(workspace_path),
             provider_state: json!({}),
             metadata: json!({ "remote_state": sandbox_info.state }),

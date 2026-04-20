@@ -348,3 +348,66 @@ async fn daytona_provider_escapes_workspace_path_when_creating_directory() {
         Some("/tmp/it's workspace; rm -rf /")
     );
 }
+
+#[tokio::test]
+async fn daytona_provider_retries_conflict_and_uses_canonical_display_name() {
+    use std::sync::Mutex as StdMutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let mut config = test_config(&mock_server);
+    config.provider_config["title"] = json!("Managed Sandbox");
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+
+    let seen_names = Arc::new(StdMutex::new(Vec::<String>::new()));
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let seen_names_clone = seen_names.clone();
+    let call_count_clone = call_count.clone();
+    Mock::given(method("POST"))
+        .and(path("/sandbox"))
+        .respond_with(move |request: &wiremock::Request| {
+            let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+            let name = body["name"].as_str().unwrap().to_string();
+            seen_names_clone.lock().unwrap().push(name.clone());
+
+            if call_count_clone.fetch_add(1, Ordering::SeqCst) == 0 {
+                ResponseTemplate::new(409).set_body_string("sandbox already exists")
+            } else {
+                ResponseTemplate::new(200).set_body_json(json!({
+                    "id": "sb_retry",
+                    "name": name,
+                    "state": "started"
+                }))
+            }
+        })
+        .expect(2)
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_retry"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_retry",
+            "name": "ready-name",
+            "state": "started"
+        })))
+        .mount(&mock_server)
+        .await;
+    setup_exec_mocks(&mock_server, "sb_retry", 0, "ready\n").await;
+
+    let instance = provider.create(&context, &config).await.unwrap();
+
+    assert_eq!(instance.external_id, "sb_retry");
+    let display_name = instance.display_name.as_deref().unwrap();
+    assert!(display_name.starts_with("Managed Sandbox-"));
+
+    let seen_names = seen_names.lock().unwrap();
+    assert_eq!(seen_names.len(), 2);
+    assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    assert!(
+        seen_names
+            .iter()
+            .all(|name| name.starts_with("Managed Sandbox-"))
+    );
+    assert_eq!(display_name, seen_names[1]);
+}

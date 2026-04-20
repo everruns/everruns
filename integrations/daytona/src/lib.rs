@@ -13,6 +13,7 @@
 
 pub mod client;
 pub mod connection;
+mod naming;
 pub mod openapi_spec;
 mod session_sandbox_provider;
 pub mod state;

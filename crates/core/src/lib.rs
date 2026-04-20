@@ -80,6 +80,7 @@ pub mod channel;
 // Permissions model (policies, rules, caller context)
 pub mod permissions;
 pub mod progress_reporting;
+pub mod resource_names;
 
 // URL validation for SSRF prevention (shared utility)
 pub mod url_validation;

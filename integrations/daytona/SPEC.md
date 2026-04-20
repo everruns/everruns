@@ -107,7 +107,8 @@ Creates a new sandbox. Optionally uploads files from session storage.
   - `size`: string (optional) — sandbox size tier: `small` (1 vCPU, 1 GiB RAM, 3 GiB disk), `medium` (2 vCPU, 4 GiB RAM, 8 GiB disk), `large` (4 vCPU, 8 GiB RAM, 10 GiB disk). Default: `small`.
   - `snapshot`: string (optional) — explicit Daytona snapshot name (advanced, overrides `size`)
   - `upload_files`: array (optional) — `[{session_path, sandbox_path}]`
-- **Returns**: `{ sandbox_id, status, workspace_path }`
+- **Naming**: Everruns appends a 6-character lowercase alphanumeric suffix before sending the sandbox name to Daytona, and retries once with a fresh suffix if Daytona reports a name conflict. This preserves the readable prefix while making concurrent creates statistically unique.
+- **Returns**: `{ sandbox_id, name, requested_name, status, workspace_path }`
 - **Resource mapping**: The `size` parameter maps to a pre-built Daytona snapshot with the appropriate resources. The Daytona REST API does not support per-sandbox resource overrides for snapshot-based creation (see [daytonaio/daytona#2296](https://github.com/daytonaio/daytona/issues/2296)), so we use tiered snapshots instead.
 
 ### daytona_exec
