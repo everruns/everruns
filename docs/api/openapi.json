@@ -10098,6 +10098,17 @@
             ],
             "description": "Provider type (openai, anthropic, etc.)"
           },
+          "request_options": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmRequestOptions",
+                "description": "Request-side driver options that were enabled for this generation."
+              }
+            ]
+          },
           "response_id": {
             "type": [
               "string",
@@ -10543,6 +10554,31 @@
           }
         }
       },
+      "LlmPromptCacheInfo": {
+        "type": "object",
+        "description": "Request-side prompt cache settings for an LLM generation.",
+        "required": [
+          "enabled",
+          "strategy"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether prompt caching was enabled on the request."
+          },
+          "provider_mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-specific prompt-cache mode used by the driver."
+          },
+          "strategy": {
+            "$ref": "#/components/schemas/PromptCacheStrategy",
+            "description": "Strategy used to enable prompt caching."
+          }
+        }
+      },
       "LlmProvider": {
         "type": "object",
         "description": "LLM Provider entity (API keys never exposed)\nNote: This is the entity struct, separate from the LlmProvider trait in llm.rs",
@@ -10617,6 +10653,42 @@
           "llmsim"
         ]
       },
+      "LlmRequestOptions": {
+        "type": "object",
+        "description": "Request options applied to an LLM generation.\n\nThese fields capture request-side intent such as prompt caching or deferred\ntool loading. They complement `usage`, which captures what actually happened.",
+        "properties": {
+          "prompt_cache": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmPromptCacheInfo",
+                "description": "Prompt caching configuration for this request."
+              }
+            ]
+          },
+          "provider_options": {
+            "type": "object",
+            "description": "Provider-specific request options that do not warrant dedicated fields.",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "tool_search": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LlmToolSearchInfo",
+                "description": "Deferred tool-loading configuration for this request."
+              }
+            ]
+          }
+        }
+      },
       "LlmRetryInfo": {
         "type": "object",
         "description": "Information about rate limit retries during LLM generation",
@@ -10635,6 +10707,25 @@
             "type": "integer",
             "format": "int64",
             "description": "Total time spent waiting between retries in milliseconds",
+            "minimum": 0
+          }
+        }
+      },
+      "LlmToolSearchInfo": {
+        "type": "object",
+        "description": "Request-side tool_search settings for an LLM generation.",
+        "required": [
+          "enabled",
+          "threshold"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether tool_search was enabled on the request."
+          },
+          "threshold": {
+            "type": "integer",
+            "description": "Minimum number of tools before deferred loading activates.",
             "minimum": 0
           }
         }
@@ -12240,6 +12331,13 @@
             "format": "uuid"
           }
         }
+      },
+      "PromptCacheStrategy": {
+        "type": "string",
+        "description": "Strategy for prompt caching.",
+        "enum": [
+          "auto"
+        ]
       },
       "ReasonCompletedData": {
         "type": "object",

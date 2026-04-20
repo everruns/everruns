@@ -433,6 +433,38 @@ pub struct ToolSearchConfig {
     pub threshold: usize,
 }
 
+/// Strategy for prompt caching.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum PromptCacheStrategy {
+    /// Let each driver choose the safest provider-specific behavior.
+    #[default]
+    Auto,
+}
+
+/// Configuration for prompt caching.
+///
+/// Drivers translate this into provider-specific request options when possible.
+/// Unsupported providers or models should ignore it without failing the call.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PromptCacheConfig {
+    /// Enable prompt caching for this request.
+    pub enabled: bool,
+    /// Strategy the driver should use when enabling prompt caching.
+    #[serde(default)]
+    pub strategy: PromptCacheStrategy,
+    /// Existing Gemini cached content resource name (`cachedContents/{id}`).
+    ///
+    /// When set, the Gemini driver uses explicit caching via the
+    /// `cachedContent` request field. When absent, Gemini falls back to its
+    /// default provider behavior (for example implicit caching on supported
+    /// models).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gemini_cached_content: Option<String>,
+}
+
 /// Configuration for an LLM call
 #[derive(Debug, Clone)]
 pub struct LlmCallConfig {
@@ -451,6 +483,8 @@ pub struct LlmCallConfig {
     pub previous_response_id: Option<String>,
     /// Tool search configuration for deferred tool loading
     pub tool_search: Option<ToolSearchConfig>,
+    /// Prompt caching configuration for provider-specific cache controls.
+    pub prompt_cache: Option<PromptCacheConfig>,
 }
 
 impl From<&RuntimeAgent> for LlmCallConfig {
@@ -464,6 +498,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             metadata: HashMap::new(), // Set by ReasonAtom with session/agent context
             previous_response_id: None,
             tool_search: runtime_agent.tool_search.clone(),
+            prompt_cache: runtime_agent.prompt_cache.clone(),
         }
     }
 }
@@ -564,6 +599,12 @@ impl LlmCallConfigBuilder {
     /// Set tool_search configuration
     pub fn tool_search(mut self, config: ToolSearchConfig) -> Self {
         self.config.tool_search = Some(config);
+        self
+    }
+
+    /// Set prompt caching configuration
+    pub fn prompt_cache(mut self, config: PromptCacheConfig) -> Self {
+        self.config.prompt_cache = Some(config);
         self
     }
 

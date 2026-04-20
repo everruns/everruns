@@ -19,6 +19,7 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -28,10 +29,11 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, LlmRetryInfo,
-    OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageStartedData,
-    ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary,
+    EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, LlmPromptCacheInfo,
+    LlmRequestOptions, LlmRetryInfo, LlmToolSearchInfo, OutputMessageCompletedData,
+    OutputMessageDeltaData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
+    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, TokenUsage,
+    ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -197,6 +199,68 @@ pub struct ReasonResult {
 
 fn default_max_iterations() -> usize {
     500
+}
+
+fn build_request_options(
+    config: &crate::llm_driver_registry::LlmCallConfig,
+    provider: &str,
+) -> Option<LlmRequestOptions> {
+    let prompt_cache = config
+        .prompt_cache
+        .as_ref()
+        .filter(|cfg| cfg.enabled)
+        .map(|cfg| LlmPromptCacheInfo {
+            enabled: true,
+            strategy: cfg.strategy,
+            provider_mode: match provider {
+                "openai" => Some("prompt_cache_key".to_string()),
+                "anthropic" => Some("cache_control".to_string()),
+                "gemini" => Some(
+                    if cfg.gemini_cached_content.is_some() {
+                        "cached_content"
+                    } else {
+                        "implicit"
+                    }
+                    .to_string(),
+                ),
+                _ => None,
+            },
+        });
+
+    let tool_search = config
+        .tool_search
+        .as_ref()
+        .filter(|cfg| cfg.enabled)
+        .map(|cfg| LlmToolSearchInfo {
+            enabled: true,
+            threshold: cfg.threshold,
+        });
+
+    let mut provider_options = HashMap::new();
+    if provider == "openai" && config.previous_response_id.is_some() {
+        provider_options.insert(
+            "openai".to_string(),
+            json!({ "previous_response_id": true }),
+        );
+    }
+    if provider == "gemini"
+        && config
+            .prompt_cache
+            .as_ref()
+            .filter(|cfg| cfg.enabled)
+            .and_then(|cfg| cfg.gemini_cached_content.as_ref())
+            .is_some()
+    {
+        provider_options.insert("gemini".to_string(), json!({ "cached_content": true }));
+    }
+
+    let request_options = LlmRequestOptions {
+        prompt_cache,
+        tool_search,
+        provider_options,
+    };
+
+    (!request_options.is_empty()).then_some(request_options)
 }
 
 // ============================================================================
@@ -1175,6 +1239,7 @@ impl ReasonAtom {
                                 metadata: HashMap::new(),
                                 previous_response_id: None,
                                 tool_search: None,
+                                prompt_cache: None,
                             };
 
                             match llm_driver
@@ -1589,6 +1654,12 @@ impl ReasonAtom {
             generation_data = generation_data.with_compaction(info);
         }
 
+        if let Some(request_options) =
+            build_request_options(&llm_config, &model_with_provider.provider_type.to_string())
+        {
+            generation_data = generation_data.with_request_options(request_options);
+        }
+
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
@@ -1789,6 +1860,8 @@ impl ReasonAtom {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm_driver_registry::{LlmCallConfig, PromptCacheConfig, PromptCacheStrategy};
+    use std::collections::HashMap;
 
     #[test]
     fn test_reason_result_default() {
@@ -1853,5 +1926,88 @@ mod tests {
         assert_eq!(patched.len(), 4);
         assert_eq!(patched[2].role, MessageRole::ToolResult);
         assert_eq!(patched[2].tool_call_id(), Some("call_456"));
+    }
+
+    #[test]
+    fn test_build_request_options_for_openai_prompt_cache() {
+        let config = LlmCallConfig {
+            model: "gpt-5.4".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: HashMap::new(),
+            previous_response_id: Some("resp_123".to_string()),
+            tool_search: None,
+            prompt_cache: Some(PromptCacheConfig {
+                enabled: true,
+                strategy: PromptCacheStrategy::Auto,
+                gemini_cached_content: None,
+            }),
+        };
+
+        let request_options = build_request_options(&config, "openai").unwrap();
+        assert_eq!(
+            request_options
+                .prompt_cache
+                .and_then(|info| info.provider_mode),
+            Some("prompt_cache_key".to_string())
+        );
+        assert_eq!(
+            request_options.provider_options.get("openai"),
+            Some(&json!({ "previous_response_id": true }))
+        );
+    }
+
+    #[test]
+    fn test_build_request_options_for_gemini_explicit_cache() {
+        let config = LlmCallConfig {
+            model: "gemini-2.5-pro".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: HashMap::new(),
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: Some(PromptCacheConfig {
+                enabled: true,
+                strategy: PromptCacheStrategy::Auto,
+                gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
+            }),
+        };
+
+        let request_options = build_request_options(&config, "gemini").unwrap();
+        assert_eq!(
+            request_options
+                .prompt_cache
+                .and_then(|info| info.provider_mode),
+            Some("cached_content".to_string())
+        );
+        assert_eq!(
+            request_options.provider_options.get("gemini"),
+            Some(&json!({ "cached_content": true }))
+        );
+    }
+
+    #[test]
+    fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
+        let config = LlmCallConfig {
+            model: "gemini-2.5-pro".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: HashMap::new(),
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: Some(PromptCacheConfig {
+                enabled: false,
+                strategy: PromptCacheStrategy::Auto,
+                gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
+            }),
+        };
+
+        assert!(build_request_options(&config, "gemini").is_none());
     }
 }

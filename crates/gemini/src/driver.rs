@@ -324,6 +324,11 @@ impl LlmDriver for GeminiLlmDriver {
             system_instruction,
             tools,
             generation_config: Some(generation_config),
+            cached_content: config
+                .prompt_cache
+                .as_ref()
+                .filter(|cfg| cfg.enabled)
+                .and_then(|cfg| cfg.gemini_cached_content.clone()),
         };
 
         // Retry loop for rate limit (429) and transient errors
@@ -873,6 +878,8 @@ struct GeminiRequest {
     tools: Option<Vec<GeminiTool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     generation_config: Option<GeminiGenerationConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cached_content: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1316,6 +1323,28 @@ mod tests {
 
         assert_eq!(contents.len(), 1);
         assert_eq!(contents[0].role.as_deref(), Some("user"));
+    }
+
+    #[test]
+    fn test_request_serialization_with_cached_content() {
+        let request = GeminiRequest {
+            contents: vec![GeminiContent {
+                role: Some("user".to_string()),
+                parts: vec![GeminiPart::Text {
+                    text: "Summarize this".to_string(),
+                }],
+            }],
+            system_instruction: None,
+            tools: None,
+            generation_config: Some(GeminiGenerationConfig {
+                temperature: None,
+                max_output_tokens: Some(256),
+            }),
+            cached_content: Some("cachedContents/demo-cache".to_string()),
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["cachedContent"], "cachedContents/demo-cache");
     }
 
     // ========================================================================

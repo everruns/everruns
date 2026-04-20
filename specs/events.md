@@ -671,6 +671,13 @@ Emitted after each LLM API call to provide full visibility into the messages sen
 - `error` - Error message if failed
 - `finish_reasons` - Array of finish reasons (e.g., `["stop"]`, `["tool_calls"]`)
 - `response_id` - Provider's response ID for correlation
+- `request_options` - Optional bag of request-side driver options that were enabled for the call
+
+`request_options` captures request intent rather than provider-reported usage. Current fields:
+
+- `prompt_cache` - Whether prompt caching was enabled, which generic strategy was requested, and the provider-specific mode the driver used (`prompt_cache_key`, `cache_control`, `cached_content`, or `implicit`)
+- `tool_search` - Whether deferred tool loading was enabled and the activation threshold
+- `provider_options` - Provider-specific booleans that do not warrant dedicated top-level fields (for example `openai.previous_response_id` or `gemini.cached_content`)
 
 ```json
 {
@@ -713,7 +720,23 @@ Emitted after each LLM API call to provide full visibility into the messages sen
       "time_to_first_token_ms": 180,
       "success": true,
       "finish_reasons": ["stop"],
-      "response_id": "chatcmpl-abc123"
+      "response_id": "chatcmpl-abc123",
+      "request_options": {
+        "prompt_cache": {
+          "enabled": true,
+          "strategy": "auto",
+          "provider_mode": "prompt_cache_key"
+        },
+        "tool_search": {
+          "enabled": true,
+          "threshold": 8
+        },
+        "provider_options": {
+          "openai": {
+            "previous_response_id": true
+          }
+        }
+      }
     }
   }
 }

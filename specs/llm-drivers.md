@@ -87,6 +87,22 @@ Provider crates register factories at startup. Drivers created on-demand from `P
    - `max_tokens`: Optional token limit
    - `tools`: Tool definitions
    - `reasoning_effort`: Optional reasoning level (low, medium, high)
+   - `metadata`: Optional request metadata for provider-side correlation
+   - `previous_response_id`: Optional OpenAI Responses continuation handle
+   - `tool_search`: Optional deferred tool-loading config
+   - `prompt_cache`: Optional provider-agnostic prompt-cache config
+
+### Prompt Cache Request Contract
+
+Prompt caching is modeled as request intent on `LlmCallConfig.prompt_cache`. Drivers may ignore it when the provider or model does not support cache controls, but they must not fail a request solely because prompt caching was enabled.
+
+Current provider mappings:
+
+- **OpenAI Responses API** — derives a deterministic `prompt_cache_key`
+- **Anthropic** — adds `cache_control: { type: "ephemeral" }` to eligible text blocks
+- **Gemini** — uses `cachedContent` when the config includes an existing cached-content resource name; otherwise the request remains in implicit/default Gemini behavior
+
+`llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
 
 ### Default `max_tokens` Policy
 

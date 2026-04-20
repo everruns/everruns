@@ -504,6 +504,10 @@ impl BraintrustListener {
         if let Some(finish_reasons) = &data.metadata.finish_reasons {
             metadata["finish_reasons"] = serde_json::json!(finish_reasons);
         }
+        if let Some(request_options) = &data.metadata.request_options {
+            metadata["request_options"] =
+                serde_json::to_value(request_options).unwrap_or_else(|_| serde_json::json!({}));
+        }
         if let Some(turn_id) = &event.context.turn_id {
             metadata["turn_id"] = serde_json::json!(turn_id.to_string());
         }
@@ -1421,6 +1425,7 @@ mod tests {
                 response_id: Some("resp_123".to_string()),
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
 
@@ -1635,6 +1640,7 @@ mod tests {
                 response_id: None,
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
         let event = Event::new(
@@ -1907,6 +1913,7 @@ mod tests {
                 response_id: None,
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
         let llm_event = Event::new(

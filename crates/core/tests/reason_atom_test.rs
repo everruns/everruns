@@ -1090,6 +1090,7 @@ async fn test_driver_registry_integration() {
         metadata: std::collections::HashMap::new(),
         previous_response_id: None,
         tool_search: None,
+        prompt_cache: None,
     };
 
     let response = driver
