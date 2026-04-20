@@ -97,7 +97,7 @@ def load_swebench_instances(limit: int | None = None, integration: bool = False)
 def run(args: argparse.Namespace) -> None:
     client = EvalClient(base_url=args.base_url, api_key=args.api_key)
 
-    is_integration = args.integration or args.limit == 2
+    is_integration = args.integration
     instances = load_swebench_instances(
         limit=args.limit,
         integration=args.integration,

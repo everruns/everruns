@@ -56,8 +56,7 @@ def run_swebench_harness(predictions_path: str, *, max_workers: int = 4) -> dict
 
         if result.returncode != 0:
             print(f"SWE-bench harness stderr:\n{result.stderr}", file=sys.stderr)
-            if result.returncode != 0:
-                print(f"Warning: harness exited with code {result.returncode}", file=sys.stderr)
+            print(f"Warning: harness exited with code {result.returncode}", file=sys.stderr)
 
         report_path = output_dir / "logs" / "report.json"
         if not report_path.exists():
@@ -109,10 +108,10 @@ def write_scores_back(
             resolved_ids.add(instance_id)
 
     bulk_items = []
-    matched = 0
+    report_ids = set(report.keys())
     for r in results:
         case_name = r.get("case_name", "")
-        if not case_name:
+        if not case_name or case_name not in report_ids:
             continue
 
         resolved = case_name in resolved_ids
@@ -121,13 +120,12 @@ def write_scores_back(
             "scores": build_scores(resolved),
             "status": "passed" if resolved else "failed",
         })
-        matched += 1
 
     if not bulk_items:
-        print("Error: no results matched report instance IDs", file=sys.stderr)
+        print("Error: no eval results matched report instance IDs", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Writing scores for {matched} results ({len(resolved_ids)} resolved)...")
+    print(f"Writing scores for {len(bulk_items)} results ({len(resolved_ids)} resolved)...")
 
     metadata = {
         "scorer": "swebench-docker-harness",
