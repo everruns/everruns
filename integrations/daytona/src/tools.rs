@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use tracing::{debug, warn};
 
 use crate::client::DaytonaClient;
+use crate::naming::create_sandbox_with_unique_name;
 use crate::state::{
     SandboxState, delete_sandbox_state, get_api_key, get_sandbox_state, list_sandbox_states,
     release_sandbox_lease, required_str, save_sandbox_state, touch_sandbox_lease,
@@ -84,6 +85,23 @@ fn parse_resource_param(
         return Err(format!("Invalid '{name}': must be between {min} and {max}"));
     }
     Ok(Some(n))
+}
+
+fn create_sandbox_result_payload(
+    sandbox_id: &str,
+    requested_name: &str,
+    canonical_name: &str,
+    workspace_path: &str,
+    uploaded_count: usize,
+) -> Value {
+    json!({
+        "sandbox_id": sandbox_id,
+        "name": canonical_name,
+        "requested_name": requested_name,
+        "status": "running",
+        "workspace_path": workspace_path,
+        "files_uploaded": uploaded_count
+    })
 }
 
 // ============================================================================
@@ -172,7 +190,7 @@ impl Tool for DaytonaCreateSandboxTool {
         let client = DaytonaClient::new(api_key);
 
         // Build create request
-        let title = arguments
+        let requested_name = arguments
             .get("title")
             .and_then(|v| v.as_str())
             .unwrap_or("Everruns Sandbox");
@@ -206,7 +224,7 @@ impl Tool for DaytonaCreateSandboxTool {
         };
 
         let mut create_body = json!({
-            "name": title,
+            "name": requested_name,
             "autoStopInterval": auto_stop,
             "autoArchiveInterval": AUTO_ARCHIVE_INTERVAL_MINUTES,
             "autoDeleteInterval": AUTO_DELETE_INTERVAL_MINUTES,
@@ -233,17 +251,19 @@ impl Tool for DaytonaCreateSandboxTool {
         create_body["snapshot"] = json!(snapshot_name);
 
         // Create sandbox
-        debug!("Creating Daytona sandbox: {title}");
-        let sandbox_info = match client.create_sandbox(create_body).await {
-            Ok(info) => info,
-            Err(e) => return ToolExecutionResult::tool_error(e),
-        };
-
-        let sandbox_id = &sandbox_info.id;
+        debug!("Creating Daytona sandbox: {requested_name}");
+        let (sandbox_info, sandbox_name) =
+            match create_sandbox_with_unique_name(&client, requested_name, create_body).await {
+                Ok(result) => result,
+                Err(e) => return ToolExecutionResult::tool_error(e),
+            };
+        let canonical_name = sandbox_name.canonical_name;
+        let sandbox_id = sandbox_info.id.clone();
+        let requested_name = sandbox_name.requested_name;
 
         // Wait for sandbox to reach "started" state
         debug!("Waiting for sandbox to start: {sandbox_id}");
-        if let Err(e) = client.wait_for_ready(sandbox_id).await {
+        if let Err(e) = client.wait_for_ready(&sandbox_id).await {
             warn!("Sandbox readiness check failed: {e}");
             // Continue anyway — the sandbox was created, agent can retry later
         }
@@ -253,7 +273,7 @@ impl Tool for DaytonaCreateSandboxTool {
         // Ensure workspace directory exists
         if let Err(e) = client
             .exec(
-                sandbox_id,
+                &sandbox_id,
                 &format!("mkdir -p {}", crate::DAYTONA_WORKSPACE_PATH),
                 None,
                 None,
@@ -273,7 +293,7 @@ impl Tool for DaytonaCreateSandboxTool {
         if let Err(e) = save_sandbox_state(context, &state).await {
             return e;
         }
-        if let Err(e) = touch_sandbox_lease(context, &state, Some(title.to_string())).await {
+        if let Err(e) = touch_sandbox_lease(context, &state, Some(canonical_name.clone())).await {
             return e;
         }
 
@@ -304,7 +324,7 @@ impl Tool for DaytonaCreateSandboxTool {
                     Ok(Some(file)) => {
                         let content = file.content.unwrap_or_default();
                         if let Err(e) = client
-                            .file_upload(sandbox_id, sandbox_path, content.as_bytes())
+                            .file_upload(&sandbox_id, sandbox_path, content.as_bytes())
                             .await
                         {
                             warn!("Failed to upload {session_path} to sandbox: {e}");
@@ -322,12 +342,13 @@ impl Tool for DaytonaCreateSandboxTool {
             }
         }
 
-        ToolExecutionResult::success(json!({
-            "sandbox_id": sandbox_id,
-            "status": "running",
-            "workspace_path": workspace_path,
-            "files_uploaded": uploaded_count
-        }))
+        ToolExecutionResult::success(create_sandbox_result_payload(
+            &sandbox_id,
+            &requested_name,
+            &canonical_name,
+            &workspace_path,
+            uploaded_count,
+        ))
     }
 
     fn requires_context(&self) -> bool {
@@ -2050,6 +2071,23 @@ mod tests {
         assert!(
             matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
         );
+    }
+
+    #[test]
+    fn test_create_sandbox_result_payload_includes_requested_and_canonical_name() {
+        let payload = create_sandbox_result_payload(
+            "sb_123",
+            "Requested Sandbox",
+            "Requested Sandbox-abc123",
+            "/home/daytona",
+            2,
+        );
+
+        assert_eq!(payload["sandbox_id"], "sb_123");
+        assert_eq!(payload["requested_name"], "Requested Sandbox");
+        assert_eq!(payload["name"], "Requested Sandbox-abc123");
+        assert_eq!(payload["workspace_path"], "/home/daytona");
+        assert_eq!(payload["files_uploaded"], 2);
     }
 
     #[test]
