@@ -1042,6 +1042,8 @@ struct GeminiModelInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::FileSystemCapability;
+    use everruns_core::capabilities::Capability;
 
     #[test]
     fn test_convert_content_text() {
@@ -1251,6 +1253,36 @@ mod tests {
             .get("additionalProperties")
             .expect("property named additionalProperties must be preserved");
         assert_eq!(prop["type"], "boolean");
+    }
+
+    #[test]
+    fn test_convert_file_system_capability_strips_nested_additional_properties() {
+        let tools = FileSystemCapability.tool_definitions();
+        let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();
+
+        fn assert_no_additional_properties(v: &Value) {
+            match v {
+                Value::Object(obj) => {
+                    assert!(
+                        !obj.contains_key("additionalProperties"),
+                        "additionalProperties still present in {obj:?}"
+                    );
+                    for child in obj.values() {
+                        assert_no_additional_properties(child);
+                    }
+                }
+                Value::Array(arr) => {
+                    for child in arr {
+                        assert_no_additional_properties(child);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        for tool in &gemini_tools[0].function_declarations {
+            assert_no_additional_properties(&tool.parameters);
+        }
     }
 
     #[test]

@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use everruns_core::error::Result;
 use everruns_core::session_sandbox::{SessionSandboxConfig, create_session_sandbox_provider};
 use everruns_core::traits::{KeyInfo, SecretInfo, ToolContext, UserConnectionResolver};
-use everruns_core::{SessionStorageStore, typed_id::SessionId};
+use everruns_core::{
+    SessionSandboxExecRequest, SessionSandboxInstance, SessionStorageStore, typed_id::SessionId,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -158,6 +160,16 @@ async fn setup_exec_mocks(
         })))
         .mount(mock_server)
         .await;
+}
+
+fn managed_instance(external_id: &str) -> SessionSandboxInstance {
+    SessionSandboxInstance {
+        external_id: external_id.to_string(),
+        display_name: Some("Managed Sandbox".to_string()),
+        workspace_path: Some("/home/daytona".to_string()),
+        provider_state: json!({}),
+        metadata: json!({}),
+    }
 }
 
 #[test]
@@ -410,4 +422,154 @@ async fn daytona_provider_retries_conflict_and_uses_canonical_display_name() {
             .all(|name| name.starts_with("Managed Sandbox-"))
     );
     assert_eq!(display_name, seen_names[1]);
+}
+
+#[tokio::test]
+async fn daytona_provider_exec_timeout_resets_session_and_next_command_succeeds() {
+    use std::sync::Arc as StdArc;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let config = test_config(&mock_server);
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    let instance = managed_instance("sb_timeout");
+
+    Mock::given(method("POST"))
+        .and(path("/sb_timeout/process/session"))
+        .respond_with(ResponseTemplate::new(201))
+        .mount(&mock_server)
+        .await;
+
+    let exec_call_count = StdArc::new(AtomicU32::new(0));
+    let counter = exec_call_count.clone();
+    Mock::given(method("POST"))
+        .and(path("/sb_timeout/process/session/everruns-exec/exec"))
+        .respond_with(move |_: &wiremock::Request| {
+            let n = counter.fetch_add(1, Ordering::SeqCst);
+            let cmd_id = if n == 0 { "cmd_timeout" } else { "cmd_ok" };
+            ResponseTemplate::new(202).set_body_json(json!({ "cmdId": cmd_id }))
+        })
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_timeout/process/session/everruns-exec/command/cmd_timeout/logs",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![]))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_timeout/process/session/everruns-exec/command/cmd_timeout",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "cmd_timeout",
+            "command": "sleep 999"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut ok_log_bytes = vec![0x01, 0x01, 0x01];
+    ok_log_bytes.extend_from_slice(b"still works\n");
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_timeout/process/session/everruns-exec/command/cmd_ok/logs",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(ok_log_bytes))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/sb_timeout/process/session/everruns-exec/command/cmd_ok",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "cmd_ok",
+            "command": "echo still works",
+            "exitCode": 0
+        })))
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("DELETE"))
+        .and(path("/sb_timeout/process/session/everruns-exec"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&mock_server)
+        .await;
+
+    let timeout_err = provider
+        .exec(
+            &context,
+            &config,
+            &instance,
+            &SessionSandboxExecRequest {
+                command: "sleep 999".to_string(),
+                cwd: None,
+                timeout_ms: Some(1_200),
+                output_mode: "normal".to_string(),
+            },
+        )
+        .await
+        .unwrap_err();
+    let everruns_core::tools::ToolExecutionResult::ToolError(message) = timeout_err else {
+        panic!("Expected ToolError timeout, got {timeout_err:?}");
+    };
+    assert!(message.contains("Command timed out after"));
+    assert!(message.contains("automatically reset"));
+
+    let result = provider
+        .exec(
+            &context,
+            &config,
+            &instance,
+            &SessionSandboxExecRequest {
+                command: "echo still works".to_string(),
+                cwd: None,
+                timeout_ms: Some(5_000),
+                output_mode: "normal".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(result.stdout, "still works\n");
+    assert_eq!(result.stderr, "");
+    assert_eq!(result.raw_output.as_deref(), Some("still works\n"));
+    assert_eq!(exec_call_count.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn daytona_provider_exec_maps_signal_exit_codes_to_hints() {
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let config = test_config(&mock_server);
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    let instance = managed_instance("sb_signal");
+
+    setup_exec_mocks(&mock_server, "sb_signal", 141, "partial output\n").await;
+
+    let result = provider
+        .exec(
+            &context,
+            &config,
+            &instance,
+            &SessionSandboxExecRequest {
+                command: "yes | head -n 1".to_string(),
+                cwd: None,
+                timeout_ms: Some(5_000),
+                output_mode: "normal".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 141);
+    assert!(!result.success);
+    assert_eq!(result.stdout, "partial output\n");
+    assert_eq!(result.stderr, "");
+    assert_eq!(result.raw_output.as_deref(), Some("partial output\n"));
+    let hint = result.hint.as_deref().expect("expected signal hint");
+    assert!(hint.contains("SIGPIPE"), "unexpected hint: {hint}");
 }
