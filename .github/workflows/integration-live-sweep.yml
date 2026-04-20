@@ -21,13 +21,14 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   CARGO_INCREMENTAL: 0
-  DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
 jobs:
   doppler-backed-live-tests:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
