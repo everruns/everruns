@@ -41,6 +41,22 @@ editing `.mcp.json`.
 
 ## Install
 
+### From GitHub (recommended)
+
+The repo doubles as a Claude Code plugin **marketplace**
+(`.claude-plugin/marketplace.json` at the root). Inside Claude Code:
+
+```text
+/plugin marketplace add everruns/everruns
+/plugin install everruns@everruns
+```
+
+To pin a branch or tag:
+
+```text
+/plugin marketplace add everruns/everruns#main
+```
+
 ### From a local clone
 
 ```bash
