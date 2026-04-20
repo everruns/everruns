@@ -1,14 +1,19 @@
 name: Sprites Integration
 
+# Exclude doc-only changes from triggering the paid live API job. The
+# weekly `integration-live-sweep.yml` backstop still covers shared-crate
+# regressions that slip past the per-integration path filter.
 on:
   push:
     branches: [main]
     paths:
       - 'integrations/sprites/**'
+      - '!integrations/sprites/**/*.md'
   pull_request:
     branches: [main]
     paths:
       - 'integrations/sprites/**'
+      - '!integrations/sprites/**/*.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
