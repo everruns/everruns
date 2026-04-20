@@ -102,6 +102,7 @@ pub mod openresponses_types;
 pub mod outline;
 pub mod platform_definition;
 pub mod platform_store;
+pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod runtime_context;
 pub mod tool_output_sanitizer;
@@ -163,6 +164,12 @@ pub use channel::{
 
 // Platform store re-exports
 pub use platform_store::{PlatformMessage, PlatformStore};
+pub use resource_ownership::{
+    LEASED_RESOURCE_EXTERNAL_ID_KEY, LEASED_RESOURCE_ID_KEY, LEASED_RESOURCE_PROVIDER_KEY,
+    LEASED_RESOURCE_TYPE_KEY, list_owned_external_resource_ids,
+    ownership_tracking_unavailable_error, require_owned_external_resource,
+    resource_not_owned_error, verify_owned_external_resource_if_available,
+};
 
 // Event listener re-exports
 pub use background::{

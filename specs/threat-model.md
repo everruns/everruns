@@ -623,6 +623,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-017 | Agent-initiated entity management | High | Agents with `platform_management` can create/update/delete harnesses, agents, sessions org-wide; no fine-grained RBAC within org; capability must be explicitly assigned | **OPEN** |
 | TM-AGENT-018 | No outbound URL filtering on web_fetch | Medium | Agent with `web_fetch` can POST session data to any URL; no allowlist/blocklist for outbound destinations; prompt injection could chain file read + web_fetch for exfiltration | **OPEN** |
 | TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` and `e2b` provide full network access by design; `docker_container` uses host networking in dev mode; all rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
+| TM-AGENT-020 | Cross-session resource reuse via stale or guessed external IDs | Critical | Provider-owned resource IDs are checked against the active session's leased-resource/session-resource ownership before tool execution; raw sandbox list endpoints are filtered to owned IDs only | MITIGATED |
 
 ### Mitigation Details
 
@@ -715,6 +716,13 @@ This means an agent with one of these capabilities can probe whatever network th
 - `docker_container` is gated to development-grade deployments
 
 Residual risk remains with the deployment topology. Production operators must enforce egress filtering and network segmentation for any execution environment that can reach internal services.
+
+**TM-AGENT-020 — Cross-Session Resource Reuse (MITIGATED):**
+Tools that accept provider-owned external IDs (`sandbox_id`, raw Daytona toolbox paths, and
+similar handles) resolve ownership through the active session's leased resources before calling
+the backend. The session resource registry carries the same external-ID metadata for runtimes
+that only expose the generic registry. Raw sandbox list calls are filtered to the IDs owned by
+the active session before results are returned to the agent.
 
 ## 14. Bash Sandbox (TM-BASH)
 
@@ -828,7 +836,7 @@ Daytona sandboxes are remote Linux environments managed via REST API. The agent 
 | TM-DAYTONA-002 | Git token expiry — stale credentials | Low | GitHub App installation tokens expire in ~1 hour; tool hint tells agent to call `daytona_git_credentials` again to refresh | MITIGATED |
 | TM-DAYTONA-003 | Git token scope — over-privileged access | Medium | Token scoped by GitHub App installation permissions; user controls repo access via GitHub App settings | **CALLER RISK** |
 | TM-DAYTONA-004 | Daytona API key compromise | High | Stored in user connections (Settings > Connections); encrypted at rest via envelope encryption (AES-256-GCM) | MITIGATED |
-| TM-DAYTONA-005 | Cross-session sandbox access | Critical | Sandbox IDs stored in session-scoped secrets (`daytona_sandbox:{id}`); session isolation enforced by storage store | MITIGATED |
+| TM-DAYTONA-005 | Cross-session sandbox access | Critical | Daytona tools require session-owned sandbox IDs via leased-resource/session-resource ownership checks; persisted sandbox state stays session-scoped in `daytona_sandbox:{id}` | MITIGATED |
 | TM-DAYTONA-006 | Sandbox not deleted — resource leak | Low | Auto-stop 5 min, auto-archive 30 min, auto-delete 60 min (Daytona-native); leased-resource cleanup 20 min (control plane); system prompt instructs agent to delete when done | MITIGATED |
 | TM-DAYTONA-007 | Git credential helper persists after sandbox reuse | Low | Credential file in `/tmp` cleared on stop; sandbox stop resets environment | MITIGATED |
 
@@ -852,7 +860,8 @@ The GitHub token's scope depends on the GitHub App installation permissions. Use
 Session A stores: daytona_sandbox:sb_abc → {sandbox_id, workspace_path, started_at}
 Session B stores: daytona_sandbox:sb_xyz → {sandbox_id, workspace_path, started_at}
 
-Session A cannot access sb_xyz (different session_id in storage query)
+Session A cannot access sb_xyz because tool-side ownership checks reject non-owned sandbox IDs
+before the Daytona API call, and persisted sandbox state is still scoped by session_id.
 ```
 
 
@@ -863,7 +872,7 @@ Deno sandboxes are remote Linux microVMs managed over a websocket + REST control
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
 | TM-DENO-001 | Service-wide token misuse via env fallback | High | Prefer user connections; env fallback is operator-controlled and intended for managed deployments/tests | **CALLER RISK** |
-| TM-DENO-002 | Cross-session sandbox access | Critical | Sandbox IDs stored in session-scoped secrets (`deno_sandbox:{id}`); tool access requires matching session state | MITIGATED |
+| TM-DENO-002 | Cross-session sandbox access | Critical | Deno tools require session-owned sandbox IDs via leased-resource/session-resource ownership checks; persisted sandbox state remains session-scoped in `deno_sandbox:{id}` | MITIGATED |
 | TM-DENO-003 | Sandbox leak from default `session` timeout | Medium | `deno_create_sandbox` forbids `timeout="session"`; Everruns always uses explicit TTLs plus leased-resource cleanup | MITIGATED |
 | TM-API-015 | Lease metadata exposure | Medium | Deno lease metadata stores only non-secret routing/debug fields (`region`, optional `org`, workspace path, timestamps); tokens still resolve from connections/env at cleanup time | MITIGATED |
 | TM-DENO-004 | Network probing from remote sandbox | High | Capability is Admin-gated; residual exposure depends on operator egress controls | **ACCEPTED** |
@@ -876,7 +885,7 @@ E2B sandboxes are remote Linux environments managed through the E2B Management A
 |----|--------|----------|------------|--------|
 | TM-E2B-001 | Platform-owned E2B API key compromise | High | `E2B_API_KEY` stays in server/worker environment or encrypted session secret override; never emitted in tool output | MITIGATED |
 | TM-E2B-002 | envd access token disclosure | Medium | envd access token stored only in encrypted session secrets and sent only to E2B runtime headers | MITIGATED |
-| TM-E2B-003 | Cross-session sandbox access | Critical | Sandbox IDs + envd tokens stored under `e2b_sandbox:{id}` in session-scoped secrets; storage queries enforce session isolation | MITIGATED |
+| TM-E2B-003 | Cross-session sandbox access | Critical | E2B tools require session-owned sandbox IDs via leased-resource/session-resource ownership checks; envd state remains session-scoped under `e2b_sandbox:{id}` | MITIGATED |
 | TM-E2B-004 | Sandbox not deleted or paused — resource leak | Low | E2B timeout + auto-pause on create/resume, plus Everruns leased-resource cleanup | MITIGATED |
 | TM-E2B-005 | Full-network sandbox misuse | High | Capability is high-risk/Admin-gated via capability assignment policy; residual network exposure depends on deployment egress isolation | **CALLER RISK** |
 
@@ -887,7 +896,8 @@ E2B sandboxes are remote Linux environments managed through the E2B Management A
 Session A stores: e2b_sandbox:sb_abc → {sandbox_id, sandbox_domain, envd_access_token, ...}
 Session B stores: e2b_sandbox:sb_xyz → {sandbox_id, sandbox_domain, envd_access_token, ...}
 
-Session A cannot access sb_xyz because storage lookups are scoped by session_id.
+Session A cannot access sb_xyz because tool-side ownership checks reject non-owned sandbox IDs
+before the E2B API call, and storage lookups remain scoped by session_id.
 ```
 
 ## 18. Client-Side Tools (TM-CLIENT)

@@ -3,6 +3,7 @@
 use std::env;
 
 use everruns_core::UpsertLeasedResource;
+use everruns_core::resource_ownership::verify_owned_external_resource_if_available;
 use everruns_core::tools::ToolExecutionResult;
 use everruns_core::traits::ToolContext;
 use serde::{Deserialize, Serialize};
@@ -98,6 +99,8 @@ pub async fn get_sandbox_state(
     context: &ToolContext,
     sandbox_id: &str,
 ) -> Result<SandboxState, ToolExecutionResult> {
+    verify_owned_external_resource_if_available(context, "e2b", "sandbox", sandbox_id).await?;
+
     let storage = context
         .storage_store
         .as_ref()

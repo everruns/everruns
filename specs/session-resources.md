@@ -100,6 +100,16 @@ On `upsert_resource`, it also calls `registry.register()`. On `release_resource`
 it calls `registry.update_status(Released)`. This ensures all leased resources
 appear in the registry without changing tool code.
 
+Reserved metadata keys added during auto-registration:
+- `leased_resource_provider`
+- `leased_resource_type`
+- `leased_resource_external_id`
+- `leased_resource_id`
+
+These keys let tools verify that a provider-owned external ID belongs to the
+active session even in runtimes that only expose the generic session resource
+registry and not the leased-resource store directly.
+
 ### Feature flag
 
 `LEASED_RESOURCES_FEATURE` gates UI tab visibility. Renamed concept: the tab
