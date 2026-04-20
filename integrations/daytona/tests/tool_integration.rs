@@ -886,12 +886,13 @@ async fn test_exec_session_streaming_emits_chunks() {
     let client =
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
-    let chunks: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let chunks: Arc<Mutex<Vec<everruns_integrations_daytona::state::ExecOutputChunk>>> =
+        Arc::new(Mutex::new(Vec::new()));
     let chunks_clone = chunks.clone();
 
     let result = client
         .exec("sb_stream", "echo streaming", None, Some(30_000), |chunk| {
-            chunks_clone.lock().unwrap().push(chunk.to_string());
+            chunks_clone.lock().unwrap().push(chunk);
         })
         .await
         .unwrap();
@@ -901,6 +902,8 @@ async fn test_exec_session_streaming_emits_chunks() {
 
     let collected = chunks.lock().unwrap();
     assert!(!collected.is_empty(), "should have received output chunks");
+    assert_eq!(collected[0].stream.as_str(), "stdout");
+    assert_eq!(collected[0].text, "chunk1\nchunk2\n");
 }
 
 #[tokio::test]

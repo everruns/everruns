@@ -69,7 +69,7 @@ This avoids entering the key in chat (see TM-AGENT-016).
 | Type | Fields | Source |
 |------|--------|--------|
 | `SandboxInfo` | `id`, `name?`, `state` | `POST /sandbox`, `GET /sandbox/{id}` |
-| `ExecResult` | `result`, `exit_code` | `POST /toolbox/{id}/process/execute` |
+| `ExecResult` | `stdout`, `stderr`, `result`, `exit_code` | Session exec logs + status APIs |
 
 ## API Integration
 
@@ -119,9 +119,10 @@ Executes a shell command in a sandbox with real-time output streaming.
   - `command`: string (required) — shell command
   - `cwd`: string (optional) — working directory
   - `timeout`: integer (optional) — timeout in ms (default: 300000)
-- **Returns**: `{ exit_code, output }`
-- **Streaming**: Emits `tool.output.delta` events with partial combined stdout/stderr output (emitted on stream `"stdout"`) as the command runs (polled every ~1s). The final tool result contains the complete combined output.
+- **Returns**: `{ stdout, stderr, exit_code, success, cwd?, sandbox_id, truncated?, total_lines?, hint?, full_output?, output_files? }`
+- **Streaming**: Emits `tool.output.delta` events on the correct `stream` (`"stdout"` or `"stderr"`) as the command runs (polled every ~1s). The final tool result is the authoritative structured stdout/stderr snapshot.
 - **Recovery**: If a command times out or the shared exec shell is detected as dead, Everruns resets the Daytona exec session before returning the error so the next command can recover cleanly.
+- **Human representation**: Follows the shared exec-tool contract in `specs/tool-execution.md`. Command text is primary; sandbox metadata is secondary.
 
 ### daytona_read_file
 

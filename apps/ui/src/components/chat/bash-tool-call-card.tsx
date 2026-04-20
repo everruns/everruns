@@ -23,6 +23,9 @@ export interface BashOutput {
   stderr: string;
   exit_code: number;
   success: boolean;
+  cwd?: string;
+  sandbox_id?: string;
+  truncated?: boolean;
 }
 
 /**
@@ -42,6 +45,9 @@ export function parseBashOutput(text: string): BashOutput | null {
         stderr: String(parsed.stderr ?? ""),
         exit_code: Number(parsed.exit_code ?? 0),
         success: Boolean(parsed.success ?? parsed.exit_code === 0),
+        cwd: typeof parsed.cwd === "string" ? parsed.cwd : undefined,
+        sandbox_id: typeof parsed.sandbox_id === "string" ? parsed.sandbox_id : undefined,
+        truncated: typeof parsed.truncated === "boolean" ? parsed.truncated : undefined,
       };
     }
   } catch {
@@ -160,6 +166,11 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
     bashOutput && bashOutput.exit_code !== 0
       ? t("exit_code", { value: bashOutput.exit_code })
       : null;
+  const metadataParts = [
+    bashOutput?.cwd,
+    bashOutput?.sandbox_id ? `sandbox ${bashOutput.sandbox_id}` : undefined,
+  ].filter(Boolean) as string[];
+  const metadataLabel = metadataParts.length > 0 ? metadataParts.join(", ") : null;
 
   // Status icon
   const statusIcon = isComplete ? (
@@ -219,8 +230,10 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
       </div>
 
       {/* Description (if present, shown as subtitle) */}
-      {description && (
-        <div className="ml-[22px] text-[10px] opacity-40 truncate">{description}</div>
+      {(description || metadataLabel) && (
+        <div className="ml-[22px] text-[10px] opacity-40 truncate">
+          {[description, metadataLabel].filter(Boolean).join("  ")}
+        </div>
       )}
 
       {/* Tool-level error (not bash stderr) */}

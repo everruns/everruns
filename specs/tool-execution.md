@@ -112,6 +112,45 @@ Default is `concise`. Budgets apply to stdout; stderr is capped at `min(budget, 
 
 This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 
+### Structured Exec Result Contract
+
+Human-facing exec tools should return a structured result instead of a single combined `output` string. This keeps shell rendering, previews, persistence, and narration aligned across providers.
+
+**Required fields:**
+
+| Field | Type | Description |
+|------|------|-------------|
+| `stdout` | string | Sanitized stdout after verbosity truncation |
+| `stderr` | string | Sanitized stderr after verbosity truncation |
+| `exit_code` | integer | Process exit status |
+| `success` | boolean | `true` when `exit_code == 0` |
+
+**Recommended metadata:**
+
+| Field | Type | Description |
+|------|------|-------------|
+| `cwd` | string | Effective working directory shown as secondary metadata |
+| `hint` | string | Short diagnostic hint for signal exits or common recovery advice |
+| `truncated` | boolean | Whether stdout or stderr was truncated for the inline result |
+| `total_lines` | integer | Total stdout line count before truncation |
+| `output_files` | string[] | Session VFS files containing full persisted output |
+| `full_output` | string | Canonical stdout path in session VFS when persisted |
+
+**Legacy compatibility:** Tools may continue to carry a combined pre-truncation string in `ToolResult.raw_output` for persistence hooks and logging, but the user-visible JSON contract should use `stdout`/`stderr`.
+
+### Exec Human Representation
+
+Exec-tool narration and cards should read like command execution, not generic infrastructure activity.
+
+Rules:
+- Title line is command-first: ``$ cargo test``, not the sandbox id or provider name
+- Infra metadata (`cwd`, sandbox label/id, container/session info) is secondary
+- `stderr` is visually distinct from `stdout` in both streaming and completed states
+- Exit status and duration are shown tersely beside the command
+- Standalone shell-like tools should render as their own transcript rows rather than being folded into grouped platform activity
+
+This applies to built-in `bash` and provider-backed exec tools such as `daytona_exec`, `sandbox_exec`, `e2b_exec`, `docker_exec`, and similar shell-like tools.
+
 ### Background Tool Execution
 
 `spawn_background` is a built-in meta-tool that schedules another built-in tool to run asynchronously and returns immediately with a run handle. It is generic: the caller passes `tool` plus `args`; the target tool determines whether background execution is supported.

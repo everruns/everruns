@@ -64,6 +64,53 @@ fn exit_code_hint(exit_code: i32) -> Option<&'static str> {
     }
 }
 
+fn build_exec_tool_result(
+    sandbox_id: &str,
+    cwd: Option<&str>,
+    result: &crate::state::ExecResult,
+    output_mode: &str,
+) -> ToolExecutionResult {
+    use everruns_core::tool_output_sanitizer::{
+        clean_exec_output, output_verbosity_budget, priority_aware_truncate,
+    };
+
+    let clean_stdout = clean_exec_output(&result.stdout);
+    let clean_stderr = clean_exec_output(&result.stderr);
+    let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
+        (
+            priority_aware_truncate(&clean_stdout, budget),
+            priority_aware_truncate(&clean_stderr, budget.min(4096)),
+        )
+    } else {
+        (clean_stdout.clone(), clean_stderr.clone())
+    };
+    let truncated = stdout != clean_stdout || stderr != clean_stderr;
+    let total_lines = clean_stdout.lines().count();
+    let mut raw = clean_stdout;
+    if !clean_stderr.is_empty() {
+        raw.push_str("\n--- stderr ---\n");
+        raw.push_str(&clean_stderr);
+    }
+
+    let mut response = json!({
+        "sandbox_id": sandbox_id,
+        "stdout": stdout,
+        "stderr": stderr,
+        "exit_code": result.exit_code,
+        "success": result.exit_code == 0,
+        "truncated": truncated,
+        "total_lines": total_lines,
+    });
+    if let Some(cwd) = cwd {
+        response["cwd"] = json!(cwd);
+    }
+    if let Some(hint) = exit_code_hint(result.exit_code) {
+        response["hint"] = json!(hint);
+    }
+
+    ToolExecutionResult::success_with_raw_output(response, raw)
+}
+
 /// Parse an optional integer resource parameter, validating type and range.
 fn parse_resource_param(
     arguments: &Value,
@@ -451,19 +498,19 @@ impl Tool for DaytonaExecTool {
         // Use streaming exec to emit real-time output via tool.output.delta events.
         // Send chunks over an mpsc channel to a single emitter task to preserve
         // ordering and avoid unbounded task spawning.
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::state::ExecOutputChunk>();
         let streaming_ctx = context.clone();
         let emitter = tokio::spawn(async move {
             while let Some(delta) = rx.recv().await {
                 streaming_ctx
-                    .emit_tool_output("daytona_exec", &delta, "stdout")
+                    .emit_tool_output("daytona_exec", &delta.text, delta.stream.as_str())
                     .await;
             }
         });
 
         let result = client
             .exec(sandbox_id, command, cwd, Some(timeout), |chunk| {
-                let _ = tx.send(chunk.to_string());
+                let _ = tx.send(chunk);
             })
             .await;
         drop(tx); // Close the channel so the emitter task finishes.
@@ -475,28 +522,7 @@ impl Tool for DaytonaExecTool {
                 if let Err(e) = touch_sandbox_lease(context, &state, None).await {
                     return e;
                 }
-                {
-                    use everruns_core::tool_output_sanitizer::{
-                        clean_exec_output, output_verbosity_budget, priority_aware_truncate,
-                    };
-                    let clean_output = clean_exec_output(&result.result);
-                    let output = if let Some(budget) = output_verbosity_budget(output_mode) {
-                        priority_aware_truncate(&clean_output, budget)
-                    } else {
-                        clean_output.clone()
-                    };
-                    let raw = clean_output;
-                    let mut response = json!({
-                        "exit_code": result.exit_code,
-                        "output": output
-                    });
-                    // Add diagnostic hint for signal-based exit codes so agents
-                    // can adapt their retry strategy. See EVE-252.
-                    if let Some(hint) = exit_code_hint(result.exit_code) {
-                        response["hint"] = json!(hint);
-                    }
-                    ToolExecutionResult::success_with_raw_output(response, raw)
-                }
+                build_exec_tool_result(sandbox_id, cwd, &result, output_mode)
             }
             Err(e) => ToolExecutionResult::tool_error(e),
         }
@@ -2763,6 +2789,30 @@ mod tests {
         assert!(exit_code_hint(130).unwrap().contains("signal"));
         // Outside signal range
         assert!(exit_code_hint(200).is_none());
+    }
+
+    #[test]
+    fn test_build_exec_tool_result_omits_unknown_cwd_and_uses_total_lines() {
+        let result = crate::state::ExecResult {
+            stdout: "line one\nline two\n".to_string(),
+            stderr: "warning\n".to_string(),
+            result: "line one\nline two\nwarning\n".to_string(),
+            exit_code: 0,
+        };
+
+        let output = build_exec_tool_result("sb_test", None, &result, "normal");
+        match output {
+            ToolExecutionResult::Success(value) => {
+                assert_eq!(value["sandbox_id"], "sb_test");
+                assert_eq!(value["stdout"], "line one\nline two\n");
+                assert_eq!(value["stderr"], "warning\n");
+                assert_eq!(value["total_lines"], 2);
+                assert!(value.get("cwd").is_none(), "cwd should be omitted");
+                assert!(value.get("stdout_lines").is_none());
+                assert!(value.get("stderr_lines").is_none());
+            }
+            other => panic!("Expected Success, got {other:?}"),
+        }
     }
 
     // ========================================================================

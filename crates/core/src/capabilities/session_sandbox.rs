@@ -198,8 +198,10 @@ impl Tool for SandboxExecTool {
             .await
         {
             Ok(response) => ToolExecutionResult::success(json!({
+                "stdout": response.stdout,
+                "stderr": response.stderr,
                 "exit_code": response.exit_code,
-                "output": response.output,
+                "success": response.success,
                 "raw_output": response.raw_output,
                 "hint": response.hint,
             })),

@@ -236,7 +236,7 @@ async fn daytona_provider_manages_managed_sandbox_flow() {
         .await
         .unwrap();
     assert_eq!(exec.exit_code, 0);
-    assert!(exec.output.contains("ready"));
+    assert!(exec.stdout.contains("ready"));
 
     let read = provider
         .read_file(&context, &config, &instance, "/home/daytona/main.rs")

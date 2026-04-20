@@ -28,9 +28,35 @@ pub struct SandboxInfo {
 #[serde(rename_all = "camelCase")]
 pub struct ExecResult {
     #[serde(default)]
+    pub stdout: String,
+    #[serde(default)]
+    pub stderr: String,
+    #[serde(default)]
     pub result: String,
     #[serde(default)]
     pub exit_code: i32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecStream {
+    Stdout,
+    Stderr,
+}
+
+impl ExecStream {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Stdout => "stdout",
+            Self::Stderr => "stderr",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExecOutputChunk {
+    pub stream: ExecStream,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -387,8 +413,10 @@ mod tests {
 
     #[test]
     fn test_exec_result_deserialization() {
-        let json = r#"{"result": "hello\n", "exitCode": 0}"#;
+        let json = r#"{"stdout": "hello\n", "stderr": "", "result": "hello\n", "exitCode": 0}"#;
         let result: ExecResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.stdout, "hello\n");
+        assert_eq!(result.stderr, "");
         assert_eq!(result.result, "hello\n");
         assert_eq!(result.exit_code, 0);
     }
@@ -397,15 +425,18 @@ mod tests {
     fn test_exec_result_defaults() {
         let json = r#"{}"#;
         let result: ExecResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.stdout, "");
+        assert_eq!(result.stderr, "");
         assert_eq!(result.result, "");
         assert_eq!(result.exit_code, 0);
     }
 
     #[test]
     fn test_exec_result_nonzero_exit() {
-        let json = r#"{"result": "error msg", "exitCode": 1}"#;
+        let json = r#"{"stdout": "", "stderr": "error msg", "result": "error msg", "exitCode": 1}"#;
         let result: ExecResult = serde_json::from_str(json).unwrap();
         assert_eq!(result.exit_code, 1);
+        assert_eq!(result.stderr, "error msg");
         assert_eq!(result.result, "error msg");
     }
 
