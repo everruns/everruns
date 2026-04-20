@@ -122,14 +122,20 @@ impl AnthropicLlmDriver {
         }
     }
 
-    fn convert_content(content: &LlmMessageContent) -> Vec<AnthropicContentBlock> {
+    fn convert_content(
+        content: &LlmMessageContent,
+        prompt_cache_enabled: bool,
+    ) -> Vec<AnthropicContentBlock> {
         match content {
             LlmMessageContent::Text(text) => {
                 // Skip empty text to avoid Anthropic API error
                 if text.is_empty() {
                     vec![]
                 } else {
-                    vec![AnthropicContentBlock::Text { text: text.clone() }]
+                    vec![AnthropicContentBlock::Text {
+                        text: text.clone(),
+                        cache_control: prompt_cache_enabled.then(AnthropicCacheControl::ephemeral),
+                    }]
                 }
             }
             LlmMessageContent::Parts(parts) => parts
@@ -140,7 +146,11 @@ impl AnthropicLlmDriver {
                         if text.is_empty() {
                             None
                         } else {
-                            Some(AnthropicContentBlock::Text { text: text.clone() })
+                            Some(AnthropicContentBlock::Text {
+                                text: text.clone(),
+                                cache_control: prompt_cache_enabled
+                                    .then(AnthropicCacheControl::ephemeral),
+                            })
                         }
                     }
                     LlmContentPart::Image { url } => {
@@ -168,13 +178,17 @@ impl AnthropicLlmDriver {
                     }
                     LlmContentPart::Audio { .. } => Some(AnthropicContentBlock::Text {
                         text: AUDIO_CONTENT_PLACEHOLDER.to_string(),
+                        cache_control: prompt_cache_enabled.then(AnthropicCacheControl::ephemeral),
                     }),
                 })
                 .collect(),
         }
     }
 
-    fn convert_messages(messages: &[LlmMessage]) -> (Option<String>, Vec<AnthropicMessage>) {
+    fn convert_messages(
+        messages: &[LlmMessage],
+        prompt_cache_enabled: bool,
+    ) -> (Option<String>, Vec<AnthropicMessage>) {
         let mut system_prompt = None;
         let mut converted = Vec::new();
 
@@ -277,7 +291,7 @@ impl AnthropicLlmDriver {
                     }
 
                     // Add text/image content
-                    content.extend(Self::convert_content(&msg.content));
+                    content.extend(Self::convert_content(&msg.content, prompt_cache_enabled));
 
                     // Add tool_use blocks if present
                     if let Some(tool_calls) = &msg.tool_calls {
@@ -298,7 +312,7 @@ impl AnthropicLlmDriver {
                 _ => {
                     converted.push(AnthropicMessage {
                         role: Self::convert_role(&msg.role).to_string(),
-                        content: Self::convert_content(&msg.content),
+                        content: Self::convert_content(&msg.content, prompt_cache_enabled),
                     });
                 }
             }
@@ -329,7 +343,9 @@ impl LlmDriver for AnthropicLlmDriver {
         // Note: OTel instrumentation is handled via event listeners.
         // ReasonAtom emits llm.generation events, and OtelEventListener
         // creates gen-ai spans from those events.
-        let (system_prompt, anthropic_messages) = Self::convert_messages(&messages);
+        let prompt_cache_enabled = config.prompt_cache.as_ref().is_some_and(|cfg| cfg.enabled);
+        let (system_prompt, anthropic_messages) =
+            Self::convert_messages(&messages, prompt_cache_enabled);
 
         let tools = if config.tools.is_empty() {
             None
@@ -893,6 +909,19 @@ struct AnthropicRequest {
     thinking: Option<AnthropicThinking>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AnthropicCacheControl {
+    r#type: String,
+}
+
+impl AnthropicCacheControl {
+    fn ephemeral() -> Self {
+        Self {
+            r#type: "ephemeral".to_string(),
+        }
+    }
+}
+
 /// Extended thinking configuration for Claude
 #[derive(Debug, Serialize)]
 struct AnthropicThinking {
@@ -921,7 +950,11 @@ struct AnthropicMessage {
 #[serde(tag = "type")]
 enum AnthropicContentBlock {
     #[serde(rename = "text")]
-    Text { text: String },
+    Text {
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<AnthropicCacheControl>,
+    },
     #[serde(rename = "image")]
     Image { source: AnthropicImageSource },
     #[serde(rename = "thinking")]
@@ -1419,15 +1452,24 @@ mod tests {
     fn test_convert_content_filters_empty_text() {
         // Empty text content should produce empty vec
         let content = LlmMessageContent::Text(String::new());
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicLlmDriver::convert_content(&content, false);
         assert!(blocks.is_empty(), "Empty text should be filtered out");
+    }
+
+    #[test]
+    fn test_convert_content_adds_cache_control_when_enabled() {
+        let content = LlmMessageContent::Text("Hello".to_string());
+        let blocks = AnthropicLlmDriver::convert_content(&content, true);
+        let json = serde_json::to_value(&blocks[0]).unwrap();
+        assert_eq!(json["type"], "text");
+        assert_eq!(json["cache_control"]["type"], "ephemeral");
     }
 
     #[test]
     fn test_convert_content_keeps_non_empty_text() {
         // Non-empty text should be kept
         let content = LlmMessageContent::Text("Hello, world!".to_string());
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicLlmDriver::convert_content(&content, false);
         assert_eq!(blocks.len(), 1, "Non-empty text should be kept");
     }
 
@@ -1445,7 +1487,7 @@ mod tests {
                 text: String::new(),
             },
         ]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicLlmDriver::convert_content(&content, false);
         assert_eq!(blocks.len(), 1, "Only non-empty text should be kept");
     }
 
@@ -1460,7 +1502,7 @@ mod tests {
                 url: "https://example.com/image.png".to_string(),
             },
         ]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicLlmDriver::convert_content(&content, false);
         assert_eq!(blocks.len(), 1, "Image should be kept, empty text filtered");
     }
 
@@ -1475,7 +1517,7 @@ mod tests {
                 text: String::new(),
             },
         ]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicLlmDriver::convert_content(&content, false);
         assert!(blocks.is_empty(), "All empty text should produce empty vec");
     }
 
@@ -1497,7 +1539,7 @@ mod tests {
             thinking_signature: None,
         }];
 
-        let (_, converted) = AnthropicLlmDriver::convert_messages(&messages);
+        let (_, converted) = AnthropicLlmDriver::convert_messages(&messages, false);
 
         assert_eq!(converted.len(), 1);
         // Content should have tool_use block but no empty text block
@@ -1512,7 +1554,7 @@ mod tests {
     fn test_convert_content_whitespace_is_kept() {
         // Whitespace-only text is kept (not empty after is_empty() check)
         let content = LlmMessageContent::Text("   ".to_string());
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicLlmDriver::convert_content(&content, false);
         assert_eq!(blocks.len(), 1, "Whitespace-only text is kept");
     }
 
@@ -1522,7 +1564,7 @@ mod tests {
         let content = LlmMessageContent::Parts(vec![LlmContentPart::Image {
             url: "data:image/png;base64,iVBORw0KGgo=".to_string(),
         }]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicLlmDriver::convert_content(&content, false);
         assert_eq!(blocks.len(), 1, "Base64 image should be converted");
         match &blocks[0] {
             AnthropicContentBlock::Image { source } => match source {
@@ -1541,7 +1583,7 @@ mod tests {
         let content = LlmMessageContent::Parts(vec![LlmContentPart::Image {
             url: "https://example.com/photo.jpg".to_string(),
         }]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicLlmDriver::convert_content(&content, false);
         assert_eq!(blocks.len(), 1, "HTTP image should be converted");
         match &blocks[0] {
             AnthropicContentBlock::Image { source } => match source {
@@ -1560,10 +1602,10 @@ mod tests {
         let content = LlmMessageContent::Parts(vec![LlmContentPart::Audio {
             url: "data:audio/wav;base64,AAAA".to_string(),
         }]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicLlmDriver::convert_content(&content, false);
         assert_eq!(blocks.len(), 1, "Audio should fallback to text note");
         match &blocks[0] {
-            AnthropicContentBlock::Text { text } => {
+            AnthropicContentBlock::Text { text, .. } => {
                 assert!(text.contains("not supported"));
             }
             _ => panic!("Expected Text block for audio fallback"),
@@ -1594,7 +1636,7 @@ mod tests {
             },
         ];
 
-        let (system, converted) = AnthropicLlmDriver::convert_messages(&messages);
+        let (system, converted) = AnthropicLlmDriver::convert_messages(&messages, false);
 
         assert_eq!(system, Some("You are helpful".to_string()));
         assert_eq!(converted.len(), 1); // Only user message
@@ -1613,7 +1655,7 @@ mod tests {
             thinking_signature: None,
         }];
 
-        let (_, converted) = AnthropicLlmDriver::convert_messages(&messages);
+        let (_, converted) = AnthropicLlmDriver::convert_messages(&messages, false);
 
         assert_eq!(converted.len(), 1);
         assert_eq!(converted[0].role, "user");
@@ -1656,7 +1698,7 @@ mod tests {
             thinking_signature: None,
         };
 
-        let (_, converted) = AnthropicLlmDriver::convert_messages(&[msg]);
+        let (_, converted) = AnthropicLlmDriver::convert_messages(&[msg], false);
 
         assert_eq!(converted.len(), 1);
         assert_eq!(converted[0].role, "user");
@@ -1709,7 +1751,7 @@ mod tests {
             thinking_signature: None,
         };
 
-        let (_, converted) = AnthropicLlmDriver::convert_messages(&[msg]);
+        let (_, converted) = AnthropicLlmDriver::convert_messages(&[msg], false);
 
         match &converted[0].content[0] {
             AnthropicContentBlock::ToolResult { content, .. } => match content {

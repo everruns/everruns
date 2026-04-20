@@ -25,6 +25,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
 
 use crate::error::{AgentLoopError, Result};
@@ -313,6 +314,24 @@ impl OpenResponsesProtocolLlmDriver {
         });
 
         result
+    }
+
+    fn build_prompt_cache_key(
+        config: &LlmCallConfig,
+        input_items: &[ResponsesInputItem],
+        instructions: &Option<String>,
+        tools: &Option<Vec<ResponsesTool>>,
+    ) -> Option<String> {
+        let prompt_cache = config.prompt_cache.as_ref().filter(|cfg| cfg.enabled)?;
+        let fingerprint = json!({
+            "strategy": prompt_cache.strategy,
+            "model": config.model,
+            "instructions": instructions,
+            "input": input_items,
+            "tools": tools,
+        });
+        let payload = serde_json::to_vec(&fingerprint).ok()?;
+        Some(format!("everruns:{:x}", Sha256::digest(payload)))
     }
 
     /// Compact a conversation to reduce context size
@@ -606,6 +625,8 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         } else {
             Some(config.metadata.clone())
         };
+        let prompt_cache_key =
+            Self::build_prompt_cache_key(config, &input_items, &instructions, &tools);
 
         let request = ResponsesRequest {
             model: config.model.clone(),
@@ -618,6 +639,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
             tools,
             reasoning,
             metadata,
+            prompt_cache_key,
         };
 
         // Log request details for debugging LLM errors.
@@ -1609,6 +1631,8 @@ struct ResponsesRequest {
     /// Useful for correlating requests with session_id, agent_id, org_id, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<std::collections::HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prompt_cache_key: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1752,6 +1776,7 @@ mod tests {
             tools: None,
             reasoning: None,
             metadata: None,
+            prompt_cache_key: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
@@ -1782,6 +1807,7 @@ mod tests {
                 summary: "detailed".to_string(),
             }),
             metadata: None,
+            prompt_cache_key: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
@@ -1811,11 +1837,47 @@ mod tests {
             tools: None,
             reasoning: None,
             metadata: Some(metadata),
+            prompt_cache_key: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["metadata"]["session_id"], "session_abc123");
         assert_eq!(json["metadata"]["agent_id"], "agent_xyz789");
+    }
+
+    #[test]
+    fn test_build_prompt_cache_key_when_enabled() {
+        let config = LlmCallConfig {
+            model: "gpt-5.4".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: Some(crate::llm_driver_registry::PromptCacheConfig {
+                enabled: true,
+                strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                gemini_cached_content: None,
+            }),
+        };
+        let input = vec![ResponsesInputItem::Message {
+            r#type: "message".to_string(),
+            role: "user".to_string(),
+            content: ResponsesContent::Text("Hello".to_string()),
+            phase: None,
+        }];
+
+        let key = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+            &config,
+            &input,
+            &Some("You are helpful".to_string()),
+            &None,
+        );
+
+        assert!(key.is_some());
+        assert!(key.unwrap().starts_with("everruns:"));
     }
 
     #[test]
@@ -2509,6 +2571,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
             tool_search: None,
+            prompt_cache: None,
         };
 
         // Simulate the driver's filter logic
@@ -2539,6 +2602,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
             tool_search: None,
+            prompt_cache: None,
         };
 
         let reasoning = config

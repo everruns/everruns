@@ -96,6 +96,7 @@ mod openai_tool_search;
 mod openui;
 pub mod persistent_memory;
 mod platform_management;
+mod prompt_caching;
 mod research;
 mod sample_data;
 mod self_budget;
@@ -182,6 +183,7 @@ pub use platform_management::{
     ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool, ReadSessionsTool,
     SessionReadMessagesTool, SessionReadResponseTool, SessionSendMessageTool,
 };
+pub use prompt_caching::{PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability};
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
 pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
@@ -669,6 +671,7 @@ impl CapabilityRegistry {
 
         // OpenAI tool_search (deferred tool loading, all environments)
         registry.register(OpenAiToolSearchCapability::new());
+        registry.register(PromptCachingCapability::new());
 
         // Skills (filesystem-based discovery + activation, all environments)
         registry.register(SkillsCapability);
@@ -871,6 +874,8 @@ pub struct CollectedCapabilities {
     pub applied_ids: Vec<String>,
     /// Tool search configuration (set when openai_tool_search capability is present)
     pub tool_search: Option<crate::llm_driver_registry::ToolSearchConfig>,
+    /// Prompt caching configuration (set when prompt_caching capability is present)
+    pub prompt_cache: Option<crate::llm_driver_registry::PromptCacheConfig>,
 }
 
 impl CollectedCapabilities {
@@ -1293,6 +1298,7 @@ pub async fn collect_capabilities_with_configs(
         Vec::new();
     let mut applied_ids: Vec<String> = Vec::new();
     let mut tool_search: Option<crate::llm_driver_registry::ToolSearchConfig> = None;
+    let mut prompt_cache: Option<crate::llm_driver_registry::PromptCacheConfig> = None;
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
@@ -1338,6 +1344,28 @@ pub async fn collect_capabilities_with_configs(
                 });
             }
 
+            if cap_id == PROMPT_CACHING_CAPABILITY_ID {
+                let strategy = cap_config
+                    .config
+                    .get("strategy")
+                    .and_then(|v| v.as_str())
+                    .map(|value| match value {
+                        "auto" => crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                        _ => crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                    })
+                    .unwrap_or(crate::llm_driver_registry::PromptCacheStrategy::Auto);
+                let gemini_cached_content = cap_config
+                    .config
+                    .get("gemini_cached_content")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                prompt_cache = Some(crate::llm_driver_registry::PromptCacheConfig {
+                    enabled: true,
+                    strategy,
+                    gemini_cached_content,
+                });
+            }
+
             // Collect mount points
             mounts.extend(capability.mounts());
 
@@ -1368,6 +1396,7 @@ pub async fn collect_capabilities_with_configs(
         message_filter_providers,
         applied_ids,
         tool_search,
+        prompt_cache,
     }
 }
 
@@ -1453,6 +1482,7 @@ pub async fn apply_capabilities(
         temperature: base_runtime_agent.temperature,
         max_tokens: base_runtime_agent.max_tokens,
         tool_search: collected.tool_search,
+        prompt_cache: collected.prompt_cache,
         network_access: base_runtime_agent.network_access,
     };
 
@@ -1502,6 +1532,7 @@ mod tests {
             "compaction",
             "memory",
             "openai_tool_search",
+            "prompt_caching",
             "skills",
             "subagents",
             "system_commands",
@@ -3123,6 +3154,76 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_apply_capabilities_prompt_caching() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
+
+        let applied = apply_capabilities(
+            base_runtime_agent.clone(),
+            &["prompt_caching".to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+
+        assert_eq!(
+            applied.runtime_agent.system_prompt,
+            base_runtime_agent.system_prompt
+        );
+        assert!(applied.tool_registry.is_empty());
+        assert_eq!(applied.applied_ids, vec!["prompt_caching"]);
+
+        let prompt_cache = applied.runtime_agent.prompt_cache.as_ref().unwrap();
+        assert!(prompt_cache.enabled);
+        assert_eq!(
+            prompt_cache.strategy,
+            crate::llm_driver_registry::PromptCacheStrategy::Auto
+        );
+        assert!(prompt_cache.gemini_cached_content.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_collect_capabilities_prompt_caching_custom_strategy() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("prompt_caching"),
+            config: serde_json::json!({"strategy": "auto"}),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+
+        let prompt_cache = collected.prompt_cache.as_ref().unwrap();
+        assert!(prompt_cache.enabled);
+        assert_eq!(
+            prompt_cache.strategy,
+            crate::llm_driver_registry::PromptCacheStrategy::Auto
+        );
+        assert!(prompt_cache.gemini_cached_content.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_collect_capabilities_prompt_caching_gemini_cached_content() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("prompt_caching"),
+            config: serde_json::json!({
+                "strategy": "auto",
+                "gemini_cached_content": "cachedContents/demo-cache"
+            }),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+
+        let prompt_cache = collected.prompt_cache.as_ref().unwrap();
+        assert_eq!(
+            prompt_cache.gemini_cached_content.as_deref(),
+            Some("cachedContents/demo-cache")
+        );
     }
 
     // ========================================================================

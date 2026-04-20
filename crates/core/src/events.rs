@@ -20,6 +20,8 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 #[cfg(feature = "openapi")]
@@ -1042,6 +1044,55 @@ pub struct LlmGenerationOutput {
     pub tool_calls: Vec<ToolCall>,
 }
 
+/// Request options applied to an LLM generation.
+///
+/// These fields capture request-side intent such as prompt caching or deferred
+/// tool loading. They complement `usage`, which captures what actually happened.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct LlmRequestOptions {
+    /// Prompt caching configuration for this request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache: Option<LlmPromptCacheInfo>,
+    /// Deferred tool-loading configuration for this request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_search: Option<LlmToolSearchInfo>,
+    /// Provider-specific request options that do not warrant dedicated fields.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub provider_options: HashMap<String, Value>,
+}
+
+impl LlmRequestOptions {
+    pub fn is_empty(&self) -> bool {
+        self.prompt_cache.is_none()
+            && self.tool_search.is_none()
+            && self.provider_options.is_empty()
+    }
+}
+
+/// Request-side prompt cache settings for an LLM generation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct LlmPromptCacheInfo {
+    /// Whether prompt caching was enabled on the request.
+    pub enabled: bool,
+    /// Strategy used to enable prompt caching.
+    pub strategy: crate::llm_driver_registry::PromptCacheStrategy,
+    /// Provider-specific prompt-cache mode used by the driver.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_mode: Option<String>,
+}
+
+/// Request-side tool_search settings for an LLM generation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct LlmToolSearchInfo {
+    /// Whether tool_search was enabled on the request.
+    pub enabled: bool,
+    /// Minimum number of tools before deferred loading activates.
+    pub threshold: usize,
+}
+
 /// Metadata about an LLM generation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -1091,6 +1142,10 @@ pub struct LlmGenerationMetadata {
     /// Occurs when the conversation context exceeded the model's limit
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compaction: Option<LlmCompactionInfo>,
+
+    /// Request-side driver options that were enabled for this generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_options: Option<LlmRequestOptions>,
 }
 
 /// Information about rate limit retries during LLM generation
@@ -1201,6 +1256,7 @@ impl LlmGenerationData {
                 response_id: None,
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         }
     }
@@ -1236,6 +1292,7 @@ impl LlmGenerationData {
                 response_id,
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         }
     }
@@ -1272,6 +1329,7 @@ impl LlmGenerationData {
                 response_id,
                 retry,
                 compaction: None,
+                request_options: None,
             },
         }
     }
@@ -1305,6 +1363,7 @@ impl LlmGenerationData {
                 response_id: None,
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         }
     }
@@ -1320,6 +1379,14 @@ impl LlmGenerationData {
     /// Set retry info on this generation event
     pub fn with_retry(mut self, retry: LlmRetryInfo) -> Self {
         self.metadata.retry = Some(retry);
+        self
+    }
+
+    /// Set request-side options on this generation event.
+    pub fn with_request_options(mut self, request_options: LlmRequestOptions) -> Self {
+        if !request_options.is_empty() {
+            self.metadata.request_options = Some(request_options);
+        }
         self
     }
 }
@@ -2163,6 +2230,9 @@ impl EventBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm_driver_registry::PromptCacheStrategy;
+    use serde_json::json;
+    use std::collections::HashMap;
 
     #[test]
     fn test_event_creation() {
@@ -2399,6 +2469,53 @@ mod tests {
 
         let event_data: EventData = data.into();
         assert_eq!(event_data.event_type(), LLM_GENERATION);
+    }
+
+    #[test]
+    fn test_llm_generation_data_with_request_options() {
+        let mut provider_options = HashMap::new();
+        provider_options.insert(
+            "openai".to_string(),
+            json!({ "previous_response_id": true }),
+        );
+
+        let data = LlmGenerationData::success(
+            vec![Message::user("Hello")],
+            vec![],
+            Some("Hi".to_string()),
+            vec![],
+            "gpt-5.4".to_string(),
+            Some("openai".to_string()),
+            None,
+            Some(42),
+            Some(12),
+        )
+        .with_request_options(LlmRequestOptions {
+            prompt_cache: Some(LlmPromptCacheInfo {
+                enabled: true,
+                strategy: PromptCacheStrategy::Auto,
+                provider_mode: Some("prompt_cache_key".to_string()),
+            }),
+            tool_search: Some(LlmToolSearchInfo {
+                enabled: true,
+                threshold: 8,
+            }),
+            provider_options,
+        });
+
+        let json = serde_json::to_value(&data).unwrap();
+        assert_eq!(
+            json["metadata"]["request_options"]["prompt_cache"]["provider_mode"],
+            "prompt_cache_key"
+        );
+        assert_eq!(
+            json["metadata"]["request_options"]["tool_search"]["threshold"],
+            8
+        );
+        assert_eq!(
+            json["metadata"]["request_options"]["provider_options"]["openai"]["previous_response_id"],
+            true
+        );
     }
 
     #[test]

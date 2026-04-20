@@ -20,7 +20,7 @@ use crate::capabilities::{
 };
 use crate::config_layer::AgentConfigOverlay;
 use crate::harness::Harness;
-use crate::llm_driver_registry::ToolSearchConfig;
+use crate::llm_driver_registry::{PromptCacheConfig, ToolSearchConfig};
 use crate::llm_model_profiles::get_model_profile;
 use crate::llm_models::LlmProviderType;
 use crate::tool_types::ToolDefinition;
@@ -55,6 +55,10 @@ pub struct RuntimeAgent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_search: Option<ToolSearchConfig>,
 
+    /// Prompt caching config (set by prompt_caching capability)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_cache: Option<PromptCacheConfig>,
+
     /// Merged network access list (harness ∩ agent ∩ session).
     /// Used by tools (web_fetch) to enforce URL access policy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -79,6 +83,7 @@ impl RuntimeAgent {
             temperature: None,
             max_tokens: None,
             tool_search: None,
+            prompt_cache: None,
             network_access: None,
         }
     }
@@ -94,6 +99,7 @@ impl Default for RuntimeAgent {
             temperature: None,
             max_tokens: None,
             tool_search: None,
+            prompt_cache: None,
             network_access: None,
         }
     }
@@ -284,6 +290,10 @@ impl RuntimeAgentBuilder {
             self.runtime_agent.tool_search = Some(ts_config);
         }
 
+        if let Some(pc_config) = collected.prompt_cache {
+            self.runtime_agent.prompt_cache = Some(pc_config);
+        }
+
         self
     }
 
@@ -368,6 +378,12 @@ impl RuntimeAgentBuilder {
         self
     }
 
+    /// Set prompt caching configuration
+    pub fn prompt_cache(mut self, config: PromptCacheConfig) -> Self {
+        self.runtime_agent.prompt_cache = Some(config);
+        self
+    }
+
     /// Build the runtime agent.
     ///
     /// Validates that tool_search is only enabled for models that support it
@@ -407,6 +423,7 @@ impl RuntimeAgentBuilder {
                 self.runtime_agent.tool_search = None;
             }
         }
+
         self.runtime_agent
     }
 }
@@ -956,6 +973,27 @@ mod tests {
         assert_eq!(
             ts.threshold, 5,
             "custom threshold from capability must be preserved"
+        );
+    }
+
+    #[test]
+    fn test_build_preserves_prompt_cache_for_supported_provider() {
+        let agent = RuntimeAgentBuilder::new()
+            .model("gpt-5.4")
+            .prompt_cache(PromptCacheConfig {
+                enabled: true,
+                strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                gemini_cached_content: None,
+            })
+            .build();
+
+        let prompt_cache = agent
+            .prompt_cache
+            .expect("explicit prompt_cache should be preserved");
+        assert!(prompt_cache.enabled);
+        assert_eq!(
+            prompt_cache.strategy,
+            crate::llm_driver_registry::PromptCacheStrategy::Auto
         );
     }
 

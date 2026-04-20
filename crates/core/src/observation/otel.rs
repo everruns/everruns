@@ -1312,6 +1312,7 @@ mod tests {
                 response_id: Some("resp_123".to_string()),
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
 
@@ -1351,6 +1352,7 @@ mod tests {
                 response_id: Some("resp_456".to_string()),
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
 
@@ -1386,6 +1388,7 @@ mod tests {
                 response_id: None,
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
 
@@ -1426,6 +1429,7 @@ mod tests {
                 response_id: None,
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
 
@@ -1461,6 +1465,7 @@ mod tests {
                 response_id: None,
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
 
@@ -1502,6 +1507,7 @@ mod tests {
                 response_id: None,
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
 
@@ -1538,6 +1544,7 @@ mod tests {
                 response_id: None,
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
 
@@ -1656,6 +1663,7 @@ mod tests {
                 response_id: None,
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
         listener
@@ -1905,6 +1913,7 @@ mod tests {
                 response_id: Some("resp_001".to_string()),
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
         listener
@@ -2044,6 +2053,7 @@ mod tests {
                 response_id: Some("resp_002".to_string()),
                 retry: None,
                 compaction: None,
+                request_options: None,
             },
         };
         listener
