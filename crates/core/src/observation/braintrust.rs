@@ -30,16 +30,24 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use rand::Rng;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+use tokio::time::{self, Duration};
+use tracing::{debug, error, info, warn};
 
+use crate::DeploymentGrade;
 use crate::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventData, EventListener,
     LLM_GENERATION, REASON_COMPLETED, REASON_STARTED, REASON_THINKING_COMPLETED,
     REASON_THINKING_STARTED, ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData,
-    ReasonThinkingStartedData, TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
-    TURN_FAILED, TURN_STARTED, ToolStartedData, TurnCancelledData, TurnFailedData,
+    ReasonThinkingStartedData, SESSION_ACTIVATED, SESSION_IDLED, SESSION_STARTED, TOOL_COMPLETED,
+    TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED, ToolStartedData,
+    TurnCancelledData, TurnFailedData,
 };
 
 /// Configuration for Braintrust integration
@@ -51,6 +59,114 @@ pub struct BraintrustConfig {
     pub project_id: String,
     /// API base URL (default: <https://api.braintrust.dev>)
     pub api_url: String,
+    /// Delivery pipeline configuration
+    pub delivery: BraintrustDeliveryConfig,
+    /// Content/privacy controls
+    pub content: BraintrustContentConfig,
+    /// Deployment grade exported in root metadata
+    pub deployment_grade: DeploymentGrade,
+}
+
+#[derive(Debug, Clone)]
+pub struct BraintrustDeliveryConfig {
+    pub queue_capacity: usize,
+    pub max_batch_size: usize,
+    pub flush_interval: Duration,
+    pub request_timeout: Duration,
+    pub max_retries: u32,
+    pub base_retry_delay: Duration,
+    pub max_retry_delay: Duration,
+}
+
+impl Default for BraintrustDeliveryConfig {
+    fn default() -> Self {
+        Self {
+            queue_capacity: 1024,
+            max_batch_size: 50,
+            flush_interval: Duration::from_millis(500),
+            request_timeout: Duration::from_secs(10),
+            max_retries: 3,
+            base_retry_delay: Duration::from_millis(250),
+            max_retry_delay: Duration::from_secs(5),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BraintrustThinkingMode {
+    None,
+    Summary,
+    Full,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BraintrustPayloadMode {
+    Full,
+    Summary,
+    Redacted,
+    None,
+}
+
+#[derive(Debug, Clone)]
+pub struct BraintrustContentConfig {
+    pub record_content: bool,
+    pub record_thinking: BraintrustThinkingMode,
+    pub tool_args_mode: BraintrustPayloadMode,
+    pub tool_results_mode: BraintrustPayloadMode,
+    pub debug_payloads: bool,
+}
+
+impl Default for BraintrustContentConfig {
+    fn default() -> Self {
+        Self {
+            record_content: false,
+            record_thinking: BraintrustThinkingMode::None,
+            tool_args_mode: BraintrustPayloadMode::Redacted,
+            tool_results_mode: BraintrustPayloadMode::Summary,
+            debug_payloads: false,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+struct BraintrustSessionState {
+    harness_id: Option<String>,
+    agent_id: Option<String>,
+    model_id: Option<String>,
+    last_status: Option<String>,
+    last_turn_id: Option<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct BraintrustTurnState {
+    input_message_id: Option<String>,
+    turn_started_sequence: Option<i32>,
+    harness_id: Option<String>,
+    agent_id: Option<String>,
+    model: Option<String>,
+    provider: Option<String>,
+    retry_attempts: Option<u32>,
+    retry_wait_ms: Option<u64>,
+    compaction: Option<serde_json::Value>,
+    session_status: Option<String>,
+}
+
+struct BraintrustState {
+    config: BraintrustConfig,
+    client: Client,
+    sender: mpsc::Sender<BraintrustLogEvent>,
+    sessions: Mutex<HashMap<String, BraintrustSessionState>>,
+    turns: Mutex<HashMap<String, BraintrustTurnState>>,
+    dropped_events: AtomicU64,
+    retried_batches: AtomicU64,
+    failed_batches: AtomicU64,
+}
+
+#[derive(Debug)]
+enum DeliveryAttempt {
+    Success,
+    Retryable(String),
+    Permanent(String),
 }
 
 /// Response from Braintrust list projects API
@@ -74,10 +190,43 @@ impl BraintrustConfig {
     /// 1. BRAINTRUST_PROJECT_NAME - Human-readable name (resolved to ID via API)
     /// 2. BRAINTRUST_PROJECT_ID - Direct UUID (no API call needed)
     pub fn from_env() -> Option<Self> {
+        if matches!(env_bool_value("BRAINTRUST_ENABLED"), Some(false)) {
+            return None;
+        }
+
         let api_key = std::env::var("BRAINTRUST_API_KEY").ok()?;
 
         let api_url = std::env::var("BRAINTRUST_API_URL")
             .unwrap_or_else(|_| "https://api.braintrust.dev".to_string());
+        let delivery = BraintrustDeliveryConfig {
+            queue_capacity: env_usize("BRAINTRUST_QUEUE_CAPACITY", 1024),
+            max_batch_size: env_usize("BRAINTRUST_MAX_BATCH_SIZE", 50),
+            flush_interval: Duration::from_millis(env_u64("BRAINTRUST_FLUSH_INTERVAL_MS", 500)),
+            request_timeout: Duration::from_millis(env_u64(
+                "BRAINTRUST_REQUEST_TIMEOUT_MS",
+                10_000,
+            )),
+            max_retries: env_u32("BRAINTRUST_MAX_RETRIES", 3),
+            base_retry_delay: Duration::from_millis(env_u64("BRAINTRUST_RETRY_BASE_DELAY_MS", 250)),
+            max_retry_delay: Duration::from_millis(env_u64("BRAINTRUST_RETRY_MAX_DELAY_MS", 5_000)),
+        };
+        let content = BraintrustContentConfig {
+            record_content: env_bool("BRAINTRUST_RECORD_CONTENT", false),
+            record_thinking: env_thinking_mode(
+                "BRAINTRUST_RECORD_THINKING",
+                BraintrustThinkingMode::None,
+            ),
+            tool_args_mode: env_payload_mode(
+                "BRAINTRUST_TOOL_ARGS_MODE",
+                BraintrustPayloadMode::Redacted,
+            ),
+            tool_results_mode: env_payload_mode(
+                "BRAINTRUST_TOOL_RESULTS_MODE",
+                BraintrustPayloadMode::Summary,
+            ),
+            debug_payloads: env_bool("BRAINTRUST_DEBUG_PAYLOADS", false),
+        };
+        let deployment_grade = DeploymentGrade::from_env();
 
         // Try project ID first (no API call needed)
         if let Ok(project_id) = std::env::var("BRAINTRUST_PROJECT_ID") {
@@ -85,6 +234,9 @@ impl BraintrustConfig {
                 api_key,
                 project_id,
                 api_url,
+                delivery,
+                content,
+                deployment_grade,
             });
         }
 
@@ -104,6 +256,9 @@ impl BraintrustConfig {
                     api_key,
                     project_id,
                     api_url,
+                    delivery,
+                    content,
+                    deployment_grade,
                 })
             }
             Err(e) => {
@@ -115,6 +270,62 @@ impl BraintrustConfig {
                 None
             }
         }
+    }
+}
+
+fn parse_env_bool(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Some(true),
+        "false" | "0" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+fn env_bool_value(name: &str) -> Option<bool> {
+    std::env::var(name).ok().as_deref().and_then(parse_env_bool)
+}
+
+fn env_bool(name: &str, default: bool) -> bool {
+    env_bool_value(name).unwrap_or(default)
+}
+
+fn env_u64(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_u32(name: &str, default: u32) -> u32 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_usize(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
+fn env_payload_mode(name: &str, default: BraintrustPayloadMode) -> BraintrustPayloadMode {
+    match std::env::var(name).ok().as_deref() {
+        Some("full") => BraintrustPayloadMode::Full,
+        Some("summary") => BraintrustPayloadMode::Summary,
+        Some("redacted") => BraintrustPayloadMode::Redacted,
+        Some("none") => BraintrustPayloadMode::None,
+        _ => default,
+    }
+}
+
+fn env_thinking_mode(name: &str, default: BraintrustThinkingMode) -> BraintrustThinkingMode {
+    match std::env::var(name).ok().as_deref() {
+        Some("none") => BraintrustThinkingMode::None,
+        Some("summary") => BraintrustThinkingMode::Summary,
+        Some("full") => BraintrustThinkingMode::Full,
+        _ => default,
     }
 }
 
@@ -158,7 +369,7 @@ fn resolve_project_id(api_url: &str, api_key: &str, project_name: &str) -> Resul
 }
 
 /// Braintrust span metrics (token counts and timing)
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct BraintrustMetrics {
     #[serde(skip_serializing_if = "Option::is_none")]
     start: Option<f64>,
@@ -181,7 +392,7 @@ struct BraintrustMetrics {
 }
 
 /// Braintrust span attributes
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct BraintrustSpanAttributes {
     name: String,
     #[serde(rename = "type")]
@@ -190,10 +401,10 @@ struct BraintrustSpanAttributes {
 
 /// Braintrust log event with parent-child support
 ///
-/// According to Braintrust API: "Must include both 'span_id' and 'root_span_id' or neither"
-/// - Root spans (turn.started, etc.): Neither span_id nor root_span_id
-/// - Child spans (llm, tool, etc.): Both span_id AND root_span_id
-#[derive(Debug, Serialize)]
+/// According to Braintrust API, spans must include both `span_id` and `root_span_id`, or neither.
+/// Everruns root spans self-reference with `turn_id` for both fields so child spans can link to
+/// the root without inventing a second identifier.
+#[derive(Debug, Clone, Serialize)]
 struct BraintrustLogEvent {
     id: String,
     created: DateTime<Utc>,
@@ -232,19 +443,37 @@ struct BraintrustInsertRequest {
 
 /// Event listener that sends agentic loop events to Braintrust
 pub struct BraintrustListener {
-    config: BraintrustConfig,
-    client: Client,
+    state: Arc<BraintrustState>,
 }
 
 impl BraintrustListener {
     /// Create a new Braintrust listener with the given configuration
     pub fn new(config: BraintrustConfig) -> Self {
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(config.delivery.request_timeout)
             .build()
             .expect("Failed to create HTTP client");
+        let (sender, receiver) = mpsc::channel(config.delivery.queue_capacity);
+        let state = Arc::new(BraintrustState {
+            config,
+            client,
+            sender,
+            sessions: Mutex::new(HashMap::new()),
+            turns: Mutex::new(HashMap::new()),
+            dropped_events: AtomicU64::new(0),
+            retried_batches: AtomicU64::new(0),
+            failed_batches: AtomicU64::new(0),
+        });
 
-        Self { config, client }
+        if tokio::runtime::Handle::try_current().is_ok() {
+            Self::spawn_delivery_worker(Arc::clone(&state), receiver);
+        } else {
+            warn!(
+                "Braintrust listener created without an active Tokio runtime; delivery worker not started yet"
+            );
+        }
+
+        Self { state }
     }
 
     /// Create a new listener from environment configuration
@@ -253,28 +482,103 @@ impl BraintrustListener {
         BraintrustConfig::from_env().map(Self::new)
     }
 
-    /// Send events to Braintrust API
-    async fn send_events(&self, events: Vec<BraintrustLogEvent>) {
+    fn spawn_delivery_worker(
+        state: Arc<BraintrustState>,
+        mut receiver: mpsc::Receiver<BraintrustLogEvent>,
+    ) {
+        tokio::spawn(async move {
+            let mut batch = Vec::with_capacity(state.config.delivery.max_batch_size);
+            let mut ticker = time::interval(state.config.delivery.flush_interval);
+
+            loop {
+                tokio::select! {
+                    maybe_event = receiver.recv() => {
+                        match maybe_event {
+                            Some(event) => {
+                                batch.push(event);
+                                if batch.len() >= state.config.delivery.max_batch_size {
+                                    Self::flush_batch(&state, &mut batch).await;
+                                }
+                            }
+                            None => {
+                                if !batch.is_empty() {
+                                    Self::flush_batch(&state, &mut batch).await;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    _ = ticker.tick() => {
+                        if !batch.is_empty() {
+                            Self::flush_batch(&state, &mut batch).await;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    async fn flush_batch(state: &BraintrustState, batch: &mut Vec<BraintrustLogEvent>) {
+        let events = std::mem::take(batch);
+        if events.is_empty() {
+            return;
+        }
+
+        Self::send_events(state, events).await;
+    }
+
+    async fn send_events(state: &BraintrustState, events: Vec<BraintrustLogEvent>) {
         let url = format!(
             "{}/v1/project_logs/{}/insert",
-            self.config.api_url, self.config.project_id
+            state.config.api_url, state.config.project_id
         );
-
         let request = BraintrustInsertRequest { events };
 
-        // Log the request payload for debugging
-        if let Ok(payload) = serde_json::to_string_pretty(&request) {
+        if state.config.content.debug_payloads
+            && let Ok(payload) = serde_json::to_string_pretty(&request)
+        {
             debug!(
                 url = %url,
                 payload = %payload,
-                "Sending events to Braintrust"
+                "Sending batch to Braintrust"
             );
         }
 
-        let result = self
+        for attempt in 0..=state.config.delivery.max_retries {
+            match Self::send_batch_attempt(state, &url, &request).await {
+                DeliveryAttempt::Success => return,
+                DeliveryAttempt::Retryable(reason)
+                    if attempt < state.config.delivery.max_retries =>
+                {
+                    state.retried_batches.fetch_add(1, Ordering::Relaxed);
+                    let backoff = Self::retry_delay(&state.config.delivery, attempt);
+                    warn!(
+                        attempt = attempt + 1,
+                        max_retries = state.config.delivery.max_retries,
+                        retry_in_ms = backoff.as_millis(),
+                        reason = %reason,
+                        "Retrying Braintrust batch"
+                    );
+                    time::sleep(backoff).await;
+                }
+                DeliveryAttempt::Retryable(reason) | DeliveryAttempt::Permanent(reason) => {
+                    state.failed_batches.fetch_add(1, Ordering::Relaxed);
+                    error!(reason = %reason, "Failed to send Braintrust batch");
+                    return;
+                }
+            }
+        }
+    }
+
+    async fn send_batch_attempt(
+        state: &BraintrustState,
+        url: &str,
+        request: &BraintrustInsertRequest,
+    ) -> DeliveryAttempt {
+        let result = state
             .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .post(url)
+            .header("Authorization", format!("Bearer {}", state.config.api_key))
             .header("Content-Type", "application/json")
             .json(&request)
             .send()
@@ -284,19 +588,489 @@ impl BraintrustListener {
             Ok(response) => {
                 if response.status().is_success() {
                     debug!("Successfully sent events to Braintrust");
+                    DeliveryAttempt::Success
+                } else if response.status().as_u16() == 429 || response.status().is_server_error() {
+                    let status = response.status();
+                    let body = response.text().await.unwrap_or_default();
+                    DeliveryAttempt::Retryable(format!("HTTP {} {}", status, body))
                 } else {
                     let status = response.status();
                     let body = response.text().await.unwrap_or_default();
-                    error!(
-                        status = %status,
-                        body = %body,
-                        "Failed to send events to Braintrust"
-                    );
+                    DeliveryAttempt::Permanent(format!("HTTP {} {}", status, body))
                 }
             }
             Err(e) => {
-                error!(error = %e, "Failed to send events to Braintrust");
+                if e.is_timeout() || e.is_connect() || e.is_request() {
+                    DeliveryAttempt::Retryable(e.to_string())
+                } else {
+                    DeliveryAttempt::Permanent(e.to_string())
+                }
             }
+        }
+    }
+
+    fn retry_delay(config: &BraintrustDeliveryConfig, attempt: u32) -> Duration {
+        let exponent = 2u64.saturating_pow(attempt.min(12));
+        let base_ms = config.base_retry_delay.as_millis() as u64;
+        let capped_ms =
+            (base_ms.saturating_mul(exponent)).min(config.max_retry_delay.as_millis() as u64);
+        let jitter_ms = rand::rng().random_range(0..=capped_ms / 4);
+        Duration::from_millis(capped_ms.saturating_add(jitter_ms))
+    }
+
+    fn enqueue_event(&self, bt_event: BraintrustLogEvent) {
+        if let Err(error) = self.state.sender.try_send(bt_event) {
+            self.state.dropped_events.fetch_add(1, Ordering::Relaxed);
+            warn!(
+                dropped_events = self.state.dropped_events.load(Ordering::Relaxed),
+                error = %error,
+                "Dropping Braintrust event because the delivery queue is full"
+            );
+        }
+    }
+
+    fn current_session_state(&self, session_id: &str) -> Option<BraintrustSessionState> {
+        self.state
+            .sessions
+            .lock()
+            .ok()
+            .and_then(|sessions| sessions.get(session_id).cloned())
+    }
+
+    fn current_turn_state(&self, turn_id: &str) -> Option<BraintrustTurnState> {
+        self.state
+            .turns
+            .lock()
+            .ok()
+            .and_then(|turns| turns.get(turn_id).cloned())
+    }
+
+    fn upsert_turn_state<F>(&self, turn_id: &str, update: F)
+    where
+        F: FnOnce(&mut BraintrustTurnState),
+    {
+        if let Ok(mut turns) = self.state.turns.lock() {
+            let state = turns.entry(turn_id.to_string()).or_default();
+            update(state);
+        }
+    }
+
+    fn update_session_state<F>(&self, session_id: &str, update: F)
+    where
+        F: FnOnce(&mut BraintrustSessionState),
+    {
+        if let Ok(mut sessions) = self.state.sessions.lock() {
+            let state = sessions.entry(session_id.to_string()).or_default();
+            update(state);
+        }
+    }
+
+    fn remove_turn_state(&self, turn_id: &str) {
+        if let Ok(mut turns) = self.state.turns.lock() {
+            turns.remove(turn_id);
+        }
+    }
+
+    fn remove_session_state(&self, session_id: &str) {
+        if let Ok(mut sessions) = self.state.sessions.lock() {
+            sessions.remove(session_id);
+        }
+    }
+
+    fn annotate_metadata(
+        &self,
+        event: &Event,
+        metadata: &mut serde_json::Value,
+        turn_id: Option<&str>,
+    ) {
+        metadata["session_id"] = serde_json::json!(event.session_id.to_string());
+        metadata["deployment_grade"] =
+            serde_json::json!(self.state.config.deployment_grade.to_string());
+
+        if let Some(sequence) = event.sequence {
+            metadata["session_event_sequence"] = serde_json::json!(sequence);
+        }
+
+        if let Some(turn_id) = turn_id {
+            metadata["turn_id"] = serde_json::json!(turn_id);
+            if let Some(turn_state) = self.current_turn_state(turn_id) {
+                if let Some(input_message_id) = turn_state.input_message_id {
+                    metadata["input_message_id"] = serde_json::json!(input_message_id);
+                }
+                if let Some(turn_started_sequence) = turn_state.turn_started_sequence {
+                    metadata["turn_started_sequence"] = serde_json::json!(turn_started_sequence);
+                }
+                if let Some(harness_id) = turn_state.harness_id {
+                    metadata["harness_id"] = serde_json::json!(harness_id);
+                }
+                if let Some(agent_id) = turn_state.agent_id {
+                    metadata["agent_id"] = serde_json::json!(agent_id);
+                }
+                if let Some(model) = turn_state.model {
+                    metadata["model"] = serde_json::json!(model);
+                }
+                if let Some(provider) = turn_state.provider {
+                    metadata["provider"] = serde_json::json!(provider);
+                }
+                if let Some(retry_attempts) = turn_state.retry_attempts {
+                    metadata["llm_retry_attempts"] = serde_json::json!(retry_attempts);
+                }
+                if let Some(retry_wait_ms) = turn_state.retry_wait_ms {
+                    metadata["llm_retry_wait_ms"] = serde_json::json!(retry_wait_ms);
+                }
+                if let Some(compaction) = turn_state.compaction {
+                    metadata["llm_compaction"] = compaction;
+                }
+                if let Some(session_status) = turn_state.session_status {
+                    metadata["session_status"] = serde_json::json!(session_status);
+                }
+            }
+        }
+
+        if let Some(session_state) = self.current_session_state(&event.session_id.to_string()) {
+            if metadata.get("harness_id").is_none()
+                && let Some(harness_id) = session_state.harness_id
+            {
+                metadata["harness_id"] = serde_json::json!(harness_id);
+            }
+            if metadata.get("agent_id").is_none()
+                && let Some(agent_id) = session_state.agent_id
+            {
+                metadata["agent_id"] = serde_json::json!(agent_id);
+            }
+            if metadata.get("model_id").is_none()
+                && let Some(model_id) = session_state.model_id
+            {
+                metadata["model_id"] = serde_json::json!(model_id);
+            }
+            if metadata.get("session_status").is_none()
+                && let Some(status) = session_state.last_status
+            {
+                metadata["session_status"] = serde_json::json!(status);
+            }
+            if metadata.get("last_session_turn_id").is_none()
+                && let Some(turn_id) = session_state.last_turn_id
+            {
+                metadata["last_session_turn_id"] = serde_json::json!(turn_id);
+            }
+        }
+    }
+
+    fn summarize_text(text: &str, limit: usize) -> String {
+        let summary: String = text.chars().take(limit).collect();
+        if text.chars().count() > limit {
+            format!("{}...", summary)
+        } else {
+            summary
+        }
+    }
+
+    fn summarize_json_value(value: &serde_json::Value) -> serde_json::Value {
+        match value {
+            serde_json::Value::Object(map) => serde_json::json!({
+                "type": "object",
+                "keys": map.keys().collect::<Vec<_>>(),
+            }),
+            serde_json::Value::Array(items) => serde_json::json!({
+                "type": "array",
+                "item_count": items.len(),
+            }),
+            serde_json::Value::String(text) => serde_json::json!({
+                "type": "string",
+                "char_count": text.chars().count(),
+            }),
+            serde_json::Value::Number(_) => serde_json::json!({
+                "type": "number",
+            }),
+            serde_json::Value::Bool(_) => serde_json::json!({
+                "type": "bool",
+            }),
+            serde_json::Value::Null => serde_json::json!({
+                "type": "null",
+            }),
+        }
+    }
+
+    fn summarize_content_parts(parts: &[crate::ContentPart]) -> serde_json::Value {
+        serde_json::json!({
+            "part_count": parts.len(),
+            "part_types": parts.iter().map(|part| match part {
+                crate::ContentPart::Text(_) => "text",
+                crate::ContentPart::Image(_) => "image",
+                crate::ContentPart::ImageFile(_) => "image_file",
+                crate::ContentPart::ToolCall(_) => "tool_call",
+                crate::ContentPart::ToolResult(_) => "tool_result",
+            }).collect::<Vec<_>>(),
+            "text_part_count": parts.iter().filter(|part| matches!(part, crate::ContentPart::Text(_))).count(),
+        })
+    }
+
+    fn summarize_messages(messages: &[crate::Message]) -> serde_json::Value {
+        serde_json::json!({
+            "message_count": messages.len(),
+            "roles": messages.iter().map(|message| message.role.to_string()).collect::<Vec<_>>(),
+            "phases": messages.iter().filter_map(|message| message.phase.map(|phase| phase.to_string())).collect::<Vec<_>>(),
+        })
+    }
+
+    fn serialize_tool_arguments(&self, arguments: &serde_json::Value) -> Option<serde_json::Value> {
+        match self.state.config.content.tool_args_mode {
+            BraintrustPayloadMode::Full => Some(arguments.clone()),
+            BraintrustPayloadMode::Summary | BraintrustPayloadMode::Redacted => {
+                Some(serde_json::json!({
+                    "redacted": true,
+                    "summary": Self::summarize_json_value(arguments),
+                }))
+            }
+            BraintrustPayloadMode::None => None,
+        }
+    }
+
+    fn serialize_tool_call_for_llm(
+        &self,
+        id: &str,
+        name: &str,
+        arguments: &serde_json::Value,
+    ) -> serde_json::Value {
+        let arguments = self
+            .serialize_tool_arguments(arguments)
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        serde_json::json!({
+            "id": id,
+            "type": "function",
+            "function": {
+                "name": name,
+                "arguments": serde_json::to_string(&arguments).unwrap_or_else(|_| "{}".to_string()),
+            }
+        })
+    }
+
+    fn serialize_tool_result(
+        &self,
+        result: Option<&Vec<crate::ContentPart>>,
+        error: Option<&String>,
+    ) -> Option<serde_json::Value> {
+        match self.state.config.content.tool_results_mode {
+            BraintrustPayloadMode::Full => result
+                .map(|result| serde_json::json!(result))
+                .or_else(|| error.map(|error| serde_json::json!({ "error": error }))),
+            BraintrustPayloadMode::Summary | BraintrustPayloadMode::Redacted => result
+                .map(|result| {
+                    serde_json::json!({
+                        "redacted": true,
+                        "summary": Self::summarize_content_parts(result),
+                    })
+                })
+                .or_else(|| {
+                    error.map(|error| {
+                        serde_json::json!({
+                            "redacted": true,
+                            "error": true,
+                            "summary": Self::summarize_json_value(&serde_json::json!(error)),
+                        })
+                    })
+                }),
+            BraintrustPayloadMode::None => None,
+        }
+    }
+
+    fn serialize_tool_result_message_content(
+        &self,
+        result: Option<&serde_json::Value>,
+        error: Option<&String>,
+    ) -> String {
+        match self.state.config.content.tool_results_mode {
+            BraintrustPayloadMode::Full => {
+                if let Some(error) = error {
+                    format!("Error: {}", error)
+                } else if let Some(result) = result {
+                    serde_json::to_string(result).unwrap_or_else(|_| "{}".to_string())
+                } else {
+                    "{}".to_string()
+                }
+            }
+            BraintrustPayloadMode::Summary | BraintrustPayloadMode::Redacted => {
+                let sanitized = result
+                    .map(|result| {
+                        serde_json::json!({
+                            "redacted": true,
+                            "summary": Self::summarize_json_value(result),
+                        })
+                    })
+                    .or_else(|| {
+                        error.map(|error| {
+                            serde_json::json!({
+                                "redacted": true,
+                                "error": true,
+                                "summary": Self::summarize_json_value(&serde_json::json!(error)),
+                            })
+                        })
+                    })
+                    .unwrap_or_else(|| serde_json::json!({}));
+
+                serde_json::to_string(&sanitized).unwrap_or_else(|_| "{}".to_string())
+            }
+            BraintrustPayloadMode::None => String::new(),
+        }
+    }
+
+    fn serialize_message_for_llm_input(&self, message: &crate::Message) -> serde_json::Value {
+        let mut serialized = message.to_openai_format();
+
+        match message.role {
+            crate::MessageRole::Agent if !message.tool_calls().is_empty() => {
+                let tool_calls = message
+                    .tool_calls()
+                    .into_iter()
+                    .map(|tool_call| {
+                        self.serialize_tool_call_for_llm(
+                            &tool_call.id,
+                            &tool_call.name,
+                            &tool_call.arguments,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                serialized["tool_calls"] = serde_json::Value::Array(tool_calls);
+            }
+            crate::MessageRole::ToolResult => {
+                if let Some(tool_result) = message.tool_result_content() {
+                    serialized["content"] =
+                        serde_json::json!(self.serialize_tool_result_message_content(
+                            tool_result.result.as_ref(),
+                            tool_result.error.as_ref(),
+                        ));
+                }
+            }
+            _ => {}
+        }
+
+        serialized
+    }
+
+    fn llm_input_payload(&self, data: &crate::LlmGenerationData) -> Option<serde_json::Value> {
+        if self.state.config.content.record_content {
+            let input: Vec<serde_json::Value> = data
+                .messages
+                .iter()
+                .map(|message| self.serialize_message_for_llm_input(message))
+                .collect();
+            Some(serde_json::json!(input))
+        } else {
+            Some(Self::summarize_messages(&data.messages))
+        }
+    }
+
+    fn llm_output_payload(&self, data: &crate::LlmGenerationData) -> Option<serde_json::Value> {
+        if self.state.config.content.record_content {
+            let tool_calls: Vec<serde_json::Value> = data
+                .output
+                .tool_calls
+                .iter()
+                .map(|tool_call| {
+                    self.serialize_tool_call_for_llm(
+                        &tool_call.id,
+                        &tool_call.name,
+                        &tool_call.arguments,
+                    )
+                })
+                .collect();
+            if tool_calls.is_empty() {
+                Some(serde_json::json!({ "text": data.output.text }))
+            } else {
+                Some(serde_json::json!({
+                    "text": data.output.text,
+                    "tool_calls": tool_calls,
+                }))
+            }
+        } else {
+            Some(serde_json::json!({
+                "text_recorded": false,
+                "text_present": data.output.text.is_some(),
+                "tool_call_count": data.output.tool_calls.len(),
+                "tool_names": data.output.tool_calls.iter().map(|tool_call| tool_call.name.clone()).collect::<Vec<_>>(),
+            }))
+        }
+    }
+
+    fn thinking_output_payload(&self, thinking: &str) -> Option<serde_json::Value> {
+        match self.state.config.content.record_thinking {
+            BraintrustThinkingMode::None => None,
+            BraintrustThinkingMode::Summary => Some(serde_json::json!({
+                "thinking_preview": Self::summarize_text(thinking, 160),
+            })),
+            BraintrustThinkingMode::Full => Some(serde_json::json!({
+                "thinking": thinking,
+            })),
+        }
+    }
+
+    fn record_turn_started_state(&self, event: &Event, data: &crate::TurnStartedData) {
+        let turn_id = data.turn_id.to_string();
+        self.upsert_turn_state(&turn_id, |turn_state| {
+            turn_state.input_message_id = Some(data.input_message_id.to_string());
+            turn_state.turn_started_sequence = event.sequence;
+        });
+    }
+
+    fn record_reason_started_state(&self, event: &Event, data: &ReasonStartedData) {
+        let session_id = event.session_id.to_string();
+        let harness_id = data.harness_id.to_string();
+        let agent_id = data.agent_id.map(|id| id.to_string());
+        let model_id = data
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.model_id.map(|id| id.to_string()));
+
+        self.update_session_state(&session_id, |session_state| {
+            session_state.harness_id = Some(harness_id.clone());
+            session_state.agent_id = agent_id.clone();
+            session_state.model_id = model_id.clone();
+        });
+
+        if let Some(turn_id) = event.context.turn_id.as_ref().map(ToString::to_string) {
+            self.upsert_turn_state(&turn_id, |turn_state| {
+                turn_state.harness_id = Some(harness_id);
+                turn_state.agent_id = agent_id;
+                if let Some(model) = &data.metadata {
+                    turn_state.model = Some(model.model.clone());
+                }
+            });
+        }
+    }
+
+    fn record_llm_state(&self, event: &Event, data: &crate::LlmGenerationData) {
+        if let Some(turn_id) = event.context.turn_id.as_ref().map(ToString::to_string) {
+            self.upsert_turn_state(&turn_id, |turn_state| {
+                turn_state.model = Some(data.metadata.model.clone());
+                turn_state.provider = data.metadata.provider.clone();
+                turn_state.retry_attempts =
+                    data.metadata.retry.as_ref().map(|retry| retry.attempts);
+                turn_state.retry_wait_ms = data
+                    .metadata
+                    .retry
+                    .as_ref()
+                    .map(|retry| retry.total_wait_ms);
+                turn_state.compaction = data
+                    .metadata
+                    .compaction
+                    .as_ref()
+                    .map(|compaction| serde_json::json!(compaction));
+            });
+        }
+    }
+
+    fn record_session_status(&self, event: &Event, turn_id: Option<&str>, status: &str) {
+        let session_id = event.session_id.to_string();
+        self.update_session_state(&session_id, |session_state| {
+            session_state.last_status = Some(status.to_string());
+            session_state.last_turn_id = turn_id.map(ToOwned::to_owned);
+        });
+
+        if let Some(turn_id) = turn_id {
+            self.upsert_turn_state(turn_id, |turn_state| {
+                turn_state.session_status = Some(status.to_string());
+            });
         }
     }
 
@@ -340,22 +1114,31 @@ impl BraintrustListener {
         event: &Event,
         data: &crate::TurnStartedData,
     ) -> BraintrustLogEvent {
-        let metadata = serde_json::json!({
-            "session_id": event.session_id.to_string(),
-            "turn_id": data.turn_id.to_string(),
+        let turn_id = data.turn_id.to_string();
+        let mut metadata = serde_json::json!({
             "input_message_id": data.input_message_id.to_string(),
+            "turn_status": "started",
         });
+        self.annotate_metadata(event, &mut metadata, Some(&turn_id));
 
         // Root span: span_id and root_span_id both reference self (turn_id)
         // This allows child spans to link to the root via root_span_id
-        let turn_id_str = data.turn_id.to_string();
+        let turn_id_str = turn_id;
 
-        // Use input_content if available, otherwise fall back to message ID
-        let input = if let Some(content) = &data.input_content {
-            Some(serde_json::json!(content))
+        let input = if self.state.config.content.record_content {
+            data.input_content
+                .as_ref()
+                .map(|content| serde_json::json!(content))
+                .or_else(|| {
+                    Some(serde_json::json!({
+                        "input_message_id": data.input_message_id.to_string(),
+                    }))
+                })
         } else {
             Some(serde_json::json!({
                 "input_message_id": data.input_message_id.to_string(),
+                "content_recorded": false,
+                "has_input_content": data.input_content.is_some(),
             }))
         };
 
@@ -398,11 +1181,12 @@ impl BraintrustListener {
         event: &Event,
         data: &crate::TurnCompletedData,
     ) -> BraintrustLogEvent {
+        let turn_id = data.turn_id.to_string();
         let mut metadata = serde_json::json!({
-            "session_id": event.session_id.to_string(),
-            "turn_id": data.turn_id.to_string(),
             "iterations": data.iterations,
+            "turn_status": "completed",
         });
+        self.annotate_metadata(event, &mut metadata, Some(&turn_id));
 
         // Build metrics if we have usage/duration (with prompt caching support)
         let metrics = if data.usage.is_some() || data.duration_ms.is_some() {
@@ -428,13 +1212,18 @@ impl BraintrustListener {
         }
 
         // Root span: span_id and root_span_id both reference self (turn_id)
-        let turn_id_str = data.turn_id.to_string();
+        let turn_id_str = turn_id;
 
-        // Use input_content if available (to preserve it during span merge)
-        let input = data
-            .input_content
-            .as_ref()
-            .map(|content| serde_json::json!(content));
+        let input = if self.state.config.content.record_content {
+            data.input_content
+                .as_ref()
+                .map(|content| serde_json::json!(content))
+        } else {
+            Some(serde_json::json!({
+                "content_recorded": false,
+                "has_input_content": data.input_content.is_some(),
+            }))
+        };
 
         BraintrustLogEvent {
             id: turn_id_str.clone(), // Same ID as started to update the span
@@ -465,34 +1254,10 @@ impl BraintrustListener {
         event: &Event,
         data: &crate::LlmGenerationData,
     ) -> BraintrustLogEvent {
-        // Convert messages to Braintrust-compatible (OpenAI) format
-        // Our internal format uses "agent" and "tool_result" roles, but Braintrust
-        // expects "assistant" and "tool" roles
-        let input: serde_json::Value = data.messages.iter().map(|m| m.to_openai_format()).collect();
-
-        // Convert output tool_calls to OpenAI format
-        let tool_calls: Vec<serde_json::Value> = data
-            .output
-            .tool_calls
-            .iter()
-            .map(|tc| tc.to_openai_format())
-            .collect();
-
-        let output = if tool_calls.is_empty() {
-            serde_json::json!({
-                "text": data.output.text,
-            })
-        } else {
-            serde_json::json!({
-                "text": data.output.text,
-                "tool_calls": tool_calls,
-            })
-        };
-
         // Build metadata
         let mut metadata = serde_json::json!({
             "model": data.metadata.model,
-            "session_id": event.session_id.to_string(),
+            "generation_success": data.metadata.success,
         });
 
         if let Some(provider) = &data.metadata.provider {
@@ -508,12 +1273,25 @@ impl BraintrustListener {
             metadata["request_options"] =
                 serde_json::to_value(request_options).unwrap_or_else(|_| serde_json::json!({}));
         }
-        if let Some(turn_id) = &event.context.turn_id {
-            metadata["turn_id"] = serde_json::json!(turn_id.to_string());
-        }
         if let Some(exec_id) = &event.context.exec_id {
             metadata["exec_id"] = serde_json::json!(exec_id.to_string());
         }
+        if let Some(retry) = &data.metadata.retry {
+            metadata["retry"] = serde_json::json!(retry);
+        }
+        if let Some(compaction) = &data.metadata.compaction {
+            metadata["compaction"] = serde_json::json!(compaction);
+        }
+        self.annotate_metadata(
+            event,
+            &mut metadata,
+            event
+                .context
+                .turn_id
+                .as_ref()
+                .map(|turn_id| turn_id.to_string())
+                .as_deref(),
+        );
 
         // Build metrics with prompt caching support
         let metrics = data.metadata.usage.as_ref().map(|usage| {
@@ -544,8 +1322,8 @@ impl BraintrustListener {
         BraintrustLogEvent {
             id: event.id.to_string(),
             created: event.ts,
-            input: Some(input),
-            output: Some(output),
+            input: self.llm_input_payload(data),
+            output: self.llm_output_payload(data),
             error: data.metadata.error.clone(),
             metadata,
             metrics,
@@ -571,31 +1349,41 @@ impl BraintrustListener {
         let input = serde_json::json!({
             "tool_call_id": data.tool_call_id,
             "tool_name": data.tool_name,
+            "success": data.success,
+            "status": data.status,
         });
-
-        let output = if data.success {
-            serde_json::json!({
-                "status": "success",
-                "result": data.result,
-            })
-        } else {
-            serde_json::json!({
-                "status": data.status,
-                "error": data.error,
-            })
-        };
+        let mut output = serde_json::json!({
+            "status": data.status,
+        });
+        if let Some(serialized_result) =
+            self.serialize_tool_result(data.result.as_ref(), data.error.as_ref())
+        {
+            output["result"] = serialized_result;
+        }
 
         let mut metadata = serde_json::json!({
             "tool_name": data.tool_name,
             "tool_call_id": data.tool_call_id,
-            "session_id": event.session_id.to_string(),
             "success": data.success,
             "status": data.status,
         });
-
-        if let Some(turn_id) = &event.context.turn_id {
-            metadata["turn_id"] = serde_json::json!(turn_id.to_string());
+        if let Some(display_name) = &data.display_name {
+            metadata["display_name"] = serde_json::json!(display_name);
         }
+        if let Some(narration) = &data.narration {
+            metadata["narration"] = serde_json::json!(narration);
+        }
+
+        self.annotate_metadata(
+            event,
+            &mut metadata,
+            event
+                .context
+                .turn_id
+                .as_ref()
+                .map(|turn_id| turn_id.to_string())
+                .as_deref(),
+        );
 
         // Build metrics if we have duration for timeline display
         let metrics = data.duration_ms.map(|duration_ms| {
@@ -642,17 +1430,18 @@ impl BraintrustListener {
 
     /// Convert a turn.failed event to Braintrust format (updates root span with error)
     fn convert_turn_failed(&self, event: &Event, data: &TurnFailedData) -> BraintrustLogEvent {
+        let turn_id = data.turn_id.to_string();
         let mut metadata = serde_json::json!({
-            "session_id": event.session_id.to_string(),
-            "turn_id": data.turn_id.to_string(),
+            "turn_status": "failed",
         });
+        self.annotate_metadata(event, &mut metadata, Some(&turn_id));
 
         if let Some(error_code) = &data.error_code {
             metadata["error_code"] = serde_json::json!(error_code);
         }
 
         // Root span: span_id and root_span_id both reference self (turn_id)
-        let turn_id_str = data.turn_id.to_string();
+        let turn_id_str = turn_id;
 
         BraintrustLogEvent {
             id: turn_id_str.clone(),
@@ -682,10 +1471,11 @@ impl BraintrustListener {
         event: &Event,
         data: &TurnCancelledData,
     ) -> BraintrustLogEvent {
+        let turn_id = data.turn_id.to_string();
         let mut metadata = serde_json::json!({
-            "session_id": event.session_id.to_string(),
-            "turn_id": data.turn_id.to_string(),
+            "turn_status": "cancelled",
         });
+        self.annotate_metadata(event, &mut metadata, Some(&turn_id));
 
         // Build metrics if we have usage
         let metrics = data.usage.as_ref().map(|usage| BraintrustMetrics {
@@ -704,7 +1494,7 @@ impl BraintrustListener {
         }
 
         // Root span: span_id and root_span_id both reference self (turn_id)
-        let turn_id_str = data.turn_id.to_string();
+        let turn_id_str = turn_id;
 
         BraintrustLogEvent {
             id: turn_id_str.clone(),
@@ -736,7 +1526,6 @@ impl BraintrustListener {
         data: &ReasonStartedData,
     ) -> BraintrustLogEvent {
         let mut metadata = serde_json::json!({
-            "session_id": event.session_id.to_string(),
             "agent_id": data.agent_id.map(|id| id.to_string()),
         });
 
@@ -753,12 +1542,19 @@ impl BraintrustListener {
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
 
-        if let Some(turn_id) = &event.context.turn_id {
-            metadata["turn_id"] = serde_json::json!(turn_id.to_string());
-        }
         if let Some(exec_id) = &event.context.exec_id {
             metadata["exec_id"] = serde_json::json!(exec_id.to_string());
         }
+        self.annotate_metadata(
+            event,
+            &mut metadata,
+            event
+                .context
+                .turn_id
+                .as_ref()
+                .map(|turn_id| turn_id.to_string())
+                .as_deref(),
+        );
 
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
@@ -804,7 +1600,6 @@ impl BraintrustListener {
         data: &ReasonCompletedData,
     ) -> BraintrustLogEvent {
         let mut metadata = serde_json::json!({
-            "session_id": event.session_id.to_string(),
             "success": data.success,
             "has_tool_calls": data.has_tool_calls,
             "tool_call_count": data.tool_call_count,
@@ -814,7 +1609,11 @@ impl BraintrustListener {
             "success": data.success,
             "has_tool_calls": data.has_tool_calls,
             "tool_call_count": data.tool_call_count,
-            "text_preview": data.text_preview,
+            "text_preview": if self.state.config.content.record_content {
+                data.text_preview.clone()
+            } else {
+                None
+            },
         });
 
         // Build metrics if we have duration/usage for timeline display
@@ -839,12 +1638,19 @@ impl BraintrustListener {
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
 
-        if let Some(turn_id) = &event.context.turn_id {
-            metadata["turn_id"] = serde_json::json!(turn_id.to_string());
-        }
         if let Some(exec_id) = &event.context.exec_id {
             metadata["exec_id"] = serde_json::json!(exec_id.to_string());
         }
+        self.annotate_metadata(
+            event,
+            &mut metadata,
+            event
+                .context
+                .turn_id
+                .as_ref()
+                .map(|turn_id| turn_id.to_string())
+                .as_deref(),
+        );
 
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
@@ -877,10 +1683,11 @@ impl BraintrustListener {
         event: &Event,
         data: &ReasonThinkingStartedData,
     ) -> BraintrustLogEvent {
+        let turn_id = data.turn_id.to_string();
         let mut metadata = serde_json::json!({
-            "session_id": event.session_id.to_string(),
-            "turn_id": data.turn_id.to_string(),
+            "thinking_status": "started",
         });
+        self.annotate_metadata(event, &mut metadata, Some(&turn_id));
 
         if let Some(model) = &data.model {
             metadata["model"] = serde_json::json!(model);
@@ -937,16 +1744,13 @@ impl BraintrustListener {
         event: &Event,
         data: &ReasonThinkingCompletedData,
     ) -> BraintrustLogEvent {
-        let metadata = serde_json::json!({
-            "session_id": event.session_id.to_string(),
-            "turn_id": data.turn_id.to_string(),
+        let turn_id = data.turn_id.to_string();
+        let mut metadata = serde_json::json!({
             "thinking_length": data.thinking.len(),
         });
+        self.annotate_metadata(event, &mut metadata, Some(&turn_id));
 
-        // Output contains the full thinking content
-        let output = serde_json::json!({
-            "thinking": data.thinking,
-        });
+        let output = self.thinking_output_payload(&data.thinking);
 
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
@@ -971,7 +1775,7 @@ impl BraintrustListener {
             id: log_id,
             created: event.ts,
             input: None,
-            output: Some(output),
+            output,
             error: None,
             metadata,
             metrics,
@@ -991,15 +1795,19 @@ impl BraintrustListener {
     /// Uses span_id as the log ID so started/completed events merge into one span
     fn convert_act_started(&self, event: &Event, data: &ActStartedData) -> BraintrustLogEvent {
         let mut metadata = serde_json::json!({
-            "session_id": event.session_id.to_string(),
             "tool_count": data.tool_calls.len(),
         });
+        if let Some(headline) = &data.headline {
+            metadata["headline"] = serde_json::json!(headline);
+        }
 
         let input = serde_json::json!({
             "tool_calls": data.tool_calls.iter().map(|tc| {
                 serde_json::json!({
                     "id": tc.id,
                     "name": tc.name,
+                    "display_name": tc.display_name,
+                    "narration": tc.narration,
                 })
             }).collect::<Vec<_>>(),
         });
@@ -1007,12 +1815,19 @@ impl BraintrustListener {
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
 
-        if let Some(turn_id) = &event.context.turn_id {
-            metadata["turn_id"] = serde_json::json!(turn_id.to_string());
-        }
         if let Some(exec_id) = &event.context.exec_id {
             metadata["exec_id"] = serde_json::json!(exec_id.to_string());
         }
+        self.annotate_metadata(
+            event,
+            &mut metadata,
+            event
+                .context
+                .turn_id
+                .as_ref()
+                .map(|turn_id| turn_id.to_string())
+                .as_deref(),
+        );
 
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
@@ -1054,11 +1869,13 @@ impl BraintrustListener {
     /// Uses span_id as the log ID so started/completed events merge into one span
     fn convert_act_completed(&self, event: &Event, data: &ActCompletedData) -> BraintrustLogEvent {
         let mut metadata = serde_json::json!({
-            "session_id": event.session_id.to_string(),
             "completed": data.completed,
             "success_count": data.success_count,
             "error_count": data.error_count,
         });
+        if let Some(headline) = &data.headline {
+            metadata["headline"] = serde_json::json!(headline);
+        }
 
         let output = serde_json::json!({
             "completed": data.completed,
@@ -1086,12 +1903,19 @@ impl BraintrustListener {
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
 
-        if let Some(turn_id) = &event.context.turn_id {
-            metadata["turn_id"] = serde_json::json!(turn_id.to_string());
-        }
         if let Some(exec_id) = &event.context.exec_id {
             metadata["exec_id"] = serde_json::json!(exec_id.to_string());
         }
+        self.annotate_metadata(
+            event,
+            &mut metadata,
+            event
+                .context
+                .turn_id
+                .as_ref()
+                .map(|turn_id| turn_id.to_string())
+                .as_deref(),
+        );
 
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
@@ -1123,21 +1947,35 @@ impl BraintrustListener {
         event: &Event,
         data: &ToolStartedData,
     ) -> BraintrustLogEvent {
-        let input = serde_json::json!({
+        let mut input = serde_json::json!({
             "tool_call_id": data.tool_call.id,
             "tool_name": data.tool_call.name,
-            "arguments": data.tool_call.arguments,
         });
+        if let Some(arguments) = self.serialize_tool_arguments(&data.tool_call.arguments) {
+            input["arguments"] = arguments;
+        }
 
         let mut metadata = serde_json::json!({
             "tool_name": data.tool_call.name,
             "tool_call_id": data.tool_call.id,
-            "session_id": event.session_id.to_string(),
         });
-
-        if let Some(turn_id) = &event.context.turn_id {
-            metadata["turn_id"] = serde_json::json!(turn_id.to_string());
+        if let Some(display_name) = &data.display_name {
+            metadata["display_name"] = serde_json::json!(display_name);
         }
+        if let Some(narration) = &data.narration {
+            metadata["narration"] = serde_json::json!(narration);
+        }
+
+        self.annotate_metadata(
+            event,
+            &mut metadata,
+            event
+                .context
+                .turn_id
+                .as_ref()
+                .map(|turn_id| turn_id.to_string())
+                .as_deref(),
+        );
 
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
@@ -1177,6 +2015,38 @@ impl BraintrustListener {
             is_merge: None, // First event creates the span
         }
     }
+
+    fn convert_session_lifecycle(
+        &self,
+        event: &Event,
+        lifecycle_name: &str,
+        turn_id: Option<&str>,
+        payload: serde_json::Value,
+    ) -> BraintrustLogEvent {
+        let mut metadata = serde_json::json!({
+            "session_lifecycle": lifecycle_name,
+        });
+        self.annotate_metadata(event, &mut metadata, turn_id);
+
+        BraintrustLogEvent {
+            id: event.id.to_string(),
+            created: event.ts,
+            input: None,
+            output: Some(payload),
+            error: None,
+            metadata,
+            metrics: None,
+            span_attributes: BraintrustSpanAttributes {
+                name: format!("session {}", lifecycle_name),
+                span_type: "task".to_string(),
+            },
+            tags: event.tags.clone(),
+            span_id: None,
+            root_span_id: None,
+            span_parents: None,
+            is_merge: None,
+        }
+    }
 }
 
 #[async_trait]
@@ -1186,24 +2056,29 @@ impl EventListener for BraintrustListener {
             // Turn lifecycle events (root task spans)
             EventData::TurnStarted(data) => {
                 debug!(turn_id = %data.turn_id, "Processing turn.started for Braintrust");
+                self.record_turn_started_state(event, data);
                 self.convert_turn_started(event, data)
             }
             EventData::TurnCompleted(data) => {
                 debug!(turn_id = %data.turn_id, "Processing turn.completed for Braintrust");
+                self.record_session_status(event, Some(&data.turn_id.to_string()), "idle");
                 self.convert_turn_completed(event, data)
             }
             EventData::TurnFailed(data) => {
                 debug!(turn_id = %data.turn_id, "Processing turn.failed for Braintrust");
+                self.record_session_status(event, Some(&data.turn_id.to_string()), "idle");
                 self.convert_turn_failed(event, data)
             }
             EventData::TurnCancelled(data) => {
                 debug!(turn_id = %data.turn_id, "Processing turn.cancelled for Braintrust");
+                self.record_session_status(event, Some(&data.turn_id.to_string()), "idle");
                 self.convert_turn_cancelled(event, data)
             }
 
             // Atom lifecycle events (reason/act phases)
             EventData::ReasonStarted(data) => {
                 debug!(agent_id = ?data.agent_id, "Processing reason.started for Braintrust");
+                self.record_reason_started_state(event, data);
                 self.convert_reason_started(event, data)
             }
             EventData::ReasonCompleted(data) => {
@@ -1247,6 +2122,7 @@ impl EventListener for BraintrustListener {
                     model = %data.metadata.model,
                     "Processing llm.generation for Braintrust"
                 );
+                self.record_llm_state(event, data);
                 self.convert_llm_generation(event, data)
             }
 
@@ -1268,18 +2144,65 @@ impl EventListener for BraintrustListener {
                 self.convert_tool_call_completed(event, data)
             }
 
+            EventData::SessionStarted(data) => {
+                self.update_session_state(&event.session_id.to_string(), |session_state| {
+                    session_state.harness_id = Some(data.harness_id.to_string());
+                    session_state.agent_id = data.agent_id.map(|id| id.to_string());
+                    session_state.model_id = data.model_id.map(|id| id.to_string());
+                    session_state.last_status = Some("started".to_string());
+                });
+                self.convert_session_lifecycle(
+                    event,
+                    "started",
+                    None,
+                    serde_json::json!({
+                        "harness_id": data.harness_id.to_string(),
+                        "agent_id": data.agent_id.map(|id| id.to_string()),
+                        "model_id": data.model_id.map(|id| id.to_string()),
+                    }),
+                )
+            }
+            EventData::SessionActivated(data) => {
+                let turn_id = data.turn_id.to_string();
+                self.record_session_status(event, Some(&turn_id), "active");
+                self.convert_session_lifecycle(
+                    event,
+                    "activated",
+                    Some(&turn_id),
+                    serde_json::json!({
+                        "turn_id": turn_id,
+                        "input_message_id": data.input_message_id.to_string(),
+                        "status": "active",
+                    }),
+                )
+            }
+            EventData::SessionIdled(data) => {
+                let turn_id = data.turn_id.to_string();
+                self.record_session_status(event, Some(&turn_id), "idle");
+                self.convert_session_lifecycle(
+                    event,
+                    "idled",
+                    Some(&turn_id),
+                    serde_json::json!({
+                        "turn_id": turn_id,
+                        "iterations": data.iterations,
+                        "usage": data.usage,
+                        "status": "idle",
+                    }),
+                )
+            }
+
             _ => return, // Ignore other event types
         };
+        self.enqueue_event(bt_event);
 
-        // Clone self for async task
-        let client = self.client.clone();
-        let config = self.config.clone();
-
-        // Spawn async task to send event (don't block event processing)
-        tokio::spawn(async move {
-            let listener = BraintrustListener { config, client };
-            listener.send_events(vec![bt_event]).await;
-        });
+        match &event.data {
+            EventData::TurnCompleted(data) => self.remove_turn_state(&data.turn_id.to_string()),
+            EventData::TurnFailed(data) => self.remove_turn_state(&data.turn_id.to_string()),
+            EventData::TurnCancelled(data) => self.remove_turn_state(&data.turn_id.to_string()),
+            EventData::SessionIdled(_) => self.remove_session_state(&event.session_id.to_string()),
+            _ => {}
+        }
     }
 
     fn event_types(&self) -> Option<Vec<&'static str>> {
@@ -1302,6 +2225,10 @@ impl EventListener for BraintrustListener {
             // Tool execution
             TOOL_STARTED,
             TOOL_COMPLETED,
+            // Session lifecycle
+            SESSION_STARTED,
+            SESSION_ACTIVATED,
+            SESSION_IDLED,
         ])
     }
 
@@ -1318,18 +2245,31 @@ impl EventListener for BraintrustListener {
 mod tests {
     use super::*;
     use crate::events::{
-        EventContext, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput,
-        ReasonCompletedData, TokenUsage, ToolCompletedData, TurnCompletedData, TurnStartedData,
+        EventContext, EventData, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput,
+        ReasonCompletedData, ReasonStartedData, TokenUsage, ToolCompletedData, ToolStartedData,
+        TurnCompletedData, TurnStartedData,
     };
     use crate::message::Message;
+    use crate::tool_types::ToolCall;
     use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+    use serde_json::json;
+    use tokio::time::sleep;
     use uuid::Uuid;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn test_config() -> BraintrustConfig {
         BraintrustConfig {
             api_key: "test-api-key".to_string(),
             project_id: "test-project-id".to_string(),
             api_url: "https://api.braintrust.dev".to_string(),
+            delivery: BraintrustDeliveryConfig {
+                flush_interval: Duration::from_millis(20),
+                request_timeout: Duration::from_millis(200),
+                ..BraintrustDeliveryConfig::default()
+            },
+            content: BraintrustContentConfig::default(),
+            deployment_grade: DeploymentGrade::Dev,
         }
     }
 
@@ -1343,8 +2283,8 @@ mod tests {
     fn test_event_types() {
         let listener = BraintrustListener::new(test_config());
         let types = listener.event_types().unwrap();
-        // 13 event types: 4 turn lifecycle + 4 atom lifecycle + 2 thinking + 1 llm + 2 tool
-        assert_eq!(types.len(), 13);
+        // 16 event types: 4 turn lifecycle + 4 atom lifecycle + 2 thinking + 1 llm + 2 tool + 3 session lifecycle
+        assert_eq!(types.len(), 16);
         // Turn lifecycle
         assert!(types.contains(&TURN_STARTED));
         assert!(types.contains(&TURN_COMPLETED));
@@ -1363,6 +2303,10 @@ mod tests {
         // Tool
         assert!(types.contains(&TOOL_STARTED));
         assert!(types.contains(&TOOL_COMPLETED));
+        // Session lifecycle
+        assert!(types.contains(&SESSION_STARTED));
+        assert!(types.contains(&SESSION_ACTIVATED));
+        assert!(types.contains(&SESSION_IDLED));
     }
 
     #[test]
@@ -2286,7 +3230,9 @@ mod tests {
 
     #[test]
     fn test_convert_reason_thinking_completed() {
-        let listener = BraintrustListener::new(test_config());
+        let mut config = test_config();
+        config.content.record_thinking = BraintrustThinkingMode::Full;
+        let listener = BraintrustListener::new(config);
         let turn_id = TurnId::new();
         let span_id = Uuid::new_v4().to_string();
 
@@ -2331,6 +3277,439 @@ mod tests {
 
         // Verify metrics have end time
         assert!(bt_event.metrics.as_ref().unwrap().end.is_some());
+    }
+
+    #[test]
+    fn test_turn_started_metadata_includes_session_grouping_fields() {
+        let listener = BraintrustListener::new(test_config());
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+        listener.update_session_state(&session_id.to_string(), |session_state| {
+            session_state.harness_id = Some(HarnessId::new().to_string());
+            session_state.agent_id = Some(AgentId::new().to_string());
+            session_state.last_status = Some("active".to_string());
+        });
+
+        let event = Event::new(
+            session_id,
+            EventContext::turn(turn_id, input_message_id),
+            EventData::TurnStarted(TurnStartedData {
+                turn_id,
+                input_message_id,
+                input_content: Some("hello braintrust".to_string()),
+            }),
+        )
+        .with_sequence(42);
+
+        let data = match &event.data {
+            EventData::TurnStarted(data) => data.clone(),
+            _ => unreachable!(),
+        };
+        listener.record_turn_started_state(&event, &data);
+        let bt_event = listener.convert_turn_started(&event, &data);
+
+        assert_eq!(bt_event.metadata["session_id"], session_id.to_string());
+        assert_eq!(bt_event.metadata["turn_id"], turn_id.to_string());
+        assert_eq!(
+            bt_event.metadata["input_message_id"],
+            input_message_id.to_string()
+        );
+        assert_eq!(bt_event.metadata["session_event_sequence"], 42);
+        assert_eq!(bt_event.metadata["turn_started_sequence"], 42);
+        assert_eq!(bt_event.metadata["deployment_grade"], "dev");
+        assert_eq!(bt_event.metadata["session_status"], "active");
+        assert!(bt_event.metadata.get("harness_id").is_some());
+        assert!(bt_event.metadata.get("agent_id").is_some());
+    }
+
+    #[test]
+    fn test_tool_started_redacts_arguments_when_configured() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let event = Event::new(
+            SessionId::new(),
+            EventContext::turn(turn_id, MessageId::new()),
+            EventData::ToolStarted(ToolStartedData {
+                tool_call: ToolCall {
+                    id: "call_1".to_string(),
+                    name: "exec".to_string(),
+                    arguments: json!({"secret": "value", "path": "/tmp/test"}),
+                },
+                display_name: Some("Execute".to_string()),
+                narration: Some("Running exec".to_string()),
+            }),
+        );
+
+        let data = match &event.data {
+            EventData::ToolStarted(data) => data.clone(),
+            _ => unreachable!(),
+        };
+        let bt_event = listener.convert_tool_call_started(&event, &data);
+        assert_eq!(
+            bt_event.input.as_ref().unwrap()["arguments"]["redacted"],
+            true
+        );
+        assert!(
+            bt_event.input.as_ref().unwrap()["arguments"]["summary"]["keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value == "secret")
+        );
+        assert_eq!(bt_event.metadata["display_name"], "Execute");
+        assert_eq!(bt_event.metadata["narration"], "Running exec");
+    }
+
+    #[test]
+    fn test_parse_env_bool_accepts_common_boolean_values() {
+        for value in ["true", "TRUE", "1", "yes", "on"] {
+            assert_eq!(parse_env_bool(value), Some(true));
+        }
+        for value in ["false", "FALSE", "0", "no", "off"] {
+            assert_eq!(parse_env_bool(value), Some(false));
+        }
+        assert_eq!(parse_env_bool("maybe"), None);
+    }
+
+    #[test]
+    fn test_turn_started_without_content_recording_omits_input_preview() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+        let data = TurnStartedData {
+            turn_id,
+            input_message_id,
+            input_content: Some("secret prompt".to_string()),
+        };
+        let event = Event::new(
+            SessionId::new(),
+            EventContext::turn(turn_id, input_message_id),
+            EventData::TurnStarted(data.clone()),
+        );
+
+        let bt_event = listener.convert_turn_started(&event, &data);
+        let input = bt_event.input.unwrap();
+        assert_eq!(input["content_recorded"], false);
+        assert_eq!(input["has_input_content"], true);
+        assert!(!input.as_object().unwrap().contains_key("input_preview"));
+    }
+
+    #[test]
+    fn test_llm_output_without_content_recording_omits_text_preview() {
+        let listener = BraintrustListener::new(test_config());
+        let data = LlmGenerationData {
+            messages: vec![Message::user("Hello")],
+            tools: vec![],
+            output: LlmGenerationOutput {
+                text: Some("Sensitive completion".to_string()),
+                tool_calls: vec![ToolCall {
+                    id: "call_1".to_string(),
+                    name: "search".to_string(),
+                    arguments: json!({"query": "rust"}),
+                }],
+            },
+            metadata: LlmGenerationMetadata {
+                model: "gpt-4".to_string(),
+                provider: None,
+                usage: None,
+                duration_ms: None,
+                time_to_first_token_ms: None,
+                success: true,
+                error: None,
+                finish_reasons: None,
+                response_id: None,
+                retry: None,
+                compaction: None,
+                request_options: None,
+            },
+        };
+
+        let output = listener.llm_output_payload(&data).unwrap();
+        assert_eq!(output["text_recorded"], false);
+        assert_eq!(output["text_present"], true);
+        assert!(!output.as_object().unwrap().contains_key("text_preview"));
+    }
+
+    #[test]
+    fn test_llm_content_recording_respects_tool_payload_modes() {
+        let mut config = test_config();
+        config.content.record_content = true;
+        let listener = BraintrustListener::new(config);
+        let data = LlmGenerationData {
+            messages: vec![
+                Message::assistant_with_tools(
+                    "Calling tool",
+                    vec![ToolCall {
+                        id: "call_1".to_string(),
+                        name: "search".to_string(),
+                        arguments: json!({"secret": "value", "query": "rust"}),
+                    }],
+                ),
+                Message::tool_result(
+                    "call_1",
+                    Some(json!({"secret_result": "top secret", "count": 3})),
+                    None,
+                ),
+            ],
+            tools: vec![],
+            output: LlmGenerationOutput {
+                text: Some("Done".to_string()),
+                tool_calls: vec![ToolCall {
+                    id: "call_2".to_string(),
+                    name: "write_file".to_string(),
+                    arguments: json!({"token": "shh", "path": "/tmp/out"}),
+                }],
+            },
+            metadata: LlmGenerationMetadata {
+                model: "gpt-4".to_string(),
+                provider: None,
+                usage: None,
+                duration_ms: None,
+                time_to_first_token_ms: None,
+                success: true,
+                error: None,
+                finish_reasons: None,
+                response_id: None,
+                retry: None,
+                compaction: None,
+                request_options: None,
+            },
+        };
+
+        let input = listener.llm_input_payload(&data).unwrap();
+        let messages = input.as_array().unwrap();
+        let assistant_args = messages[0]["tool_calls"][0]["function"]["arguments"]
+            .as_str()
+            .unwrap();
+        assert!(assistant_args.contains("\"redacted\":true"));
+        assert!(!assistant_args.contains("value"));
+
+        let tool_result_content = messages[1]["content"].as_str().unwrap();
+        assert!(tool_result_content.contains("\"redacted\":true"));
+        assert!(!tool_result_content.contains("top secret"));
+
+        let output = listener.llm_output_payload(&data).unwrap();
+        let output_args = output["tool_calls"][0]["function"]["arguments"]
+            .as_str()
+            .unwrap();
+        assert!(output_args.contains("\"redacted\":true"));
+        assert!(!output_args.contains("shh"));
+    }
+
+    #[test]
+    fn test_tool_completed_summary_omits_text_preview() {
+        let listener = BraintrustListener::new(test_config());
+        let turn_id = TurnId::new();
+        let data = ToolCompletedData {
+            tool_call_id: "call_123".to_string(),
+            tool_name: "search".to_string(),
+            display_name: None,
+            success: true,
+            status: "success".to_string(),
+            result: Some(vec![crate::ContentPart::text("sensitive tool output")]),
+            error: None,
+            duration_ms: Some(50),
+            narration: None,
+        };
+        let event = Event::new(
+            SessionId::new(),
+            EventContext::turn(turn_id, MessageId::new()),
+            EventData::ToolCompleted(data.clone()),
+        );
+
+        let bt_event = listener.convert_tool_call_completed(&event, &data);
+        let result = bt_event.output.unwrap()["result"].clone();
+        assert_eq!(result["redacted"], true);
+        assert_eq!(result["summary"]["text_part_count"], 1);
+        assert!(!result.to_string().contains("sensitive tool output"));
+        assert!(
+            !result["summary"]
+                .as_object()
+                .unwrap()
+                .contains_key("text_preview")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_session_idled_prunes_session_state() {
+        let listener = BraintrustListener::new(test_config());
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+
+        listener
+            .on_event(&Event::new(
+                session_id,
+                EventContext::empty(),
+                EventData::SessionStarted(crate::events::SessionStartedData {
+                    harness_id: HarnessId::from_seed(1),
+                    agent_id: None,
+                    model_id: None,
+                }),
+            ))
+            .await;
+        assert!(
+            listener
+                .current_session_state(&session_id.to_string())
+                .is_some()
+        );
+
+        listener
+            .on_event(&Event::new(
+                session_id,
+                EventContext::turn(turn_id, input_message_id),
+                EventData::SessionIdled(crate::events::SessionIdledData {
+                    turn_id,
+                    iterations: Some(1),
+                    usage: None,
+                }),
+            ))
+            .await;
+
+        assert!(
+            listener
+                .current_session_state(&session_id.to_string())
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_on_event_batches_multiple_events_into_one_request() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/project_logs/test-project-id/insert"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut config = test_config();
+        config.api_url = server.uri();
+        config.delivery.flush_interval = Duration::from_millis(20);
+        config.delivery.max_batch_size = 10;
+        let listener = BraintrustListener::new(config);
+
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+        let start = Event::new(
+            session_id,
+            EventContext::turn(turn_id, input_message_id),
+            EventData::TurnStarted(TurnStartedData {
+                turn_id,
+                input_message_id,
+                input_content: Some("hello".to_string()),
+            }),
+        );
+        let completed = Event::new(
+            session_id,
+            EventContext::turn(turn_id, input_message_id),
+            EventData::TurnCompleted(TurnCompletedData {
+                turn_id,
+                iterations: 1,
+                duration_ms: Some(5),
+                usage: None,
+                input_content: Some("hello".to_string()),
+            }),
+        );
+
+        listener.on_event(&start).await;
+        listener.on_event(&completed).await;
+        sleep(Duration::from_millis(80)).await;
+
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(body["events"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_on_event_retries_after_429() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/project_logs/test-project-id/insert"))
+            .respond_with(ResponseTemplate::new(429).set_body_string("rate limited"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/project_logs/test-project-id/insert"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut config = test_config();
+        config.api_url = server.uri();
+        config.delivery.flush_interval = Duration::from_millis(10);
+        config.delivery.base_retry_delay = Duration::from_millis(5);
+        config.delivery.max_retry_delay = Duration::from_millis(10);
+        let listener = BraintrustListener::new(config);
+
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+        let event = Event::new(
+            SessionId::new(),
+            EventContext::turn(turn_id, input_message_id),
+            EventData::TurnStarted(TurnStartedData {
+                turn_id,
+                input_message_id,
+                input_content: Some("hello".to_string()),
+            }),
+        );
+        listener.on_event(&event).await;
+        sleep(Duration::from_millis(120)).await;
+
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(listener.state.retried_batches.load(Ordering::Relaxed) >= 1);
+        assert_eq!(listener.state.failed_batches.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn test_on_event_retries_after_timeout() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/project_logs/test-project-id/insert"))
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_millis(50)))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/project_logs/test-project-id/insert"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut config = test_config();
+        config.api_url = server.uri();
+        config.delivery.flush_interval = Duration::from_millis(10);
+        config.delivery.request_timeout = Duration::from_millis(10);
+        config.delivery.base_retry_delay = Duration::from_millis(5);
+        config.delivery.max_retry_delay = Duration::from_millis(10);
+        let listener = BraintrustListener::new(config);
+
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
+        let event = Event::new(
+            session_id,
+            EventContext::turn(turn_id, input_message_id),
+            EventData::TurnStarted(TurnStartedData {
+                turn_id,
+                input_message_id,
+                input_content: Some("hello".to_string()),
+            }),
+        );
+        listener.on_event(&event).await;
+        sleep(Duration::from_millis(180)).await;
+
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(listener.state.retried_batches.load(Ordering::Relaxed) >= 1);
+        assert_eq!(listener.state.failed_batches.load(Ordering::Relaxed), 0);
     }
 
     #[test]
