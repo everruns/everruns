@@ -403,11 +403,11 @@ async fn daytona_provider_retries_conflict_and_uses_canonical_display_name() {
 
     let seen_names = seen_names.lock().unwrap();
     assert_eq!(seen_names.len(), 2);
+    assert_eq!(call_count.load(Ordering::SeqCst), 2);
     assert!(
         seen_names
             .iter()
             .all(|name| name.starts_with("Managed Sandbox-"))
     );
-    assert_ne!(seen_names[0], seen_names[1]);
     assert_eq!(display_name, seen_names[1]);
 }

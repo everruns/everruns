@@ -11,7 +11,7 @@ pub(crate) async fn create_sandbox_with_unique_name(
 ) -> Result<(SandboxInfo, UniqueResourceName), String> {
     for attempt in 0..2 {
         let mut generated_name = unique_resource_name(requested_name);
-        set_create_body_name(&mut body, &generated_name.canonical_name);
+        set_create_body_name(&mut body, &generated_name.canonical_name)?;
 
         match client.create_sandbox(body.clone()).await {
             Ok(info) => {
@@ -28,14 +28,13 @@ pub(crate) async fn create_sandbox_with_unique_name(
     unreachable!("loop returns success or error")
 }
 
-fn set_create_body_name(body: &mut Value, name: &str) {
+fn set_create_body_name(body: &mut Value, name: &str) -> Result<(), String> {
     match body {
         Value::Object(object) => {
             object.insert("name".to_string(), json!(name));
+            Ok(())
         }
-        _ => {
-            *body = json!({ "name": name });
-        }
+        _ => Err("Daytona sandbox create body must be a JSON object".to_string()),
     }
 }
 
@@ -63,5 +62,15 @@ mod tests {
         assert!(!is_daytona_name_conflict(
             "Daytona API error (401 Unauthorized): invalid credentials"
         ));
+    }
+
+    #[test]
+    fn rejects_non_object_create_body() {
+        let mut body = json!(["invalid"]);
+
+        let error = set_create_body_name(&mut body, "sandbox-name").unwrap_err();
+
+        assert_eq!(error, "Daytona sandbox create body must be a JSON object");
+        assert_eq!(body, json!(["invalid"]));
     }
 }

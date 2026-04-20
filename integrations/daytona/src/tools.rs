@@ -251,7 +251,6 @@ impl Tool for DaytonaCreateSandboxTool {
         create_body["snapshot"] = json!(snapshot_name);
 
         // Create sandbox
-        debug!("Creating Daytona sandbox: {requested_name}");
         let (sandbox_info, sandbox_name) =
             match create_sandbox_with_unique_name(&client, requested_name, create_body).await {
                 Ok(result) => result,
@@ -260,6 +259,10 @@ impl Tool for DaytonaCreateSandboxTool {
         let canonical_name = sandbox_name.canonical_name;
         let sandbox_id = sandbox_info.id.clone();
         let requested_name = sandbox_name.requested_name;
+        debug!(
+            "Created Daytona sandbox from requested name '{}' as canonical name '{}'",
+            requested_name, canonical_name
+        );
 
         // Wait for sandbox to reach "started" state
         debug!("Waiting for sandbox to start: {sandbox_id}");
