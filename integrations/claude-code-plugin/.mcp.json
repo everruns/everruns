@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "everruns": {
+      "type": "http",
+      "url": "https://dev.everruns.com/mcp"
+    }
+  }
+}

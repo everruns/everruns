@@ -1,0 +1,19 @@
+{
+  "name": "everruns",
+  "version": "0.1.0",
+  "description": "Interact with the Everruns agent platform — create and run agents, manage harnesses and sessions, browse the API catalog.",
+  "author": {
+    "name": "Everruns",
+    "url": "https://everruns.com"
+  },
+  "homepage": "https://dev.everruns.com",
+  "repository": "https://github.com/everruns/everruns",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "everruns",
+    "mcp",
+    "harness",
+    "llm"
+  ]
+}
