@@ -89,3 +89,4 @@ This means sprite names must be unique per user account (not per session). The i
 
 - `tests/live_api_test.rs` is feature-gated behind `sprites-live-tests`.
 - Missing-credential behavior is **fail-closed**: with the feature flag on but `SPRITES_API_TOKEN` unset, the test panics. See `specs/integrations.md`.
+- `.github/workflows/sprites-integration.yml` keeps the live job off `pull_request` and runs it only on pushes to `main` when `integrations/sprites/**` changes. `.github/workflows/integration-live-sweep.yml` reruns the same live path weekly and on demand so shared regressions do not hide behind that path filter.

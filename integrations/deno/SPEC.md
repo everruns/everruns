@@ -123,3 +123,4 @@ See `specs/threat-model.md` for the Deno-specific threat section.
 
 - `tests/live_api_test.rs` is feature-gated behind `deno-live-tests`.
 - Missing-credential behavior is **fail-closed**: with the feature flag on, the test panics when `DENO_DEPLOY_TOKEN` is missing, or when a personal `ddp_...` token is used without `DENO_DEPLOY_ORG`. See `specs/integrations.md`.
+- `.github/workflows/ci.yml` runs the live test only on pushes to `main` when `integrations/deno/**` changes; `.github/workflows/integration-live-sweep.yml` reruns it weekly and on demand as the shared-code backstop.

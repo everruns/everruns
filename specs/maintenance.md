@@ -59,6 +59,7 @@ Before a release, maintenance should cover:
 - areas changed since the last release
 - historically fragile or high-risk surfaces
 - release artifacts affected by those changes
+- the latest push-only integration live workflows on `main` plus the latest `.github/workflows/integration-live-sweep.yml` result; unresolved failures there block a "release ready" claim until triaged
 - Linear issues already marked `In Progress` whose `updatedAt` is older than 1 day, signaling execution drift; use that `updatedAt` threshold as the default review threshold unless the task sets a stricter bar
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
 

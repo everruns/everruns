@@ -15,6 +15,8 @@ This specification defines the release process for Everruns. The process is desi
 5. **User merges PR**: Squash merge to main
 6. **Auto-tagging**: GitHub Action detects release commit, creates tag + GitHub Release using CHANGELOG.md content
 
+Release readiness also includes the integration backstops that are intentionally kept off the `pull_request` hot path. Before cutting a release PR or merging it, review the latest push-only live integration workflow runs on `main` and the latest `.github/workflows/integration-live-sweep.yml` result. Do not release through unresolved failures there unless the failure is understood, documented, and explicitly accepted.
+
 ### CHANGELOG.md as Source of Truth
 
 1. CHANGELOG.md is the canonical source for release notes
