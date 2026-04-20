@@ -1,0 +1,125 @@
+# Weekly/on-demand backstop for path-filtered integration workflows.
+# PRs stay fast by keeping costly/stateful live jobs off the hot path; pushes to
+# main still run change-scoped live coverage; this workflow runs the full live
+# matrix so shared crate, harness, and dependency regressions cannot hide behind
+# per-integration path filters.
+name: Integration Live Sweep
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 14 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+  DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+
+jobs:
+  doppler-backed-live-tests:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Daytona Live API Tests
+            command: cargo test -p everruns-integrations-daytona --features daytona-live-tests --test live_api_test -- --test-threads=1
+          - name: Browserless Live API Tests
+            command: cargo test -p everruns-integrations-browserless --features browserless-live-tests --test live_api -- --test-threads=1
+          - name: E2B Live API Tests
+            command: cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test -- --test-threads=1
+          - name: Deno Live API Tests
+            command: cargo test -p everruns-integrations-deno --features deno-live-tests --test live_api_test -- --test-threads=1
+          - name: Sprites Live API Tests
+            command: cargo test -p everruns-integrations-sprites --features sprites-live-tests --test live_api_test -- --test-threads=1
+          - name: Brave Search API Tests
+            command: cargo test -p everruns-integrations-brave-search --features integration
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Run live tests
+        run: doppler run -- ${{ matrix.command }}
+
+  duckduckgo-integration-test:
+    name: DuckDuckGo API Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Run integration tests
+        run: cargo test -p everruns-integrations-duckduckgo --features integration
+
+  container-sandbox-live-test:
+    name: Container Sandbox Live API Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      docker:
+        image: docker:dind
+        env:
+          DOCKER_TLS_CERTDIR: ""
+        options: --privileged
+        ports:
+          - 2375:2375
+
+    env:
+      CONTAINER_SANDBOX_DOCKER_HOST: http://localhost:2375
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Wait for Docker daemon
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:2375/_ping >/dev/null 2>&1; then
+              echo "Docker daemon is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Docker daemon did not become ready within 60s" >&2
+          exit 1
+
+      - name: Run live integration tests
+        run: cargo test -p everruns-container-sandbox --features container-sandbox-live-tests --test live_api_test -- --test-threads=1

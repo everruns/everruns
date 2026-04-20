@@ -336,6 +336,8 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 | `tests/tool_integration.rs` | Integration tests: tool execution + wiremock Daytona API |
 | `tests/live_api_test.rs` | Live API integration tests (feature-gated: `daytona-live-tests`; fail-closed on missing `DAYTONA_API_KEY` — see `specs/integrations.md`) |
 
+Change-scoped CI keeps Daytona live coverage off `pull_request`: `.github/workflows/ci.yml` runs this job only on pushes to `main` when `integrations/daytona/**` changes. The weekly/on-demand backstop in `.github/workflows/integration-live-sweep.yml` reruns the same live test without path filters so shared regressions in crates, harness code, or dependencies still surface.
+
 ## Capability Registration
 
 - **ID**: `daytona`

@@ -146,3 +146,5 @@ E2B_API_KEY=<key> cargo test -p everruns-integrations-e2b --features e2b-live-te
 ```
 
 Exercises sandbox create → file write/read → command exec → cleanup against the real E2B service. Missing-credential behavior is **fail-closed**: with the feature flag on but `E2B_API_KEY` unset, the test panics (see `specs/integrations.md`).
+
+CI keeps E2B live coverage off `pull_request`: `.github/workflows/ci.yml` runs the live test only on pushes to `main` when `integrations/e2b/**` changes. `.github/workflows/integration-live-sweep.yml` reruns the same live path weekly and on demand to catch shared regressions that path filters miss.

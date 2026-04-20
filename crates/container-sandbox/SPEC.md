@@ -109,4 +109,4 @@ crates/container-sandbox/
 
 ## Live API tests
 
-`tests/live_api_test.rs` is the canonical live-test entrypoint for the container-sandbox capability. It is gated behind the `container-sandbox-live-tests` cargo feature and expects an unauthenticated Docker daemon reachable via `CONTAINER_SANDBOX_DOCKER_HOST` (default `http://localhost:2375`). `.github/workflows/container-sandbox-integration.yml` runs these tests on pushes to `main` against a `docker:dind` service container with TLS disabled.
+`tests/live_api_test.rs` is the canonical live-test entrypoint for the container-sandbox capability. It is gated behind the `container-sandbox-live-tests` cargo feature and expects an unauthenticated Docker daemon reachable via `CONTAINER_SANDBOX_DOCKER_HOST` (default `http://localhost:2375`). `.github/workflows/container-sandbox-integration.yml` runs these tests on pushes to `main` against a `docker:dind` service container with TLS disabled when `crates/container-sandbox/**` changes. `.github/workflows/integration-live-sweep.yml` reruns the same live path weekly and on demand without path filters so shared regressions still surface.

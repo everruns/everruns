@@ -15,13 +15,23 @@ Every sandbox/execution integration crate must ship with the following artifacts
 | **Live API tests** | `tests/live_api_test.rs` — feature-gated (`<name>-live-tests`), credentials read from required environment variables. In CI, those env vars are injected via Doppler. Missing-credential behavior is **fail-closed**: when the feature flag is on but the required env var is missing or empty, the test must `panic!` (not `eprintln!` + `return`). CI live jobs must never silently pass. Reference implementations: `integrations/brave-search/tests/smoke_real_api.rs`, `integrations/daytona/tests/live_api_test.rs`. |
 | **CI: unit tests** | Crate listed in the `unit-test` job: `cargo test -p everruns-integrations-<name>`. |
 | **CI: change detection** | Path filter in `changes` job: `<name>: integrations/<name>/**`. |
-| **CI: live-test job** | Live API test job conditional on `push` event + Doppler token. New integrations: dedicated `.github/workflows/<name>-integration.yml` workflow, path-filtered to `integrations/<name>/**`. Legacy integrations (Daytona, Browserless, etc.) may still use a job in `ci.yml` gated on change detection. |
+| **CI: live-test job** | Live API or real-API coverage must follow the repo trigger policy: cheap/path-local API smoke may run on `pull_request`; costly or stateful live jobs stay on `push` to `main`; path-filtered workflows must also be covered by the weekly/on-demand backstop in `.github/workflows/integration-live-sweep.yml`. New integrations: dedicated `.github/workflows/<name>-integration.yml` workflow for change-scoped runs plus inclusion in the full sweep. Legacy integrations (Daytona, Browserless, etc.) may still use a job in `ci.yml` for change-scoped runs. |
 | **User docs** | `docs/integrations/<name>.md` — quick start, tool table, lifecycle, security. |
 | **UI test case** | `test_cases/ui/<name>_connection/TC001_*.md` — manual test for connection + sandbox lifecycle. |
 | **Seed agent** | Entry in `crates/server/src/seed.rs` with capabilities wired. |
 | **Threat model** | Section in `specs/threat-model.md` covering integration-specific threats. |
 
 New integrations should check off every row before merging. Existing integrations that are missing items should be brought up to parity incrementally.
+
+## CI Trigger Policy
+
+Integration coverage is intentionally split by cost and blast radius:
+
+- **`pull_request`**: keep PR feedback fast. Only cheap/path-local real-API coverage belongs here (for example DuckDuckGo and Brave Search). Stateful or higher-cost live sandbox jobs do not run on every PR.
+- **`push` to `main`**: run change-scoped live jobs for integrations whose real coverage needs secrets, remote sandboxes, browsers, or Docker-in-Docker. These jobs stay path-filtered so unrelated PRs do not pay that cost before merge.
+- **Weekly + on demand**: `.github/workflows/integration-live-sweep.yml` runs the full live/real-API matrix on a schedule and via `workflow_dispatch`. This is the backstop for regressions introduced through shared crates, harness code, workflow glue, or dependency bumps that per-integration path filters would miss.
+
+The policy trades PR load for a bounded amount of post-merge and scheduled coverage. If a new integration needs a different trigger shape, document the cost/risk reason in its co-located spec.
 
 ## Integration Crates (`integrations/`)
 
@@ -60,4 +70,3 @@ Embedded in the server crate.
 | Integration | Spec | Summary |
 |---|---|---|
 | Braintrust + OpenTelemetry | [`specs/observability.md`](observability.md) | Observability providers — OTel Gen-AI tracing and Braintrust event forwarding. |
-

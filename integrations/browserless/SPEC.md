@@ -225,6 +225,8 @@ Tests against the real Browserless API require `BROWSERLESS_TOKEN` in Doppler. G
 doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests
 ```
 
+CI keeps Browserless live coverage off `pull_request`: `.github/workflows/ci.yml` runs the live job only on pushes to `main` when `integrations/browserless/**` changes. `.github/workflows/integration-live-sweep.yml` provides the weekly/on-demand full-sweep backstop so shared regressions are still exercised.
+
 ## Crate Structure
 
 `integrations/browserless/` → `everruns-integrations-browserless`

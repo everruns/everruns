@@ -136,9 +136,11 @@ Tests use a `require_api_key!` macro that panics when `BRAVE_SEARCH_API_KEY` is 
 Dedicated workflow `.github/workflows/brave-search-integration.yml`:
 
 - **Path-filtered**: only triggers when `integrations/brave-search/**` changes.
+- Runs on both `pull_request` and `push` because the coverage is cheap enough for PRs.
 - Fetches `BRAVE_SEARCH_API_KEY` from Doppler via `DOPPLER_TOKEN` GitHub Actions secret.
 - Fails if `DOPPLER_TOKEN` is not set (required, not optional).
 - Passes `--features integration` to compile and run the real-API tests.
+- `.github/workflows/integration-live-sweep.yml` reruns the same job weekly and on demand without path filters to catch shared regressions outside `integrations/brave-search/**`.
 
 Adding a new API-key-gated integration crate should follow this pattern: feature-gate the tests, use a panic macro for missing keys, add a path-filtered workflow, fetch the key from Doppler.
 
