@@ -34,6 +34,9 @@ pub mod tool_narration;
 // Event listeners (pluggable observability backends)
 pub mod event_listeners;
 
+// Error reporter (vendor-neutral embedder hook)
+pub mod error_reporter;
+
 // Observation backends (OTel, etc.)
 pub mod observation;
 
@@ -180,6 +183,11 @@ pub use background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
 pub use event_listeners::{CompositeEventListener, EventListener, NoopEventListener};
+
+// Error reporter re-exports
+pub use error_reporter::{
+    ErrorReport, ErrorReporter, ErrorScope, ErrorSeverity, NoopErrorReporter, SharedErrorReporter,
+};
 
 // LLM driver types re-exports
 pub use llm_driver_registry::{
