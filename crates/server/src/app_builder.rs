@@ -25,8 +25,8 @@ use anyhow::{Context, Result};
 use axum::http::{Method, header};
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::{
-    BraintrustListener, ErrorReport, ErrorReporter, ErrorScope, EventListener, OtelEventListener,
-    PlatformDefinition, SharedErrorReporter,
+    BraintrustListener, ErrorReport, ErrorReporter, ErrorScope, EventListener, NoopErrorReporter,
+    OtelEventListener, PlatformDefinition, SharedErrorReporter,
 };
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
@@ -73,9 +73,9 @@ pub struct ServerContext {
     pub runner: Arc<dyn AgentRunner>,
     pub driver_registry: Arc<everruns_core::DriverRegistry>,
     pub platform_definition: Arc<PlatformDefinition>,
-    /// Vendor-neutral embedder-provided error reporter. `None` if the embedder
-    /// did not install one; callers should treat the absence as "no-op".
-    pub error_reporter: Option<SharedErrorReporter>,
+    /// Vendor-neutral embedder-provided error reporter. Always present;
+    /// defaults to a no-op when no embedder has installed one.
+    pub error_reporter: SharedErrorReporter,
 }
 
 // =========================================================================
@@ -1102,8 +1102,11 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 7: Background tasks
         // =====================================================================
-        let error_reporter = self.error_reporter.clone();
-        if error_reporter.is_some() {
+        let error_reporter: SharedErrorReporter = self
+            .error_reporter
+            .clone()
+            .unwrap_or_else(|| Arc::new(NoopErrorReporter));
+        if self.error_reporter.is_some() {
             tracing::info!("Embedder error reporter installed");
         }
 
@@ -1224,12 +1227,16 @@ impl ServerAppBuilder {
                                 }
                                 Err(e) => {
                                     tracing::error!("Failed to reclaim stale tasks: {}", e);
-                                    if let Some(ref reporter) = reclaim_error_reporter {
+                                    // Detach reporter call so a slow vendor reporter cannot stall
+                                    // the reclamation loop during an upstream outage.
+                                    let reporter = reclaim_error_reporter.clone();
+                                    let err_msg = e.to_string();
+                                    tokio::spawn(async move {
                                         reporter
                                             .report(
                                                 ErrorReport::error(
                                                     "server.stale_task_reclaim",
-                                                    e.to_string(),
+                                                    err_msg,
                                                 )
                                                 .with_scope(
                                                     ErrorScope::new()
@@ -1237,7 +1244,7 @@ impl ServerAppBuilder {
                                                 ),
                                             )
                                             .await;
-                                    }
+                                    });
                                 }
                             }
                         }

@@ -217,15 +217,17 @@ Implementations must be best-effort: a slow or failing reporter must never propa
 
 ### Server hook
 
-`ServerAppBuilder::error_reporter(reporter)` installs an embedder-provided reporter. When present:
+`ServerAppBuilder::error_reporter(reporter)` installs an embedder-provided reporter. When not installed, OSS defaults to `NoopErrorReporter`.
 
-- It is exposed on `ServerContext` so custom routes, middleware, and background tasks can report into the same sink.
-- OSS internals report on well-known failure points (for example, stale-task reclamation errors).
+- `ServerContext::error_reporter` is always a `SharedErrorReporter` (never `None`) so custom routes, middleware, and background tasks can report into the same sink without branching.
+- OSS internals report on well-known failure points (for example, stale-task reclamation errors). Reports from recurring background tasks are detached on a `tokio::spawn` so a stalled vendor endpoint cannot stall operational recovery.
 - No OSS code references Sentry, Datadog, or any other vendor type.
 
 ### Worker hook
 
-`WorkerAppBuilder::error_reporter(reporter)` installs the same reporter on the worker side. Worker runtime errors and fatal panics flow through the reporter with task / workflow ids in the scope.
+`WorkerAppBuilder::error_reporter(reporter)` installs the same reporter on the worker side. Today, OSS forwards fatal `DurableWorker::run()` failures through the reporter with the `durable_worker` component in scope. Fatal-path calls are bounded by a short timeout so a stalled reporter cannot block worker termination or supervisor restart.
+
+Panic interception and per-task / per-workflow scoping are wrapper responsibilities today: wrappers that want that granularity wrap task execution themselves and emit their own reports. See **Not goals** below.
 
 ### UI hook
 
@@ -247,7 +249,7 @@ const myReporter: ErrorReporter = {
 
 Feature code consumes the reporter via `useErrorReporter()` and never imports a vendor SDK. The default is a no-op reporter, so callers can always use the hook without null checks.
 
-`ErrorScope` fields in TypeScript mirror the Rust contract one-to-one so wrappers can map them onto vendor scope/tag APIs without ad-hoc translation.
+`ErrorScope` fields in TypeScript mirror the Rust contract one-to-one (including `taskId` and `workflowId`) so wrappers can share one mapping across server, worker, and UI. `ErrorReport.scope` is required on both sides (defaulting to an empty scope) for the same reason. `ErrorReporter.report` may return `void` or a `Promise<void>` so async wrappers (e.g., posting to an ingestion endpoint) work directly, and callers always treat it as fire-and-forget.
 
 ### Runtime context passed to wrappers
 
@@ -269,6 +271,8 @@ OSS provides the following to wrappers through the hook surface:
 - No Sentry SDK dependency or Sentry-specific types in OSS.
 - No vendor-specific env vars (for example, `SENTRY_DSN`) in OSS.
 - No SaaS-specific branching anywhere in OSS.
+- No panic interception in OSS. Wrappers install their own panic hook if they want uncaught panics reported.
+- No per-task / per-workflow automatic scoping from OSS worker internals today. Wrappers can attach those IDs themselves when they own task execution wrappers.
 
 ### Example: wiring a Sentry wrapper
 

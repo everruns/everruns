@@ -22,8 +22,10 @@ export interface ErrorScope {
   requestId?: string;
   route?: string;
   component?: string;
+  taskId?: string;
+  workflowId?: string;
   /** Extra key/value tags (provider id, feature flag, etc.). */
-  extra?: Record<string, string>;
+  extra: Record<string, string>;
 }
 
 export interface ErrorReport {
@@ -31,17 +33,20 @@ export interface ErrorReport {
   /** Short machine-stable identifier (e.g. "ui.render.error"). */
   kind: string;
   message: string;
-  scope?: ErrorScope;
-  cause?: unknown;
+  scope: ErrorScope;
 }
 
 /**
  * Vendor-neutral error reporter contract. Wrappers implement this and install
  * it via {@link ErrorReporterProvider}. See `specs/embedding.md` for the full
  * embedding contract.
+ *
+ * `report` may return `void` or a `Promise<void>`. Callers treat it as
+ * fire-and-forget — a slow or failing reporter must never propagate into UI
+ * rendering paths.
  */
 export interface ErrorReporter {
-  report(report: ErrorReport): void;
+  report(report: ErrorReport): void | Promise<void>;
 }
 
 const noopReporter: ErrorReporter = {

@@ -2,14 +2,22 @@
 //
 // Decision: Builder pattern mirrors ServerAppBuilder for symmetry
 // Decision: Encapsulates telemetry, shutdown, and worker lifecycle
-// Decision: Error reporter is vendor-neutral (see specs/embedding.md). Worker
-//   task failures and panics flow through the installed reporter when one is
-//   present; OSS never imports vendor SDKs directly.
+// Decision: Error reporter is vendor-neutral (see specs/embedding.md). Fatal
+//   `run()` failures flow through the installed reporter when one is present;
+//   OSS never imports vendor SDKs directly. Panic interception and per-task /
+//   per-workflow scoping are wrapper responsibilities today — see the spec's
+//   "Not goals" section.
 
 use anyhow::{Context, Result};
 use everruns_core::{ErrorReport, ErrorReporter, ErrorScope, PlatformDefinition};
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::info;
+
+/// Maximum time we wait for the embedder reporter on the fatal-exit path
+/// before giving up, so a stalled vendor endpoint cannot block worker
+/// termination.
+const REPORTER_TIMEOUT: Duration = Duration::from_secs(5);
 
 use crate::durable_worker::{DurableWorker, DurableWorkerConfig};
 
@@ -52,9 +60,10 @@ impl WorkerAppBuilder {
 
     /// Install a vendor-neutral error reporter.
     ///
-    /// Worker-side panics and unrecoverable task failures are forwarded to
-    /// the reporter with task / workflow ids in the scope. See
-    /// `specs/embedding.md` for the contract.
+    /// Fatal `run()` failures are forwarded to the reporter with the worker
+    /// component name in the scope. Panic interception and per-task /
+    /// per-workflow scoping are wrapper responsibilities (e.g., by wrapping
+    /// task execution themselves). See `specs/embedding.md` for the contract.
     pub fn error_reporter(mut self, reporter: Arc<dyn ErrorReporter>) -> Self {
         self.error_reporter = Some(reporter);
         self
@@ -95,12 +104,18 @@ impl WorkerAppBuilder {
                 if let Err(e) = result {
                     tracing::error!(error = %e, "Worker error");
                     if let Some(reporter) = &error_reporter {
-                        reporter
-                            .report(
-                                ErrorReport::fatal("worker.run", e.to_string())
-                                    .with_scope(ErrorScope::new().with_component("durable_worker")),
-                            )
-                            .await;
+                        // Bounded timeout so a stalled vendor endpoint cannot
+                        // block worker termination / supervisor restart.
+                        let report_fut = reporter.report(
+                            ErrorReport::fatal("worker.run", e.to_string())
+                                .with_scope(ErrorScope::new().with_component("durable_worker")),
+                        );
+                        if tokio::time::timeout(REPORTER_TIMEOUT, report_fut).await.is_err() {
+                            tracing::warn!(
+                                timeout_secs = REPORTER_TIMEOUT.as_secs(),
+                                "Embedder error reporter timed out on worker fatal path"
+                            );
+                        }
                     }
                     return Err(e);
                 }
