@@ -14,11 +14,13 @@
 
 use async_trait::async_trait;
 use everruns_core::error::Result;
+use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::{
-    KeyInfo, SecretInfo, SessionStorageStore, ToolContext, UserConnectionResolver,
+    KeyInfo, LeasedResourceStore, SecretInfo, SessionStorageStore, ToolContext,
+    UserConnectionResolver,
 };
-use everruns_core::typed_id::SessionId;
+use everruns_core::typed_id::{LeasedResourceId, SessionId};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -47,6 +49,48 @@ impl MockStorageStore {
     async fn seed_secret(&self, session_id: SessionId, name: &str, value: &str) {
         let key = format!("{}:{}", session_id, name);
         self.secrets.lock().await.insert(key, value.to_string());
+    }
+}
+
+struct MockLeasedResourceStore {
+    resources: Mutex<Vec<LeasedResource>>,
+}
+
+impl MockLeasedResourceStore {
+    fn new() -> Self {
+        Self {
+            resources: Mutex::new(Vec::new()),
+        }
+    }
+
+    async fn seed_active(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        resource_type: &str,
+        external_id: &str,
+    ) {
+        let now = chrono::Utc::now();
+        self.resources.lock().await.push(LeasedResource {
+            id: LeasedResourceId::new(),
+            session_id: Some(session_id),
+            provider: provider.to_string(),
+            resource_type: resource_type.to_string(),
+            external_id: external_id.to_string(),
+            display_name: Some(external_id.to_string()),
+            status: LeasedResourceStatus::Active,
+            owner_user_id: None,
+            lease_duration_seconds: 1200,
+            last_touched_at: now,
+            lease_expires_at: now + chrono::TimeDelta::seconds(1200),
+            cleanup_started_at: None,
+            cleanup_completed_at: None,
+            cleanup_attempts: 0,
+            last_cleanup_error: None,
+            metadata: json!({}),
+            created_at: now,
+            updated_at: now,
+        });
     }
 }
 
@@ -88,6 +132,69 @@ impl SessionStorageStore for MockStorageStore {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             })
+            .collect())
+    }
+}
+
+#[async_trait]
+impl LeasedResourceStore for MockLeasedResourceStore {
+    async fn upsert_resource(&self, input: UpsertLeasedResource) -> Result<LeasedResource> {
+        let now = chrono::Utc::now();
+        let resource = LeasedResource {
+            id: LeasedResourceId::new(),
+            session_id: Some(input.session_id),
+            provider: input.provider,
+            resource_type: input.resource_type,
+            external_id: input.external_id,
+            display_name: input.display_name,
+            status: LeasedResourceStatus::Active,
+            owner_user_id: input.owner_user_id,
+            lease_duration_seconds: input.lease_duration_seconds,
+            last_touched_at: now,
+            lease_expires_at: now
+                + chrono::TimeDelta::seconds(i64::from(input.lease_duration_seconds)),
+            cleanup_started_at: None,
+            cleanup_completed_at: None,
+            cleanup_attempts: 0,
+            last_cleanup_error: None,
+            metadata: input.metadata,
+            created_at: now,
+            updated_at: now,
+        };
+        self.resources.lock().await.push(resource.clone());
+        Ok(resource)
+    }
+
+    async fn release_resource(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        resource_type: &str,
+        external_id: &str,
+    ) -> Result<Option<LeasedResource>> {
+        let mut resources = self.resources.lock().await;
+        let resource = resources.iter_mut().find(|resource| {
+            resource.session_id == Some(session_id)
+                && resource.provider == provider
+                && resource.resource_type == resource_type
+                && resource.external_id == external_id
+        });
+        if let Some(resource) = resource {
+            resource.status = LeasedResourceStatus::Released;
+            resource.updated_at = chrono::Utc::now();
+            return Ok(Some(resource.clone()));
+        }
+        Ok(None)
+    }
+
+    async fn list_resources(&self, session_id: SessionId) -> Result<Vec<LeasedResource>> {
+        Ok(self
+            .resources
+            .lock()
+            .await
+            .iter()
+            .filter(|resource| resource.session_id == Some(session_id))
+            .cloned()
             .collect())
     }
 }
@@ -215,6 +322,39 @@ async fn test_exec_tool_missing_sandbox_state() {
     match result {
         ToolExecutionResult::ToolError(msg) => {
             assert!(msg.contains("not found"), "Got: {msg}");
+        }
+        other => panic!("Expected ToolError, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_exec_tool_rejects_cross_session_sandbox_id() {
+    let tool = get_tool("deno_exec");
+    let owner_session = SessionId::new();
+    let attacker_session = SessionId::new();
+    let store = Arc::new(MockStorageStore::new());
+    let leased_resources = Arc::new(MockLeasedResourceStore::new());
+    leased_resources
+        .seed_active(owner_session, "deno", "sandbox", "sb_foreign")
+        .await;
+
+    let context = ToolContext::with_storage_store(attacker_session, store)
+        .with_connection_resolver(deno_resolver())
+        .with_leased_resource_store(leased_resources);
+
+    let result = tool
+        .execute_with_context(
+            json!({"sandbox_id": "sb_foreign", "command": "ls"}),
+            &context,
+        )
+        .await;
+
+    match result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(
+                msg.contains("was not created by this session"),
+                "Got: {msg}"
+            );
         }
         other => panic!("Expected ToolError, got: {other:?}"),
     }

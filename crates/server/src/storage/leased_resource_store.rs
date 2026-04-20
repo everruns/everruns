@@ -8,6 +8,10 @@
 
 use async_trait::async_trait;
 use chrono::{TimeDelta, Utc};
+use everruns_core::resource_ownership::{
+    LEASED_RESOURCE_EXTERNAL_ID_KEY, LEASED_RESOURCE_ID_KEY, LEASED_RESOURCE_PROVIDER_KEY,
+    LEASED_RESOURCE_TYPE_KEY,
+};
 use everruns_core::session_resource::{RegisterSessionResource, SessionResourceStatus};
 use everruns_core::traits::{LeasedResourceStore, SessionResourceRegistry};
 use everruns_core::{
@@ -17,6 +21,43 @@ use everruns_core::{
 use super::backend::StorageBackend;
 use super::models::{LeasedResourceRow, ReleaseLeasedResourceRow, UpsertLeasedResourceRow};
 use std::sync::Arc;
+
+fn build_registry_metadata(
+    metadata: serde_json::Value,
+    resource_id: &str,
+    provider: &str,
+    resource_type: &str,
+    external_id: &str,
+) -> serde_json::Value {
+    let mut object = match metadata {
+        serde_json::Value::Object(map) => map,
+        serde_json::Value::Null => serde_json::Map::new(),
+        other => {
+            let mut map = serde_json::Map::new();
+            map.insert("provider_metadata".to_string(), other);
+            map
+        }
+    };
+
+    object.insert(
+        LEASED_RESOURCE_PROVIDER_KEY.to_string(),
+        serde_json::Value::String(provider.to_string()),
+    );
+    object.insert(
+        LEASED_RESOURCE_TYPE_KEY.to_string(),
+        serde_json::Value::String(resource_type.to_string()),
+    );
+    object.insert(
+        LEASED_RESOURCE_EXTERNAL_ID_KEY.to_string(),
+        serde_json::Value::String(external_id.to_string()),
+    );
+    object.insert(
+        LEASED_RESOURCE_ID_KEY.to_string(),
+        serde_json::Value::String(resource_id.to_string()),
+    );
+
+    serde_json::Value::Object(object)
+}
 
 /// Convert a storage row into the public leased-resource domain type.
 pub fn row_to_domain(row: &LeasedResourceRow) -> Result<LeasedResource> {
@@ -100,7 +141,9 @@ impl LeasedResourceStore for DbLeasedResourceStore {
             .display_name
             .clone()
             .unwrap_or_else(|| input.external_id.clone());
-        let registry_metadata = input.metadata.clone();
+        let registry_provider = input.provider.clone();
+        let registry_external_id = input.external_id.clone();
+        let provider_metadata = input.metadata.clone();
 
         let row = self
             .db
@@ -120,6 +163,13 @@ impl LeasedResourceStore for DbLeasedResourceStore {
             .map_err(|e| AgentLoopError::store(format!("Failed to upsert leased resource: {e}")))?;
 
         let resource = row_to_domain(&row)?;
+        let registry_metadata = build_registry_metadata(
+            provider_metadata,
+            &resource.id.to_string(),
+            &registry_provider,
+            &registry_kind,
+            &registry_external_id,
+        );
 
         // Auto-register in session resource registry for agent visibility.
         if let Some(ref registry) = self.registry
@@ -212,6 +262,11 @@ mod tests {
     use super::*;
     use crate::storage::{StorageBackend, models::CreateSessionRow};
     use everruns_core::DEFAULT_ORG_ID;
+    use everruns_core::resource_ownership::{
+        LEASED_RESOURCE_EXTERNAL_ID_KEY, LEASED_RESOURCE_ID_KEY, LEASED_RESOURCE_PROVIDER_KEY,
+        LEASED_RESOURCE_TYPE_KEY,
+    };
+    use everruns_core::traits::SessionResourceRegistry;
     use serde_json::json;
 
     async fn create_test_session(db: &StorageBackend) -> SessionId {
@@ -361,5 +416,45 @@ mod tests {
             .await
             .expect("stale failure transition should be checked");
         assert!(failed.is_none());
+    }
+
+    #[tokio::test]
+    async fn upsert_registers_external_id_metadata_in_session_resources() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_test_session(db.as_ref()).await;
+        let registry = Arc::new(crate::storage::DbSessionResourceRegistry::new(db.clone()));
+        let store = DbLeasedResourceStore::new(db.clone()).with_registry(registry.clone());
+
+        let created = store
+            .upsert_resource(UpsertLeasedResource {
+                session_id,
+                provider: "daytona".to_string(),
+                resource_type: "sandbox".to_string(),
+                external_id: "sandbox-123".to_string(),
+                display_name: Some("Build sandbox".to_string()),
+                owner_user_id: None,
+                lease_duration_seconds: 20 * 60,
+                metadata: json!({ "workspace_path": "/workspace" }),
+            })
+            .await
+            .expect("leased resource should be created");
+
+        let registered = registry
+            .get(session_id, &created.id.to_string())
+            .await
+            .expect("session resource should load")
+            .expect("session resource should exist");
+
+        assert_eq!(registered.metadata[LEASED_RESOURCE_PROVIDER_KEY], "daytona");
+        assert_eq!(registered.metadata[LEASED_RESOURCE_TYPE_KEY], "sandbox");
+        assert_eq!(
+            registered.metadata[LEASED_RESOURCE_EXTERNAL_ID_KEY],
+            "sandbox-123"
+        );
+        assert_eq!(
+            registered.metadata[LEASED_RESOURCE_ID_KEY],
+            created.id.to_string()
+        );
+        assert_eq!(registered.metadata["workspace_path"], "/workspace");
     }
 }

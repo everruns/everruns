@@ -2,11 +2,16 @@
 
 use everruns_core::SessionFile;
 use everruns_core::ToolHints;
+use everruns_core::resource_ownership::{
+    list_owned_external_resource_ids, ownership_tracking_unavailable_error,
+    require_owned_external_resource,
+};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use tracing::{debug, warn};
 
 use crate::client::DaytonaClient;
@@ -1661,6 +1666,13 @@ async fn get_github_token(context: &ToolContext) -> Option<String> {
 /// Session filesystem path where the Daytona OpenAPI spec is mounted.
 pub const DAYTONA_OPENAPI_MOUNT_PATH: &str = "/daytona/openapi.yaml";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ScopedSandboxPath<'a> {
+    SandboxCollection,
+    Sandbox(&'a str),
+    Toolbox(&'a str),
+}
+
 pub struct DaytonaApiCallTool;
 
 #[async_trait]
@@ -1744,15 +1756,19 @@ impl Tool for DaytonaApiCallTool {
         };
 
         // Normalize path: ensure leading /, strip trailing /, strip query string
-        let path = {
-            let p = path.split('?').next().unwrap_or(&path);
-            let p = p.trim_end_matches('/');
-            if p.starts_with('/') {
-                p.to_string()
-            } else {
-                format!("/{p}")
-            }
+        let path = Self::normalize_api_path(&path);
+
+        let sandbox_scope = match Self::enforce_session_scope(context, &method_str, &path).await {
+            Ok(scope) => scope,
+            Err(e) => return e,
         };
+
+        if method_str == "GET"
+            && path == "/sandbox"
+            && sandbox_scope.as_ref().is_some_and(HashSet::is_empty)
+        {
+            return ToolExecutionResult::success(json!([]));
+        }
 
         let method = match method_str.as_str() {
             "GET" => reqwest::Method::GET,
@@ -1782,6 +1798,11 @@ impl Tool for DaytonaApiCallTool {
         let client = DaytonaClient::new(api_key);
         match client.api_call(method, &path, body).await {
             Ok(response) => {
+                let response = if let Some(owned_ids) = sandbox_scope.as_ref() {
+                    Self::filter_owned_sandboxes(response, owned_ids)
+                } else {
+                    response
+                };
                 // Track sandbox resources created/deleted via raw API calls
                 self.track_resources(context, &method_str, &path, &response)
                     .await;
@@ -1793,6 +1814,80 @@ impl Tool for DaytonaApiCallTool {
 }
 
 impl DaytonaApiCallTool {
+    fn normalize_api_path(path: &str) -> String {
+        let path = path.split('?').next().unwrap_or(path);
+        let segments: Vec<&str> = path
+            .split('/')
+            .filter(|segment| !segment.is_empty())
+            .collect();
+        if segments.is_empty() {
+            "/".to_string()
+        } else {
+            format!("/{}", segments.join("/"))
+        }
+    }
+
+    fn scoped_sandbox_path(path: &str) -> Option<ScopedSandboxPath<'_>> {
+        if path == "/sandbox" {
+            return Some(ScopedSandboxPath::SandboxCollection);
+        }
+
+        if let Some(rest) = path.strip_prefix("/sandbox/")
+            && let Some(sandbox_id) = rest.split('/').next()
+            && !sandbox_id.is_empty()
+        {
+            return Some(ScopedSandboxPath::Sandbox(sandbox_id));
+        }
+
+        if let Some(rest) = path.strip_prefix("/toolbox/")
+            && let Some(sandbox_id) = rest.split('/').next()
+            && !sandbox_id.is_empty()
+        {
+            return Some(ScopedSandboxPath::Toolbox(sandbox_id));
+        }
+
+        None
+    }
+
+    async fn enforce_session_scope(
+        context: &ToolContext,
+        method: &str,
+        path: &str,
+    ) -> Result<Option<HashSet<String>>, ToolExecutionResult> {
+        match Self::scoped_sandbox_path(path) {
+            Some(ScopedSandboxPath::SandboxCollection) if method == "GET" => {
+                let Some(owned_ids) =
+                    list_owned_external_resource_ids(context, "daytona", "sandbox").await?
+                else {
+                    return Err(ownership_tracking_unavailable_error("daytona", "sandbox"));
+                };
+                Ok(Some(owned_ids))
+            }
+            Some(ScopedSandboxPath::Sandbox(sandbox_id))
+            | Some(ScopedSandboxPath::Toolbox(sandbox_id)) => {
+                require_owned_external_resource(context, "daytona", "sandbox", sandbox_id).await?;
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn filter_owned_sandboxes(response: Value, owned_ids: &HashSet<String>) -> Value {
+        match response {
+            Value::Array(items) => Value::Array(
+                items
+                    .into_iter()
+                    .filter(|item| {
+                        item.get("id")
+                            .and_then(|value| value.as_str())
+                            .is_some_and(|id| owned_ids.contains(id))
+                    })
+                    .collect(),
+            ),
+            other => other,
+        }
+    }
+
     /// Build ownership labels for Daytona sandbox audit/cleanup.
     ///
     /// Mirrors the labels added by `DaytonaCreateSandboxTool` so that sandboxes
@@ -2462,6 +2557,55 @@ mod tests {
         assert_eq!(
             extract_owner_repo("git@github.com:user/repo.git"),
             Some("user/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_daytona_api_call_scoped_sandbox_path_collection() {
+        assert_eq!(
+            DaytonaApiCallTool::scoped_sandbox_path("/sandbox"),
+            Some(ScopedSandboxPath::SandboxCollection)
+        );
+    }
+
+    #[test]
+    fn test_daytona_api_call_normalizes_paths_for_scope() {
+        assert_eq!(
+            DaytonaApiCallTool::normalize_api_path("//sandbox//sb_test//files/?raw=1"),
+            "/sandbox/sb_test/files"
+        );
+    }
+
+    #[test]
+    fn test_daytona_api_call_scoped_sandbox_path_management() {
+        assert_eq!(
+            DaytonaApiCallTool::scoped_sandbox_path("/sandbox/sb_test/files"),
+            Some(ScopedSandboxPath::Sandbox("sb_test"))
+        );
+    }
+
+    #[test]
+    fn test_daytona_api_call_scoped_sandbox_path_toolbox() {
+        assert_eq!(
+            DaytonaApiCallTool::scoped_sandbox_path("/toolbox/sb_test/process/execute"),
+            Some(ScopedSandboxPath::Toolbox("sb_test"))
+        );
+    }
+
+    #[test]
+    fn test_daytona_api_call_filters_sandbox_list() {
+        let filtered = DaytonaApiCallTool::filter_owned_sandboxes(
+            json!([
+                {"id": "sb_owned", "state": "started"},
+                {"id": "sb_other", "state": "started"}
+            ]),
+            &HashSet::from(["sb_owned".to_string()]),
+        );
+        assert_eq!(
+            filtered,
+            json!([
+                {"id": "sb_owned", "state": "started"}
+            ])
         );
     }
 
