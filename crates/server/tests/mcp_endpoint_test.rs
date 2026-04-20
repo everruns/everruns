@@ -92,6 +92,71 @@ async fn mcp_tool_call_http(base_url: &str, tool: &str, arguments: Value) -> Val
     .await
 }
 
+async fn assert_notification_accepted_no_body(server: &TestServer, request: Value, case: &str) {
+    let resp = server.post("/mcp", request).await;
+    assert_eq!(
+        resp.status(),
+        axum::http::StatusCode::ACCEPTED,
+        "{case}: expected 202 Accepted"
+    );
+    let body = resp.text();
+    assert!(
+        body.is_empty(),
+        "{case}: notification response body must be empty, got: {body}"
+    );
+}
+
+async fn execute_http_command(base_url: &str, commands: impl Into<String>) -> Value {
+    mcp_tool_call_http(base_url, "execute", json!({ "commands": commands.into() })).await
+}
+
+fn unique_suffix() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+}
+
+async fn create_agent_via_execute(
+    base_url: &str,
+    slug: &str,
+    display_name: &str,
+) -> (String, String) {
+    let unique_name = format!("{slug}-{}", unique_suffix());
+    let resp = execute_http_command(
+        base_url,
+        format!(
+            "create_agent --name '{unique_name}' --display_name '{display_name}' --system_prompt 'Test prompt'"
+        ),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "create_agent failed: {}",
+        tool_text(&resp)
+    );
+    let payload = tool_json(&resp);
+    (
+        payload["id"].as_str().unwrap().to_string(),
+        payload["name"].as_str().unwrap().to_string(),
+    )
+}
+
+async fn create_session_via_execute(base_url: &str, title_prefix: &str) -> (String, String) {
+    let title = format!("{title_prefix} {}", unique_suffix());
+    let resp = execute_http_command(base_url, format!("create_session --title '{title}'")).await;
+    assert!(
+        !tool_is_error(&resp),
+        "create_session failed: {}",
+        tool_text(&resp)
+    );
+    let payload = tool_json(&resp);
+    (
+        payload["id"].as_str().unwrap().to_string(),
+        payload["title"].as_str().unwrap().to_string(),
+    )
+}
+
 // ============================================================================
 // Protocol tests
 // ============================================================================
@@ -182,68 +247,57 @@ async fn test_mcp_unknown_method() {
     assert_eq!(resp["error"]["code"], -32601);
 }
 
-// Regression for EVE-322: JSON-RPC requests without an `id` are notifications.
-// Per the spec the server MUST NOT reply. MCP clients send
-// `notifications/initialized` after the handshake; returning a JSON-RPC object
-// breaks strict clients. Verify 202 Accepted with an empty body.
+// Contract matrix for recent MCP protocol regressions:
+// - EVE-322: notifications must always return 202 with an empty body
+// - EVE-323: positional path args must work on execute commands
+// - EVE-324: stringly flags must coerce into typed command params
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_notifications_initialized_no_response() {
+async fn test_mcp_notification_contract_matrix() {
     let server = TestServer::new().await;
-    let resp = server
-        .post(
-            "/mcp",
+    let cases = vec![
+        (
+            "initialized lifecycle notification",
             json!({
                 "jsonrpc": "2.0",
                 "method": "notifications/initialized"
             }),
-        )
-        .await;
-
-    assert_eq!(resp.status(), axum::http::StatusCode::ACCEPTED);
-    assert!(
-        resp.text().is_empty(),
-        "Notification response body must be empty, got: {}",
-        resp.text()
-    );
-}
-
-// Any method sent without an `id` is a notification and must be ignored
-// silently, even if the method is unknown or the params are malformed.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_notification_unknown_method_no_response() {
-    let server = TestServer::new().await;
-    let resp = server
-        .post(
-            "/mcp",
+        ),
+        (
+            "known notification with params",
             json!({
                 "jsonrpc": "2.0",
                 "method": "notifications/cancelled",
                 "params": { "requestId": "abc" }
             }),
-        )
-        .await;
-
-    assert_eq!(resp.status(), axum::http::StatusCode::ACCEPTED);
-    assert!(resp.text().is_empty());
-}
-
-// Even an invalid `jsonrpc` version must not produce a reply when `id` is
-// absent — the spec gives the server no way to address the error response.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_notification_invalid_jsonrpc_version_no_response() {
-    let server = TestServer::new().await;
-    let resp = server
-        .post(
-            "/mcp",
+        ),
+        (
+            "unknown notification method",
+            json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/not-real",
+                "params": { "reason": "ignored" }
+            }),
+        ),
+        (
+            "invalid jsonrpc version without id",
             json!({
                 "jsonrpc": "1.0",
                 "method": "notifications/initialized"
             }),
-        )
-        .await;
+        ),
+        (
+            "malformed params without id",
+            json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/cancelled",
+                "params": "not-an-object"
+            }),
+        ),
+    ];
 
-    assert_eq!(resp.status(), axum::http::StatusCode::ACCEPTED);
-    assert!(resp.text().is_empty());
+    for (case, request) in cases {
+        assert_notification_accepted_no_body(&server, request, case).await;
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -823,129 +877,84 @@ async fn test_mcp_execute_list_capabilities() {
     );
 }
 
-// Regression for EVE-324: `--limit 5` arrives at the command layer as a string
-// because inventory commands expose an open schema to bashkit. Without lenient
-// deserialization of `Option<u32>`, dispatch fails with an "invalid type: string"
-// error that the bashkit adapter sanitizes to "list_capabilities: callback failed".
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_capabilities_with_limit_flag() {
+async fn test_mcp_execute_argument_coercion_contract_matrix() {
     let (_server, url) = TestServer::serving().await;
 
-    let resp = mcp_tool_call_http(
+    let flag_cases = vec![
+        (
+            "inventory limit string coerces to integer",
+            "list_capabilities --limit 5".to_string(),
+            vec![("limit", json!(5))],
+            Some(5usize),
+        ),
+        (
+            "inventory numeric pagination flags survive round-trip",
+            "list_agents --offset 0 --limit 10".to_string(),
+            vec![("offset", json!(0)), ("limit", json!(10))],
+            None,
+        ),
+    ];
+
+    for (case, commands, expected_fields, max_len) in flag_cases {
+        let resp = execute_http_command(&url, commands).await;
+        assert!(!tool_is_error(&resp), "{case}: {}", tool_text(&resp));
+
+        let payload = tool_json(&resp);
+        assert!(payload["data"].is_array(), "{case}: expected data array");
+        for (field, expected) in expected_fields {
+            assert_eq!(payload[field], expected, "{case}: unexpected {field}");
+        }
+        if let Some(max_len) = max_len {
+            assert!(
+                payload["data"].as_array().unwrap().len() <= max_len,
+                "{case}: expected at most {max_len} rows"
+            );
+        }
+    }
+
+    let (agent_id, agent_name) = create_agent_via_execute(
         &url,
-        "execute",
-        json!({ "commands": "list_capabilities --limit 5" }),
+        "eve343-positional-get-agent",
+        "EVE-343 Positional Get",
     )
     .await;
-    assert!(
-        !tool_is_error(&resp),
-        "execute list_capabilities --limit 5 failed: {}",
-        tool_text(&resp)
-    );
-
-    let payload = tool_json(&resp);
-    assert_eq!(payload["limit"], 5);
-    assert!(payload["data"].is_array());
-    assert!(payload["data"].as_array().unwrap().len() <= 5);
-}
-
-// Regression for EVE-324: `include_archived` (bool) and `offset`/`limit` (u32)
-// must all survive the bashkit stringly-typed round-trip on list_agents.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_agents_with_numeric_and_bool_flags() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp = mcp_tool_call_http(
+    let (session_id, session_title) =
+        create_session_via_execute(&url, "EVE-343 Positional Session").await;
+    let (delete_agent_id, _) = create_agent_via_execute(
         &url,
-        "execute",
-        json!({ "commands": "list_agents --include_archived true --offset 0 --limit 10" }),
+        "eve343-positional-delete-agent",
+        "EVE-343 Positional Delete",
     )
     .await;
-    assert!(
-        !tool_is_error(&resp),
-        "execute list_agents with flags failed: {}",
-        tool_text(&resp)
-    );
 
-    let payload = tool_json(&resp);
-    assert_eq!(payload["offset"], 0);
-    assert_eq!(payload["limit"], 10);
-}
+    let positional_cases = vec![
+        (
+            "inventory positional id rewrite",
+            format!("get_agent {agent_id}"),
+            vec![("id", json!(agent_id)), ("name", json!(agent_name))],
+        ),
+        (
+            "static catalog positional session_id rewrite",
+            format!("get_session {session_id}"),
+            vec![("id", json!(session_id)), ("title", json!(session_title))],
+        ),
+        (
+            "inventory positional delete rewrite",
+            format!("delete_agent {delete_agent_id}"),
+            vec![("deleted", json!(true))],
+        ),
+    ];
 
-// Regression for EVE-323: LLMs naturally type `get_agent <id>` instead of
-// `get_agent --id <id>`. Without positional-arg rewriting, bashkit's
-// `parse_flags` rejects the call with "expected --flag, got: <id>".
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_get_agent_positional_id() {
-    let (_server, url) = TestServer::serving().await;
+    for (case, commands, expected_fields) in positional_cases {
+        let resp = execute_http_command(&url, commands).await;
+        assert!(!tool_is_error(&resp), "{case}: {}", tool_text(&resp));
 
-    let resp = mcp_tool_call_http(
-        &url,
-        "execute",
-        json!({
-            "commands": "create_agent --name 'eve323-positional-agent' --display_name 'EVE-323 Positional' --system_prompt 'Test'"
-        }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&resp),
-        "create_agent failed: {}",
-        tool_text(&resp)
-    );
-    let agent_id = tool_json(&resp)["id"].as_str().unwrap().to_string();
-
-    // Positional form: `get_agent <id>` (no --id flag).
-    let resp = mcp_tool_call_http(
-        &url,
-        "execute",
-        json!({ "commands": format!("get_agent {agent_id}") }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&resp),
-        "get_agent <id> (positional) failed: {}",
-        tool_text(&resp)
-    );
-    let fetched = tool_json(&resp);
-    assert_eq!(fetched["name"], "eve323-positional-agent");
-    assert_eq!(fetched["id"], agent_id);
-}
-
-// Regression for EVE-323: positional `delete_agent <id>` must archive the
-// agent the same way `delete_agent --id <id>` does.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_delete_agent_positional_id() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp = mcp_tool_call_http(
-        &url,
-        "execute",
-        json!({
-            "commands": "create_agent --name 'eve323-delete-agent' --display_name 'EVE-323 Delete' --system_prompt 'Test'"
-        }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&resp),
-        "create_agent failed: {}",
-        tool_text(&resp)
-    );
-    let agent_id = tool_json(&resp)["id"].as_str().unwrap().to_string();
-
-    // Positional form: `delete_agent <id>`.
-    let resp = mcp_tool_call_http(
-        &url,
-        "execute",
-        json!({ "commands": format!("delete_agent {agent_id}") }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&resp),
-        "delete_agent <id> (positional) failed: {}",
-        tool_text(&resp)
-    );
-    let payload = tool_json(&resp);
-    assert_eq!(payload["deleted"], true);
+        let payload = tool_json(&resp);
+        for (field, expected) in expected_fields {
+            assert_eq!(payload[field], expected, "{case}: unexpected {field}");
+        }
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
