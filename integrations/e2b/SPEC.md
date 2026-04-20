@@ -66,7 +66,8 @@ Executes a shell command in a sandbox using E2B's process service.
   - `command` (required)
   - `cwd` (optional)
   - `timeout_ms` (optional)
-- **Returns**: `{ sandbox_id, cwd, stdout, stderr, exit_code, error }`
+- **Returns**: `{ sandbox_id, cwd, stdout, stderr, exit_code, success, truncated, total_lines, error }`
+- **Human representation**: Follows the shared exec-tool contract in `specs/tool-execution.md`. Command text is primary; sandbox metadata is secondary.
 
 ### e2b_read_file
 

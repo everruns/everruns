@@ -17,6 +17,7 @@ use super::{Capability, CapabilityStatus};
 use crate::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
+use crate::exec_tool_result::ExecToolResultPayload;
 use crate::session_file::SessionFile;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -307,10 +308,6 @@ impl Tool for BashTool {
 
         match result {
             Ok(Ok(output)) => {
-                use crate::tool_output_sanitizer::{
-                    clean_exec_output, output_verbosity_budget, priority_aware_truncate,
-                };
-
                 // Extract metadata from trace events (EVE-240)
                 let commands_executed = output
                     .events
@@ -340,30 +337,31 @@ impl Tool for BashTool {
                     "bashkit execution completed"
                 );
 
-                let clean_stdout = clean_exec_output(&output.stdout);
-                let clean_stderr = clean_exec_output(&output.stderr);
-                let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
-                    (
-                        priority_aware_truncate(&clean_stdout, budget),
-                        priority_aware_truncate(&clean_stderr, budget.min(4096)),
-                    )
-                } else {
-                    (clean_stdout.clone(), clean_stderr.clone())
-                };
-                // Build raw output for persistence hook (cleaned but not truncated)
-                let mut raw = clean_stdout;
-                if !clean_stderr.is_empty() {
-                    raw.push_str("\n--- stderr ---\n");
-                    raw.push_str(&clean_stderr);
-                }
+                let payload = ExecToolResultPayload::new(
+                    &output.stdout,
+                    &output.stderr,
+                    output.exit_code,
+                    output_mode,
+                );
+                let ExecToolResultPayload {
+                    stdout,
+                    stderr,
+                    exit_code,
+                    success,
+                    truncated,
+                    total_lines,
+                    raw_output,
+                } = payload;
                 ToolExecutionResult::success_with_raw_output(
                     json!({
                         "stdout": stdout,
                         "stderr": stderr,
-                        "exit_code": output.exit_code,
-                        "success": output.exit_code == 0
+                        "exit_code": exit_code,
+                        "success": success,
+                        "truncated": truncated,
+                        "total_lines": total_lines,
                     }),
-                    raw,
+                    raw_output,
                 )
             }
             Ok(Err(e)) => {
@@ -506,25 +504,21 @@ impl BackgroundExecutableTool for BashTool {
 
         match result {
             Ok(Ok(output)) => {
-                use crate::tool_output_sanitizer::{
-                    clean_exec_output, output_verbosity_budget, priority_aware_truncate,
-                };
-
-                let clean_stdout = clean_exec_output(&output.stdout);
-                let clean_stderr = clean_exec_output(&output.stderr);
-                let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
-                    (
-                        priority_aware_truncate(&clean_stdout, budget),
-                        priority_aware_truncate(&clean_stderr, budget.min(4096)),
-                    )
-                } else {
-                    (clean_stdout.clone(), clean_stderr.clone())
-                };
-                let mut raw = clean_stdout;
-                if !clean_stderr.is_empty() {
-                    raw.push_str("\n--- stderr ---\n");
-                    raw.push_str(&clean_stderr);
-                }
+                let payload = ExecToolResultPayload::new(
+                    &output.stdout,
+                    &output.stderr,
+                    output.exit_code,
+                    output_mode,
+                );
+                let ExecToolResultPayload {
+                    stdout,
+                    stderr,
+                    exit_code,
+                    success,
+                    truncated,
+                    total_lines,
+                    raw_output,
+                } = payload;
                 let _ = sink
                     .progress(BackgroundProgress {
                         current: Some(exec_duration.as_millis() as u64),
@@ -536,16 +530,18 @@ impl BackgroundExecutableTool for BashTool {
                 Ok(BackgroundOutcome {
                     summary: format!(
                         "Bash command exited with code {} after {} ms",
-                        output.exit_code,
+                        exit_code,
                         exec_duration.as_millis()
                     ),
                     result: json!({
                         "stdout": stdout,
                         "stderr": stderr,
-                        "exit_code": output.exit_code,
-                        "success": output.exit_code == 0
+                        "exit_code": exit_code,
+                        "success": success,
+                        "truncated": truncated,
+                        "total_lines": total_lines,
                     }),
-                    raw_output: Some(raw),
+                    raw_output: Some(raw_output),
                 })
             }
             Ok(Err(e)) => Err(ToolExecutionResult::tool_error(format!(

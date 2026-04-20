@@ -131,7 +131,8 @@ impl Tool for SandboxExecTool {
             "properties": {
                 "command": { "type": "string", "description": "Shell command to execute" },
                 "cwd": { "type": "string", "description": "Optional working directory inside the sandbox" },
-                "timeout_ms": { "type": "integer", "minimum": 1, "description": "Optional execution timeout in milliseconds" }
+                "timeout_ms": { "type": "integer", "minimum": 1, "description": "Optional execution timeout in milliseconds" },
+                "output": crate::tool_output_sanitizer::output_verbosity_schema()
             },
             "required": ["command"],
             "additionalProperties": false
@@ -192,19 +193,34 @@ impl Tool for SandboxExecTool {
                         .and_then(|v| v.as_str())
                         .map(ToString::to_string),
                     timeout_ms,
-                    output_mode: "concise".to_string(),
+                    output_mode: arguments
+                        .get("output")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("concise")
+                        .to_string(),
                 },
             )
             .await
         {
-            Ok(response) => ToolExecutionResult::success(json!({
-                "stdout": response.stdout,
-                "stderr": response.stderr,
-                "exit_code": response.exit_code,
-                "success": response.success,
-                "raw_output": response.raw_output,
-                "hint": response.hint,
-            })),
+            Ok(response) => {
+                let mut result = json!({
+                    "stdout": response.stdout,
+                    "stderr": response.stderr,
+                    "exit_code": response.exit_code,
+                    "success": response.success,
+                    "truncated": response.truncated,
+                    "total_lines": response.total_lines,
+                    "hint": response.hint,
+                });
+                if let Some(cwd) = arguments.get("cwd").and_then(|v| v.as_str()) {
+                    result["cwd"] = json!(cwd);
+                }
+
+                ToolExecutionResult::success_with_raw_output(
+                    result,
+                    response.raw_output.unwrap_or_default(),
+                )
+            }
             Err(err) => err,
         }
     }

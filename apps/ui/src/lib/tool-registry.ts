@@ -38,6 +38,11 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   shell: { category: "shell", segmentMode: "standalone" },
   execute_bash: { category: "shell", segmentMode: "standalone" },
   daytona_exec: { category: "shell", segmentMode: "standalone" },
+  sandbox_exec: { category: "shell", segmentMode: "standalone" },
+  e2b_exec: { category: "shell", segmentMode: "standalone" },
+  deno_exec: { category: "shell", segmentMode: "standalone" },
+  docker_exec: { category: "shell", segmentMode: "standalone" },
+  sprites_exec: { category: "shell", segmentMode: "standalone" },
 
   // Read tools
   read_file: { category: "read", segmentMode: "standalone" },

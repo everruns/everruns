@@ -190,6 +190,91 @@ describe("ToolActivityGroup", () => {
     expect(screen.queryByText(/^Shell$/)).not.toBeInTheDocument();
   });
 
+  it("renders sandbox_exec as a standalone shell row with metadata", () => {
+    const toolCalls: ToolCallContent[] = [
+      {
+        id: "tool-sandbox",
+        name: "sandbox_exec",
+        arguments: { command: "cargo test", cwd: "/workspace" },
+      },
+    ];
+
+    const toolResultsMap = new Map<string, ToolCompletedData>([
+      [
+        "tool-sandbox",
+        {
+          tool_call_id: "tool-sandbox",
+          tool_name: "sandbox_exec",
+          success: false,
+          status: "error",
+          result: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                stdout: "running 4 tests\n3 passed",
+                stderr: "thread 'tests' panicked",
+                exit_code: 101,
+                success: false,
+                cwd: "/workspace",
+              }),
+            },
+          ],
+        },
+      ],
+    ]);
+
+    render(<ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />);
+
+    expect(
+      screen.getByRole("button", { name: /\$ cargo test exit code 101/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("/workspace")).toBeInTheDocument();
+    expect(screen.queryByText(/^Shell$/)).not.toBeInTheDocument();
+  });
+
+  it("renders e2b_exec as a standalone shell row with metadata", () => {
+    const toolCalls: ToolCallContent[] = [
+      {
+        id: "tool-e2b",
+        name: "e2b_exec",
+        arguments: { command: "cargo test", sandbox_id: "sb_456", cwd: "/workspace" },
+      },
+    ];
+
+    const toolResultsMap = new Map<string, ToolCompletedData>([
+      [
+        "tool-e2b",
+        {
+          tool_call_id: "tool-e2b",
+          tool_name: "e2b_exec",
+          success: false,
+          status: "error",
+          result: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                stdout: "running 4 tests\n3 passed",
+                stderr: "thread 'tests' panicked",
+                exit_code: 101,
+                success: false,
+                cwd: "/workspace",
+                sandbox_id: "sb_456",
+              }),
+            },
+          ],
+        },
+      ],
+    ]);
+
+    render(<ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />);
+
+    expect(
+      screen.getByRole("button", { name: /\$ cargo test exit code 101/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("/workspace, sandbox sb_456")).toBeInTheDocument();
+    expect(screen.queryByText(/^Shell$/)).not.toBeInTheDocument();
+  });
+
   it("renders read_file as a standalone row and shows parsed file content", () => {
     const toolCalls: ToolCallContent[] = [
       {

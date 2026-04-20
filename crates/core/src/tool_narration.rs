@@ -475,7 +475,8 @@ pub fn render_tool_narration_with_locale(
     }
 
     match tool_call.name.as_str() {
-        "bash" | "daytona_exec" => {
+        "bash" | "daytona_exec" | "sandbox_exec" | "e2b_exec" | "deno_exec" | "docker_exec"
+        | "sprites_exec" => {
             let command = arg_str(args, &["command"])
                 .map(|value| format!("`{}`", truncate(value, 48)))
                 .unwrap_or_else(|| fallback_name.clone());
@@ -847,6 +848,24 @@ mod tests {
         assert_eq!(
             render_tool_narration(None, &tool_call, ToolNarrationPhase::Completed),
             "Ran `cargo test -p everruns-core`"
+        );
+    }
+
+    #[test]
+    fn renders_sandbox_exec_narration() {
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "sandbox_exec".to_string(),
+            arguments: json!({ "command": "npm test" }),
+        };
+
+        assert_eq!(
+            render_tool_narration(None, &tool_call, ToolNarrationPhase::Started),
+            "Running `npm test`"
+        );
+        assert_eq!(
+            render_tool_narration(None, &tool_call, ToolNarrationPhase::Completed),
+            "Ran `npm test`"
         );
     }
 
