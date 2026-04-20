@@ -14,9 +14,10 @@ source "$workdir/.venv/bin/activate"
 pip install --quiet "everruns-sdk==$version"
 
 # Resolve the Generic harness by name — UUIDs are assigned at DB seed time
-# and are no longer stable across deployments.
-harness_id="$(curl -fsS -H "Authorization: Bearer $api_key" "$base_url/v1/harnesses/generic" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+# and are no longer stable across deployments. Built-in harness seeding
+# happens after server startup, so wait for it explicitly instead of assuming
+# /health implies the harness is already queryable.
+harness_id="$("$(dirname "$0")/resolve-harness-id.sh" "$base_url" "$api_key")"
 
 EVERRUNS_BASE_URL="$base_url" EVERRUNS_API_KEY="$api_key" EVERRUNS_HARNESS_ID="$harness_id" SDK_VERSION="$version" python3 - <<'PY'
 import asyncio

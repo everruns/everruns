@@ -9,9 +9,7 @@
 // This allows a single Worker implementation to work with either backend.
 
 use async_trait::async_trait;
-use everruns_core::capabilities::{
-    CapabilityRegistry, SystemPromptContext, collect_capabilities, is_mcp_capability,
-};
+use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::error::Result;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
@@ -23,9 +21,7 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
-use everruns_core::{
-    Agent, DriverRegistry, Harness, Message, Session, ToolDefinition, ToolRegistry,
-};
+use everruns_core::{Agent, DriverRegistry, Harness, Message, Session, ToolDefinition};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -215,41 +211,6 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get the LLM driver registry
     fn driver_registry(&self) -> DriverRegistry;
-
-    /// Create a tool registry with defaults and agent capabilities
-    async fn build_tool_registry(&self, org_id: i64, agent_id: Uuid) -> Result<ToolRegistry>;
-
-    /// Create a tool registry with defaults and harness capabilities.
-    ///
-    /// Fallback for sessions without an agent — builds the registry from the
-    /// harness's capability list so harness-provided tools (e.g. bash) are
-    /// available. Without this, only `ToolRegistry::with_defaults()` would be
-    /// used, which doesn't include capability-provided tools.
-    async fn build_tool_registry_for_harness(
-        &self,
-        org_id: i64,
-        harness_id: Uuid,
-    ) -> Result<ToolRegistry> {
-        let mut registry = ToolRegistry::with_defaults();
-        if let Ok(Some(harness)) = self.get_harness(org_id, harness_id).await {
-            let builtin_cap_ids: Vec<String> = harness
-                .capabilities
-                .iter()
-                .map(|c| c.capability_id().to_string())
-                .filter(|id| !is_mcp_capability(id))
-                .collect();
-
-            if !builtin_cap_ids.is_empty() {
-                let cap_registry = self.capability_registry();
-                let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
-                let collected = collect_capabilities(&builtin_cap_ids, &cap_registry, &ctx).await;
-                for tool in collected.tools {
-                    registry.register_boxed(tool);
-                }
-            }
-        }
-        Ok(registry)
-    }
 
     /// Get the session SQL database store.
     fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef;

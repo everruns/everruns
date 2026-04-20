@@ -142,7 +142,10 @@ pub use message_filter::{
 };
 pub use message_retriever::{InputMessage, MessageRetriever};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
-pub use runtime_context::{AssembledTurnContext, assemble_turn_context, inspect_turn_context};
+pub use runtime_context::{
+    AssembledTurnContext, ResolvedRuntimeCapabilities, assemble_turn_context, inspect_turn_context,
+    resolve_runtime_capabilities,
+};
 pub use traits::{
     EventEmitter, HarnessStore, ImageResolver, KeyInfo, LeasedResourceStore, LlmProviderStore,
     ModelWithProvider, NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore,

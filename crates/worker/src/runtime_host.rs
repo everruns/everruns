@@ -91,26 +91,6 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.driver_registry()
     }
 
-    async fn build_tool_registry_for_agent(
-        &self,
-        org_id: i64,
-        agent_id: AgentId,
-    ) -> Result<everruns_core::ToolRegistry> {
-        self.adapters
-            .build_tool_registry(org_id, agent_id.uuid())
-            .await
-    }
-
-    async fn build_tool_registry_for_harness(
-        &self,
-        org_id: i64,
-        harness_id: HarnessId,
-    ) -> Result<everruns_core::ToolRegistry> {
-        self.adapters
-            .build_tool_registry_for_harness(org_id, harness_id.uuid())
-            .await
-    }
-
     fn harness_store(&self, org_id: i64) -> Arc<dyn HarnessStore> {
         Arc::new(AdapterHarnessStore::new(self.adapters.clone(), org_id))
     }

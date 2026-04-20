@@ -4,9 +4,7 @@
 // Decision: Used by external workers that connect to control-plane via gRPC
 
 use async_trait::async_trait;
-use everruns_core::capabilities::{
-    CapabilityRegistry, SystemPromptContext, collect_capabilities, is_mcp_capability,
-};
+use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
@@ -17,9 +15,7 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
-use everruns_core::{
-    Agent, DriverRegistry, Harness, Message, PlatformDefinition, Session, ToolRegistry,
-};
+use everruns_core::{Agent, DriverRegistry, Harness, Message, PlatformDefinition, Session};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -471,35 +467,5 @@ impl WorkerAdapters for GrpcWorkerAdapters {
                 error,
             )
             .await
-    }
-
-    async fn build_tool_registry(&self, org_id: i64, agent_id: Uuid) -> Result<ToolRegistry> {
-        let mut registry = ToolRegistry::with_defaults();
-
-        // Get agent to access capabilities
-        if let Ok(Some(agent)) = self.get_agent(org_id, agent_id).await {
-            let builtin_cap_ids: Vec<String> = agent
-                .capabilities
-                .iter()
-                .map(|c| c.capability_id().to_string())
-                .filter(|id| !is_mcp_capability(id))
-                .collect();
-
-            if !builtin_cap_ids.is_empty() {
-                let cap_registry = self.capability_registry();
-                let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
-                let collected = collect_capabilities(&builtin_cap_ids, &cap_registry, &ctx).await;
-                for tool in collected.tools {
-                    registry.register_boxed(tool);
-                }
-                tracing::debug!(
-                    capability_count = builtin_cap_ids.len(),
-                    tool_count = collected.tool_definitions.len(),
-                    "Registered capability tools"
-                );
-            }
-        }
-
-        Ok(registry)
     }
 }

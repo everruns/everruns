@@ -9,9 +9,10 @@ workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
 # Resolve the Generic harness by name — UUIDs are assigned at DB seed time
-# and are no longer stable across deployments.
-harness_id="$(curl -fsS -H "Authorization: Bearer $api_key" "$base_url/v1/harnesses/generic" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+# and are no longer stable across deployments. Built-in harness seeding
+# happens after server startup, so wait for it explicitly instead of assuming
+# /health implies the harness is already queryable.
+harness_id="$("$(dirname "$0")/resolve-harness-id.sh" "$base_url" "$api_key")"
 
 cargo new --quiet --bin "$workdir/smoke"
 

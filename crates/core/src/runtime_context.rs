@@ -53,6 +53,15 @@ pub struct AssembledTurnContext {
     pub compaction_config: Option<CompactionConfig>,
 }
 
+/// Shared capability-resolution result for runtime execution.
+#[derive(Debug, Clone)]
+pub struct ResolvedRuntimeCapabilities {
+    /// Effective overlay after merging harness chain -> agent -> session.
+    pub effective_overlay: AgentConfigOverlay,
+    /// Capability configs after dependency resolution.
+    pub resolved_capability_configs: Vec<AgentCapabilityConfig>,
+}
+
 /// Assemble the shared reason-phase context for a turn.
 #[allow(clippy::too_many_arguments)]
 pub async fn assemble_turn_context(
@@ -162,15 +171,15 @@ async fn assemble_turn_context_with_mode(
         .await?
         .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
 
-    let effective_overlay = {
-        let mut layers: Vec<AgentConfigOverlay> =
-            harness_chain.iter().map(AgentConfigOverlay::from).collect();
-        if let Some(ref agent) = agent {
-            layers.push(AgentConfigOverlay::from(agent));
-        }
-        layers.push(AgentConfigOverlay::from(&session));
-        AgentConfigOverlay::fold(layers)
-    };
+    let ResolvedRuntimeCapabilities {
+        effective_overlay,
+        resolved_capability_configs,
+    } = resolve_runtime_capabilities(
+        &harness_chain,
+        agent.as_ref(),
+        &session,
+        capability_registry,
+    );
 
     let message_filters = crate::capabilities::collect_message_filters_only(
         &effective_overlay.capabilities,
@@ -197,16 +206,6 @@ async fn assemble_turn_context_with_mode(
         effective_overlay.default_model_id,
     )
     .await?;
-
-    let resolved_capability_configs =
-        resolve_capability_configs(&effective_overlay.capabilities, capability_registry)
-            .unwrap_or_else(|error| {
-                tracing::warn!(
-                    error = ?error,
-                    "failed to resolve capability configs; falling back to overlay capabilities"
-                );
-                effective_overlay.capabilities.clone()
-            });
 
     let resolved_locale = extract_locale_override(&messages).or_else(|| session.locale.clone());
     let prompt_ctx = SystemPromptContext {
@@ -245,6 +244,37 @@ async fn assemble_turn_context_with_mode(
         resolved_locale,
         compaction_config,
     })
+}
+
+/// Resolve the merged overlay and dependency-expanded capability configs for a runtime session.
+pub fn resolve_runtime_capabilities(
+    harness_chain: &[Harness],
+    agent: Option<&Agent>,
+    session: &Session,
+    capability_registry: &CapabilityRegistry,
+) -> ResolvedRuntimeCapabilities {
+    let harness_layers = harness_chain.iter().map(AgentConfigOverlay::from);
+    let agent_layers = agent.into_iter().map(AgentConfigOverlay::from);
+    let effective_overlay = AgentConfigOverlay::fold(
+        harness_layers
+            .chain(agent_layers)
+            .chain([AgentConfigOverlay::from(session)]),
+    );
+
+    let resolved_capability_configs =
+        resolve_capability_configs(&effective_overlay.capabilities, capability_registry)
+            .unwrap_or_else(|error| {
+                tracing::warn!(
+                    error = ?error,
+                    "failed to resolve capability configs; falling back to overlay capabilities"
+                );
+                effective_overlay.capabilities.clone()
+            });
+
+    ResolvedRuntimeCapabilities {
+        effective_overlay,
+        resolved_capability_configs,
+    }
 }
 
 async fn build_runtime_agent(
