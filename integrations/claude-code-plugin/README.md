@@ -1,49 +1,56 @@
 # Everruns Claude Code plugin
 
 A [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin that wires
-the Everruns MCP endpoint into your terminal. Use it to create and run agents,
-manage harnesses, poll sessions, and explore the Everruns API catalog without
-leaving Claude Code.
+the [Everruns](https://everruns.com) agent platform into your terminal over MCP.
+Claude Code gets enough context to create and run agents, manage harnesses and
+sessions, and drive the full Everruns API through its `discover` / `execute`
+tools.
 
-The plugin targets the hosted dev environment
-(`https://dev.everruns.com/mcp`). Point it at a different deployment by
-editing `.mcp.json`.
+- Product: <https://everruns.com>
+- Docs: <https://docs.everruns.com>
+- MCP endpoint used: `https://dev.everruns.com/mcp` (temporary; swap in
+  `.mcp.json` once the stable URL lands)
 
 ## What's in the box
 
-- **MCP server** — adds `https://dev.everruns.com/mcp` as a remote MCP server.
-  Claude Code handles OAuth 2.1 (with PKCE) automatically: on first use it opens
-  a browser so you can sign in to Everruns, then caches the refresh token.
-- **Slash commands** (prefixed `/everruns:`):
+**MCP server** — adds the Everruns MCP endpoint as a remote HTTP server.
+Claude Code handles OAuth 2.1 (PKCE) automatically: on first use it opens a
+browser so you can sign in to Everruns, then caches the refresh token.
 
-  | Command | Purpose |
-  |---|---|
-  | `/everruns:whoami` | Current user + active organization |
-  | `/everruns:switch-org <id>` | Switch the active organization |
-  | `/everruns:list-agents [query]` | List agents |
-  | `/everruns:get-agent <id>` | Agent detail |
-  | `/everruns:create-agent <name> [flags]` | Create an agent |
-  | `/everruns:agent-run <agent_id> <message>` | Start a session and send the first message |
-  | `/everruns:session-send <session_id> <message>` | Follow-up message |
-  | `/everruns:session-status <session_id>` | Poll status + recent events |
-  | `/everruns:list-sessions [flags]` | Recent sessions |
-  | `/everruns:list-harnesses` | List harnesses |
-  | `/everruns:get-harness <id>` | Harness detail |
-  | `/everruns:create-harness <name> [flags]` | Create a harness |
-  | `/everruns:list-models` | Available LLM models |
-  | `/everruns:discover <query>` / `--all` | Search the Everruns API catalog |
-  | `/everruns:execute <bash>` | Run a bash script where every Everruns API op is a builtin |
+**Skill `everruns`** — the reference Claude Code reads whenever you talk about
+Everruns. Covers:
 
-  The commands are thin shells over the Everruns MCP tools
-  (`me`, `agent_run`, `session_send_message`, `session_get_status`, `discover`,
-  `execute`, plus the ~50 API builtins surfaced via `execute`). The model fills
-  in parameters from natural language and paginates sensibly.
+- core concepts (Harness, Agent, Capability, Session, Model, App) and how
+  capabilities attach to harnesses vs. agents vs. sessions,
+- the MCP tool surface (`me`, `agent_run`, `session_send_message`,
+  `session_get_status`, `discover`, `execute`, org helpers),
+- concrete `discover` / `execute` patterns with real bash + `jq` snippets for
+  common workflows.
+
+If you want to add Everruns context to a natural-language request, ask about
+Everruns directly ("create an agent that does X", "show me sessions from
+yesterday") and Claude Code will pull the skill in.
+
+**Slash commands** — thin shortcuts on top of the MCP tools:
+
+| Command | Purpose |
+|---|---|
+| `/everruns:whoami` | Current user + active organization |
+| `/everruns:agent-run <agent> <message>` | Start a session and send the first message |
+| `/everruns:session-send <session_id> <message>` | Follow-up message |
+| `/everruns:session-status <session_id>` | Poll status + recent events |
+| `/everruns:discover <query>` / `--all` | Search the Everruns API catalog |
+| `/everruns:execute <bash>` | Run a bash script where every Everruns API op is a builtin |
+
+Anything else (listing agents, creating a harness, tweaking capabilities,
+attaching an MCP server, etc.) is best driven in natural language — the skill
+and `execute` handle the rest.
 
 ## Install
 
 ### From GitHub (recommended)
 
-The repo doubles as a Claude Code plugin **marketplace**
+The main repo doubles as a plugin **marketplace**
 (`.claude-plugin/marketplace.json` at the root). Inside Claude Code:
 
 ```text
@@ -51,7 +58,7 @@ The repo doubles as a Claude Code plugin **marketplace**
 /plugin install everruns@everruns
 ```
 
-To pin a branch or tag:
+Pin to a branch or tag:
 
 ```text
 /plugin marketplace add everruns/everruns#main
@@ -63,16 +70,9 @@ To pin a branch or tag:
 claude plugin install ./integrations/claude-code-plugin
 ```
 
-or, from anywhere:
-
-```bash
-claude plugin install /path/to/everruns/integrations/claude-code-plugin
-```
-
 ### Dev loop
 
-While iterating on the plugin, either re-install after each change or use
-`--plugin-dir` to load it in-place:
+Load the plugin in-place while iterating:
 
 ```bash
 claude --plugin-dir ./integrations/claude-code-plugin
@@ -83,13 +83,13 @@ Run `/reload-plugins` inside Claude Code to pick up changes without restarting.
 ## First run
 
 1. Launch Claude Code with the plugin installed.
-2. Run `/everruns:whoami`. Claude Code will detect that the MCP server requires
-   OAuth, open your browser, complete the authorization code + PKCE flow, and
-   store the resulting token.
-3. You should see your Everruns user profile and active organization.
-4. Try `/everruns:list-agents` and `/everruns:agent-run <agent_id> "hello"`.
+2. Run `/everruns:whoami`. Claude Code will detect that the MCP server needs
+   OAuth, open your browser, complete the PKCE flow, and cache the token.
+3. Ask something in natural language, e.g. *"Create a research agent on
+   Everruns and run it against this question: ..."* — the `everruns` skill
+   gives Claude the concepts and the right tool sequence.
 
-## Pointing at a different Everruns instance
+## Pointing at a different Everruns deployment
 
 Edit `.mcp.json`:
 
@@ -104,28 +104,11 @@ Edit `.mcp.json`:
 }
 ```
 
-Any Everruns deployment that exposes `/mcp` and the OAuth discovery metadata at
-`/.well-known/oauth-authorization-server` works — that's the standard Everruns
-routing (see `specs/mcp.md` in the main repo).
-
-## Multi-organization accounts
-
-`switch_organization` is advisory because the MCP transport is stateless.
-Commands that hit org-scoped tools accept an `--organization_id org_{32-hex}`
-flag — pass it explicitly when you want a one-off call against a non-default
-org. For the common case, the token's default organization is used.
+Any Everruns deployment that exposes `/mcp` plus OAuth discovery at
+`/.well-known/oauth-authorization-server` works.
 
 ## Uninstall
 
 ```bash
 claude plugin uninstall everruns
 ```
-
-## Troubleshooting
-
-- **OAuth loop / 401 responses** — sign out of the Everruns web UI, then retry
-  the command so Claude Code re-registers a fresh OAuth client.
-- **`tool not found`** — run `/reload-plugins` and verify the MCP server shows
-  up in `claude mcp list`.
-- **Wrong org** — run `/everruns:whoami`, then `/everruns:switch-org <id>` or
-  pass `--organization_id` per call.
