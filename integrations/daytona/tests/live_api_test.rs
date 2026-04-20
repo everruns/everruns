@@ -188,19 +188,25 @@ async fn test_live_exec_cwd_and_exit_code() {
         .expect("exec with nonzero exit failed");
     assert_ne!(result.exit_code, 0, "Expected nonzero exit code, got 0");
 
-    // Bare `exit` kills the persistent session shell. The client must
-    // detect the dead session and return an error instead of hanging.
-    let result = client.exec(id, "exit 1", None, None, |_| {}).await;
-    assert!(
-        result.is_err(),
-        "bare `exit` should be detected as session termination"
+    // Bare `exit` is contained by the subshell wrapper the client applies
+    // to every command (`( ... )`), so the persistent session shell
+    // survives and the subshell's non-zero status is surfaced as the
+    // command's exit code. See EVE-251.
+    let result = client
+        .exec(id, "exit 1", None, None, |_| {})
+        .await
+        .expect("exec with bare `exit` should not fail");
+    assert_ne!(
+        result.exit_code, 0,
+        "Expected nonzero exit code from `exit 1`, got 0"
     );
 
-    // Subsequent exec should recover — ensure_session re-creates it.
+    // Session survives the previous command, so the next exec must succeed
+    // on the same shell without any reset.
     let result = client
         .exec(id, "echo recovered", None, None, |_| {})
         .await
-        .expect("exec after session recovery failed");
+        .expect("exec after bare `exit` failed");
     assert_eq!(result.exit_code, 0);
     assert!(
         result.result.contains("recovered"),

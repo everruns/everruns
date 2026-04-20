@@ -49,14 +49,23 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
+            # Live API jobs (daytona/deno/browserless/e2b) hit real external
+            # services and cost real API budget. Exclude doc-only changes so
+            # SPEC.md tweaks don't trigger the full paid matrix on every push
+            # to main. The weekly `integration-live-sweep.yml` backstop still
+            # catches shared-crate regressions that slip past these filters.
             daytona:
               - 'integrations/daytona/**'
+              - '!integrations/daytona/**/*.md'
             deno:
               - 'integrations/deno/**'
+              - '!integrations/deno/**/*.md'
             browserless:
               - 'integrations/browserless/**'
+              - '!integrations/browserless/**/*.md'
             e2b:
               - 'integrations/e2b/**'
+              - '!integrations/e2b/**/*.md'
             sdk_compat:
               - 'crates/**'
               - '.github/scripts/sdk-compat/**'
