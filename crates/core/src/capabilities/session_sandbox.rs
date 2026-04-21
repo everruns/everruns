@@ -104,6 +104,30 @@ fn provider_for_config(
     })
 }
 
+fn build_sandbox_exec_result(
+    response: crate::SessionSandboxExecResponse,
+    cwd: Option<&str>,
+) -> ToolExecutionResult {
+    let mut result = json!({
+        "stdout": response.stdout,
+        "stderr": response.stderr,
+        "exit_code": response.exit_code,
+        "success": response.success,
+        "truncated": response.truncated,
+        "total_lines": response.total_lines,
+        "hint": response.hint,
+    });
+    if let Some(cwd) = cwd {
+        result["cwd"] = json!(cwd);
+    }
+
+    if let Some(raw_output) = response.raw_output {
+        ToolExecutionResult::success_with_raw_output(result, raw_output)
+    } else {
+        ToolExecutionResult::success(result)
+    }
+}
+
 #[derive(Clone)]
 pub struct SandboxExecTool {
     config: Value,
@@ -203,23 +227,7 @@ impl Tool for SandboxExecTool {
             .await
         {
             Ok(response) => {
-                let mut result = json!({
-                    "stdout": response.stdout,
-                    "stderr": response.stderr,
-                    "exit_code": response.exit_code,
-                    "success": response.success,
-                    "truncated": response.truncated,
-                    "total_lines": response.total_lines,
-                    "hint": response.hint,
-                });
-                if let Some(cwd) = arguments.get("cwd").and_then(|v| v.as_str()) {
-                    result["cwd"] = json!(cwd);
-                }
-
-                ToolExecutionResult::success_with_raw_output(
-                    result,
-                    response.raw_output.unwrap_or_default(),
-                )
+                build_sandbox_exec_result(response, arguments.get("cwd").and_then(|v| v.as_str()))
             }
             Err(err) => err,
         }
@@ -647,5 +655,50 @@ mod tests {
             }
             other => panic!("expected ToolError, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn sandbox_exec_result_preserves_absent_raw_output() {
+        let result = build_sandbox_exec_result(
+            crate::SessionSandboxExecResponse {
+                exit_code: 0,
+                stdout: "ok".to_string(),
+                stderr: String::new(),
+                success: true,
+                truncated: false,
+                total_lines: 1,
+                raw_output: None,
+                hint: None,
+            },
+            Some("/workspace"),
+        )
+        .into_tool_result("call_1", "sandbox_exec");
+
+        assert_eq!(result.raw_output, None);
+        assert_eq!(result.result.unwrap()["cwd"], "/workspace");
+    }
+
+    #[test]
+    fn sandbox_exec_result_keeps_raw_output_sidecar_when_present() {
+        let result = build_sandbox_exec_result(
+            crate::SessionSandboxExecResponse {
+                exit_code: 17,
+                stdout: "trimmed".to_string(),
+                stderr: "warn".to_string(),
+                success: false,
+                truncated: true,
+                total_lines: 42,
+                raw_output: Some("full output".to_string()),
+                hint: Some("non-zero".to_string()),
+            },
+            None,
+        )
+        .into_tool_result("call_1", "sandbox_exec");
+
+        assert_eq!(result.raw_output.as_deref(), Some("full output"));
+        let payload = result.result.unwrap();
+        assert_eq!(payload["exit_code"], 17);
+        assert_eq!(payload["truncated"], true);
+        assert_eq!(payload["hint"], "non-zero");
     }
 }
