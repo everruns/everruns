@@ -1,0 +1,30 @@
+{
+  "name": "everruns",
+  "owner": {
+    "name": "Everruns",
+    "url": "https://everruns.com"
+  },
+  "plugins": [
+    {
+      "name": "everruns",
+      "source": "./integrations/claude-code-plugin",
+      "description": "Interact with the Everruns agent platform — create and run agents, manage harnesses and sessions, browse the API catalog.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Everruns",
+        "url": "https://everruns.com"
+      },
+      "homepage": "https://everruns.com",
+      "repository": "https://github.com/everruns/everruns",
+      "license": "MIT",
+      "category": "agents",
+      "keywords": [
+        "agents",
+        "everruns",
+        "mcp",
+        "harness",
+        "llm"
+      ]
+    }
+  ]
+}
