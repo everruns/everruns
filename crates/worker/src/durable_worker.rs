@@ -27,7 +27,7 @@ use crate::grpc_durable_store::{
     ClaimedTask, GrpcDurableStore, TaskNotificationEvent, TaskNotificationStream, WorkflowStatus,
 };
 use crate::runtime_host::WorkerRuntimeHost;
-use crate::task_error::{summarize_task_failure, user_facing_failure_message};
+use crate::task_error::{summarize_task_failure, user_facing_failure};
 use serde::{Deserialize, Serialize};
 
 // =============================================================================
@@ -1082,14 +1082,18 @@ impl DurableWorker {
             turn_id,
             input_message_id,
         } = ctx;
-        let error_message = Message::assistant(user_facing_failure_message(persisted_error));
+        let user_error = user_facing_failure(persisted_error);
+        let mut error_message = Message::assistant(user_error.fallback_message());
+        let mut metadata = std::collections::HashMap::new();
+        user_error.apply_to_message_metadata(&mut metadata);
+        error_message.metadata = Some(metadata);
         let context = EventContext::turn(turn_id, input_message_id);
 
         if let Err(e) = event_emitter
             .emit(EventRequest::new(
                 session_id,
                 context,
-                OutputMessageCompletedData::new(error_message),
+                OutputMessageCompletedData::new(error_message).with_user_facing_error(&user_error),
             ))
             .await
         {

@@ -5,7 +5,10 @@ use crate::{RuntimeHostAdapter, RuntimeSessionLifecycle};
 use everruns_core::atoms::{ActInput, AtomContext};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::typed_id::{AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId};
-use everruns_core::{Controls, ReasonResult};
+use everruns_core::{
+    Controls, ReasonResult, UserFacingError, UserFacingErrorContext,
+    classify_runtime_error_message, user_facing_error_codes,
+};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
@@ -60,6 +63,30 @@ pub enum RuntimeTurnPlan {
     ScheduleAct(RuntimeActPlan),
     Complete { error: Option<String> },
     WaitForToolResults { resume: RuntimeTurnState },
+}
+
+fn classify_reason_failure(reason_result: &ReasonResult) -> UserFacingError {
+    let from_text =
+        classify_runtime_error_message(&reason_result.text, &UserFacingErrorContext::default());
+
+    let Some(error) = reason_result.error.as_deref() else {
+        return from_text;
+    };
+
+    let from_error = classify_runtime_error_message(error, &UserFacingErrorContext::default());
+
+    if from_error.code == user_facing_error_codes::PROCESSING_ERROR {
+        return from_text;
+    }
+
+    if from_error.code == from_text.code
+        && from_error.fields.is_empty()
+        && !from_text.fields.is_empty()
+    {
+        return from_text;
+    }
+
+    from_error
 }
 
 /// Determine the next host step after an activity finishes.
@@ -170,12 +197,13 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                     )
                     .await;
             } else {
+                let user_error = classify_reason_failure(&reason_result);
                 lifecycle
                     .turn_failed(
                         turn_id,
                         state.input_message_id,
                         &reason_result.text,
-                        Some("llm_error"),
+                        Some(&user_error),
                     )
                     .await;
             }

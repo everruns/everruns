@@ -52,6 +52,7 @@ use crate::traits::{
     ResolvedImage, SessionStore,
 };
 use crate::typed_id::{AgentId, HarnessId, SessionId};
+use crate::{UserFacingErrorContext, user_facing_error_codes};
 
 // ============================================================================
 // Helper Functions
@@ -111,6 +112,22 @@ fn is_error_placeholder_message(msg: &Message) -> bool {
     // Must have no tool calls (pure text-only error message)
     if msg.has_tool_calls() {
         return false;
+    }
+    if let Some(metadata) = &msg.metadata
+        && let Some(serde_json::Value::String(code)) = metadata.get("error_code")
+    {
+        return matches!(
+            code.as_str(),
+            user_facing_error_codes::BUDGET_EXHAUSTED
+                | user_facing_error_codes::BUDGET_PAUSED
+                | user_facing_error_codes::MODEL_UNAVAILABLE
+                | user_facing_error_codes::REQUEST_TOO_LARGE
+                | user_facing_error_codes::PROVIDER_RATE_LIMITED
+                | user_facing_error_codes::PROVIDER_MISCONFIGURED
+                | user_facing_error_codes::PROVIDER_UNAVAILABLE
+                | user_facing_error_codes::DEPENDENCY_UNAVAILABLE
+                | user_facing_error_codes::PROCESSING_ERROR
+        );
     }
     let text = msg.text().unwrap_or("");
     ERROR_PLACEHOLDER_MESSAGES.contains(&text) || is_dynamic_error_placeholder(text)
@@ -511,9 +528,8 @@ impl ReasonAtom {
                 );
 
                 let error_msg = e.to_string();
-
-                // User-facing error message based on error classification
-                let user_error_text = e.user_facing_message();
+                let user_error = e.user_facing_error(UserFacingErrorContext::default());
+                let user_error_text = user_error.fallback_message();
 
                 // Only emit user-facing error events for non-transient errors.
                 // Transient errors (server errors, rate limits, timeouts) will be
@@ -525,7 +541,10 @@ impl ReasonAtom {
 
                 if !is_transient {
                     // Create error message for the user to see
-                    let error_message = Message::assistant(&user_error_text);
+                    let mut error_message = Message::assistant(&user_error_text);
+                    let mut metadata = std::collections::HashMap::new();
+                    user_error.apply_to_message_metadata(&mut metadata);
+                    error_message.metadata = Some(metadata);
 
                     // Emit output.message.completed event (stores message as event with proper turn context)
                     // output.message.completed is child of reason span
@@ -539,7 +558,8 @@ impl ReasonAtom {
                         .emit(EventRequest::new(
                             context.session_id,
                             error_msg_context,
-                            OutputMessageCompletedData::new(error_message),
+                            OutputMessageCompletedData::new(error_message)
+                                .with_user_facing_error(&user_error),
                         ))
                         .await
                     {

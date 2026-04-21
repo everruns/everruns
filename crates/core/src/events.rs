@@ -29,6 +29,7 @@ use utoipa::ToSchema;
 
 use crate::localization::localized_tool_display_name;
 use crate::typed_id::{AgentId, EventId, ExecId, HarnessId, MessageId, ModelId, SessionId, TurnId};
+use crate::user_facing_error::{UserFacingError, UserFacingErrorFields};
 
 // ============================================================================
 // Event Type Constants
@@ -554,6 +555,15 @@ pub struct OutputMessageCompletedData {
     /// Token usage
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
+
+    /// Stable error code for user-facing failures surfaced as assistant text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+
+    /// Structured interpolation fields for localized error rendering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub error_fields: Option<UserFacingErrorFields>,
 }
 
 impl OutputMessageCompletedData {
@@ -562,6 +572,8 @@ impl OutputMessageCompletedData {
             message,
             metadata: None,
             usage: None,
+            error_code: None,
+            error_fields: None,
         }
     }
 
@@ -572,6 +584,11 @@ impl OutputMessageCompletedData {
 
     pub fn with_usage(mut self, usage: TokenUsage) -> Self {
         self.usage = Some(usage);
+        self
+    }
+
+    pub fn with_user_facing_error(mut self, error: &UserFacingError) -> Self {
+        error.apply_to_event_fields(&mut self.error_code, &mut self.error_fields);
         self
     }
 }
@@ -1503,8 +1520,13 @@ pub struct TurnFailedData {
     pub error: String,
 
     /// Error code
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_code: Option<String>,
+
+    /// Structured interpolation fields for localized error rendering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub error_fields: Option<UserFacingErrorFields>,
 }
 
 /// Data for turn.cancelled event
@@ -2924,6 +2946,7 @@ mod contract_tests {
             turn_id: test_turn_id(),
             error: "Rate limit exceeded".to_string(),
             error_code: Some("RATE_LIMIT".to_string()),
+            error_fields: None,
         };
         with_settings!({
             sort_maps => true,
@@ -3411,6 +3434,7 @@ mod contract_tests {
                     turn_id: test_turn_id(),
                     error: "err".to_string(),
                     error_code: None,
+                    error_fields: None,
                 }
                 .into(),
             ),

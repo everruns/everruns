@@ -66,6 +66,36 @@ const messages = {
     collapse_activity_group: "Collapse activity group",
     expand_activity_group: "Expand activity group",
     error_prefix: "Error: {value}",
+    runtime_error_budget_exhausted_reached:
+      "Budget exhausted. {spent} {currency} spent reached the {limit} {currency} limit. Increase the budget to continue.",
+    runtime_error_budget_exhausted_exceeded:
+      "Budget exhausted. {spent} {currency} spent exceeded the {limit} {currency} limit. Increase the budget to continue.",
+    runtime_error_budget_exhausted_generic: "Budget exhausted. Increase the budget to continue.",
+    runtime_error_budget_paused_reached:
+      "Budget paused. {spent} {currency} spent reached the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.",
+    runtime_error_budget_paused_exceeded:
+      "Budget paused. {spent} {currency} spent exceeded the {soft_limit} {currency} soft limit. Increase or resume the budget to continue.",
+    runtime_error_budget_paused_with_spent:
+      "Budget paused with {spent} {currency} spent. Increase or resume the budget to continue.",
+    runtime_error_budget_paused_generic:
+      "Budget paused. Increase or resume the budget to continue.",
+    runtime_error_model_unavailable:
+      "The model `{value}` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
+    runtime_error_model_unavailable_generic:
+      "The selected model is not available. Please select a different model.",
+    runtime_error_request_too_large:
+      "The conversation has become too long for the model to process. Please start a new session or reduce the context size.",
+    runtime_error_provider_rate_limited: "Rate limited by the AI provider. Please wait a moment.",
+    runtime_error_provider_rate_limited_retry_after:
+      "Rate limited by the AI provider. Please wait {retry_after}s and try again.",
+    runtime_error_provider_misconfigured:
+      "There is a misconfiguration with the AI provider. Please contact support.",
+    runtime_error_provider_unavailable:
+      "The AI provider is experiencing issues. Please try again shortly.",
+    runtime_error_processing_error:
+      "I encountered an error while processing your request. Please try again later.",
+    runtime_error_dependency_unavailable:
+      "Execution stopped because a required dependency is unavailable.",
     binary_file: "binary file{value}",
     image_count_one: "{count} image",
     image_count_few: "{count} images",
@@ -165,6 +195,35 @@ const messages = {
     collapse_activity_group: "Згорнути групу активності",
     expand_activity_group: "Розгорнути групу активності",
     error_prefix: "Помилка: {value}",
+    runtime_error_budget_exhausted_reached:
+      "Бюджет вичерпано. Витрачено {spent} {currency}, що досягло ліміту {limit} {currency}. Збільште бюджет, щоб продовжити.",
+    runtime_error_budget_exhausted_exceeded:
+      "Бюджет вичерпано. Витрачено {spent} {currency}, що перевищило ліміт {limit} {currency}. Збільште бюджет, щоб продовжити.",
+    runtime_error_budget_exhausted_generic: "Бюджет вичерпано. Збільште бюджет, щоб продовжити.",
+    runtime_error_budget_paused_reached:
+      "Бюджет призупинено. Витрачено {spent} {currency}, що досягло м'якого ліміту {soft_limit} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+    runtime_error_budget_paused_exceeded:
+      "Бюджет призупинено. Витрачено {spent} {currency}, що перевищило м'який ліміт {soft_limit} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+    runtime_error_budget_paused_with_spent:
+      "Бюджет призупинено після витрати {spent} {currency}. Збільште бюджет або відновіть його, щоб продовжити.",
+    runtime_error_budget_paused_generic:
+      "Бюджет призупинено. Збільште бюджет або відновіть його, щоб продовжити.",
+    runtime_error_model_unavailable:
+      "Модель `{value}` недоступна. Її могли видалити, перейменувати або ваш API-ключ не має до неї доступу. Виберіть іншу модель.",
+    runtime_error_model_unavailable_generic: "Вибрана модель недоступна. Виберіть іншу модель.",
+    runtime_error_request_too_large:
+      "Розмова стала надто довгою для цієї моделі. Почніть нову сесію або зменште розмір контексту.",
+    runtime_error_provider_rate_limited:
+      "AI-провайдер тимчасово обмежив запити. Зачекайте трохи й спробуйте ще раз.",
+    runtime_error_provider_rate_limited_retry_after:
+      "AI-провайдер тимчасово обмежив запити. Зачекайте {retry_after} с і спробуйте ще раз.",
+    runtime_error_provider_misconfigured:
+      "AI-провайдер налаштований некоректно. Зверніться до підтримки.",
+    runtime_error_provider_unavailable:
+      "AI-провайдер зараз недоступний. Спробуйте ще раз трохи пізніше.",
+    runtime_error_processing_error:
+      "Під час обробки вашого запиту сталася помилка. Спробуйте ще раз пізніше.",
+    runtime_error_dependency_unavailable: "Виконання зупинено, бо потрібна залежність недоступна.",
     binary_file: "бінарний файл{value}",
     image_count_one: "{count} зображення",
     image_count_few: "{count} зображення",

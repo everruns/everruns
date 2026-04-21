@@ -115,6 +115,32 @@ function outputMessageCompletedEvent(turnId: string, inputMessageId: string, tex
   );
 }
 
+function structuredOutputMessageCompletedEvent(
+  turnId: string,
+  inputMessageId: string,
+  text: string,
+  errorCode: string,
+  errorFields: Record<string, unknown>,
+): Event {
+  return makeEvent(
+    "output.message.completed",
+    {
+      message: {
+        id: `msg-out-${seqCounter}`,
+        role: "agent",
+        content: [{ type: "text", text }],
+        metadata: {
+          error_code: errorCode,
+          error_fields: errorFields,
+        },
+      },
+      error_code: errorCode,
+      error_fields: errorFields,
+    },
+    turnContext(turnId, inputMessageId),
+  );
+}
+
 function turnCompletedEvent(turnId: string, inputMessageId: string, iterations: number = 1): Event {
   return makeEvent(
     "turn.completed",
@@ -125,6 +151,20 @@ function turnCompletedEvent(turnId: string, inputMessageId: string, iterations: 
 
 function turnFailedEvent(turnId: string, inputMessageId: string, error: string): Event {
   return makeEvent("turn.failed", { turn_id: turnId, error }, turnContext(turnId, inputMessageId));
+}
+
+function structuredTurnFailedEvent(
+  turnId: string,
+  inputMessageId: string,
+  error: string,
+  errorCode: string,
+  errorFields: Record<string, unknown>,
+): Event {
+  return makeEvent(
+    "turn.failed",
+    { turn_id: turnId, error, error_code: errorCode, error_fields: errorFields },
+    turnContext(turnId, inputMessageId),
+  );
 }
 
 // --- Tests ---
@@ -350,6 +390,38 @@ describe("trajectory-utils", () => {
       const groupNodes = nodes.filter((n) => n.type === "turnGroup");
       expect(groupNodes).toHaveLength(1);
       expect(stats.turnCount).toBe(1);
+    });
+
+    it("localizes structured runtime errors for agent and failed turn nodes", () => {
+      const events = [
+        inputMessageEvent("msg-1", "Break"),
+        turnStartedEvent("turn-1", "msg-1"),
+        structuredOutputMessageCompletedEvent(
+          "turn-1",
+          "msg-1",
+          "backend wording changed completely",
+          "budget_exhausted",
+          { spent: 12.5, limit: 10, currency: "usd" },
+        ),
+        structuredTurnFailedEvent(
+          "turn-1",
+          "msg-1",
+          "another backend fallback",
+          "provider_rate_limited",
+          { retry_after: 8 },
+        ),
+      ];
+
+      const { nodes } = buildTrajectory(events, "uk");
+      const agentNode = nodes.find((node) => node.type === "agentMessage");
+      const groupNode = nodes.find((node) => node.type === "turnGroup");
+
+      expect((agentNode?.data as { preview?: string } | undefined)?.preview).toContain(
+        "Бюджет вичерпано",
+      );
+      expect((groupNode?.data as { errorMessage?: string } | undefined)?.errorMessage).toContain(
+        "8 с",
+      );
     });
 
     it("stats reflect merged turns", () => {

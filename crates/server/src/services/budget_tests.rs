@@ -621,6 +621,28 @@ mod tests {
                 "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue."
             )
         );
+        assert_eq!(result.error_code.as_deref(), Some("budget_exhausted"));
+        assert_eq!(
+            result
+                .error_fields
+                .as_ref()
+                .and_then(|fields| fields.get("spent")),
+            Some(&serde_json::json!(100.0))
+        );
+        assert_eq!(
+            result
+                .error_fields
+                .as_ref()
+                .and_then(|fields| fields.get("limit")),
+            Some(&serde_json::json!(100.0))
+        );
+        assert_eq!(
+            result
+                .error_fields
+                .as_ref()
+                .and_then(|fields| fields.get("currency")),
+            Some(&serde_json::json!("tokens"))
+        );
     }
 
     #[tokio::test]
@@ -658,6 +680,14 @@ mod tests {
             Some(
                 "Budget paused. 8.00 usd spent reached the 8.00 usd soft limit. Increase or resume the budget to continue."
             )
+        );
+        assert_eq!(result.error_code.as_deref(), Some("budget_paused"));
+        assert_eq!(
+            result
+                .error_fields
+                .as_ref()
+                .and_then(|fields| fields.get("soft_limit")),
+            Some(&serde_json::json!(8.0))
         );
     }
 

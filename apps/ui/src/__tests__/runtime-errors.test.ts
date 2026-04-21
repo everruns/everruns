@@ -1,0 +1,41 @@
+import { getLocalizedOutputMessageText, localizeRuntimeError } from "@/lib/runtime-errors";
+
+describe("runtime error localization", () => {
+  it("localizes output message text from structured budget metadata instead of fallback prose", () => {
+    const text = getLocalizedOutputMessageText("uk", {
+      message: {
+        id: "msg-1",
+        session_id: "session-1",
+        sequence: 1,
+        role: "agent",
+        content: [{ type: "text", text: "backend fallback changed" }],
+        metadata: {
+          error_code: "budget_exhausted",
+          error_fields: { spent: 12.5, limit: 10, currency: "usd" },
+        },
+        tool_call_id: null,
+        created_at: "2025-01-01T00:00:00.000Z",
+      },
+      error_code: "budget_exhausted",
+      error_fields: { spent: 12.5, limit: 10, currency: "usd" },
+    });
+
+    expect(text).toContain("Бюджет вичерпано");
+    expect(text).toContain("12,50");
+    expect(text).toContain("10,00");
+  });
+
+  it("falls back to structured provider rate-limit copy when retry_after is present", () => {
+    const text = localizeRuntimeError(
+      "uk",
+      {
+        code: "provider_rate_limited",
+        fields: { retry_after: 9 },
+      },
+      "backend fallback changed",
+    );
+
+    expect(text).toContain("9 с");
+    expect(text).not.toContain("backend fallback changed");
+  });
+});
