@@ -997,7 +997,7 @@ async fn tool_session_get_status(
     let session_params = json!({ "session_id": session_id });
     let session = dispatch_inventory_json("get_session", session_params, &ctx).await?;
 
-    // Get recent events via inventory dispatch
+    // Get recent events via handler
     let event_types: Vec<String> = args
         .get("event_types")
         .and_then(|v| v.as_array())
@@ -1008,7 +1008,7 @@ async fn tool_session_get_status(
         })
         .unwrap_or_default();
 
-    // Parse since_event_id as typed EventId and extract the UUID for list_events
+    // Parse since_event_id as typed EventId and extract UUID for the handler
     let since_id_uuid = args
         .get("since_event_id")
         .and_then(|v| v.as_str())

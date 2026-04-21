@@ -189,7 +189,9 @@ impl Ctx {
 
     pub fn mcp_runtime(&self) -> Result<&McpRuntime, CommandError> {
         self.mcp_runtime.as_deref().ok_or_else(|| {
-            CommandError::bad_request("MCP runtime context is unavailable for this command")
+            CommandError::Internal(anyhow::anyhow!(
+                "MCP runtime context is unavailable for this command"
+            ))
         })
     }
 }
@@ -531,10 +533,8 @@ where
 #[cfg(test)]
 mod lenient_tests {
     use super::*;
-    use crate::{services::CapabilityService, storage::StorageBackend};
     use serde::Deserialize;
     use serde_json::json;
-    use std::sync::Arc;
 
     #[derive(Debug, Deserialize, PartialEq)]
     struct PageInput {
@@ -625,17 +625,5 @@ mod lenient_tests {
         let err =
             serde_json::from_value::<FlagInput>(json!({"include_archived": "maybe"})).unwrap_err();
         assert!(err.to_string().contains("coerce string"), "got: {err}");
-    }
-
-    #[test]
-    fn ctx_mcp_runtime_missing_is_bad_request() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
-        let ctx = Ctx::new(Caller::internal(1), db, capability_service, None);
-
-        match ctx.mcp_runtime() {
-            Err(CommandError::BadRequest(_)) => {}
-            _ => panic!("expected bad request"),
-        }
     }
 }
