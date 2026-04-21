@@ -29,6 +29,7 @@ jobs:
     timeout-minutes: 10
     env:
       DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+      DENO_SANDBOX_REGION: ${{ matrix.deno_sandbox_region || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -41,6 +42,7 @@ jobs:
             command: cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test -- --test-threads=1
           - name: Deno Live API Tests
             command: cargo test -p everruns-integrations-deno --features deno-live-tests --test live_api_test -- --test-threads=1
+            deno_sandbox_region: ams
           - name: Sprites Live API Tests
             command: cargo test -p everruns-integrations-sprites --features sprites-live-tests --test live_api_test -- --test-threads=1
           - name: Brave Search API Tests

@@ -51,7 +51,7 @@ const DENO_DEFAULT_MEMORY_MB: u64 = 1_280;
 const DENO_MAX_MEMORY_MB: u64 = 16 * 1_024;
 const DENO_RPC_TIMEOUT: Duration = Duration::from_secs(30);
 const DENO_STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
-const DENO_WORKSPACE_PATH: &str = "/home/sandbox";
+const DENO_WORKSPACE_PATH: &str = "/home/app";
 
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     let mut prompt = String::from(

@@ -365,6 +365,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.deno == 'true' && github.event_name == 'push'
     timeout-minutes: 10
+    env:
+      DENO_SANDBOX_REGION: ams
 
     steps:
       - uses: actions/checkout@v4

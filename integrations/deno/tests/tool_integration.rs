@@ -239,7 +239,7 @@ async fn setup_context_with_sandbox(
         sandbox_id: sandbox_id.to_string(),
         region: "ord".to_string(),
         org: None,
-        workspace_path: "/home/sandbox".to_string(),
+        workspace_path: "/home/app".to_string(),
         started_at: "2026-03-22T10:00:00Z".to_string(),
     };
     store
@@ -581,7 +581,7 @@ async fn test_list_sandboxes_with_entries() {
         sandbox_id: "sb_two".to_string(),
         region: "ams".to_string(),
         org: Some("test-org".to_string()),
-        workspace_path: "/home/sandbox".to_string(),
+        workspace_path: "/home/app".to_string(),
         started_at: "2026-03-22T11:00:00Z".to_string(),
     };
     store
@@ -633,7 +633,7 @@ async fn test_sandbox_state_persistence_roundtrip() {
             let sandbox = &output["sandboxes"][0];
             assert_eq!(sandbox["sandbox_id"], "sb_persist");
             assert_eq!(sandbox["region"], "ord");
-            assert_eq!(sandbox["workspace_path"], "/home/sandbox");
+            assert_eq!(sandbox["workspace_path"], "/home/app");
         }
         other => panic!("Expected Success, got: {other:?}"),
     }
