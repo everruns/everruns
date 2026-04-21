@@ -31,6 +31,9 @@ Relevant references:
 - [GitHub Security Overview](https://github.com/everruns/everruns/security)
 - [Dependabot Alerts](https://github.com/everruns/everruns/security/dependabot)
 - [Secret Scanning Alerts](https://github.com/everruns/everruns/security/secret-scanning?query=is%3Aopen+results%3Ageneric)
+- [Claude Code Changelog](https://code.claude.com/docs/en/changelog)
+- [Claude Code What's New](https://code.claude.com/docs/en/whats-new)
+- [Claude Code Plugins Reference](https://code.claude.com/docs/en/plugins-reference)
 
 ## Constraints
 
@@ -62,8 +65,8 @@ Before a release, maintenance should cover:
 - the latest push-only integration live workflows on `main` plus the latest `.github/workflows/integration-live-sweep.yml` result; unresolved failures there block a "release ready" claim until triaged
 - Linear issues already marked `In Progress` whose `updatedAt` is older than 1 day, signaling execution drift; use that `updatedAt` threshold as the default review threshold unless the task sets a stricter bar
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
-
 - dependency versions across all packages (Cargo workspace crates, npm packages, CLI) checked for outdated major versions and deprecated crates
+- the Claude Code plugin surface reviewed against recent upstream Claude Code changes: inspect the latest changelog, the weekly "What's New" digest, and the plugins reference, then compare them to `.claude-plugin/marketplace.json`, `integrations/claude-code-plugin/.claude-plugin/plugin.json`, and shipped plugin behavior; if upstream changes affect compatibility, versioning, or discoverability, update the plugin or record a follow-up with evidence before claiming release readiness
 
 A full-repo sweep is not mandatory if the evidence is already strong. The bar is confidence, not checklist completion theater.
 
