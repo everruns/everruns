@@ -5,7 +5,6 @@
 // No HTTP, no Router — pure Rust service calls.
 
 use super::catalog::CatalogContext;
-use crate::api::common::Pagination;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use serde_json::{Value, json};
 
@@ -29,33 +28,12 @@ fn require_str(params: &Value, key: &str) -> Result<String, String> {
     param_str(params, key).ok_or_else(|| format!("Missing required parameter: {key}"))
 }
 
-fn pagination(params: &Value) -> Pagination {
-    let offset = param_u32(params, "offset").unwrap_or(0);
-    let limit = param_u32(params, "limit").unwrap_or(20).min(100);
-    Pagination::new(offset, limit)
-}
-
 fn to_json(value: &impl serde::Serialize) -> Result<String, String> {
     serde_json::to_string(value).map_err(|e| e.to_string())
 }
 
 fn to_list(items: &impl serde::Serialize) -> Result<String, String> {
     serde_json::to_string(&json!({ "data": items })).map_err(|e| e.to_string())
-}
-
-fn to_paginated(
-    items: &impl serde::Serialize,
-    total: u32,
-    offset: u32,
-    limit: u32,
-) -> Result<String, String> {
-    serde_json::to_string(&json!({
-        "data": items,
-        "total": total,
-        "offset": offset,
-        "limit": limit,
-    }))
-    .map_err(|e| e.to_string())
 }
 
 fn parse_session_id(s: &str) -> Result<uuid::Uuid, String> {
@@ -117,28 +95,6 @@ pub async fn create_session(params: &Value, ctx: &CatalogContext) -> Result<Stri
     to_json(&session)
 }
 
-pub async fn list_sessions(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
-    let search = param_str(params, "search");
-    let agent_id = param_str(params, "agent_id")
-        .map(|s| s.parse::<AgentId>())
-        .transpose()
-        .map_err(|e| format!("Invalid agent ID: {e}"))?;
-    let pg = pagination(params);
-    let (sessions, total) = ctx
-        .state
-        .session_service
-        .list(
-            &ctx.caller,
-            agent_id.as_ref().map(|id| id.uuid()),
-            ctx.user_id,
-            search.as_deref(),
-            pg,
-        )
-        .await
-        .map_err(err)?;
-    to_paginated(&sessions, total, pg.offset, pg.limit)
-}
-
 pub async fn get_session(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let id = parse_session_id(&require_str(params, "session_id")?)?;
     let session = ctx
@@ -149,37 +105,6 @@ pub async fn get_session(params: &Value, ctx: &CatalogContext) -> Result<String,
         .map_err(err)?
         .ok_or("Session not found")?;
     to_json(&session)
-}
-
-pub async fn update_session(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
-    let id = parse_session_id(&require_str(params, "session_id")?)?;
-    let req = serde_json::from_value(params.clone()).map_err(err)?;
-    let session = ctx
-        .state
-        .session_service
-        .update(&ctx.caller, id, req)
-        .await
-        .map_err(err)?
-        .ok_or("Session not found")?;
-    to_json(&session)
-}
-
-pub async fn delete_session(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
-    let id = parse_session_id(&require_str(params, "session_id")?)?;
-    ctx.state
-        .session_service
-        .delete(&ctx.caller, id)
-        .await
-        .map_err(err)?;
-    to_json(&json!({"deleted": true}))
-}
-
-pub async fn cancel_session(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
-    let id: SessionId = require_str(params, "session_id")?
-        .parse()
-        .map_err(|e| format!("Invalid session ID: {e}"))?;
-    ctx.state.runner.cancel_run(id).await.map_err(err)?;
-    to_json(&json!({"cancelled": true}))
 }
 
 // ============================================================================
@@ -464,14 +389,6 @@ pub async fn get_image(params: &Value, ctx: &CatalogContext) -> Result<String, S
     to_json(&image)
 }
 
-pub async fn list_schedules(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
-}
-
-pub async fn create_schedule(_p: &Value, _c: &CatalogContext) -> Result<String, String> {
-    not_implemented(_p, _c).await
-}
-
 pub async fn list_orgs(_params: &Value, ctx: &CatalogContext) -> Result<String, String> {
     let org = ctx
         .state
@@ -503,30 +420,6 @@ pub async fn list_users(params: &Value, ctx: &CatalogContext) -> Result<String, 
         .await
         .map_err(err)?;
     to_list(&users)
-}
-
-pub async fn list_session_files(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
-    let session_id = parse_session_id(&require_str(params, "session_id")?)?;
-    let files = ctx
-        .state
-        .db
-        .list_session_files(session_id, "/")
-        .await
-        .map_err(err)?;
-    to_list(&files)
-}
-
-pub async fn get_session_file(params: &Value, ctx: &CatalogContext) -> Result<String, String> {
-    let session_id = parse_session_id(&require_str(params, "session_id")?)?;
-    let path = require_str(params, "path")?;
-    let file = ctx
-        .state
-        .db
-        .get_session_file(session_id, &path)
-        .await
-        .map_err(err)?
-        .ok_or("File not found")?;
-    to_json(&file)
 }
 
 pub async fn list_session_databases(_p: &Value, _c: &CatalogContext) -> Result<String, String> {

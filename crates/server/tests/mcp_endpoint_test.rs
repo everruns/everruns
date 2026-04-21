@@ -13,6 +13,8 @@
 mod test_harness;
 
 use axum::http::{Method, StatusCode};
+use everruns_core::capability_types::VirtualFileTree;
+use everruns_core::typed_id::SessionId;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -1028,6 +1030,68 @@ async fn test_mcp_execute_list_harnesses() {
         .collect();
     assert!(names.contains(&"base"), "Should have Base harness");
     assert!(names.contains(&"generic"), "Should have Generic harness");
+}
+
+#[tokio::test]
+async fn test_mcp_execute_session_files_reads_virtual_mounts() {
+    let server = TestServer::in_memory().await;
+
+    let agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": format!("mcp-virtual-files-{}", unique_suffix()),
+                "display_name": "MCP Virtual Files",
+                "system_prompt": "Test",
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+
+    let session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent["id"].as_str().unwrap(),
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+
+    let session_id: SessionId = session["id"]
+        .as_str()
+        .expect("session id")
+        .parse()
+        .expect("valid session id");
+
+    let mut tree = VirtualFileTree::new();
+    tree.insert_text("/docs/readme.md", "# Hello");
+    server.virtual_registry.register(
+        session_id.uuid(),
+        "/docs".into(),
+        std::sync::Arc::new(tree),
+        "test_cap".into(),
+    );
+
+    let resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({ "commands": format!("get_session_file --session_id {} --path '/docs/readme.md'", session_id) }),
+    )
+    .await;
+
+    assert!(
+        !tool_is_error(&resp),
+        "execute get_session_file failed: {}",
+        tool_text(&resp)
+    );
+    let payload = tool_json(&resp);
+    assert_eq!(payload["path"], "/docs/readme.md");
+    assert_eq!(payload["content"], "# Hello");
+    assert_eq!(payload["is_readonly"], true);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

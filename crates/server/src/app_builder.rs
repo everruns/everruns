@@ -613,6 +613,7 @@ impl ServerAppBuilder {
         };
 
         let events_state = api::events::AppState {
+            db: db.clone(),
             session_service: Arc::new(
                 services::SessionService::with_registry(
                     db.clone(),
@@ -627,6 +628,7 @@ impl ServerAppBuilder {
         };
         let notifications_state = notification_service.as_ref().map(|notification_service| {
             api::notifications::AppState {
+                db: db.clone(),
                 notification_service: notification_service.clone(),
                 sse_tracker: sse_tracker.clone(),
                 notification_broadcaster,
@@ -789,7 +791,8 @@ impl ServerAppBuilder {
         }
         let scheduler_store = durable_store.clone();
         let schedules_state = api::schedules::routes(api::schedules::ScheduleAppState::new(
-            durable_store,
+            db.clone(),
+            durable_store.clone(),
             auth_state.clone(),
         ));
         let skills_state =
@@ -824,8 +827,11 @@ impl ServerAppBuilder {
         );
         let session_resource_service =
             Arc::new(crate::services::SessionResourceService::new(db.clone()));
-        let session_resources_state =
-            api::session_resources::AppState::new(session_resource_service, auth_state.clone());
+        let session_resources_state = api::session_resources::AppState::new(
+            db.clone(),
+            session_resource_service,
+            auth_state.clone(),
+        );
 
         // MCP endpoint: derive API base URL from addr config or MCP_API_BASE_URL env var
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
@@ -837,7 +843,10 @@ impl ServerAppBuilder {
             event_delivery.clone(),
             encryption.clone(),
             capability_service.clone(),
-        );
+            Some(sqldb_store.clone()),
+            durable_store.clone(),
+        )
+        .with_virtual_registry(virtual_registry.clone());
 
         let health_state = HealthState {
             auth_mode: format!("{:?}", auth_config.mode),

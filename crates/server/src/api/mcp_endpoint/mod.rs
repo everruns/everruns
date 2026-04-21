@@ -21,7 +21,8 @@ mod tool_registry;
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::{
-    BudgetService, CapabilityService, EventService, MessageService, SessionService,
+    BudgetService, CapabilityService, EventService, MessageService, SessionFileService,
+    SessionService,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -32,7 +33,9 @@ use axum::{
     routing::post,
 };
 use bashkit::ScriptingToolSet;
+use everruns_core::session_sqldb::SessionSqlDbStore;
 use everruns_core::{Caller, OrgRole, PlatformDefinition, validate_org_public_id};
+use everruns_durable::WorkflowEventStore;
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -176,12 +179,18 @@ pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
+    pub session_file_service: Arc<SessionFileService>,
     pub capability_service: Arc<CapabilityService>,
     pub budget_service: Arc<BudgetService>,
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
     pub fallback_base_harness_name: Option<String>,
+    pub fallback_default_harness_name: Option<String>,
+    pub chat_harness_name: Option<String>,
+    pub chat_session_title: Option<String>,
+    pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
+    pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
 }
 
 impl AppState {
@@ -195,6 +204,8 @@ impl AppState {
         event_delivery: crate::event_delivery::EventDelivery,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
         capability_service: Arc<CapabilityService>,
+        sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
+        workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::with_registry(
@@ -208,6 +219,7 @@ impl AppState {
                 event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
+            session_file_service: Arc::new(SessionFileService::new(db.clone())),
             capability_service,
             budget_service: Arc::new(BudgetService::new(db.clone())),
             db,
@@ -217,7 +229,27 @@ impl AppState {
             fallback_base_harness_name: platform_definition
                 .harness_for_role(everruns_core::BuiltInHarnessRole::Base)
                 .map(|h| h.name.clone()),
+            fallback_default_harness_name: platform_definition
+                .harness_for_role(everruns_core::BuiltInHarnessRole::Default)
+                .map(|h| h.name.clone()),
+            chat_harness_name: platform_definition
+                .harness_for_role(everruns_core::BuiltInHarnessRole::Chat)
+                .map(|h| h.name.clone()),
+            chat_session_title: platform_definition
+                .harness_for_role(everruns_core::BuiltInHarnessRole::Chat)
+                .map(|h| h.display_name.clone()),
+            sqldb_store,
+            workflow_store,
         }
+    }
+
+    pub fn with_virtual_registry(
+        mut self,
+        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+    ) -> Self {
+        self.session_file_service =
+            Arc::new(SessionFileService::new(self.db.clone()).with_virtual_registry(registry));
+        self
     }
 }
 

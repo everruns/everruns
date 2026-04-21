@@ -4,30 +4,43 @@
 // active in a session (sandboxes, subagents, browser sessions, etc.).
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::session_resources::ListSessionResources;
 use crate::services::SessionResourceService;
+use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, State},
     routing::get,
 };
-use everruns_core::{SessionId, SessionResourceEntry};
+use everruns_core::{Caller, SessionId, SessionResourceEntry};
 use std::sync::Arc;
 
-use super::common::{ApiOptionExt, ApiResult, ApiResultExt, impl_auth_state};
+use super::common::{ApiResult, impl_auth_state};
 
 /// App state for session resource routes.
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub session_resource_service: Arc<SessionResourceService>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(session_resource_service: Arc<SessionResourceService>, auth: AuthState) -> Self {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        session_resource_service: Arc<SessionResourceService>,
+        auth: AuthState,
+    ) -> Self {
         Self {
+            db,
             session_resource_service,
             auth,
         }
+    }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
     }
 }
 
@@ -54,12 +67,11 @@ pub async fn list_resources(
     State(state): State<AppState>,
     Path(session_id): Path<SessionId>,
 ) -> ApiResult<Vec<SessionResourceEntry>> {
-    let resources = state
-        .session_resource_service
-        .list_for_session(org.org_id, session_id)
-        .await
-        .log_internal_error_json("list session resources")?
-        .ok_or_not_found_json("Session")?;
-
-    Ok(Json(resources))
+    Ok(Json(
+        ListSessionResources {
+            session_id: session_id.to_string(),
+        }
+        .execute(&state.ctx(&org))
+        .await?,
+    ))
 }

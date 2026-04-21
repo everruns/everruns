@@ -2,17 +2,21 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::budgets::{
+    CheckBudget, CheckSessionBudgets, CreateBudget, DeleteBudget, GetBudget, ListBudgetLedger,
+    ListBudgets, ListSessionBudgets, ResumeSessionBudgets, TopUpBudget, UpdateBudgetCmd,
+};
+use crate::domains::common::{Command, Ctx};
 use crate::services::BudgetService;
 use crate::storage::StorageBackend;
-use crate::storage::models::*;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
+use everruns_core::Caller;
 use everruns_core::budget::{Budget, BudgetCheckResult, BudgetPeriod, LedgerEntry};
-use everruns_core::typed_id::BudgetId;
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -43,6 +47,10 @@ impl AppState {
             budget_service,
             auth,
         }
+    }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
     }
 }
 
@@ -125,71 +133,14 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-fn err(status: StatusCode, msg: &str) -> ApiError {
-    (status, Json(ErrorResponse::new(msg)))
-}
-
-fn internal(e: anyhow::Error) -> ApiError {
-    err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())
-}
-
-fn not_found(entity: &str) -> ApiError {
-    err(StatusCode::NOT_FOUND, &format!("{entity} not found"))
-}
-
-fn parse_budget_id(s: &str) -> Result<uuid::Uuid, ApiError> {
-    if let Ok(id) = BudgetId::parse(s) {
-        Ok(id.uuid())
-    } else if let Ok(id) = uuid::Uuid::parse_str(s) {
-        Ok(id)
-    } else {
-        Err(err(StatusCode::BAD_REQUEST, "Invalid budget ID format"))
-    }
-}
-
-// ============================================================================
-// Handlers
-// ============================================================================
-
 async fn create_budget(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Json(req): Json<CreateBudgetRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Budget>>), ApiError> {
-    if !["session", "agent", "user", "org"].contains(&req.subject_type.as_str()) {
-        return Err(err(StatusCode::BAD_REQUEST, "Invalid subject_type"));
-    }
-    if req.limit <= 0.0 {
-        return Err(err(StatusCode::BAD_REQUEST, "Limit must be positive"));
-    }
-    if req.soft_limit.is_some_and(|s| s <= 0.0 || s > req.limit) {
-        return Err(err(
-            StatusCode::BAD_REQUEST,
-            "Soft limit must be between 0 and limit",
-        ));
-    }
-    let input = CreateBudgetRow {
-        org_id: org.org_id,
-        subject_type: req.subject_type,
-        subject_id: req.subject_id,
-        currency: req.currency,
-        limit: req.limit,
-        soft_limit: req.soft_limit,
-        period: req
-            .period
-            .map(|p| serde_json::to_value(p).unwrap_or_default()),
-        metadata: req.metadata,
-    };
-    let row = state.db.create_budget(input).await.map_err(internal)?;
+    let row = CreateBudget(req).execute(&state.ctx(&org)).await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok((
-        StatusCode::CREATED,
-        Json(urls.wrap(BudgetService::row_to_budget(&row))),
-    ))
+    Ok((StatusCode::CREATED, Json(urls.wrap(row))))
 }
 
 async fn get_budget(
@@ -197,15 +148,9 @@ async fn get_budget(
     State(state): State<AppState>,
     Path(budget_id): Path<String>,
 ) -> Result<Json<WithUrls<Budget>>, ApiError> {
-    let id = parse_budget_id(&budget_id)?;
-    let row = state
-        .db
-        .get_budget(org.org_id, id)
-        .await
-        .map_err(internal)?
-        .ok_or_else(|| not_found("Budget"))?;
+    let row = GetBudget { budget_id }.execute(&state.ctx(&org)).await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(urls.wrap(BudgetService::row_to_budget(&row))))
+    Ok(Json(urls.wrap(row)))
 }
 
 async fn list_budgets(
@@ -213,16 +158,12 @@ async fn list_budgets(
     State(state): State<AppState>,
     Query(query): Query<ListBudgetsQuery>,
 ) -> Result<Json<Vec<WithUrls<Budget>>>, ApiError> {
-    let rows = state
-        .db
-        .list_budgets(
-            org.org_id,
-            query.subject_type.as_deref(),
-            query.subject_id.as_deref(),
-        )
-        .await
-        .map_err(internal)?;
-    let budgets: Vec<Budget> = rows.iter().map(BudgetService::row_to_budget).collect();
+    let budgets = ListBudgets {
+        subject_type: query.subject_type,
+        subject_id: query.subject_id,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap_vec(budgets)))
 }
@@ -233,21 +174,17 @@ async fn update_budget(
     Path(budget_id): Path<String>,
     Json(req): Json<UpdateBudgetRequest>,
 ) -> Result<Json<WithUrls<Budget>>, ApiError> {
-    let id = parse_budget_id(&budget_id)?;
-    let input = UpdateBudgetRow {
+    let row = UpdateBudgetCmd {
+        budget_id,
         limit: req.limit,
         soft_limit: req.soft_limit,
         status: req.status,
         metadata: req.metadata,
-    };
-    let row = state
-        .db
-        .update_budget(org.org_id, id, input)
-        .await
-        .map_err(internal)?
-        .ok_or_else(|| not_found("Budget"))?;
+    }
+    .execute(&state.ctx(&org))
+    .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(urls.wrap(BudgetService::row_to_budget(&row))))
+    Ok(Json(urls.wrap(row)))
 }
 
 async fn delete_budget(
@@ -255,17 +192,8 @@ async fn delete_budget(
     State(state): State<AppState>,
     Path(budget_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let id = parse_budget_id(&budget_id)?;
-    let deleted = state
-        .db
-        .delete_budget(org.org_id, id)
-        .await
-        .map_err(internal)?;
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(not_found("Budget"))
-    }
+    DeleteBudget { budget_id }.execute(&state.ctx(&org)).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn top_up(
@@ -274,46 +202,15 @@ async fn top_up(
     Path(budget_id): Path<String>,
     Json(req): Json<TopUpRequest>,
 ) -> Result<Json<WithUrls<Budget>>, ApiError> {
-    if req.amount <= 0.0 {
-        return Err(err(StatusCode::BAD_REQUEST, "Amount must be positive"));
-    }
-    let id = parse_budget_id(&budget_id)?;
-    let _budget = state
-        .db
-        .get_budget(org.org_id, id)
-        .await
-        .map_err(internal)?
-        .ok_or_else(|| not_found("Budget"))?;
-
-    // Negative amount = credit (adds to balance)
-    let input = CreateBudgetLedgerRow {
-        budget_id: id,
-        amount: -req.amount,
-        meter_source: "manual".into(),
-        ref_type: Some("top_up".into()),
-        ref_id: None,
-        session_id: None,
+    let row = TopUpBudget {
+        budget_id,
+        amount: req.amount,
         description: req.description,
-    };
-    let (_entry, updated) = state
-        .db
-        .create_budget_ledger_entry(input)
-        .await
-        .map_err(internal)?;
-
-    // If budget was paused/exhausted and now has balance, reactivate
-    if updated.balance > 0.0 && (updated.status == "paused" || updated.status == "exhausted") {
-        let _ = state.db.set_budget_status(id, "active").await;
     }
-
-    let row = state
-        .db
-        .get_budget(org.org_id, id)
-        .await
-        .map_err(internal)?
-        .unwrap();
+    .execute(&state.ctx(&org))
+    .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(urls.wrap(BudgetService::row_to_budget(&row))))
+    Ok(Json(urls.wrap(row)))
 }
 
 async fn list_ledger(
@@ -322,22 +219,14 @@ async fn list_ledger(
     Path(budget_id): Path<String>,
     Query(query): Query<LedgerQuery>,
 ) -> Result<Json<Vec<LedgerEntry>>, ApiError> {
-    let id = parse_budget_id(&budget_id)?;
-    let _budget = state
-        .db
-        .get_budget(org.org_id, id)
-        .await
-        .map_err(internal)?
-        .ok_or_else(|| not_found("Budget"))?;
-    let rows = state
-        .db
-        .list_budget_ledger(id, query.limit, query.offset)
-        .await
-        .map_err(internal)?;
     Ok(Json(
-        rows.iter()
-            .map(BudgetService::row_to_ledger_entry)
-            .collect(),
+        ListBudgetLedger {
+            budget_id,
+            limit: query.limit,
+            offset: query.offset,
+        }
+        .execute(&state.ctx(&org))
+        .await?,
     ))
 }
 
@@ -346,24 +235,9 @@ async fn check_budget(
     State(state): State<AppState>,
     Path(budget_id): Path<String>,
 ) -> Result<Json<BudgetCheckResult>, ApiError> {
-    let id = parse_budget_id(&budget_id)?;
-    let budget = state
-        .db
-        .get_budget(org.org_id, id)
-        .await
-        .map_err(internal)?
-        .ok_or_else(|| not_found("Budget"))?;
-    if budget.subject_type != "session" {
-        return Err(err(
-            StatusCode::BAD_REQUEST,
-            "Budget check only supported for session-scoped budgets via this endpoint",
-        ));
-    }
-    let result = state
-        .budget_service
-        .check_budgets_for_session(org.org_id, &budget.subject_id, None)
-        .await;
-    Ok(Json(result))
+    Ok(Json(
+        CheckBudget { budget_id }.execute(&state.ctx(&org)).await?,
+    ))
 }
 
 // ============================================================================
@@ -375,12 +249,9 @@ async fn list_session_budgets(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<Vec<WithUrls<Budget>>>, ApiError> {
-    let rows = state
-        .db
-        .list_budgets(org.org_id, Some("session"), Some(&session_id))
-        .await
-        .map_err(internal)?;
-    let budgets: Vec<Budget> = rows.iter().map(BudgetService::row_to_budget).collect();
+    let budgets = ListSessionBudgets { session_id }
+        .execute(&state.ctx(&org))
+        .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap_vec(budgets)))
 }
@@ -390,11 +261,11 @@ async fn check_session_budgets(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<BudgetCheckResult>, ApiError> {
-    let result = state
-        .budget_service
-        .check_budgets_for_session(org.org_id, &session_id, None)
-        .await;
-    Ok(Json(result))
+    Ok(Json(
+        CheckSessionBudgets { session_id }
+            .execute(&state.ctx(&org))
+            .await?,
+    ))
 }
 
 async fn resume_session(
@@ -402,23 +273,17 @@ async fn resume_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let budgets = state
-        .db
-        .list_budgets(org.org_id, Some("session"), Some(&session_id))
-        .await
-        .map_err(internal)?;
-
-    let mut resumed = 0;
-    for budget in &budgets {
-        if budget.status == "paused"
-            && let Ok(Some(_)) = state.db.set_budget_status(budget.id, "active").await
-        {
-            resumed += 1;
-        }
-    }
-
-    Ok(Json(serde_json::json!({
-        "resumed_budgets": resumed,
-        "session_id": session_id,
-    })))
+    Ok(Json(
+        serde_json::to_value(
+            ResumeSessionBudgets { session_id }
+                .execute(&state.ctx(&org))
+                .await?,
+        )
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(e.to_string())),
+            )
+        })?,
+    ))
 }

@@ -2182,6 +2182,53 @@ async fn test_session_databases_invalid_name() {
         .assert_status(StatusCode::BAD_REQUEST);
 }
 
+#[tokio::test]
+async fn test_session_databases_limit_exceeded_returns_422() {
+    let server = TestServer::in_memory().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "sql-limit-agent",
+                "display_name": "SQL Limit Agent",
+                "system_prompt": "Test",
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({"harness_id": server.seed_base_harness_id, "agent_id": agent.public_id.to_string()}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session_id = session.id.to_string();
+
+    for i in 0..10 {
+        server
+            .post(
+                &format!("/v1/sessions/{session_id}/databases"),
+                json!({ "name": format!("db_{i}") }),
+            )
+            .await
+            .assert_status(StatusCode::CREATED);
+    }
+
+    server
+        .post(
+            &format!("/v1/sessions/{session_id}/databases"),
+            json!({ "name": "db_overflow" }),
+        )
+        .await
+        .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+}
+
 // ============================================================================
 // Session Features Tests
 // ============================================================================

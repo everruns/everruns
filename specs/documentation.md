@@ -109,7 +109,7 @@ Cloudflare Pages dashboard configuration:
 - Set root directory: `apps/docs`
 - Set build command: `npm run build`
 - Set output directory: `dist`
-- Node.js version: `20.19.1+` (or `22.12+`) to satisfy Astro 6 toolchain requirements
+- Pin Node.js from `apps/docs/.node-version` (currently `22.16.0`) so Pages builds do not depend on dashboard defaults; any override must stay at `20.19.1+` or `22.12+` to satisfy Astro 6 toolchain requirements
 
 ### Development
 

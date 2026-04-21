@@ -17,9 +17,8 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use everruns_durable::{
-    CreateScheduleRow, Pagination, ScheduleExecutionFilter, ScheduleExecutionRow,
-    ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats, ScheduleTargetType,
-    StoreError, UpdateField, UpdateSchedule, WorkflowEventStore,
+    ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleRow, ScheduleStats, ScheduleTargetType,
+    WorkflowEventStore,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -28,11 +27,20 @@ use uuid::Uuid;
 
 use super::common::{ApiResult, ErrorResponse, impl_auth_state};
 use crate::auth::{AuthState, PlatformUser};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::schedules::{
+    CreateSchedule, DeleteSchedule, GetExecution, GetSchedule, GetScheduleStats,
+    ListScheduleExecutions, ListSchedules, PauseSchedule, ResumeSchedule, TriggerSchedule,
+    UpdateScheduleCmd,
+};
+use crate::storage::StorageBackend;
+use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 
 /// App state for schedule routes
 /// All schedule endpoints require platform-user auth.
 #[derive(Clone)]
 pub struct ScheduleAppState {
+    db: Arc<StorageBackend>,
     store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     auth: AuthState,
 }
@@ -41,8 +49,12 @@ impl_auth_state!(ScheduleAppState);
 
 impl ScheduleAppState {
     /// Create new state with an optional workflow event store and auth state
-    pub fn new(store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>, auth: AuthState) -> Self {
-        Self { store, auth }
+    pub fn new(
+        db: Arc<StorageBackend>,
+        store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+        auth: AuthState,
+    ) -> Self {
+        Self { db, store, auth }
     }
 
     /// Get the store, returning an error response if not available
@@ -57,6 +69,19 @@ impl ScheduleAppState {
                 }),
             )
         })
+    }
+
+    fn ctx(&self, auth: &PlatformUser) -> Result<Ctx, (StatusCode, Json<ErrorResponse>)> {
+        let caller = Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            user_id: Some(auth.0.id),
+            role: OrgRole::Owner,
+            is_platform_user: auth.0.is_platform_user,
+            is_internal: false,
+        };
+        Ok(Ctx::minimal(caller, self.db.clone(), None)
+            .with_workflow_store(self.get_store()?.clone()))
     }
 }
 
@@ -397,96 +422,12 @@ pub struct ListExecutionsQuery {
     tag = "durable-schedules"
 )]
 pub async fn create_schedule(
-    _auth: PlatformUser,
+    auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Json(req): Json<CreateScheduleRequest>,
 ) -> Result<(StatusCode, Json<ScheduleResponse>), (StatusCode, Json<ErrorResponse>)> {
-    let store = state.get_store()?;
-
-    // Parse target type
-    let target_type = match req.target.target_type.as_str() {
-        "workflow" => ScheduleTargetType::Workflow,
-        "activity" => ScheduleTargetType::Activity,
-        _ => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "Invalid target type. Must be 'workflow' or 'activity'".to_string(),
-                }),
-            ));
-        }
-    };
-
-    // Calculate initial next_trigger_at
-    let next_trigger_at = if req.enabled {
-        calculate_next_trigger(&req.cron_expression).map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: format!("Invalid cron expression: {}", e),
-                }),
-            )
-        })?
-    } else {
-        None
-    };
-
-    // Create schedule row
-    let create_row = CreateScheduleRow {
-        name: req.name,
-        description: req.description,
-        cron_expression: req.cron_expression,
-        timezone: req.timezone,
-        target_type,
-        target_name: req.target.name,
-        target_input: req.target.input,
-        enabled: req.enabled,
-        max_concurrent: req.max_concurrent,
-        catch_up_missed: req.catch_up_missed,
-        max_catch_up: req.max_catch_up,
-        retry_policy: req.retry_policy,
-        next_trigger_at,
-    };
-
-    let schedule_id = store
-        .create_schedule(create_row)
-        .await
-        .map_err(|e| match e {
-            StoreError::ScheduleLimitExceeded { limit, .. } => (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse {
-                    error: format!("Schedule limit exceeded: max {} schedules", limit),
-                }),
-            ),
-            StoreError::InvalidCronExpression(msg) => (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: format!("Invalid cron expression: {}", msg),
-                }),
-            ),
-            _ => {
-                tracing::error!("Failed to create schedule: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Failed to create schedule".to_string(),
-                    }),
-                )
-            }
-        })?;
-
-    // Fetch the created schedule
-    let schedule = store.get_schedule(schedule_id).await.map_err(|e| {
-        tracing::error!("Failed to get created schedule: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to get created schedule".to_string(),
-            }),
-        )
-    })?;
-
-    Ok((StatusCode::CREATED, Json(ScheduleResponse::from(schedule))))
+    let schedule = CreateSchedule(req).execute(&state.ctx(&auth)?).await?;
+    Ok((StatusCode::CREATED, Json(schedule)))
 }
 
 /// GET /v1/durable/schedules - List schedules
@@ -507,54 +448,19 @@ pub async fn create_schedule(
     tag = "durable-schedules"
 )]
 pub async fn list_schedules(
-    _auth: PlatformUser,
+    auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Query(query): Query<ListSchedulesQuery>,
 ) -> ApiResult<SchedulesListResponse> {
-    let store = state.get_store()?;
-
-    let target_type = query.target_type.and_then(|t| match t.as_str() {
-        "workflow" => Some(ScheduleTargetType::Workflow),
-        "activity" => Some(ScheduleTargetType::Activity),
-        _ => None,
-    });
-
-    let filter = ScheduleFilter {
+    let schedules = ListSchedules {
         enabled: query.enabled,
-        target_type,
-    };
-
-    let pagination = Pagination {
-        offset: query.offset.unwrap_or(0),
-        limit: query.limit.unwrap_or(100),
-    };
-
-    let schedules = store
-        .list_schedules(filter.clone(), pagination)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list schedules: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to list schedules".to_string(),
-                }),
-            )
-        })?;
-
-    let total = store.count_schedules(filter).await.map_err(|e| {
-        tracing::error!("Failed to count schedules: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to count schedules".to_string(),
-            }),
-        )
-    })?;
-
-    let data: Vec<ScheduleResponse> = schedules.into_iter().map(ScheduleResponse::from).collect();
-
-    Ok(Json(SchedulesListResponse { data, total }))
+        target_type: query.target_type,
+        offset: query.offset,
+        limit: query.limit,
+    }
+    .execute(&state.ctx(&auth)?)
+    .await?;
+    Ok(Json(schedules))
 }
 
 /// GET /v1/durable/schedules/:schedule_id - Get schedule details
@@ -573,31 +479,14 @@ pub async fn list_schedules(
     tag = "durable-schedules"
 )]
 pub async fn get_schedule(
-    _auth: PlatformUser,
+    auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleResponse> {
-    let store = state.get_store()?;
-
-    let schedule = store.get_schedule(schedule_id).await.map_err(|e| match e {
-        StoreError::ScheduleNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Schedule not found".to_string(),
-            }),
-        ),
-        _ => {
-            tracing::error!("Failed to get schedule: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to get schedule".to_string(),
-                }),
-            )
-        }
-    })?;
-
-    Ok(Json(ScheduleResponse::from(schedule)))
+    let schedule = GetSchedule { schedule_id }
+        .execute(&state.ctx(&auth)?)
+        .await?;
+    Ok(Json(schedule))
 }
 
 /// PATCH /v1/durable/schedules/:schedule_id - Update schedule
@@ -618,94 +507,15 @@ pub async fn get_schedule(
     tag = "durable-schedules"
 )]
 pub async fn update_schedule(
-    _auth: PlatformUser,
+    auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
     Json(req): Json<UpdateScheduleRequest>,
 ) -> ApiResult<ScheduleResponse> {
-    let store = state.get_store()?;
-
-    // Parse target type if provided
-    let target_type = if let Some(ref target) = req.target {
-        match target.target_type.as_str() {
-            "workflow" => Some(ScheduleTargetType::Workflow),
-            "activity" => Some(ScheduleTargetType::Activity),
-            _ => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse {
-                        error: "Invalid target type. Must be 'workflow' or 'activity'".to_string(),
-                    }),
-                ));
-            }
-        }
-    } else {
-        None
-    };
-
-    let update = UpdateSchedule {
-        name: None, // Name cannot be updated
-        description: req
-            .description
-            .map_or(UpdateField::Unchanged, UpdateField::Set),
-        cron_expression: req.cron_expression,
-        timezone: req.timezone,
-        target_type,
-        target_name: req.target.as_ref().map(|t| t.name.clone()),
-        target_input: req.target.map(|t| t.input),
-        enabled: req.enabled,
-        max_concurrent: req
-            .max_concurrent
-            .map_or(UpdateField::Unchanged, UpdateField::Set),
-        catch_up_missed: req.catch_up_missed,
-        max_catch_up: req
-            .max_catch_up
-            .map_or(UpdateField::Unchanged, UpdateField::Set),
-        retry_policy: req
-            .retry_policy
-            .map_or(UpdateField::Unchanged, UpdateField::Set),
-        next_trigger_at: UpdateField::Unchanged, // Will be calculated based on cron
-    };
-
-    store
-        .update_schedule(schedule_id, update)
-        .await
-        .map_err(|e| match e {
-            StoreError::ScheduleNotFound(_) => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Schedule not found".to_string(),
-                }),
-            ),
-            StoreError::InvalidCronExpression(msg) => (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: format!("Invalid cron expression: {}", msg),
-                }),
-            ),
-            _ => {
-                tracing::error!("Failed to update schedule: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Failed to update schedule".to_string(),
-                    }),
-                )
-            }
-        })?;
-
-    // Fetch updated schedule
-    let schedule = store.get_schedule(schedule_id).await.map_err(|e| {
-        tracing::error!("Failed to get updated schedule: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to get updated schedule".to_string(),
-            }),
-        )
-    })?;
-
-    Ok(Json(ScheduleResponse::from(schedule)))
+    let schedule = UpdateScheduleCmd { schedule_id, req }
+        .execute(&state.ctx(&auth)?)
+        .await?;
+    Ok(Json(schedule))
 }
 
 /// DELETE /v1/durable/schedules/:schedule_id - Delete schedule
@@ -724,33 +534,13 @@ pub async fn update_schedule(
     tag = "durable-schedules"
 )]
 pub async fn delete_schedule(
-    _auth: PlatformUser,
+    auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let store = state.get_store()?;
-
-    store
-        .delete_schedule(schedule_id)
-        .await
-        .map_err(|e| match e {
-            StoreError::ScheduleNotFound(_) => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Schedule not found".to_string(),
-                }),
-            ),
-            _ => {
-                tracing::error!("Failed to delete schedule: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Failed to delete schedule".to_string(),
-                    }),
-                )
-            }
-        })?;
-
+    DeleteSchedule { schedule_id }
+        .execute(&state.ctx(&auth)?)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -770,55 +560,14 @@ pub async fn delete_schedule(
     tag = "durable-schedules"
 )]
 pub async fn pause_schedule(
-    _auth: PlatformUser,
+    auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleResponse> {
-    let store = state.get_store()?;
-
-    let update = UpdateSchedule {
-        enabled: Some(false),
-        ..Default::default()
-    };
-
-    store
-        .update_schedule(schedule_id, update)
-        .await
-        .map_err(|e| match e {
-            StoreError::ScheduleNotFound(_) => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Schedule not found".to_string(),
-                }),
-            ),
-            _ => {
-                tracing::error!("Failed to pause schedule: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Failed to pause schedule".to_string(),
-                    }),
-                )
-            }
-        })?;
-
-    // Clear next_trigger_at when paused
-    store
-        .update_next_trigger(schedule_id, Utc::now() + chrono::Duration::days(365 * 100))
-        .await
-        .ok(); // Ignore errors on this update
-
-    let schedule = store.get_schedule(schedule_id).await.map_err(|e| {
-        tracing::error!("Failed to get schedule: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to get schedule".to_string(),
-            }),
-        )
-    })?;
-
-    Ok(Json(ScheduleResponse::from(schedule)))
+    let schedule = PauseSchedule { schedule_id }
+        .execute(&state.ctx(&auth)?)
+        .await?;
+    Ok(Json(schedule))
 }
 
 /// POST /v1/durable/schedules/:schedule_id/resume - Resume schedule
@@ -837,75 +586,14 @@ pub async fn pause_schedule(
     tag = "durable-schedules"
 )]
 pub async fn resume_schedule(
-    _auth: PlatformUser,
+    auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleResponse> {
-    let store = state.get_store()?;
-
-    // Get current schedule to get cron expression
-    let current = store.get_schedule(schedule_id).await.map_err(|e| match e {
-        StoreError::ScheduleNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Schedule not found".to_string(),
-            }),
-        ),
-        _ => {
-            tracing::error!("Failed to get schedule: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to get schedule".to_string(),
-                }),
-            )
-        }
-    })?;
-
-    // Calculate next trigger time
-    let next_trigger = calculate_next_trigger(&current.cron_expression).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to calculate next trigger: {}", e),
-            }),
-        )
-    })?;
-
-    // Enable and set next trigger
-    let update = UpdateSchedule {
-        enabled: Some(true),
-        ..Default::default()
-    };
-
-    store
-        .update_schedule(schedule_id, update)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to resume schedule: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to resume schedule".to_string(),
-                }),
-            )
-        })?;
-
-    if let Some(next) = next_trigger {
-        store.update_next_trigger(schedule_id, next).await.ok();
-    }
-
-    let schedule = store.get_schedule(schedule_id).await.map_err(|e| {
-        tracing::error!("Failed to get schedule: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to get schedule".to_string(),
-            }),
-        )
-    })?;
-
-    Ok(Json(ScheduleResponse::from(schedule)))
+    let schedule = ResumeSchedule { schedule_id }
+        .execute(&state.ctx(&auth)?)
+        .await?;
+    Ok(Json(schedule))
 }
 
 /// POST /v1/durable/schedules/:schedule_id/trigger - Manually trigger schedule
@@ -924,49 +612,14 @@ pub async fn resume_schedule(
     tag = "durable-schedules"
 )]
 pub async fn trigger_schedule(
-    _auth: PlatformUser,
+    auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<TriggerResponse> {
-    let store = state.get_store()?;
-
-    // Get schedule to verify it exists
-    let _schedule = store.get_schedule(schedule_id).await.map_err(|e| match e {
-        StoreError::ScheduleNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Schedule not found".to_string(),
-            }),
-        ),
-        _ => {
-            tracing::error!("Failed to get schedule: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to get schedule".to_string(),
-                }),
-            )
-        }
-    })?;
-
-    // Create execution record for manual trigger
-    let execution_id = store
-        .create_schedule_execution(schedule_id, Utc::now())
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to create execution: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to trigger schedule".to_string(),
-                }),
-            )
-        })?;
-
-    // Note: The actual trigger will be picked up by the scheduler
-    // For immediate execution, we'd need to invoke the scheduler directly
-
-    Ok(Json(TriggerResponse { execution_id }))
+    let response = TriggerSchedule { schedule_id }
+        .execute(&state.ctx(&auth)?)
+        .await?;
+    Ok(Json(response))
 }
 
 /// GET /v1/durable/schedules/:schedule_id/executions - List schedule executions
@@ -988,70 +641,20 @@ pub async fn trigger_schedule(
     tag = "durable-schedules"
 )]
 pub async fn list_schedule_executions(
-    _auth: PlatformUser,
+    auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
     Query(query): Query<ListExecutionsQuery>,
 ) -> ApiResult<ScheduleExecutionsListResponse> {
-    let store = state.get_store()?;
-
-    // Verify schedule exists
-    let _ = store.get_schedule(schedule_id).await.map_err(|e| match e {
-        StoreError::ScheduleNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Schedule not found".to_string(),
-            }),
-        ),
-        _ => {
-            tracing::error!("Failed to get schedule: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to get schedule".to_string(),
-                }),
-            )
-        }
-    })?;
-
-    let status = query.status.and_then(|s| match s.as_str() {
-        "running" => Some(ScheduleExecutionStatus::Running),
-        "completed" => Some(ScheduleExecutionStatus::Completed),
-        "failed" => Some(ScheduleExecutionStatus::Failed),
-        "skipped" => Some(ScheduleExecutionStatus::Skipped),
-        _ => None,
-    });
-
-    let filter = ScheduleExecutionFilter {
-        schedule_id: Some(schedule_id),
-        status,
-    };
-
-    let pagination = Pagination {
-        offset: query.offset.unwrap_or(0),
-        limit: query.limit.unwrap_or(100),
-    };
-
-    let executions = store
-        .list_schedule_executions(filter, pagination)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list executions: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to list executions".to_string(),
-                }),
-            )
-        })?;
-
-    let total = executions.len();
-    let data: Vec<ScheduleExecutionResponse> = executions
-        .into_iter()
-        .map(ScheduleExecutionResponse::from)
-        .collect();
-
-    Ok(Json(ScheduleExecutionsListResponse { data, total }))
+    let executions = ListScheduleExecutions {
+        schedule_id,
+        status: query.status,
+        offset: query.offset,
+        limit: query.limit,
+    }
+    .execute(&state.ctx(&auth)?)
+    .await?;
+    Ok(Json(executions))
 }
 
 /// GET /v1/durable/executions/:execution_id - Get execution details
@@ -1070,34 +673,14 @@ pub async fn list_schedule_executions(
     tag = "durable-schedules"
 )]
 pub async fn get_execution(
-    _auth: PlatformUser,
+    auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(execution_id): Path<Uuid>,
 ) -> ApiResult<ScheduleExecutionResponse> {
-    let store = state.get_store()?;
-
-    let execution = store
-        .get_schedule_execution(execution_id)
-        .await
-        .map_err(|e| match e {
-            StoreError::ScheduleExecutionNotFound(_) => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Execution not found".to_string(),
-                }),
-            ),
-            _ => {
-                tracing::error!("Failed to get execution: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Failed to get execution".to_string(),
-                    }),
-                )
-            }
-        })?;
-
-    Ok(Json(ScheduleExecutionResponse::from(execution)))
+    let execution = GetExecution { execution_id }
+        .execute(&state.ctx(&auth)?)
+        .await?;
+    Ok(Json(execution))
 }
 
 /// GET /v1/durable/schedules/:schedule_id/stats - Get schedule statistics
@@ -1116,42 +699,14 @@ pub async fn get_execution(
     tag = "durable-schedules"
 )]
 pub async fn get_schedule_stats(
-    _auth: PlatformUser,
+    auth: PlatformUser,
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleStatsResponse> {
-    let store = state.get_store()?;
-
-    // Verify schedule exists
-    let _ = store.get_schedule(schedule_id).await.map_err(|e| match e {
-        StoreError::ScheduleNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Schedule not found".to_string(),
-            }),
-        ),
-        _ => {
-            tracing::error!("Failed to get schedule: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to get schedule".to_string(),
-                }),
-            )
-        }
-    })?;
-
-    let stats = store.get_schedule_stats(schedule_id).await.map_err(|e| {
-        tracing::error!("Failed to get schedule stats: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Failed to get schedule stats".to_string(),
-            }),
-        )
-    })?;
-
-    Ok(Json(ScheduleStatsResponse::from(stats)))
+    let stats = GetScheduleStats { schedule_id }
+        .execute(&state.ctx(&auth)?)
+        .await?;
+    Ok(Json(stats))
 }
 
 // ============================================================================
@@ -1159,6 +714,7 @@ pub async fn get_schedule_stats(
 // ============================================================================
 
 /// Calculate next trigger time from cron expression
+#[cfg(test)]
 fn calculate_next_trigger(cron_expression: &str) -> Result<Option<DateTime<Utc>>, String> {
     use cron::Schedule;
     use std::str::FromStr;
@@ -1210,7 +766,11 @@ mod tests {
 
     /// Build schedule router with given auth state (no backing store)
     fn app_with_auth(auth: AuthState) -> Router {
-        routes(ScheduleAppState::new(None, auth))
+        routes(ScheduleAppState::new(
+            Arc::new(crate::storage::StorageBackend::in_memory()),
+            None,
+            auth,
+        ))
     }
 
     /// Verify unauthenticated request to the given method+path returns 401
@@ -1434,7 +994,11 @@ mod tests {
             ..Default::default()
         };
         let auth = AuthState::new(config, Arc::new(MockAuthBackend { is_platform_user }));
-        routes(ScheduleAppState::new(None, auth))
+        routes(ScheduleAppState::new(
+            Arc::new(crate::storage::StorageBackend::in_memory()),
+            None,
+            auth,
+        ))
     }
 
     #[tokio::test]

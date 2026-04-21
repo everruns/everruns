@@ -3,6 +3,10 @@
 // Secrets are returned without their values for security
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::session_storage::{
+    BatchSetSessionSecrets, ListSessionSecrets, ListSessionStorage,
+};
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use axum::{
@@ -11,15 +15,13 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use everruns_core::SessionId;
+use everruns_core::{Caller, SessionId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::{
-    ApiResult, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state, verify_session_ownership,
-};
+use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 
 /// Key-value entry info (key and timestamps, no value)
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -79,6 +81,10 @@ impl AppState {
             auth,
         }
     }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), self.encryption.clone())
+    }
 }
 
 impl_auth_state!(AppState);
@@ -114,34 +120,12 @@ pub async fn list_keys(
     Path(session_id): Path<String>,
 ) -> Result<Json<ListResponse<KeyValueInfo>>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
-    verify_session_ownership(&state.db, org.org_id, session_id).await?;
-
-    // Get all keys with their values
-    let keys = state
-        .db
-        .list_session_keys(session_id.uuid())
-        .await
-        .log_internal_error("list session keys")?;
-
-    // Get values for each key
-    let mut items = Vec::with_capacity(keys.len());
-    for key_info in keys {
-        let value = state
-            .db
-            .get_session_key_value(session_id.uuid(), &key_info.key)
-            .await
-            .log_internal_error("get session key value")?
-            .map(|row| row.value)
-            .unwrap_or_default();
-
-        items.push(KeyValueInfo {
-            key: key_info.key,
-            value,
-            created_at: key_info.created_at.to_rfc3339(),
-            updated_at: key_info.updated_at.to_rfc3339(),
-        });
+    let items = ListSessionStorage {
+        session_id: session_id.to_string(),
     }
-
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(|e| e.status())?;
     Ok(Json(ListResponse::new(items)))
 }
 
@@ -165,23 +149,12 @@ pub async fn list_secrets(
     Path(session_id): Path<String>,
 ) -> Result<Json<ListResponse<SecretInfo>>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
-    verify_session_ownership(&state.db, org.org_id, session_id).await?;
-
-    let secrets = state
-        .db
-        .list_session_secrets(session_id.uuid())
-        .await
-        .log_internal_error("list session secrets")?;
-
-    let items: Vec<SecretInfo> = secrets
-        .into_iter()
-        .map(|row| SecretInfo {
-            name: row.name,
-            created_at: row.created_at.to_rfc3339(),
-            updated_at: row.updated_at.to_rfc3339(),
-        })
-        .collect();
-
+    let items = ListSessionSecrets {
+        session_id: session_id.to_string(),
+    }
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(|e| e.status())?;
     Ok(Json(ListResponse::new(items)))
 }
 
@@ -213,57 +186,14 @@ pub async fn batch_set_secrets(
     let session_id: SessionId = session_id.parse().map_err(|_| {
         ErrorResponse::new("Invalid session ID").into_response(StatusCode::BAD_REQUEST)
     })?;
-    verify_session_ownership(&state.db, org.org_id, session_id)
-        .await
-        .map_err(|status| match status {
-            StatusCode::NOT_FOUND => {
-                ErrorResponse::new("Session not found").into_response(StatusCode::NOT_FOUND)
-            }
-            _ => ErrorResponse::internal_error(),
-        })?;
-
-    let encryption = state.encryption.as_ref().ok_or_else(|| {
-        ErrorResponse::new(
-            "Encryption not configured. Set SECRETS_ENCRYPTION_KEY environment variable.",
-        )
-        .into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    if body.secrets.is_empty() {
-        return Ok(Json(BatchSetSecretsResponse { count: 0 }));
-    }
-
-    // Validate secret names
-    for name in body.secrets.keys() {
-        let trimmed = name.trim();
-        if trimmed.is_empty() || trimmed.len() > 255 {
-            return Err(ErrorResponse::new(format!(
-                "Secret name must be between 1 and 255 non-whitespace characters: '{}'",
-                name
-            ))
-            .into_response(StatusCode::BAD_REQUEST));
+    Ok(Json(
+        BatchSetSessionSecrets {
+            session_id: session_id.to_string(),
+            secrets: body.secrets,
         }
-    }
-
-    let count = body.secrets.len();
-    for (name, value) in &body.secrets {
-        let encrypted = encryption.encrypt_string(value).map_err(|e| {
-            tracing::error!("Encryption failed for secret '{}': {}", name, e);
-            ErrorResponse::internal_error()
-        })?;
-
-        let input = crate::storage::models::UpsertSessionSecret {
-            session_id,
-            name: name.clone(),
-            value_encrypted: encrypted,
-        };
-        state.db.upsert_session_secret(input).await.map_err(|e| {
-            tracing::error!("Failed to store secret '{}': {}", name, e);
-            ErrorResponse::internal_error()
-        })?;
-    }
-
-    Ok(Json(BatchSetSecretsResponse { count }))
+        .execute(&state.ctx(&org))
+        .await?,
+    ))
 }
 
 #[cfg(test)]

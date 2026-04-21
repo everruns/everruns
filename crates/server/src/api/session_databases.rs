@@ -4,12 +4,18 @@
 // Routes under /v1/sessions/{session_id}/databases.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::session_databases::{
+    CreateSessionDatabaseCmd, DeleteSessionDatabase, GetSessionDatabase, GetSessionDatabaseSchema,
+    ListSessionDatabases,
+};
 use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::get,
 };
+use everruns_core::Caller;
 use everruns_core::session_sqldb::{DatabaseInfo, SessionSqlDbStore};
 use everruns_core::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
@@ -18,7 +24,7 @@ use utoipa::ToSchema;
 
 use crate::storage::StorageBackend;
 
-use super::common::{ListResponse, impl_auth_state, verify_session_ownership};
+use super::common::{ListResponse, impl_auth_state};
 
 /// Request body for creating a database.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -76,6 +82,11 @@ impl AppState {
             auth,
         }
     }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+            .with_sqldb_store(self.sqldb_store.clone())
+    }
 }
 
 impl_auth_state!(AppState);
@@ -115,18 +126,12 @@ pub async fn list_databases(
     Path(session_id): Path<String>,
 ) -> Result<Json<ListResponse<DatabaseInfoResponse>>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
-    verify_session_ownership(&state.db, org.org_id, session_id).await?;
-
-    let databases = state
-        .sqldb_store
-        .list_databases(session_id)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to list databases");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    let items: Vec<DatabaseInfoResponse> = databases.into_iter().map(Into::into).collect();
+    let items = ListSessionDatabases {
+        session_id: session_id.to_string(),
+    }
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(|e| e.status())?;
     Ok(Json(ListResponse::new(items)))
 }
 
@@ -139,6 +144,7 @@ pub async fn list_databases(
     responses(
         (status = 201, description = "Database created", body = DatabaseInfoResponse),
         (status = 400, description = "Invalid name or session ID"),
+        (status = 422, description = "Session database limit exceeded"),
         (status = 409, description = "Database already exists"),
     ),
     tag = "session-databases"
@@ -150,26 +156,15 @@ pub async fn create_database(
     Json(req): Json<CreateDatabaseRequest>,
 ) -> Result<(StatusCode, Json<DatabaseInfoResponse>), StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
-    verify_session_ownership(&state.db, org.org_id, session_id).await?;
+    let info = CreateSessionDatabaseCmd {
+        session_id: session_id.to_string(),
+        name: req.name,
+    }
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(|e| e.status())?;
 
-    let info = state
-        .sqldb_store
-        .create_database(session_id, &req.name)
-        .await
-        .map_err(|e| {
-            use everruns_core::session_sqldb::SessionSqlDbError;
-            match &e {
-                SessionSqlDbError::InvalidDatabaseName(_) => StatusCode::BAD_REQUEST,
-                SessionSqlDbError::DatabaseAlreadyExists(_) => StatusCode::CONFLICT,
-                SessionSqlDbError::LimitExceeded(_) => StatusCode::UNPROCESSABLE_ENTITY,
-                _ => {
-                    tracing::error!(error = %e, "Failed to create database");
-                    StatusCode::INTERNAL_SERVER_ERROR
-                }
-            }
-        })?;
-
-    Ok((StatusCode::CREATED, Json(info.into())))
+    Ok((StatusCode::CREATED, Json(info)))
 }
 
 /// GET /v1/sessions/{session_id}/databases/{name}
@@ -192,19 +187,15 @@ pub async fn get_database(
     Path((session_id, name)): Path<(String, String)>,
 ) -> Result<Json<DatabaseInfoResponse>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
-    verify_session_ownership(&state.db, org.org_id, session_id).await?;
-
-    let info = state
-        .sqldb_store
-        .get_database(session_id, &name)
+    Ok(Json(
+        GetSessionDatabase {
+            session_id: session_id.to_string(),
+            name,
+        }
+        .execute(&state.ctx(&org))
         .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to get database");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    Ok(Json(info.into()))
+        .map_err(|e| e.status())?,
+    ))
 }
 
 /// DELETE /v1/sessions/{session_id}/databases/{name}
@@ -227,22 +218,14 @@ pub async fn delete_database(
     Path((session_id, name)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
-    verify_session_ownership(&state.db, org.org_id, session_id).await?;
-
-    let deleted = state
-        .sqldb_store
-        .delete_database(session_id, &name)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to delete database");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(StatusCode::NOT_FOUND)
+    DeleteSessionDatabase {
+        session_id: session_id.to_string(),
+        name,
     }
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(|e| e.status())?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// GET /v1/sessions/{session_id}/databases/{name}/schema
@@ -265,44 +248,15 @@ pub async fn get_schema(
     Path((session_id, name)): Path<(String, String)>,
 ) -> Result<Json<SchemaResponse>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
-    verify_session_ownership(&state.db, org.org_id, session_id).await?;
-
-    let tables = state
-        .sqldb_store
-        .sql_schema(session_id, &name, None)
+    Ok(Json(
+        GetSessionDatabaseSchema {
+            session_id: session_id.to_string(),
+            name,
+        }
+        .execute(&state.ctx(&org))
         .await
-        .map_err(|e| {
-            use everruns_core::session_sqldb::SessionSqlDbError;
-            match &e {
-                SessionSqlDbError::DatabaseNotFound(_) => StatusCode::NOT_FOUND,
-                _ => {
-                    tracing::error!(error = %e, "Failed to get schema");
-                    StatusCode::INTERNAL_SERVER_ERROR
-                }
-            }
-        })?;
-
-    let tables_json: Vec<serde_json::Value> = tables
-        .into_iter()
-        .map(|t| {
-            serde_json::json!({
-                "name": t.name,
-                "columns": t.columns.into_iter().map(|c| serde_json::json!({
-                    "name": c.name,
-                    "type": c.column_type,
-                    "notnull": c.notnull,
-                    "pk": c.pk,
-                    "default_value": c.default_value
-                })).collect::<Vec<_>>(),
-                "row_count": t.row_count
-            })
-        })
-        .collect();
-
-    Ok(Json(SchemaResponse {
-        database: name,
-        tables: tables_json,
-    }))
+        .map_err(|e| e.status())?,
+    ))
 }
 
 #[cfg(test)]

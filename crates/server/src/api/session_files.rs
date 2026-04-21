@@ -14,6 +14,11 @@
 // used for file creation or updates.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, CommandError, Ctx};
+use crate::domains::session_files::{
+    CopySessionFile, CreateSessionFile, DeleteSessionFile, GetSessionFile, GrepSessionFiles,
+    ListSessionFiles, MoveSessionFile, StatSessionFile, UpdateSessionFile,
+};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -21,22 +26,14 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::events::{
-    EventContext, EventRequest, FILE_OP_CREATE, FILE_OP_UPDATE, FileWrittenData,
-};
-use everruns_core::typed_id::SessionId;
+use everruns_core::Caller;
 use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
 
-use super::common::{ListResponse, impl_auth_state, verify_session_ownership};
+use super::common::{ListResponse, impl_auth_state};
+use crate::services::session_file::SessionFileService;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
-use uuid::Uuid;
-
-use crate::services::session_file::{
-    CopyFileInput, CreateDirectoryInput, CreateFileInput, GrepInput, MoveFileInput,
-    SessionFileService, UpdateFileInput,
-};
 
 /// Request to create a file
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -165,9 +162,26 @@ impl AppState {
             Arc::new(SessionFileService::new(self.db.clone()).with_virtual_registry(registry));
         self
     }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+            .with_session_file_service(self.file_service.clone())
+            .with_event_service(self.event_service.clone())
+    }
 }
 
 impl_auth_state!(AppState);
+
+fn file_error(error: CommandError) -> (StatusCode, String) {
+    let status = error.status();
+    match error {
+        CommandError::Internal(inner) => {
+            tracing::error!("Session files command failed: {inner}");
+            (status, "Internal server error".to_string())
+        }
+        other => (status, other.to_string()),
+    }
+}
 
 /// Create session files routes
 pub fn routes(state: AppState) -> Router {
@@ -193,9 +207,11 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
+#[cfg(test)]
 /// Workspace prefix used by capabilities (file_system, virtual_bash)
 const WORKSPACE_PREFIX: &str = "/workspace";
 
+#[cfg(test)]
 /// Normalize path from URL, stripping /workspace prefix if present.
 ///
 /// The file_system and virtual_bash capabilities present paths to users with
@@ -232,6 +248,8 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
 // Check if path is reserved (starts with _ which is used for actions)
 fn is_reserved_path(path: &str) -> bool {
     let path = path.trim_start_matches('/');
@@ -259,16 +277,14 @@ pub async fn get_root(
     Path(session_id): Path<String>,
     Query(query): Query<GetQuery>,
 ) -> Result<Json<GetResponse>, (StatusCode, String)> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid session ID: {}", e),
-        )
-    })?;
-    verify_session_ownership(&state.db, org.org_id, session_id)
-        .await
-        .map_err(|s| (s, "Session not found".to_string()))?;
-    get_path_impl(state, session_id.uuid(), "/", query).await
+    let response = ListSessionFiles {
+        session_id,
+        recursive: query.recursive,
+    }
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(file_error)?;
+    Ok(Json(response))
 }
 
 /// GET /fs/*path - Get file content or directory listing
@@ -294,80 +310,15 @@ pub async fn get_path(
     Path((session_id, path)): Path<(String, String)>,
     Query(query): Query<GetQuery>,
 ) -> Result<Json<GetResponse>, (StatusCode, String)> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid session ID: {}", e),
-        )
-    })?;
-    verify_session_ownership(&state.db, org.org_id, session_id)
-        .await
-        .map_err(|s| (s, "Session not found".to_string()))?;
-    let normalized = normalize_path(&path);
-    get_path_impl(state, session_id.uuid(), &normalized, query).await
-}
-
-async fn get_path_impl(
-    state: AppState,
-    session_id: Uuid,
-    path: &str,
-    query: GetQuery,
-) -> Result<Json<GetResponse>, (StatusCode, String)> {
-    // Check if path is a directory or file
-    let stat = state
-        .file_service
-        .stat(session_id, path)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to stat: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal server error".to_string(),
-            )
-        })?;
-
-    match stat {
-        Some(s) if s.is_directory => {
-            // List directory
-            let files = if query.recursive {
-                state.file_service.list_all(session_id).await
-            } else {
-                state.file_service.list_directory(session_id, path).await
-            }
-            .map_err(|e| {
-                tracing::error!("Failed to list: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                )
-            })?;
-            Ok(Json(GetResponse::Listing(ListResponse::new(files))))
-        }
-        Some(_) => {
-            // Read file
-            let file = state
-                .file_service
-                .read_file(session_id, path)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to read file: {}", e);
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Internal server error".to_string(),
-                    )
-                })?
-                .ok_or((StatusCode::NOT_FOUND, "File not found".to_string()))?;
-            Ok(Json(GetResponse::File(file)))
-        }
-        None => {
-            // For root path, return empty listing
-            if path == "/" {
-                Ok(Json(GetResponse::Listing(ListResponse::new(vec![]))))
-            } else {
-                Err((StatusCode::NOT_FOUND, "Path not found".to_string()))
-            }
-        }
+    let response = GetSessionFile {
+        session_id,
+        path,
+        recursive: query.recursive,
     }
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(file_error)?;
+    Ok(Json(response))
 }
 
 /// POST /fs - Create at root (not allowed)
@@ -401,110 +352,15 @@ pub async fn create_path(
     Path((session_id, path)): Path<(String, String)>,
     Json(req): Json<CreateFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid session ID: {}", e),
-        )
-    })?;
-    verify_session_ownership(&state.db, org.org_id, session_id)
-        .await
-        .map_err(|s| (s, "Session not found".to_string()))?;
-    let typed_session_id = session_id;
-    let session_id = session_id.uuid();
-    let normalized = normalize_path(&path);
-
-    // Paths starting with _ are reserved for actions
-    if is_reserved_path(&normalized) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Paths starting with '_' are reserved for system actions".to_string(),
-        ));
+    let file = CreateSessionFile {
+        session_id,
+        path,
+        req,
     }
-
-    if req.is_directory.unwrap_or(false) {
-        // Create directory
-        let dir = state
-            .file_service
-            .create_directory(session_id, CreateDirectoryInput { path: normalized })
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to create directory: {}", e);
-                let msg = e.to_string();
-                if msg.contains("file exists") || msg.contains("Invalid") {
-                    (StatusCode::BAD_REQUEST, msg)
-                } else if msg.contains("already exists") {
-                    (StatusCode::CONFLICT, msg)
-                } else {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Internal server error".to_string(),
-                    )
-                }
-            })?;
-        // Convert FileInfo to SessionFile for consistent response
-        Ok((
-            StatusCode::CREATED,
-            Json(SessionFile {
-                id: dir.id,
-                session_id: dir.session_id,
-                path: dir.path,
-                name: dir.name,
-                content: None,
-                encoding: "text".to_string(),
-                is_directory: true,
-                is_readonly: dir.is_readonly,
-                size_bytes: 0,
-                created_at: dir.created_at,
-                updated_at: dir.updated_at,
-            }),
-        ))
-    } else {
-        // Create file
-        let file = state
-            .file_service
-            .create_file(
-                session_id,
-                CreateFileInput {
-                    path: normalized,
-                    content: req.content,
-                    encoding: req.encoding,
-                    is_readonly: req.is_readonly,
-                },
-            )
-            .await
-            .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("already exists") {
-                    (StatusCode::CONFLICT, msg)
-                } else if msg.contains("Invalid") || msg.contains("cannot") {
-                    (StatusCode::BAD_REQUEST, msg)
-                } else {
-                    tracing::error!("Failed to create file: {}", e);
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Internal server error".to_string(),
-                    )
-                }
-            })?;
-
-        // Emit file.written event
-        let event = EventRequest::new(
-            typed_session_id,
-            EventContext::empty(),
-            FileWrittenData {
-                path: file.path.clone(),
-                operation: FILE_OP_CREATE.into(),
-                size_bytes: file.size_bytes,
-                created: true,
-            },
-        );
-        if let Err(e) = state.event_service.emit(event).await {
-            tracing::warn!(error = %e, path = %file.path, "Failed to emit file.written event");
-        }
-
-        Ok((StatusCode::CREATED, Json(file)))
-    }
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(file_error)?;
+    Ok((StatusCode::CREATED, Json(file)))
 }
 
 /// PUT /fs/*path - Update file content
@@ -530,66 +386,14 @@ pub async fn update_path(
     Path((session_id, path)): Path<(String, String)>,
     Json(req): Json<UpdateFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid session ID: {}", e),
-        )
-    })?;
-    verify_session_ownership(&state.db, org.org_id, session_id)
-        .await
-        .map_err(|s| (s, "Session not found".to_string()))?;
-    let typed_session_id = session_id;
-    let session_id = session_id.uuid();
-    let normalized = normalize_path(&path);
-
-    // Paths starting with _ are reserved for actions
-    if is_reserved_path(&normalized) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Paths starting with '_' are reserved for system actions".to_string(),
-        ));
+    let file = UpdateSessionFile {
+        session_id,
+        path,
+        req,
     }
-
-    let input = UpdateFileInput {
-        content: req.content,
-        encoding: req.encoding,
-        is_readonly: req.is_readonly,
-    };
-
-    let file = state
-        .file_service
-        .update_file(session_id, &normalized, input)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to update file: {}", e);
-            let msg = e.to_string();
-            if msg.contains("readonly") || msg.contains("directory") {
-                (StatusCode::BAD_REQUEST, msg)
-            } else {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                )
-            }
-        })?
-        .ok_or((StatusCode::NOT_FOUND, "File not found".to_string()))?;
-
-    // Emit file.written event
-    let event = EventRequest::new(
-        typed_session_id,
-        EventContext::empty(),
-        FileWrittenData {
-            path: file.path.clone(),
-            operation: FILE_OP_UPDATE.into(),
-            size_bytes: file.size_bytes,
-            created: false,
-        },
-    );
-    if let Err(e) = state.event_service.emit(event).await {
-        tracing::warn!(error = %e, path = %file.path, "Failed to emit file.written event");
-    }
-
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(file_error)?;
     Ok(Json(file))
 }
 
@@ -624,38 +428,15 @@ pub async fn delete_path(
     Path((session_id, path)): Path<(String, String)>,
     Query(query): Query<DeleteQuery>,
 ) -> Result<Json<DeleteResponse>, (StatusCode, String)> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid session ID: {}", e),
-        )
-    })?;
-    verify_session_ownership(&state.db, org.org_id, session_id)
-        .await
-        .map_err(|s| (s, "Session not found".to_string()))?;
-    let session_id = session_id.uuid();
-    let normalized = normalize_path(&path);
-
-    let deleted = state
-        .file_service
-        .delete(session_id, &normalized, query.recursive)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to delete: {}", e);
-            let msg = e.to_string();
-            if msg.contains("readonly") {
-                (StatusCode::FORBIDDEN, msg)
-            } else if msg.contains("not empty") || msg.contains("Cannot delete root") {
-                (StatusCode::BAD_REQUEST, msg)
-            } else {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                )
-            }
-        })?;
-
-    Ok(Json(DeleteResponse { deleted }))
+    let response = DeleteSessionFile {
+        session_id,
+        path,
+        recursive: query.recursive,
+    }
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(file_error)?;
+    Ok(Json(response))
 }
 
 /// POST /fs/_/move - Move/rename file
@@ -681,43 +462,10 @@ pub async fn move_file(
     Path(session_id): Path<String>,
     Json(req): Json<MoveFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid session ID: {}", e),
-        )
-    })?;
-    verify_session_ownership(&state.db, org.org_id, session_id)
+    let file = MoveSessionFile { session_id, req }
+        .execute(&state.ctx(&org))
         .await
-        .map_err(|s| (s, "Session not found".to_string()))?;
-    let session_id = session_id.uuid();
-    let input = MoveFileInput {
-        src_path: req.src_path,
-        dst_path: req.dst_path,
-    };
-
-    let file = state
-        .file_service
-        .move_file(session_id, input)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to move file: {}", e);
-            let msg = e.to_string();
-            if msg.contains("not found") {
-                (StatusCode::NOT_FOUND, msg)
-            } else if msg.contains("already exists") {
-                (StatusCode::CONFLICT, msg)
-            } else if msg.contains("Invalid") {
-                (StatusCode::BAD_REQUEST, msg)
-            } else {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                )
-            }
-        })?
-        .ok_or((StatusCode::NOT_FOUND, "Source not found".to_string()))?;
-
+        .map_err(file_error)?;
     Ok(Json(file))
 }
 
@@ -744,43 +492,10 @@ pub async fn copy_file(
     Path(session_id): Path<String>,
     Json(req): Json<CopyFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid session ID: {}", e),
-        )
-    })?;
-    verify_session_ownership(&state.db, org.org_id, session_id)
+    let file = CopySessionFile { session_id, req }
+        .execute(&state.ctx(&org))
         .await
-        .map_err(|s| (s, "Session not found".to_string()))?;
-    let session_id = session_id.uuid();
-    let input = CopyFileInput {
-        src_path: req.src_path,
-        dst_path: req.dst_path,
-    };
-
-    let file = state
-        .file_service
-        .copy_file(session_id, input)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to copy file: {}", e);
-            let msg = e.to_string();
-            if msg.contains("not found") {
-                (StatusCode::NOT_FOUND, msg)
-            } else if msg.contains("already exists") {
-                (StatusCode::CONFLICT, msg)
-            } else if msg.contains("Cannot copy") || msg.contains("Invalid") {
-                (StatusCode::BAD_REQUEST, msg)
-            } else {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                )
-            }
-        })?
-        .ok_or((StatusCode::NOT_FOUND, "Source not found".to_string()))?;
-
+        .map_err(file_error)?;
     Ok((StatusCode::CREATED, Json(file)))
 }
 
@@ -805,38 +520,10 @@ pub async fn grep_files(
     Path(session_id): Path<String>,
     Json(req): Json<GrepRequest>,
 ) -> Result<Json<ListResponse<GrepResult>>, (StatusCode, String)> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid session ID: {}", e),
-        )
-    })?;
-    verify_session_ownership(&state.db, org.org_id, session_id)
+    let results = GrepSessionFiles { session_id, req }
+        .execute(&state.ctx(&org))
         .await
-        .map_err(|s| (s, "Session not found".to_string()))?;
-    let session_id = session_id.uuid();
-    let input = GrepInput {
-        pattern: req.pattern,
-        path_pattern: req.path_pattern,
-    };
-
-    let results = state
-        .file_service
-        .grep(session_id, input)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to grep files: {}", e);
-            let msg = e.to_string();
-            if msg.contains("regex") || msg.contains("pattern") {
-                (StatusCode::BAD_REQUEST, format!("Invalid regex: {}", msg))
-            } else {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal server error".to_string(),
-                )
-            }
-        })?;
-
+        .map_err(file_error)?;
     Ok(Json(ListResponse::new(results)))
 }
 
@@ -862,31 +549,10 @@ pub async fn stat_file(
     Path(session_id): Path<String>,
     Json(req): Json<StatRequest>,
 ) -> Result<Json<FileStat>, (StatusCode, String)> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid session ID: {}", e),
-        )
-    })?;
-    verify_session_ownership(&state.db, org.org_id, session_id)
+    let stat = StatSessionFile { session_id, req }
+        .execute(&state.ctx(&org))
         .await
-        .map_err(|s| (s, "Session not found".to_string()))?;
-    let session_id = session_id.uuid();
-    let normalized = normalize_path(&req.path);
-
-    let stat = state
-        .file_service
-        .stat(session_id, &normalized)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to stat: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal server error".to_string(),
-            )
-        })?
-        .ok_or((StatusCode::NOT_FOUND, "Path not found".to_string()))?;
-
+        .map_err(file_error)?;
     Ok(Json(stat))
 }
 
