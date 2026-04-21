@@ -240,7 +240,8 @@ impl AgentLoopError {
                     .with_optional_field("model_id", context.model_id)
             }
             AgentLoopError::MaxIterationsReached(max_iterations) => {
-                UserFacingError::new("max_iterations").with_field("max_iterations", max_iterations)
+                UserFacingError::new(user_facing_error_codes::MAX_ITERATIONS)
+                    .with_field("max_iterations", max_iterations)
             }
             AgentLoopError::Llm(message) => classify_runtime_error_message(message, &context),
             _ => UserFacingError::new(user_facing_error_codes::PROCESSING_ERROR)

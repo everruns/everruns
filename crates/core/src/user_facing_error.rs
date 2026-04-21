@@ -17,6 +17,7 @@ pub mod codes {
     pub const PROVIDER_UNAVAILABLE: &str = "provider_unavailable";
     pub const PROCESSING_ERROR: &str = "processing_error";
     pub const DEPENDENCY_UNAVAILABLE: &str = "dependency_unavailable";
+    pub const MAX_ITERATIONS: &str = "max_iterations";
     pub const SOFT_LIMIT_REACHED: &str = "soft_limit_reached";
 }
 

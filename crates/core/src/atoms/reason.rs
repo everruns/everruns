@@ -125,6 +125,7 @@ fn is_error_placeholder_message(msg: &Message) -> bool {
                 | user_facing_error_codes::PROVIDER_RATE_LIMITED
                 | user_facing_error_codes::PROVIDER_MISCONFIGURED
                 | user_facing_error_codes::PROVIDER_UNAVAILABLE
+                | user_facing_error_codes::DEPENDENCY_UNAVAILABLE
                 | user_facing_error_codes::PROCESSING_ERROR
         );
     }

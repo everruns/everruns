@@ -322,7 +322,10 @@ Agent response message. Emitted when LLM generation completes.
       "id": "01937abc-...",
       "role": "agent",
       "content": [
-        { "type": "text", "text": "Hello! How can I help?" }
+        {
+          "type": "text",
+          "text": "Budget exhausted. 12.50 usd spent reached the 10.00 usd limit. Increase the budget to continue."
+        }
       ],
       "metadata": {
         "model": "gpt-4o",

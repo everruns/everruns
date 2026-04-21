@@ -173,5 +173,5 @@ function integerField(
   key: string,
 ): number | undefined {
   const value = numberField(fields, key);
-  return value == null ? undefined : Math.round(value);
+  return value == null ? undefined : Math.trunc(value);
 }

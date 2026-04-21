@@ -8,10 +8,9 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::collections::BTreeMap;
 
 use crate::typed_id::{BudgetId, SessionId};
+use crate::user_facing_error::UserFacingErrorFields;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -206,7 +205,7 @@ pub struct BudgetCheckResult {
     /// Structured interpolation fields for localized error rendering.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
-    pub error_fields: Option<BTreeMap<String, Value>>,
+    pub error_fields: Option<UserFacingErrorFields>,
 }
 
 impl BudgetCheckResult {
