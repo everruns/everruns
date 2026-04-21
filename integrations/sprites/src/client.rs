@@ -3,6 +3,9 @@
 //! Decision: Single API tier — all operations go through api.sprites.dev/v1
 //! Decision: Bearer token auth via Authorization header
 
+use std::time::Duration;
+
+use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
 use tracing::debug;
 
@@ -166,8 +169,9 @@ impl SpritesClient {
         &self,
         name: &str,
         command: &str,
-        _timeout_ms: Option<u64>,
+        timeout_ms: Option<u64>,
     ) -> Result<ExecResult, String> {
+        let timeout_ms = timeout_ms.unwrap_or(crate::EXEC_TIMEOUT_MS);
         let url = format!(
             "{}/sprites/{name}/exec?cmd={}&cmd={}&cmd={}",
             self.api_base,
@@ -179,9 +183,16 @@ impl SpritesClient {
             .http
             .post(&url)
             .bearer_auth(&self.api_token)
+            .timeout(Duration::from_millis(timeout_ms))
             .send()
             .await
-            .map_err(|e| format!("Failed to connect to Sprites API: {e}"))?;
+            .map_err(|e| {
+                if e.is_timeout() {
+                    format!("Sprites exec timed out after {timeout_ms}ms")
+                } else {
+                    format!("Failed to connect to Sprites API: {e}")
+                }
+            })?;
         let status = resp.status();
         let bytes = resp
             .bytes()
@@ -271,13 +282,9 @@ impl SpritesClient {
             return Ok(checkpoint);
         }
 
-        self.list_checkpoints(name)
-            .await?
-            .into_iter()
-            .find(|checkpoint| checkpoint.id != "Current")
-            .ok_or_else(|| {
-                "Sprites checkpoint completed but no new checkpoint id was found".to_string()
-            })
+        latest_non_current_checkpoint(self.list_checkpoints(name).await?).ok_or_else(|| {
+            "Sprites checkpoint completed but no new checkpoint id was found".to_string()
+        })
     }
 
     pub async fn list_checkpoints(&self, name: &str) -> Result<Vec<CheckpointInfo>, String> {
@@ -401,6 +408,25 @@ fn checkpoint_from_stream(stream: &str) -> Option<CheckpointInfo> {
     None
 }
 
+fn latest_non_current_checkpoint(checkpoints: Vec<CheckpointInfo>) -> Option<CheckpointInfo> {
+    checkpoints
+        .into_iter()
+        .filter(|checkpoint| checkpoint.id != "Current")
+        .max_by(|left, right| {
+            checkpoint_timestamp(left)
+                .cmp(&checkpoint_timestamp(right))
+                .then_with(|| left.id.cmp(&right.id))
+        })
+}
+
+fn checkpoint_timestamp(checkpoint: &CheckpointInfo) -> Option<DateTime<Utc>> {
+    checkpoint
+        .created_at
+        .as_deref()
+        .and_then(|created_at| DateTime::parse_from_rfc3339(created_at).ok())
+        .map(|created_at| created_at.with_timezone(&Utc))
+}
+
 pub(crate) mod urlencoding {
     /// Percent-encode a string for use in query parameters.
     pub fn encode(input: &str) -> String {
@@ -427,6 +453,8 @@ pub(crate) mod urlencoding {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
     use serde_json::json;
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -505,6 +533,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_client_exec_honors_timeout() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sprites/slow-sprite/exec"))
+            .and(query_param("cmd", "sh"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_delay(Duration::from_millis(200))
+                    .set_body_bytes(vec![0x01, b'o', b'k', b'\n', 0x03, 0]),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = SpritesClient::with_base_url("test_token".to_string(), mock_server.uri());
+        let err = client
+            .exec("slow-sprite", "echo ok", Some(10))
+            .await
+            .unwrap_err();
+        assert!(err.contains("timed out after 10ms"), "{err}");
+    }
+
+    #[tokio::test]
     async fn test_client_create_checkpoint() {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -520,6 +570,34 @@ mod tests {
         let result = client.create_checkpoint("my-sprite").await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().id, "v1");
+    }
+
+    #[tokio::test]
+    async fn test_client_create_checkpoint_falls_back_to_newest_checkpoint() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sprites/my-sprite/checkpoint"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                "{\"type\":\"info\",\"data\":\"Creating checkpoint...\",\"time\":\"2026-03-23T10:05:00Z\"}\n",
+            ))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/sprites/my-sprite/checkpoints"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {"id": "Current", "create_time": "2026-03-23T10:05:03Z"},
+                {"id": "cp_old", "create_time": "2026-03-23T10:05:01Z"},
+                {"id": "cp_new", "create_time": "2026-03-23T10:05:02Z"}
+            ])))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = SpritesClient::with_base_url("test_token".to_string(), mock_server.uri());
+        let result = client.create_checkpoint("my-sprite").await.unwrap();
+        assert_eq!(result.id, "cp_new");
     }
 
     #[tokio::test]
@@ -755,5 +833,28 @@ mod tests {
             checkpoint.created_at.as_deref(),
             Some("2026-03-23T10:05:01Z")
         );
+    }
+
+    #[test]
+    fn test_latest_non_current_checkpoint_prefers_newest_timestamp() {
+        let checkpoint = latest_non_current_checkpoint(vec![
+            CheckpointInfo {
+                id: "Current".to_string(),
+                created_at: Some("2026-03-23T10:05:03Z".to_string()),
+                comment: None,
+            },
+            CheckpointInfo {
+                id: "cp_old".to_string(),
+                created_at: Some("2026-03-23T10:05:01Z".to_string()),
+                comment: None,
+            },
+            CheckpointInfo {
+                id: "cp_new".to_string(),
+                created_at: Some("2026-03-23T10:05:02Z".to_string()),
+                comment: None,
+            },
+        ])
+        .unwrap();
+        assert_eq!(checkpoint.id, "cp_new");
     }
 }
