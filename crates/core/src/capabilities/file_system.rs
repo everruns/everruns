@@ -14,9 +14,11 @@
 
 use super::{Capability, CapabilityStatus};
 use crate::session_file::SessionFile;
+use crate::tool_output_sanitizer::READ_FILE_HARD_BYTE_CAP;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult, ToolResultImage};
 use crate::traits::ToolContext;
+use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -739,6 +741,30 @@ impl Tool for ReadFileTool {
                     }
                 }
 
+                // Unified reading-tool truncation envelope (EVE-339).
+                let truncation = if truncated {
+                    let next_offset = end_line as u64;
+                    let reason = if formatted.len() > READ_FILE_HARD_BYTE_CAP {
+                        TruncationReason::SizeCap
+                    } else {
+                        TruncationReason::LineCap
+                    };
+                    TruncationInfo::with_resume(
+                        formatted.len(),
+                        Some(file.size_bytes as usize),
+                        next_offset,
+                        format!(
+                            "call read_file with offset={} to resume from line {}",
+                            end_line,
+                            end_line + 1,
+                        ),
+                        reason,
+                    )
+                } else {
+                    TruncationInfo::not_truncated(formatted.len())
+                };
+                truncation.attach(&mut result);
+
                 ToolExecutionResult::success(result)
             }
             Ok(None) => {
@@ -1211,11 +1237,18 @@ impl Tool for ListDirectoryTool {
                     })
                     .collect();
 
-                ToolExecutionResult::success(json!({
+                let mut result = json!({
                     "path": display_path,
                     "entries": entries,
                     "count": entries.len()
-                }))
+                });
+                // `list_directory` has no backend cap today — the contract is
+                // wired with `not_truncated` so the envelope is always present
+                // (EVE-339). If a cap is introduced later, switch to
+                // `without_resume(... ItemCap)`.
+                let bytes_returned = serde_json::to_string(&result).map(|s| s.len()).unwrap_or(0);
+                TruncationInfo::not_truncated(bytes_returned).attach(&mut result);
+                ToolExecutionResult::success(result)
             }
             Err(e) => {
                 let msg = e.to_string();
@@ -1321,11 +1354,18 @@ impl Tool for GrepFilesTool {
                     })
                     .collect();
 
-                ToolExecutionResult::success(json!({
+                let mut result = json!({
                     "pattern": pattern,
                     "matches": results,
                     "match_count": results.len()
-                }))
+                });
+                // `grep_files` does not currently cap match count; the
+                // envelope is wired with `not_truncated` so the reading-tool
+                // contract is honoured uniformly (EVE-339). If a cap is
+                // introduced later, switch to `without_resume(... LineCap)`.
+                let bytes_returned = serde_json::to_string(&result).map(|s| s.len()).unwrap_or(0);
+                TruncationInfo::not_truncated(bytes_returned).attach(&mut result);
+                ToolExecutionResult::success(result)
             }
             Err(e) => {
                 let msg = e.to_string();
@@ -2123,6 +2163,119 @@ mod tests {
         assert_eq!(value["truncated"], true);
         assert_eq!(value["lines_shown"]["start"], 1);
         assert_eq!(value["lines_shown"]["end"], 2000);
+    }
+
+    // ============================================================================
+    // EVE-339 — Reading-tool truncation envelope conformance
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_read_file_truncation_envelope_when_not_truncated() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/notes.txt", "hello world");
+        let context = make_context(store);
+
+        let result = ReadFileTool
+            .execute_with_context(json!({"path": "/workspace/notes.txt"}), &context)
+            .await;
+        let value = expect_success(result);
+
+        crate::truncation_info::assert_conforms("read_file", &value);
+        assert_eq!(value["truncation"]["truncated"], false);
+    }
+
+    #[tokio::test]
+    async fn test_read_file_truncation_envelope_with_resume() {
+        let store = Arc::new(MockFileStore::default());
+        let content = (1..=2500)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        store.add_text_file("/huge.txt", &content);
+        let context = make_context(store);
+
+        let result = ReadFileTool
+            .execute_with_context(json!({"path": "/workspace/huge.txt"}), &context)
+            .await;
+        let value = expect_success(result);
+
+        crate::truncation_info::assert_conforms("read_file", &value);
+        assert_eq!(value["truncation"]["truncated"], true);
+        assert_eq!(value["truncation"]["reason"], "line_cap");
+        assert_eq!(value["truncation"]["next_offset"], 2000);
+        assert!(
+            value["truncation"]["resume_hint"]
+                .as_str()
+                .unwrap()
+                .contains("offset=2000")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_read_file_resume_roundtrip_reaches_end() {
+        let store = Arc::new(MockFileStore::default());
+        let content = (1..=2500)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        store.add_text_file("/huge.txt", &content);
+        let context = make_context(store);
+
+        // First page
+        let first = expect_success(
+            ReadFileTool
+                .execute_with_context(json!({"path": "/workspace/huge.txt"}), &context)
+                .await,
+        );
+        let next_offset = first["truncation"]["next_offset"].as_u64().unwrap();
+
+        // Resume from next_offset
+        let second = expect_success(
+            ReadFileTool
+                .execute_with_context(
+                    json!({"path": "/workspace/huge.txt", "offset": next_offset, "limit": 1000}),
+                    &context,
+                )
+                .await,
+        );
+
+        // After resuming we cover the remaining 500 lines and the envelope
+        // reports `truncated: false` on the final chunk.
+        assert_eq!(second["truncation"]["truncated"], false);
+        let shown = &second["lines_shown"];
+        assert_eq!(shown["start"], 2001);
+        assert_eq!(shown["end"], 2500);
+    }
+
+    #[tokio::test]
+    async fn test_list_directory_emits_truncation_envelope() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/a.txt", "a");
+        store.add_text_file("/b.txt", "b");
+        let context = make_context(store);
+
+        let result = ListDirectoryTool
+            .execute_with_context(json!({"path": "/workspace"}), &context)
+            .await;
+        let value = expect_success(result);
+
+        crate::truncation_info::assert_conforms("list_directory", &value);
+        assert_eq!(value["truncation"]["truncated"], false);
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_emits_truncation_envelope() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/notes.txt", "hello world");
+        let context = make_context(store);
+
+        let result = GrepFilesTool
+            .execute_with_context(json!({"pattern": "hello"}), &context)
+            .await;
+        let value = expect_success(result);
+
+        crate::truncation_info::assert_conforms("grep_files", &value);
+        assert_eq!(value["truncation"]["truncated"], false);
     }
 
     #[tokio::test]

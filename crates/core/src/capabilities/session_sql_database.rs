@@ -10,6 +10,7 @@ use crate::session_sqldb::SessionSqlDbError;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
+use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -70,6 +71,42 @@ fn sqldb_error_to_result(err: SessionSqlDbError) -> ToolExecutionResult {
     } else {
         ToolExecutionResult::internal_error_msg(err.to_string())
     }
+}
+
+/// Shape a `sql_query` response with the unified reading-tool truncation
+/// envelope (EVE-339).
+///
+/// `sql_query` does not support in-place offset resume: if the result set
+/// exceeds the row/byte cap, the caller must paginate via `LIMIT`/`OFFSET`
+/// or narrow the `WHERE`. That fallback is documented in
+/// `specs/session-sqldb.md`. The envelope therefore uses `without_resume`
+/// when truncated.
+fn shape_sql_query_response(
+    database: &str,
+    columns: &[String],
+    rows: &[Vec<Value>],
+    row_count: usize,
+    truncated: bool,
+) -> Value {
+    let mut response = json!({
+        "database": database,
+        "columns": columns,
+        "rows": rows,
+        "row_count": row_count
+    });
+    if truncated {
+        response["truncated"] = json!(true);
+    }
+    let bytes_returned = serde_json::to_string(&response)
+        .map(|s| s.len())
+        .unwrap_or(0);
+    let info = if truncated {
+        TruncationInfo::without_resume(bytes_returned, None, TruncationReason::RowCap)
+    } else {
+        TruncationInfo::not_truncated(bytes_returned)
+    };
+    info.attach(&mut response);
+    response
 }
 
 // ============================================================================
@@ -241,15 +278,13 @@ impl Tool for SqlQueryTool {
 
         match store.sql_query(context.session_id, database, sql).await {
             Ok(result) => {
-                let mut response = json!({
-                    "database": database,
-                    "columns": result.columns,
-                    "rows": result.rows,
-                    "row_count": result.row_count
-                });
-                if result.truncated {
-                    response["truncated"] = json!(true);
-                }
+                let response = shape_sql_query_response(
+                    database,
+                    &result.columns,
+                    &result.rows,
+                    result.row_count,
+                    result.truncated,
+                );
                 ToolExecutionResult::success(response)
             }
             Err(e) => sqldb_error_to_result(e),
@@ -449,5 +484,32 @@ mod tests {
         } else {
             panic!("Expected tool error for missing store");
         }
+    }
+
+    // ============================================================================
+    // EVE-339 — Reading-tool truncation envelope conformance
+    // ============================================================================
+
+    #[test]
+    fn test_sql_query_truncation_envelope_when_not_truncated() {
+        let columns = vec!["id".to_string()];
+        let rows = vec![vec![json!(1)], vec![json!(2)]];
+        let response = shape_sql_query_response("db", &columns, &rows, 2, false);
+        crate::truncation_info::assert_conforms("sql_query", &response);
+        assert_eq!(response["truncation"]["truncated"], false);
+    }
+
+    #[test]
+    fn test_sql_query_truncation_envelope_when_truncated() {
+        let columns = vec!["id".to_string()];
+        let rows = vec![vec![json!(1)]; 1000];
+        let response = shape_sql_query_response("db", &columns, &rows, 1000, true);
+        crate::truncation_info::assert_conforms("sql_query", &response);
+        assert_eq!(response["truncation"]["truncated"], true);
+        assert_eq!(response["truncation"]["reason"], "row_cap");
+        assert!(
+            response["truncation"].get("next_offset").is_none(),
+            "sql_query does not support in-place resume"
+        );
     }
 }
