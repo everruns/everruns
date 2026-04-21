@@ -3,7 +3,7 @@
 // Design decisions:
 // - JSON-RPC 2.0 over POST /mcp (Streamable HTTP, per MCP spec)
 // - Tier 1 tools: agent_run, session_send_message, session_get_status
-//   → Inventory dispatch, first-class support for the agent conversation loop
+//   → Direct service calls, first-class support for the agent conversation loop
 // - Tier 2 tools: discover, execute
 //   → Backed by bashkit ScriptedTool with all API operations as builtins
 //   → discover: uses ScriptedTool's built-in `discover` command
@@ -15,7 +15,7 @@
 // - No MCP session state — stateless request/response per JSON-RPC call
 // - Multi-org: all tools accept optional `organization_id` to override the default org
 
-mod inventory_commands;
+mod handlers;
 
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
@@ -866,14 +866,16 @@ async fn tool_agent_run(
 
     let ctx = catalog_context(org, state);
 
-    // Create session via inventory dispatch
+    // Create session via catalog handler
     let session_params = json!({
         "agent_id": args.get("agent_id"),
         "harness_id": args.get("harness_id"),
         "title": args.get("title"),
         "model_id": args.get("model_id"),
     });
-    let session = dispatch_inventory_json("create_session", session_params, &ctx).await?;
+    let session_json = handlers::create_session(&session_params, &ctx).await?;
+    let session: Value =
+        serde_json::from_str(&session_json).map_err(|e| format!("Internal error: {e}"))?;
     let session_id = session["id"]
         .as_str()
         .ok_or("Internal error: no session ID in response")?;
@@ -897,9 +899,11 @@ async fn tool_agent_run(
             "limit": budget_limit,
             "soft_limit": budget_soft_limit,
         });
-        let budget = dispatch_inventory_json("create_budget", budget_params, &ctx)
+        let budget_json = handlers::create_budget(&budget_params, &ctx)
             .await
             .map_err(|e| format!("Session created but budget creation failed: {e}"))?;
+        let budget: Value =
+            serde_json::from_str(&budget_json).map_err(|e| format!("Internal error: {e}"))?;
         // Wrap raw UUID as typed BudgetId for consistent API output
         budget["id"].as_str().map(|raw| {
             if let Ok(uuid) = raw.parse::<uuid::Uuid>() {
@@ -912,7 +916,7 @@ async fn tool_agent_run(
         None
     };
 
-    // Send first message via inventory dispatch
+    // Send first message via catalog handler
     let msg_params = json!({
         "session_id": session_id,
         "message": {
@@ -920,7 +924,8 @@ async fn tool_agent_run(
             "content": [{"type": "text", "text": message_text}]
         }
     });
-    let msg = dispatch_inventory_json("create_message", msg_params, &ctx).await?;
+    let msg_json = handlers::create_message(&msg_params, &ctx).await?;
+    let msg: Value = serde_json::from_str(&msg_json).map_err(|e| format!("Internal error: {e}"))?;
 
     let mut result = json!({
         "session_id": session_id,
@@ -963,11 +968,14 @@ async fn tool_session_send_message(
             "content": [{"type": "text", "text": message_text}]
         }
     });
-    let msg = dispatch_inventory_json("create_message", msg_params, &ctx).await?;
+    let msg_json = handlers::create_message(&msg_params, &ctx).await?;
+    let msg: Value = serde_json::from_str(&msg_json).map_err(|e| format!("Internal error: {e}"))?;
 
     // Fetch session to get current status (create_message returns message, not session)
     let session_params = json!({ "session_id": session_id });
-    let session = dispatch_inventory_json("get_session", session_params, &ctx).await?;
+    let session_json = handlers::get_session(&session_params, &ctx).await?;
+    let session: Value =
+        serde_json::from_str(&session_json).map_err(|e| format!("Internal error: {e}"))?;
 
     Ok(serde_json::to_string_pretty(&json!({
         "message_id": msg["id"],
@@ -993,9 +1001,11 @@ async fn tool_session_get_status(
 
     let ctx = catalog_context(org, state);
 
-    // Get session via inventory dispatch
+    // Get session via handler
     let session_params = json!({ "session_id": session_id });
-    let session = dispatch_inventory_json("get_session", session_params, &ctx).await?;
+    let session_json = handlers::get_session(&session_params, &ctx).await?;
+    let session: Value =
+        serde_json::from_str(&session_json).map_err(|e| format!("Internal error: {e}"))?;
 
     // Get recent events via handler
     let event_types: Vec<String> = args
@@ -1026,7 +1036,9 @@ async fn tool_session_get_status(
         "types": if event_types.is_empty() { None } else { Some(event_types.join(",")) },
         "limit": 50,
     });
-    let events_data = dispatch_inventory_json("list_events", event_params, &ctx).await?;
+    let events_json = handlers::list_events(&event_params, &ctx).await?;
+    let events_data: Value =
+        serde_json::from_str(&events_json).map_err(|e| format!("Internal error: {e}"))?;
     let events = events_data["data"].as_array();
 
     // Extract latest output from events
@@ -1128,22 +1140,13 @@ fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::CatalogConte
     catalog::CatalogContext {
         state: state.clone(),
         caller: Caller::from(org),
+        org_id: org.org_id,
+        user_id: org.user_id,
     }
 }
 
-async fn dispatch_inventory_json(
-    name: &str,
-    params: Value,
-    ctx: &catalog::CatalogContext,
-) -> Result<Value, String> {
-    let json = crate::domains::common::dispatch(name, params, &ctx.to_domain_ctx())
-        .await
-        .map_err(|e| e.to_string())?;
-    serde_json::from_str(&json).map_err(|e| format!("Internal error: {e}"))
-}
-
 /// Build a ScriptingToolSet for the given org context.
-/// All catalog operations dispatch through the inventory registry — no HTTP.
+/// All catalog operations are direct service calls — no HTTP.
 fn build_toolset(org: &ResolvedOrg, state: &AppState) -> ScriptingToolSet {
     catalog::build_toolset(catalog_context(org, state))
 }
