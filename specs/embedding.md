@@ -137,6 +137,7 @@ Embedders may extend the control plane by:
 - Adding routes
 - Adding auth backends
 - Adding event listeners
+- Installing a vendor-neutral error reporter (see "Error Reporting Contract" below)
 - Adding migrations
 - Adding background tasks
 
@@ -145,6 +146,7 @@ Embedders may extend the control plane by:
 Embedders may extend execution by:
 
 - Replacing the `PlatformDefinition`
+- Installing a vendor-neutral error reporter (see "Error Reporting Contract" below)
 - Reusing Everruns worker runtime and lifecycle handling
 
 ## UI Route Manifest Contract
@@ -197,6 +199,106 @@ This keeps OSS as the owner of the default route topology while allowing wrapper
 
 Wrappers add new routes by publishing additional manifest artifacts with new `artifactId` values, then merging them with the OSS manifest. They must not fork or manually duplicate the full OSS `src/app` tree just to preserve parity with OSS routes.
 
+## Error Reporting Contract
+
+Embedders (SaaS wrappers) often want to plug a vendor error-reporting backend — Sentry, Datadog, Rollbar — into OSS. The embedding surface must stay vendor-neutral: OSS depends on no vendor SDK and has no vendor-specific types, env vars, or config names.
+
+### Vendor-neutral trait
+
+`everruns-core` defines:
+
+- `ErrorReporter` — async trait with `report(ErrorReport)` (`crates/core/src/error_reporter.rs`)
+- `ErrorReport` — severity + kind + message + `ErrorScope`
+- `ErrorScope` — optional `user_id`, `org_id`, `session_id`, `request_id`, `route`, `component`, `task_id`, `workflow_id`, and freeform `extra` metadata
+- `ErrorSeverity` — `Warning`, `Error`, `Fatal`
+- `NoopErrorReporter` — default when no embedder reporter is installed
+
+Implementations must be best-effort: a slow or failing reporter must never propagate into the request or task path. Spawn background work for heavy reporting if needed.
+
+### Server hook
+
+`ServerAppBuilder::error_reporter(reporter)` installs an embedder-provided reporter. When not installed, OSS defaults to `NoopErrorReporter`.
+
+- `ServerContext::error_reporter` is always a `SharedErrorReporter` (never `None`) so custom routes, middleware, and background tasks can report into the same sink without branching.
+- OSS internals report on well-known failure points (for example, stale-task reclamation errors). Reports from recurring background tasks are detached on a `tokio::spawn` so a stalled vendor endpoint cannot stall operational recovery.
+- No OSS code references Sentry, Datadog, or any other vendor type.
+
+### Worker hook
+
+`WorkerAppBuilder::error_reporter(reporter)` installs the same reporter on the worker side. Today, OSS forwards fatal `DurableWorker::run()` failures through the reporter with the `durable_worker` component in scope. Fatal-path calls are bounded by a short timeout so a stalled reporter cannot block worker termination or supervisor restart.
+
+Panic interception and per-task / per-workflow scoping are wrapper responsibilities today: wrappers that want that granularity wrap task execution themselves and emit their own reports. See **Not goals** below.
+
+### UI hook
+
+UI embedders install a wrapper-provided reporter via `ErrorReporterProvider` at the application root:
+
+```tsx
+import { ErrorReporterProvider, type ErrorReporter } from "everruns-ui/providers/error-reporter-provider";
+
+const myReporter: ErrorReporter = {
+  report(report) {
+    // Map `report` onto the wrapper's vendor SDK (e.g. Sentry.captureException)
+  },
+};
+
+<ErrorReporterProvider reporter={myReporter}>
+  <App />
+</ErrorReporterProvider>;
+```
+
+Feature code consumes the reporter via `useErrorReporter()` and never imports a vendor SDK. The default is a no-op reporter, so callers can always use the hook without null checks.
+
+`ErrorScope` fields in TypeScript mirror the Rust contract one-to-one (including `taskId` and `workflowId`) so wrappers can share one mapping across server, worker, and UI. `ErrorReport.scope` is required on both sides (defaulting to an empty scope) for the same reason. `ErrorReporter.report` may return `void` or a `Promise<void>` so async wrappers (e.g., posting to an ingestion endpoint) work directly, and callers always treat it as fire-and-forget.
+
+### Runtime context passed to wrappers
+
+OSS provides the following to wrappers through the hook surface:
+
+| Surface | Context fields provided |
+| --- | --- |
+| Server request | `request_id`, `route`, optional `user_id`, `org_id`, `session_id` (when bound), plus `extra` |
+| Worker task | `task_id`, `workflow_id`, plus `extra` |
+| UI | Whatever the wrapper attaches at the provider level plus the component path it emits from |
+
+### Wrapper vs OSS responsibilities
+
+- **OSS owns**: the `ErrorReporter` trait, `ErrorReport` / `ErrorScope` types, call-sites in internal failure paths, and the provider/hook surface.
+- **Wrappers own**: vendor SDK initialization, secret management (DSNs, API keys), breadcrumb configuration, sampling, release tagging, environment metadata, and the concrete `ErrorReporter` implementation.
+
+### Non-goals
+
+- No Sentry SDK dependency or Sentry-specific types in OSS.
+- No vendor-specific env vars (for example, `SENTRY_DSN`) in OSS.
+- No SaaS-specific branching anywhere in OSS.
+- No panic interception in OSS. Wrappers install their own panic hook if they want uncaught panics reported.
+- No per-task / per-workflow automatic scoping from OSS worker internals today. Wrappers can attach those IDs themselves when they own task execution wrappers.
+
+### Example: wiring a Sentry wrapper
+
+```rust,ignore
+use everruns_core::{ErrorReport, ErrorReporter};
+use everruns_server::app_builder::ServerAppBuilder;
+use async_trait::async_trait;
+use std::sync::Arc;
+
+struct SentryReporter;
+
+#[async_trait]
+impl ErrorReporter for SentryReporter {
+    async fn report(&self, report: ErrorReport) {
+        // Wrapper-owned: map ErrorReport onto Sentry SDK calls.
+    }
+}
+
+ServerAppBuilder::new(config)
+    .error_reporter(Arc::new(SentryReporter))
+    .run()
+    .await?;
+```
+
+`everruns-worker::WorkerAppBuilder::error_reporter` takes the same trait object and completes the worker-side of the contract.
+
 ## CLI Auth Extension Point
 
 CLI authentication routes (`/v1/auth/cli/*`) are decoupled from any specific auth backend via `CliAuthState`. Embedders with external auth providers can mount CLI login without duplicating handler code.
@@ -234,6 +336,8 @@ Those may be added later, but they are outside the current embedding contract.
 
 - `crates/core/src/platform_definition.rs`
 - `crates/core/src/connection_provider.rs`
+- `crates/core/src/error_reporter.rs`
+- `apps/ui/src/providers/error-reporter-provider.tsx`
 - `crates/server/src/auth/cli_auth.rs`
 - `crates/server/src/app_builder.rs`
 - `crates/server/src/platform.rs`

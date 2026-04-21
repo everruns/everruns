@@ -24,7 +24,10 @@ use crate::middleware::request_id::RequestId;
 use anyhow::{Context, Result};
 use axum::http::{Method, header};
 use axum::{Json, Router, extract::State, routing::get};
-use everruns_core::{BraintrustListener, EventListener, OtelEventListener, PlatformDefinition};
+use everruns_core::{
+    BraintrustListener, ErrorReport, ErrorReporter, ErrorScope, EventListener, NoopErrorReporter,
+    OtelEventListener, PlatformDefinition, SharedErrorReporter,
+};
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
 };
@@ -70,6 +73,9 @@ pub struct ServerContext {
     pub runner: Arc<dyn AgentRunner>,
     pub driver_registry: Arc<everruns_core::DriverRegistry>,
     pub platform_definition: Arc<PlatformDefinition>,
+    /// Vendor-neutral embedder-provided error reporter. Always present;
+    /// defaults to a no-op when no embedder has installed one.
+    pub error_reporter: SharedErrorReporter,
 }
 
 // =========================================================================
@@ -130,6 +136,7 @@ pub struct ServerAppBuilder {
     platform_definition: Option<PlatformDefinition>,
     extra_routes: Vec<Router>,
     event_listeners: Vec<Arc<dyn EventListener>>,
+    error_reporter: Option<SharedErrorReporter>,
     migrations: Vec<MigrationFn>,
     background_tasks: Vec<BackgroundTaskFn>,
 }
@@ -143,6 +150,7 @@ impl ServerAppBuilder {
             platform_definition: None,
             extra_routes: Vec::new(),
             event_listeners: Vec::new(),
+            error_reporter: None,
             migrations: Vec::new(),
             background_tasks: Vec::new(),
         }
@@ -180,6 +188,16 @@ impl ServerAppBuilder {
     /// Custom listeners are appended after the built-in ones.
     pub fn event_listener(mut self, listener: Arc<dyn EventListener>) -> Self {
         self.event_listeners.push(listener);
+        self
+    }
+
+    /// Install a vendor-neutral error reporter.
+    ///
+    /// Wrappers that integrate Sentry, Datadog, Rollbar, etc. implement
+    /// `ErrorReporter` and install it here. OSS never imports vendor SDKs;
+    /// the reporter is the only contact surface. See `specs/embedding.md`.
+    pub fn error_reporter(mut self, reporter: Arc<dyn ErrorReporter>) -> Self {
+        self.error_reporter = Some(reporter);
         self
     }
 
@@ -1084,6 +1102,14 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 7: Background tasks
         // =====================================================================
+        let error_reporter: SharedErrorReporter = self
+            .error_reporter
+            .clone()
+            .unwrap_or_else(|| Arc::new(NoopErrorReporter));
+        if self.error_reporter.is_some() {
+            tracing::info!("Embedder error reporter installed");
+        }
+
         let server_context = ServerContext {
             db: db.clone(),
             event_service: event_service.clone(),
@@ -1092,6 +1118,7 @@ impl ServerAppBuilder {
             runner: runner.clone(),
             driver_registry: driver_registry.clone(),
             platform_definition: platform_definition.clone(),
+            error_reporter: error_reporter.clone(),
         };
 
         if !self.config.dev_mode {
@@ -1152,6 +1179,7 @@ impl ServerAppBuilder {
                     let pool = pool.clone();
                     let stale_threshold = Duration::from_secs(30);
                     let reclaim_interval = Duration::from_secs(10);
+                    let reclaim_error_reporter = error_reporter.clone();
 
                     tokio::spawn(async move {
                         let store = PostgresWorkflowEventStore::new(pool);
@@ -1199,6 +1227,24 @@ impl ServerAppBuilder {
                                 }
                                 Err(e) => {
                                     tracing::error!("Failed to reclaim stale tasks: {}", e);
+                                    // Detach reporter call so a slow vendor reporter cannot stall
+                                    // the reclamation loop during an upstream outage.
+                                    let reporter = reclaim_error_reporter.clone();
+                                    let err_msg = e.to_string();
+                                    tokio::spawn(async move {
+                                        reporter
+                                            .report(
+                                                ErrorReport::error(
+                                                    "server.stale_task_reclaim",
+                                                    err_msg,
+                                                )
+                                                .with_scope(
+                                                    ErrorScope::new()
+                                                        .with_component("stale_task_reclaim"),
+                                                ),
+                                            )
+                                            .await;
+                                    });
                                 }
                             }
                         }
