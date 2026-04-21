@@ -17,6 +17,12 @@ Deno sandboxes use two APIs:
 
 Everruns opens a fresh websocket per tool call. This keeps tool execution stateless between calls while preserving sandbox state remotely.
 
+Everruns explicitly resolves `A` records for sandbox websocket hosts before
+falling back to the system resolver. GitHub-hosted CI runners currently lack
+outbound IPv6, and their resolver can still surface `AAAA` records, so querying
+IPv4 directly keeps live tests and production calls aligned with the reachable
+network path while still preserving IPv6 fallback when no `A` record exists.
+
 ### State management
 
 Per-sandbox state is stored in session secrets (encrypted at rest):

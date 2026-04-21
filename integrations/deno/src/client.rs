@@ -4,11 +4,15 @@
 //! needs Rust dependencies at runtime.
 //! Decision: open a fresh websocket per tool call; operations are short-lived
 //! and this keeps session state small and deterministic.
+//! Decision: explicitly resolve IPv4 sandbox endpoints first because
+//! GitHub-hosted CI runners do not have outbound IPv6 connectivity and the
+//! system resolver can still surface AAAA records.
 
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
+use hickory_resolver::TokioResolver;
 use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -23,10 +27,80 @@ use crate::{
     DENO_CONSOLE_API_BASE, DENO_DEFAULT_MEMORY_MB, DENO_RPC_TIMEOUT, DENO_SANDBOX_BASE_DOMAIN,
     DENO_STREAM_IDLE_TIMEOUT, DENO_WORKSPACE_PATH,
 };
+use hickory_resolver::proto::rr::RData;
 
 const DEFAULT_REGION: &str = "ord";
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+fn prefer_ipv4_addrs(addrs: impl IntoIterator<Item = SocketAddr>) -> Vec<SocketAddr> {
+    let mut ipv4 = Vec::new();
+    let mut ipv6 = Vec::new();
+
+    for addr in addrs {
+        if addr.is_ipv4() {
+            ipv4.push(addr);
+        } else {
+            ipv6.push(addr);
+        }
+    }
+
+    ipv4.extend(ipv6);
+    ipv4
+}
+
+fn select_connect_addrs(
+    ipv4_addrs: Vec<SocketAddr>,
+    fallback_addrs: impl IntoIterator<Item = SocketAddr>,
+) -> Vec<SocketAddr> {
+    if !ipv4_addrs.is_empty() {
+        return ipv4_addrs;
+    }
+
+    prefer_ipv4_addrs(fallback_addrs)
+}
+
+async fn resolve_ipv4_addrs(host: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
+    let resolver = TokioResolver::builder_tokio()
+        .map_err(|e| format!("Failed to configure Deno sandbox IPv4 resolver: {e}"))?
+        .build()
+        .map_err(|e| format!("Failed to build Deno sandbox IPv4 resolver: {e}"))?;
+    let lookup = resolver
+        .ipv4_lookup(format!("{host}."))
+        .await
+        .map_err(|e| format!("Failed to resolve Deno sandbox IPv4 host {host}:{port}: {e}"))?;
+
+    Ok(lookup
+        .answers()
+        .iter()
+        .filter_map(|record| match &record.data {
+            RData::A(addr) => Some(SocketAddr::from((addr.0, port))),
+            _ => None,
+        })
+        .collect())
+}
+
+async fn resolve_connect_addrs(host: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
+    let ipv4_addrs = resolve_ipv4_addrs(host, port).await.unwrap_or_default();
+    if !ipv4_addrs.is_empty() {
+        return Ok(select_connect_addrs(ipv4_addrs, std::iter::empty()));
+    }
+
+    let addrs = select_connect_addrs(
+        Vec::new(),
+        tokio::net::lookup_host((host, port))
+            .await
+            .map_err(|e| format!("Failed to resolve Deno sandbox host {host}:{port}: {e}"))?,
+    );
+
+    if addrs.is_empty() {
+        return Err(format!(
+            "Failed to resolve Deno sandbox host {host}:{port}: no addresses returned"
+        ));
+    }
+
+    Ok(addrs)
+}
 
 async fn connect_async_all_addrs(
     request: Request<()>,
@@ -53,9 +127,7 @@ async fn connect_async_all_addrs(
     }
 
     let mut last_error = None;
-    let addrs = tokio::net::lookup_host((host.as_str(), port))
-        .await
-        .map_err(|e| format!("Failed to resolve Deno sandbox host {host}:{port}: {e}"))?;
+    let addrs = resolve_connect_addrs(&host, port).await?;
 
     for addr in addrs {
         match TcpStream::connect(addr).await {
@@ -947,6 +1019,48 @@ mod tests {
             panic!("Expected Connector::Rustls");
         };
         assert_eq!(config.alpn_protocols, vec![b"http/1.1".to_vec()]);
+    }
+
+    #[test]
+    fn prefer_ipv4_addrs_keeps_ipv4_first() {
+        let reordered = prefer_ipv4_addrs([
+            "[2602:f70f::1]:443".parse().expect("parse ipv6"),
+            "69.67.170.170:443".parse().expect("parse ipv4"),
+            "[2602:f70f::2]:443".parse().expect("parse ipv6"),
+            "69.67.170.171:443".parse().expect("parse ipv4"),
+        ]);
+
+        assert_eq!(
+            reordered,
+            vec![
+                "69.67.170.170:443".parse().expect("parse ipv4"),
+                "69.67.170.171:443".parse().expect("parse ipv4"),
+                "[2602:f70f::1]:443".parse().expect("parse ipv6"),
+                "[2602:f70f::2]:443".parse().expect("parse ipv6"),
+            ]
+        );
+    }
+
+    #[test]
+    fn select_connect_addrs_prefers_ipv4_lookup_results() {
+        let selected = select_connect_addrs(
+            vec![
+                "69.67.170.170:443".parse().expect("parse ipv4"),
+                "69.67.170.171:443".parse().expect("parse ipv4"),
+            ],
+            [
+                "[2602:f70f::1]:443".parse().expect("parse ipv6"),
+                "69.67.170.170:443".parse().expect("parse ipv4"),
+            ],
+        );
+
+        assert_eq!(
+            selected,
+            vec![
+                "69.67.170.170:443".parse().expect("parse ipv4"),
+                "69.67.170.171:443".parse().expect("parse ipv4"),
+            ]
+        );
     }
 
     /// Verify that connect_via_http_proxy sends Proxy-Authorization when
