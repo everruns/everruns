@@ -671,9 +671,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             <Card key={channel.id}>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
-                  <Badge variant="outline">
-                    {getChannelTypeDisplayName(channel.channel_type)}
-                  </Badge>
+                  <Badge variant="outline">{getChannelTypeDisplayName(channel.channel_type)}</Badge>
                   {!channel.enabled && <Badge variant="secondary">Disabled</Badge>}
                   {(app.channels ?? []).length > 1 && (
                     <span className="text-xs text-muted-foreground font-mono">{channel.id}</span>
@@ -871,7 +869,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                     <p className="text-sm font-medium">Agent</p>
                     <p
                       className={`text-sm ${getEntityReferenceClassName(
-                        app.agent_id ? agent?.status ?? "deleted" : undefined,
+                        app.agent_id ? (agent?.status ?? "deleted") : undefined,
                       )}`}
                     >
                       {app.agent_id

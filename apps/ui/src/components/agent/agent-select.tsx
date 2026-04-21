@@ -67,9 +67,9 @@ export function AgentSelect({
     ? getDisplayName(selectedAgent)
     : includeNoneOption
       ? noneLabel
-    : includeAll
-      ? allLabel
-      : undefined;
+      : includeAll
+        ? allLabel
+        : undefined;
 
   return (
     <Select value={selectValue} onValueChange={handleChange} disabled={disabled}>
