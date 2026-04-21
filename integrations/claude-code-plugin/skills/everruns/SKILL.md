@@ -24,9 +24,9 @@ Harness ──has──▶ Capability
 ```
 
 - **Harness** — top-level setup for agent execution. Configures infrastructure, defaults, and constraints. Each session has exactly one. Harnesses support single-parent inheritance, so capabilities and prompt chunks flow down the chain. Think "runtime profile".
-- **Agent** — domain- or task-specific configuration: system prompt, default model, enabled capabilities. Optional on a session and can be swapped mid-session.
+- **Agent** — domain- or task-specific configuration: system prompt, default model, enabled capabilities. Not bound to a harness at creation; the harness is picked when the session starts. Optional on a session.
 - **Capability** — the reusable unit that actually adds behavior. Each capability contributes three things: system-prompt additions, tools, and files mounted in the session filesystem. Capabilities attach to a harness, an agent, or a session. Session capabilities are **additive** to agent capabilities.
-- **Session** — the working instance of an agentic loop. Assembled from harness + (optional) agent + session overrides, then resolved into a `RuntimeAgent`. Status flows `started → active → idle`; sessions live indefinitely.
+- **Session** — the working instance of an agentic loop. Assembled from harness + (optional) agent + session overrides, then resolved into a `RuntimeAgent`. Status values: `started`, `active`, `idle`, `waiting_for_tool_results`, `paused`. Sessions live indefinitely.
 - **Model** — an LLM like `gpt-4o` or `claude-sonnet-4`. Resolution priority: per-message controls → session override → agent default → system default.
 - **MCP server** — a remote server exposing tools; integrated into Everruns as a virtual capability (`mcp:{uuid}`).
 - **App** — binds a Harness + Agent to a channel (Slack, web widget, etc.) for external deployment.
@@ -34,8 +34,8 @@ Harness ──has──▶ Capability
 **Typical setup flow when a user wants a new agent:**
 
 1. Pick or create a harness (covers infra + base capabilities). Most users start from the org base harness.
-2. Create an agent on that harness, pick a default model, attach the capabilities the agent needs beyond what the harness already supplies.
-3. Run the agent with `agent_run` — that creates a session, sends the first user message, and triggers the turn loop.
+2. Create an agent: system prompt, default model, capabilities it needs beyond what the harness supplies. Agents are not bound to a specific harness — the harness is chosen at session start.
+3. Run the agent with `agent_run` — that creates a session (using the default harness), sends the first user message, and triggers the turn loop. To pin a specific harness, create the session directly via `create_session --harness_id …` and then call `send_message`.
 
 Capabilities are the answer to "how does my agent get tool X?" — attach the capability at the harness level for org-wide defaults, at the agent level for agent-specific tools, or at the session level for one-off additions.
 
@@ -86,12 +86,20 @@ Rules of thumb:
 list_agents | jq '.data[] | {id, name, default_model_id}'
 ```
 
-**Create a harness, then an agent on it, then run it.**
+**Create a harness and an agent, then run the agent.**
 
 ```bash
-HID=$(create_harness --name "research" --instructions "Research assistant." | jq -r .id)
-AID=$(create_agent --name "researcher" --harness_id "$HID" --instructions "You are a careful researcher." | jq -r .id)
+HID=$(create_harness --name "research" --system_prompt "Research assistant." | jq -r .id)
+AID=$(create_agent --name "researcher" --system_prompt "You are a careful researcher." | jq -r .id)
 agent_run --agent_id "$AID" --message "Summarize the latest MCP spec."
+```
+
+`agent_run` uses the default harness. To pin `$HID` (or any specific harness) to the session, create the session directly:
+
+```bash
+SID=$(create_session --harness_id "$HID" --agent_id "$AID" | jq -r .id)
+create_message --session_id "$SID" \
+  --message '{"role":"user","content":[{"type":"text","text":"Summarize the latest MCP spec."}]}'
 ```
 
 **Attach a capability to an agent.**
@@ -101,7 +109,7 @@ agent_run --agent_id "$AID" --message "Summarize the latest MCP spec."
 list_capabilities | jq '.data[] | {id, name}'
 
 # Update the agent
-update_agent --id "$AID" --capabilities '[{"id":"web_fetch"}]'
+update_agent --id "$AID" --capabilities '[{"ref":"web_fetch"}]'
 ```
 
 **Poll a session until it idles.**
@@ -109,7 +117,7 @@ update_agent --id "$AID" --capabilities '[{"id":"web_fetch"}]'
 ```bash
 SID=session_abc...
 while true; do
-  STATUS=$(get_session --id "$SID" | jq -r .status)
+  STATUS=$(get_session --session_id "$SID" | jq -r .status)
   echo "status=$STATUS"
   [ "$STATUS" = "idle" ] && break
   sleep 2
@@ -128,7 +136,7 @@ done
 **Add an MCP server (becomes a virtual capability).**
 
 ```bash
-create_mcp_server --name "jira" --url "https://mcp.example.com/jira" --auth_type oauth2
+create_mcp_server --name "jira" --url "https://mcp.example.com/jira" --auth_mode oauth
 ```
 
 ### Defaults and limits
