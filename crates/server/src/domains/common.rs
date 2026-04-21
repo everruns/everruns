@@ -3,10 +3,12 @@
 // The Command trait, CommandError, CommandContext (Ctx), and inventory-based
 // dispatch. See specs/domains.md for the full pattern spec.
 
+use crate::services::{BudgetService, EventService, MessageService, SessionService};
 use crate::storage::StorageBackend;
 use axum::Json;
 use axum::http::StatusCode;
 use everruns_core::{Caller, Policy, PolicyError};
+use everruns_worker::AgentRunner;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::future::Future;
@@ -142,6 +144,17 @@ pub struct Ctx {
     pub db: Arc<StorageBackend>,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+    pub mcp_runtime: Option<Arc<McpRuntime>>,
+}
+
+#[derive(Clone)]
+pub struct McpRuntime {
+    pub session_service: Arc<SessionService>,
+    pub message_service: Arc<MessageService>,
+    pub event_service: Arc<EventService>,
+    pub budget_service: Arc<BudgetService>,
+    pub runner: Arc<dyn AgentRunner>,
+    pub fallback_base_harness_name: Option<String>,
 }
 
 impl Ctx {
@@ -165,7 +178,21 @@ impl Ctx {
             db,
             capability_service,
             encryption,
+            mcp_runtime: None,
         }
+    }
+
+    pub fn with_mcp_runtime(mut self, runtime: McpRuntime) -> Self {
+        self.mcp_runtime = Some(Arc::new(runtime));
+        self
+    }
+
+    pub fn mcp_runtime(&self) -> Result<&McpRuntime, CommandError> {
+        self.mcp_runtime.as_deref().ok_or_else(|| {
+            CommandError::Internal(anyhow::anyhow!(
+                "MCP runtime context is unavailable for this command"
+            ))
+        })
     }
 }
 

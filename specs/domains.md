@@ -217,13 +217,13 @@ automatic HTTP error mapping.
 
 Domain commands are exposed automatically as bash builtins inside the MCP
 `execute` tool. The MCP `build_toolset` function in
-`crates/server/src/api/mcp_endpoint/catalog.rs` iterates inventory-registered
-descriptors and merges them with the legacy static `CATALOG`:
+`crates/server/src/api/mcp_endpoint/catalog.rs` iterates the
+inventory-registered descriptors directly:
 
-- Inventory commands take precedence — when both define the same name, the
-  static entry is skipped. This enables incremental migration.
 - `CatalogContext::to_domain_ctx()` constructs the domain `Ctx` from the
-  MCP `AppState` (db, capability_service, encryption).
+  MCP `AppState` (db, capability_service, encryption, and MCP-only runtime
+  services for commands that still dispatch through the in-process server
+  adapters).
 - Adding `inventory::submit! { CommandDescriptor::of::<Cmd>() }` makes the
   command immediately discoverable in MCP — no other wiring needed.
 
