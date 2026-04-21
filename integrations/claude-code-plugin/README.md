@@ -13,25 +13,19 @@ tools.
 
 ## What's in the box
 
-**MCP server** — adds the Everruns MCP endpoint as a remote HTTP server.
-Claude Code handles OAuth 2.1 (PKCE) automatically: on first use it opens a
-browser so you can sign in to Everruns, then caches the refresh token.
+**MCP server** — registers the Everruns MCP endpoint as a remote HTTP server.
+Claude Code handles OAuth 2.1 (PKCE) on first use.
 
-**Skill `everruns`** — the reference Claude Code reads whenever you talk about
-Everruns. Covers:
+**Skill `everruns`** — the reference Claude Code loads whenever you talk about
+Everruns: core concepts (Harness, Agent, Capability, Session, Model, App), the
+MCP tool surface, and concrete `discover` / `execute` recipes. See
+[`skills/everruns/SKILL.md`](skills/everruns/SKILL.md) for the full content.
 
-- core concepts (Harness, Agent, Capability, Session, Model, App) and how
-  capabilities attach to harnesses vs. agents vs. sessions,
-- the MCP tool surface (`me`, `agent_run`, `session_send_message`,
-  `session_get_status`, `discover`, `execute`, org helpers),
-- concrete `discover` / `execute` patterns with real bash + `jq` snippets for
-  common workflows.
+The intended way to use the plugin is natural language ("create an agent that
+does X", "show me sessions from yesterday") — the skill gives Claude the
+concepts and tool sequence.
 
-If you want to add Everruns context to a natural-language request, ask about
-Everruns directly ("create an agent that does X", "show me sessions from
-yesterday") and Claude Code will pull the skill in.
-
-**Slash commands** — thin shortcuts on top of the MCP tools:
+**Slash commands** — thin shortcuts for the few flows worth a key binding:
 
 | Command | Purpose |
 |---|---|
@@ -42,9 +36,8 @@ yesterday") and Claude Code will pull the skill in.
 | `/everruns:discover <query>` / `--all` | Search the Everruns API catalog |
 | `/everruns:execute <bash>` | Run a bash script where every Everruns API op is a builtin |
 
-Anything else (listing agents, creating a harness, tweaking capabilities,
-attaching an MCP server, etc.) is best driven in natural language — the skill
-and `execute` handle the rest.
+Everything else (listing, creating, configuring) flows through natural
+language and `execute`.
 
 ## Install
 
