@@ -65,6 +65,11 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
         return CommandError::Forbidden(pe.message.clone());
     }
 
+    // BadRequestError → BadRequest
+    if let Some(br) = e.downcast_ref::<crate::errors::BadRequestError>() {
+        return CommandError::BadRequest(br.message().to_string());
+    }
+
     // ResourceNotFoundError → NotFound
     if let Some(nf) = e.downcast_ref::<crate::errors::ResourceNotFoundError>() {
         return CommandError::NotFound(format!("{} not found", nf.resource()));
@@ -656,6 +661,23 @@ where
                 "cannot coerce string {other:?} to bool"
             ))),
         },
+    }
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::*;
+
+    #[test]
+    fn classify_anyhow_maps_bad_request_error() {
+        let err = classify_anyhow(crate::errors::BadRequestError::new("bad input").into());
+        assert!(matches!(err, CommandError::BadRequest(msg) if msg == "bad input"));
+    }
+
+    #[test]
+    fn classify_anyhow_maps_not_found_error() {
+        let err = classify_anyhow(crate::errors::ResourceNotFoundError::new("Thing").into());
+        assert!(matches!(err, CommandError::NotFound(msg) if msg == "Thing not found"));
     }
 }
 
