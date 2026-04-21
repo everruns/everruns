@@ -4,8 +4,10 @@
 //! needs Rust dependencies at runtime.
 //! Decision: open a fresh websocket per tool call; operations are short-lived
 //! and this keeps session state small and deterministic.
+//! Decision: prefer IPv4 websocket endpoints when both address families resolve
+//! because GitHub-hosted CI runners do not have outbound IPv6 connectivity.
 
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
@@ -27,6 +29,22 @@ use crate::{
 const DEFAULT_REGION: &str = "ord";
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+fn prefer_ipv4_addrs(addrs: impl IntoIterator<Item = SocketAddr>) -> Vec<SocketAddr> {
+    let mut ipv4 = Vec::new();
+    let mut ipv6 = Vec::new();
+
+    for addr in addrs {
+        if addr.is_ipv4() {
+            ipv4.push(addr);
+        } else {
+            ipv6.push(addr);
+        }
+    }
+
+    ipv4.extend(ipv6);
+    ipv4
+}
 
 async fn connect_async_all_addrs(
     request: Request<()>,
@@ -53,9 +71,11 @@ async fn connect_async_all_addrs(
     }
 
     let mut last_error = None;
-    let addrs = tokio::net::lookup_host((host.as_str(), port))
-        .await
-        .map_err(|e| format!("Failed to resolve Deno sandbox host {host}:{port}: {e}"))?;
+    let addrs = prefer_ipv4_addrs(
+        tokio::net::lookup_host((host.as_str(), port))
+            .await
+            .map_err(|e| format!("Failed to resolve Deno sandbox host {host}:{port}: {e}"))?,
+    );
 
     for addr in addrs {
         match TcpStream::connect(addr).await {
@@ -947,6 +967,26 @@ mod tests {
             panic!("Expected Connector::Rustls");
         };
         assert_eq!(config.alpn_protocols, vec![b"http/1.1".to_vec()]);
+    }
+
+    #[test]
+    fn prefer_ipv4_addrs_keeps_ipv4_first() {
+        let reordered = prefer_ipv4_addrs([
+            "[2602:f70f::1]:443".parse().expect("parse ipv6"),
+            "69.67.170.170:443".parse().expect("parse ipv4"),
+            "[2602:f70f::2]:443".parse().expect("parse ipv6"),
+            "69.67.170.171:443".parse().expect("parse ipv4"),
+        ]);
+
+        assert_eq!(
+            reordered,
+            vec![
+                "69.67.170.170:443".parse().expect("parse ipv4"),
+                "69.67.170.171:443".parse().expect("parse ipv4"),
+                "[2602:f70f::1]:443".parse().expect("parse ipv6"),
+                "[2602:f70f::2]:443".parse().expect("parse ipv6"),
+            ]
+        );
     }
 
     /// Verify that connect_via_http_proxy sends Proxy-Authorization when
