@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "everruns": {
+      "type": "http",
+      "url": "https://dev.everruns.com/mcp",
+      "note": "Everruns MCP endpoint. Codex will handle OAuth on first use."
+    }
+  }
+}

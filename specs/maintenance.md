@@ -67,7 +67,7 @@ Before a release, maintenance should cover:
 - Linear issues already marked `In Progress` whose `updatedAt` is older than 1 day, signaling execution drift; use that `updatedAt` threshold as the default review threshold unless the task sets a stricter bar
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
 - dependency versions across all packages (Cargo workspace crates, npm packages, CLI) checked for outdated major versions and deprecated crates
-- the Claude Code plugin surface reviewed against recent upstream Claude Code changes: inspect the latest changelog, the weekly "What's New" digest, and the plugins reference, then compare them to `.claude-plugin/marketplace.json`, `integrations/claude-code-plugin/.claude-plugin/plugin.json`, and shipped plugin behavior; if upstream changes affect compatibility, versioning, or discoverability, update the plugin or record a follow-up with evidence before claiming release readiness
+- the Claude Code plugin surface reviewed against recent upstream Claude Code changes: inspect the latest changelog, the weekly "What's New" digest, and the plugins reference, then compare them to `.claude-plugin/marketplace.json`, `plugins/everruns/.claude-plugin/plugin.json`, and shipped plugin behavior; if upstream changes affect compatibility, versioning, or discoverability, update the plugin or record a follow-up with evidence before claiming release readiness
 
 A full-repo sweep is not mandatory if the evidence is already strong. The bar is confidence, not checklist completion theater.
 

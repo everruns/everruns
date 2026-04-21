@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1024"
+     height="1024"
+     viewBox="0 0 512 512">
+
+  <!-- Rings -->
+  <g fill="none"
+     stroke="#0A0A0A"
+     stroke-width="18"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+
+    <!-- Top -->
+    <circle cx="256" cy="214" r="120"/>
+
+    <!-- Bottom-left -->
+    <circle cx="186" cy="309" r="120"/>
+
+    <!-- Bottom-right -->
+    <circle cx="326" cy="309" r="120"/>
+
+  </g>
+</svg>
