@@ -275,8 +275,8 @@ jobs:
           CADDY_TARBALL="caddy_${CADDY_VERSION}_linux_${CADDY_ARCH}.tar.gz"
           curl -fsSL "${CADDY_BASE_URL}/${CADDY_TARBALL}" -o "/tmp/${CADDY_TARBALL}"
           curl -fsSL "${CADDY_BASE_URL}/${CADDY_CHECKSUMS}" -o "/tmp/${CADDY_CHECKSUMS}"
-          grep "  ${CADDY_TARBALL}$" "/tmp/${CADDY_CHECKSUMS}" > /tmp/caddy.sha256
-          (cd /tmp && sha256sum -c caddy.sha256)
+          grep "  ${CADDY_TARBALL}$" "/tmp/${CADDY_CHECKSUMS}" > /tmp/caddy.sha512
+          (cd /tmp && sha512sum -c caddy.sha512)
           tar -xzf "/tmp/${CADDY_TARBALL}" -C /tmp caddy
           sudo install -m 0755 /tmp/caddy /usr/local/bin/caddy
 
