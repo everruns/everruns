@@ -1152,8 +1152,10 @@ impl SessionService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::{agents::CreateAgentRequest, harnesses::CreateHarnessRequest};
     use crate::domains::common::{Command, Ctx};
+    use crate::domains::{
+        agents::types::CreateAgentRequest, harnesses::types::CreateHarnessRequest,
+    };
     use crate::services::CapabilityService;
     use crate::storage::{
         CreateLlmModelRow, CreateLlmProviderRow, CreateOrganizationRow, StorageBackend,

@@ -6,6 +6,7 @@
 
 use crate::api;
 use crate::api::{ListResponse, PaginatedResponse};
+use crate::domains;
 use crate::services;
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{
@@ -164,7 +165,7 @@ use utoipa::OpenApi;
             LlmGenerationData, LlmGenerationOutput, LlmGenerationMetadata,
             SessionStartedData,
             // Agent/Session types
-            api::agents::CreateAgentRequest, api::agents::UpdateAgentRequest,
+            domains::agents::types::CreateAgentRequest, domains::agents::types::UpdateAgentRequest,
             api::sessions::CreateSessionRequest, api::sessions::UpdateSessionRequest,
             api::sessions::CancelTurnResponse, api::sessions::CancelStatus,
             api::messages::Message, api::messages::MessageRole, api::messages::ContentPart, api::messages::InputContentPart,
@@ -184,10 +185,10 @@ use utoipa::OpenApi;
             ListResponse<CapabilityInfo>,
             // Harness types
             everruns_core::Harness, everruns_core::HarnessStatus, everruns_core::ResourceConfigResponse,
-            api::harnesses::CreateHarnessRequest,
-            api::harnesses::UpdateHarnessRequest,
-            api::harnesses::PreviewHarnessRequest,
-            api::harnesses::HarnessPreviewResponse,
+            domains::harnesses::types::CreateHarnessRequest,
+            domains::harnesses::types::UpdateHarnessRequest,
+            domains::harnesses::types::PreviewHarnessRequest,
+            domains::harnesses::types::HarnessPreviewResponse,
             ListResponse<everruns_core::Harness>,
             api::users::User,
             api::users::ListUsersQuery,
@@ -218,8 +219,8 @@ use utoipa::OpenApi;
             // MCP Server types
             McpServer, McpServerStatus, McpServerTransportType,
             everruns_core::mcp_server::McpToolAnnotations,
-            api::mcp_servers::CreateMcpServerRequest,
-            api::mcp_servers::UpdateMcpServerRequest,
+            domains::mcp_servers::types::CreateMcpServerRequest,
+            domains::mcp_servers::types::UpdateMcpServerRequest,
             ListResponse<McpServer>,
             // Schedule types
             api::schedules::ScheduleTarget,
@@ -237,8 +238,8 @@ use utoipa::OpenApi;
             // Skill types
             Skill, SkillSourceType, SkillStatus, SkillContent, SkillFileEntry,
             SkillValidationResult,
-            api::skills::CreateSkillRequest,
-            api::skills::UpdateSkillRequest,
+            domains::skills::types::CreateSkillRequest,
+            domains::skills::types::UpdateSkillRequest,
             api::skills::ValidateSkillRequest,
             ListResponse<Skill>,
         )
