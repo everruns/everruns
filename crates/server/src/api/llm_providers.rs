@@ -2,8 +2,12 @@
 // Routes: /v1/llm-providers/...
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::llm_provider::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
-use crate::services::{LlmProviderService, LlmResolverService, ModelSyncService, SyncResult};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::llm_providers::{
+    CreateProvider, DeleteProvider, GetProvider, LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW,
+    ListProviders, SyncProviderModels, UpdateProvider,
+};
+use crate::services::{LlmProviderService, LlmResolverService, ModelSyncService};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -12,7 +16,6 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::llm_models::LlmProvider;
-use everruns_core::typed_id::ProviderId;
 use everruns_core::{
     Caller, DriverRegistry, LlmProviderStatus, LlmProviderType, ResourceConfigResponse,
     evaluate_policies_with,
@@ -22,12 +25,12 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
-    impl_auth_state,
+    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub service: Arc<LlmProviderService>,
     pub sync_service: Arc<ModelSyncService>,
     pub auth: AuthState,
@@ -47,10 +50,17 @@ impl AppState {
             LlmProviderService::new(db.clone(), encryption.clone())
         };
         Self {
+            db: db.clone(),
             service: Arc::new(service),
             sync_service: Arc::new(ModelSyncService::new(db, driver_registry, encryption)),
             auth,
         }
+    }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+            .with_llm_provider_service(self.service.clone())
+            .with_model_sync_service(self.sync_service.clone())
     }
 }
 
@@ -132,12 +142,14 @@ pub async fn create_provider(
     State(state): State<AppState>,
     Json(req): Json<CreateLlmProviderRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<LlmProvider>>), (StatusCode, Json<ErrorResponse>)> {
-    let caller = Caller::from(&org);
-    let provider = state
-        .service
-        .create(&caller, req)
-        .await
-        .map_policy_or_internal("create LLM provider")?;
+    let provider = CreateProvider {
+        name: req.name,
+        provider_type: req.provider_type,
+        base_url: req.base_url,
+        api_key: req.api_key,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(builder.wrap(provider))))
@@ -156,12 +168,7 @@ pub async fn list_providers(
     org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> ApiResult<ListResponse<WithUrls<LlmProvider>>> {
-    let caller = Caller::from(&org);
-    let providers = state
-        .service
-        .list(&caller)
-        .await
-        .map_policy_or_internal("list LLM providers")?;
+    let providers = ListProviders.execute(&state.ctx(&org)).await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(ListResponse::new(providers).with_urls(&builder)))
@@ -186,22 +193,7 @@ pub async fn get_provider(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<WithUrls<LlmProvider>> {
-    let provider_id: ProviderId = id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid provider ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let provider = state
-        .service
-        .get(&caller, provider_id.uuid())
-        .await
-        .map_policy_or_internal("get LLM provider")?
-        .ok_or_not_found_json("Provider")?;
+    let provider = GetProvider { id }.execute(&state.ctx(&org)).await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(provider)))
@@ -228,22 +220,16 @@ pub async fn update_provider(
     Path(id): Path<String>,
     Json(req): Json<UpdateLlmProviderRequest>,
 ) -> ApiResult<WithUrls<LlmProvider>> {
-    let provider_id: ProviderId = id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid provider ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let provider = state
-        .service
-        .update(&caller, provider_id.uuid(), req)
-        .await
-        .map_policy_or_internal("update LLM provider")?
-        .ok_or_not_found_json("Provider")?;
+    let provider = UpdateProvider {
+        id,
+        name: req.name,
+        provider_type: req.provider_type,
+        base_url: req.base_url,
+        api_key: req.api_key,
+        status: req.status,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(provider)))
@@ -268,27 +254,8 @@ pub async fn delete_provider(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let provider_id: ProviderId = id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid provider ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .delete(&caller, provider_id.uuid())
-        .await
-        .map_policy_or_internal("delete LLM provider")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::not_found("Provider"))
-    }
+    DeleteProvider { id }.execute(&state.ctx(&org)).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Sync models from an LLM provider
@@ -314,62 +281,9 @@ pub async fn sync_models(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<SyncModelsResponse> {
-    let provider_id: ProviderId = id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid provider ID: {}", e),
-            }),
-        )
-    })?;
-
-    let result = state
-        .sync_service
-        .sync_provider(org.org_id, provider_id.uuid())
-        .await
-        .map_err(|e| {
-            let error_msg = e.to_string();
-            if error_msg.contains("Provider not found") {
-                (
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "Provider not found".to_string(),
-                    }),
-                )
-            } else {
-                tracing::error!("Failed to sync models for provider {}: {}", provider_id, e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Internal server error".to_string(),
-                    }),
-                )
-            }
-        })?;
-
-    let response = match result {
-        SyncResult::Success {
-            created,
-            updated,
-            stale,
-        } => SyncModelsResponse::Success {
-            created,
-            updated,
-            stale,
-        },
-        SyncResult::NotSupported => SyncModelsResponse::NotSupported,
-        SyncResult::Failed { error } => {
-            tracing::error!("Model sync failed for provider {}: {}", provider_id, error);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to sync models".to_string(),
-                }),
-            ));
-        }
-    };
-
-    Ok(Json(response))
+    Ok(Json(
+        SyncProviderModels { id }.execute(&state.ctx(&org)).await?,
+    ))
 }
 
 /// GET /v1/llm-providers/config

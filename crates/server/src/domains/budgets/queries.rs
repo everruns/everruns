@@ -1,0 +1,23 @@
+use crate::domains::common::CommandError;
+use crate::services::BudgetService;
+use crate::storage::models::{BudgetLedgerRow, BudgetRow};
+use everruns_core::budget::{Budget, LedgerEntry};
+use everruns_core::typed_id::BudgetId;
+
+pub fn parse_budget_id(input: &str) -> Result<uuid::Uuid, CommandError> {
+    if let Ok(id) = BudgetId::parse(input) {
+        Ok(id.uuid())
+    } else if let Ok(id) = uuid::Uuid::parse_str(input) {
+        Ok(id)
+    } else {
+        Err(CommandError::bad_request("Invalid budget ID format"))
+    }
+}
+
+pub fn row_to_budget(row: &BudgetRow) -> Budget {
+    BudgetService::row_to_budget(row)
+}
+
+pub fn row_to_ledger_entry(row: &BudgetLedgerRow) -> LedgerEntry {
+    BudgetService::row_to_ledger_entry(row)
+}

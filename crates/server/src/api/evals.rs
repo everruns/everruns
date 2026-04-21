@@ -7,22 +7,25 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
-use futures::stream;
 use serde::Deserialize;
+#[cfg(test)]
 use serde_json::{Map, Value};
 
 use everruns_core::eval::*;
-use everruns_core::typed_id::{EvalCaseId, EvalId, EvalResultId, EvalRunId};
+use everruns_core::typed_id::EvalResultId;
 
-use crate::api::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse,
-};
+use crate::api::common::{ApiResult, ErrorResponse, ListResponse};
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::evals::{
+    BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun, DeleteEval,
+    DeleteEvalCase, ExportEvalRunArtifacts, GetEval, GetEvalCase, GetEvalRun, ListEvalCases,
+    ListEvalRuns, ListEvals, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
+};
 use crate::services::EvalService;
 use crate::services::eval_runner::EvalRunContext;
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
-use std::io;
 use std::sync::Arc;
 
 use utoipa::{IntoParams, ToSchema};
@@ -33,6 +36,7 @@ use utoipa::{IntoParams, ToSchema};
 
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub service: Arc<EvalService>,
     pub auth: AuthState,
 }
@@ -42,14 +46,20 @@ crate::api::common::impl_auth_state!(AppState);
 impl AppState {
     pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
         Self {
+            db: db.clone(),
             service: Arc::new(EvalService::new(db)),
             auth,
         }
     }
 
     pub fn with_run_context(mut self, ctx: Arc<EvalRunContext>) -> Self {
-        self.service = Arc::new(EvalService::new(ctx.db.clone()).with_run_context(ctx));
+        self.service = Arc::new(EvalService::new(self.db.clone()).with_run_context(ctx));
         self
+    }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+            .with_eval_service(self.service.clone())
     }
 }
 
@@ -199,7 +209,7 @@ pub struct BulkUpdateEvalRunScoresRequest {
 }
 
 /// Query parameters for listing evals
-#[derive(Debug, Clone, Deserialize, IntoParams)]
+#[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ListEvalsQuery {
     pub search: Option<String>,
     pub include_archived: Option<bool>,
@@ -253,12 +263,7 @@ async fn create_eval(
     State(state): State<AppState>,
     Json(req): Json<CreateEvalRequest>,
 ) -> Result<(StatusCode, Json<Eval>), (StatusCode, Json<ErrorResponse>)> {
-    let caller = Caller::from(&org);
-    let eval = state
-        .service
-        .create(&caller, req)
-        .await
-        .map_policy_or_internal("create eval")?;
+    let eval = CreateEval(req).execute(&state.ctx(&org)).await?;
     Ok((StatusCode::CREATED, Json(eval)))
 }
 
@@ -267,16 +272,12 @@ async fn list_evals(
     State(state): State<AppState>,
     Query(query): Query<ListEvalsQuery>,
 ) -> ApiResult<ListResponse<Eval>> {
-    let caller = Caller::from(&org);
-    let evals = state
-        .service
-        .list(
-            &caller,
-            query.search.as_deref(),
-            query.include_archived.unwrap_or(false),
-        )
-        .await
-        .map_policy_or_internal("list evals")?;
+    let evals = ListEvals {
+        search: query.search,
+        include_archived: query.include_archived.unwrap_or(false),
+    }
+    .execute(&state.ctx(&org))
+    .await?;
     Ok(Json(ListResponse::new(evals)))
 }
 
@@ -285,16 +286,7 @@ async fn get_eval(
     State(state): State<AppState>,
     Path(eval_id): Path<String>,
 ) -> ApiResult<Eval> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let eval = state
-        .service
-        .get_by_public_id(&caller, &eval_id.to_string())
-        .await
-        .map_policy_or_internal("get eval")?
-        .ok_or_not_found_json("Eval")?;
+    let eval = GetEval { eval_id }.execute(&state.ctx(&org)).await?;
     Ok(Json(eval))
 }
 
@@ -304,16 +296,9 @@ async fn update_eval(
     Path(eval_id): Path<String>,
     Json(req): Json<UpdateEvalRequest>,
 ) -> ApiResult<Eval> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let eval = state
-        .service
-        .update(&caller, &eval_id.to_string(), req)
-        .await
-        .map_policy_or_internal("update eval")?
-        .ok_or_not_found_json("Eval")?;
+    let eval = UpdateEval { eval_id, req }
+        .execute(&state.ctx(&org))
+        .await?;
     Ok(Json(eval))
 }
 
@@ -322,20 +307,8 @@ async fn delete_eval(
     State(state): State<AppState>,
     Path(eval_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .delete(&caller, &eval_id.to_string())
-        .await
-        .map_policy_or_internal("delete eval")?;
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::new("Eval not found").into_response(StatusCode::NOT_FOUND))
-    }
+    DeleteEval { eval_id }.execute(&state.ctx(&org)).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ============================================
@@ -348,15 +321,9 @@ async fn create_case(
     Path(eval_id): Path<String>,
     Json(req): Json<CreateEvalCaseRequest>,
 ) -> Result<(StatusCode, Json<EvalCase>), (StatusCode, Json<ErrorResponse>)> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let case = state
-        .service
-        .create_case(&caller, &eval_id.to_string(), req)
-        .await
-        .map_policy_or_internal("create eval case")?;
+    let case = CreateEvalCase { eval_id, req }
+        .execute(&state.ctx(&org))
+        .await?;
     Ok((StatusCode::CREATED, Json(case)))
 }
 
@@ -365,15 +332,7 @@ async fn list_cases(
     State(state): State<AppState>,
     Path(eval_id): Path<String>,
 ) -> ApiResult<ListResponse<EvalCase>> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let cases = state
-        .service
-        .list_cases(&caller, &eval_id.to_string())
-        .await
-        .map_policy_or_internal("list eval cases")?;
+    let cases = ListEvalCases { eval_id }.execute(&state.ctx(&org)).await?;
     Ok(Json(ListResponse::new(cases)))
 }
 
@@ -382,19 +341,9 @@ async fn get_case(
     State(state): State<AppState>,
     Path((eval_id, case_id)): Path<(String, String)>,
 ) -> ApiResult<EvalCase> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let case_id: EvalCaseId = case_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid case ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let case = state
-        .service
-        .get_case(&caller, &eval_id.to_string(), &case_id.to_string())
-        .await
-        .map_policy_or_internal("get eval case")?
-        .ok_or_not_found_json("EvalCase")?;
+    let case = GetEvalCase { eval_id, case_id }
+        .execute(&state.ctx(&org))
+        .await?;
     Ok(Json(case))
 }
 
@@ -404,19 +353,13 @@ async fn update_case(
     Path((eval_id, case_id)): Path<(String, String)>,
     Json(req): Json<UpdateEvalCaseRequest>,
 ) -> ApiResult<EvalCase> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let case_id: EvalCaseId = case_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid case ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let case = state
-        .service
-        .update_case(&caller, &eval_id.to_string(), &case_id.to_string(), req)
-        .await
-        .map_policy_or_internal("update eval case")?
-        .ok_or_not_found_json("EvalCase")?;
+    let case = UpdateEvalCase {
+        eval_id,
+        case_id,
+        req,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
     Ok(Json(case))
 }
 
@@ -425,23 +368,10 @@ async fn delete_case(
     State(state): State<AppState>,
     Path((eval_id, case_id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let case_id: EvalCaseId = case_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid case ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .delete_case(&caller, &eval_id.to_string(), &case_id.to_string())
-        .await
-        .map_policy_or_internal("delete eval case")?;
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::new("EvalCase not found").into_response(StatusCode::NOT_FOUND))
-    }
+    DeleteEvalCase { eval_id, case_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ============================================
@@ -454,15 +384,9 @@ async fn create_run(
     Path(eval_id): Path<String>,
     Json(req): Json<CreateEvalRunRequest>,
 ) -> Result<(StatusCode, Json<EvalRun>), (StatusCode, Json<ErrorResponse>)> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let run = state
-        .service
-        .create_run(&caller, &eval_id.to_string(), req)
-        .await
-        .map_policy_or_internal("create eval run")?;
+    let run = CreateEvalRun { eval_id, req }
+        .execute(&state.ctx(&org))
+        .await?;
     Ok((StatusCode::CREATED, Json(run)))
 }
 
@@ -471,15 +395,7 @@ async fn list_runs(
     State(state): State<AppState>,
     Path(eval_id): Path<String>,
 ) -> ApiResult<ListResponse<EvalRun>> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let runs = state
-        .service
-        .list_runs(&caller, &eval_id.to_string())
-        .await
-        .map_policy_or_internal("list eval runs")?;
+    let runs = ListEvalRuns { eval_id }.execute(&state.ctx(&org)).await?;
     Ok(Json(ListResponse::new(runs)))
 }
 
@@ -488,19 +404,9 @@ async fn get_run(
     State(state): State<AppState>,
     Path((eval_id, run_id)): Path<(String, String)>,
 ) -> ApiResult<EvalRun> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let run_id: EvalRunId = run_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid run ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let run = state
-        .service
-        .get_run(&caller, &eval_id.to_string(), &run_id.to_string())
-        .await
-        .map_policy_or_internal("get eval run")?
-        .ok_or_not_found_json("EvalRun")?;
+    let run = GetEvalRun { eval_id, run_id }
+        .execute(&state.ctx(&org))
+        .await?;
     Ok(Json(run))
 }
 
@@ -509,30 +415,10 @@ async fn export_run_artifacts(
     State(state): State<AppState>,
     Path((eval_id, run_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let run_id: EvalRunId = run_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid run ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let run = state
-        .service
-        .get_run(&caller, &eval_id.to_string(), &run_id.to_string())
-        .await
-        .map_policy_or_internal("export eval run artifacts")?
-        .ok_or_not_found_json("EvalRun")?;
-    let body = Body::from_stream(stream::iter(run.results.into_iter().map(|result| {
-        serde_json::to_vec(&run_artifact_export_value(&result))
-            .map(|mut line| {
-                line.push(b'\n');
-                Bytes::from(line)
-            })
-            .map_err(|error| {
-                tracing::error!("Failed to serialize eval artifact export: {}", error);
-                io::Error::other(error)
-            })
-    })));
+    let export = ExportEvalRunArtifacts { eval_id, run_id }
+        .execute(&state.ctx(&org))
+        .await?;
+    let body = Body::from(Bytes::from(export.body));
 
     Ok((
         StatusCode::OK,
@@ -549,19 +435,9 @@ async fn cancel_run(
     State(state): State<AppState>,
     Path((eval_id, run_id)): Path<(String, String)>,
 ) -> ApiResult<EvalRun> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let run_id: EvalRunId = run_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid run ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let run = state
-        .service
-        .cancel_run(&caller, &eval_id.to_string(), &run_id.to_string())
-        .await
-        .map_policy_or_internal("cancel eval run")?
-        .ok_or_not_found_json("EvalRun")?;
+    let run = CancelEvalRun { eval_id, run_id }
+        .execute(&state.ctx(&org))
+        .await?;
     Ok(Json(run))
 }
 
@@ -571,28 +447,14 @@ async fn update_result_scores(
     Path((eval_id, run_id, result_id)): Path<(String, String, String)>,
     Json(req): Json<UpdateEvalResultScoresRequest>,
 ) -> ApiResult<EvalCaseResult> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let run_id: EvalRunId = run_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid run ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let result_id: EvalResultId = result_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid result ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let result = state
-        .service
-        .update_result_scores(
-            &caller,
-            &eval_id.to_string(),
-            &run_id.to_string(),
-            &result_id.to_string(),
-            req,
-        )
-        .await
-        .map_policy_or_internal("update eval result scores")?
-        .ok_or_not_found_json("EvalCaseResult")?;
+    let result = UpdateEvalResultScores {
+        eval_id,
+        run_id,
+        result_id,
+        req,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
     Ok(Json(result))
 }
 
@@ -602,21 +464,17 @@ async fn bulk_update_run_scores(
     Path((eval_id, run_id)): Path<(String, String)>,
     Json(req): Json<BulkUpdateEvalRunScoresRequest>,
 ) -> ApiResult<ListResponse<EvalCaseResult>> {
-    let eval_id: EvalId = eval_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid eval ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let run_id: EvalRunId = run_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid run ID: {e}")).into_response(StatusCode::BAD_REQUEST)
-    })?;
-    let caller = Caller::from(&org);
-    let results = state
-        .service
-        .bulk_update_run_scores(&caller, &eval_id.to_string(), &run_id.to_string(), req)
-        .await
-        .map_policy_or_internal("bulk update eval result scores")?;
+    let results = BulkUpdateEvalRunScores {
+        eval_id,
+        run_id,
+        req,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
     Ok(Json(ListResponse::new(results)))
 }
 
+#[cfg(test)]
 fn run_artifact_export_value(result: &EvalCaseResult) -> Value {
     let mut export = Map::new();
     export.insert(
@@ -655,6 +513,7 @@ fn run_artifact_export_value(result: &EvalCaseResult) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::typed_id::EvalCaseId;
     use std::collections::BTreeMap;
     use uuid::Uuid;
 

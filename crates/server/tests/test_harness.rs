@@ -252,6 +252,7 @@ impl TestServer {
             everruns_server::api::sse::SseConnectionLimits::default(),
         ));
         let events_state = api::events::AppState {
+            db: db.clone(),
             session_service: Arc::new(services::SessionService::with_registry(
                 db.clone(),
                 platform_definition.capability_registry().clone(),
@@ -310,8 +311,11 @@ impl TestServer {
         let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(
             everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
         );
-        let session_databases_state =
-            api::session_databases::AppState::new(sqldb_store, db.clone(), auth_state.clone());
+        let session_databases_state = api::session_databases::AppState::new(
+            sqldb_store.clone(),
+            db.clone(),
+            auth_state.clone(),
+        );
         let users_state = api::users::UsersState {
             db: db.clone(),
             auth: auth_state.clone(),
@@ -323,8 +327,11 @@ impl TestServer {
             None,
             "in_memory".to_string(),
         );
-        let schedules_state =
-            api::schedules::ScheduleAppState::new(Some(durable_store), auth_state.clone());
+        let schedules_state = api::schedules::ScheduleAppState::new(
+            db.clone(),
+            Some(durable_store.clone()),
+            auth_state.clone(),
+        );
         let skills_state =
             api::skills::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
@@ -339,6 +346,7 @@ impl TestServer {
         );
         let notifications_state = if feature_flags.notifications {
             Some(api::notifications::AppState {
+                db: db.clone(),
                 notification_service: Arc::new(services::NotificationService::new(db.clone())),
                 sse_tracker: sse_tracker.clone(),
                 notification_broadcaster: None,
@@ -407,6 +415,8 @@ impl TestServer {
             event_delivery.clone(),
             None, // No encryption in tests
             capability_service.clone(),
+            Some(sqldb_store.clone()),
+            Some(durable_store.clone()),
         );
 
         // Build API routes

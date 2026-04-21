@@ -3,10 +3,14 @@
 // Policy enforcement happens at the service layer via #[policy] macro.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::sessions::{
+    CancelSession, CreateSession, DeleteSession, GetOrCreateChatSession, GetSession,
+    GetSessionStats, ListSessions, PinSession, UnpinSession, UpdateSessionCmd,
+};
 use crate::services::session::{SESSION_MANAGE, SESSION_VIEW};
 use crate::services::{EventService, SessionService};
 use crate::storage::StorageBackend;
-use anyhow::Context;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -14,21 +18,17 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::capability_types::AgentCapabilityConfig;
-use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
-use everruns_core::typed_id::{
-    AgentId, AgentIdentityId, HarnessId, MessageId, ModelId, SessionId, TurnId,
-};
+use everruns_core::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId};
 use everruns_core::{
-    BuiltInHarnessRole, Caller, Message, PlatformDefinition, ResourceConfigResponse,
-    ScopedMcpServers, Session, evaluate_policies_with,
+    BuiltInHarnessRole, Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers,
+    Session, evaluate_policies_with,
 };
 use everruns_worker::AgentRunner;
 
 use super::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse,
-    Pagination, UrlBuilder, WithUrls, deserialize_nullable_update_field, impl_auth_state,
+    ApiResult, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls,
+    deserialize_nullable_update_field, impl_auth_state,
 };
-use super::validation::{self, normalize_locale};
 use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -179,11 +179,6 @@ pub struct ListSessionsQuery {
     pub limit: Option<u32>,
 }
 
-/// Default limit for session listing
-const DEFAULT_LIMIT: u32 = 20;
-/// Maximum allowed limit for session listing
-const MAX_LIMIT: u32 = 100;
-
 /// App state for sessions routes
 #[derive(Clone)]
 pub struct AppState {
@@ -234,6 +229,16 @@ impl AppState {
                 .harness_for_role(BuiltInHarnessRole::Chat)
                 .map(|h| h.display_name.clone()),
         }
+    }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+            .with_session_service(self.session_service.clone())
+            .with_event_service(Arc::new(self.event_service.clone()))
+            .with_runner(self.runner.clone())
+            .with_fallback_harness_name(self.fallback_default_harness_name.clone())
+            .with_chat_harness_name(self.chat_harness_name.clone())
+            .with_chat_session_title(self.chat_session_title.clone())
     }
 }
 
@@ -310,159 +315,12 @@ pub async fn session_config(
 pub async fn create_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Json(mut req): Json<CreateSessionRequest>,
+    Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
-    req.locale = normalize_locale(req.locale)
-        .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
-
-    // Reject if both harness_id and harness_name are specified
-    if req.harness_id.is_some() && req.harness_name.is_some() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(
-                "Cannot specify both harness_id and harness_name",
-            )),
-        ));
-    }
-
-    // Resolve harness_name to harness_id if provided.
-    // "default" is a virtual alias that resolves to the org's configured
-    // default harness (from org settings). Other names are looked up literally.
-    // HARNESS_VIEW policy is not checked here because the existing flow already
-    // validates harness access via db.get_harness() below.
-    if let Some(ref name) = req.harness_name {
-        validation::validate_harness_name(name)?;
-        if name == "default" {
-            let settings = state
-                .db
-                .get_organization_settings(org.org_id)
-                .await
-                .log_internal_error_json("resolve org default harness")?;
-            let harness_id = match settings.and_then(|s| s.default_harness_id) {
-                Some(id) => id,
-                None => {
-                    return Err((
-                        StatusCode::NOT_FOUND,
-                        Json(ErrorResponse::new(
-                            "Default harness not configured for this organization",
-                        )),
-                    ));
-                }
-            };
-            req.harness_id = Some(harness_id);
-        } else {
-            let row = state
-                .db
-                .get_harness_by_name(org.org_id, name)
-                .await
-                .log_internal_error_json("resolve harness by name")?
-                .ok_or_not_found_json("Harness")?;
-            req.harness_id = Some(row.id);
-        }
-    }
-
-    let harness_id = resolve_session_harness_id(
-        &state.db,
-        org.org_id,
-        req.harness_id,
-        state.fallback_default_harness_name.as_deref(),
-    )
-    .await
-    .log_internal_error_json("resolve session harness fallback")?;
-    req.harness_id = Some(harness_id);
-
-    // Validate harness exists and belongs to this org
-    state
-        .db
-        .get_harness(org.org_id, harness_id)
-        .await
-        .log_internal_error_json("resolve harness")?
-        .ok_or_not_found_json("Harness")?;
-
-    // Validate model exists and belongs to this org (if specified)
-    if let Some(ref model_id) = req.model_id {
-        state
-            .db
-            .get_llm_model(org.org_id, model_id.uuid())
-            .await
-            .log_internal_error_json("resolve model")?
-            .ok_or_not_found_json("Model")?;
-    }
-
-    // Resolve agent public_id to internal UUID for FK storage (if agent specified)
-    let (agent_internal_id, agent_public_id) = if let Some(ref agent_id) = req.agent_id {
-        let agent_row = state
-            .db
-            .get_agent_by_public_id(org.org_id, &agent_id.to_string())
-            .await
-            .log_internal_error_json("resolve agent")?
-            .ok_or_not_found_json("Agent")?;
-
-        let public_id: AgentId = agent_row
-            .public_id
-            .parse()
-            .unwrap_or_else(|_| AgentId::from_uuid(agent_row.id.uuid()));
-
-        (Some(agent_row.id.uuid()), Some(public_id))
-    } else {
-        (None, None)
-    };
-
-    // Validate session-level system_prompt and initial_files
-    if let Some(ref prompt) = req.system_prompt {
-        validation::validate_agent_system_prompt(prompt)
-            .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
-    }
-    if !req.initial_files.is_empty() {
-        validation::validate_initial_files(&req.initial_files)
-            .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
-    }
-
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    let caller = Caller::from(&org);
-    let session = state
-        .session_service
-        .create(
-            &caller,
-            harness_id.uuid(),
-            agent_internal_id,
-            agent_public_id,
-            req,
-        )
-        .await
-        .map_policy_or_internal("create session")?;
+    let session = CreateSession(req).execute(&state.ctx(&org)).await?;
 
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
-}
-
-async fn resolve_session_harness_id(
-    db: &StorageBackend,
-    org_id: i64,
-    requested_harness_id: Option<HarnessId>,
-    fallback_default_harness_name: Option<&str>,
-) -> anyhow::Result<HarnessId> {
-    if let Some(harness_id) = requested_harness_id {
-        return Ok(harness_id);
-    }
-
-    let settings = db.get_organization_settings(org_id).await?;
-    if let Some(harness_id) = settings.and_then(|row| row.default_harness_id) {
-        return Ok(harness_id);
-    }
-
-    let fallback_name = fallback_default_harness_name.context(
-        "Session creation requires a default harness but no default harness role is configured",
-    )?;
-    let harnesses = db
-        .list_harnesses(org_id, Some(fallback_name), false)
-        .await?;
-    harnesses
-        .into_iter()
-        .find(|h| h.is_built_in && h.name == fallback_name)
-        .map(|h| h.id)
-        .context(format!(
-            "Built-in default harness '{fallback_name}' is not provisioned for org {org_id}"
-        ))
 }
 
 /// POST /v1/sessions/chat - Get or create global chat session
@@ -485,55 +343,14 @@ pub async fn get_or_create_chat_session(
     State(state): State<AppState>,
     payload: Option<Json<GetOrCreateChatSessionRequest>>,
 ) -> ApiResult<WithUrls<Session>> {
-    let locale = normalize_locale(payload.and_then(|Json(body)| body.locale))
-        .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
-
-    // Use authenticated user_id, or fall back to anonymous user (auth=none mode)
-    let user_id = org.user_id.unwrap_or(everruns_core::ANONYMOUS_USER_ID);
-    let chat_harness_name = state.chat_harness_name.clone().ok_or((
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse::new(
-            "Global chat is not configured for this platform",
-        )),
-    ))?;
-    let chat_harness_id =
-        resolve_named_built_in_harness_id(&state.db, org.org_id, &chat_harness_name)
-            .await
-            .log_internal_error_json("resolve chat harness")?;
-
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    let caller = Caller::from(&org);
-    let session = state
-        .session_service
-        .get_or_create_chat_session(
-            &caller,
-            user_id,
-            chat_harness_id.uuid(),
-            state
-                .chat_session_title
-                .as_deref()
-                .unwrap_or(chat_harness_name.as_str()),
-            locale,
-        )
-        .await
-        .map_policy_or_internal("get or create chat session")?;
+    let session = GetOrCreateChatSession {
+        locale: payload.and_then(|Json(body)| body.locale),
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     Ok(Json(urls.wrap(session)))
-}
-
-async fn resolve_named_built_in_harness_id(
-    db: &StorageBackend,
-    org_id: i64,
-    harness_name: &str,
-) -> anyhow::Result<HarnessId> {
-    let harnesses = db.list_harnesses(org_id, Some(harness_name), false).await?;
-    harnesses
-        .into_iter()
-        .find(|h| h.is_built_in && h.name == harness_name)
-        .map(|h| h.id)
-        .context(format!(
-            "Built-in harness '{harness_name}' is not provisioned for org {org_id}"
-        ))
 }
 
 /// GET /v1/sessions - List sessions in organization
@@ -552,45 +369,18 @@ pub async fn list_sessions(
     State(state): State<AppState>,
     Query(query): Query<ListSessionsQuery>,
 ) -> ApiResult<PaginatedResponse<WithUrls<Session>>> {
-    let offset = query.offset.unwrap_or(0);
-    let limit = query.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
-    let pagination = Pagination::new(offset, limit);
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
-
-    // Resolve agent public_id to internal UUID if filtering by agent.
-    // If agent_id is provided but not found, return empty results rather than
-    // silently dropping the filter and returning unfiltered sessions.
-    let agent_internal_id = if let Some(ref agent_id) = query.agent_id {
-        let row = state
-            .db
-            .get_agent_by_public_id(org.org_id, &agent_id.to_string())
-            .await
-            .log_internal_error_json("resolve agent for filter")?;
-        match row {
-            Some(r) => Some(r.id.uuid()),
-            None => {
-                return Ok(Json(PaginatedResponse::new(vec![], 0, offset, limit)));
-            }
-        }
-    } else {
-        None
-    };
-
-    let caller = Caller::from(&org);
-    let (sessions, total) = state
-        .session_service
-        .list(
-            &caller,
-            agent_internal_id,
-            org.user_id,
-            query.search.as_deref(),
-            pagination,
-        )
-        .await
-        .map_policy_or_internal("list sessions")?;
+    let page = ListSessions {
+        agent_id: query.agent_id,
+        search: query.search,
+        offset: query.offset,
+        limit: query.limit,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     Ok(Json(
-        PaginatedResponse::new(sessions, total, offset, limit).with_urls(&urls),
+        PaginatedResponse::new(page.data, page.total, page.offset, page.limit).with_urls(&urls),
     ))
 }
 
@@ -608,20 +398,7 @@ pub async fn get_session_stats(
     org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> ApiResult<SessionStatsResponse> {
-    let caller = Caller::from(&org);
-    let stats = state
-        .session_service
-        .stats(&caller)
-        .await
-        .map_policy_or_internal("get session stats")?;
-
-    Ok(Json(SessionStatsResponse {
-        total: stats.total,
-        active: stats.active,
-        idle: stats.idle,
-        started: stats.started,
-        waiting_for_tool_results: stats.waiting_for_tool_results,
-    }))
+    Ok(Json(GetSessionStats.execute(&state.ctx(&org)).await?))
 }
 
 /// GET /v1/sessions/{session_id} - Get session
@@ -644,30 +421,8 @@ pub async fn get_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> ApiResult<WithUrls<Session>> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
-        )
-    })?;
-
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    let caller = Caller::from(&org);
-    let session = state
-        .session_service
-        .get(&caller, session_id.uuid(), org.user_id)
-        .await
-        .map_policy_or_internal("get session")?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Session not found".to_string(),
-                }),
-            )
-        })?;
+    let session = GetSession { session_id }.execute(&state.ctx(&org)).await?;
 
     Ok(Json(urls.wrap(session)))
 }
@@ -692,35 +447,12 @@ pub async fn update_session(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-    Json(mut req): Json<UpdateSessionRequest>,
+    Json(req): Json<UpdateSessionRequest>,
 ) -> ApiResult<WithUrls<Session>> {
-    req.locale = normalize_locale(req.locale)
-        .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
-
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
-        )
-    })?;
-
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    let caller = Caller::from(&org);
-    let session = state
-        .session_service
-        .update(&caller, session_id.uuid(), req)
-        .await
-        .map_policy_or_internal("update session")?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Session not found".to_string(),
-                }),
-            )
-        })?;
+    let session = UpdateSessionCmd { session_id, req }
+        .execute(&state.ctx(&org))
+        .await?;
 
     Ok(Json(urls.wrap(session)))
 }
@@ -745,21 +477,9 @@ pub async fn delete_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    state
-        .session_service
-        .delete(&caller, session_id.uuid())
-        .await
-        .map_policy_or_internal("delete session")?;
+    DeleteSession { session_id }
+        .execute(&state.ctx(&org))
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -785,29 +505,15 @@ pub async fn pin_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let user_id = org.user_id.ok_or_else(|| {
-        (
+    if org.user_id.is_none() {
+        return Err((
             StatusCode::UNAUTHORIZED,
             Json(ErrorResponse {
                 error: "Authentication required to pin sessions".to_string(),
             }),
-        )
-    })?;
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    state
-        .session_service
-        .pin(&caller, user_id, session_id.uuid())
-        .await
-        .map_policy_or_internal("pin session")?;
+        ));
+    }
+    PinSession { session_id }.execute(&state.ctx(&org)).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -833,29 +539,17 @@ pub async fn unpin_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let user_id = org.user_id.ok_or_else(|| {
-        (
+    if org.user_id.is_none() {
+        return Err((
             StatusCode::UNAUTHORIZED,
             Json(ErrorResponse {
                 error: "Authentication required to unpin sessions".to_string(),
             }),
-        )
-    })?;
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    state
-        .session_service
-        .unpin(&caller, user_id, session_id.uuid())
-        .await
-        .map_policy_or_internal("unpin session")?;
+        ));
+    }
+    UnpinSession { session_id }
+        .execute(&state.ctx(&org))
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -887,83 +581,11 @@ pub async fn cancel_turn(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> ApiResult<CancelTurnResponse> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
-        )
-    })?;
-
-    // Verify session exists
-    let caller = Caller::from(&org);
-    let session = state
-        .session_service
-        .get(&caller, session_id.uuid(), None)
-        .await
-        .map_policy_or_internal("get session for cancel")?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Session not found".to_string(),
-                }),
-            )
-        })?;
-
-    // If session is not active, cancel is a no-op (idempotent)
-    if session.status != everruns_core::SessionStatus::Active {
-        return Ok(Json(CancelTurnResponse {
-            status: CancelStatus::NoOp,
-            message: "No turn currently running".to_string(),
-        }));
-    }
-
-    // Cancel the workflow
-    if let Err(e) = state.runner.cancel_run(session_id).await {
-        tracing::error!(session_id = %session_id, error = %e, "Failed to cancel workflow");
-        // Continue anyway - workflow may have already completed
-    }
-
-    // Generate IDs for the turn context
-    // Use session_id as turn_id since workflow_id = session_id in durable runner
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let input_message_id = MessageId::new(); // Placeholder since we don't have the original
-
-    // Emit turn.cancelled event
-    let cancelled_event = EventRequest::new(
-        session_id,
-        EventContext::turn(turn_id, input_message_id),
-        TurnCancelledData {
-            turn_id,
-            reason: Some("User requested cancellation".to_string()),
-            usage: None, // Usage not available at cancellation time
-        },
-    );
-    if let Err(e) = state.event_service.emit(cancelled_event).await {
-        tracing::warn!(session_id = %session_id, error = %e, "Failed to emit turn.cancelled event");
-    }
-
-    // Insert user message indicating cancellation request
-    let user_cancel_message = Message::user("User requested to cancel the work.");
-    let user_message_event = EventRequest::new(
-        session_id,
-        EventContext::turn(turn_id, input_message_id),
-        InputMessageData::new(user_cancel_message),
-    );
-    if let Err(e) = state.event_service.emit(user_message_event).await {
-        tracing::warn!(session_id = %session_id, error = %e, "Failed to emit user cancellation message");
-    }
-
-    // Note: Agent message "Work was cancelled by user." and session.idled event
-    // are emitted by the worker when it detects the cancellation and stops.
-    // This ensures the agent message appears AFTER any in-flight events.
-
-    Ok(Json(CancelTurnResponse {
-        status: CancelStatus::Cancelled,
-        message: "Turn cancelled successfully".to_string(),
-    }))
+    Ok(Json(
+        CancelSession { session_id }
+            .execute(&state.ctx(&org))
+            .await?,
+    ))
 }
 
 #[cfg(test)]
@@ -1130,9 +752,14 @@ mod tests {
             .await
             .unwrap();
 
-        let harness_id = resolve_session_harness_id(&db, 42, None, Some("generic"))
-            .await
-            .unwrap();
+        let harness_id = crate::domains::sessions::queries::resolve_session_harness_id(
+            &db,
+            42,
+            None,
+            Some("generic"),
+        )
+        .await
+        .unwrap();
         assert_eq!(harness_id, row.id);
     }
 
@@ -1151,9 +778,14 @@ mod tests {
         .await
         .unwrap();
 
-        let harness_id = resolve_session_harness_id(&db, 42, None, Some("generic"))
-            .await
-            .unwrap();
+        let harness_id = crate::domains::sessions::queries::resolve_session_harness_id(
+            &db,
+            42,
+            None,
+            Some("generic"),
+        )
+        .await
+        .unwrap();
         assert_eq!(harness_id, default_harness_id);
     }
 }

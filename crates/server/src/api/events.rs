@@ -3,6 +3,8 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::events::ListEvents;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -112,6 +114,7 @@ fn validate_event_type_list(
 /// App state for events routes
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub event_service: Arc<EventService>,
     pub sse_tracker: Arc<SseConnectionTracker>,
@@ -130,12 +133,19 @@ impl AppState {
         event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
+            db: db.clone(),
             session_service: Arc::new(SessionService::new(db.clone())),
             event_service: Arc::new(EventService::with_listeners(db, event_delivery, listeners)),
             sse_tracker,
             event_broadcaster: None,
             auth,
         }
+    }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+            .with_session_service(self.session_service.clone())
+            .with_event_service(self.event_service.clone())
     }
 }
 
@@ -628,9 +638,6 @@ impl<S: Stream> Stream for GuardedStream<S> {
 // List Events (JSON response for polling)
 // ============================================
 
-/// Max limit for event pagination
-const MAX_EVENT_LIMIT: i32 = 1000;
-
 /// GET /v1/sessions/{session_id}/events - List events (JSON)
 ///
 /// Returns events for a session as a JSON array. Supports filtering by event type
@@ -673,169 +680,20 @@ pub async fn list_events(
     Query(query): Query<EventsQuery>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
     query.validate()?;
-
-    // Validate limit range
-    if let Some(limit) = query.limit
-        && (!(1..=MAX_EVENT_LIMIT).contains(&limit))
-    {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("limit must be between 1 and {MAX_EVENT_LIMIT}, got {limit}"),
-            }),
-        ));
+    let result = ListEvents {
+        session_id,
+        since_id: query.since_id,
+        types: query.types,
+        exclude: query.exclude,
+        limit: query.limit,
+        before_sequence: query.before_sequence,
     }
-
-    // before_sequence requires limit
-    if query.before_sequence.is_some() && query.limit.is_none() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "before_sequence requires limit to be set".to_string(),
-            }),
-        ));
-    }
-
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
-        )
-    })?;
-
-    // Verify session exists
-    let _session = state
-        .session_service
-        .get(&Caller::from(&org), session_id.uuid(), None)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get session: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Session not found".to_string(),
-                }),
-            )
-        })?;
-
-    let is_paginated = query.limit.is_some();
-
-    // Turn boundary snapping: when paginating backward with before_sequence,
-    // snap the cursor to the nearest turn.started boundary to avoid splitting turns.
-    let before_sequence = if let Some(before_seq) = query.before_sequence {
-        if let Some(limit) = query.limit {
-            // Find the event that would be at the boundary of our batch
-            // by looking at what the first event in the batch would be.
-            // We want to snap the *start* of the batch to a turn boundary,
-            // so we first figure out roughly where the batch starts, then
-            // find the nearest turn.started at or before that point.
-            //
-            // Strategy: fetch events, check if the first event is mid-turn,
-            // and if so extend backward to include the full turn.
-            // For simplicity, we pass before_seq as-is and snap in a second pass.
-            let _ = limit; // used below
-            Some(before_seq)
-        } else {
-            Some(before_seq)
-        }
-    } else {
-        None
-    };
-
-    // Fetch events
-    let events = state
-        .event_service
-        .list(
-            session_id.uuid(),
-            None,
-            query.since_id.map(|id| id.uuid()),
-            &query.types,
-            &query.exclude,
-            before_sequence,
-            query.limit,
-        )
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list events: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
-
-    // Turn boundary snapping (second pass): if the first event is not a turn.started
-    // and we're paginating backward, extend the batch to include events from the
-    // beginning of that turn.
-    let events = if is_paginated && !events.is_empty() && before_sequence.is_some() {
-        let first_seq = events[0].sequence.unwrap_or(0);
-        if events[0].event_type != "turn.started" {
-            // Find the turn.started boundary
-            if let Ok(Some(turn_seq)) = state
-                .event_service
-                .find_turn_boundary(session_id.uuid(), first_seq)
-                .await
-            {
-                if turn_seq < first_seq {
-                    // Fetch the missing events from turn boundary to first event
-                    if let Ok(mut prefix) = state
-                        .event_service
-                        .list(
-                            session_id.uuid(),
-                            Some(turn_seq - 1), // since_sequence is exclusive (>)
-                            None,
-                            &query.types,
-                            &query.exclude,
-                            Some(first_seq),
-                            None,
-                        )
-                        .await
-                    {
-                        prefix.extend(events);
-                        prefix
-                    } else {
-                        events
-                    }
-                } else {
-                    events
-                }
-            } else {
-                events
-            }
-        } else {
-            events
-        }
-    } else {
-        events
-    };
+    .execute(&state.ctx(&org))
+    .await?;
 
     // Build response with optional X-Total-Count header
     let mut headers = HeaderMap::new();
-    if is_paginated {
-        let total_count = state
-            .event_service
-            .count_events(session_id.uuid(), &query.exclude)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to count events: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Internal server error".to_string(),
-                    }),
-                )
-            })?;
+    if let Some(total_count) = result.total {
         headers.insert("X-Total-Count", total_count.to_string().parse().unwrap());
         // Expose X-Total-Count to browser JS (CORS)
         headers.insert(
@@ -844,7 +702,7 @@ pub async fn list_events(
         );
     }
 
-    let body = Json(ListResponse { data: events });
+    let body = Json(ListResponse { data: result.data });
     Ok((headers, body).into_response())
 }
 

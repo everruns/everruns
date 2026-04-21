@@ -142,6 +142,23 @@ pub struct Ctx {
     pub db: Arc<StorageBackend>,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+    pub session_service: Option<Arc<crate::services::SessionService>>,
+    pub message_service: Option<Arc<crate::services::MessageService>>,
+    pub event_service: Option<Arc<crate::services::EventService>>,
+    pub session_file_service: Option<Arc<crate::services::SessionFileService>>,
+    pub session_resource_service: Option<Arc<crate::services::SessionResourceService>>,
+    pub session_schedule_service: Option<Arc<crate::services::SessionScheduleService>>,
+    pub notification_service: Option<Arc<crate::services::NotificationService>>,
+    pub llm_model_service: Option<Arc<crate::services::LlmModelService>>,
+    pub llm_provider_service: Option<Arc<crate::services::LlmProviderService>>,
+    pub model_sync_service: Option<Arc<crate::services::ModelSyncService>>,
+    pub eval_service: Option<Arc<crate::services::EvalService>>,
+    pub sqldb_store: Option<Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>>,
+    pub workflow_store: Option<Arc<dyn everruns_durable::WorkflowEventStore + Send + Sync>>,
+    pub runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    pub fallback_harness_name: Option<String>,
+    pub chat_harness_name: Option<String>,
+    pub chat_session_title: Option<String>,
 }
 
 impl Ctx {
@@ -165,7 +182,146 @@ impl Ctx {
             db,
             capability_service,
             encryption,
+            session_service: None,
+            message_service: None,
+            event_service: None,
+            session_file_service: None,
+            session_resource_service: None,
+            session_schedule_service: None,
+            notification_service: None,
+            llm_model_service: None,
+            llm_provider_service: None,
+            model_sync_service: None,
+            eval_service: None,
+            sqldb_store: None,
+            workflow_store: None,
+            runner: None,
+            fallback_harness_name: None,
+            chat_harness_name: None,
+            chat_session_title: None,
         }
+    }
+
+    pub fn minimal(
+        caller: Caller,
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+    ) -> Self {
+        let capability_service =
+            Arc::new(crate::services::CapabilityService::new(db.clone(), None));
+        Self::new(caller, db, capability_service, encryption)
+    }
+
+    pub fn with_session_service(mut self, service: Arc<crate::services::SessionService>) -> Self {
+        self.session_service = Some(service);
+        self
+    }
+
+    pub fn with_message_service(mut self, service: Arc<crate::services::MessageService>) -> Self {
+        self.message_service = Some(service);
+        self
+    }
+
+    pub fn with_event_service(mut self, service: Arc<crate::services::EventService>) -> Self {
+        self.event_service = Some(service);
+        self
+    }
+
+    pub fn with_session_file_service(
+        mut self,
+        service: Arc<crate::services::SessionFileService>,
+    ) -> Self {
+        self.session_file_service = Some(service);
+        self
+    }
+
+    pub fn with_session_resource_service(
+        mut self,
+        service: Arc<crate::services::SessionResourceService>,
+    ) -> Self {
+        self.session_resource_service = Some(service);
+        self
+    }
+
+    pub fn with_session_schedule_service(
+        mut self,
+        service: Arc<crate::services::SessionScheduleService>,
+    ) -> Self {
+        self.session_schedule_service = Some(service);
+        self
+    }
+
+    pub fn with_notification_service(
+        mut self,
+        service: Arc<crate::services::NotificationService>,
+    ) -> Self {
+        self.notification_service = Some(service);
+        self
+    }
+
+    pub fn with_llm_model_service(
+        mut self,
+        service: Arc<crate::services::LlmModelService>,
+    ) -> Self {
+        self.llm_model_service = Some(service);
+        self
+    }
+
+    pub fn with_llm_provider_service(
+        mut self,
+        service: Arc<crate::services::LlmProviderService>,
+    ) -> Self {
+        self.llm_provider_service = Some(service);
+        self
+    }
+
+    pub fn with_model_sync_service(
+        mut self,
+        service: Arc<crate::services::ModelSyncService>,
+    ) -> Self {
+        self.model_sync_service = Some(service);
+        self
+    }
+
+    pub fn with_eval_service(mut self, service: Arc<crate::services::EvalService>) -> Self {
+        self.eval_service = Some(service);
+        self
+    }
+
+    pub fn with_sqldb_store(
+        mut self,
+        store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>,
+    ) -> Self {
+        self.sqldb_store = Some(store);
+        self
+    }
+
+    pub fn with_workflow_store(
+        mut self,
+        store: Arc<dyn everruns_durable::WorkflowEventStore + Send + Sync>,
+    ) -> Self {
+        self.workflow_store = Some(store);
+        self
+    }
+
+    pub fn with_runner(mut self, runner: Arc<dyn everruns_worker::AgentRunner>) -> Self {
+        self.runner = Some(runner);
+        self
+    }
+
+    pub fn with_fallback_harness_name(mut self, name: Option<String>) -> Self {
+        self.fallback_harness_name = name;
+        self
+    }
+
+    pub fn with_chat_harness_name(mut self, name: Option<String>) -> Self {
+        self.chat_harness_name = name;
+        self
+    }
+
+    pub fn with_chat_session_title(mut self, title: Option<String>) -> Self {
+        self.chat_session_title = title;
+        self
     }
 }
 

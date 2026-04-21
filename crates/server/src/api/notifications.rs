@@ -2,8 +2,11 @@
 // Routes use ResolvedOrg for org scoping and authenticated user delivery.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::notifications::{ListNotifications, MarkNotificationViewed};
 use crate::notification_notifications::NotificationNotificationBroadcaster;
 use crate::services::NotificationService;
+use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -13,7 +16,7 @@ use axum::{
 };
 use axum_extra::extract::Query;
 use chrono::{DateTime, Utc};
-use everruns_core::NotificationId;
+use everruns_core::{Caller, NotificationId};
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, sync::Arc, time::Duration};
 use tokio::sync::broadcast;
@@ -62,10 +65,17 @@ pub struct NotificationSseQuery {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub notification_service: Arc<NotificationService>,
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub notification_broadcaster: Option<Arc<NotificationNotificationBroadcaster>>,
     pub auth: AuthState,
+}
+
+impl AppState {
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+    }
 }
 
 impl_auth_state!(AppState);
@@ -114,40 +124,12 @@ pub async fn list_notifications(
     State(state): State<AppState>,
     Query(query): Query<ListNotificationsQuery>,
 ) -> ApiResult<ListNotificationsResponse> {
-    let user_id = require_user_id(&org)?;
-    let limit = query.limit.unwrap_or(50).clamp(1, 100);
-
-    let notifications = state
-        .notification_service
-        .list(org.org_id, user_id, limit)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list notifications: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
-    let unviewed_count = state
-        .notification_service
-        .count_unviewed(org.org_id, user_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to count notifications: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
-
-    Ok(Json(ListNotificationsResponse {
-        data: notifications.into_iter().map(row_to_notification).collect(),
-        unviewed_count,
-    }))
+    require_user_id(&org)?;
+    Ok(Json(
+        ListNotifications { limit: query.limit }
+            .execute(&state.ctx(&org))
+            .await?,
+    ))
 }
 
 pub async fn mark_notification_viewed(
@@ -155,39 +137,12 @@ pub async fn mark_notification_viewed(
     State(state): State<AppState>,
     Path(notification_id): Path<String>,
 ) -> ApiResult<Notification> {
-    let user_id = require_user_id(&org)?;
-    let notification_id: NotificationId = notification_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid notification ID: {}", e),
-            }),
-        )
-    })?;
-
-    let notification = state
-        .notification_service
-        .mark_viewed(org.org_id, user_id, notification_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to mark notification viewed: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Notification not found".to_string(),
-                }),
-            )
-        })?;
-
-    Ok(Json(row_to_notification(notification)))
+    require_user_id(&org)?;
+    Ok(Json(
+        MarkNotificationViewed { notification_id }
+            .execute(&state.ctx(&org))
+            .await?,
+    ))
 }
 
 pub async fn stream_notifications_sse(

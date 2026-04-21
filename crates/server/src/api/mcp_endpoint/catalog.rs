@@ -66,12 +66,26 @@ static INVENTORY_TOOL_DEFS: LazyLock<HashMap<&'static str, ToolDef>> = LazyLock:
 impl CatalogContext {
     /// Convert to a domain Ctx for inventory-registered Command dispatch.
     pub fn to_domain_ctx(&self) -> crate::domains::common::Ctx {
-        crate::domains::common::Ctx {
-            caller: self.caller.clone(),
-            db: self.state.db.clone(),
-            capability_service: self.state.capability_service.clone(),
-            encryption: self.state.encryption.clone(),
+        let mut ctx = crate::domains::common::Ctx::new(
+            self.caller.clone(),
+            self.state.db.clone(),
+            self.state.capability_service.clone(),
+            self.state.encryption.clone(),
+        )
+        .with_session_service(self.state.session_service.clone())
+        .with_message_service(self.state.message_service.clone())
+        .with_event_service(self.state.event_service.clone())
+        .with_runner(self.state.runner.clone())
+        .with_fallback_harness_name(self.state.fallback_default_harness_name.clone())
+        .with_chat_harness_name(self.state.chat_harness_name.clone())
+        .with_chat_session_title(self.state.chat_session_title.clone());
+        if let Some(store) = &self.state.sqldb_store {
+            ctx = ctx.with_sqldb_store(store.clone());
         }
+        if let Some(store) = &self.state.workflow_store {
+            ctx = ctx.with_workflow_store(store.clone());
+        }
+        ctx
     }
 }
 
@@ -258,119 +272,6 @@ fn is_flag_set(params: &serde_json::Value, key: &str) -> bool {
 // ============================================================================
 
 pub static CATALOG: &[Operation] = &[
-    // ── Sessions ────────────────────────────────────────────────────────
-    Operation {
-        name: "create_session",
-        category: "sessions",
-        description: "Create a new session. Optionally assign an agent and harness.",
-        params: &[
-            Param {
-                name: "agent_id",
-                typ: "string",
-                description: "Agent ID (optional)",
-            },
-            Param {
-                name: "harness_id",
-                typ: "string",
-                description: "Harness ID (optional, defaults to org base)",
-            },
-            Param {
-                name: "title",
-                typ: "string",
-                description: "Session title",
-            },
-            Param {
-                name: "model_id",
-                typ: "string",
-                description: "Model override",
-            },
-        ],
-        handler: |p, c| Box::pin(handlers::create_session(p, c)),
-    },
-    Operation {
-        name: "list_sessions",
-        category: "sessions",
-        description: "List sessions. Filter by agent_id, search by title. Supports pagination (limit/offset).",
-        params: &[
-            Param {
-                name: "agent_id",
-                typ: "query",
-                description: "Filter by agent (optional)",
-            },
-            Param {
-                name: "search",
-                typ: "query",
-                description: "Search by title (optional)",
-            },
-            Param {
-                name: "offset",
-                typ: "query",
-                description: "Pagination offset (default: 0)",
-            },
-            Param {
-                name: "limit",
-                typ: "query",
-                description: "Page size (default: 20, max: 100)",
-            },
-        ],
-        handler: |p, c| Box::pin(handlers::list_sessions(p, c)),
-    },
-    Operation {
-        name: "get_session",
-        category: "sessions",
-        description: "Get session details including status, agent, harness, and model.",
-        params: &[Param {
-            name: "session_id",
-            typ: "path",
-            description: "Session ID",
-        }],
-        handler: |p, c| Box::pin(handlers::get_session(p, c)),
-    },
-    Operation {
-        name: "update_session",
-        category: "sessions",
-        description: "Update session title, tags, or locale.",
-        params: &[
-            Param {
-                name: "session_id",
-                typ: "path",
-                description: "Session ID",
-            },
-            Param {
-                name: "title",
-                typ: "string",
-                description: "New title",
-            },
-            Param {
-                name: "tags",
-                typ: "array",
-                description: "New tags",
-            },
-        ],
-        handler: |p, c| Box::pin(handlers::update_session(p, c)),
-    },
-    Operation {
-        name: "delete_session",
-        category: "sessions",
-        description: "Delete a session.",
-        params: &[Param {
-            name: "session_id",
-            typ: "path",
-            description: "Session ID",
-        }],
-        handler: |p, c| Box::pin(handlers::delete_session(p, c)),
-    },
-    Operation {
-        name: "cancel_session",
-        category: "sessions",
-        description: "Cancel the currently executing turn in a session.",
-        params: &[Param {
-            name: "session_id",
-            typ: "path",
-            description: "Session ID",
-        }],
-        handler: |p, c| Box::pin(handlers::cancel_session(p, c)),
-    },
     // ── Budgets ─────────────────────────────────────────────────────────
     Operation {
         name: "create_budget",
@@ -711,37 +612,6 @@ pub static CATALOG: &[Operation] = &[
         }],
         handler: |p, c| Box::pin(handlers::get_image(p, c)),
     },
-    // ── Schedules ───────────────────────────────────────────────────────
-    Operation {
-        name: "list_schedules",
-        category: "schedules",
-        description: "List durable scheduled tasks.",
-        params: &[],
-        handler: |p, c| Box::pin(handlers::list_schedules(p, c)),
-    },
-    Operation {
-        name: "create_schedule",
-        category: "schedules",
-        description: "Create a new durable scheduled task with a cron expression.",
-        params: &[
-            Param {
-                name: "name",
-                typ: "string",
-                description: "Schedule name",
-            },
-            Param {
-                name: "cron",
-                typ: "string",
-                description: "Cron expression",
-            },
-            Param {
-                name: "target",
-                typ: "object",
-                description: "Schedule target configuration",
-            },
-        ],
-        handler: |p, c| Box::pin(handlers::create_schedule(p, c)),
-    },
     // ── Organizations ───────────────────────────────────────────────────
     Operation {
         name: "list_orgs",
@@ -772,36 +642,6 @@ pub static CATALOG: &[Operation] = &[
             description: "Filter users by search term",
         }],
         handler: |p, c| Box::pin(handlers::list_users(p, c)),
-    },
-    // ── Session Files ───────────────────────────────────────────────────
-    Operation {
-        name: "list_session_files",
-        category: "files",
-        description: "Get the root directory listing of session files.",
-        params: &[Param {
-            name: "session_id",
-            typ: "path",
-            description: "Session ID",
-        }],
-        handler: |p, c| Box::pin(handlers::list_session_files(p, c)),
-    },
-    Operation {
-        name: "get_session_file",
-        category: "files",
-        description: "Get a file or directory at a path in the session filesystem.",
-        params: &[
-            Param {
-                name: "session_id",
-                typ: "path",
-                description: "Session ID",
-            },
-            Param {
-                name: "path",
-                typ: "path",
-                description: "File path",
-            },
-        ],
-        handler: |p, c| Box::pin(handlers::get_session_file(p, c)),
     },
     // ── Session Databases ───────────────────────────────────────────────
     Operation {

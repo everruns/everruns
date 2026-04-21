@@ -9,6 +9,8 @@
 // We re-export them here with ToSchema for OpenAPI documentation.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::messages::{CreateMessage, ExportSessionMessages, ListMessages};
 use crate::middleware::RequestId;
 use crate::storage::StorageBackend;
 use axum::{
@@ -21,7 +23,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use everruns_core::typed_id::{MessageId, SessionId};
 
-use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
@@ -29,8 +31,7 @@ use utoipa::ToSchema;
 
 use everruns_core::Caller;
 
-use super::validation::normalize_controls_locale;
-use crate::services::{CreateMessageContext, MessageService, SessionService};
+use crate::services::{MessageService, SessionService};
 
 // Re-export core types with ToSchema for OpenAPI
 #[allow(unused_imports)]
@@ -161,6 +162,7 @@ impl CreateMessageRequest {
 /// App state for messages routes
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub auth: AuthState,
@@ -175,6 +177,7 @@ impl AppState {
         event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
+            db: db.clone(),
             session_service: Arc::new(SessionService::new(db.clone())),
             message_service: Arc::new(MessageService::new(
                 db,
@@ -184,6 +187,12 @@ impl AppState {
             )),
             auth,
         }
+    }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+            .with_session_service(self.session_service.clone())
+            .with_message_service(self.message_service.clone())
     }
 }
 
@@ -228,87 +237,20 @@ pub async fn create_message(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     req_id: Option<Extension<RequestId>>,
-    Json(mut req): Json<CreateMessageRequest>,
+    Json(req): Json<CreateMessageRequest>,
 ) -> Result<(StatusCode, Json<Message>), (StatusCode, Json<ErrorResponse>)> {
     let request_id = req_id.map(|Extension(r)| r.0);
-    req.controls = normalize_controls_locale(req.controls)
-        .map_err(|err| -> (StatusCode, Json<ErrorResponse>) { err.into() })?;
-
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
-        )
-    })?;
-
-    tracing::Span::current().record("session_id", session_id.to_string().as_str());
-
-    // Get session to retrieve agent_id
-    let caller = Caller::from(&org);
-    let session = state
-        .session_service
-        .get(&caller, session_id.uuid(), None)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get session: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Session not found".to_string(),
-                }),
-            )
-        })?;
-
-    // If session is waiting for tool results, cancel the wait gracefully.
-    // The new user message supersedes any pending client-side tool calls.
-    if session.status == everruns_core::SessionStatus::WaitingForToolResults {
-        tracing::info!(
-            session_id = %session_id,
-            "User message received while waiting for tool results - cancelling tool wait"
-        );
-        if let Err(e) = state
-            .session_service
-            .update_status(&caller, session_id.uuid(), "active".to_string())
-            .await
-        {
-            tracing::warn!(error = %e, "Failed to reset session status from waiting_for_tool_results");
-        }
+    let message = CreateMessage {
+        session_id,
+        message: req.message,
+        controls: req.controls,
+        metadata: req.metadata,
+        tags: req.tags,
+        external_actor: req.external_actor,
+        request_id,
     }
-
-    let message = state
-        .message_service
-        .create(
-            CreateMessageContext {
-                org_id: org.org_id,
-                user_id: org.user_id,
-                harness_id: session.harness_id.uuid(),
-                agent_id: session.agent_id.map(|a| a.uuid()),
-                session_id: session_id.uuid(),
-                event_metadata: None,
-                request_id,
-            },
-            req,
-        )
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to create message: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
+    .execute(&state.ctx(&org))
+    .await?;
 
     Ok((StatusCode::CREATED, Json(message)))
 }
@@ -333,51 +275,9 @@ pub async fn list_messages(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> ApiResult<ListResponse<Message>> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
-        )
-    })?;
-
-    // Verify session exists
-    let _session = state
-        .session_service
-        .get(&Caller::from(&org), session_id.uuid(), None)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get session: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Session not found".to_string(),
-                }),
-            )
-        })?;
-
-    let messages = state
-        .message_service
-        .list(session_id.uuid())
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to list messages: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
+    let messages = ListMessages { session_id }
+        .execute(&state.ctx(&org))
+        .await?;
 
     Ok(Json(ListResponse::new(messages)))
 }
@@ -407,52 +307,11 @@ pub async fn export_session_jsonl(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
-        )
-    })?;
-
-    // Verify session exists and caller has access (returns 403 for denied callers)
-    let _session = state
-        .session_service
-        .get(&Caller::from(&org), session_id.uuid(), None)
-        .await
-        .map_policy_or_internal("export session")?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Session not found".to_string(),
-                }),
-            )
-        })?;
-
-    let messages = state
-        .message_service
-        .list(session_id.uuid())
-        .await
-        .map_policy_or_internal("list messages for export")?;
-
-    // Build JSONL: one JSON object per line
-    let mut body = String::new();
-    for msg in &messages {
-        let line = serde_json::to_string(msg).map_err(|e| {
-            tracing::error!("Failed to serialize message for export: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
-        })?;
-        body.push_str(&line);
-        body.push('\n');
+    let export = ExportSessionMessages {
+        session_id: session_id.clone(),
     }
-
+    .execute(&state.ctx(&org))
+    .await?;
     let filename = format!("{}.jsonl", session_id);
     Ok((
         StatusCode::OK,
@@ -466,7 +325,7 @@ pub async fn export_session_jsonl(
                 format!("attachment; filename=\"{}\"", filename),
             ),
         ],
-        body,
+        export.body,
     ))
 }
 

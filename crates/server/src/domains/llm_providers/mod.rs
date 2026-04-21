@@ -1,0 +1,20 @@
+// LLM providers domain — commands, queries, types.
+//
+// See specs/domains.md for the pattern.
+
+use everruns_core::{Permission, Policy, Rule};
+
+pub mod commands;
+pub mod queries;
+pub mod types;
+
+pub use commands::*;
+
+pub const LLM_PROVIDER_VIEW: Policy = Policy {
+    id: "llm_provider.view",
+    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersView)],
+};
+pub const LLM_PROVIDER_MANAGE: Policy = Policy {
+    id: "llm_provider.manage",
+    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersManage)],
+};

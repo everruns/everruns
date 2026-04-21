@@ -2,11 +2,14 @@
 // Routes: /v1/llm-providers/:provider_id/models/... and /v1/llm-models/...
 
 use crate::api::common::{
-    ApiOptionExt, ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls,
-    impl_auth_state,
+    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::llm_model::{LLM_MODEL_MANAGE, LLM_MODEL_VIEW};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::llm_models::{
+    CreateModel, DeleteModel, GetModel, LLM_MODEL_MANAGE, LLM_MODEL_VIEW, ListModels,
+    ListProviderModels, UpdateModel,
+};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -14,7 +17,6 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::typed_id::{ModelId, ProviderId};
 use everruns_core::{
     Caller, LlmModel, LlmModelSource, LlmModelStatus, LlmModelWithProvider, ResourceConfigResponse,
     evaluate_policies_with,
@@ -27,6 +29,7 @@ use crate::services::{LlmModelService, LlmResolverService};
 
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub service: Arc<LlmModelService>,
     pub auth: AuthState,
 }
@@ -38,14 +41,20 @@ impl AppState {
         llm_resolver: Option<Arc<LlmResolverService>>,
     ) -> Self {
         let service = if let Some(resolver) = llm_resolver {
-            LlmModelService::with_resolver(db, resolver)
+            LlmModelService::with_resolver(db.clone(), resolver)
         } else {
-            LlmModelService::new(db)
+            LlmModelService::new(db.clone())
         };
         Self {
+            db,
             service: Arc::new(service),
             auth,
         }
+    }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+            .with_llm_model_service(self.service.clone())
     }
 }
 
@@ -141,21 +150,16 @@ pub async fn create_model(
     Path(provider_id): Path<String>,
     Json(req): Json<CreateLlmModelRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<LlmModel>>), (StatusCode, Json<ErrorResponse>)> {
-    let provider_id: ProviderId = provider_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid provider ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let model = state
-        .service
-        .create(&caller, provider_id.uuid(), req)
-        .await
-        .map_policy_or_internal("create LLM model")?;
+    let model = CreateModel {
+        provider_id,
+        model_id: req.model_id,
+        display_name: req.display_name,
+        capabilities: req.capabilities,
+        enabled: req.enabled,
+        is_favorite: req.is_favorite,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(builder.wrap(model))))
@@ -179,21 +183,9 @@ pub async fn list_provider_models(
     State(state): State<AppState>,
     Path(provider_id): Path<String>,
 ) -> ApiResult<ListResponse<WithUrls<LlmModel>>> {
-    let provider_id: ProviderId = provider_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid provider ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let models = state
-        .service
-        .list_for_provider(&caller, provider_id.uuid())
-        .await
-        .map_policy_or_internal("list LLM models for provider")?;
+    let models = ListProviderModels { provider_id }
+        .execute(&state.ctx(&org))
+        .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(ListResponse::new(models).with_urls(&builder)))
@@ -216,17 +208,13 @@ pub async fn list_all_models(
     State(state): State<AppState>,
     Query(query): Query<ListModelsQuery>,
 ) -> ApiResult<ListResponse<WithUrls<LlmModelWithProvider>>> {
-    let caller = Caller::from(&org);
-    let models = state
-        .service
-        .list_all_with_filters(
-            &caller,
-            query.source,
-            query.include_stale,
-            query.favorites_only,
-        )
-        .await
-        .map_policy_or_internal("list all LLM models")?;
+    let models = ListModels {
+        source: query.source,
+        include_stale: query.include_stale,
+        favorites_only: query.favorites_only,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(ListResponse::new(models).with_urls(&builder)))
@@ -251,22 +239,7 @@ pub async fn get_model(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<WithUrls<LlmModelWithProvider>> {
-    let model_id: ModelId = id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid model ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let model = state
-        .service
-        .get_with_provider(&caller, model_id.uuid())
-        .await
-        .map_policy_or_internal("get LLM model")?
-        .ok_or_not_found_json("Model")?;
+    let model = GetModel { id }.execute(&state.ctx(&org)).await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(model)))
@@ -293,22 +266,17 @@ pub async fn update_model(
     Path(id): Path<String>,
     Json(req): Json<UpdateLlmModelRequest>,
 ) -> ApiResult<WithUrls<LlmModel>> {
-    let model_id: ModelId = id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid model ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let model = state
-        .service
-        .update(&caller, model_id.uuid(), req)
-        .await
-        .map_policy_or_internal("update LLM model")?
-        .ok_or_not_found_json("Model")?;
+    let model = UpdateModel {
+        id,
+        model_id: req.model_id,
+        display_name: req.display_name,
+        capabilities: req.capabilities,
+        enabled: req.enabled,
+        is_favorite: req.is_favorite,
+        status: req.status,
+    }
+    .execute(&state.ctx(&org))
+    .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(model)))
@@ -333,27 +301,8 @@ pub async fn delete_model(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let model_id: ModelId = id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid model ID: {}", e),
-            }),
-        )
-    })?;
-
-    let caller = Caller::from(&org);
-    let deleted = state
-        .service
-        .delete(&caller, model_id.uuid())
-        .await
-        .map_policy_or_internal("delete LLM model")?;
-
-    if deleted {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ErrorResponse::not_found("Model"))
-    }
+    DeleteModel { id }.execute(&state.ctx(&org)).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// GET /v1/llm-models/config
