@@ -181,8 +181,8 @@ create_mcp_server --name "jira" --url "https://mcp.example.com/jira" --auth_mode
 
 ## When things go wrong
 
-- **401 / OAuth loop** - Codex handles the OAuth 2.1 flow. If it fails, sign
-  out at <https://everruns.com> and retry so a fresh client registers.
+- **401 / OAuth loop** - The host handles the OAuth 2.1 flow. If it fails,
+  sign out at <https://everruns.com> and retry so a fresh client registers.
 - **`tool not found` in execute** - run `discover { "all": true }` to confirm
   the builtin exists under the expected name.
 - **Operation unclear** - `<cmd> --help` inside `execute` prints usage;
