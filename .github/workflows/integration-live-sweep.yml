@@ -45,6 +45,7 @@ jobs:
             deno_sandbox_region: ams
           - name: Sprites Live API Tests
             command: cargo test -p everruns-integrations-sprites --features sprites-live-tests --test live_api_test -- --test-threads=1
+            required_secret: SPRITES_API_TOKEN
           - name: Brave Search API Tests
             command: cargo test -p everruns-integrations-brave-search --features integration
 
@@ -61,6 +62,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "debug"
+
+      - name: Export required Doppler secret
+        if: ${{ matrix.required_secret != null && matrix.required_secret != '' }}
+        run: |
+          echo "${{ matrix.required_secret }}=$(doppler secrets get ${{ matrix.required_secret }} --plain)" >> "$GITHUB_ENV"
 
       - name: Run live tests
         run: doppler run -- ${{ matrix.command }}

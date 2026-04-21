@@ -30,6 +30,8 @@ Everruns integrates with [Sprites](https://sprites.dev/) to provide persistent, 
 
 Once connected, the Sprites capability is automatically available in agent sessions.
 
+Sprites default to `/home/sprite` as the working directory for commands and file paths.
+
 ### 3. Use in Sessions
 
 Agents with the Sprites capability can use these tools:

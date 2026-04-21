@@ -38,8 +38,10 @@ pub struct ExecResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckpointInfo {
     pub id: String,
-    #[serde(default)]
+    #[serde(default, alias = "create_time")]
     pub created_at: Option<String>,
+    #[serde(default)]
+    pub comment: Option<String>,
 }
 
 // ============================================================================
@@ -301,14 +303,14 @@ mod tests {
     fn test_sprite_state_roundtrip() {
         let state = SpriteState {
             sprite_name: "my-sprite".to_string(),
-            workspace_path: "/home/user".to_string(),
+            workspace_path: "/home/sprite".to_string(),
             started_at: "2026-03-23T10:00:00Z".to_string(),
             service_url: Some("https://my-sprite.fly.dev".to_string()),
         };
         let json = serde_json::to_string(&state).unwrap();
         let deserialized: SpriteState = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.sprite_name, "my-sprite");
-        assert_eq!(deserialized.workspace_path, "/home/user");
+        assert_eq!(deserialized.workspace_path, "/home/sprite");
         assert_eq!(
             deserialized.service_url,
             Some("https://my-sprite.fly.dev".to_string())
@@ -319,7 +321,7 @@ mod tests {
     fn test_sprite_state_without_url() {
         let state = SpriteState {
             sprite_name: "headless".to_string(),
-            workspace_path: "/home/user".to_string(),
+            workspace_path: "/home/sprite".to_string(),
             started_at: "2026-03-23T10:00:00Z".to_string(),
             service_url: None,
         };
@@ -412,7 +414,7 @@ mod tests {
     fn test_sprite_state_json_has_all_fields() {
         let state = SpriteState {
             sprite_name: "sp_x".to_string(),
-            workspace_path: "/home/user".to_string(),
+            workspace_path: "/home/sprite".to_string(),
             started_at: "2026-01-01T00:00:00Z".to_string(),
             service_url: None,
         };

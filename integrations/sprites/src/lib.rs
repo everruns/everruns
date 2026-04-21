@@ -56,7 +56,7 @@ const SPRITES_API_BASE: &str = "https://api.sprites.dev/v1";
 const SPRITES_SECRET_PREFIX: &str = "sprites_sprite:";
 const EXEC_TIMEOUT_MS: u64 = 120_000;
 /// Default workspace path inside sprites
-const SPRITES_WORKSPACE_PATH: &str = "/home/user";
+const SPRITES_WORKSPACE_PATH: &str = "/home/sprite";
 
 // ============================================================================
 // SpritesCapability
@@ -85,7 +85,7 @@ Key differences from ephemeral sandboxes:
   the URL for sharing or testing.
 - **Instant wake**: Sprites wake from hibernation in <1s when you execute a command.
 
-Working directory is `/home/user`."#,
+Working directory is `/home/sprite`."#,
     );
     prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
     prompt
