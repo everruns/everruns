@@ -101,7 +101,7 @@ pub fn build_toolset(ctx: CatalogContext) -> ScriptingToolSet {
     for desc in inventory::iter::<crate::domains::common::CommandDescriptor> {
         let def = command_descriptor_to_def(desc);
         let callback = make_inventory_callback(desc, ctx.clone());
-        builder = builder.tool(def, callback);
+        builder = builder.async_tool(def, callback);
     }
 
     // Static CATALOG fills in everything not yet migrated.
@@ -111,7 +111,7 @@ pub fn build_toolset(ctx: CatalogContext) -> ScriptingToolSet {
         }
         let def = op_to_def(op);
         let callback = make_direct_callback(op, ctx.clone());
-        builder = builder.tool(def, callback);
+        builder = builder.async_tool(def, callback);
     }
 
     builder.build()
@@ -129,41 +129,41 @@ fn command_descriptor_to_def(desc: &crate::domains::common::CommandDescriptor) -
         })
 }
 
-/// Build a callback that dispatches an inventory command via domain dispatch.
+/// Build an async callback that dispatches an inventory command via domain dispatch.
 fn make_inventory_callback(
     desc: &'static crate::domains::common::CommandDescriptor,
     ctx: CatalogContext,
-) -> impl Fn(&ToolArgs) -> Result<String, String> + Send + Sync + 'static {
-    move |args: &ToolArgs| {
-        let params = args.params.clone();
+) -> impl Fn(ToolArgs) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send>>
++ Send
++ Sync
++ 'static {
+    move |args: ToolArgs| {
+        let params = args.params;
         let domain_ctx = ctx.to_domain_ctx();
-        tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async {
-                (desc.dispatch)(params, &domain_ctx)
-                    .await
-                    .map_err(|e| e.to_string())
-            })
+        Box::pin(async move {
+            (desc.dispatch)(params, &domain_ctx)
+                .await
+                .map_err(|e| e.to_string())
         })
     }
 }
 
-/// Create a callback that calls a handler function directly via service layer.
+/// Create an async callback that calls a handler function directly via service layer.
 fn make_direct_callback(
     op: &'static Operation,
     ctx: CatalogContext,
-) -> impl Fn(&ToolArgs) -> Result<String, String> + Send + Sync + 'static {
-    move |args: &ToolArgs| {
-        let params = &args.params;
-
-        if is_flag_set(params, "help") {
-            return Ok(format_help(op));
+) -> impl Fn(ToolArgs) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send>>
++ Send
++ Sync
++ 'static {
+    move |args: ToolArgs| {
+        if is_flag_set(&args.params, "help") {
+            let help = format_help(op);
+            return Box::pin(async move { Ok(help) });
         }
-
-        tokio::task::block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(async { (op.handler)(params, &ctx).await })
-        })
+        let params = args.params;
+        let ctx = ctx.clone();
+        Box::pin(async move { (op.handler)(&params, &ctx).await })
     }
 }
 
