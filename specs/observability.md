@@ -140,10 +140,23 @@ Integration with [Braintrust](https://www.braintrust.dev/) for LLM observability
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
+| `BRAINTRUST_ENABLED` | No | enabled when `BRAINTRUST_API_KEY` is set | Explicit Braintrust on/off switch |
 | `BRAINTRUST_API_KEY` | Yes (to enable) | - | API key from Braintrust organization settings |
 | `BRAINTRUST_PROJECT_NAME` | No | `My Project` | Project name (resolved to ID at startup) |
 | `BRAINTRUST_PROJECT_ID` | No | - | Direct project UUID (skips name resolution) |
 | `BRAINTRUST_API_URL` | No | `https://api.braintrust.dev` | API base URL |
+| `BRAINTRUST_QUEUE_CAPACITY` | No | `1024` | Max in-memory events buffered before new exports are dropped |
+| `BRAINTRUST_MAX_BATCH_SIZE` | No | `50` | Max events per `project_logs.insert` request |
+| `BRAINTRUST_FLUSH_INTERVAL_MS` | No | `500` | Max wait before flushing a partial batch |
+| `BRAINTRUST_REQUEST_TIMEOUT_MS` | No | `10000` | Per-request timeout for Braintrust insert calls |
+| `BRAINTRUST_MAX_RETRIES` | No | `3` | Retry attempts for `429`, `5xx`, and timeout/connect errors |
+| `BRAINTRUST_RETRY_BASE_DELAY_MS` | No | `250` | Base retry backoff before jitter |
+| `BRAINTRUST_RETRY_MAX_DELAY_MS` | No | `5000` | Retry backoff cap |
+| `BRAINTRUST_RECORD_CONTENT` | No | `false` | Record raw turn/LLM text content |
+| `BRAINTRUST_RECORD_THINKING` | No | `none` | Extended thinking export mode: `none`, `summary`, `full` |
+| `BRAINTRUST_TOOL_ARGS_MODE` | No | `redacted` | Tool argument export mode: `full`, `redacted`, `none` |
+| `BRAINTRUST_TOOL_RESULTS_MODE` | No | `summary` | Tool result export mode: `full`, `summary`, `redacted`, `none` |
+| `BRAINTRUST_DEBUG_PAYLOADS` | No | `false` | Emit full outbound Braintrust payloads to local debug logs |
 
 ### Braintrust Span Mapping
 
@@ -163,13 +176,30 @@ For the complete field-by-field mapping (LLM generation, tool events, thinking e
 - **Token usage**: `metadata.usage.*` → `metrics.prompt_tokens`, `metrics.completion_tokens`, `metrics.tokens`
 - **Cache tokens**: `metadata.usage.cache_read_tokens` → `metrics.cache_read_tokens`
 - **Timing**: `metadata.duration_ms` → `metrics.start`/`metrics.end`; `metadata.time_to_first_token_ms` → `metrics.time_to_first_token` (seconds)
-- **Messages**: Converted to OpenAI format via `Message::to_openai_format()`
+- **Messages**: Converted to Braintrust/OpenAI-compatible payloads only when `BRAINTRUST_RECORD_CONTENT=true`; otherwise the exporter sends structural summaries without raw text previews
+- **Tool args/results**: Controlled independently via `BRAINTRUST_TOOL_ARGS_MODE` and `BRAINTRUST_TOOL_RESULTS_MODE`, including tool-call/tool-result payloads nested inside recorded LLM input/output
+- **Thinking content**: Controlled independently via `BRAINTRUST_RECORD_THINKING`
+- **Root turn metadata**: Every exported turn root includes `session_id`; when available it also includes `input_message_id`, monotonic session ordering fields, deployment grade, session status, model/provider summary, retry markers, and compaction markers
+- **Session lifecycle markers**: `session.started`, `session.activated`, and `session.idled` are exported as lightweight session lifecycle logs to preserve grouped-session flow
+
+### Session Grouping Contract
+
+Braintrust grouping is session-first but still turn-scoped:
+
+- one Braintrust trace per Everruns turn
+- every root turn span carries `metadata.session_id`
+- session ordering uses persisted Everruns event sequence metadata instead of inventing a second counter
+- session lifecycle logs (`started`, `activated`, `idled`) use the same `session_id`
+
+Consumers should group by `metadata.session_id` and use Braintrust timeline/thread views for the cross-turn session view. Everruns does not collapse an unbounded session into one monolithic Braintrust trace.
 
 ### Design Decisions
 
 - **Full agentic loop tracing**: Traces turns, reason/act phases, LLM calls, and tool executions — matches Braintrust's OpenAI Agents integration feature parity.
 - **Project name as primary config**: `BRAINTRUST_PROJECT_NAME` with default "My Project" matches the JS SDK pattern. Name-to-ID resolution at startup.
-- **Async event delivery**: Events sent via `tokio::spawn` to avoid blocking main event processing. Fire-and-forget — failed deliveries are logged, not retried.
+- **Bounded async delivery**: Events enter a bounded in-memory queue, flush in batches to `project_logs.insert`, retry on `429`, `5xx`, and timeout/connect failures, and log dropped/retried/permanent-failure counters.
+- **Conservative defaults**: Raw content, reasoning text, and full tool payloads are off or reduced by default. Local debug logs never include full outbound Braintrust payloads unless `BRAINTRUST_DEBUG_PAYLOADS=true`.
+- **Session-grouped turns, not giant session traces**: Session analysis is a metadata contract, not a single ever-growing trace.
 - **EventListener pattern**: Observability is orthogonal to LLM execution — listens to completed events, consistent with OtelEventListener.
 - **Blocking HTTP at startup**: `tokio::task::block_in_place` for one-time project name resolution. Simpler than async init.
 
@@ -207,11 +237,15 @@ Tests verify span creation, attributes, hierarchy, lifecycle, and content record
 
 ### Braintrust Tests
 
-Tests verify event relationship correctness:
+Tests verify delivery and mapping correctness:
 
 1. **turn_id propagation**: All events within a turn share the same turn_id
 2. **trace_id consistency**: All child events have trace_id = turn_id
 3. **parent_span_id correctness**: Each event type references the correct parent
 4. **span_id sharing**: started/completed pairs share the same span_id
+5. **batching**: multiple events can flush in one insert request
+6. **retry behavior**: `429` and timeout paths retry before failing
+7. **privacy controls**: redaction/summary modes strip raw tool payloads by default
+8. **session grouping metadata**: root turn spans carry stable `session_id` and session-ordering metadata
 
 Both test suites must cover dev_worker (DEV_MODE) and durable_worker (Full mode) execution paths.

@@ -581,13 +581,26 @@ All spans include OpenTelemetry attributes following the Gen-AI semantic convent
 
 ## Braintrust Integration
 
-Everruns supports sending LLM generation events to [Braintrust](https://www.braintrust.dev/) for observability, evaluation, and logging.
+Everruns supports sending turn, reasoning, tool, and session lifecycle events to [Braintrust](https://www.braintrust.dev/) for observability, evaluation, and logging.
 
 For setup instructions and configuration details, see the [Braintrust Integration Guide](/observability/braintrust/).
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
+| `BRAINTRUST_ENABLED` | No | enabled when API key is present | Explicit Braintrust on/off switch |
 | `BRAINTRUST_API_KEY` | Yes | - | API key from Braintrust settings |
 | `BRAINTRUST_PROJECT_NAME` | No | `My Project` | Project name for organizing traces |
 | `BRAINTRUST_PROJECT_ID` | No | - | Direct project UUID (skips name lookup) |
 | `BRAINTRUST_API_URL` | No | `https://api.braintrust.dev` | API base URL |
+| `BRAINTRUST_QUEUE_CAPACITY` | No | `1024` | Buffered event capacity before new exports are dropped |
+| `BRAINTRUST_MAX_BATCH_SIZE` | No | `50` | Max events per Braintrust insert call |
+| `BRAINTRUST_FLUSH_INTERVAL_MS` | No | `500` | Max delay before flushing a partial batch |
+| `BRAINTRUST_REQUEST_TIMEOUT_MS` | No | `10000` | Per-request timeout for Braintrust insert calls |
+| `BRAINTRUST_MAX_RETRIES` | No | `3` | Retries for `429`, `5xx`, and timeout/connect failures |
+| `BRAINTRUST_RETRY_BASE_DELAY_MS` | No | `250` | Initial retry backoff |
+| `BRAINTRUST_RETRY_MAX_DELAY_MS` | No | `5000` | Retry backoff cap |
+| `BRAINTRUST_RECORD_CONTENT` | No | `false` | Export raw turn and LLM text content |
+| `BRAINTRUST_RECORD_THINKING` | No | `none` | Extended thinking export mode: `none`, `summary`, `full` |
+| `BRAINTRUST_TOOL_ARGS_MODE` | No | `redacted` | Tool argument export mode: `full`, `redacted`, `none` |
+| `BRAINTRUST_TOOL_RESULTS_MODE` | No | `summary` | Tool result export mode: `full`, `summary`, `redacted`, `none` |
+| `BRAINTRUST_DEBUG_PAYLOADS` | No | `false` | Print full outbound Braintrust payload JSON to local debug logs |
