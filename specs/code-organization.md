@@ -66,6 +66,7 @@ Tests are organized by dependency requirements and execution speed:
 
 | Category | CI Job | Dependencies | Speed | Run Command |
 |----------|--------|--------------|-------|-------------|
+| Shell (Repo Scripts) | `shell-test` | Bash + repo script deps | ~10s | `just test-shell` |
 | Unit (Pure) | `unit-test` | None | ~30s | `just test-unit` |
 | Integration | `integration-test` | PostgreSQL | ~2min | `just test-integration` |
 | Workflow | `workflow-test` | Server + Worker | ~3min | `just test-workflow` |
@@ -205,6 +206,22 @@ just start-dev --no-watch &
 ./scripts/cli-e2e-test.sh --skip-chat
 ```
 
+### Shell Helper Tests
+
+Repo-owned shell-layer tests live in `scripts/test-*.sh` and run through the
+shared `just test-shell` / `scripts/run-shell-tests.sh` entrypoint. Keep these
+tests in shell when they need to exercise shell libraries, git config/env
+behavior, port-prefix expansion, or process-control scripts directly.
+
+Scope:
+- `scripts/test-*.sh` covers repository shell libraries and helper behavior
+- `.github/scripts/**` stays workflow-specific and is validated by the CI jobs
+  that invoke those scripts directly
+
+```bash
+just test-shell
+```
+
 ### Test Infrastructure
 
 **In-process API testing:**
@@ -231,6 +248,7 @@ just start-dev --no-watch &
 ### Running Tests
 
 ```bash
+just test-shell        # Repo shell helper tests
 just test-unit         # Pure unit tests (~30s)
 just test-integration  # PostgreSQL tests (~2min)
 just test-workflow     # E2E with server/worker

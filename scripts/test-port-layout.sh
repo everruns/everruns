@@ -19,7 +19,7 @@ assert_eq() {
 }
 
 check_default_ports() {
-  unset PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT COMPOSE_PROJECT_NAME
+  unset PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VICTORIAMETRICS_PORT VALKEY_PORT NATS_PORT DB_PORT COMPOSE_PROJECT_NAME
   apply_port_prefix_defaults
 
   assert_eq "9300" "$PROXY_PORT" "default proxy port"
@@ -29,14 +29,16 @@ check_default_ports() {
   assert_eq "9305" "$UI_PORT" "default ui port"
   assert_eq "4317" "$OTEL_GRPC_PORT" "default OTLP gRPC port"
   assert_eq "4318" "$OTEL_HTTP_PORT" "default OTLP HTTP port"
+  assert_eq "8428" "$VICTORIAMETRICS_PORT" "default VictoriaMetrics port"
   assert_eq "6379" "$VALKEY_PORT" "default valkey port"
+  assert_eq "4222" "$NATS_PORT" "default nats port"
   assert_eq "9332" "$DB_PORT" "default db port"
   assert_eq "everruns" "$COMPOSE_PROJECT_NAME" "default compose project"
 }
 
 check_prefixed_ports() {
   export PORT_PREFIX=271
-  unset API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VALKEY_PORT DB_PORT COMPOSE_PROJECT_NAME
+  unset API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VICTORIAMETRICS_PORT VALKEY_PORT NATS_PORT DB_PORT COMPOSE_PROJECT_NAME
   apply_port_prefix_defaults
 
   assert_eq "27100" "$PROXY_PORT" "prefixed proxy port"
@@ -46,7 +48,9 @@ check_prefixed_ports() {
   assert_eq "27105" "$UI_PORT" "prefixed ui port"
   assert_eq "27117" "$OTEL_GRPC_PORT" "prefixed OTLP gRPC port"
   assert_eq "27118" "$OTEL_HTTP_PORT" "prefixed OTLP HTTP port"
+  assert_eq "27128" "$VICTORIAMETRICS_PORT" "prefixed VictoriaMetrics port"
   assert_eq "27179" "$VALKEY_PORT" "prefixed valkey port"
+  assert_eq "27122" "$NATS_PORT" "prefixed nats port"
   assert_eq "27132" "$DB_PORT" "prefixed db port"
   assert_eq "everruns-271" "$COMPOSE_PROJECT_NAME" "prefixed compose project"
 }
@@ -58,7 +62,7 @@ check_example_ports() {
     echo "FAIL: example compose should not hardcode container_name" >&2
     exit 1
   fi
-  rg -q 'PORT: "9301"' "$compose_file"
+  rg -q 'ADDR: "0.0.0.0:9301"' "$compose_file"
   rg -q 'PORT: "9305"' "$compose_file"
   rg -q 'reverse_proxy server:9301' "$compose_file"
   rg -q 'reverse_proxy ui:9305' "$compose_file"
