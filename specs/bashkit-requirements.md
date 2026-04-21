@@ -35,6 +35,17 @@ Pipeline: strip ANSI escape codes → collapse `\r`-overwritten lines → middle
 
 This reduces token waste from verbose build output (`cargo build`, `npm install`) by 40-60%. The EVE-225 hard limit (64 KiB) acts as a safety net for any tool that skips sanitization.
 
+## Observability Hooks
+
+`virtual_bash` installs observational-only bashkit interceptors on every `Bash` instance it builds (`install_observability_hooks` in `crates/core/src/capabilities/virtual_bash.rs`). The hooks emit structured `tracing` events at the `bashkit.hook` target, tagged with the active `session_id` for audit correlation:
+
+- `before_tool` / `after_tool` — per-builtin invocation and completion. Logs tool name, arg count, exit code, and stdout byte length. Argument values and stdout bytes are never logged (tenant paths, URLs, or embedded secrets may appear there).
+- `on_error` — interpreter errors. The error message is truncated to 256 bytes on a UTF-8 boundary before logging to bound per-event payload size.
+
+Every hook returns `HookAction::Continue`; none widen bashkit's existing limits, network allowlist, or sandbox boundaries (TM-BASH).
+
+HTTP hooks (`before_http` / `after_http`) require bashkit's `http_client` feature, which is **not** enabled for `virtual_bash` (see TM-BASH-003 — no network builtins). If that changes, register HTTP hooks alongside the existing ones.
+
 ## Benefits
 
 1. **Live file visibility** - Files written by other tools during bash execution are immediately visible
