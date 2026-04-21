@@ -6,7 +6,7 @@
 //! - Environment variable: `DENO_DEPLOY_ORG` (required when the token is a
 //!   personal `ddp_...` token; missing in that case ⇒ panic)
 //! - Environment variable: `DENO_SANDBOX_REGION` (optional; defaults to the
-//!   service default when unset)
+//!   client region default `ord` when unset)
 //!
 //! Missing-credential policy: these tests fail closed. If the feature flag is
 //! set but credentials are missing or inconsistent, the tests panic rather
