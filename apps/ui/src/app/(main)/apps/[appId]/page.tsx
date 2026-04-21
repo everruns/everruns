@@ -67,6 +67,7 @@ import {
   getEntityStatusBadgeVariant,
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
+import { getChannelTypeDisplayName } from "@/lib/app-channels";
 
 export default function AppDetailPage({ params }: { params: Promise<{ appId: string }> }) {
   const { appId } = use(params);
@@ -198,7 +199,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     if (!app) return;
     setEditName(app.name);
     setEditDescription(app.description ?? "");
-    setEditAgentId(app.agent_id);
+    setEditAgentId(app.agent_id ?? "");
     setEditHarnessId(app.harness_id);
     setEditAgentIdentityId(app.agent_identity_id ?? "");
     setEditingBasic(true);
@@ -211,7 +212,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       data: {
         name: editName,
         description: editDescription || undefined,
-        agent_id: editAgentId,
+        agent_id: editAgentId || undefined,
         agent_identity_id: editAgentIdentityId || null,
         harness_id: editHarnessId,
       },
@@ -670,8 +671,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             <Card key={channel.id}>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
-                  <Badge variant="outline" className="capitalize">
-                    {channel.channel_type}
+                  <Badge variant="outline">
+                    {getChannelTypeDisplayName(channel.channel_type)}
                   </Badge>
                   {!channel.enabled && <Badge variant="secondary">Disabled</Badge>}
                   {(app.channels ?? []).length > 1 && (
@@ -840,7 +841,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                     <Button
                       size="sm"
                       onClick={saveBasic}
-                      disabled={updateApp.isPending || !editName || !editAgentId || !editHarnessId}
+                      disabled={updateApp.isPending || !editName || !editHarnessId}
                     >
                       <Check className="w-3 h-3 mr-1" />
                       {updateApp.isPending ? "Saving..." : "Save"}
@@ -869,13 +870,17 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                   <div>
                     <p className="text-sm font-medium">Agent</p>
                     <p
-                      className={`text-sm ${getEntityReferenceClassName(agent?.status ?? "deleted")}`}
+                      className={`text-sm ${getEntityReferenceClassName(
+                        app.agent_id ? agent?.status ?? "deleted" : undefined,
+                      )}`}
                     >
-                      {getEntityReferenceLabel({
-                        kind: "Agent",
-                        name: getDisplayName(agent),
-                        status: agent?.status ?? "deleted",
-                      })}
+                      {app.agent_id
+                        ? getEntityReferenceLabel({
+                            kind: "Agent",
+                            name: getDisplayName(agent),
+                            status: agent?.status ?? "deleted",
+                          })
+                        : "None assigned"}
                     </p>
                   </div>
 
@@ -883,8 +888,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                     <p className="text-sm font-medium">Channels</p>
                     <div className="flex gap-1 flex-wrap">
                       {(app.channels ?? []).map((ch: AppChannel) => (
-                        <Badge key={ch.id} variant="outline" className="capitalize">
-                          {ch.channel_type}
+                        <Badge key={ch.id} variant="outline">
+                          {getChannelTypeDisplayName(ch.channel_type)}
                         </Badge>
                       ))}
                       {(app.channels ?? []).length === 0 && (

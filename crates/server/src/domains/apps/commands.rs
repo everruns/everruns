@@ -76,7 +76,7 @@ async fn validate_agent_identity(
 // CreateApp
 // ============================================================================
 
-/// Create a new app with an agent, harness, and initial channel.
+/// Create a new app with a harness and optional agent/channel.
 #[derive(Debug, Deserialize)]
 pub struct CreateApp(pub CreateAppRequest);
 
@@ -93,7 +93,7 @@ impl Command for CreateApp {
         CommandMeta {
             name: "create_app",
             category: "apps",
-            description: "Create a new app with an agent, harness, and initial channel.",
+            description: "Create a new app with a harness and optional agent/channel.",
             method: "POST",
             path: "/v1/apps",
         }
@@ -104,24 +104,41 @@ impl Command for CreateApp {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<App, CommandError> {
-        let req = self.0;
+        let CreateAppRequest {
+            name,
+            description,
+            harness_id,
+            agent_id,
+            agent_identity_id,
+            channel_type,
+            channel_config,
+        } = self.0;
         let encryption = ctx.encryption.as_ref();
 
+        if channel_type.is_none() && channel_config.is_some() {
+            return Err(CommandError::bad_request(
+                "channel_config requires channel_type",
+            ));
+        }
+
         // Validate references
-        let harness_uuid = validate_harness(ctx, req.harness_id).await?;
-        let agent_uuid = validate_agent(ctx, &req.agent_id).await?;
-        let agent_identity_uuid = if let Some(identity_id) = req.agent_identity_id {
+        let harness_uuid = validate_harness(ctx, harness_id).await?;
+        let agent_uuid = match agent_id {
+            Some(agent_id) => Some(validate_agent(ctx, &agent_id).await?),
+            None => None,
+        };
+        let agent_identity_uuid = if let Some(identity_id) = agent_identity_id {
             Some(validate_agent_identity(ctx, identity_id).await?)
         } else {
             None
         };
         let owner_principal = PrincipalService::new(ctx.db.clone())
-            .default_owner_principal(&ctx.caller, req.agent_identity_id)
+            .default_owner_principal(&ctx.caller, agent_identity_id)
             .await
             .map_err(classify_anyhow)?;
 
         // Prepare channel config
-        let channel_config = req.channel_config.clone().unwrap_or_default();
+        let channel_config = channel_config.unwrap_or_default();
         let (stored_plaintext, channel_config_encrypted) =
             q::prepare_channel_config(encryption, &channel_config).map_err(classify_anyhow)?;
 
@@ -130,14 +147,14 @@ impl Command for CreateApp {
         let public_id = AppId::from_uuid(internal_uuid);
         let input = CreateAppRow {
             public_id: public_id.to_string(),
-            name: req.name,
-            description: req.description,
+            name,
+            description,
             harness_id: harness_uuid,
             agent_id: agent_uuid,
             agent_identity_id: agent_identity_uuid,
             owner_principal_id: owner_principal.id,
             resolved_owner_user_id: owner_principal.resolved_user_id,
-            channel_type: req.channel_type.to_string(),
+            channel_type: channel_type.as_ref().map(ToString::to_string),
             channel_config: stored_plaintext.clone(),
             channel_config_encrypted: channel_config_encrypted.clone(),
         };
@@ -147,20 +164,21 @@ impl Command for CreateApp {
             .await
             .map_err(classify_anyhow)?;
 
-        // Create the initial channel
-        let channel_uuid = Uuid::now_v7();
-        let channel_public_id = AppChannelId::from_uuid(channel_uuid);
-        let channel_input = CreateAppChannelRow {
-            public_id: channel_public_id.to_string(),
-            channel_type: req.channel_type.to_string(),
-            channel_config: stored_plaintext,
-            channel_config_encrypted,
-            enabled: true,
-        };
-        ctx.db
-            .create_app_channel(row.id, channel_input)
-            .await
-            .map_err(classify_anyhow)?;
+        if let Some(channel_type) = channel_type {
+            let channel_uuid = Uuid::now_v7();
+            let channel_public_id = AppChannelId::from_uuid(channel_uuid);
+            let channel_input = CreateAppChannelRow {
+                public_id: channel_public_id.to_string(),
+                channel_type: channel_type.to_string(),
+                channel_config: stored_plaintext,
+                channel_config_encrypted,
+                enabled: true,
+            };
+            ctx.db
+                .create_app_channel(row.id, channel_input)
+                .await
+                .map_err(classify_anyhow)?;
+        }
 
         Ok(q::row_to_app(&ctx.db, encryption, row, ctx.org_id()).await)
     }

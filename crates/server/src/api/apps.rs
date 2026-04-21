@@ -40,15 +40,17 @@ pub struct CreateAppRequest {
     /// ID of the harness to use.
     #[schema(value_type = String, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: HarnessId,
-    /// ID of the agent to use.
-    #[schema(value_type = String, example = "agent_01933b5a00007000800000000000001")]
-    pub agent_id: AgentId,
+    /// Optional ID of the agent to use.
+    #[serde(default)]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub agent_id: Option<AgentId>,
     /// Optional resident agent identity for unattended/channel execution.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
     pub agent_identity_id: Option<AgentIdentityId>,
-    /// Initial channel type (creates the first channel on the app).
-    pub channel_type: ChannelType,
+    /// Optional initial channel type (creates the first channel on the app).
+    #[serde(default)]
+    pub channel_type: Option<ChannelType>,
     /// Initial channel configuration.
     #[serde(default)]
     pub channel_config: Option<serde_json::Value>,
@@ -439,7 +441,22 @@ pub async fn delete_channel(
 mod tests {
     use super::*;
 
+    const TEST_HARNESS_ID: &str = "harness_550e8400e29b41d4a716446655440001";
     const TEST_AGENT_IDENTITY_ID: &str = "identity_550e8400e29b41d4a716446655440000";
+
+    #[test]
+    fn create_app_request_allows_missing_agent_and_channel() {
+        let req: CreateAppRequest = serde_json::from_str(&format!(
+            r#"{{"name":"Draft App","harness_id":"{}"}}"#,
+            TEST_HARNESS_ID
+        ))
+        .unwrap();
+
+        assert_eq!(req.name, "Draft App");
+        assert_eq!(req.agent_id, None);
+        assert_eq!(req.channel_type, None);
+        assert_eq!(req.channel_config, None);
+    }
 
     #[test]
     fn update_app_request_leaves_agent_identity_unchanged_when_omitted() {

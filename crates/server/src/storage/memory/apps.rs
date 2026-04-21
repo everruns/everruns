@@ -106,7 +106,7 @@ impl InMemoryDatabase {
             app.harness_id = harness_id;
         }
         if let Some(agent_id) = input.agent_id {
-            app.agent_id = agent_id;
+            app.agent_id = Some(agent_id);
         }
         input.agent_identity_id.apply(&mut app.agent_identity_id);
         if let Some(owner_principal_id) = input.owner_principal_id {
@@ -116,7 +116,7 @@ impl InMemoryDatabase {
             .resolved_owner_user_id
             .apply(&mut app.resolved_owner_user_id);
         if let Some(channel_type) = input.channel_type {
-            app.channel_type = channel_type;
+            app.channel_type = Some(channel_type);
         }
         if let Some(channel_config) = input.channel_config {
             app.channel_config = channel_config;

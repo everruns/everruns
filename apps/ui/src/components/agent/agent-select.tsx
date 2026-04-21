@@ -23,6 +23,10 @@ interface AgentSelectProps {
   includeAll?: boolean;
   /** Label for "All agents" option */
   allLabel?: string;
+  /** Include an explicit empty option */
+  includeNoneOption?: boolean;
+  /** Label for the empty option */
+  noneLabel?: string;
   /** Additional className for trigger */
   className?: string;
   /** Disable the select */
@@ -39,9 +43,12 @@ export function AgentSelect({
   placeholder = "Select agent",
   includeAll = false,
   allLabel = "All agents",
+  includeNoneOption = false,
+  noneLabel = "None",
   className,
   disabled,
 }: AgentSelectProps) {
+  const noneValue = "__none__";
   const { data: agents = [] } = useAgents();
 
   const agentMap = useMemo(() => {
@@ -49,15 +56,17 @@ export function AgentSelect({
   }, [agents]);
 
   // For the select, use "all" as the value for the all option
-  const selectValue = includeAll && !value ? "all" : value;
+  const selectValue = value ? value : includeNoneOption ? noneValue : includeAll ? "all" : value;
 
   const handleChange = (newValue: string) => {
-    onValueChange(newValue === "all" ? "" : newValue);
+    onValueChange(newValue === "all" || newValue === noneValue ? "" : newValue);
   };
 
   const selectedAgent = value ? agentMap.get(value) : undefined;
   const displayValue = selectedAgent
     ? getDisplayName(selectedAgent)
+    : includeNoneOption
+      ? noneLabel
     : includeAll
       ? allLabel
       : undefined;
@@ -68,6 +77,7 @@ export function AgentSelect({
         <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
       </SelectTrigger>
       <SelectContent>
+        {includeNoneOption && <SelectItem value={noneValue}>{noneLabel}</SelectItem>}
         {includeAll && <SelectItem value="all">{allLabel}</SelectItem>}
         {agents.map((agent) => (
           <SelectItem key={agent.id} value={agent.id}>

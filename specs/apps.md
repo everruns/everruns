@@ -2,16 +2,16 @@
 
 ## Abstract
 
-An App is a deployable unit that binds a Harness and Agent to a distribution channel (Slack, AG-UI, WhatsApp, web widget, etc.). It provides a publish/unpublish lifecycle that controls whether the app actively accepts incoming requests from its configured channel.
+An App is a deployable unit that binds a Harness and optional Agent to one or more distribution channels (Slack, AG-UI, WhatsApp, web widget, etc.). It provides a publish/unpublish lifecycle that controls whether the app actively accepts incoming requests from its configured channels.
 
 ## Concepts
 
 ### App
 
-Top-level deployment entity. Composes existing building blocks (Harness, Agent) with one or more distribution channels.
+Top-level deployment entity. Composes existing building blocks (Harness, optional Agent) with one or more distribution channels.
 
 - Each App references exactly one Harness (required)
-- Each App references exactly one Agent (required)
+- Each App references zero or one Agent
 - Each App has zero or more **Channels** (stored in `app_channels` table)
 - Apps have a publish lifecycle: `draft` → `published` → `draft`
 - Apps also participate in the default building-block lifecycle: `active/draft/published -> archived -> deleted`
@@ -23,7 +23,7 @@ A distribution channel attached to an App. Each channel has its own type, config
 
 - Stored in `app_channels` table (one-to-many with `apps`)
 - Uses dual-ID pattern: `appchan_` prefix
-- Creating an App with `channel_type` creates the first channel automatically
+- `channel_type` is optional at create time; when present it creates the first channel automatically
 - Channels can be added, updated, or removed via `/v1/apps/{app_id}/channels`
 
 ### Channel Types

@@ -36,7 +36,7 @@ export interface App {
   name: string;
   description: string | null;
   harness_id: string;
-  agent_id: string;
+  agent_id: string | null;
   agent_identity_id?: string | null;
   owner_principal_id: string;
   resolved_owner_user_id?: string | null;
@@ -55,9 +55,9 @@ export interface CreateAppRequest {
   name: string;
   description?: string;
   harness_id: string;
-  agent_id: string;
+  agent_id?: string;
   agent_identity_id?: string;
-  channel_type: ChannelType;
+  channel_type?: ChannelType;
   channel_config?: SlackChannelConfig | AgUiChannelConfig | Record<string, unknown>;
 }
 

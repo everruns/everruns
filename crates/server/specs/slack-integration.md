@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Slack integration allows deploying agents as Slack bots. Each Everruns App gets its own Slack App (own identity, name, avatar). An App binds an agent and harness to a Slack workspace with signing secret verification and configurable session strategies. Setup is streamlined via per-app manifest generation.
+Slack integration allows deploying agents as Slack bots. Each Everruns App gets its own Slack App (own identity, name, avatar). An App binds a harness and optional agent to a Slack workspace with signing secret verification and configurable session strategies. Setup is streamlined via per-app manifest generation.
 
 Slack is the reference implementation for the [messaging integrations](../../specs/messaging-integrations.md) channel abstraction layer. It uses `InboundChannelEvent` for platform-agnostic message parsing, `build_session_routing_tag()` for session routing, `ThreadContext` for participant tracking, and `SlackDeliveryAdapter` implementing the `ChannelDeliveryAdapter` trait.
 
@@ -34,7 +34,7 @@ The events endpoint verifies HMAC-SHA256 signing secret, finds/creates session b
 
 - **One Slack App per Everruns App**: Each app has its own identity (name, avatar, scopes). This is unlike GitHub (global app) because Slack bots are user-facing with distinct identities per use case.
 - **Per-app manifest generation**: The manifest endpoint generates a YAML with correct scopes and bot user. `event_subscriptions` is omitted (requires live webhook URL — must be configured after publishing).
-- **App-scoped endpoint**: Slack is bound to an App, so the webhook is `POST /v1/apps/{app_id}/slack/events`. The App defines the agent, harness, signing secret, and session strategy.
+- **App-scoped endpoint**: Slack is bound to an App, so the webhook is `POST /v1/apps/{app_id}/slack/events`. The App defines the harness, optional agent, signing secret, and session strategy.
 - **Unauthenticated**: Webhook and manifest requests come from Slack or the browser. Security is via Slack signing secret verification (HMAC-SHA256), not API key auth.
 - **Unscoped app lookup**: `get_app_by_public_id_unscoped()` looks up apps across all orgs since webhooks have no auth context.
 - **Session routing via tags**: Sessions are found/created using tags like `slack:thread:{ts}`, `slack:channel:{id}`, or `slack:user:{id}` depending on the session strategy.
@@ -84,7 +84,7 @@ All other App CRUD endpoints remain under standard API key auth at `/v1/apps`.
 
 Apps page at `/apps` with:
 - List of apps with status badges
-- Create page at `/apps/new` with name, harness, agent selection
+- Create page at `/apps/new` with name, harness, and optional agent/channel selection
 - Detail page at `/apps/{id}` with:
   - "Create Slack App" button (opens Slack with pre-filled manifest)
   - Manual configuration fields (signing secret, bot token)
