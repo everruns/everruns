@@ -661,6 +661,6 @@ mod tests {
             schema["properties"]["timeout"]["default"],
             DENO_SANDBOX_TIMEOUT
         );
-        assert_eq!(crate::DENO_WORKSPACE_PATH, "/home/sandbox");
+        assert_eq!(crate::DENO_WORKSPACE_PATH, "/home/app");
     }
 }

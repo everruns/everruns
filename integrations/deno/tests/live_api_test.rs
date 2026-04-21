@@ -5,6 +5,8 @@
 //! - Environment variable: `DENO_DEPLOY_TOKEN` (required; missing ⇒ panic)
 //! - Environment variable: `DENO_DEPLOY_ORG` (required when the token is a
 //!   personal `ddp_...` token; missing in that case ⇒ panic)
+//! - Environment variable: `DENO_SANDBOX_REGION` (optional; defaults to the
+//!   client region default `ord` when unset)
 //!
 //! Missing-credential policy: these tests fail closed. If the feature flag is
 //! set but credentials are missing or inconsistent, the tests panic rather
@@ -67,6 +69,13 @@ fn org() -> Option<String> {
         .filter(|v| !v.trim().is_empty())
 }
 
+fn sandbox_region() -> Option<String> {
+    std::env::var("DENO_SANDBOX_REGION")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
 /// Require `DENO_DEPLOY_TOKEN` (plus `DENO_DEPLOY_ORG` for personal `ddp_...`
 /// tokens) or panic. Live tests fail closed so CI cannot silently pass when
 /// credentials are missing. See `specs/integrations.md`.
@@ -94,7 +103,7 @@ async fn test_live_sandbox_lifecycle() {
     let client = DenoClient::new(token, org());
     let created = client
         .create_sandbox(CreateSandboxRequest {
-            region: None,
+            region: sandbox_region(),
             timeout_seconds: Some(10 * 60),
             memory_mb: Some(1_280),
             labels: serde_json::Map::from_iter([(
@@ -109,6 +118,7 @@ async fn test_live_sandbox_lifecycle() {
         sandbox_id: created.sandbox_id.clone(),
         region: created.region.clone(),
     };
+    let live_file = format!("{}/live.txt", created.workspace_path);
 
     let exec = client
         .exec(
@@ -126,7 +136,7 @@ async fn test_live_sandbox_lifecycle() {
         exec.stdout
     );
     assert!(
-        exec.stdout.contains("/home/sandbox"),
+        exec.stdout.contains(&created.workspace_path),
         "stdout: {}",
         exec.stdout
     );
@@ -135,17 +145,13 @@ async fn test_live_sandbox_lifecycle() {
         .write_text_file(
             &created.sandbox_id,
             &created.region,
-            "/home/sandbox/live.txt",
+            &live_file,
             "hello from everruns\n",
         )
         .await
         .expect("write file");
     let content = client
-        .read_text_file(
-            &created.sandbox_id,
-            &created.region,
-            "/home/sandbox/live.txt",
-        )
+        .read_text_file(&created.sandbox_id, &created.region, &live_file)
         .await
         .expect("read file");
     assert_eq!(content, "hello from everruns\n");

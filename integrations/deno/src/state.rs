@@ -276,7 +276,7 @@ mod tests {
             sandbox_id: "sb_123".to_string(),
             region: "ord".to_string(),
             org: Some("everruns".to_string()),
-            workspace_path: "/home/sandbox".to_string(),
+            workspace_path: "/home/app".to_string(),
             started_at: "2026-03-22T00:00:00Z".to_string(),
         };
         let json = serde_json::to_string(&state).unwrap();
