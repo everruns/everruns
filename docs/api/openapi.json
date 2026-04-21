@@ -11138,6 +11138,20 @@
           "message"
         ],
         "properties": {
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable error code for user-facing failures surfaced as assistant text."
+          },
+          "error_fields": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Structured interpolation fields for localized error rendering."
+          },
           "message": {
             "$ref": "#/components/schemas/Message",
             "description": "The agent message"
@@ -14384,6 +14398,13 @@
               "null"
             ],
             "description": "Error code"
+          },
+          "error_fields": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Structured interpolation fields for localized error rendering."
           },
           "turn_id": {
             "type": "string",
