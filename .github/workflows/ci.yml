@@ -260,19 +260,24 @@ jobs:
       - name: Install shell test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y netcat-openbsd ripgrep
+          sudo apt-get install -y lsof netcat-openbsd ripgrep
 
           CADDY_VERSION="2.9.1"
+          CADDY_TARBALL=""
+          CADDY_CHECKSUMS="caddy_${CADDY_VERSION}_checksums.txt"
+          CADDY_BASE_URL="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}"
           case "$(uname -m)" in
             x86_64) CADDY_ARCH="amd64" ;;
             aarch64) CADDY_ARCH="arm64" ;;
             *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
           esac
 
-          curl -fsSL \
-            "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_${CADDY_ARCH}.tar.gz" \
-            -o /tmp/caddy.tar.gz
-          tar -xzf /tmp/caddy.tar.gz -C /tmp caddy
+          CADDY_TARBALL="caddy_${CADDY_VERSION}_linux_${CADDY_ARCH}.tar.gz"
+          curl -fsSL "${CADDY_BASE_URL}/${CADDY_TARBALL}" -o "/tmp/${CADDY_TARBALL}"
+          curl -fsSL "${CADDY_BASE_URL}/${CADDY_CHECKSUMS}" -o "/tmp/${CADDY_CHECKSUMS}"
+          grep "  ${CADDY_TARBALL}$" "/tmp/${CADDY_CHECKSUMS}" > /tmp/caddy.sha256
+          (cd /tmp && sha256sum -c caddy.sha256)
+          tar -xzf "/tmp/${CADDY_TARBALL}" -C /tmp caddy
           sudo install -m 0755 /tmp/caddy /usr/local/bin/caddy
 
       - name: Run repo shell tests
