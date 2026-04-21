@@ -16,6 +16,7 @@
 // - Multi-org: all tools accept optional `organization_id` to override the default org
 
 mod handlers;
+mod tool_registry;
 
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
@@ -26,7 +27,7 @@ use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::post,
 };
@@ -112,206 +113,57 @@ impl JsonRpcResponse {
 
 const MCP_SERVER_NAME: &str = "everruns";
 const MCP_SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
-const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
+const MCP_PROTOCOL_VERSION_FALLBACK: &str = "2025-03-26";
+const MCP_PROTOCOL_VERSION_LATEST: &str = "2025-06-18";
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
+    &[MCP_PROTOCOL_VERSION_LATEST, MCP_PROTOCOL_VERSION_FALLBACK];
 
 const ORG_ID_DESCRIPTION: &str = "Optional organization ID (format: org_{32-hex}). Overrides the default organization for this call. Use list_organizations to see available orgs.";
 
-fn tool_definitions() -> Value {
-    json!([
-        // ── Tier 0: identity & org context ──────────────────────────
-        {
-            "name": "me",
-            "description": "Get the current authenticated user's profile and active organization context. Returns user ID, email, name, and the organization currently used for all operations.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {}
-            }
-        },
-        {
-            "name": "list_organizations",
-            "description": "List all organizations the authenticated user belongs to, with their role in each. Use this to discover available orgs before switching with switch_organization or passing organization_id to other tools.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {}
-            }
-        },
-        {
-            "name": "switch_organization",
-            "description": "Validate and select an organization. Returns the validated organization details. Pass the returned organization_id to subsequent tool calls to operate in that org's context. You can also pass organization_id directly to individual tools without calling this first.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "organization_id": {
-                        "type": "string",
-                        "description": "Organization ID to switch to (format: org_{32-hex}). Must be an org the user belongs to."
-                    }
-                },
-                "required": ["organization_id"]
-            }
-        },
-        // ── Tier 1: agent conversation loop ─────────────────────────
-        {
-            "name": "agent_run",
-            "description": "Create a new session and send the first message to an agent. Returns the session ID and message ID. Use session_get_status to poll for the agent's response, or connect to the SSE stream at /api/v1/sessions/{session_id}/sse for real-time events.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "agent_id": {
-                        "type": "string",
-                        "description": "Agent ID (format: agent_{32-hex}). The agent to run."
-                    },
-                    "message": {
-                        "type": "string",
-                        "description": "The initial user message to send to the agent."
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "Optional session title."
-                    },
-                    "model_id": {
-                        "type": "string",
-                        "description": "Optional model override (format: model_{32-hex})."
-                    },
-                    "budget_limit": {
-                        "type": "number",
-                        "description": "Optional budget limit. Creates a session budget that stops the agent at this amount. Currency defaults to 'usd'."
-                    },
-                    "budget_currency": {
-                        "type": "string",
-                        "description": "Budget currency (default: 'usd'). Options: usd, tokens, credits, or custom."
-                    },
-                    "budget_soft_limit": {
-                        "type": "number",
-                        "description": "Optional soft limit — pauses the session at this amount before the hard stop. Must be less than budget_limit."
-                    },
-                    "organization_id": {
-                        "type": "string",
-                        "description": ORG_ID_DESCRIPTION
-                    }
-                },
-                "required": ["message"]
-            }
-        },
-        {
-            "name": "session_send_message",
-            "description": "Send a follow-up message to an existing session. The agent will process the message and generate a response. Use session_get_status to poll for completion, or connect to the SSE stream.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "session_id": {
-                        "type": "string",
-                        "description": "Session ID (format: session_{32-hex})."
-                    },
-                    "message": {
-                        "type": "string",
-                        "description": "The user message to send."
-                    },
-                    "organization_id": {
-                        "type": "string",
-                        "description": ORG_ID_DESCRIPTION
-                    }
-                },
-                "required": ["session_id", "message"]
-            }
-        },
-        {
-            "name": "session_get_status",
-            "description": "Get the current status of a session and its recent events. Returns the session status (started/active/idle), the latest agent message if available, and recent events. Use this to poll for agent responses after sending a message.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "session_id": {
-                        "type": "string",
-                        "description": "Session ID (format: session_{32-hex})."
-                    },
-                    "since_event_id": {
-                        "type": "string",
-                        "description": "Only return events after this event ID (for incremental polling)."
-                    },
-                    "event_types": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "Filter to specific event types. Useful types: turn.completed, output.message.completed, tool.completed, session.idled"
-                    },
-                    "organization_id": {
-                        "type": "string",
-                        "description": ORG_ID_DESCRIPTION
-                    }
-                },
-                "required": ["session_id"]
-            }
-        },
-        // ── Tier 2: catalog & scripting ─────────────────────────────
-        {
-            "name": "discover",
-            "description": concat!(
-                "Search the Everruns API catalog to find available operations. ",
-                "Returns matching operations with description and parameters.\n\n",
-                "Available resource types: agents, sessions, harnesses, capabilities, models, ",
-                "providers, mcp servers, skills, budgets, schedules, files, events, messages, ",
-                "images, organizations, users, databases, storage.\n\n",
-                "Example queries: 'create agent', 'list sessions', 'capabilities', 'mcp'\n\n",
-                "Use `all: true` to list every operation grouped by category.\n\n",
-                "The discovered operations are available as bash builtins in the 'execute' tool."
-            ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search query to find API operations (e.g., 'create agent', 'sessions', 'mcp'). Supports natural language — tokens are matched against names, descriptions, and categories."
-                    },
-                    "all": {
-                        "type": "boolean",
-                        "description": "List all available operations grouped by category. When true, query is ignored."
-                    }
-                }
-            }
-        },
-        {
-            "name": "execute",
-            "description": concat!(
-                "Execute a bash script in an environment where every Everruns API operation is a built-in command.\n\n",
-                "## Available commands (~50 builtins across 20 categories)\n",
-                "agents: list_agents, create_agent, get_agent, update_agent, delete_agent, ...\n",
-                "sessions: list_sessions, create_session, get_session, ...\n",
-                "events: list_events, subscribe_events\n",
-                "models: list_models, get_model\n",
-                "capabilities, budgets, harnesses, mcp_servers, files, messages, schedules, skills, and more.\n\n",
-                "Run `discover --categories` to list all categories, or `discover --search <query>` to find a specific command.\n",
-                "Run `<command> --help` for usage details on any command.\n\n",
-                "## Bash features available\n",
-                "Pipes, jq (built-in), variables, loops, conditionals, subshells.\n\n",
-                "## Examples\n",
-                "# List all agent names\n",
-                "list_agents | jq '.data[].name'\n\n",
-                "# Create a session and capture its ID\n",
-                "SID=$(create_session --agent_id agent_abc123 --title 'Test' | jq -r .id)\n\n",
-                "# Iterate over agents\n",
-                "list_agents | jq -r '.data[].id' | while read id; do get_agent --id \"$id\"; done\n\n",
-                "# Search for commands related to events\n",
-                "discover --search events"
-            ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "commands": {
-                        "type": "string",
-                        "description": "Bash script to execute. API operations are available as built-in commands."
-                    },
-                    "timeout_ms": {
-                        "type": "integer",
-                        "description": "Execution timeout in milliseconds (default: 30000, max: 60000)."
-                    },
-                    "organization_id": {
-                        "type": "string",
-                        "description": ORG_ID_DESCRIPTION
-                    }
-                },
-                "required": ["commands"]
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct InitializeParams {
+    #[serde(default)]
+    protocol_version: Option<String>,
+}
+
+fn tool_definitions(protocol_version: &str) -> Vec<tool_registry::McpEndpointToolDefinition> {
+    tool_registry::tool_definitions(protocol_version, ORG_ID_DESCRIPTION)
+}
+
+fn find_tool_definition(
+    tool_name: &str,
+    protocol_version: &str,
+) -> Option<tool_registry::McpEndpointToolDefinition> {
+    tool_registry::tool_definition(tool_name, protocol_version, ORG_ID_DESCRIPTION)
+}
+
+fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
+    match requested {
+        Some(MCP_PROTOCOL_VERSION_FALLBACK) => MCP_PROTOCOL_VERSION_FALLBACK,
+        Some(version) if version < MCP_PROTOCOL_VERSION_LATEST => MCP_PROTOCOL_VERSION_FALLBACK,
+        Some(_) => MCP_PROTOCOL_VERSION_LATEST,
+        None => MCP_PROTOCOL_VERSION_FALLBACK,
+    }
+}
+
+fn protocol_version_from_headers(headers: &HeaderMap) -> Result<&'static str, String> {
+    match headers.get("MCP-Protocol-Version") {
+        None => Ok(MCP_PROTOCOL_VERSION_FALLBACK),
+        Some(value) => {
+            let version = value
+                .to_str()
+                .map_err(|_| "Invalid MCP-Protocol-Version header".to_string())?;
+            match version {
+                MCP_PROTOCOL_VERSION_FALLBACK => Ok(MCP_PROTOCOL_VERSION_FALLBACK),
+                MCP_PROTOCOL_VERSION_LATEST => Ok(MCP_PROTOCOL_VERSION_LATEST),
+                _ => Err(format!(
+                    "Unsupported MCP-Protocol-Version: {version}. Supported: {}",
+                    SUPPORTED_PROTOCOL_VERSIONS.join(", ")
+                )),
             }
         }
-    ])
+    }
 }
 
 // ============================================================================
@@ -389,8 +241,24 @@ async fn handle_mcp(
     auth_user: AuthUser,
     org: ResolvedOrg,
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<JsonRpcRequest>,
 ) -> Response {
+    let protocol_version = if req.method == "initialize" {
+        None
+    } else {
+        match protocol_version_from_headers(&headers) {
+            Ok(version) => Some(version),
+            Err(msg) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(JsonRpcResponse::error(req.id.clone(), -32600, msg)),
+                )
+                    .into_response();
+            }
+        }
+    };
+
     // Per JSON-RPC 2.0, a request without an `id` is a notification and the
     // server MUST NOT reply. MCP lifecycle uses this for
     // `notifications/initialized`, `notifications/cancelled`, etc. We're
@@ -411,10 +279,21 @@ async fn handle_mcp(
     }
 
     let response = match req.method.as_str() {
-        "initialize" => handle_initialize(req.id),
-        "tools/list" => handle_tools_list(req.id),
+        "initialize" => handle_initialize(req.id, req.params),
+        "tools/list" => handle_tools_list(
+            req.id,
+            protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK),
+        ),
         "tools/call" => {
-            handle_tools_call(req.id.clone(), req.params, &auth_user, &org, &state).await
+            handle_tools_call(
+                req.id.clone(),
+                req.params,
+                &auth_user,
+                &org,
+                &state,
+                protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK),
+            )
+            .await
         }
         "resources/list" => handle_resources_list(req.id),
         "resources/read" => handle_resources_read(req.id, req.params, &org, &state).await,
@@ -429,13 +308,17 @@ async fn handle_mcp(
 // Protocol handlers
 // ============================================================================
 
-fn handle_initialize(id: Option<Value>) -> JsonRpcResponse {
+fn handle_initialize(id: Option<Value>, params: Value) -> JsonRpcResponse {
+    let params: InitializeParams = serde_json::from_value(params).unwrap_or_default();
+    let protocol_version = negotiate_protocol_version(params.protocol_version.as_deref());
     JsonRpcResponse::success(
         id,
         json!({
-            "protocolVersion": MCP_PROTOCOL_VERSION,
+            "protocolVersion": protocol_version,
             "capabilities": {
-                "tools": {},
+                "tools": {
+                    "listChanged": false
+                },
                 "resources": {}
             },
             "serverInfo": {
@@ -446,8 +329,8 @@ fn handle_initialize(id: Option<Value>) -> JsonRpcResponse {
     )
 }
 
-fn handle_tools_list(id: Option<Value>) -> JsonRpcResponse {
-    JsonRpcResponse::success(id, json!({ "tools": tool_definitions() }))
+fn handle_tools_list(id: Option<Value>, protocol_version: &str) -> JsonRpcResponse {
+    JsonRpcResponse::success(id, json!({ "tools": tool_definitions(protocol_version) }))
 }
 
 // ============================================================================
@@ -622,6 +505,7 @@ async fn handle_tools_call(
     auth_user: &AuthUser,
     org: &ResolvedOrg,
     state: &AppState,
+    _protocol_version: &str,
 ) -> JsonRpcResponse {
     let tool_name = match params.get("name").and_then(|v| v.as_str()) {
         Some(name) => name,
@@ -633,47 +517,80 @@ async fn handle_tools_call(
         .cloned()
         .unwrap_or(Value::Object(Default::default()));
 
-    let result = match tool_name {
-        // Tier 0: identity & org context
-        "me" => tool_me(auth_user, org, state).await,
-        "list_organizations" => tool_list_organizations(auth_user, state).await,
-        "switch_organization" => tool_switch_organization(&arguments, auth_user, org, state).await,
-        // Tier 1: agent conversation (org-scoped — accept organization_id override)
-        "agent_run" => match resolve_org_override(&arguments, auth_user, org, state).await {
-            Ok(org) => tool_agent_run(&arguments, &org, state).await,
-            Err(e) => Err(e),
-        },
-        "session_send_message" => {
-            match resolve_org_override(&arguments, auth_user, org, state).await {
-                Ok(org) => tool_session_send_message(&arguments, &org, state).await,
-                Err(e) => Err(e),
-            }
-        }
-        "session_get_status" => {
-            match resolve_org_override(&arguments, auth_user, org, state).await {
-                Ok(org) => tool_session_get_status(&arguments, &org, state).await,
-                Err(e) => Err(e),
-            }
-        }
-        // Tier 2: catalog & scripting (org-scoped)
-        "discover" => match resolve_org_override(&arguments, auth_user, org, state).await {
-            Ok(org) => tool_discover(&arguments, &org, state).await,
-            Err(e) => Err(e),
-        },
-        "execute" => match resolve_org_override(&arguments, auth_user, org, state).await {
-            Ok(org) => tool_execute(&arguments, &org, state).await,
-            Err(e) => Err(e),
-        },
-        _ => Err(format!("Unknown tool: {tool_name}")),
-    };
-
-    match result {
-        Ok(content) => JsonRpcResponse::success(
+    let Some(tool_def) = find_tool_definition(tool_name, _protocol_version) else {
+        return JsonRpcResponse::success(
             id,
             json!({
-                "content": [{ "type": "text", "text": content }]
+                "content": [{ "type": "text", "text": format!("Unknown tool: {tool_name}") }],
+                "isError": true
             }),
-        ),
+        );
+    };
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_millis(tool_def.timeout_ms()),
+        async {
+            match tool_name {
+                // Tier 0: identity & org context
+                "me" => tool_me(auth_user, org, state).await,
+                "list_organizations" => tool_list_organizations(auth_user, state).await,
+                "switch_organization" => {
+                    tool_switch_organization(&arguments, auth_user, org, state).await
+                }
+                // Tier 1: agent conversation (org-scoped — accept organization_id override)
+                "agent_run" => {
+                    match resolve_org_override(&arguments, auth_user, org, state).await {
+                        Ok(org) => tool_agent_run(&arguments, &org, state).await,
+                        Err(e) => Err(e),
+                    }
+                }
+                "session_send_message" => {
+                    match resolve_org_override(&arguments, auth_user, org, state).await {
+                        Ok(org) => tool_session_send_message(&arguments, &org, state).await,
+                        Err(e) => Err(e),
+                    }
+                }
+                "session_get_status" => {
+                    match resolve_org_override(&arguments, auth_user, org, state).await {
+                        Ok(org) => tool_session_get_status(&arguments, &org, state).await,
+                        Err(e) => Err(e),
+                    }
+                }
+                // Tier 2: catalog & scripting (org-scoped)
+                "discover" => match resolve_org_override(&arguments, auth_user, org, state).await {
+                    Ok(org) => tool_discover(&arguments, &org, state).await,
+                    Err(e) => Err(e),
+                },
+                "execute" => match resolve_org_override(&arguments, auth_user, org, state).await {
+                    Ok(org) => tool_execute(&arguments, &org, state).await,
+                    Err(e) => Err(e),
+                },
+                _ => Err(format!("Unknown tool: {tool_name}")),
+            }
+        },
+    )
+    .await
+    .unwrap_or_else(|_| Err(format!("Tool timed out after {}ms", tool_def.timeout_ms())));
+
+    match result {
+        Ok(content) => {
+            let structured_content = if _protocol_version == MCP_PROTOCOL_VERSION_LATEST
+                && tool_def.has_output_schema()
+            {
+                serde_json::from_str::<Value>(&content).ok()
+            } else {
+                None
+            };
+
+            let mut result = json!({
+                "content": [{ "type": "text", "text": content }]
+            });
+            if let Some(structured_content) = structured_content {
+                result["structuredContent"] = structured_content;
+            }
+
+            JsonRpcResponse::success(id, result)
+        }
         Err(msg) => JsonRpcResponse::success(
             id,
             json!({

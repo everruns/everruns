@@ -10,12 +10,19 @@ Routing is intentionally split:
 - MCP OAuth lives at `/oauth/*` (authorize, token, register)
 - MCP JSON-RPC lives at `/mcp`
 - OAuth discovery metadata lives at `/.well-known/oauth-authorization-server`
+- Protected-resource metadata lives at `/.well-known/oauth-protected-resource`
 
 Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`specs/mcp-servers.md`](mcp-servers.md).
 
 ## Protocol
 
 JSON-RPC 2.0 over Streamable HTTP (`POST /mcp` with JSON-RPC body).
+
+Everruns supports MCP protocol versions `2025-06-18` and `2025-03-26`.
+
+- `initialize` negotiates `protocolVersion` from the request body. When the client omits a version, Everruns falls back to `2025-03-26`.
+- All non-`initialize` requests may send `MCP-Protocol-Version`. When omitted, Everruns falls back to `2025-03-26`.
+- Requests that send an unsupported `MCP-Protocol-Version` are rejected with HTTP `400 Bad Request` and a JSON-RPC error payload.
 
 ### Supported Methods
 
@@ -25,6 +32,17 @@ JSON-RPC 2.0 over Streamable HTTP (`POST /mcp` with JSON-RPC body).
 | `ping` | Health check / keep-alive |
 | `tools/list` | Discover available tools |
 | `tools/call` | Execute a tool |
+| `resources/list` | Discover static Everruns resources |
+| `resources/read` | Read a static Everruns resource by URI |
+
+### Tool Metadata
+
+`tools/list` returns only standard MCP tool fields.
+
+- Under negotiated protocol `2025-06-18`, tool definitions may include `title`, `description`, `inputSchema`, `outputSchema`, and `annotations`.
+- Under negotiated protocol `2025-03-26`, Everruns emits the older compatibility shape and omits newer `2025-06-18` fields such as `title` and `outputSchema`.
+- `outputSchema` is attached only to tools with stable JSON outputs.
+- Under negotiated protocol `2025-06-18`, when a tool has an `outputSchema` and returns valid JSON text, `tools/call` also returns `structuredContent` alongside the textual content block.
 
 ### Content Types
 
@@ -105,6 +123,12 @@ The `issuer` is the backend root URL (e.g. `https://app.example.com`). OAuth end
   "scopes_supported": ["mcp"]
 }
 ```
+
+#### GET /.well-known/oauth-protected-resource
+
+Protected Resource Metadata for MCP-aware OAuth clients. No auth required.
+
+Everruns advertises `/mcp` as the protected resource and points clients at the same OAuth issuer and token endpoints used by the rest of the MCP flow.
 
 #### POST /oauth/register
 
@@ -316,7 +340,7 @@ When omitted, the default org is used (first org from the user's membership list
 
 1. **Stateless per-call override** — no session state needed. Each tool call independently targets an org.
 2. **DB-validated membership** — JWT org claims may be stale; always check DB for fresh membership.
-3. **`discover` is org-agnostic** — catalog search doesn't depend on org context.
+3. **`discover` accepts `organization_id` for consistency** — catalog search itself is effectively org-agnostic today, but the argument keeps org-scoped routing uniform across tools and leaves room for future org-specific catalog visibility.
 4. **`switch_organization` is advisory** — returns the validated org for the client to use in subsequent calls. The MCP transport is stateless, so there's no server-side "current org" to switch.
 
 ## Implementation

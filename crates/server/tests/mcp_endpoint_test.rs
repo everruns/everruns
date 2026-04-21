@@ -12,6 +12,7 @@
 
 mod test_harness;
 
+use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -20,6 +21,8 @@ use test_harness::TestServer;
 // ============================================================================
 
 static UNIQUE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+const MCP_PROTOCOL_VERSION_FALLBACK: &str = "2025-03-26";
+const MCP_PROTOCOL_VERSION_LATEST: &str = "2025-06-18";
 
 /// Make a JSON-RPC 2.0 call to POST /mcp via the in-process TestServer.
 async fn mcp_call(server: &TestServer, method: &str, params: Value) -> Value {
@@ -38,12 +41,79 @@ async fn mcp_call(server: &TestServer, method: &str, params: Value) -> Value {
         .json()
 }
 
+async fn mcp_call_with_headers(
+    server: &TestServer,
+    method: &str,
+    params: Value,
+    extra_headers: Vec<(&str, &str)>,
+) -> Value {
+    let mut headers = vec![("content-type", "application/json")];
+    headers.extend(extra_headers);
+
+    server
+        .request_raw(
+            Method::POST,
+            "/mcp",
+            headers,
+            serde_json::to_vec(&json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": method,
+                "params": params
+            }))
+            .expect("Failed to encode MCP request"),
+        )
+        .await
+        .assert_success()
+        .json()
+}
+
+async fn mcp_request_raw(
+    server: &TestServer,
+    method: &str,
+    params: Value,
+    extra_headers: Vec<(&str, &str)>,
+) -> test_harness::TestResponse {
+    let mut headers = vec![("content-type", "application/json")];
+    headers.extend(extra_headers);
+
+    server
+        .request_raw(
+            Method::POST,
+            "/mcp",
+            headers,
+            serde_json::to_vec(&json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": method,
+                "params": params
+            }))
+            .expect("Failed to encode MCP request"),
+        )
+        .await
+}
+
 /// Call tools/call with a given tool name and arguments.
 async fn mcp_tool_call(server: &TestServer, tool: &str, arguments: Value) -> Value {
     mcp_call(
         server,
         "tools/call",
         json!({ "name": tool, "arguments": arguments }),
+    )
+    .await
+}
+
+async fn mcp_tool_call_with_headers(
+    server: &TestServer,
+    tool: &str,
+    arguments: Value,
+    extra_headers: Vec<(&str, &str)>,
+) -> Value {
+    mcp_call_with_headers(
+        server,
+        "tools/call",
+        json!({ "name": tool, "arguments": arguments }),
+        extra_headers,
     )
     .await
 }
@@ -167,20 +237,43 @@ async fn create_session_via_execute(base_url: &str, title_prefix: &str) -> (Stri
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_initialize() {
-    let server = TestServer::new().await;
-    let resp = mcp_call(&server, "initialize", json!({})).await;
+    let server = TestServer::in_memory().await;
+    let resp = mcp_call(
+        &server,
+        "initialize",
+        json!({ "protocolVersion": MCP_PROTOCOL_VERSION_LATEST }),
+    )
+    .await;
 
     assert_eq!(resp["jsonrpc"], "2.0");
     assert_eq!(resp["id"], 1);
-    assert_eq!(resp["result"]["protocolVersion"], "2025-03-26");
+    assert_eq!(
+        resp["result"]["protocolVersion"],
+        MCP_PROTOCOL_VERSION_LATEST
+    );
     assert_eq!(resp["result"]["serverInfo"]["name"], "everruns");
     assert!(resp["result"]["serverInfo"]["version"].is_string());
     assert!(resp["result"]["capabilities"]["tools"].is_object());
+    assert_eq!(
+        resp["result"]["capabilities"]["tools"]["listChanged"],
+        false
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_initialize_defaults_to_fallback_protocol() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_call(&server, "initialize", json!({})).await;
+
+    assert_eq!(
+        resp["result"]["protocolVersion"],
+        MCP_PROTOCOL_VERSION_FALLBACK
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_ping() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let resp = mcp_call(&server, "ping", json!({})).await;
 
     assert_eq!(resp["jsonrpc"], "2.0");
@@ -189,15 +282,30 @@ async fn test_mcp_ping() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_tools_list() {
-    let server = TestServer::new().await;
-    let resp = mcp_call(&server, "tools/list", json!({})).await;
+    let server = TestServer::in_memory().await;
+    let resp = mcp_call_with_headers(
+        &server,
+        "tools/list",
+        json!({}),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_LATEST)],
+    )
+    .await;
 
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("Expected tools array");
-    assert_eq!(tools.len(), 5, "Expected 5 MCP tools");
+    assert_eq!(tools.len(), 8, "Expected 8 MCP tools");
 
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"me"), "Missing me");
+    assert!(
+        names.contains(&"list_organizations"),
+        "Missing list_organizations"
+    );
+    assert!(
+        names.contains(&"switch_organization"),
+        "Missing switch_organization"
+    );
     assert!(names.contains(&"agent_run"), "Missing agent_run");
     assert!(
         names.contains(&"session_send_message"),
@@ -219,11 +327,134 @@ async fn test_mcp_tools_list() {
         );
         assert_eq!(tool["inputSchema"]["type"], "object");
     }
+
+    let me = tools.iter().find(|tool| tool["name"] == "me").unwrap();
+    assert_eq!(me["title"], "Current User");
+    assert_eq!(me["annotations"]["readOnlyHint"], true);
+    assert_eq!(me["outputSchema"]["type"], "object");
+    assert!(me.as_object().unwrap().get("_meta").is_none());
+
+    let agent_run = tools
+        .iter()
+        .find(|tool| tool["name"] == "agent_run")
+        .unwrap();
+    assert_eq!(agent_run["title"], "Run Agent");
+    assert_eq!(agent_run["outputSchema"]["type"], "object");
+    assert_eq!(agent_run["annotations"]["openWorldHint"], true);
+    assert!(agent_run.as_object().unwrap().get("_meta").is_none());
+
+    let discover = tools
+        .iter()
+        .find(|tool| tool["name"] == "discover")
+        .unwrap();
+    assert_eq!(discover["title"], "Discover Operations");
+    assert_eq!(
+        discover["inputSchema"]["properties"]["organization_id"]["pattern"],
+        "^org_[0-9a-f]{32}$"
+    );
+    assert!(discover.as_object().unwrap().get("outputSchema").is_none());
+    assert!(discover.as_object().unwrap().get("_meta").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tools_list_fallback_omits_2025_06_fields() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_call_with_headers(
+        &server,
+        "tools/list",
+        json!({}),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_FALLBACK)],
+    )
+    .await;
+
+    let tools = resp["result"]["tools"]
+        .as_array()
+        .expect("Expected tools array");
+    let me = tools.iter().find(|tool| tool["name"] == "me").unwrap();
+    assert!(me.as_object().unwrap().get("title").is_none());
+    assert!(me.as_object().unwrap().get("outputSchema").is_none());
+    assert!(me.as_object().unwrap().get("_meta").is_none());
+
+    let agent_run = tools
+        .iter()
+        .find(|tool| tool["name"] == "agent_run")
+        .unwrap();
+    assert!(agent_run.as_object().unwrap().get("title").is_none());
+    assert!(agent_run.as_object().unwrap().get("outputSchema").is_none());
+    assert_eq!(agent_run["annotations"]["openWorldHint"], true);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_rejects_unsupported_protocol_header() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_request_raw(
+        &server,
+        "ping",
+        json!({}),
+        vec![("MCP-Protocol-Version", "2024-11-05")],
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: Value = resp.json();
+    assert_eq!(body["error"]["code"], -32600);
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Unsupported MCP-Protocol-Version")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tool_call_returns_structured_content() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call_with_headers(
+        &server,
+        "me",
+        json!({}),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_LATEST)],
+    )
+    .await;
+
+    assert!(
+        !tool_is_error(&resp),
+        "tool returned error: {}",
+        tool_text(&resp)
+    );
+    let structured = resp["result"]["structuredContent"].clone();
+    assert!(
+        structured.is_object(),
+        "structuredContent should be present"
+    );
+    assert!(structured["user"]["id"].is_string());
+    assert!(structured["current_organization"]["id"].is_string());
+    assert_eq!(tool_json(&resp), structured);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tool_call_fallback_omits_structured_content() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call_with_headers(
+        &server,
+        "me",
+        json!({}),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_FALLBACK)],
+    )
+    .await;
+
+    assert!(
+        !tool_is_error(&resp),
+        "tool returned error: {}",
+        tool_text(&resp)
+    );
+    assert!(resp["result"].get("structuredContent").is_none());
+    assert!(tool_json(&resp)["user"]["id"].is_string());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_invalid_jsonrpc_version() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let resp: Value = server
         .post(
             "/mcp",
@@ -244,7 +475,7 @@ async fn test_mcp_invalid_jsonrpc_version() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_unknown_method() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let resp = mcp_call(&server, "nonexistent/method", json!({})).await;
 
     assert!(resp["error"].is_object());
@@ -255,7 +486,7 @@ async fn test_mcp_unknown_method() {
 // - EVE-322: notifications must always return 202 with an empty body
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_notification_contract_matrix() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let cases = vec![
         (
             "initialized lifecycle notification",
