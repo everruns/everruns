@@ -19,6 +19,8 @@ use test_harness::TestServer;
 // Helpers
 // ============================================================================
 
+static UNIQUE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Make a JSON-RPC 2.0 call to POST /mcp via the in-process TestServer.
 async fn mcp_call(server: &TestServer, method: &str, params: Value) -> Value {
     server
@@ -110,11 +112,13 @@ async fn execute_http_command(base_url: &str, commands: impl Into<String>) -> Va
     mcp_tool_call_http(base_url, "execute", json!({ "commands": commands.into() })).await
 }
 
-fn unique_suffix() -> u128 {
-    std::time::SystemTime::now()
+fn unique_suffix() -> String {
+    let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
-        .as_millis()
+        .as_millis();
+    let counter = UNIQUE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    format!("{millis}-{counter}")
 }
 
 async fn create_agent_via_execute(
@@ -247,10 +251,8 @@ async fn test_mcp_unknown_method() {
     assert_eq!(resp["error"]["code"], -32601);
 }
 
-// Contract matrix for recent MCP protocol regressions:
+// Contract matrix for recent MCP notification/no-id regressions:
 // - EVE-322: notifications must always return 202 with an empty body
-// - EVE-323: positional path args must work on execute commands
-// - EVE-324: stringly flags must coerce into typed command params
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_notification_contract_matrix() {
     let server = TestServer::new().await;
@@ -877,6 +879,9 @@ async fn test_mcp_execute_list_capabilities() {
     );
 }
 
+// Contract matrix for recent MCP execute regressions:
+// - EVE-323: positional path args must work on execute commands
+// - EVE-324: stringly flags must coerce into typed command params
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_execute_argument_coercion_contract_matrix() {
     let (_server, url) = TestServer::serving().await;
@@ -912,6 +917,35 @@ async fn test_mcp_execute_argument_coercion_contract_matrix() {
             );
         }
     }
+
+    let (archived_agent_id, archived_agent_name) =
+        create_agent_via_execute(&url, "eve343-bool-flag-agent", "EVE-343 Bool Flag").await;
+    let delete_resp = execute_http_command(&url, format!("delete_agent {archived_agent_id}")).await;
+    assert!(
+        !tool_is_error(&delete_resp),
+        "inventory bool flag setup failed: {}",
+        tool_text(&delete_resp)
+    );
+    assert_eq!(tool_json(&delete_resp)["deleted"], json!(true));
+
+    let resp = execute_http_command(
+        &url,
+        format!("list_agents --include_archived true --search {archived_agent_name} --limit 10"),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "inventory bool flag survives round-trip: {}",
+        tool_text(&resp)
+    );
+    let payload = tool_json(&resp);
+    assert_eq!(payload["limit"], json!(10));
+    assert!(
+        payload["data"].as_array().unwrap().iter().any(|agent| {
+            agent["id"] == json!(archived_agent_id) && agent["name"] == json!(archived_agent_name)
+        }),
+        "inventory bool flag survives round-trip: archived agent missing from include_archived results"
+    );
 
     let (agent_id, agent_name) = create_agent_via_execute(
         &url,
