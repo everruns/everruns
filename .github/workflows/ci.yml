@@ -136,39 +136,6 @@ jobs:
       - name: Check Cargo.lock is up to date
         run: cargo fetch --locked
 
-  release-prep-check:
-    # Fires only when a PR bumps [workspace.package].version (release-prep
-    # signal). Catches the v0.8.15-style hole where feature-named migrations
-    # leak into a release tag. See specs/release-process.md.
-    name: Release Prep Squash Check
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Detect workspace version change
-        id: ver
-        run: |
-          extract() {
-            awk '/^\[workspace.package\]/{p=1;next} p && /^\[/{p=0} p && /^version[[:space:]]*=/' "$1" \
-              | head -1 | sed -E 's/.*"(.*)".*/\1/'
-          }
-          OLD=$(git show "origin/${{ github.base_ref }}:Cargo.toml" | extract /dev/stdin)
-          NEW=$(extract Cargo.toml)
-          echo "old=$OLD"
-          echo "new=$NEW"
-          if [ "$OLD" != "$NEW" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Verify all feature migrations are squashed
-        if: steps.ver.outputs.changed == 'true'
-        run: ./scripts/check-release-squash.sh
-
   clippy:
     name: Clippy Lints
     runs-on: ubuntu-latest
@@ -1087,7 +1054,6 @@ jobs:
       - changes
       - format
       - lockfile
-      - release-prep-check
       - clippy
       - unit-test
       - worker-test

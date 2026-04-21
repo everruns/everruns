@@ -77,17 +77,13 @@ See `specs/release-process.md` for the full release process specification.
    -->
    ```
 
-5. **Squash feature migrations into a version-named migration**:
+5. **Review migrations without rewriting them**:
 
-   See `specs/release-process.md` ("Migration Squashing") and `specs/migrations.md`.
+   See `specs/release-process.md` ("Migration Handling") and `specs/migrations.md`.
 
-   - List `crates/server/migrations/*.sql` and find the last `NNN_vA.B.C.sql` file.
-   - Identify every feature migration with a number strictly greater than that (these are the unsquashed feature migrations added since the last release).
-   - If there are none, skip this step entirely — do not create an empty migration file.
-   - Otherwise, create `NNN_vX.Y.Z.sql` (using the lowest number of the unsquashed set and the new release version) containing the concatenated SQL statements from those migrations, in their original numeric order, including any DDL/DML.
-   - Preserve the origin of each block with an inline section header comment referencing the original filename, e.g. `-- from 016_eval_case_result_metadata.sql`.
-   - Delete the original feature migration files so numbering stays strictly sequential with no gaps.
+   - Do not squash, rename, rewrite, or delete existing migrations solely for release prep.
    - Verify the sorted list of migration file basenames starts at `001_` and remains strictly sequential with no gaps or duplicates (matching `specs/migrations.md`).
+   - If a release includes an operator-visible migration caveat, note it in the release PR and release notes; otherwise skip migration-specific release notes.
 
 6. **Update lock files**:
    ```bash
