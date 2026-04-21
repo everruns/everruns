@@ -1054,7 +1054,6 @@ jobs:
       - changes
       - format
       - lockfile
-      - release-prep-check
       - clippy
       - unit-test
       - worker-test
