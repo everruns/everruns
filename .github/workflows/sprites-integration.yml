@@ -4,6 +4,7 @@ name: Sprites Integration
 # weekly `integration-live-sweep.yml` backstop still covers shared-crate
 # regressions that slip past the per-integration path filter.
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -51,9 +52,9 @@ jobs:
   live-test:
     name: Sprites Live API Tests
     runs-on: ubuntu-latest
-    # `env` context is not available in job-level `if`; gate on event only.
-    # Secrets are validated by the Doppler step; see EVE-345 for missing-secret failure semantics.
-    if: github.event_name == 'push'
+    # Keep PRs fast, but allow manual dispatch so secret wiring can be verified
+    # immediately after Doppler changes without waiting for the weekly sweep.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
 
     steps:
@@ -70,6 +71,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "debug"
+
+      - name: Export SPRITES_API_TOKEN from Doppler
+        run: |
+          echo "SPRITES_API_TOKEN=$(doppler secrets get SPRITES_API_TOKEN --plain)" >> "$GITHUB_ENV"
 
       - name: Run Sprites live integration tests
         run: doppler run -- cargo test -p everruns-integrations-sprites --features sprites-live-tests --test live_api_test -- --test-threads=1

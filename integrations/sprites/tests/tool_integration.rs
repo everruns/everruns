@@ -14,7 +14,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // Force linker to include the integration crate.
@@ -122,7 +122,7 @@ async fn setup_context_with_sprite(
 ) {
     let state = SpriteState {
         sprite_name: sprite_name.to_string(),
-        workspace_path: "/home/user".to_string(),
+        workspace_path: "/home/sprite".to_string(),
         started_at: "2026-03-23T10:00:00Z".to_string(),
         service_url: Some(format!("https://{sprite_name}.fly.dev")),
     };
@@ -154,11 +154,11 @@ async fn test_exec_tool_full_flow_via_client() {
 
     Mock::given(method("POST"))
         .and(path("/sprites/my-sprite/exec"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "stdout": "Hello from sprite!\n",
-            "stderr": "",
-            "exit_code": 0
-        })))
+        .and(query_param("cmd", "sh"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![
+            0x01, b'H', b'e', b'l', b'l', b'o', b' ', b'f', b'r', b'o', b'm', b' ', b's', b'p',
+            b'r', b'i', b't', b'e', b'!', b'\n', 0x03, 0,
+        ]))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -180,7 +180,9 @@ async fn test_file_roundtrip_via_client() {
 
     // Mock write
     Mock::given(method("PUT"))
-        .and(path("/sprites/my-sprite/files/%2Fhome%2Fuser%2Fmain.py"))
+        .and(path("/sprites/my-sprite/fs/write"))
+        .and(query_param("path", "/home/sprite/main.py"))
+        .and(query_param("mkdir", "true"))
         .respond_with(ResponseTemplate::new(200).set_body_string(""))
         .expect(1)
         .mount(&mock_server)
@@ -188,7 +190,8 @@ async fn test_file_roundtrip_via_client() {
 
     // Mock read
     Mock::given(method("GET"))
-        .and(path("/sprites/my-sprite/files/%2Fhome%2Fuser%2Fmain.py"))
+        .and(path("/sprites/my-sprite/fs/read"))
+        .and(query_param("path", "/home/sprite/main.py"))
         .respond_with(ResponseTemplate::new(200).set_body_bytes(b"print('hello world')\n".to_vec()))
         .expect(1)
         .mount(&mock_server)
@@ -198,13 +201,17 @@ async fn test_file_roundtrip_via_client() {
 
     // Write
     client
-        .write_file("my-sprite", "/home/user/main.py", b"print('hello world')\n")
+        .write_file(
+            "my-sprite",
+            "/home/sprite/main.py",
+            b"print('hello world')\n",
+        )
         .await
         .unwrap();
 
     // Read and verify
     let bytes = client
-        .read_file("my-sprite", "/home/user/main.py")
+        .read_file("my-sprite", "/home/sprite/main.py")
         .await
         .unwrap();
     assert_eq!(String::from_utf8_lossy(&bytes), "print('hello world')\n");
@@ -215,8 +222,8 @@ async fn test_sprite_lifecycle_via_client() {
     let mock_server = MockServer::start().await;
 
     // Create
-    Mock::given(method("PUT"))
-        .and(path("/sprites/lifecycle-test"))
+    Mock::given(method("POST"))
+        .and(path("/sprites"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "name": "lifecycle-test",
             "status": "running",
@@ -239,7 +246,7 @@ async fn test_sprite_lifecycle_via_client() {
     // Delete
     Mock::given(method("DELETE"))
         .and(path("/sprites/lifecycle-test"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .respond_with(ResponseTemplate::new(204).set_body_string(""))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -267,21 +274,10 @@ async fn test_checkpoint_roundtrip_via_client() {
 
     // Create checkpoint
     Mock::given(method("POST"))
-        .and(path("/sprites/my-sprite/checkpoints"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "id": "cp_snap1",
-            "created_at": "2026-03-23T10:05:00Z"
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    // List checkpoints
-    Mock::given(method("GET"))
-        .and(path("/sprites/my-sprite/checkpoints"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            {"id": "cp_snap1", "created_at": "2026-03-23T10:05:00Z"}
-        ])))
+        .and(path("/sprites/my-sprite/checkpoint"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "{\"type\":\"info\",\"data\":\"Creating checkpoint...\",\"time\":\"2026-03-23T10:05:00Z\"}\n{\"type\":\"complete\",\"data\":\"Checkpoint cp_snap1 created successfully\",\"time\":\"2026-03-23T10:05:01Z\"}\n",
+        ))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -289,7 +285,9 @@ async fn test_checkpoint_roundtrip_via_client() {
     // Restore checkpoint
     Mock::given(method("POST"))
         .and(path("/sprites/my-sprite/checkpoints/cp_snap1/restore"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "{\"type\":\"info\",\"data\":\"Restoring checkpoint...\",\"time\":\"2026-03-23T10:06:00Z\"}\n{\"type\":\"complete\",\"data\":\"Restore complete\",\"time\":\"2026-03-23T10:06:01Z\"}\n",
+        ))
         .expect(1)
         .mount(&mock_server)
         .await;
@@ -298,9 +296,6 @@ async fn test_checkpoint_roundtrip_via_client() {
 
     let cp = client.create_checkpoint("my-sprite").await.unwrap();
     assert_eq!(cp.id, "cp_snap1");
-
-    let checkpoints = client.list_checkpoints("my-sprite").await.unwrap();
-    assert_eq!(checkpoints.len(), 1);
 
     client
         .restore_checkpoint("my-sprite", "cp_snap1")
@@ -463,7 +458,7 @@ async fn test_list_sprites_with_entries() {
     setup_context_with_sprite(session_id, &store, "sprite-one").await;
     let state2 = SpriteState {
         sprite_name: "sprite-two".to_string(),
-        workspace_path: "/home/user".to_string(),
+        workspace_path: "/home/sprite".to_string(),
         started_at: "2026-03-23T11:00:00Z".to_string(),
         service_url: None,
     };
@@ -515,7 +510,7 @@ async fn test_sprite_state_persistence_roundtrip() {
             assert_eq!(output["count"], 1);
             let sprite = &output["sprites"][0];
             assert_eq!(sprite["sprite_name"], "persist-test");
-            assert_eq!(sprite["workspace_path"], "/home/user");
+            assert_eq!(sprite["workspace_path"], "/home/sprite");
             assert_eq!(sprite["service_url"], "https://persist-test.fly.dev");
         }
         other => panic!("Expected Success, got: {other:?}"),
@@ -686,11 +681,12 @@ async fn test_exec_with_nonzero_exit() {
 
     Mock::given(method("POST"))
         .and(path("/sprites/err-sprite/exec"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "stdout": "",
-            "stderr": "bash: foobar: command not found\n",
-            "exit_code": 127
-        })))
+        .and(query_param("cmd", "sh"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![
+            0x02, b'b', b'a', b's', b'h', b':', b' ', b'f', b'o', b'o', b'b', b'a', b'r', b':',
+            b' ', b'c', b'o', b'm', b'm', b'a', b'n', b'd', b' ', b'n', b'o', b't', b' ', b'f',
+            b'o', b'u', b'n', b'd', b'\n', 0x03, 127,
+        ]))
         .mount(&mock_server)
         .await;
 

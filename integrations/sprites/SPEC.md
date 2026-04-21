@@ -65,15 +65,17 @@ This means sprite names must be unique per user account (not per session). The i
 
 | Tool | API | Description |
 |---|---|---|
-| `sprites_create_sprite` | `PUT /v1/sprites/{name}` | Create a new Firecracker microVM |
-| `sprites_exec` | `POST /v1/sprites/{name}/exec` | Execute shell command (wakes from hibernation) |
-| `sprites_read_file` | `GET /v1/sprites/{name}/files/{path}` | Read file from sprite filesystem |
-| `sprites_write_file` | `PUT /v1/sprites/{name}/files/{path}` | Write file to sprite filesystem |
+| `sprites_create_sprite` | `POST /v1/sprites` | Create a new Firecracker microVM |
+| `sprites_exec` | `POST /v1/sprites/{name}/exec` | Execute a shell command via `sh -lc` over the HTTP exec endpoint |
+| `sprites_read_file` | `GET /v1/sprites/{name}/fs/read?path=...` | Read file from sprite filesystem |
+| `sprites_write_file` | `PUT /v1/sprites/{name}/fs/write?path=...&mkdir=true` | Write file to sprite filesystem |
 | `sprites_list_sprites` | (session state) | List sprites created in this session |
 | `sprites_manage_sprite` | `DELETE /v1/sprites/{name}` | Delete sprite |
-| `sprites_checkpoint` | `POST /v1/sprites/{name}/checkpoints` | Create filesystem checkpoint |
+| `sprites_checkpoint` | `POST /v1/sprites/{name}/checkpoint` | Create filesystem checkpoint |
 | `sprites_restore_checkpoint` | `POST /v1/sprites/{name}/checkpoints/{id}/restore` | Restore to checkpoint |
 | `sprites_service_url` | `GET /v1/sprites/{name}` + `GET /v1/sprites/{name}/services` | Get public HTTP URL |
+
+Default working directory inside a sprite is `/home/sprite`.
 
 ## Security Review
 
@@ -89,4 +91,5 @@ This means sprite names must be unique per user account (not per session). The i
 
 - `tests/live_api_test.rs` is feature-gated behind `sprites-live-tests`.
 - Missing-credential behavior is **fail-closed**: with the feature flag on but `SPRITES_API_TOKEN` unset, the test panics. See `specs/integrations.md`.
-- `.github/workflows/sprites-integration.yml` keeps the live job off `pull_request` and runs it only on pushes to `main` when `integrations/sprites/**` changes. `.github/workflows/integration-live-sweep.yml` reruns the same live path weekly and on demand so shared regressions do not hide behind that path filter.
+- `.github/workflows/sprites-integration.yml` keeps the live job off `pull_request`, fetches `SPRITES_API_TOKEN` from Doppler before running the live tests, and runs on pushes to `main` when `integrations/sprites/**` changes. It also supports `workflow_dispatch` so credential wiring can be verified immediately after Doppler changes.
+- `.github/workflows/integration-live-sweep.yml` reruns the same live path weekly and on demand so shared regressions do not hide behind that path filter. The Sprites row explicitly preflights `SPRITES_API_TOKEN` from Doppler before invoking the live test command.

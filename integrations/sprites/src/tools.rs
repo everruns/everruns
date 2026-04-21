@@ -340,7 +340,7 @@ impl Tool for SpritesReadFileTool {
                 },
                 "path": {
                     "type": "string",
-                    "description": "Path to file (e.g., '/home/user/main.py')"
+                    "description": "Path to file (e.g., '/home/sprite/main.py')"
                 }
             },
             "required": ["sprite_name", "path"],
@@ -425,7 +425,7 @@ impl Tool for SpritesWriteFileTool {
                 },
                 "path": {
                     "type": "string",
-                    "description": "Path for file (e.g., '/home/user/main.py')"
+                    "description": "Path for file (e.g., '/home/sprite/main.py')"
                 },
                 "content": {
                     "type": "string",
