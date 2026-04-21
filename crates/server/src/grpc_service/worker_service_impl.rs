@@ -3112,7 +3112,7 @@ impl WorkerService for WorkerServiceImpl {
             .map(|id| everruns_core::AgentCapabilityConfig::new(id.as_str()))
             .collect();
 
-        let create_req = crate::api::harnesses::CreateHarnessRequest {
+        let create_req = crate::domains::harnesses::types::CreateHarnessRequest {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
@@ -3150,7 +3150,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
-        let update_req = crate::api::harnesses::UpdateHarnessRequest {
+        let update_req = crate::domains::harnesses::types::UpdateHarnessRequest {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
@@ -3229,7 +3229,7 @@ impl WorkerService for WorkerServiceImpl {
 
         // If a new_name was provided, update the copy with the new name
         let harness = if let Some(new_name) = req.new_name {
-            let update_req = crate::api::harnesses::UpdateHarnessRequest {
+            let update_req = crate::domains::harnesses::types::UpdateHarnessRequest {
                 name: Some(new_name),
                 display_name: None,
                 description: None,
@@ -3292,7 +3292,7 @@ impl WorkerService for WorkerServiceImpl {
             .map(|id| everruns_core::AgentCapabilityConfig::new(id.as_str()))
             .collect();
 
-        let create_req = crate::api::agents::CreateAgentRequest {
+        let create_req = crate::domains::agents::types::CreateAgentRequest {
             id: None,
             name: req.name.clone(),
             display_name: req.display_name,
@@ -3329,7 +3329,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let public_id = everruns_core::typed_id::AgentId::from_uuid(agent_id).to_string();
 
-        let update_req = crate::api::agents::UpdateAgentRequest {
+        let update_req = crate::domains::agents::types::UpdateAgentRequest {
             name: req.name,
             display_name: req.display_name,
             description: req.description,

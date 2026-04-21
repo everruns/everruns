@@ -31,7 +31,7 @@ use uuid::Uuid;
 
 use everruns_core::validate_safe_url;
 
-use crate::api::mcp_servers::{CreateMcpServerRequest, UpdateMcpServerRequest};
+use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
 
 /// How long cached tools are considered fresh (1 hour)
 const TOOL_CACHE_TTL: Duration = Duration::from_secs(3600);
