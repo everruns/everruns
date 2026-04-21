@@ -3,6 +3,7 @@
 // task metadata and the full anyhow error chain for durable task surfaces.
 
 use anyhow::Error;
+use everruns_core::{UserFacingError, UserFacingErrorContext, classify_runtime_error_message};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -55,72 +56,14 @@ pub(crate) fn summarize_task_failure(
     }
 }
 
-pub(crate) fn user_facing_failure_message(error: &str) -> String {
+pub(crate) fn user_facing_failure(error: &str) -> UserFacingError {
     let error_chain = error.split("error_chain=").nth(1).unwrap_or(error).trim();
-
-    let normalized = trim_error_chain_prefixes(error_chain);
-    let lower = normalized.to_ascii_lowercase();
-
-    if normalized.starts_with("Budget exhausted.")
-        || normalized.starts_with("Budget paused.")
-        || normalized.starts_with("Soft limit reached.")
-    {
-        return normalized.to_string();
-    }
-
-    if normalized.starts_with("Budget exhausted (") {
-        return "Budget exhausted. Increase the budget to continue.".to_string();
-    }
-
-    if normalized.starts_with("Budget paused (") {
-        return "Budget paused. Increase or resume the budget to continue.".to_string();
-    }
-
-    if normalized.starts_with("Model not available: ") {
-        let model_id = normalized
-            .trim_start_matches("Model not available: ")
-            .trim();
-        return format!(
-            "The model `{}` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
-            model_id
-        );
-    }
-
-    if normalized.starts_with("Request too large:")
-        || lower.contains("context length")
-        || lower.contains("maximum context length")
-    {
-        return "The conversation has become too long for the model to process. Please start a new session or reduce the context size.".to_string();
-    }
-
-    if lower.contains("(429)")
-        || lower.contains("rate limit")
-        || lower.contains("too many requests")
-    {
-        return "Rate limited by the AI provider. Please wait a moment.".to_string();
-    }
-
-    if lower.contains("(401)") || lower.contains("(403)") {
-        return "There is a misconfiguration with the AI provider. Please contact support."
-            .to_string();
-    }
-
-    if ["(500)", "(502)", "(503)", "(504)", "(529)"]
-        .iter()
-        .any(|code| lower.contains(code))
-    {
-        return "The AI provider is experiencing issues. Please try again shortly.".to_string();
-    }
-
-    "I encountered an error while processing your request. Please try again later.".to_string()
+    classify_runtime_error_message(error_chain, &UserFacingErrorContext::default())
 }
 
-fn trim_error_chain_prefixes(error_chain: &str) -> &str {
-    error_chain
-        .trim()
-        .trim_start_matches("InputAtom execution failed: ")
-        .trim_start_matches("ReasonAtom execution failed: ")
-        .trim_start_matches("ActAtom execution failed: ")
+#[cfg(test)]
+pub(crate) fn user_facing_failure_message(error: &str) -> String {
+    user_facing_failure(error).fallback_message()
 }
 
 fn format_error_chain(error: &Error) -> String {

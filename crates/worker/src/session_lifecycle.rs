@@ -12,7 +12,9 @@ use everruns_core::events::{
     TurnCompletedData, TurnFailedData, TurnStartedData,
 };
 use everruns_core::typed_id::{MessageId, SessionId, TurnId};
-use everruns_core::{DependencyBlocker, Message, TokenUsage};
+use everruns_core::{
+    DependencyBlocker, Message, TokenUsage, UserFacingError, user_facing_error_codes,
+};
 use tracing::warn;
 
 use crate::worker_adapters::WorkerAdapters;
@@ -172,7 +174,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
         turn_id: TurnId,
         input_message_id: MessageId,
         error: &str,
-        error_code: Option<&str>,
+        user_error: Option<&UserFacingError>,
     ) {
         if let Err(e) = self
             .adapters
@@ -185,10 +187,17 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
         let turn_failed_event = EventRequest::new(
             self.session_id,
             EventContext::turn(turn_id, input_message_id),
-            TurnFailedData {
-                turn_id,
-                error: error.to_string(),
-                error_code: error_code.map(|s| s.to_string()),
+            {
+                let mut data = TurnFailedData {
+                    turn_id,
+                    error: error.to_string(),
+                    error_code: None,
+                    error_fields: None,
+                };
+                if let Some(user_error) = user_error {
+                    user_error.apply_to_event_fields(&mut data.error_code, &mut data.error_fields);
+                }
+                data
             },
         );
         if let Err(e) = self.adapters.emit_event(turn_failed_event).await {
@@ -234,30 +243,52 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
         blocker: DependencyBlocker,
     ) {
         let message = blocker.message();
+        let user_error = UserFacingError::new(blocker.error_code())
+            .with_field(
+                "dependency",
+                match blocker {
+                    DependencyBlocker::HarnessArchived | DependencyBlocker::HarnessDeleted => {
+                        "harness"
+                    }
+                    DependencyBlocker::AgentArchived | DependencyBlocker::AgentDeleted => "agent",
+                },
+            )
+            .with_field(
+                "state",
+                match blocker {
+                    DependencyBlocker::HarnessArchived | DependencyBlocker::AgentArchived => {
+                        "archived"
+                    }
+                    DependencyBlocker::HarnessDeleted | DependencyBlocker::AgentDeleted => {
+                        "deleted"
+                    }
+                },
+            );
+        let mut error_message = Message::assistant(message);
+        let mut metadata = std::collections::HashMap::new();
+        user_error.apply_to_message_metadata(&mut metadata);
+        error_message.metadata = Some(metadata);
 
         let output_event = EventRequest::new(
             self.session_id,
             EventContext::turn(turn_id, input_message_id),
-            OutputMessageCompletedData::new(Message::assistant(message)),
+            OutputMessageCompletedData::new(error_message).with_user_facing_error(&user_error),
         );
         if let Err(e) = self.adapters.emit_event(output_event).await {
             warn!(error = %e, "Failed to emit dependency blocked message");
         }
 
-        self.turn_failed(
-            turn_id,
-            input_message_id,
-            message,
-            Some(blocker.error_code()),
-        )
-        .await;
+        self.turn_failed(turn_id, input_message_id, message, Some(&user_error))
+            .await;
     }
 
     /// DLQ error: emit user-facing error + session.idled, set session to "idle".
     pub async fn dlq_error(&self, turn_id: TurnId, input_message_id: MessageId) {
-        let error_message = Message::assistant(
-            "I encountered an error while processing your request. Please try again later.",
-        );
+        let user_error = UserFacingError::new(user_facing_error_codes::PROCESSING_ERROR);
+        let mut error_message = Message::assistant(user_error.fallback_message());
+        let mut metadata = std::collections::HashMap::new();
+        user_error.apply_to_message_metadata(&mut metadata);
+        error_message.metadata = Some(metadata);
         let context = EventContext::turn(turn_id, input_message_id);
 
         if let Err(e) = self
@@ -265,7 +296,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
             .emit_event(EventRequest::new(
                 self.session_id,
                 context,
-                OutputMessageCompletedData::new(error_message),
+                OutputMessageCompletedData::new(error_message).with_user_facing_error(&user_error),
             ))
             .await
         {

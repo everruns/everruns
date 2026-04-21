@@ -59,6 +59,11 @@ export const TurnGroupNode = memo(function TurnGroupNode({
           </span>
         )}
       </div>
+      {failed && d.errorMessage && (
+        <div className="px-3 py-2 text-[11px] leading-relaxed text-red-700/85 dark:text-red-200/85 line-clamp-2">
+          {d.errorMessage}
+        </div>
+      )}
     </div>
   );
 });

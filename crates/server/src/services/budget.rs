@@ -14,6 +14,7 @@ use everruns_core::events::{Event, EventData, LLM_GENERATION};
 use everruns_core::llm_model_profiles::get_model_profile;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::typed_id::{BudgetId, SessionId};
+use everruns_core::{UserFacingError, user_facing_error_codes};
 use std::sync::Arc;
 use tracing::{error, info, instrument, warn};
 
@@ -356,12 +357,15 @@ impl BudgetService {
 
             if priority > most_restrictive_priority {
                 most_restrictive_priority = priority;
+                let user_error = self.user_facing_error_for_action(budget, action_str);
                 most_restrictive = BudgetCheckResult {
                     action: action_str.into(),
                     message: Some(message),
                     budget_id: Some(BudgetId::from_uuid(budget.id)),
                     balance: Some(budget.balance),
                     currency: Some(budget.currency.clone()),
+                    error_code: user_error.as_ref().map(|error| error.code.clone()),
+                    error_fields: user_error.and_then(|error| error.error_fields()),
                 };
             }
         }
@@ -374,42 +378,36 @@ impl BudgetService {
     }
 
     fn format_exhausted_message(&self, budget: &BudgetRow) -> String {
-        let spent = self.spent_amount(budget);
-        let comparison = if spent > budget.limit {
-            "exceeded"
-        } else {
-            "reached"
-        };
-        format!(
-            "Budget exhausted. {:.2} {} spent {} the {:.2} {} limit. Increase the budget to continue.",
-            spent, budget.currency, comparison, budget.limit, budget.currency
-        )
+        self.budget_exhausted_error(budget).fallback_message()
     }
 
     fn format_paused_message(&self, budget: &BudgetRow) -> String {
-        let spent = self.spent_amount(budget);
-        if let Some(soft_limit) = budget.soft_limit {
-            if spent > soft_limit {
-                format!(
-                    "Budget paused. {:.2} {} spent exceeded the {:.2} {} soft limit. Increase or resume the budget to continue.",
-                    spent, budget.currency, soft_limit, budget.currency
-                )
-            } else if spent >= soft_limit {
-                format!(
-                    "Budget paused. {:.2} {} spent reached the {:.2} {} soft limit. Increase or resume the budget to continue.",
-                    spent, budget.currency, soft_limit, budget.currency
-                )
-            } else {
-                format!(
-                    "Budget paused with {:.2} {} spent. Increase or resume the budget to continue.",
-                    spent, budget.currency
-                )
-            }
-        } else {
-            format!(
-                "Budget paused with {:.2} {} spent. Increase or resume the budget to continue.",
-                spent, budget.currency
-            )
+        self.budget_paused_error(budget).fallback_message()
+    }
+
+    fn budget_exhausted_error(&self, budget: &BudgetRow) -> UserFacingError {
+        UserFacingError::new(user_facing_error_codes::BUDGET_EXHAUSTED)
+            .with_field("spent", self.spent_amount(budget))
+            .with_field("limit", budget.limit)
+            .with_field("currency", budget.currency.clone())
+    }
+
+    fn budget_paused_error(&self, budget: &BudgetRow) -> UserFacingError {
+        UserFacingError::new(user_facing_error_codes::BUDGET_PAUSED)
+            .with_field("spent", self.spent_amount(budget))
+            .with_optional_field("soft_limit", budget.soft_limit)
+            .with_field("currency", budget.currency.clone())
+    }
+
+    fn user_facing_error_for_action(
+        &self,
+        budget: &BudgetRow,
+        action: &str,
+    ) -> Option<UserFacingError> {
+        match action {
+            "stop" => Some(self.budget_exhausted_error(budget)),
+            "pause" => Some(self.budget_paused_error(budget)),
+            _ => None,
         }
     }
 }

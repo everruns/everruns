@@ -14,6 +14,7 @@ import { useAgent, useSession, useEvents, useLlmModel } from "@/hooks";
 import { sendUserMessage, cancelTurn } from "@/lib/api/sessions";
 import { useMutation } from "@tanstack/react-query";
 import { useOrg } from "@/providers/org-provider";
+import { useLocale } from "@/providers/locale-provider";
 import type {
   Agent,
   Session,
@@ -30,6 +31,7 @@ import type {
   TokenUsage,
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart, getEventData } from "@/lib/api/types";
+import { getLocalizedOutputMessageText } from "@/lib/runtime-errors";
 import type { UseMutationResult } from "@tanstack/react-query";
 
 /** Accumulated streamed output for a single tool call */
@@ -113,6 +115,7 @@ interface SessionProviderProps {
 // Session provider that derives agentId from the session (for org-level routes)
 export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   const { currentOrg } = useOrg();
+  const { locale } = useLocale();
   const org = currentOrg?.public_id;
 
   // Fetch session first to get agent_id
@@ -545,9 +548,11 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     (data: InputMessageData | OutputMessageCompletedData): string => {
       const content = data.message?.content;
       if (!content) return "";
-      return getTextFromContent(content);
+      return data.message?.role === "agent"
+        ? getLocalizedOutputMessageText(locale, data as OutputMessageCompletedData)
+        : getTextFromContent(content);
     },
-    [],
+    [locale],
   );
 
   // Get tool calls from message event data (stable ref — no deps)

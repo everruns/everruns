@@ -324,6 +324,15 @@ Agent response message. Emitted when LLM generation completes.
       "content": [
         { "type": "text", "text": "Hello! How can I help?" }
       ],
+      "metadata": {
+        "model": "gpt-4o",
+        "error_code": "budget_exhausted",
+        "error_fields": {
+          "spent": 12.5,
+          "limit": 10.0,
+          "currency": "usd"
+        }
+      },
       "phase": "completed",
       "created_at": "2024-01-15T10:30:01.000Z"
     },
@@ -331,6 +340,12 @@ Agent response message. Emitted when LLM generation completes.
       "model": "gpt-4o",
       "model_id": "01937abc-...",
       "provider_id": "01937abc-..."
+    },
+    "error_code": "budget_exhausted",
+    "error_fields": {
+      "spent": 12.5,
+      "limit": 10.0,
+      "currency": "usd"
     },
     "usage": {
       "input_tokens": 50,
@@ -412,7 +427,7 @@ Turn execution failed. This event is emitted when:
 - Max iterations exceeded
 - Other unrecoverable errors during turn execution
 
-When a turn fails, an `output.message.completed` event with a user-friendly error message is also emitted so users see feedback in the chat.
+When a turn fails, an `output.message.completed` event with a user-friendly fallback message is also emitted so users see feedback in the chat. Consumers should localize from `error_code` + `error_fields` when present instead of matching English prose.
 
 ```json
 {
@@ -424,16 +439,19 @@ When a turn fails, an `output.message.completed` event with a user-friendly erro
   "data": {
     "turn_id": "...",
     "error": "An error occurred while processing your request.",
-    "error_code": "llm_error"
+    "error_code": "provider_rate_limited",
+    "error_fields": {
+      "provider": "anthropic",
+      "retry_after": 8
+    }
   }
 }
 ```
 
-**Error Codes:**
-| Code | Description |
-|------|-------------|
-| `llm_error` | LLM call failed (API key missing, rate limit, network error) |
-| `max_iterations` | Maximum iterations exceeded |
+**Structured runtime errors:**
+- `error` remains the plain-English fallback for older clients and debugging.
+- `error_code` carries the stable user-facing classification.
+- `error_fields` carries interpolation values such as `spent`, `limit`, `soft_limit`, `currency`, `model_id`, `provider`, and `retry_after`.
 
 #### `turn.cancelled`
 

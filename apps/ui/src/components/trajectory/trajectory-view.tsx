@@ -23,6 +23,7 @@ import { Repeat, Wrench, XCircle, Clock } from "lucide-react";
 
 import type { Event } from "@/lib/api/types";
 import { formatDurationCompact } from "@/lib/formatting";
+import { useLocale } from "@/providers/locale-provider";
 import { buildTrajectory, countStructuralEvents, type TrajectoryStats } from "./trajectory-utils";
 import { trajectoryNodeTypes } from "./trajectory-nodes";
 
@@ -96,6 +97,7 @@ function StatsBar({ stats }: { stats: TrajectoryStats }) {
 }
 
 export function TrajectoryView({ events, colorMode }: TrajectoryViewProps) {
+  const { locale } = useLocale();
   // Count structural events as a stable primitive memoization key.
   // This number only changes when a turn/reason/act/tool/message event arrives,
   // NOT on every output.message.delta or reason.thinking.delta (which fire 10-30x/sec).
@@ -103,9 +105,9 @@ export function TrajectoryView({ events, colorMode }: TrajectoryViewProps) {
 
   // Build nodes/edges/stats only when structural events change
   const { nodes, edges, stats } = useMemo(
-    () => buildTrajectory(events),
+    () => buildTrajectory(events, locale),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: gate on structuralCount, not events ref
-    [structuralCount],
+    [structuralCount, locale],
   );
 
   // Fit view on mount

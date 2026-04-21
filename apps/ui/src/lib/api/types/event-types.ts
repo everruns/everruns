@@ -86,6 +86,8 @@ export interface OutputMessageCompletedData {
   message: Message;
   metadata?: ModelMetadata;
   usage?: TokenUsage;
+  error_code?: string;
+  error_fields?: Record<string, unknown>;
 }
 
 /** Data for turn.started event */
@@ -112,6 +114,7 @@ export interface TurnFailedData {
   turn_id: string;
   error: string;
   error_code?: string;
+  error_fields?: Record<string, unknown>;
 }
 
 /** Data for reason.started event */

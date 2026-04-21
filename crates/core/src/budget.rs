@@ -8,6 +8,8 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 use crate::typed_id::{BudgetId, SessionId};
 
@@ -198,6 +200,13 @@ pub struct BudgetCheckResult {
     /// Currency of the most restrictive budget.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub currency: Option<String>,
+    /// Stable error code for user-facing budget failures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    /// Structured interpolation fields for localized error rendering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub error_fields: Option<BTreeMap<String, Value>>,
 }
 
 impl BudgetCheckResult {
@@ -208,6 +217,8 @@ impl BudgetCheckResult {
             budget_id: None,
             balance: None,
             currency: None,
+            error_code: None,
+            error_fields: None,
         }
     }
 

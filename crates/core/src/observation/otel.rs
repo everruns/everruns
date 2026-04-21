@@ -942,6 +942,7 @@ mod tests {
             turn_id,
             error: "model overloaded".to_string(),
             error_code: Some("overloaded".to_string()),
+            error_fields: None,
         };
         listener
             .on_event(&Event::new(
@@ -1016,6 +1017,7 @@ mod tests {
             turn_id: make_turn_id(),
             error: "something broke".to_string(),
             error_code: None,
+            error_fields: None,
         };
         listener
             .on_event(&Event::new(

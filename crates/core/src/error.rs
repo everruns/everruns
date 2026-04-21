@@ -4,6 +4,10 @@
 // json_val / from_json: helpers to replace repeated serde_json::to_value/from_value boilerplate
 
 use crate::typed_id::{AgentId, HarnessId, SessionId};
+use crate::user_facing_error::{
+    UserFacingError, UserFacingErrorContext, classify_runtime_error_message,
+    codes as user_facing_error_codes,
+};
 use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
@@ -218,26 +222,30 @@ impl AgentLoopError {
 
     /// Get user-facing error message based on error classification
     pub fn user_facing_message(&self) -> String {
-        if let Some(model_id) = self.model_not_available_id() {
-            format!(
-                "The model `{}` is not available. It may have been removed, \
-                 renamed, or your API key may not have access to it. \
-                 Please select a different model.",
-                model_id
-            )
-        } else if self.is_request_too_large() {
-            "The conversation has become too long for the model to process. \
-             Please start a new session or reduce the context size."
-                .to_string()
-        } else if self.is_rate_limited() {
-            "Rate limited by the AI provider. Please wait a moment.".to_string()
-        } else if self.is_auth_error() {
-            "There is a misconfiguration with the AI provider. Please contact support.".to_string()
-        } else if self.is_server_error() {
-            "The AI provider is experiencing issues. Please try again shortly.".to_string()
-        } else {
-            "I encountered an error while processing your request. Please try again later."
-                .to_string()
+        self.user_facing_error(UserFacingErrorContext::default())
+            .fallback_message()
+    }
+
+    /// Get structured user-facing error metadata based on error classification.
+    pub fn user_facing_error(&self, context: UserFacingErrorContext) -> UserFacingError {
+        match self {
+            AgentLoopError::ModelNotAvailable(model_id) => {
+                UserFacingError::new(user_facing_error_codes::MODEL_UNAVAILABLE)
+                    .with_field("model_id", model_id)
+                    .with_optional_field("provider", context.provider)
+            }
+            AgentLoopError::RequestTooLarge(_) => {
+                UserFacingError::new(user_facing_error_codes::REQUEST_TOO_LARGE)
+                    .with_optional_field("provider", context.provider)
+                    .with_optional_field("model_id", context.model_id)
+            }
+            AgentLoopError::MaxIterationsReached(max_iterations) => {
+                UserFacingError::new("max_iterations").with_field("max_iterations", max_iterations)
+            }
+            AgentLoopError::Llm(message) => classify_runtime_error_message(message, &context),
+            _ => UserFacingError::new(user_facing_error_codes::PROCESSING_ERROR)
+                .with_optional_field("provider", context.provider)
+                .with_optional_field("model_id", context.model_id),
         }
     }
 }
@@ -439,6 +447,46 @@ mod tests {
     fn test_user_facing_message_request_too_large() {
         let err = AgentLoopError::request_too_large("context length exceeded");
         assert!(err.user_facing_message().contains("too long"));
+    }
+
+    #[test]
+    fn test_user_facing_error_model_not_available_includes_model_id() {
+        let err = AgentLoopError::model_not_available("gpt-99");
+        let user_error = err.user_facing_error(UserFacingErrorContext::default());
+
+        assert_eq!(user_error.code, user_facing_error_codes::MODEL_UNAVAILABLE);
+        assert_eq!(
+            user_error.fields.get("model_id"),
+            Some(&serde_json::Value::String("gpt-99".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_user_facing_error_rate_limited_includes_provider_context() {
+        let err = AgentLoopError::llm("Anthropic API error (429): rate limit exceeded");
+        let user_error = err.user_facing_error(
+            UserFacingErrorContext::default()
+                .with_provider("anthropic")
+                .with_model_id("claude-sonnet-4-5")
+                .with_retry_after(12),
+        );
+
+        assert_eq!(
+            user_error.code,
+            user_facing_error_codes::PROVIDER_RATE_LIMITED
+        );
+        assert_eq!(
+            user_error.fields.get("provider"),
+            Some(&serde_json::Value::String("anthropic".to_string()))
+        );
+        assert_eq!(
+            user_error.fields.get("model_id"),
+            Some(&serde_json::Value::String("claude-sonnet-4-5".to_string()))
+        );
+        assert_eq!(
+            user_error.fields.get("retry_after"),
+            Some(&serde_json::json!(12))
+        );
     }
 
     #[test]

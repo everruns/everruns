@@ -25,7 +25,8 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     Agent, CapabilityRegistry, DependencyBlocker, DriverRegistry, Harness, Session, TokenUsage,
-    ToolDefinition, ToolRegistry, org_public_id_from_internal, resolve_runtime_capabilities,
+    ToolDefinition, ToolRegistry, UserFacingError, org_public_id_from_internal,
+    resolve_runtime_capabilities,
 };
 use std::sync::Arc;
 use tracing::warn;
@@ -501,7 +502,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         turn_id: TurnId,
         input_message_id: MessageId,
         error: &str,
-        error_code: Option<&str>,
+        user_error: Option<&UserFacingError>,
     ) {
         self.set_session_status(SessionStatus::Idle, "turn_failed")
             .await;
@@ -509,10 +510,17 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         self.emit_event(EventRequest::new(
             self.session_id,
             EventContext::turn(turn_id, input_message_id),
-            TurnFailedData {
-                turn_id,
-                error: error.to_string(),
-                error_code: error_code.map(str::to_string),
+            {
+                let mut data = TurnFailedData {
+                    turn_id,
+                    error: error.to_string(),
+                    error_code: None,
+                    error_fields: None,
+                };
+                if let Some(user_error) = user_error {
+                    user_error.apply_to_event_fields(&mut data.error_code, &mut data.error_fields);
+                }
+                data
             },
         ))
         .await;
@@ -543,10 +551,36 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         input_message_id: MessageId,
         blocker: DependencyBlocker,
     ) {
+        let user_error = UserFacingError::new(blocker.error_code())
+            .with_field(
+                "dependency",
+                match blocker {
+                    DependencyBlocker::HarnessArchived | DependencyBlocker::HarnessDeleted => {
+                        "harness"
+                    }
+                    DependencyBlocker::AgentArchived | DependencyBlocker::AgentDeleted => "agent",
+                },
+            )
+            .with_field(
+                "state",
+                match blocker {
+                    DependencyBlocker::HarnessArchived | DependencyBlocker::AgentArchived => {
+                        "archived"
+                    }
+                    DependencyBlocker::HarnessDeleted | DependencyBlocker::AgentDeleted => {
+                        "deleted"
+                    }
+                },
+            );
+        let mut error_message = Message::assistant(blocker.message());
+        let mut metadata = std::collections::HashMap::new();
+        user_error.apply_to_message_metadata(&mut metadata);
+        error_message.metadata = Some(metadata);
+
         self.emit_event(EventRequest::new(
             self.session_id,
             EventContext::turn(turn_id, input_message_id),
-            OutputMessageCompletedData::new(Message::assistant(blocker.message())),
+            OutputMessageCompletedData::new(error_message).with_user_facing_error(&user_error),
         ))
         .await;
 
@@ -554,7 +588,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
             turn_id,
             input_message_id,
             blocker.message(),
-            Some(blocker.error_code()),
+            Some(&user_error),
         )
         .await;
     }

@@ -12,6 +12,13 @@
 import type { Node, Edge } from "@xyflow/react";
 import type { Event, ToolCompletedData } from "@/lib/api/types";
 import { getTextFromContent, getEventData } from "@/lib/api/types";
+import type { SupportedLocale } from "@/lib/i18n";
+import {
+  getRuntimeErrorFromOutputMessage,
+  getRuntimeErrorFromTurnFailed,
+  localizeRuntimeError,
+  type RuntimeErrorInfo,
+} from "@/lib/runtime-errors";
 
 // --- Node data types ---
 
@@ -142,10 +149,12 @@ export interface TurnAccumulator {
     ts: string;
     hasToolCalls: boolean;
     phase?: string;
+    runtimeError?: RuntimeErrorInfo;
   };
   completed: boolean;
   failed: boolean;
   errorMessage?: string;
+  runtimeError?: RuntimeErrorInfo;
   durationMs?: number;
   iterationCount?: number;
 }
@@ -308,6 +317,7 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
           ts: event.ts,
           hasToolCalls,
           phase: data.message?.phase,
+          runtimeError: getRuntimeErrorFromOutputMessage(data),
         };
         break;
       }
@@ -331,6 +341,7 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
         currentTurn.completed = true;
         currentTurn.failed = true;
         currentTurn.errorMessage = data.error;
+        currentTurn.runtimeError = getRuntimeErrorFromTurnFailed(data);
         currentTurn = null;
         currentIteration = null;
         break;
@@ -381,7 +392,10 @@ function computeStats(turns: TurnAccumulator[]): TrajectoryStats {
  * Edges connect children sequentially within a turn,
  * and from the last child of one turn to the first child of the next.
  */
-export function buildTrajectory(events: Event[]): {
+export function buildTrajectory(
+  events: Event[],
+  locale: SupportedLocale = "en",
+): {
   nodes: Node[];
   edges: Edge[];
   stats: TrajectoryStats;
@@ -473,9 +487,14 @@ export function buildTrajectory(events: Event[]): {
     // Agent message
     if (turn.agentMessage) {
       const amId = `turn-${turnIdx}-agent`;
+      const localizedAgentText = localizeRuntimeError(
+        locale,
+        turn.agentMessage.runtimeError,
+        turn.agentMessage.text,
+      );
       addChild(amId, "agentMessage", {
         label: "Agent",
-        preview: truncate(turn.agentMessage.text, 100),
+        preview: truncate(localizedAgentText, 100),
         eventId: turn.agentMessage.eventId,
         timestamp: turn.agentMessage.ts,
         hasToolCalls: turn.agentMessage.hasToolCalls,
@@ -499,7 +518,7 @@ export function buildTrajectory(events: Event[]): {
         iterations: turn.iterationCount ?? turn.iterations.length,
         durationMs: turn.durationMs,
         failed: turn.failed,
-        errorMessage: turn.errorMessage,
+        errorMessage: localizeRuntimeError(locale, turn.runtimeError, turn.errorMessage ?? ""),
         timestamp: turn.startTs,
       } as TurnGroupNodeData & Record<string, unknown>, // single cast: TS interface -> Record
       style: {

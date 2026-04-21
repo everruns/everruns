@@ -23,6 +23,7 @@ use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, EventData, Harness,
     HarnessStatus, InputMessage, LlmProviderType, ModelWithProvider, Session, SessionStatus, Tool,
     ToolCall, ToolExecutionResult, ToolRegistry, ToolResult, inspect_turn_context,
+    user_facing_error_codes,
 };
 use everruns_runtime::{
     InMemorySessionFileStore, RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle,
@@ -1023,6 +1024,65 @@ async fn plan_next_host_turn_preserves_reason_failure_message() {
     assert_eq!(
         turn_failed.error,
         "Budget exhausted. 100.00 tokens spent reached the 100.00 tokens limit. Increase the budget to continue."
+    );
+    assert_eq!(
+        turn_failed.error_code.as_deref(),
+        Some(user_facing_error_codes::BUDGET_EXHAUSTED)
+    );
+    let error_fields = turn_failed.error_fields.expect("budget fields");
+    assert_eq!(error_fields.get("spent"), Some(&json!(100.0)));
+    assert_eq!(error_fields.get("limit"), Some(&json!(100.0)));
+    assert_eq!(error_fields.get("currency"), Some(&json!("tokens")));
+}
+
+#[tokio::test]
+async fn plan_next_host_turn_classifies_missing_api_key_as_provider_misconfigured() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+
+    let input = turn_state(session_id, harness_id);
+    let output = serde_json::to_value(ReasonResult {
+        success: false,
+        text: "I encountered an error while processing your request. Please try again later."
+            .into(),
+        tool_calls: vec![],
+        has_tool_calls: false,
+        tool_definitions: vec![],
+        max_iterations: 8,
+        error: Some(
+            "LLM error: API key is required. Configure the API key in provider settings.".into(),
+        ),
+        usage: None,
+        response_id: None,
+        locale: None,
+        network_access: None,
+    })
+    .unwrap();
+
+    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+        .await
+        .unwrap();
+
+    assert!(matches!(plan, RuntimeTurnPlan::Complete { .. }));
+
+    let events = adapter.event_emitter.events().await;
+    let turn_failed = events
+        .into_iter()
+        .find_map(|event| match event.data {
+            EventData::TurnFailed(data) => Some(data),
+            _ => None,
+        })
+        .expect("turn.failed event emitted");
+
+    assert_eq!(
+        turn_failed.error_code.as_deref(),
+        Some(user_facing_error_codes::PROVIDER_MISCONFIGURED)
     );
 }
 

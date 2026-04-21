@@ -113,6 +113,7 @@ pub mod runtime_context;
 pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod traits;
+pub mod user_facing_error;
 
 // In-memory implementations for examples and testing
 pub mod memory;
@@ -155,6 +156,10 @@ pub use traits::{
     ModelWithProvider, NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore,
     SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef, SessionStorageStore,
     SessionStore, ToolContext, ToolExecutor, UserConnectionResolver,
+};
+pub use user_facing_error::{
+    UserFacingError, UserFacingErrorContext, UserFacingErrorFields, classify_runtime_error_message,
+    codes as user_facing_error_codes, trim_error_chain_prefixes,
 };
 
 // Memory store re-exports
