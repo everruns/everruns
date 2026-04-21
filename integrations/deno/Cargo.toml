@@ -21,6 +21,7 @@ chrono.workspace = true
 tracing.workspace = true
 futures-util.workspace = true
 tokio-tungstenite.workspace = true
+hickory-resolver = "0.26"
 
 # TLS: custom rustls config to force http/1.1 ALPN for WebSocket
 rustls.workspace = true
