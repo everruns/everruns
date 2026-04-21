@@ -3288,6 +3288,9 @@
           },
           "409": {
             "description": "Database already exists"
+          },
+          "422": {
+            "description": "Session database limit exceeded"
           }
         }
       }
