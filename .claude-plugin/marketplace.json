@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "everruns",
-      "source": "./integrations/claude-code-plugin",
+      "source": "./plugins/everruns",
       "description": "Interact with the Everruns agent platform — create and run agents, manage harnesses and sessions, browse the API catalog.",
       "version": "0.1.0",
       "author": {
