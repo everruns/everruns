@@ -14,6 +14,7 @@
 use everruns_core::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
+use everruns_core::truncation_info::{TruncationInfo, TruncationReason};
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -29,6 +30,29 @@ use crate::validation::{validate_browserless_url, validate_interaction_steps};
 
 const MAX_HTML_BYTES: usize = 100_000;
 const MAX_WAIT_MS: u64 = 120_000;
+
+/// Attach the unified reading-tool truncation envelope (EVE-339) to a
+/// `browserless_content` response.
+///
+/// `browserless_content` does not currently support in-place resume — there is
+/// no `?offset` / `range` parameter on the REST endpoint, and CDP returns the
+/// full DOM in one shot. The envelope reports `without_resume` when truncated
+/// so LLM callers can pick a documented fallback (e.g. `browserless_scrape`
+/// with narrower selectors).
+fn attach_content_truncation(
+    response: &mut Value,
+    content_returned: &str,
+    bytes_total: usize,
+    was_truncated: bool,
+) {
+    let bytes_returned = content_returned.len();
+    let info = if was_truncated {
+        TruncationInfo::without_resume(bytes_returned, Some(bytes_total), TruncationReason::SizeCap)
+    } else {
+        TruncationInfo::not_truncated(bytes_returned)
+    };
+    info.attach(response);
+}
 
 /// Truncate HTML content if it exceeds MAX_HTML_BYTES. Safe for multi-byte UTF-8.
 fn truncate_html(html: String) -> (String, bool) {
@@ -307,13 +331,15 @@ impl Tool for BrowserlessContentTool {
                 Ok(html) => {
                     let len = html.len();
                     let (content, was_truncated) = truncate_html(html);
-                    ToolExecutionResult::Success(json!({
+                    let mut response = json!({
                         "url": url,
                         "content": content,
                         "size_bytes": len,
                         "truncated": was_truncated,
                         "session": "cdp"
-                    }))
+                    });
+                    attach_content_truncation(&mut response, &content, len, was_truncated);
+                    ToolExecutionResult::Success(response)
                 }
                 Err(e) => ToolExecutionResult::tool_error(format!("CDP content failed: {e}")),
             };
@@ -347,12 +373,14 @@ impl Tool for BrowserlessContentTool {
             Ok(html) => {
                 let len = html.len();
                 let (content, was_truncated) = truncate_html(html);
-                ToolExecutionResult::Success(json!({
+                let mut response = json!({
                     "url": url,
                     "content": content,
                     "size_bytes": len,
                     "truncated": was_truncated
-                }))
+                });
+                attach_content_truncation(&mut response, &content, len, was_truncated);
+                ToolExecutionResult::Success(response)
             }
             Err(e) => ToolExecutionResult::tool_error(e),
         }
@@ -1494,6 +1522,76 @@ mod tests {
             }
             other => panic!("Expected ToolError, got: {other:?}"),
         }
+    }
+
+    // ============================================================================
+    // EVE-339 — Reading-tool truncation envelope conformance
+    // ============================================================================
+
+    #[test]
+    fn test_truncate_html_under_cap() {
+        let html = "<html><body>short</body></html>".to_string();
+        let (content, was_truncated) = truncate_html(html);
+        assert!(!was_truncated);
+        let mut response = json!({
+            "url": "https://example.com",
+            "content": content.clone(),
+            "size_bytes": 0,
+            "truncated": was_truncated
+        });
+        attach_content_truncation(&mut response, &content, 0, false);
+        everruns_core::truncation_info::assert_conforms("browserless_content", &response);
+        assert_eq!(response["truncation"]["truncated"], false);
+    }
+
+    #[test]
+    fn test_truncate_html_over_cap_emits_without_resume() {
+        // Build a >100 KB HTML source.
+        let huge = "a".repeat(MAX_HTML_BYTES + 5_000);
+        let total = huge.len();
+        let (content, was_truncated) = truncate_html(huge);
+        assert!(was_truncated);
+        let mut response = json!({
+            "url": "https://example.com",
+            "content": content.clone(),
+            "size_bytes": total,
+            "truncated": was_truncated
+        });
+        attach_content_truncation(&mut response, &content, total, true);
+        everruns_core::truncation_info::assert_conforms("browserless_content", &response);
+        assert_eq!(response["truncation"]["truncated"], true);
+        assert_eq!(response["truncation"]["reason"], "size_cap");
+        assert_eq!(response["truncation"]["bytes_total"], total);
+        assert!(
+            response["truncation"].get("next_offset").is_none(),
+            "browserless_content does not support in-place resume"
+        );
+    }
+
+    #[test]
+    fn test_truncate_html_utf8_boundary_safe() {
+        // Build a source whose byte-boundary for truncation would cut a
+        // 4-byte emoji: pad with single-byte chars up to MAX_HTML_BYTES - 2,
+        // then add the emoji. A naive byte-count cut at MAX_HTML_BYTES would
+        // land in the middle of the emoji's bytes; boundary-safe truncation
+        // must exclude the emoji entirely.
+        let mut src = String::new();
+        src.push_str(&"a".repeat(MAX_HTML_BYTES - 2));
+        src.push('🚀');
+        src.push_str(&"z".repeat(100));
+        let total = src.len();
+        let (content, was_truncated) = truncate_html(src);
+        assert!(was_truncated);
+        // Boundary-safe cut: no partial emoji bytes, only the padding 'a's
+        // survive, and the truncation suffix is appended (not any trailing
+        // 'z' from beyond the cap).
+        assert!(content.is_char_boundary(content.len()));
+        assert!(
+            !content.contains('🚀'),
+            "truncated content must not include the straddling emoji"
+        );
+        assert!(!content.contains('z'), "content after cap must not appear");
+        assert!(total > MAX_HTML_BYTES);
     }
 
     #[tokio::test]

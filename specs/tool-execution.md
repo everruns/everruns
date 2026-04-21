@@ -87,6 +87,52 @@ If `narration_noun` is set but no `operation` argument exists, falls back to gen
 - External toolkit libraries expose hints via the `Tool::hints()` method in the toolkit library contract.
 - `destructive` is a subset of non-readonly — a tool can write without being destructive.
 
+### Reading-tool output contract
+
+Every reading tool attaches a shared `truncation` envelope to its JSON response so LLM callers can detect partial output, understand why it was cut, and resume or fall back without regex-matching human markers. The envelope is additive — existing flat fields like `truncated`, `total_lines`, and `row_count` stay in place for back-compat.
+
+See [`crates/core/src/truncation_info.rs`](../crates/core/src/truncation_info.rs) for the source of truth: `TruncationInfo`, `TruncationReason`, and the `assert_conforms` conformance helper.
+
+**Scope — the reading-tool class:**
+
+| Tool | Reason codes | Resume supported? |
+|------|--------------|-------------------|
+| `read_file` (session VFS + sandbox) | `line_cap` (with resume), `size_cap` (without resume) | Line cap only — `next_offset` = line number |
+| `list_directory` (session VFS + sandbox) | `item_cap` | No — narrow with `path` |
+| `grep_files` (session VFS + sandbox) | `line_cap` | No — narrow `pattern`/`path_pattern` |
+| `sql_query` | `row_cap` | No — narrow `WHERE`/`LIMIT` |
+| `browserless_content` | `size_cap` | No — narrow via `browserless_scrape` selectors or shrink the source page |
+
+`next_offset` units are tool-specific — `read_file` uses a line number today. Each tool documents its own unit via `resume_hint`.
+
+Exec tools (`bash`, `*_exec`) keep their existing `truncated`/`total_lines`/`output_files` fields and the `exec_budget` reason is reserved for future migration; they are outside this envelope today because their truncation is priority-aware and persisted-output-backed.
+
+**Envelope shape:**
+
+```json
+{
+  "truncation": {
+    "truncated": true,
+    "bytes_returned": 49512,
+    "bytes_total": 184221,
+    "next_offset": 2000,
+    "resume_hint": "call read_file with offset=2000 to resume from line 2001",
+    "reason": "line_cap"
+  }
+}
+```
+
+| Field | Presence | Description |
+|------|----------|-------------|
+| `truncated` | required | `true` if the source exceeded a cap |
+| `bytes_returned` | required | Bytes of the response's primary content (the field a caller consumes: `content`, `rows`, `entries`, `matches`) — not the serialized wrapping object |
+| `bytes_total` | optional | Total bytes of untruncated source when known |
+| `next_offset` | optional | Offset to pass back to resume in-place |
+| `resume_hint` | paired with `next_offset` | Human-readable resume instruction |
+| `reason` | required | Stable enum: `size_cap`, `line_cap`, `row_cap`, `exec_budget`, `item_cap` |
+
+**Conformance:** tests use `everruns_core::truncation_info::assert_conforms(tool_name, &response)` to validate the envelope. Every reading tool has per-tool unit tests under its own crate's `tests` module.
+
 ### Exec Tool Output Sanitization
 
 Exec tools (bash, daytona_exec, e2b_exec, deno_exec, sprites_exec, docker_exec) sanitize their output before returning results. Each tool calls `sanitize_exec_output()` from `crates/core/src/tool_output_sanitizer.rs`.

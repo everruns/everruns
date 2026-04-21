@@ -113,6 +113,7 @@ pub mod runtime_context;
 pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod traits;
+pub mod truncation_info;
 pub mod user_facing_error;
 
 // In-memory implementations for examples and testing
