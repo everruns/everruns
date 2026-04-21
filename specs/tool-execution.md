@@ -97,11 +97,13 @@ See [`crates/core/src/truncation_info.rs`](../crates/core/src/truncation_info.rs
 
 | Tool | Reason codes | Resume supported? |
 |------|--------------|-------------------|
-| `read_file` (session VFS + sandbox) | `size_cap`, `line_cap` | Yes — `next_offset` = line number |
-| `list_directory` (session VFS + sandbox) | `item_cap` | No — narrow with `path`/`glob` |
-| `grep_files` (session VFS + sandbox) | `line_cap` | No — narrow `pattern`/`glob` |
-| `sqldb_query` | `row_cap` | No — narrow `WHERE`/`LIMIT` |
-| `browserless_content` | `size_cap` | No — use `?range=` or `browserless_scrape` |
+| `read_file` (session VFS + sandbox) | `line_cap` (with resume), `size_cap` (without resume) | Line cap only — `next_offset` = line number |
+| `list_directory` (session VFS + sandbox) | `item_cap` | No — narrow with `path` |
+| `grep_files` (session VFS + sandbox) | `line_cap` | No — narrow `pattern`/`path_pattern` |
+| `sql_query` | `row_cap` | No — narrow `WHERE`/`LIMIT` |
+| `browserless_content` | `size_cap` | No — narrow via `browserless_scrape` selectors or shrink the source page |
+
+`next_offset` units are tool-specific — `read_file` uses a line number today. Each tool documents its own unit via `resume_hint`.
 
 Exec tools (`bash`, `*_exec`) keep their existing `truncated`/`total_lines`/`output_files` fields and the `exec_budget` reason is reserved for future migration; they are outside this envelope today because their truncation is priority-aware and persisted-output-backed.
 
@@ -113,9 +115,9 @@ Exec tools (`bash`, `*_exec`) keep their existing `truncated`/`total_lines`/`out
     "truncated": true,
     "bytes_returned": 49512,
     "bytes_total": 184221,
-    "next_offset": 49512,
-    "resume_hint": "call read_file with offset=49512",
-    "reason": "size_cap"
+    "next_offset": 2000,
+    "resume_hint": "call read_file with offset=2000 to resume from line 2001",
+    "reason": "line_cap"
   }
 }
 ```
@@ -123,7 +125,7 @@ Exec tools (`bash`, `*_exec`) keep their existing `truncated`/`total_lines`/`out
 | Field | Presence | Description |
 |------|----------|-------------|
 | `truncated` | required | `true` if the source exceeded a cap |
-| `bytes_returned` | required | Bytes of primary content in this response |
+| `bytes_returned` | required | Bytes of the response's primary content (the field a caller consumes: `content`, `rows`, `entries`, `matches`) — not the serialized wrapping object |
 | `bytes_total` | optional | Total bytes of untruncated source when known |
 | `next_offset` | optional | Offset to pass back to resume in-place |
 | `resume_hint` | paired with `next_offset` | Human-readable resume instruction |

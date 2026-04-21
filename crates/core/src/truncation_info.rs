@@ -62,7 +62,11 @@ impl TruncationReason {
 pub struct TruncationInfo {
     pub truncated: bool,
 
-    /// Bytes actually returned in the response payload's primary content.
+    /// Bytes of the response's primary content returned to the caller.
+    /// "Primary content" means the field a caller actually consumes
+    /// (e.g. `content` for `read_file` / `browserless_content`, `rows` for
+    /// `sql_query`, `entries` for `list_directory`, `matches` for
+    /// `grep_files`). It is not the serialized size of the wrapping object.
     pub bytes_returned: usize,
 
     /// Total bytes of the untruncated source. `None` when unknown (e.g.
@@ -177,10 +181,20 @@ pub fn assert_conforms(tool_name: &str, response: &Value) {
                 "{tool_name}: `next_offset` present but `resume_hint` missing"
             );
         }
+        if parsed.resume_hint.is_some() {
+            assert!(
+                parsed.next_offset.is_some(),
+                "{tool_name}: `resume_hint` present but `next_offset` missing"
+            );
+        }
     } else {
         assert!(
             parsed.next_offset.is_none(),
             "{tool_name}: `next_offset` set on a non-truncated response"
+        );
+        assert!(
+            parsed.resume_hint.is_none(),
+            "{tool_name}: `resume_hint` set on a non-truncated response"
         );
     }
 }

@@ -14,7 +14,6 @@
 
 use super::{Capability, CapabilityStatus};
 use crate::session_file::SessionFile;
-use crate::tool_output_sanitizer::READ_FILE_HARD_BYTE_CAP;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult, ToolResultImage};
 use crate::traits::ToolContext;
@@ -742,24 +741,37 @@ impl Tool for ReadFileTool {
                 }
 
                 // Unified reading-tool truncation envelope (EVE-339).
+                //
+                // Distinguishing which cap fired:
+                // - When `end_line < total_lines` the line window was clipped
+                //   by `limit`, so this is a line cap and line-based resume is
+                //   safe.
+                // - When `truncated == true` but `end_line == total_lines` the
+                //   line window covered every line and the cut must have come
+                //   from the byte cap inside `format_lines`. Byte truncation
+                //   can cut mid-line, so `next_offset = end_line` is not a
+                //   reliable resume point — emit `without_resume` and let the
+                //   caller narrow `limit` or shift `offset`.
                 let truncation = if truncated {
-                    let next_offset = end_line as u64;
-                    let reason = if formatted.len() > READ_FILE_HARD_BYTE_CAP {
-                        TruncationReason::SizeCap
+                    if end_line < total_lines {
+                        TruncationInfo::with_resume(
+                            formatted.len(),
+                            Some(file.size_bytes as usize),
+                            end_line as u64,
+                            format!(
+                                "call read_file with offset={} to resume from line {}",
+                                end_line,
+                                end_line + 1,
+                            ),
+                            TruncationReason::LineCap,
+                        )
                     } else {
-                        TruncationReason::LineCap
-                    };
-                    TruncationInfo::with_resume(
-                        formatted.len(),
-                        Some(file.size_bytes as usize),
-                        next_offset,
-                        format!(
-                            "call read_file with offset={} to resume from line {}",
-                            end_line,
-                            end_line + 1,
-                        ),
-                        reason,
-                    )
+                        TruncationInfo::without_resume(
+                            formatted.len(),
+                            Some(file.size_bytes as usize),
+                            TruncationReason::SizeCap,
+                        )
+                    }
                 } else {
                     TruncationInfo::not_truncated(formatted.len())
                 };
@@ -1245,8 +1257,11 @@ impl Tool for ListDirectoryTool {
                 // `list_directory` has no backend cap today — the contract is
                 // wired with `not_truncated` so the envelope is always present
                 // (EVE-339). If a cap is introduced later, switch to
-                // `without_resume(... ItemCap)`.
-                let bytes_returned = serde_json::to_string(&result).map(|s| s.len()).unwrap_or(0);
+                // `without_resume(... ItemCap)`. `bytes_returned` measures the
+                // primary payload (`entries`), not the wrapping object.
+                let bytes_returned = serde_json::to_string(&entries)
+                    .expect("list_directory entries always serialize")
+                    .len();
                 TruncationInfo::not_truncated(bytes_returned).attach(&mut result);
                 ToolExecutionResult::success(result)
             }
@@ -1363,7 +1378,11 @@ impl Tool for GrepFilesTool {
                 // envelope is wired with `not_truncated` so the reading-tool
                 // contract is honoured uniformly (EVE-339). If a cap is
                 // introduced later, switch to `without_resume(... LineCap)`.
-                let bytes_returned = serde_json::to_string(&result).map(|s| s.len()).unwrap_or(0);
+                // `bytes_returned` measures the primary payload (`matches`),
+                // not the wrapping object.
+                let bytes_returned = serde_json::to_string(&results)
+                    .expect("grep_files matches always serialize")
+                    .len();
                 TruncationInfo::not_truncated(bytes_returned).attach(&mut result);
                 ToolExecutionResult::success(result)
             }

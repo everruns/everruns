@@ -97,9 +97,12 @@ fn shape_sql_query_response(
     if truncated {
         response["truncated"] = json!(true);
     }
-    let bytes_returned = serde_json::to_string(&response)
-        .map(|s| s.len())
-        .unwrap_or(0);
+    // `bytes_returned` measures the primary payload (`rows`), matching the
+    // reading-tool contract's "primary content" definition rather than the
+    // wrapping object.
+    let bytes_returned = serde_json::to_string(rows)
+        .expect("sql_query rows always serialize")
+        .len();
     let info = if truncated {
         TruncationInfo::without_resume(bytes_returned, None, TruncationReason::RowCap)
     } else {

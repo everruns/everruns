@@ -1571,23 +1571,26 @@ mod tests {
     #[test]
     fn test_truncate_html_utf8_boundary_safe() {
         // Build a source whose byte-boundary for truncation would cut a
-        // multi-byte char: pad with single-byte chars up to a boundary-sensitive
-        // offset then add a 4-byte emoji right at the cap.
+        // 4-byte emoji: pad with single-byte chars up to MAX_HTML_BYTES - 2,
+        // then add the emoji. A naive byte-count cut at MAX_HTML_BYTES would
+        // land in the middle of the emoji's bytes; boundary-safe truncation
+        // must exclude the emoji entirely.
         let mut src = String::new();
         src.push_str(&"a".repeat(MAX_HTML_BYTES - 2));
-        src.push('🚀'); // 4-byte UTF-8 char
+        src.push('🚀');
         src.push_str(&"z".repeat(100));
         let total = src.len();
         let (content, was_truncated) = truncate_html(src);
         assert!(was_truncated);
-        // Must still be valid UTF-8 (String guarantees this) and must not
-        // include a partial char at the cut.
+        // Boundary-safe cut: no partial emoji bytes, only the padding 'a's
+        // survive, and the truncation suffix is appended (not any trailing
+        // 'z' from beyond the cap).
         assert!(content.is_char_boundary(content.len()));
-        assert_eq!(
-            content.chars().count(),
-            content.chars().count(),
-            "content is valid UTF-8"
+        assert!(
+            !content.contains('🚀'),
+            "truncated content must not include the straddling emoji"
         );
+        assert!(!content.contains('z'), "content after cap must not appear");
         assert!(total > MAX_HTML_BYTES);
     }
 
