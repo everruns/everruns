@@ -617,7 +617,7 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
             HookAction::Continue(res)
         }))
         .on_error(Box::new(move |ev: ErrorEvent| {
-            let preview = redact_for_log(&ev.message, 256);
+            let preview = truncate_for_log(&ev.message, 256);
             tracing::warn!(
                 target: "bashkit.hook",
                 capability = "virtual_bash",
@@ -630,18 +630,30 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
         }))
 }
 
-/// Bounded diagnostic preview for hook log fields. Cuts on a UTF-8 char
-/// boundary to avoid emitting invalid data and keeps a trailing marker so
-/// truncated entries are visible in logs.
-fn redact_for_log(msg: &str, max_bytes: usize) -> String {
+/// Bounded diagnostic preview for hook log fields. The return value is
+/// guaranteed to be no longer than `max_bytes` and to end on a valid UTF-8
+/// char boundary. When there is room, a trailing marker is appended so
+/// truncated entries remain visible in logs without exceeding the budget.
+fn truncate_for_log(msg: &str, max_bytes: usize) -> String {
+    const MARKER: &str = "…[truncated]";
     if msg.len() <= max_bytes {
         return msg.to_string();
     }
-    let mut cut = max_bytes;
+    let budget = max_bytes.saturating_sub(MARKER.len());
+    let mut cut = budget.min(msg.len());
     while cut > 0 && !msg.is_char_boundary(cut) {
         cut -= 1;
     }
-    format!("{}…[truncated]", &msg[..cut])
+    if max_bytes > MARKER.len() {
+        format!("{}{}", &msg[..cut], MARKER)
+    } else {
+        // Budget too small to fit the marker; return just the bounded slice.
+        let mut cut = max_bytes.min(msg.len());
+        while cut > 0 && !msg.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        msg[..cut].to_string()
+    }
 }
 
 /// Drain all buffered chunks from the partial output channel into a single string.
@@ -2922,28 +2934,43 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn redact_for_log_returns_short_strings_unchanged() {
-        assert_eq!(redact_for_log("hello", 100), "hello");
-        assert_eq!(redact_for_log("", 100), "");
+    fn truncate_for_log_returns_short_strings_unchanged() {
+        assert_eq!(truncate_for_log("hello", 100), "hello");
+        assert_eq!(truncate_for_log("", 100), "");
     }
 
     #[test]
-    fn redact_for_log_truncates_and_marks() {
+    fn truncate_for_log_stays_within_budget_and_marks() {
         let input = "a".repeat(500);
-        let out = redact_for_log(&input, 100);
-        assert!(out.starts_with(&"a".repeat(100)));
-        assert!(out.ends_with("[truncated]"));
-        assert!(out.len() < input.len());
+        let out = truncate_for_log(&input, 100);
+        assert!(
+            out.len() <= 100,
+            "output exceeded budget: {} bytes",
+            out.len()
+        );
+        assert!(out.ends_with("…[truncated]"));
+        assert!(out.starts_with('a'));
     }
 
     #[test]
-    fn redact_for_log_respects_utf8_boundaries() {
-        // Each '🦀' is 4 bytes. Cap of 5 must back off to a char boundary.
-        let input = "🦀🦀🦀🦀🦀";
-        let out = redact_for_log(input, 5);
+    fn truncate_for_log_respects_utf8_boundaries() {
+        // Each '🦀' is 4 bytes; marker is 14 bytes. Budget 20 leaves 6 for content,
+        // which backs off to a 4-byte char boundary (one crab).
+        let input = "🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀";
+        let out = truncate_for_log(input, 20);
+        assert!(out.len() <= 20);
         assert!(out.starts_with('🦀'));
-        assert!(out.ends_with("[truncated]"));
-        assert!(out.is_char_boundary(out.find('…').unwrap()));
+        assert!(out.ends_with("…[truncated]"));
+    }
+
+    #[test]
+    fn truncate_for_log_omits_marker_when_budget_is_too_small() {
+        // Budget smaller than the marker -> marker is dropped, content is still
+        // cut on a valid UTF-8 boundary and fits within max_bytes.
+        let input = "abcdefghijklmnop";
+        let out = truncate_for_log(input, 4);
+        assert_eq!(out, "abcd");
+        assert!(out.len() <= 4);
     }
 
     #[tokio::test]
