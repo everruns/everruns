@@ -25,6 +25,8 @@ pub enum CommandError {
     #[error("{0}")]
     BadRequest(String),
     #[error("{0}")]
+    Unprocessable(String),
+    #[error("{0}")]
     Forbidden(String),
     #[error("{0}")]
     NotFound(String),
@@ -38,6 +40,7 @@ impl CommandError {
     pub fn status(&self) -> StatusCode {
         match self {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::Unprocessable(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
@@ -51,6 +54,10 @@ impl CommandError {
 
     pub fn bad_request(msg: impl Into<String>) -> Self {
         Self::BadRequest(msg.into())
+    }
+
+    pub fn unprocessable(msg: impl Into<String>) -> Self {
+        Self::Unprocessable(msg.into())
     }
 
     pub fn conflict(msg: impl Into<String>) -> Self {

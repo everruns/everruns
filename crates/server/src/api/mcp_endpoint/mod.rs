@@ -21,7 +21,8 @@ mod tool_registry;
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::{
-    BudgetService, CapabilityService, EventService, MessageService, SessionService,
+    BudgetService, CapabilityService, EventService, MessageService, SessionFileService,
+    SessionService,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -178,6 +179,7 @@ pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
+    pub session_file_service: Arc<SessionFileService>,
     pub capability_service: Arc<CapabilityService>,
     pub budget_service: Arc<BudgetService>,
     pub runner: Arc<dyn AgentRunner>,
@@ -217,6 +219,7 @@ impl AppState {
                 event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
+            session_file_service: Arc::new(SessionFileService::new(db.clone())),
             capability_service,
             budget_service: Arc::new(BudgetService::new(db.clone())),
             db,
@@ -238,6 +241,15 @@ impl AppState {
             sqldb_store,
             workflow_store,
         }
+    }
+
+    pub fn with_virtual_registry(
+        mut self,
+        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+    ) -> Self {
+        self.session_file_service =
+            Arc::new(SessionFileService::new(self.db.clone()).with_virtual_registry(registry));
+        self
     }
 }
 

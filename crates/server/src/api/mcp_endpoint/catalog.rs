@@ -75,6 +75,7 @@ impl CatalogContext {
         .with_session_service(self.state.session_service.clone())
         .with_message_service(self.state.message_service.clone())
         .with_event_service(self.state.event_service.clone())
+        .with_session_file_service(self.state.session_file_service.clone())
         .with_runner(self.state.runner.clone())
         .with_fallback_harness_name(self.state.fallback_default_harness_name.clone())
         .with_chat_harness_name(self.state.chat_harness_name.clone())

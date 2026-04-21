@@ -144,6 +144,7 @@ pub async fn list_databases(
     responses(
         (status = 201, description = "Database created", body = DatabaseInfoResponse),
         (status = 400, description = "Invalid name or session ID"),
+        (status = 422, description = "Session database limit exceeded"),
         (status = 409, description = "Database already exists"),
     ),
     tag = "session-databases"

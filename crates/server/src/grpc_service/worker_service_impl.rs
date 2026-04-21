@@ -9,6 +9,7 @@ const MAX_EXECUTE_COMMAND_PARAMS_BYTES: usize = 1024 * 1024;
 fn command_error_kind(error: &crate::domains::common::CommandError) -> i32 {
     match error {
         crate::domains::common::CommandError::BadRequest(_) => 1,
+        crate::domains::common::CommandError::Unprocessable(_) => 1,
         crate::domains::common::CommandError::Forbidden(_) => 2,
         crate::domains::common::CommandError::NotFound(message)
             if message.starts_with("Unknown command:") =>

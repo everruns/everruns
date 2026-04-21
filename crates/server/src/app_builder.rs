@@ -845,7 +845,8 @@ impl ServerAppBuilder {
             capability_service.clone(),
             Some(sqldb_store.clone()),
             durable_store.clone(),
-        );
+        )
+        .with_virtual_registry(virtual_registry.clone());
 
         let health_state = HealthState {
             auth_mode: format!("{:?}", auth_config.mode),

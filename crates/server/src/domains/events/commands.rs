@@ -144,7 +144,7 @@ inventory::submit! { CommandDescriptor::of::<ListEvents>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct StreamSse {
-    pub session_id: Option<String>,
+    pub session_id: String,
 }
 
 impl Command for StreamSse {
@@ -158,6 +158,10 @@ impl Command for StreamSse {
             method: "GET",
             path: "/v1/sessions/{session_id}/sse",
         }
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("session_id")
     }
 
     async fn execute(self, _ctx: &Ctx) -> Result<serde_json::Value, CommandError> {

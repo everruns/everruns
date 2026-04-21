@@ -79,9 +79,10 @@ impl Command for CreateSessionDatabaseCmd {
             .create_database(session_id, &self.name)
             .await
             .map_err(|e| match e {
-                SessionSqlDbError::InvalidDatabaseName(_) | SessionSqlDbError::LimitExceeded(_) => {
+                SessionSqlDbError::InvalidDatabaseName(_) => {
                     CommandError::bad_request(e.to_string())
                 }
+                SessionSqlDbError::LimitExceeded(_) => CommandError::unprocessable(e.to_string()),
                 SessionSqlDbError::DatabaseAlreadyExists(_) => {
                     CommandError::conflict(e.to_string())
                 }
