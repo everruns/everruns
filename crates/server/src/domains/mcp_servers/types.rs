@@ -78,7 +78,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_create_request_serialization() {
+    fn test_create_request_deserialization() {
         let json = r#"{
             "name": "test-server",
             "url": "https://mcp.example.com/v1/mcp"
