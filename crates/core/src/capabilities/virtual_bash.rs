@@ -25,10 +25,10 @@ use crate::traits::{SessionFileStore, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use bashkit::{
-    Bash, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem, FileSystemExt, FileType,
-    Metadata, OutputCallback, SearchCapabilities, SearchCapable, SearchMatch as BashkitSearchMatch,
-    SearchProvider, SearchQuery, SearchResults, Tool as BashkitToolTrait, TraceEventKind,
-    TraceMode,
+    Bash, BashBuilder, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem,
+    FileSystemExt, FileType, Metadata, OutputCallback, SearchCapabilities, SearchCapable,
+    SearchMatch as BashkitSearchMatch, SearchProvider, SearchQuery, SearchResults,
+    Tool as BashkitToolTrait, TraceEventKind, TraceMode,
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -240,8 +240,10 @@ impl Tool for BashTool {
         // Resolve locale from context (defaults to en-US).
         let locale = context.locale.as_deref().unwrap_or("en-US");
 
-        // Configure bash with resource limits (uses shared execution_limits)
-        let mut bash = Bash::builder()
+        // Configure bash with resource limits (uses shared execution_limits).
+        // Observability hooks are installed last so per-builtin / error telemetry
+        // is available without changing any existing limits or boundaries.
+        let builder = Bash::builder()
             .fs(session_fs)
             .cwd(working_dir)
             .username("everruns")
@@ -253,8 +255,8 @@ impl Tool for BashTool {
             .env("LANG", locale)
             .limits(execution_limits())
             .max_memory(10 * 1024 * 1024) // 10 MB — prevent OOM from untrusted input
-            .trace_mode(TraceMode::Redacted)
-            .build();
+            .trace_mode(TraceMode::Redacted);
+        let mut bash = install_observability_hooks(builder, context.session_id).build();
 
         // Stream output via tool.output.delta events for live UI/CLI rendering.
         // bashkit's exec_streaming calls OutputCallback with (stdout_chunk, stderr_chunk)
@@ -456,7 +458,7 @@ impl BackgroundExecutableTool for BashTool {
         ));
         let locale = context.locale.as_deref().unwrap_or("en-US");
 
-        let mut bash = Bash::builder()
+        let builder = Bash::builder()
             .fs(session_fs)
             .cwd(working_dir)
             .username("everruns")
@@ -468,8 +470,8 @@ impl BackgroundExecutableTool for BashTool {
             .env("LANG", locale)
             .limits(execution_limits())
             .max_memory(10 * 1024 * 1024)
-            .trace_mode(TraceMode::Redacted)
-            .build();
+            .trace_mode(TraceMode::Redacted);
+        let mut bash = install_observability_hooks(builder, context.session_id).build();
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
         let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
@@ -575,6 +577,71 @@ impl BackgroundExecutableTool for BashTool {
             }
         }
     }
+}
+
+// Observational-only. Emits `tracing` events for each bashkit builtin
+// invocation and interpreter error, tagged with the active `session_id` for
+// audit correlation. Every hook returns `HookAction::Continue`; none widen
+// bashkit's existing limits or sandbox (TM-BASH). Hook callbacks log
+// structural metadata (tool name, arg count, exit code, byte lengths) but
+// never the argument values or builtin stdout — those surfaces can carry
+// tenant paths, URLs, or embedded secrets. HTTP hooks (`before_http` /
+// `after_http`) require bashkit's `http_client` feature, which everruns does
+// not enable for `virtual_bash` (TM-BASH-003: no network builtins).
+fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> BashBuilder {
+    use bashkit::hooks::{ErrorEvent, HookAction, ToolEvent, ToolResult};
+    builder
+        .before_tool(Box::new(move |ev: ToolEvent| {
+            tracing::debug!(
+                target: "bashkit.hook",
+                capability = "virtual_bash",
+                session_id = %session_id,
+                event = "before_tool",
+                tool = %ev.name,
+                arg_count = ev.args.len(),
+                "builtin invoked"
+            );
+            HookAction::Continue(ev)
+        }))
+        .after_tool(Box::new(move |res: ToolResult| {
+            tracing::debug!(
+                target: "bashkit.hook",
+                capability = "virtual_bash",
+                session_id = %session_id,
+                event = "after_tool",
+                tool = %res.name,
+                exit_code = res.exit_code,
+                stdout_bytes = res.stdout.len(),
+                "builtin completed"
+            );
+            HookAction::Continue(res)
+        }))
+        .on_error(Box::new(move |ev: ErrorEvent| {
+            let preview = redact_for_log(&ev.message, 256);
+            tracing::warn!(
+                target: "bashkit.hook",
+                capability = "virtual_bash",
+                session_id = %session_id,
+                event = "on_error",
+                message = %preview,
+                "interpreter error"
+            );
+            HookAction::Continue(ev)
+        }))
+}
+
+/// Bounded diagnostic preview for hook log fields. Cuts on a UTF-8 char
+/// boundary to avoid emitting invalid data and keeps a trailing marker so
+/// truncated entries are visible in logs.
+fn redact_for_log(msg: &str, max_bytes: usize) -> String {
+    if msg.len() <= max_bytes {
+        return msg.to_string();
+    }
+    let mut cut = max_bytes;
+    while cut > 0 && !msg.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    format!("{}…[truncated]", &msg[..cut])
 }
 
 /// Drain all buffered chunks from the partial output channel into a single string.
@@ -2847,6 +2914,66 @@ mod tests {
         assert!(
             our_props.contains_key("working_dir"),
             "working_dir must be in parameters_schema"
+        );
+    }
+
+    // ========================================================================
+    // Observability hooks (EVE-299)
+    // ========================================================================
+
+    #[test]
+    fn redact_for_log_returns_short_strings_unchanged() {
+        assert_eq!(redact_for_log("hello", 100), "hello");
+        assert_eq!(redact_for_log("", 100), "");
+    }
+
+    #[test]
+    fn redact_for_log_truncates_and_marks() {
+        let input = "a".repeat(500);
+        let out = redact_for_log(&input, 100);
+        assert!(out.starts_with(&"a".repeat(100)));
+        assert!(out.ends_with("[truncated]"));
+        assert!(out.len() < input.len());
+    }
+
+    #[test]
+    fn redact_for_log_respects_utf8_boundaries() {
+        // Each '🦀' is 4 bytes. Cap of 5 must back off to a char boundary.
+        let input = "🦀🦀🦀🦀🦀";
+        let out = redact_for_log(input, 5);
+        assert!(out.starts_with('🦀'));
+        assert!(out.ends_with("[truncated]"));
+        assert!(out.is_char_boundary(out.find('…').unwrap()));
+    }
+
+    #[tokio::test]
+    async fn install_observability_hooks_fires_on_builtin_and_preserves_exit() {
+        use bashkit::hooks::{HookAction, ToolResult};
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        let tool_calls = Arc::new(AtomicU64::new(0));
+        let counter = tool_calls.clone();
+
+        // Start from the shared hook installer, then stack a test observer.
+        // This proves the installer leaves the builtin pipeline intact and
+        // that additional hooks compose cleanly.
+        let session_id: SessionId = "session_0197a4a4c0c0780180000000000000ff".parse().unwrap();
+        let builder = install_observability_hooks(Bash::builder(), session_id).after_tool(
+            Box::new(move |r: ToolResult| {
+                counter.fetch_add(1, Ordering::Relaxed);
+                HookAction::Continue(r)
+            }),
+        );
+
+        let mut bash = builder.build();
+        let result = bash.exec("echo hook-smoke").await.unwrap();
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout.trim(), "hook-smoke");
+        assert!(
+            tool_calls.load(Ordering::Relaxed) >= 1,
+            "after_tool hook should fire at least once for `echo`"
         );
     }
 }
