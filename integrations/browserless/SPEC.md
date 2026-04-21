@@ -41,8 +41,8 @@ Two operating modes:
 
 The CDP session uses Browserless's `Browserless.reconnect` command to keep the browser alive between tool calls without maintaining a persistent WebSocket connection:
 
-1. **Open**: Connect via WebSocket → call `Browserless.reconnect(timeout)` → store endpoint → disconnect
-2. **Use**: Reconnect via stored endpoint → do work → call `Browserless.reconnect` → disconnect
+1. **Open**: Connect via WebSocket → attach to a `page` target (`Target.getTargets` → `Target.attachToTarget`, or `Target.createTarget` if none exists) → call `Browserless.reconnect(timeout)` → store endpoint → disconnect
+2. **Use**: Reconnect via stored endpoint → reattach to the current `page` target → do work → call `Browserless.reconnect` → disconnect
 3. **Close**: Reconnect → disconnect without calling reconnect → browser destroyed → clean up state
 
 Session state (`ws_endpoint`, timestamps) stored as plain key-value in `session_storage` (not encrypted secrets). API token is always resolved from user connection at call time — never stored in session state.
@@ -84,6 +84,9 @@ Reconnect endpoints use the path returned by `Browserless.reconnect`.
 Auth: `?token=<api_token>` query parameter on WebSocket URL.
 
 CDP commands used:
+- `Target.getTargets` — Discover the current browser page targets
+- `Target.createTarget` — Create an `about:blank` page when the browser has no page targets yet
+- `Target.attachToTarget` — Attach to the active page target with `flatten: true`
 - `Page.enable` — Enable page events
 - `Page.navigate` — Navigate to URL
 - `Page.captureScreenshot` — Take screenshot (returns base64 PNG)
@@ -92,6 +95,8 @@ CDP commands used:
 - `Input.dispatchKeyEvent` — Keyboard input
 - `Input.dispatchTouchEvent` — Touch/tap simulation
 - `Browserless.reconnect` — Keep browser alive after disconnect (returns new WS endpoint)
+
+`Page.*`, `Runtime.*`, and `Input.*` must be sent with the attached target `sessionId` as a top-level CDP field. Browser-wide commands such as `Target.*` and `Browserless.*` stay on the root session.
 
 ## Tools
 
@@ -271,7 +276,7 @@ REST for simple one-shot operations, CDP for persistent sessions. CDP sessions p
 
 ### Minimal CDP client
 
-Custom implementation in `cdp.rs` using `tokio-tungstenite`. No external CDP crate dependency. Implements only the CDP commands we need (Page, Runtime, Input, Browserless.reconnect). Keeps the dependency footprint small.
+Custom implementation in `cdp.rs` using `tokio-tungstenite`. No external CDP crate dependency. Implements only the CDP commands we need (Target, Page, Runtime, Input, Browserless.reconnect). Keeps the dependency footprint small.
 
 ### Reconnect pattern (not persistent WebSocket)
 

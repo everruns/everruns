@@ -4,6 +4,9 @@
 //! Decision: Short-lived connections. Connect, do work, call Browserless.reconnect, disconnect.
 //!   The browser stays alive on Browserless servers between tool calls.
 //! Decision: 60s default reconnect timeout. Covers LLM thinking time between tool calls.
+//! Decision: Browserless v2 connects at the browser root. Attach to a page target on every
+//!   WebSocket connect, and route page-scoped domains (`Page.*`, `Runtime.*`, `Input.*`)
+//!   through that attached target session.
 
 use futures_util::stream::SplitSink;
 use futures_util::stream::SplitStream;
@@ -48,6 +51,8 @@ pub struct CdpSession {
     sink: WsSink,
     source: WsSource,
     next_id: u32,
+    page_target_id: String,
+    page_session_id: String,
 }
 
 impl CdpSession {
@@ -82,24 +87,60 @@ impl CdpSession {
                 })?;
 
         let (sink, source) = ws_stream.split();
-        Ok(Self {
+        let mut session = Self {
             sink,
             source,
             next_id: 1,
-        })
+            page_target_id: String::new(),
+            page_session_id: String::new(),
+        };
+        session.attach_page_target().await?;
+        Ok(session)
     }
 
     /// Send a CDP command and wait for the response with the matching ID.
     /// Events (messages without an `id` field) are silently skipped.
     pub async fn send_command(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        if command_requires_page_session(method) {
+            return self.send_page_command(method, params).await;
+        }
+        self.send_browser_command(method, params).await
+    }
+
+    pub fn page_target_id(&self) -> &str {
+        &self.page_target_id
+    }
+
+    pub fn page_session_id(&self) -> &str {
+        &self.page_session_id
+    }
+
+    async fn send_page_command(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        self.send_command_with_session(method, params, Some(self.page_session_id.clone()))
+            .await
+    }
+
+    async fn send_browser_command(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        self.send_command_with_session(method, params, None).await
+    }
+
+    async fn send_command_with_session(
+        &mut self,
+        method: &str,
+        params: Value,
+        session_id: Option<String>,
+    ) -> Result<Value, String> {
         let id = self.next_id;
         self.next_id += 1;
 
-        let msg = json!({
+        let mut msg = json!({
             "id": id,
             "method": method,
             "params": params
         });
+        if let Some(session_id) = session_id {
+            msg["sessionId"] = json!(session_id);
+        }
 
         debug!("CDP send: {method} (id={id})");
         self.sink
@@ -163,6 +204,64 @@ impl CdpSession {
                 "CDP command {method} timed out after {CDP_COMMAND_TIMEOUT:?} waiting for response"
             )
         })?
+    }
+
+    async fn attach_page_target(&mut self) -> Result<(), String> {
+        let target_id = match self.find_page_target().await? {
+            Some(target_id) => target_id,
+            None => self.create_blank_page_target().await?,
+        };
+
+        let result = self
+            .send_browser_command(
+                "Target.attachToTarget",
+                json!({
+                    "targetId": target_id,
+                    "flatten": true
+                }),
+            )
+            .await?;
+
+        let session_id = result
+            .get("sessionId")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| "Target.attachToTarget returned no sessionId".to_string())?;
+
+        self.page_target_id = target_id;
+        self.page_session_id = session_id.to_string();
+        Ok(())
+    }
+
+    async fn find_page_target(&mut self) -> Result<Option<String>, String> {
+        let result = self
+            .send_browser_command("Target.getTargets", json!({}))
+            .await?;
+        let target_infos = result
+            .get("targetInfos")
+            .and_then(|value| value.as_array())
+            .ok_or_else(|| "Target.getTargets returned no targetInfos".to_string())?;
+
+        let existing_page = target_infos
+            .iter()
+            .filter(|target| target_is_page(target))
+            .find(|target| !target_is_placeholder_page(target))
+            .or_else(|| target_infos.iter().find(|target| target_is_page(target)));
+
+        Ok(existing_page
+            .and_then(|target| target.get("targetId").and_then(|value| value.as_str()))
+            .map(ToOwned::to_owned))
+    }
+
+    async fn create_blank_page_target(&mut self) -> Result<String, String> {
+        let result = self
+            .send_browser_command("Target.createTarget", json!({ "url": "about:blank" }))
+            .await?;
+
+        result
+            .get("targetId")
+            .and_then(|value| value.as_str())
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| "Target.createTarget returned no targetId".to_string())
     }
 
     /// Disconnect the WebSocket gracefully.
@@ -729,6 +828,24 @@ fn key_to_code(key: &str) -> &str {
     if key == " " { "Space" } else { key }
 }
 
+fn command_requires_page_session(method: &str) -> bool {
+    method
+        .split('.')
+        .next()
+        .is_some_and(|domain| matches!(domain, "Page" | "Runtime" | "Input"))
+}
+
+fn target_is_page(target: &Value) -> bool {
+    target.get("type").and_then(|value| value.as_str()) == Some("page")
+}
+
+fn target_is_placeholder_page(target: &Value) -> bool {
+    target
+        .get("url")
+        .and_then(|value| value.as_str())
+        .is_none_or(|url| url.is_empty() || url == "about:blank" || url.starts_with("devtools://"))
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -736,6 +853,120 @@ fn key_to_code(key: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::net::TcpListener;
+    use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+    use tokio_tungstenite::accept_async;
+
+    async fn spawn_mock_cdp_server(
+        target_infos: Vec<Value>,
+    ) -> (
+        std::net::SocketAddr,
+        UnboundedReceiver<Value>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let (tx, rx) = unbounded_channel();
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("websocket handshake");
+
+            while let Some(message) = ws.next().await {
+                let text = match message.expect("message") {
+                    Message::Text(text) => text,
+                    Message::Close(_) => break,
+                    _ => continue,
+                };
+                let parsed: Value = serde_json::from_str(&text).expect("valid JSON");
+                tx.send(parsed.clone()).ok();
+
+                let id = parsed
+                    .get("id")
+                    .and_then(|value| value.as_u64())
+                    .expect("command id");
+                let method = parsed
+                    .get("method")
+                    .and_then(|value| value.as_str())
+                    .expect("method");
+
+                let response = match method {
+                    "Target.getTargets" => {
+                        json!({ "id": id, "result": { "targetInfos": target_infos.clone() } })
+                    }
+                    "Target.createTarget" => {
+                        assert_eq!(parsed["params"]["url"], "about:blank");
+                        json!({ "id": id, "result": { "targetId": "created-page-target" } })
+                    }
+                    "Target.attachToTarget" => {
+                        assert_eq!(parsed["params"]["flatten"], true);
+                        let target_id = parsed["params"]["targetId"].as_str().expect("targetId");
+                        let session_id = match target_id {
+                            "existing-page-target" => "existing-page-session",
+                            "created-page-target" => "created-page-session",
+                            other => panic!("unexpected targetId: {other}"),
+                        };
+                        json!({ "id": id, "result": { "sessionId": session_id } })
+                    }
+                    "Page.enable" | "Page.navigate" | "Page.setLifecycleEventsEnabled" => {
+                        match parsed.get("sessionId").and_then(|value| value.as_str()) {
+                            Some(session_id) => {
+                                assert!(
+                                    session_id.ends_with("-page-session"),
+                                    "page commands must use the attached target session, got {session_id}"
+                                );
+                                json!({ "id": id, "result": { "frameId": "frame-1" } })
+                            }
+                            None => json!({
+                                "id": id,
+                                "error": { "message": format!("{method} wasn't found") }
+                            }),
+                        }
+                    }
+                    "Runtime.evaluate" => {
+                        match parsed.get("sessionId").and_then(|value| value.as_str()) {
+                            Some(session_id) => {
+                                assert!(
+                                    session_id.ends_with("-page-session"),
+                                    "Runtime commands must use the attached target session, got {session_id}"
+                                );
+                                json!({ "id": id, "result": { "result": { "type": "undefined" } } })
+                            }
+                            None => json!({
+                                "id": id,
+                                "error": { "message": format!("{method} wasn't found") }
+                            }),
+                        }
+                    }
+                    "Browserless.reconnect" => {
+                        assert!(
+                            parsed.get("sessionId").is_none(),
+                            "browser-wide commands must not carry a page sessionId"
+                        );
+                        json!({
+                            "id": id,
+                            "result": { "browserWSEndpoint": "ws://browserless/reconnect" }
+                        })
+                    }
+                    other => panic!("unexpected method: {other}"),
+                };
+
+                ws.send(Message::Text(response.to_string().into()))
+                    .await
+                    .expect("send response");
+            }
+        });
+
+        (addr, rx, server)
+    }
+
+    fn drain_messages(rx: &mut UnboundedReceiver<Value>) -> Vec<Value> {
+        let mut messages = Vec::new();
+        while let Ok(message) = rx.try_recv() {
+            messages.push(message);
+        }
+        messages
+    }
 
     #[tokio::test]
     async fn test_connect_timeout_on_unresponsive_server() {
@@ -892,6 +1123,93 @@ mod tests {
         );
 
         server.await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_navigate_attaches_existing_page_target_before_page_commands() {
+        let (addr, mut messages, server) = spawn_mock_cdp_server(vec![json!({
+            "targetId": "existing-page-target",
+            "type": "page",
+            "url": "https://example.com"
+        })])
+        .await;
+
+        let mut session = CdpSession::connect(&format!("ws://{addr}/chromium?token=test"))
+            .await
+            .expect("connect should succeed");
+
+        session
+            .navigate("https://example.com")
+            .await
+            .expect("navigate should succeed after attaching to the page target");
+        let reconnect_url = session
+            .reconnect(5000)
+            .await
+            .expect("reconnect should succeed");
+        assert_eq!(reconnect_url, "ws://browserless/reconnect");
+        session.disconnect().await;
+
+        server.await.expect("server should exit cleanly");
+        let messages = drain_messages(&mut messages);
+        let methods: Vec<&str> = messages
+            .iter()
+            .map(|msg| msg["method"].as_str().expect("method"))
+            .collect();
+        assert_eq!(
+            methods,
+            vec![
+                "Target.getTargets",
+                "Target.attachToTarget",
+                "Page.enable",
+                "Page.navigate",
+                "Page.setLifecycleEventsEnabled",
+                "Runtime.evaluate",
+                "Browserless.reconnect"
+            ]
+        );
+        assert_eq!(messages[1]["params"]["targetId"], "existing-page-target");
+        assert_eq!(messages[2]["sessionId"], "existing-page-session");
+        assert_eq!(messages[3]["sessionId"], "existing-page-session");
+        assert_eq!(messages[4]["sessionId"], "existing-page-session");
+        assert_eq!(messages[5]["sessionId"], "existing-page-session");
+        assert!(
+            messages[6].get("sessionId").is_none(),
+            "Browserless.reconnect must stay on the browser root session"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connect_creates_blank_page_target_when_browser_has_none() {
+        let (addr, mut messages, server) = spawn_mock_cdp_server(vec![]).await;
+
+        let mut session = CdpSession::connect(&format!("ws://{addr}/chromium?token=test"))
+            .await
+            .expect("connect should succeed");
+
+        session
+            .navigate("https://example.com")
+            .await
+            .expect("navigate should succeed after creating and attaching a blank page target");
+        session.disconnect().await;
+
+        server.await.expect("server should exit cleanly");
+        let messages = drain_messages(&mut messages);
+        let methods: Vec<&str> = messages
+            .iter()
+            .map(|msg| msg["method"].as_str().expect("method"))
+            .collect();
+        assert_eq!(
+            methods[..4],
+            [
+                "Target.getTargets",
+                "Target.createTarget",
+                "Target.attachToTarget",
+                "Page.enable"
+            ]
+        );
+        assert_eq!(messages[1]["params"]["url"], "about:blank");
+        assert_eq!(messages[2]["params"]["targetId"], "created-page-target");
+        assert_eq!(messages[3]["sessionId"], "created-page-session");
     }
 
     /// Verify the CDP URL construction uses the /chromium path.
