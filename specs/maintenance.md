@@ -40,6 +40,7 @@ Relevant references:
 - Maintenance is risk-proportional, not sweep-proportional. A larger checklist is not inherently better.
 - The selected maintenance scope must be explained, including what was skipped and why.
 - If maintenance changes code or behavior, affected artifacts must stay in sync: specs, docs, OpenAPI, threat model, test cases, agent instructions, and release materials as applicable.
+- When maintenance covers repo workflow hygiene, treat the Claude Code plugin surface as a maintained workflow artifact. Review recent upstream Claude Code changes before claiming the plugin is current.
 - Specs should not duplicate operational workflow text that belongs in skills or commands.
 - Maintenance should prefer concrete fixes over ceremonial audits when a safe local fix exists.
 
