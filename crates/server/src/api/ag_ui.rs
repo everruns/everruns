@@ -215,7 +215,7 @@ async fn run_agent(
                 org_id: app.org_id,
                 user_id: None,
                 harness_id: app.harness_id.uuid(),
-                agent_id: Some(app.agent_id.uuid()),
+                agent_id: app.agent_id.map(|agent_id| agent_id.uuid()),
                 session_id: session.session.id.uuid(),
                 event_metadata: Some(execution_metadata::app_message_metadata(
                     app.public_id,
@@ -382,12 +382,12 @@ async fn find_or_create_session(
                 .create(
                     &Caller::internal(app.org_id),
                     app.harness_id.uuid(),
-                    Some(app.agent_id.uuid()),
-                    Some(app.agent_id),
+                    app.agent_id.map(|agent_id| agent_id.uuid()),
+                    app.agent_id,
                     CreateSessionRequest {
                         harness_id: Some(app.harness_id),
                         harness_name: None,
-                        agent_id: Some(app.agent_id),
+                        agent_id: app.agent_id,
                         agent_identity_id: app.agent_identity_id,
                         title: Some(title),
                         locale: None,

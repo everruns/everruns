@@ -13,6 +13,7 @@ import Link from "next/link";
 import type { App } from "@/lib/api/types";
 import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import { getChannelTypeDisplayName } from "@/lib/app-channels";
 
 export default function AppsPage() {
   const [showArchived, setShowArchived] = useState(false);
@@ -62,12 +63,13 @@ function AppCard({ app }: { app: App }) {
   const isPublished = app.status === "published";
   const isArchived = app.status === "archived";
   const primaryChannel = app.channels.find((channel) => channel.enabled) ?? app.channels[0];
-  const primaryUrl =
-    typeof window !== "undefined"
-      ? primaryChannel?.channel_type === "ag_ui"
+  const primaryUrl = !primaryChannel
+    ? null
+    : typeof window !== "undefined"
+      ? primaryChannel.channel_type === "ag_ui"
         ? `${window.location.origin}/api/v1/apps/${app.id}/ag-ui`
         : `${window.location.origin}/api/v1/apps/${app.id}/slack/events`
-      : primaryChannel?.channel_type === "ag_ui"
+      : primaryChannel.channel_type === "ag_ui"
         ? `/api/v1/apps/${app.id}/ag-ui`
         : `/api/v1/apps/${app.id}/slack/events`;
 
@@ -90,10 +92,11 @@ function AppCard({ app }: { app: App }) {
           {app.description && <p className="text-sm text-muted-foreground">{app.description}</p>}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {app.channels.map((channel) => (
-              <Badge key={channel.id} variant="outline" className="text-xs uppercase">
-                {channel.channel_type === "ag_ui" ? "AG-UI" : "Slack"}
+              <Badge key={channel.id} variant="outline" className="text-xs">
+                {getChannelTypeDisplayName(channel.channel_type)}
               </Badge>
             ))}
+            {app.channels.length === 0 && <span>No channels</span>}
           </div>
 
           {isPublished && primaryUrl && (

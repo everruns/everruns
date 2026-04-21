@@ -20,6 +20,7 @@ import { HarnessSelect } from "@/components/harness/harness-select";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import type { ChannelType } from "@/lib/api/types";
+import { getChannelTypeDisplayName } from "@/lib/app-channels";
 
 export default function NewAppPage() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function NewAppPage() {
   const [agentId, setAgentId] = useState("");
   const [harnessId, setHarnessId] = useState("");
   const [agentIdentityId, setAgentIdentityId] = useState("");
-  const [channelType, setChannelType] = useState<ChannelType>("slack");
+  const [channelType, setChannelType] = useState<ChannelType | "">("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,10 +40,10 @@ export default function NewAppPage() {
       const app = await createApp.mutateAsync({
         name,
         description: description || undefined,
-        agent_id: agentId,
+        agent_id: agentId || undefined,
         agent_identity_id: agentIdentityId || undefined,
         harness_id: harnessId,
-        channel_type: channelType,
+        channel_type: channelType || undefined,
         channel_config: channelType === "ag_ui" ? { anonymous: true } : undefined,
       });
 
@@ -97,8 +98,13 @@ export default function NewAppPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="agent">Agent</Label>
-                <AgentSelect value={agentId} onValueChange={setAgentId} />
+                <Label htmlFor="agent">Agent (optional)</Label>
+                <AgentSelect
+                  value={agentId}
+                  onValueChange={setAgentId}
+                  includeNoneOption
+                  noneLabel="Choose later"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="agent_identity">Agent identity</Label>
@@ -107,15 +113,18 @@ export default function NewAppPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="channel_type">Channel</Label>
+              <Label htmlFor="channel_type">Channel (optional)</Label>
               <Select
-                value={channelType}
-                onValueChange={(value) => setChannelType(value as ChannelType)}
+                value={channelType || "__none__"}
+                onValueChange={(value) =>
+                  setChannelType(value === "__none__" ? "" : (value as ChannelType))
+                }
               >
                 <SelectTrigger id="channel_type">
-                  <SelectValue />
+                  <SelectValue placeholder="Choose later" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__none__">Choose later</SelectItem>
                   <SelectItem value="slack">Slack</SelectItem>
                   <SelectItem value="ag_ui">AG-UI</SelectItem>
                 </SelectContent>
@@ -125,14 +134,13 @@ export default function NewAppPage() {
             <p className="text-sm text-muted-foreground">
               {channelType === "slack"
                 ? "After creating the app, you'll be able to generate a Slack App manifest and create the Slack bot on the detail page."
-                : "After creating the app, publish it and point your AG-UI client at the channel endpoint on the detail page."}
+                : channelType === "ag_ui"
+                  ? "After creating the app, publish it and point your AG-UI client at the channel endpoint on the detail page."
+                  : `Create the draft now, then assign an agent or add ${getChannelTypeDisplayName("slack")} or ${getChannelTypeDisplayName("ag_ui")} later from the detail page.`}
             </p>
 
             <div className="flex gap-4">
-              <Button
-                type="submit"
-                disabled={createApp.isPending || !name || !agentId || !harnessId}
-              >
+              <Button type="submit" disabled={createApp.isPending || !name || !harnessId}>
                 {createApp.isPending ? "Creating..." : "Create App"}
               </Button>
               <Button type="button" variant="outline" onClick={() => router.back()}>

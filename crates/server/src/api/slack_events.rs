@@ -589,7 +589,7 @@ async fn process_slack_message(
                 let req = CreateSessionRequest {
                     harness_id: Some(app.harness_id),
                     harness_name: None,
-                    agent_id: Some(app.agent_id),
+                    agent_id: app.agent_id,
                     title: Some(title),
                     locale: None,
                     tags: desired_tags.clone(),
@@ -610,8 +610,8 @@ async fn process_slack_message(
                     .create(
                         &internal_caller,
                         app.harness_id.uuid(),
-                        Some(app.agent_id.uuid()),
-                        Some(app.agent_id),
+                        app.agent_id.map(|agent_id| agent_id.uuid()),
+                        app.agent_id,
                         req,
                     )
                     .await?;
@@ -728,7 +728,7 @@ async fn process_slack_message(
                 org_id,
                 user_id: None,
                 harness_id: app.harness_id.uuid(),
-                agent_id: Some(app.agent_id.uuid()),
+                agent_id: app.agent_id.map(|agent_id| agent_id.uuid()),
                 session_id: session.id.uuid(),
                 event_metadata: Some(execution_metadata::app_message_metadata(
                     app.public_id,
@@ -1911,7 +1911,7 @@ mod tests {
             name: "Test App".to_string(),
             description: None,
             harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
-            agent_id: AgentId::from_uuid(uuid::Uuid::nil()),
+            agent_id: Some(AgentId::from_uuid(uuid::Uuid::nil())),
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,

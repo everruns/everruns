@@ -121,13 +121,16 @@ pub async fn row_to_app(
 ) -> App {
     let harness_id = HarnessId::from_uuid(row.harness_id);
 
-    let agent_id = db
-        .get_agent_public_id(org_id, AgentId::from_uuid(row.agent_id))
-        .await
-        .ok()
-        .flatten()
-        .and_then(|pid| pid.parse::<AgentId>().ok())
-        .unwrap_or_else(|| AgentId::from_uuid(row.agent_id));
+    let agent_id = match row.agent_id {
+        Some(agent_uuid) => db
+            .get_agent_public_id(org_id, AgentId::from_uuid(agent_uuid))
+            .await
+            .ok()
+            .flatten()
+            .and_then(|pid| pid.parse::<AgentId>().ok())
+            .or_else(|| Some(AgentId::from_uuid(agent_uuid))),
+        None => None,
+    };
 
     let public_id: AppId = row
         .public_id
@@ -149,7 +152,11 @@ pub async fn row_to_app(
     let channels: Vec<AppChannel> = if channel_rows.is_empty() {
         // Fallback: synthesize a channel from legacy apps columns when no
         // app_channels rows exist (e.g. incomplete migration, DB restore).
-        if let Some(ct) = ChannelType::from_str_opt(&row.channel_type) {
+        if let Some(ct) = row
+            .channel_type
+            .as_deref()
+            .and_then(ChannelType::from_str_opt)
+        {
             let config = decrypt_channel_config(
                 encryption,
                 row.channel_config_encrypted.as_deref(),
