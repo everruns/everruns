@@ -36,23 +36,15 @@ The `/prepare-release` command updates version in:
 
 All packages (Rust crates and UI) are released together with the same version number.
 
-### Migration Squashing
+### Migration Handling
 
-As part of release preparation, all feature migrations added since the last release **MUST** be squashed into a single version-named migration `NNN_vX.Y.Z.sql` under `crates/server/migrations/`.
+Release preparation does not squash feature migrations into a version-named file. Keep migrations as authored.
 
-Procedure:
+Do not rename, rewrite, or delete existing migrations just to align them with the release version. SQLx persists migration version, description, and checksum in `_sqlx_migrations`; changing a migration that may already have been applied breaks startup against existing databases.
 
-1. Identify the set of feature migrations added since the previous `NNN_vA.B.C.sql` release migration (all files with numbers strictly greater than the last version-named migration).
-2. Concatenate their SQL statements (including any DDL/DML) in execution order into a new file whose number is the lowest of that set and whose name is the release version, e.g. `016_v0.9.0.sql`.
-3. Preserve section headers that reference each original migration filename as inline comments for traceability.
-4. Delete the original feature migration files so the final numbering stays strictly sequential with no gaps.
-5. Re-run the sequential-ordering validation from `specs/migrations.md` (no gaps, no duplicates).
+Before merging a release PR, run the normal migration validation from `specs/migrations.md`: filenames in `crates/server/migrations/` must remain strictly sequential with no gaps or duplicates.
 
-Squashing is a **BREAKING CHANGE** — it requires a fresh database, because `_sqlx_migrations` rows from a prior release will not match the squashed checksums. This is acceptable because in-place upgrades across releases are not supported. See `specs/migrations.md` for the full migration contract.
-
-If no feature migrations were added since the last release, skip this step — do not create an empty `NNN_vX.Y.Z.sql`.
-
-CI enforces the squash via the `release-prep-check` job in `.github/workflows/ci.yml`, which fires whenever a PR changes `[workspace.package].version`. It runs `scripts/check-release-squash.sh`, which fails if any non-foundational migration under `crates/server/migrations/` has a stem other than `NNN_vX.Y.Z`. This catches the v0.8.15-style hole where feature-named migrations leaked into a release tag.
+If the release has an operator-visible migration caveat, compatibility limitation, or exceptional upgrade requirement, call it out explicitly in the release PR and release notes. Otherwise, do not add migration-specific release notes.
 
 ### Lock File Updates
 

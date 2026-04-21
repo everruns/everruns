@@ -11,11 +11,11 @@ NNN_<description>.sql
 ```
 
 - `NNN` — zero-padded 3-digit sequential number (001, 002, ...)
-- `<description>` — feature name for development migrations, version tag for squashed releases
+- `<description>` — descriptive migration name; historical version tags remain valid in older files, but new migrations should use feature names
 
 Examples:
 - `011_evals_target.sql` — feature migration added during development
-- `010_v0.8.9.sql` — squashed release migration
+- `010_v0.8.9.sql` — historical release-named migration kept for compatibility
 
 ## Development Workflow
 
@@ -28,23 +28,15 @@ During development, add migrations with the next sequential number and a descrip
 
 Multiple branches may target the same number. After every rebase onto `origin/main`, check for duplicate numbers and renumber yours to the next available.
 
-## Release Squashing
+## Release Handling
 
-Before or during a release, all feature migrations added since the last release are **squashed** into a single migration named after the release version:
+Release preparation does not squash feature migrations into a version-named file. Ship migrations as authored.
 
-```
-# Before squash (development)
-011_evals_target.sql
-012_evals_post.sql
-013_session_export.sql
+Do not rename, rewrite, or delete an existing migration just to match a release version. SQLx records each migration's version, description, and checksum in `_sqlx_migrations`; changing a migration that may already have been applied breaks startup against databases that recorded the original file.
 
-# After squash (release v0.8.10)
-011_v0.8.10.sql
-```
+Historical `NNN_vX.Y.Z.sql` files remain valid and must stay unchanged, but new releases do not require creating one. If a release needs new schema work, land it as a normal sequential feature migration before cutting the release.
 
-The squashed file contains the combined DDL in execution order, preserving section headers that reference the original migrations for traceability.
-
-Squashing is a **BREAKING CHANGE** — it requires a fresh database. Existing `_sqlx_migrations` rows won't match. This is acceptable because we don't support in-place upgrades across releases yet.
+`crates/server/tests/migration_history_test.rs` locks specific historical filenames and SQL bodies that must not change.
 
 ## Sequential Ordering Validation
 
