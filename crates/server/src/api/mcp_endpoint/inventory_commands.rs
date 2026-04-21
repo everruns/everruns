@@ -4,7 +4,10 @@
 
 use crate::api::common::Pagination;
 use crate::domains::common::{CommandDescriptor, CommandError, CommandMeta, Ctx, classify_anyhow};
-use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::{
+    typed_id::{AgentId, HarnessId, SessionId},
+    validate_org_public_id,
+};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::future::Future;
@@ -125,22 +128,81 @@ fn bad_request(error: impl std::fmt::Display) -> CommandError {
     CommandError::bad_request(error.to_string())
 }
 
-fn param_i64(params: &Value, key: &str) -> Option<i64> {
-    params.get(key).and_then(|v| v.as_i64())
-}
-
 fn param_str(params: &Value, key: &str) -> Option<String> {
     params.get(key).and_then(|v| v.as_str()).map(String::from)
 }
 
-fn param_u32(params: &Value, key: &str) -> Option<u32> {
-    params.get(key).and_then(|v| v.as_u64()).map(|n| n as u32)
+fn param_u32(params: &Value, key: &str) -> Result<Option<u32>, CommandError> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => {
+            let n = value.as_u64().ok_or_else(|| {
+                bad_request(format!(
+                    "Invalid parameter {key}: expected a non-negative integer"
+                ))
+            })?;
+            u32::try_from(n).map(Some).map_err(|_| {
+                bad_request(format!(
+                    "Invalid parameter {key}: value out of range for u32"
+                ))
+            })
+        }
+    }
 }
 
-fn pagination(params: &Value) -> Pagination {
-    let offset = param_u32(params, "offset").unwrap_or(0);
-    let limit = param_u32(params, "limit").unwrap_or(20).min(100);
-    Pagination::new(offset, limit)
+fn param_i32(params: &Value, key: &str) -> Result<Option<i32>, CommandError> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => {
+            let n = value.as_i64().ok_or_else(|| {
+                bad_request(format!("Invalid parameter {key}: expected an integer"))
+            })?;
+            i32::try_from(n).map(Some).map_err(|_| {
+                bad_request(format!(
+                    "Invalid parameter {key}: value out of range for i32"
+                ))
+            })
+        }
+    }
+}
+
+fn split_csv_values(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+fn param_string_list(params: &Value, key: &str) -> Result<Vec<String>, CommandError> {
+    match params.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::String(raw)) => Ok(split_csv_values(raw)),
+        Some(Value::Array(values)) => values
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .ok_or_else(|| {
+                        bad_request(format!(
+                            "Invalid parameter {key}: expected an array of strings"
+                        ))
+                    })
+            })
+            .collect(),
+        Some(_) => Err(bad_request(format!(
+            "Invalid parameter {key}: expected a string or array of strings"
+        ))),
+    }
+}
+
+fn pagination(params: &Value) -> Result<Pagination, CommandError> {
+    let offset = param_u32(params, "offset")?.unwrap_or(0);
+    let limit = param_u32(params, "limit")?.unwrap_or(20).min(100);
+    Ok(Pagination::new(offset, limit))
 }
 
 fn parse_session_id(raw: &str) -> Result<uuid::Uuid, CommandError> {
@@ -174,6 +236,81 @@ fn to_paginated(
         "limit": limit,
     }))
     .map_err(|e| CommandError::Internal(e.into()))
+}
+
+async fn current_org(ctx: &Ctx) -> Result<crate::storage::models::OrganizationRow, CommandError> {
+    ctx.db
+        .get_organization(ctx.org_id())
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Organization"))
+}
+
+async fn visible_orgs(
+    ctx: &Ctx,
+) -> Result<Vec<crate::storage::models::OrganizationRow>, CommandError> {
+    if let Some(user_id) = ctx.caller.user_id {
+        let memberships = ctx
+            .db
+            .list_user_organizations(user_id)
+            .await
+            .map_err(classify_anyhow)?;
+        let mut orgs = Vec::with_capacity(memberships.len());
+
+        for membership in memberships {
+            if let Some(org) = ctx
+                .db
+                .get_organization(membership.org_id)
+                .await
+                .map_err(classify_anyhow)?
+            {
+                orgs.push(org);
+            }
+        }
+
+        return Ok(orgs);
+    }
+
+    Ok(vec![current_org(ctx).await?])
+}
+
+async fn resolve_visible_org(
+    params: &Value,
+    ctx: &Ctx,
+) -> Result<crate::storage::models::OrganizationRow, CommandError> {
+    let requested_org = match param_str(params, "org") {
+        None => return current_org(ctx).await,
+        Some(org) if org == ctx.caller.org_public_id => return current_org(ctx).await,
+        Some(org) => org,
+    };
+
+    if !validate_org_public_id(&requested_org) {
+        return Err(CommandError::not_found("Organization"));
+    }
+
+    let user_id = ctx.caller.user_id.ok_or_else(|| {
+        bad_request(
+            "This command can only access the current organization without user membership context",
+        )
+    })?;
+
+    let org = ctx
+        .db
+        .get_organization_by_public_id(&requested_org)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Organization"))?;
+
+    let is_member = ctx
+        .db
+        .is_organization_member(org.org_id, user_id)
+        .await
+        .map_err(classify_anyhow)?;
+    if !is_member {
+        return Err(CommandError::not_found("Organization"));
+    }
+
+    Ok(org)
 }
 
 mcp_command! {
@@ -448,8 +585,8 @@ mcp_command! {
     params: [
         ("session_id", "path", "Session ID"),
         ("since_id", "query", "Return events after this event ID"),
-        ("types", "query", "Filter by event types (repeatable)"),
-        ("exclude", "query", "Exclude event types (repeatable)"),
+        ("types", "array", "Filter by event types (JSON array or comma-separated string)"),
+        ("exclude", "array", "Exclude event types (JSON array or comma-separated string)"),
         ("limit", "query", "Max events (1-1000)"),
     ]
 }
@@ -467,7 +604,7 @@ mcp_command! {
     params: [
         ("session_id", "path", "Session ID"),
         ("since_id", "query", "Resume from event ID"),
-        ("types", "query", "Filter by event types"),
+        ("types", "array", "Filter by event types"),
     ]
 }
 
@@ -754,7 +891,7 @@ fn dispatch_list_sessions(params: Value, ctx: &Ctx) -> DispatchResult<'_> {
             .map(|s| s.parse::<AgentId>())
             .transpose()
             .map_err(|e| bad_request(format!("Invalid agent ID: {e}")))?;
-        let pg = pagination(&params);
+        let pg = pagination(&params)?;
         let (sessions, total) = runtime
             .session_service
             .list(
@@ -1006,13 +1143,9 @@ fn dispatch_list_events(params: Value, ctx: &Ctx) -> DispatchResult<'_> {
                     .map_err(|e| bad_request(format!("Invalid since_id: {e}")))
             })
             .transpose()?;
-        let types: Vec<String> = param_str(&params, "types")
-            .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
-            .unwrap_or_default();
-        let exclude: Vec<String> = param_str(&params, "exclude")
-            .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
-            .unwrap_or_default();
-        let limit = param_i64(&params, "limit").map(|n| n as i32);
+        let types = param_string_list(&params, "types")?;
+        let exclude = param_string_list(&params, "exclude")?;
+        let limit = param_i32(&params, "limit")?;
 
         let events = runtime
             .event_service
@@ -1082,8 +1215,8 @@ fn dispatch_create_provider(params: Value, ctx: &Ctx) -> DispatchResult<'_> {
 
 fn dispatch_list_images(params: Value, ctx: &Ctx) -> DispatchResult<'_> {
     Box::pin(async move {
-        let offset = param_u32(&params, "offset").unwrap_or(0) as i64;
-        let limit = param_u32(&params, "limit").unwrap_or(50).min(100) as i64;
+        let offset = i64::from(param_u32(&params, "offset")?.unwrap_or(0));
+        let limit = i64::from(param_u32(&params, "limit")?.unwrap_or(50).min(100));
         let images = ctx
             .db
             .list_images(ctx.org_id(), limit, offset)
@@ -1117,27 +1250,11 @@ fn dispatch_create_schedule(_params: Value, _ctx: &Ctx) -> DispatchResult<'_> {
 }
 
 fn dispatch_list_orgs(_params: Value, ctx: &Ctx) -> DispatchResult<'_> {
-    Box::pin(async move {
-        let org = ctx
-            .db
-            .get_organization(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("Organization"))?;
-        to_list(&[org])
-    })
+    Box::pin(async move { to_list(&visible_orgs(ctx).await?) })
 }
 
-fn dispatch_get_org(_params: Value, ctx: &Ctx) -> DispatchResult<'_> {
-    Box::pin(async move {
-        let org = ctx
-            .db
-            .get_organization(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("Organization"))?;
-        to_json(&org)
-    })
+fn dispatch_get_org(params: Value, ctx: &Ctx) -> DispatchResult<'_> {
+    Box::pin(async move { to_json(&resolve_visible_org(&params, ctx).await?) })
 }
 
 fn dispatch_list_users(params: Value, ctx: &Ctx) -> DispatchResult<'_> {
@@ -1145,7 +1262,7 @@ fn dispatch_list_users(params: Value, ctx: &Ctx) -> DispatchResult<'_> {
         let search = param_str(&params, "search");
         let users = ctx
             .db
-            .list_users(search.as_deref())
+            .list_users_by_org(ctx.org_id(), search.as_deref())
             .await
             .map_err(classify_anyhow)?;
         to_list(&users)
@@ -1206,4 +1323,171 @@ fn not_implemented() -> Result<String, CommandError> {
     Err(CommandError::bad_request(
         "This operation is not yet implemented for direct service calls.",
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        services::CapabilityService,
+        storage::{
+            StorageBackend,
+            models::{CreateOrganizationRow, CreateUserRow, OrganizationRow, UserRow},
+        },
+    };
+    use everruns_core::{Caller, OrgRole};
+    use std::sync::Arc;
+
+    fn user_input(email: &str, name: &str) -> CreateUserRow {
+        CreateUserRow {
+            email: email.to_string(),
+            name: name.to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        }
+    }
+
+    fn test_ctx(
+        db: Arc<StorageBackend>,
+        org: &OrganizationRow,
+        user_id: Option<uuid::Uuid>,
+    ) -> Ctx {
+        let caller = Caller {
+            org_id: org.org_id,
+            org_public_id: org.public_id.clone(),
+            user_id,
+            role: OrgRole::Member,
+            is_platform_user: false,
+            is_internal: false,
+        };
+        let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
+        Ctx::new(caller, db, capability_service, None)
+    }
+
+    async fn seed_org_graph() -> (
+        Arc<StorageBackend>,
+        OrganizationRow,
+        OrganizationRow,
+        UserRow,
+        UserRow,
+        UserRow,
+    ) {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org1 = db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000010".to_string(),
+                name: "Org 1".to_string(),
+                created_by: None,
+            })
+            .await
+            .unwrap();
+        let org2 = db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000020".to_string(),
+                name: "Org 2".to_string(),
+                created_by: None,
+            })
+            .await
+            .unwrap();
+
+        let shared_user = db
+            .create_user(user_input("shared@example.com", "Shared"))
+            .await
+            .unwrap();
+        let org1_only_user = db
+            .create_user(user_input("alice@example.com", "Alice"))
+            .await
+            .unwrap();
+        let org2_only_user = db
+            .create_user(user_input("bob@example.com", "Bob"))
+            .await
+            .unwrap();
+
+        db.add_organization_member(org1.org_id, shared_user.id, "member")
+            .await
+            .unwrap();
+        db.add_organization_member(org2.org_id, shared_user.id, "member")
+            .await
+            .unwrap();
+        db.add_organization_member(org1.org_id, org1_only_user.id, "member")
+            .await
+            .unwrap();
+        db.add_organization_member(org2.org_id, org2_only_user.id, "member")
+            .await
+            .unwrap();
+
+        (db, org1, org2, shared_user, org1_only_user, org2_only_user)
+    }
+
+    #[test]
+    fn inventory_mcp_param_string_list_accepts_csv_and_arrays() {
+        assert_eq!(
+            param_string_list(&json!({ "types": "turn.started, tool.completed" }), "types")
+                .unwrap(),
+            vec!["turn.started".to_string(), "tool.completed".to_string()]
+        );
+        assert_eq!(
+            param_string_list(
+                &json!({ "types": ["turn.started", "tool.completed"] }),
+                "types"
+            )
+            .unwrap(),
+            vec!["turn.started".to_string(), "tool.completed".to_string()]
+        );
+    }
+
+    #[test]
+    fn inventory_mcp_pagination_rejects_u32_overflow() {
+        let err = pagination(&json!({ "offset": (u32::MAX as u64) + 1 })).unwrap_err();
+        assert!(matches!(err, CommandError::BadRequest(message) if message.contains("offset")));
+    }
+
+    #[tokio::test]
+    async fn inventory_mcp_org_commands_follow_user_membership() {
+        let (db, org1, org2, shared_user, _, _) = seed_org_graph().await;
+        let ctx = test_ctx(db, &org1, Some(shared_user.id));
+        let org2_public_id = org2.public_id.clone();
+
+        let orgs_json = dispatch_list_orgs(json!({}), &ctx).await.unwrap();
+        let orgs: Value = serde_json::from_str(&orgs_json).unwrap();
+        let public_ids: Vec<_> = orgs["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|org| org["public_id"].as_str())
+            .collect();
+        assert_eq!(public_ids.len(), 2);
+        assert!(public_ids.contains(&org1.public_id.as_str()));
+        assert!(public_ids.contains(&org2.public_id.as_str()));
+
+        let org_json = dispatch_get_org(json!({ "org": org2_public_id }), &ctx)
+            .await
+            .unwrap();
+        let org: Value = serde_json::from_str(&org_json).unwrap();
+        assert_eq!(org["public_id"], org2.public_id);
+    }
+
+    #[tokio::test]
+    async fn inventory_mcp_list_users_is_org_scoped() {
+        let (db, org1, _, shared_user, org1_only_user, org2_only_user) = seed_org_graph().await;
+        let ctx = test_ctx(db, &org1, Some(shared_user.id));
+
+        let users_json = dispatch_list_users(json!({}), &ctx).await.unwrap();
+        let users: Value = serde_json::from_str(&users_json).unwrap();
+        let emails: Vec<_> = users["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|user| user["email"].as_str())
+            .collect();
+
+        assert!(emails.contains(&shared_user.email.as_str()));
+        assert!(emails.contains(&org1_only_user.email.as_str()));
+        assert!(!emails.contains(&org2_only_user.email.as_str()));
+    }
 }
