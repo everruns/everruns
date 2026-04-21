@@ -180,6 +180,8 @@ fn daytona_session_sandbox_provider_is_registered() {
 
 #[tokio::test]
 async fn daytona_provider_manages_managed_sandbox_flow() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     let mock_server = MockServer::start().await;
     let context = test_context();
     let config = test_config(&mock_server);
@@ -194,13 +196,24 @@ async fn daytona_provider_manages_managed_sandbox_flow() {
         })))
         .mount(&mock_server)
         .await;
+    let get_count = Arc::new(AtomicUsize::new(0));
+    let get_count_clone = get_count.clone();
     Mock::given(method("GET"))
         .and(path("/sandbox/sb_managed"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "id": "sb_managed",
-            "name": "Managed Sandbox",
-            "state": "started"
-        })))
+        .respond_with(move |_: &wiremock::Request| {
+            let n = get_count_clone.fetch_add(1, Ordering::SeqCst);
+            let state = match n {
+                0 => "started",
+                1 => "stopping",
+                2 | 3 => "stopped",
+                _ => "started",
+            };
+            ResponseTemplate::new(200).set_body_json(json!({
+                "id": "sb_managed",
+                "name": "Managed Sandbox",
+                "state": state
+            }))
+        })
         .mount(&mock_server)
         .await;
     Mock::given(method("POST"))
@@ -293,6 +306,60 @@ async fn daytona_provider_manages_managed_sandbox_flow() {
     assert_eq!(status.external_id, "sb_managed");
 
     provider.delete(&context, &config, &resumed).await.unwrap();
+}
+
+#[tokio::test]
+async fn daytona_provider_resume_tolerates_transition_conflicts() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let config = test_config(&mock_server);
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    let instance = managed_instance("sb_transition");
+
+    Mock::given(method("POST"))
+        .and(path("/sandbox/sb_transition/stop"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock_server)
+        .await;
+
+    let get_count = Arc::new(AtomicUsize::new(0));
+    let get_count_clone = get_count.clone();
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_transition"))
+        .respond_with(move |_: &wiremock::Request| {
+            let n = get_count_clone.fetch_add(1, Ordering::SeqCst);
+            let state = match n {
+                0 => "stopping",
+                1 | 2 => "stopped",
+                3 => "starting",
+                _ => "started",
+            };
+            ResponseTemplate::new(200).set_body_json(json!({
+                "id": "sb_transition",
+                "name": "Managed Sandbox",
+                "state": state
+            }))
+        })
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/sandbox/sb_transition/start"))
+        .respond_with(ResponseTemplate::new(409).set_body_string(
+            "{\"statusCode\":409,\"message\":\"Sandbox state change in progress\"}",
+        ))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let paused = provider.pause(&context, &config, &instance).await.unwrap();
+    assert_eq!(paused.metadata["remote_state"], "stopped");
+
+    let resumed = provider.resume(&context, &config, &paused).await.unwrap();
+    assert_eq!(resumed.external_id, "sb_transition");
+    assert_eq!(resumed.metadata["remote_state"], "started");
 }
 
 #[tokio::test]

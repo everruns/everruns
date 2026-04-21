@@ -17,8 +17,19 @@
 
 #![cfg(feature = "daytona-live-tests")]
 
+use async_trait::async_trait;
+use everruns_core::error::Result;
+use everruns_core::session_sandbox::{SessionSandboxConfig, create_session_sandbox_provider};
+use everruns_core::traits::{KeyInfo, SecretInfo, ToolContext, UserConnectionResolver};
+use everruns_core::{
+    SessionSandboxExecRequest, SessionSandboxState, SessionSandboxStatus, SessionStorageStore,
+    typed_id::SessionId,
+};
 use everruns_integrations_daytona::client::DaytonaClient;
 use serde_json::json;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 // ============================================================================
 // SandboxGuard — RAII cleanup for Daytona sandboxes
@@ -109,6 +120,106 @@ async fn create_test_sandbox(api_key: String, label: &str) -> (DaytonaClient, Sa
 
     let guard = SandboxGuard::new(info.id);
     (client, guard)
+}
+
+struct LiveStorageStore {
+    secrets: Mutex<HashMap<String, String>>,
+}
+
+impl LiveStorageStore {
+    fn new() -> Self {
+        Self {
+            secrets: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl SessionStorageStore for LiveStorageStore {
+    async fn set_value(&self, _session_id: SessionId, _key: &str, _value: &str) -> Result<()> {
+        Ok(())
+    }
+
+    async fn get_value(&self, _session_id: SessionId, _key: &str) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    async fn delete_value(&self, _session_id: SessionId, _key: &str) -> Result<bool> {
+        Ok(false)
+    }
+
+    async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<KeyInfo>> {
+        Ok(vec![])
+    }
+
+    async fn set_secret(&self, session_id: SessionId, name: &str, value: &str) -> Result<()> {
+        self.secrets
+            .lock()
+            .await
+            .insert(format!("{session_id}:{name}"), value.to_string());
+        Ok(())
+    }
+
+    async fn get_secret(&self, session_id: SessionId, name: &str) -> Result<Option<String>> {
+        Ok(self
+            .secrets
+            .lock()
+            .await
+            .get(&format!("{session_id}:{name}"))
+            .cloned())
+    }
+
+    async fn delete_secret(&self, session_id: SessionId, name: &str) -> Result<bool> {
+        Ok(self
+            .secrets
+            .lock()
+            .await
+            .remove(&format!("{session_id}:{name}"))
+            .is_some())
+    }
+
+    async fn list_secrets(&self, session_id: SessionId) -> Result<Vec<SecretInfo>> {
+        let prefix = format!("{session_id}:");
+        Ok(self
+            .secrets
+            .lock()
+            .await
+            .keys()
+            .filter(|key| key.starts_with(&prefix))
+            .map(|key| SecretInfo {
+                name: key.strip_prefix(&prefix).unwrap_or(key).to_string(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            })
+            .collect())
+    }
+}
+
+struct StaticConnectionResolver {
+    api_key: String,
+}
+
+#[async_trait]
+impl UserConnectionResolver for StaticConnectionResolver {
+    async fn get_connection_token(
+        &self,
+        _session_id: SessionId,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        if provider == "daytona" {
+            Ok(Some(self.api_key.clone()))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+fn live_provider_context(api_key: String) -> ToolContext {
+    let session_id = SessionId::new();
+    let mut context =
+        ToolContext::with_storage_store(session_id, Arc::new(LiveStorageStore::new()));
+    context.connection_resolver = Some(Arc::new(StaticConnectionResolver { api_key }));
+    context
 }
 
 // ============================================================================
@@ -241,6 +352,103 @@ async fn test_live_exec_timeout_does_not_poison_next_command() {
         "Expected recovery output, got: {}",
         result.result
     );
+}
+
+#[tokio::test]
+async fn test_live_session_sandbox_provider_flow() {
+    let api_key = require_api_key!();
+    let context = live_provider_context(api_key);
+    let provider = create_session_sandbox_provider("daytona")
+        .expect("session_sandbox Daytona provider should be registered");
+    let config = SessionSandboxConfig {
+        provider: "daytona".to_string(),
+        auto_start: true,
+        idle_pause_after_seconds: 180,
+        provider_config: json!({
+            "snapshot": "daytona-small",
+            "workspace_path": "/home/daytona",
+            "title": "live-session-sandbox-provider"
+        }),
+        init: Default::default(),
+    };
+
+    let instance = provider
+        .create(&context, &config)
+        .await
+        .expect("managed session sandbox create failed");
+    let guard = SandboxGuard::new(instance.external_id.clone());
+
+    let exec = provider
+        .exec(
+            &context,
+            &config,
+            &instance,
+            &SessionSandboxExecRequest {
+                command: "echo session-sandbox-ok".to_string(),
+                cwd: instance.workspace_path.clone(),
+                timeout_ms: Some(30_000),
+                output_mode: "normal".to_string(),
+            },
+        )
+        .await
+        .expect("managed session sandbox exec failed");
+    assert_eq!(exec.exit_code, 0);
+    assert!(exec.stdout.contains("session-sandbox-ok"));
+
+    provider
+        .write_file(
+            &context,
+            &config,
+            &instance,
+            "/home/daytona/live-session-sandbox.txt",
+            "provider-flow\n",
+        )
+        .await
+        .expect("managed session sandbox write failed");
+
+    let read = provider
+        .read_file(
+            &context,
+            &config,
+            &instance,
+            "/home/daytona/live-session-sandbox.txt",
+        )
+        .await
+        .expect("managed session sandbox read failed");
+    assert_eq!(read.content, "provider-flow\n");
+
+    let paused = provider
+        .pause(&context, &config, &instance)
+        .await
+        .expect("managed session sandbox pause failed");
+    let resumed = provider
+        .resume(&context, &config, &paused)
+        .await
+        .expect("managed session sandbox resume failed");
+
+    let status = provider
+        .status(
+            &context,
+            &config,
+            &SessionSandboxState {
+                provider: "daytona".to_string(),
+                status: SessionSandboxStatus::Running,
+                instance: resumed.clone(),
+                init_completed_at: None,
+                last_init_error: None,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                updated_at: chrono::Utc::now().to_rfc3339(),
+            },
+        )
+        .await
+        .expect("managed session sandbox status failed");
+    assert_eq!(status.session_status, SessionSandboxStatus::Running);
+
+    provider
+        .delete(&context, &config, &resumed)
+        .await
+        .expect("managed session sandbox delete failed");
+    std::mem::forget(guard);
 }
 
 /// Folder creation and file listing.

@@ -47,6 +47,7 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   // Read tools
   read_file: { category: "read", segmentMode: "standalone" },
   session_read_file: { category: "read", segmentMode: "standalone" },
+  sandbox_read_file: { category: "read", segmentMode: "standalone" },
   read_many_files: { category: "read", segmentMode: "grouped" },
   list_files: { category: "read", segmentMode: "grouped" },
   read_capabilities: { category: "read", segmentMode: "grouped" },
@@ -70,6 +71,7 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   edit_file: { category: "write", segmentMode: "standalone" },
   replace_in_file: { category: "write", segmentMode: "standalone" },
   append_file: { category: "write", segmentMode: "standalone" },
+  sandbox_write_file: { category: "write", segmentMode: "standalone" },
   move_file: { category: "write", segmentMode: "grouped" },
   delete_file: { category: "write", segmentMode: "grouped" },
   mkdir: { category: "write", segmentMode: "grouped" },
@@ -80,6 +82,8 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   // Store tools
   secret_store: { category: "tool", segmentMode: "grouped" },
   kv_store: { category: "tool", segmentMode: "grouped" },
+  sandbox_status: { category: "tool", segmentMode: "grouped" },
+  sandbox_manage: { category: "tool", segmentMode: "grouped" },
 };
 
 // ---------------------------------------------------------------------------
@@ -107,7 +111,11 @@ export function isBashTool(toolName: string): boolean {
 
 /** True when the tool name represents a read-file operation. */
 export function isReadFileTool(toolName: string): boolean {
-  return toolName === "read_file" || toolName === "session_read_file";
+  return (
+    toolName === "read_file" ||
+    toolName === "session_read_file" ||
+    toolName === "sandbox_read_file"
+  );
 }
 
 /** True when the tool name represents a write-like file mutation. */
@@ -116,7 +124,8 @@ export function isWriteLikeTool(toolName: string): boolean {
     toolName === "write_file" ||
     toolName === "edit_file" ||
     toolName === "replace_in_file" ||
-    toolName === "append_file"
+    toolName === "append_file" ||
+    toolName === "sandbox_write_file"
   );
 }
 

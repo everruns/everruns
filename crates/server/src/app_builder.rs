@@ -456,10 +456,24 @@ impl ServerAppBuilder {
                     }
                 },
                 crate::storage::StorageBackend::InMemory(mem_db) => {
+                    let github_app_minter = auth_config.github_connection.as_ref().map(|config| {
+                        crate::storage::GitHubAppTokenMinter::new(
+                            config.app_id.clone(),
+                            config.private_key.clone(),
+                        )
+                    });
+                    let connection_resolver = encryption.as_ref().map(|enc| {
+                        Arc::new(crate::storage::DbConnectionResolver::new(
+                            db.as_ref().clone(),
+                            enc.as_ref().clone(),
+                            github_app_minter,
+                        ))
+                            as Arc<dyn everruns_core::traits::UserConnectionResolver>
+                    });
                     let service = Arc::new(services::SessionSandboxService::new(
                         db.clone(),
                         mem_db.clone(),
-                        None,
+                        connection_resolver,
                     ));
                     event_listeners.push(Arc::new(services::SessionSandboxEventListener::new(
                         service.clone(),

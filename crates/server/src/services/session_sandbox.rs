@@ -264,7 +264,7 @@ mod tests {
         SessionSandboxStatus, SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
         load_session_sandbox_state,
     };
-    use everruns_core::{DEFAULT_ORG_ID, InitialFile, SessionStorageStore};
+    use everruns_core::{DEFAULT_ORG_ID, InitialFile, SessionStorageStore, UserConnectionResolver};
     use serde_json::json;
 
     struct TestSessionSandboxProvider;
@@ -383,6 +383,157 @@ mod tests {
                 workspace_path: state.instance.workspace_path.clone(),
                 metadata: json!({}),
             })
+        }
+    }
+
+    struct ResolverRequiredSessionSandboxProvider;
+
+    inventory::submit! {
+        everruns_core::SessionSandboxProviderPlugin {
+            factory: || Box::new(ResolverRequiredSessionSandboxProvider),
+        }
+    }
+
+    #[async_trait]
+    impl SessionSandboxProvider for ResolverRequiredSessionSandboxProvider {
+        fn id(&self) -> &str {
+            "resolver-required-session-sandbox"
+        }
+
+        async fn create(
+            &self,
+            context: &ToolContext,
+            _config: &SessionSandboxConfig,
+        ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
+            let Some(resolver) = context.connection_resolver.as_ref() else {
+                return Err(everruns_core::ToolExecutionResult::tool_error(
+                    "missing connection resolver",
+                ));
+            };
+            let token = resolver
+                .get_connection_token(context.session_id, "daytona")
+                .await
+                .map_err(everruns_core::ToolExecutionResult::internal_error)?;
+            if token.as_deref() != Some("resolver-token") {
+                return Err(everruns_core::ToolExecutionResult::tool_error(
+                    "resolver token missing",
+                ));
+            }
+
+            Ok(SessionSandboxInstance {
+                external_id: "sb_resolver".to_string(),
+                display_name: Some("Resolver Sandbox".to_string()),
+                workspace_path: Some("/workspace".to_string()),
+                provider_state: json!({}),
+                metadata: json!({}),
+            })
+        }
+
+        async fn resume(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+        ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
+            Ok(instance.clone())
+        }
+
+        async fn pause(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+        ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
+            Ok(instance.clone())
+        }
+
+        async fn delete(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+        ) -> Result<(), everruns_core::ToolExecutionResult> {
+            Ok(())
+        }
+
+        async fn exec(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            _request: &SessionSandboxExecRequest,
+        ) -> Result<SessionSandboxExecResponse, everruns_core::ToolExecutionResult> {
+            Ok(SessionSandboxExecResponse {
+                exit_code: 0,
+                stdout: "ok".to_string(),
+                stderr: String::new(),
+                success: true,
+                truncated: false,
+                total_lines: 1,
+                raw_output: Some("ok".to_string()),
+                hint: None,
+            })
+        }
+
+        async fn read_file(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            path: &str,
+        ) -> Result<SessionSandboxReadFileResponse, everruns_core::ToolExecutionResult> {
+            Ok(SessionSandboxReadFileResponse {
+                path: path.to_string(),
+                content: "data".to_string(),
+                encoding: "text".to_string(),
+            })
+        }
+
+        async fn write_file(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            path: &str,
+            content: &str,
+        ) -> Result<SessionSandboxWriteFileResponse, everruns_core::ToolExecutionResult> {
+            Ok(SessionSandboxWriteFileResponse {
+                path: path.to_string(),
+                bytes_written: content.len(),
+            })
+        }
+
+        async fn status(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            state: &SessionSandboxState,
+        ) -> Result<SessionSandboxStatusResponse, everruns_core::ToolExecutionResult> {
+            Ok(SessionSandboxStatusResponse {
+                provider: state.provider.clone(),
+                session_status: state.status,
+                external_id: state.instance.external_id.clone(),
+                display_name: state.instance.display_name.clone(),
+                workspace_path: state.instance.workspace_path.clone(),
+                metadata: json!({}),
+            })
+        }
+    }
+
+    struct TestConnectionResolver;
+
+    #[async_trait]
+    impl UserConnectionResolver for TestConnectionResolver {
+        async fn get_connection_token(
+            &self,
+            _session_id: SessionId,
+            provider: &str,
+        ) -> everruns_core::Result<Option<String>> {
+            if provider == "daytona" {
+                Ok(Some("resolver-token".to_string()))
+            } else {
+                Ok(None)
+            }
         }
     }
 
@@ -525,5 +676,65 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(state.status, SessionSandboxStatus::Paused);
+    }
+
+    #[tokio::test]
+    async fn auto_start_can_use_connection_resolver_when_service_provides_one() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let harness_id = create_test_harness(db.as_ref()).await;
+        db.set_harness_capabilities(
+            harness_id.uuid(),
+            vec![(
+                "session_sandbox".to_string(),
+                0,
+                json!({
+                    "provider": "resolver-required-session-sandbox",
+                    "auto_start": true,
+                    "idle_pause_after_seconds": 1
+                }),
+            )],
+        )
+        .await
+        .unwrap();
+
+        let session = db
+            .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
+                harness_id: Some(harness_id),
+                agent_id: None,
+                agent_identity_id: None,
+                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                title: Some("test".to_string()),
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: json!([]),
+                tools: json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: json!([]),
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+                blueprint_id: None,
+                blueprint_config: None,
+            })
+            .await
+            .unwrap();
+
+        let service = SessionSandboxService::new(
+            db.clone(),
+            test_storage_store(&db),
+            Some(Arc::new(TestConnectionResolver)),
+        );
+        service.ensure_started_for_session(session.id).await;
+
+        let state = load_session_sandbox_state(&service.tool_context(session.id))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.provider, "resolver-required-session-sandbox");
+        assert_eq!(state.instance.external_id, "sb_resolver");
     }
 }
