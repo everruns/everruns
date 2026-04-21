@@ -2,6 +2,7 @@
 
 use everruns_core::SessionFile;
 use everruns_core::ToolHints;
+use everruns_core::exec_tool_result::ExecToolResultPayload;
 use everruns_core::resource_ownership::{
     list_owned_external_resource_ids, ownership_tracking_unavailable_error,
     require_owned_external_resource,
@@ -76,45 +77,39 @@ fn build_exec_tool_result(
     result: &crate::state::ExecResult,
     output_mode: &str,
 ) -> ToolExecutionResult {
-    use everruns_core::tool_output_sanitizer::{
-        clean_exec_output, output_verbosity_budget, priority_aware_truncate,
-    };
-
-    let clean_stdout = clean_exec_output(&result.stdout);
-    let clean_stderr = clean_exec_output(&result.stderr);
-    let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
-        (
-            priority_aware_truncate(&clean_stdout, budget),
-            priority_aware_truncate(&clean_stderr, budget.min(4096)),
-        )
-    } else {
-        (clean_stdout.clone(), clean_stderr.clone())
-    };
-    let truncated = stdout != clean_stdout || stderr != clean_stderr;
-    let total_lines = clean_stdout.lines().count();
-    let mut raw = clean_stdout;
-    if !clean_stderr.is_empty() {
-        raw.push_str("\n--- stderr ---\n");
-        raw.push_str(&clean_stderr);
-    }
+    let payload = ExecToolResultPayload::new(
+        &result.stdout,
+        &result.stderr,
+        result.exit_code,
+        output_mode,
+    );
+    let ExecToolResultPayload {
+        stdout,
+        stderr,
+        exit_code,
+        success,
+        truncated,
+        total_lines,
+        raw_output,
+    } = payload;
 
     let mut response = json!({
         "sandbox_id": sandbox_id,
         "stdout": stdout,
         "stderr": stderr,
-        "exit_code": result.exit_code,
-        "success": result.exit_code == 0,
+        "exit_code": exit_code,
+        "success": success,
         "truncated": truncated,
         "total_lines": total_lines,
     });
     if let Some(cwd) = cwd {
         response["cwd"] = json!(cwd);
     }
-    if let Some(hint) = exit_code_hint(result.exit_code) {
+    if let Some(hint) = exit_code_hint(exit_code) {
         response["hint"] = json!(hint);
     }
 
-    ToolExecutionResult::success_with_raw_output(response, raw)
+    ToolExecutionResult::success_with_raw_output(response, raw_output)
 }
 
 /// Parse an optional integer resource parameter, validating type and range.

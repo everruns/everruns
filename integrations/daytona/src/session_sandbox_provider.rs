@@ -1,5 +1,6 @@
 //! Daytona implementation of the provider-neutral session_sandbox contract.
 
+use everruns_core::exec_tool_result::ExecToolResultPayload;
 use everruns_core::session_sandbox::{
     SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxExecResponse,
     SessionSandboxInstance, SessionSandboxProvider, SessionSandboxReadFileResponse,
@@ -256,37 +257,22 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let result = result.map_err(ToolExecutionResult::tool_error)?;
         touch_sandbox_lease(context, &lease_state, instance.display_name.clone()).await?;
 
-        let clean_stdout = everruns_core::tool_output_sanitizer::clean_exec_output(&result.stdout);
-        let clean_stderr = everruns_core::tool_output_sanitizer::clean_exec_output(&result.stderr);
-        let (stdout, stderr) = if let Some(budget) =
-            everruns_core::tool_output_sanitizer::output_verbosity_budget(&request.output_mode)
-        {
-            (
-                everruns_core::tool_output_sanitizer::priority_aware_truncate(
-                    &clean_stdout,
-                    budget,
-                ),
-                everruns_core::tool_output_sanitizer::priority_aware_truncate(
-                    &clean_stderr,
-                    budget.min(4096),
-                ),
-            )
-        } else {
-            (clean_stdout.clone(), clean_stderr.clone())
-        };
-        let mut raw = clean_stdout;
-        if !clean_stderr.is_empty() {
-            raw.push_str("\n--- stderr ---\n");
-            raw.push_str(&clean_stderr);
-        }
+        let payload = ExecToolResultPayload::new(
+            &result.stdout,
+            &result.stderr,
+            result.exit_code,
+            &request.output_mode,
+        );
 
         Ok(SessionSandboxExecResponse {
-            exit_code: result.exit_code,
-            stdout,
-            stderr,
-            success: result.exit_code == 0,
-            raw_output: Some(raw),
-            hint: exit_code_hint(result.exit_code).map(ToString::to_string),
+            exit_code: payload.exit_code,
+            stdout: payload.stdout,
+            stderr: payload.stderr,
+            success: payload.success,
+            truncated: payload.truncated,
+            total_lines: payload.total_lines,
+            raw_output: Some(payload.raw_output),
+            hint: exit_code_hint(payload.exit_code).map(ToString::to_string),
         })
     }
 

@@ -22,6 +22,7 @@ pub mod tool_types;
 
 // Deployment configuration
 pub mod deployment;
+pub mod exec_tool_result;
 
 // Feature flags
 pub mod feature_flags;

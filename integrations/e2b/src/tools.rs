@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use everruns_core::ToolHints;
+use everruns_core::exec_tool_result::ExecToolResultPayload;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use serde_json::{Value, json};
@@ -306,37 +307,35 @@ impl Tool for E2BExecTool {
             return err;
         }
 
-        {
-            use everruns_core::tool_output_sanitizer::{
-                clean_exec_output, output_verbosity_budget, priority_aware_truncate,
-            };
-            let clean_stdout = clean_exec_output(&result.stdout);
-            let clean_stderr = clean_exec_output(&result.stderr);
-            let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
-                (
-                    priority_aware_truncate(&clean_stdout, budget),
-                    priority_aware_truncate(&clean_stderr, budget.min(4096)),
-                )
-            } else {
-                (clean_stdout.clone(), clean_stderr.clone())
-            };
-            let mut raw = clean_stdout;
-            if !clean_stderr.is_empty() {
-                raw.push_str("\n--- stderr ---\n");
-                raw.push_str(&clean_stderr);
-            }
-            ToolExecutionResult::success_with_raw_output(
-                json!({
-                    "sandbox_id": sandbox_id,
-                    "cwd": cwd.unwrap_or(E2B_DEFAULT_WORKSPACE_PATH),
-                    "stdout": stdout,
-                    "stderr": stderr,
-                    "exit_code": result.exit_code,
-                    "error": result.error,
-                }),
-                raw,
-            )
-        }
+        let payload = ExecToolResultPayload::new(
+            &result.stdout,
+            &result.stderr,
+            result.exit_code,
+            output_mode,
+        );
+        let ExecToolResultPayload {
+            stdout,
+            stderr,
+            exit_code,
+            success,
+            truncated,
+            total_lines,
+            raw_output,
+        } = payload;
+        ToolExecutionResult::success_with_raw_output(
+            json!({
+                "sandbox_id": sandbox_id,
+                "cwd": cwd.unwrap_or(E2B_DEFAULT_WORKSPACE_PATH),
+                "stdout": stdout,
+                "stderr": stderr,
+                "exit_code": exit_code,
+                "success": success,
+                "truncated": truncated,
+                "total_lines": total_lines,
+                "error": result.error,
+            }),
+            raw_output,
+        )
     }
 
     fn requires_context(&self) -> bool {

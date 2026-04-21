@@ -119,6 +119,8 @@ pub struct SessionSandboxExecResponse {
     pub stdout: String,
     pub stderr: String,
     pub success: bool,
+    pub truncated: bool,
+    pub total_lines: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_output: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

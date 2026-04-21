@@ -334,6 +334,8 @@ mod tests {
                 stdout: "ok".to_string(),
                 stderr: String::new(),
                 success: true,
+                truncated: false,
+                total_lines: 1,
                 raw_output: Some("ok".to_string()),
                 hint: None,
             })

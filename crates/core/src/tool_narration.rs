@@ -146,6 +146,19 @@ fn generic_phrase(
     }
 }
 
+fn is_shell_exec_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "bash"
+            | "daytona_exec"
+            | "sandbox_exec"
+            | "e2b_exec"
+            | "deno_exec"
+            | "docker_exec"
+            | "sprites_exec"
+    )
+}
+
 fn ukrainian_phrase(
     _tool_def: Option<&ToolDefinition>,
     tool_call: &ToolCall,
@@ -154,7 +167,7 @@ fn ukrainian_phrase(
 ) -> String {
     let args = &tool_call.arguments;
     match tool_call.name.as_str() {
-        "bash" => {
+        name if is_shell_exec_tool(name) => {
             let command = arg_str(args, &["command"])
                 .map(|value| format!("`{}`", truncate(value, 48)))
                 .unwrap_or_else(|| fallback_name.to_string());
@@ -475,7 +488,7 @@ pub fn render_tool_narration_with_locale(
     }
 
     match tool_call.name.as_str() {
-        "bash" | "daytona_exec" => {
+        name if is_shell_exec_tool(name) => {
             let command = arg_str(args, &["command"])
                 .map(|value| format!("`{}`", truncate(value, 48)))
                 .unwrap_or_else(|| fallback_name.clone());
@@ -851,6 +864,24 @@ mod tests {
     }
 
     #[test]
+    fn renders_sandbox_exec_narration() {
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "sandbox_exec".to_string(),
+            arguments: json!({ "command": "npm test" }),
+        };
+
+        assert_eq!(
+            render_tool_narration(None, &tool_call, ToolNarrationPhase::Started),
+            "Running `npm test`"
+        );
+        assert_eq!(
+            render_tool_narration(None, &tool_call, ToolNarrationPhase::Completed),
+            "Ran `npm test`"
+        );
+    }
+
+    #[test]
     fn renders_group_headline_from_multiple_tool_calls() {
         let tool_calls = vec![
             ToolCall {
@@ -904,6 +935,34 @@ mod tests {
                 Some("uk-UA"),
             ),
             "Прочитав AGENTS.md"
+        );
+    }
+
+    #[test]
+    fn renders_ukrainian_sandbox_exec_narration() {
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "sandbox_exec".to_string(),
+            arguments: json!({ "command": "npm test" }),
+        };
+
+        assert_eq!(
+            render_tool_narration_with_locale(
+                None,
+                &tool_call,
+                ToolNarrationPhase::Started,
+                Some("uk-UA"),
+            ),
+            "Запускаю `npm test`"
+        );
+        assert_eq!(
+            render_tool_narration_with_locale(
+                None,
+                &tool_call,
+                ToolNarrationPhase::Completed,
+                Some("uk-UA"),
+            ),
+            "Запустив `npm test`"
         );
     }
 

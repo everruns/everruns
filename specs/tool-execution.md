@@ -138,6 +138,8 @@ Human-facing exec tools should return a structured result instead of a single co
 
 **Legacy compatibility:** Tools may continue to carry a combined pre-truncation string in `ToolResult.raw_output` for persistence hooks and logging, but the user-visible JSON contract should use `stdout`/`stderr`.
 
+Implementation note: shared shaping helpers live in [`crates/core/src/exec_tool_result.rs`](../crates/core/src/exec_tool_result.rs). New shell-like tools should use that helper or match its contract exactly.
+
 ### Exec Human Representation
 
 Exec-tool narration and cards should read like command execution, not generic infrastructure activity.
