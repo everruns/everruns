@@ -90,6 +90,27 @@ async fn live_function() {
 // ============================================================================
 
 #[tokio::test]
+async fn live_cdp_session_connect_attaches_page_target() {
+    let token = api_token();
+    let ws_url = format!("wss://production-sfo.browserless.io/chromium?token={token}");
+
+    let session = CdpSession::connect(&ws_url)
+        .await
+        .expect("CDP connect should succeed");
+
+    assert!(
+        !session.page_target_id().is_empty(),
+        "connect should attach to a page target"
+    );
+    assert!(
+        !session.page_session_id().is_empty(),
+        "connect should expose the attached page sessionId"
+    );
+
+    session.disconnect().await;
+}
+
+#[tokio::test]
 async fn live_cdp_session_navigate_and_screenshot() {
     let token = api_token();
     let ws_url = format!("wss://production-sfo.browserless.io/chromium?token={token}");
@@ -153,7 +174,8 @@ async fn live_cdp_session_reconnect() {
         .expect("Navigate should succeed");
 
     let new_endpoint = session
-        .reconnect(30000)
+        // Free-tier Browserless tokens cap reconnect TTL at 10s.
+        .reconnect(5000)
         .await
         .expect("Reconnect should succeed");
 
