@@ -52,6 +52,10 @@ test:
     cargo test
     cd apps/ui && npm run e2e 2>/dev/null || echo "(e2e skipped)"
 
+# Run repository shell-layer tests (scripts/test-*.sh)
+test-shell:
+    ./scripts/run-shell-tests.sh
+
 # Run pure unit tests (no PostgreSQL required) - fast feedback
 test-unit:
     cargo test -p everruns-anthropic --lib --all-features

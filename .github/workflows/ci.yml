@@ -32,6 +32,7 @@ jobs:
       browserless: ${{ steps.live_filter.outputs.browserless }}
       e2b: ${{ steps.live_filter.outputs.e2b }}
       sdk_compat: ${{ steps.core_filter.outputs.sdk_compat }}
+      shell: ${{ steps.core_filter.outputs.shell }}
       ui: ${{ steps.core_filter.outputs.ui }}
       docs: ${{ steps.core_filter.outputs.docs }}
       docker: ${{ steps.core_filter.outputs.docker }}
@@ -52,6 +53,17 @@ jobs:
             sdk_compat:
               - 'crates/**'
               - '.github/scripts/sdk-compat/**'
+              - '.github/workflows/ci.yml'
+            # Repo-owned shell tests cover scripts/test-*.sh plus the shell
+            # libraries/assets they exercise. Workflow-specific harnesses under
+            # .github/scripts stay owned by their dedicated jobs.
+            shell:
+              - 'scripts/run-shell-tests.sh'
+              - 'scripts/test-*.sh'
+              - 'scripts/lib/**'
+              - 'local/Caddyfile'
+              - 'examples/docker-compose-full.yaml'
+              - 'justfile'
               - '.github/workflows/ci.yml'
             ui:
               - 'apps/ui/**'
@@ -235,6 +247,41 @@ jobs:
 
       - name: Run worker library tests
         run: cargo test -p everruns-worker --lib -- --test-threads=1
+
+  shell-test:
+    name: Shell Tests (Repo Scripts)
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shell test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lsof netcat-openbsd ripgrep
+
+          CADDY_VERSION="2.9.1"
+          CADDY_TARBALL=""
+          CADDY_CHECKSUMS="caddy_${CADDY_VERSION}_checksums.txt"
+          CADDY_BASE_URL="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}"
+          case "$(uname -m)" in
+            x86_64) CADDY_ARCH="amd64" ;;
+            aarch64) CADDY_ARCH="arm64" ;;
+            *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+
+          CADDY_TARBALL="caddy_${CADDY_VERSION}_linux_${CADDY_ARCH}.tar.gz"
+          curl -fsSL "${CADDY_BASE_URL}/${CADDY_TARBALL}" -o "/tmp/${CADDY_TARBALL}"
+          curl -fsSL "${CADDY_BASE_URL}/${CADDY_CHECKSUMS}" -o "/tmp/${CADDY_CHECKSUMS}"
+          grep "  ${CADDY_TARBALL}$" "/tmp/${CADDY_CHECKSUMS}" > /tmp/caddy.sha512
+          (cd /tmp && sha512sum -c caddy.sha512)
+          tar -xzf "/tmp/${CADDY_TARBALL}" -C /tmp caddy
+          sudo install -m 0755 /tmp/caddy /usr/local/bin/caddy
+
+      - name: Run repo shell tests
+        run: ./scripts/run-shell-tests.sh
 
   # Live Daytona API tests — only when integrations/daytona/** changes and secret exists
   daytona-live-test:
@@ -1044,6 +1091,7 @@ jobs:
       - clippy
       - unit-test
       - worker-test
+      - shell-test
       - integration-test
       - build-binaries
       - workflow-test
