@@ -112,9 +112,7 @@ export function isBashTool(toolName: string): boolean {
 /** True when the tool name represents a read-file operation. */
 export function isReadFileTool(toolName: string): boolean {
   return (
-    toolName === "read_file" ||
-    toolName === "session_read_file" ||
-    toolName === "sandbox_read_file"
+    toolName === "read_file" || toolName === "session_read_file" || toolName === "sandbox_read_file"
   );
 }
 
