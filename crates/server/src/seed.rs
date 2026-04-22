@@ -2215,6 +2215,12 @@ mod tests {
         org_init::default_harness_definitions()
     }
 
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     // --- Harness seed data ---
 
     #[test]
@@ -2302,6 +2308,48 @@ mod tests {
                 cap.id
             );
         }
+    }
+
+    #[test]
+    fn test_coding_container_harness_capabilities_are_registered_when_flag_enabled() {
+        let _lock = lock_env();
+        unsafe { std::env::set_var("FEATURE_CONTAINER_SANDBOX", "true") };
+        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
+
+        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+            everruns_core::DeploymentGrade::Dev,
+        );
+
+        let built_in_harnesses = built_in_harnesses();
+        let coding_container = built_in_harnesses
+            .iter()
+            .find(|h| h.name == "coding-container")
+            .expect("Coding (Container) harness should exist when the feature is enabled");
+
+        for cap in &coding_container.capabilities {
+            assert!(
+                registry.has(&cap.id),
+                "Capability '{}' referenced by Coding (Container) harness must be registered",
+                cap.id
+            );
+        }
+
+        unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
+    }
+
+    #[test]
+    fn test_coding_container_harness_hidden_when_flag_disabled() {
+        let _lock = lock_env();
+        unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
+        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
+
+        let built_in_harnesses = built_in_harnesses();
+        assert!(
+            built_in_harnesses
+                .iter()
+                .all(|h| h.name != "coding-container"),
+            "Coding (Container) harness should be hidden when container_sandbox is disabled"
+        );
     }
 
     /// Regression test for "Tool not found: bash" bug.
