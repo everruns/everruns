@@ -24,9 +24,13 @@ Ensure Docker Engine is accessible from the server/worker. The capability commun
 
 Set `CONTAINER_SANDBOX_DOCKER_HOST` to override the default Docker host.
 
-### 2. Assign the Capability
+### 2. Enable the Feature and Assign the Capability
 
-Add the `container_sandbox` capability to a harness or use the built-in **Coding (Container)** harness which includes it by default.
+Set `FEATURE_CONTAINER_SANDBOX=true` anywhere capabilities are registered or executed to enable the capability and built-in **Coding (Container)** harness. In most deployments, that means both the server and any workers.
+
+For legacy deployments, `FEATURE_DOCKER_CAPABILITY=true` still enables the same feature until operators switch to the new flag name, and it must be enabled in the same places.
+
+Once the flag is enabled in the relevant processes, add the `container_sandbox` capability to a custom harness or use the built-in **Coding (Container)** harness.
 
 ### 3. Use in Sessions
 
