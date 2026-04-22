@@ -363,6 +363,46 @@ async fn daytona_provider_resume_tolerates_transition_conflicts() {
 }
 
 #[tokio::test]
+async fn daytona_provider_resume_stays_within_single_poll_budget_on_transition_timeout() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let config = test_config(&mock_server);
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    let instance = managed_instance("sb_transition_timeout");
+
+    let get_count = Arc::new(AtomicUsize::new(0));
+    let get_count_clone = get_count.clone();
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_transition_timeout"))
+        .respond_with(move |_: &wiremock::Request| {
+            get_count_clone.fetch_add(1, Ordering::SeqCst);
+            ResponseTemplate::new(200).set_body_json(json!({
+                "id": "sb_transition_timeout",
+                "name": "Managed Sandbox",
+                "state": "starting"
+            }))
+        })
+        .mount(&mock_server)
+        .await;
+
+    let err = provider
+        .resume(&context, &config, &instance)
+        .await
+        .unwrap_err();
+
+    assert_eq!(get_count.load(Ordering::SeqCst), 20);
+    let everruns_core::tools::ToolExecutionResult::ToolError(message) = err else {
+        panic!("expected tool error");
+    };
+    assert!(
+        message.contains("Daytona sandbox 'sb_transition_timeout' did not reach 'started' state")
+    );
+    assert!(message.contains("last state: starting"));
+}
+
+#[tokio::test]
 async fn daytona_provider_escapes_workspace_path_when_creating_directory() {
     let mock_server = MockServer::start().await;
     let context = test_context();

@@ -683,27 +683,61 @@ mod tests {
         assert_eq!(loaded.status, SessionSandboxStatus::Running);
     }
 
-    struct TestProviderState {
+    #[derive(Clone)]
+    struct TestProviderSandboxState {
         remote_status: SessionSandboxStatus,
         resume_calls: usize,
         exec_commands: Vec<String>,
     }
 
-    static TEST_PROVIDER_STATE: LazyLock<Mutex<TestProviderState>> = LazyLock::new(|| {
-        Mutex::new(TestProviderState {
-            remote_status: SessionSandboxStatus::Running,
-            resume_calls: 0,
-            exec_commands: Vec::new(),
-        })
-    });
+    #[derive(Default)]
+    struct TestProviderState {
+        sandboxes: HashMap<String, TestProviderSandboxState>,
+    }
 
-    fn reset_test_provider_state(remote_status: SessionSandboxStatus) {
+    static TEST_PROVIDER_STATE: LazyLock<Mutex<TestProviderState>> =
+        LazyLock::new(|| Mutex::new(TestProviderState::default()));
+
+    fn sandbox_state_mut<'a>(
+        state: &'a mut TestProviderState,
+        external_id: &str,
+    ) -> &'a mut TestProviderSandboxState {
+        state
+            .sandboxes
+            .entry(external_id.to_string())
+            .or_insert_with(|| TestProviderSandboxState {
+                remote_status: SessionSandboxStatus::Running,
+                resume_calls: 0,
+                exec_commands: Vec::new(),
+            })
+    }
+
+    fn test_provider_state(external_id: &str) -> TestProviderSandboxState {
+        TEST_PROVIDER_STATE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .sandboxes
+            .get(external_id)
+            .cloned()
+            .unwrap_or(TestProviderSandboxState {
+                remote_status: SessionSandboxStatus::Running,
+                resume_calls: 0,
+                exec_commands: Vec::new(),
+            })
+    }
+
+    fn reset_test_provider_state(external_id: &str, remote_status: SessionSandboxStatus) {
         let mut state = TEST_PROVIDER_STATE
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        state.remote_status = remote_status;
-        state.resume_calls = 0;
-        state.exec_commands.clear();
+        state.sandboxes.insert(
+            external_id.to_string(),
+            TestProviderSandboxState {
+                remote_status,
+                resume_calls: 0,
+                exec_commands: Vec::new(),
+            },
+        );
     }
 
     struct CoreTestSessionSandboxProvider;
@@ -725,7 +759,13 @@ mod tests {
             _context: &ToolContext,
             _config: &SessionSandboxConfig,
         ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
-            Ok(test_instance("sb_created"))
+            let instance = test_instance("sb_created");
+            let mut state = TEST_PROVIDER_STATE
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            sandbox_state_mut(&mut state, &instance.external_id).remote_status =
+                SessionSandboxStatus::Running;
+            Ok(instance)
         }
 
         async fn resume(
@@ -737,8 +777,9 @@ mod tests {
             let mut state = TEST_PROVIDER_STATE
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            state.resume_calls += 1;
-            state.remote_status = SessionSandboxStatus::Running;
+            let sandbox_state = sandbox_state_mut(&mut state, &instance.external_id);
+            sandbox_state.resume_calls += 1;
+            sandbox_state.remote_status = SessionSandboxStatus::Running;
 
             let mut resumed = instance.clone();
             resumed.metadata = json!({ "resumed": true });
@@ -773,7 +814,9 @@ mod tests {
             let mut state = TEST_PROVIDER_STATE
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            state.exec_commands.push(request.command.clone());
+            sandbox_state_mut(&mut state, &_instance.external_id)
+                .exec_commands
+                .push(request.command.clone());
 
             Ok(SessionSandboxExecResponse {
                 exit_code: 0,
@@ -821,9 +864,7 @@ mod tests {
             _config: &SessionSandboxConfig,
             state: &SessionSandboxState,
         ) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
-            let provider_state = TEST_PROVIDER_STATE
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let provider_state = test_provider_state(&state.instance.external_id);
 
             Ok(SessionSandboxStatusResponse {
                 provider: state.provider.clone(),
@@ -860,14 +901,15 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_running_resumes_when_remote_status_drifted_to_paused() {
-        reset_test_provider_state(SessionSandboxStatus::Paused);
+        let external_id = "sb_drifted";
+        reset_test_provider_state(external_id, SessionSandboxStatus::Paused);
 
         let storage = Arc::new(MemorySecrets::default());
         let context = ToolContext::with_storage_store(crate::SessionId::new(), storage);
         let state = SessionSandboxState {
             provider: "core-test-session-sandbox".to_string(),
             status: SessionSandboxStatus::Running,
-            instance: test_instance("sb_drifted"),
+            instance: test_instance(external_id),
             init_completed_at: Some(now_rfc3339()),
             last_init_error: None,
             created_at: now_rfc3339(),
@@ -879,9 +921,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider_state = TEST_PROVIDER_STATE
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let provider_state = test_provider_state(external_id);
         assert_eq!(provider_state.resume_calls, 1);
         assert_eq!(resolved.status, SessionSandboxStatus::Running);
         assert_eq!(resolved.instance.metadata, json!({ "resumed": true }));
@@ -889,14 +929,15 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_running_retries_init_when_state_is_running_but_init_unfinished() {
-        reset_test_provider_state(SessionSandboxStatus::Running);
+        let external_id = "sb_init_retry";
+        reset_test_provider_state(external_id, SessionSandboxStatus::Running);
 
         let storage = Arc::new(MemorySecrets::default());
         let context = ToolContext::with_storage_store(crate::SessionId::new(), storage);
         let state = SessionSandboxState {
             provider: "core-test-session-sandbox".to_string(),
             status: SessionSandboxStatus::Running,
-            instance: test_instance("sb_init_retry"),
+            instance: test_instance(external_id),
             init_completed_at: None,
             last_init_error: Some("previous failure".to_string()),
             created_at: now_rfc3339(),
@@ -909,9 +950,7 @@ mod tests {
                 .await
                 .unwrap();
 
-        let provider_state = TEST_PROVIDER_STATE
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let provider_state = test_provider_state(external_id);
         assert_eq!(provider_state.exec_commands, vec!["echo ready"]);
         assert!(resolved.init_completed_at.is_some());
         assert_eq!(resolved.last_init_error, None);

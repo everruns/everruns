@@ -36,30 +36,6 @@ fn is_state_change_in_progress(err: &str) -> bool {
     err.contains("409 Conflict") && err.contains("state change in progress")
 }
 
-async fn wait_for_stable_sandbox_state(
-    client: &DaytonaClient,
-    sandbox_id: &str,
-) -> Result<SandboxInfo, ToolExecutionResult> {
-    let mut last_state = None;
-
-    for _ in 0..DAYTONA_STATE_POLL_ATTEMPTS {
-        let info = client
-            .get_sandbox(sandbox_id)
-            .await
-            .map_err(ToolExecutionResult::tool_error)?;
-        if !is_transition_state(&info.state) {
-            return Ok(info);
-        }
-        last_state = Some(info.state);
-        tokio::time::sleep(DAYTONA_STATE_POLL_INTERVAL).await;
-    }
-
-    Err(ToolExecutionResult::tool_error(format!(
-        "Daytona sandbox remained in a transition state: {}",
-        last_state.unwrap_or_else(|| "unknown".to_string())
-    )))
-}
-
 async fn wait_for_sandbox_state(
     client: &DaytonaClient,
     sandbox_id: &str,
@@ -92,18 +68,29 @@ async fn ensure_sandbox_started(
     let mut last_state = None;
 
     for _ in 0..DAYTONA_STATE_POLL_ATTEMPTS {
-        let info = wait_for_stable_sandbox_state(client, sandbox_id).await?;
+        let info = client
+            .get_sandbox(sandbox_id)
+            .await
+            .map_err(ToolExecutionResult::tool_error)?;
+        last_state = Some(info.state.clone());
+
         if info.state == "started" {
             return Ok(info);
         }
-        last_state = Some(info.state.clone());
+        if is_transition_state(&info.state) {
+            tokio::time::sleep(DAYTONA_STATE_POLL_INTERVAL).await;
+            continue;
+        }
 
         match client.start_sandbox(sandbox_id).await {
             Ok(()) => {
-                client
-                    .wait_for_ready(sandbox_id)
-                    .await
-                    .map_err(ToolExecutionResult::tool_error)?;
+                if let Err(err) = client.wait_for_ready(sandbox_id).await {
+                    warn!(
+                        sandbox_id = %sandbox_id,
+                        error = %err,
+                        "Daytona sandbox readiness check failed after start"
+                    );
+                }
             }
             Err(err) if is_state_change_in_progress(&err) => {}
             Err(err) => return Err(ToolExecutionResult::tool_error(err)),
@@ -113,7 +100,7 @@ async fn ensure_sandbox_started(
     }
 
     Err(ToolExecutionResult::tool_error(format!(
-        "Daytona sandbox did not reach 'started' state (last state: {})",
+        "Daytona sandbox '{sandbox_id}' did not reach 'started' state (last state: {})",
         last_state.unwrap_or_else(|| "unknown".to_string())
     )))
 }
