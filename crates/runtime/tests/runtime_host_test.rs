@@ -4,7 +4,8 @@ use everruns_core::MessageRetriever;
 use everruns_core::atoms::ReasonResult;
 use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput};
 use everruns_core::capabilities::{
-    MemoryCapability, SystemPromptContext, TestMathCapability, collect_capabilities_with_configs,
+    Capability, CapabilityStatus, MemoryCapability, SystemPromptContext, TestMathCapability,
+    collect_capabilities_with_configs,
 };
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::memory::{
@@ -18,8 +19,9 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, CapabilityRegistry, EventData, Harness, HarnessStatus,
-    InputMessage, Session, SessionStatus, ToolCall, ToolRegistry,
+    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, EventData, Harness,
+    HarnessStatus, InputMessage, Session, SessionStatus, Tool, ToolCall, ToolExecutionResult,
+    ToolRegistry,
 };
 use everruns_runtime::{
     InMemorySessionFileStore, RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle,
@@ -236,6 +238,60 @@ async fn build_registry(
     Ok(registry)
 }
 
+struct OverlayEchoTool;
+
+#[async_trait]
+impl Tool for OverlayEchoTool {
+    fn name(&self) -> &str {
+        "overlay_echo"
+    }
+
+    fn description(&self) -> &str {
+        "Returns the provided value."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "value": { "type": "string" }
+            },
+            "required": ["value"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, arguments: serde_json::Value) -> ToolExecutionResult {
+        ToolExecutionResult::success(serde_json::json!({
+            "value": arguments["value"].as_str().unwrap_or_default(),
+        }))
+    }
+}
+
+struct OverlayEchoCapability;
+
+impl Capability for OverlayEchoCapability {
+    fn id(&self) -> &str {
+        "overlay_echo"
+    }
+
+    fn name(&self) -> &str {
+        "Overlay Echo"
+    }
+
+    fn description(&self) -> &str {
+        "Test-only harness capability that is absent from ToolRegistry defaults."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(OverlayEchoTool)]
+    }
+}
+
 fn harness(harness_id: HarnessId) -> Harness {
     Harness {
         id: harness_id,
@@ -299,6 +355,31 @@ fn session(session_id: SessionId, harness_id: HarnessId) -> Session {
         subagent_status: None,
         blueprint_id: None,
         blueprint_config: None,
+    }
+}
+
+fn agent(agent_id: AgentId, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
+    Agent {
+        public_id: agent_id,
+        internal_id: Uuid::nil(),
+        name: "test-agent".into(),
+        display_name: Some("Test Agent".into()),
+        description: None,
+        system_prompt: "Use tools when needed.".into(),
+        default_model_id: None,
+        tags: vec![],
+        capabilities,
+        initial_files: vec![],
+        network_access: None,
+        max_iterations: Some(8),
+        tools: vec![],
+        mcp_servers: Default::default(),
+        status: AgentStatus::Active,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        archived_at: None,
+        deleted_at: None,
+        usage: None,
     }
 }
 
@@ -415,6 +496,66 @@ async fn act_activity_executes_capability_tools_from_harness_registry() {
                 id: "call_mul".into(),
                 name: "multiply".into(),
                 arguments: serde_json::json!({"a": 6, "b": 7}),
+            }],
+            tool_definitions,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.success_count, 1);
+    assert_eq!(result.error_count, 0);
+    assert_eq!(result.results.len(), 1);
+}
+
+#[tokio::test]
+async fn act_activity_agent_sessions_keep_harness_tools_in_registry() {
+    let mut adapter = mock_host();
+    adapter.capability_registry.register(OverlayEchoCapability);
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let agent_id = AgentId::from_uuid(Uuid::now_v7());
+    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![AgentCapabilityConfig::new("overlay_echo")],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
+
+    let mut host_session = session(session_id, harness_id);
+    host_session.agent_id = Some(agent_id);
+    adapter.session_store.insert(host_session).await;
+
+    let tool_definitions = build_registry(
+        &adapter.capability_registry,
+        session_id,
+        &[AgentCapabilityConfig::new("overlay_echo")],
+    )
+    .await
+    .unwrap()
+    .tool_definitions();
+
+    let result = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(
+                session_id,
+                TurnId::from_uuid(Uuid::now_v7()),
+                input_message_id,
+            ),
+            harness_id,
+            agent_id: Some(agent_id),
+            tool_calls: vec![ToolCall {
+                id: "call_overlay".into(),
+                name: "overlay_echo".into(),
+                arguments: serde_json::json!({"value": "hello"}),
             }],
             tool_definitions,
             locale: None,
