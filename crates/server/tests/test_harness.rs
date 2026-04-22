@@ -272,11 +272,29 @@ impl TestServer {
             None,
         );
         let llm_models_state = api::llm_models::AppState::new(db.clone(), auth_state.clone(), None);
+        let virtual_registry = Arc::new(
+            everruns_server::services::virtual_mount_registry::VirtualMountRegistry::new(),
+        );
+        // Session SQL database store (in-memory for all test modes)
+        let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
+        let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(
+            everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
+        );
+        let llm_resolver = Arc::new(services::LlmResolverService::new(
+            db.clone(),
+            encryption.clone(),
+        ));
         let capability_service = Arc::new(services::CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),
             platform_definition.capability_registry().clone(),
         ));
+        let mcp_service = Arc::new(
+            everruns_server::domains::mcp_servers::McpServerService::new(
+                db.clone(),
+                encryption.clone(),
+            ),
+        );
         let mcp_servers_state = api::mcp_servers::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -291,6 +309,22 @@ impl TestServer {
         let harnesses_state = api::harnesses::AppState::new(
             db.clone(),
             capability_service.clone(),
+            auth_state.clone(),
+        );
+        let commands_state = api::commands::AppState::new(
+            capability_service.clone(),
+            Arc::new(
+                services::SessionCommandService::new(
+                    db.clone(),
+                    event_service.clone(),
+                    llm_resolver,
+                    mcp_service.clone(),
+                    platform_definition.capability_registry().clone(),
+                    driver_registry.as_ref().clone(),
+                    sqldb_store.clone(),
+                )
+                .with_virtual_registry(virtual_registry.clone()),
+            ),
             auth_state.clone(),
         );
         let agents_state = api::agents::AppState::new(
@@ -308,14 +342,6 @@ impl TestServer {
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), None, auth_state.clone());
-        let virtual_registry = Arc::new(
-            everruns_server::services::virtual_mount_registry::VirtualMountRegistry::new(),
-        );
-        // Session SQL database store (in-memory for all test modes)
-        let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(
-            everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
-        );
         let session_databases_state = api::session_databases::AppState::new(
             sqldb_store.clone(),
             db.clone(),
@@ -363,12 +389,6 @@ impl TestServer {
         let feature_flags_state = api::feature_flags::AppState {
             flags: feature_flags.clone(),
         };
-        let mcp_service = std::sync::Arc::new(
-            everruns_server::domains::mcp_servers::McpServerService::new(
-                db.clone(),
-                encryption.clone(),
-            ),
-        );
         let user_connections_state = api::user_connections::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -441,6 +461,7 @@ impl TestServer {
             .merge(api::llm_providers::routes(llm_providers_state))
             .merge(api::mcp_servers::routes(mcp_servers_state))
             .merge(api::capabilities::routes(capabilities_state))
+            .merge(api::commands::routes(commands_state))
             .merge(api::session_files::routes(
                 session_files_state.with_virtual_registry(virtual_registry.clone()),
             ))

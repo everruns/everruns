@@ -79,6 +79,7 @@ pub use crate::capability_types::{
 mod a2ui;
 mod agent_instructions;
 pub mod attach_skill;
+mod btw;
 mod budgeting;
 pub mod compaction;
 mod current_time;
@@ -126,6 +127,7 @@ pub use attach_skill::{
     SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries, is_skill_capability,
     parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
 };
+pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
     CompactionStrategy, HierarchicalMemoryConfig, MaskingSummaryFormat, MemoryTier,
@@ -663,6 +665,7 @@ impl CapabilityRegistry {
         registry.register(WebFetchCapability::from_env());
         registry.register(VirtualBashCapability);
         registry.register(SessionScheduleCapability);
+        registry.register(BtwCapability);
         registry.register(InfinityContextCapability);
         registry.register(budgeting::BudgetingCapability);
         registry.register(SelfBudgetCapability);
@@ -1528,6 +1531,7 @@ mod tests {
             "web_fetch",
             "virtual_bash",
             "session_schedule",
+            "btw",
             "infinity_context",
             "compaction",
             "memory",

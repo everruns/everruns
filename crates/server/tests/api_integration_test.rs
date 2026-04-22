@@ -1530,8 +1530,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        14,
-        "Generic harness should have 14 capabilities"
+        15,
+        "Generic harness should have 15 capabilities"
     );
     assert!(
         cap_ids.contains(&"session_file_system"),
@@ -1554,6 +1554,7 @@ async fn test_get_generic_harness() {
         cap_ids.contains(&"session_schedule"),
         "Should have session schedules"
     );
+    assert!(cap_ids.contains(&"btw"), "Should have btw capability");
     assert!(
         cap_ids.contains(&"agent_instructions"),
         "Should have agent instructions"
@@ -1608,6 +1609,158 @@ async fn test_create_session_with_generic_harness() {
         .json();
 
     assert_eq!(session.title.as_deref(), Some("Generic Harness Session"));
+}
+
+async fn create_llmsim_agent(server: &TestServer, name: &str) -> Agent {
+    let provider: Value = server
+        .post(
+            "/v1/llm-providers",
+            json!({
+                "name": format!("{name}-provider"),
+                "provider_type": "llmsim"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let model: Value = server
+        .post(
+            &format!(
+                "/v1/llm-providers/{}/models",
+                provider["id"].as_str().expect("provider id")
+            ),
+            json!({
+                "model_id": format!("{name}-model-{}", uuid::Uuid::new_v4()),
+                "display_name": format!("{name} model"),
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": format!("{name}-agent"),
+                "display_name": format!("{name} Agent"),
+                "system_prompt": "You are a concise test agent.",
+                "default_model_id": model["id"],
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json()
+}
+
+#[tokio::test]
+async fn test_session_commands_are_scoped_to_active_capabilities() {
+    let server = TestServer::in_memory().await;
+
+    let generic_session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_generic_harness_id,
+                "title": "Generic command session"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let base_session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "title": "Base command session"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let generic_commands: Value = server
+        .get(&format!("/v1/sessions/{}/commands", generic_session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let base_commands: Value = server
+        .get(&format!("/v1/sessions/{}/commands", base_session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let generic_names: Vec<&str> = generic_commands["commands"]
+        .as_array()
+        .expect("generic commands")
+        .iter()
+        .filter_map(|command| command["name"].as_str())
+        .collect();
+    let base_names: Vec<&str> = base_commands["commands"]
+        .as_array()
+        .expect("base commands")
+        .iter()
+        .filter_map(|command| command["name"].as_str())
+        .collect();
+
+    assert!(generic_names.contains(&"btw"));
+    assert!(!base_names.contains(&"btw"));
+}
+
+#[tokio::test]
+async fn test_execute_btw_returns_ephemeral_response() {
+    let server = TestServer::in_memory().await;
+    let agent = create_llmsim_agent(&server, "btw-execute").await;
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent.public_id,
+                "title": "BTW execute session"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let messages_before: Value = server
+        .get(&format!("/v1/sessions/{}/messages", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let result: Value = server
+        .post(
+            &format!("/v1/sessions/{}/commands/execute", session.id),
+            json!({
+                "name": "btw",
+                "arguments": "What are you doing?"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let messages_after: Value = server
+        .get(&format!("/v1/sessions/{}/messages", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(result["success"], Value::Bool(true));
+    assert_eq!(
+        result["message"],
+        Value::String("Hello! I'm a simulated LLM response.".to_string())
+    );
+    assert_eq!(
+        messages_before["data"].as_array().map(Vec::len),
+        messages_after["data"].as_array().map(Vec::len)
+    );
 }
 
 // ============================================
@@ -1907,8 +2060,8 @@ async fn test_copy_seed_generic_harness() {
     // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),
-        14,
-        "Copied harness should have same 14 capabilities"
+        15,
+        "Copied harness should have same 15 capabilities"
     );
 }
 

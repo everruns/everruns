@@ -2,12 +2,14 @@
 //
 // Commands are user-invocable actions triggered via /slash syntax.
 // Two sources:
-// 1. System commands — from capabilities, execute directly (no LLM)
+// 1. System commands — from capabilities, execute through a dedicated handler
+//    without persisting a chat message
 // 2. Skill commands — from skills with user-invocable: true, expand to prompt
 //
 // Skills marked user-invocable appear in the command palette alongside
 // system commands. The UI fetches available commands and renders autocomplete.
 
+use crate::message::Controls;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "openapi")]
@@ -33,7 +35,8 @@ pub struct CommandDescriptor {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum CommandSource {
-    /// Built-in system command from a capability (no LLM, direct action)
+    /// Built-in system command from a capability, executed out-of-band from the
+    /// main chat history. Handlers may call the model or do direct work.
     System,
     /// From a skill with user-invocable: true (expands to prompt, triggers LLM)
     Skill,
@@ -50,6 +53,20 @@ pub struct CommandArg {
     /// Whether the argument is required
     #[serde(default)]
     pub required: bool,
+}
+
+/// Request payload for executing a system command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ExecuteCommandRequest {
+    /// Command name without the leading slash
+    pub name: String,
+    /// Raw argument text after the command token
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<String>,
+    /// Optional per-invocation runtime controls
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controls: Option<Controls>,
 }
 
 /// Result of executing a system command

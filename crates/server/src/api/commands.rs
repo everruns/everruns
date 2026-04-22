@@ -1,21 +1,21 @@
 // Commands API
 //
-// Provides endpoint for discovering slash commands.
+// Provides endpoints for discovering and executing slash commands.
 // Commands come from two sources:
-// 1. System commands — from capabilities (no LLM, direct action)
+// 1. System commands — from capabilities, executed without persisting a chat
+//    message
 // 2. Skill commands — from skills with user-invocable: true (prompt expansion)
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::CapabilityService;
+use crate::services::{CapabilityService, SessionCommandService};
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
-    routing::get,
+    routing::{get, post},
 };
 
-use super::common::{ApiResult, ErrorResponse, impl_auth_state};
-use everruns_core::command::CommandDescriptor;
+use super::common::{ApiPolicyResultExt, ApiResult, impl_auth_state};
+use everruns_core::command::{CommandDescriptor, CommandResult, ExecuteCommandRequest};
 use everruns_core::typed_id::SessionId;
 use serde::Serialize;
 use std::sync::Arc;
@@ -25,13 +25,19 @@ use utoipa::ToSchema;
 #[derive(Clone)]
 pub struct AppState {
     pub capability_service: Arc<CapabilityService>,
+    pub command_service: Arc<SessionCommandService>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(capability_service: Arc<CapabilityService>, auth: AuthState) -> Self {
+    pub fn new(
+        capability_service: Arc<CapabilityService>,
+        command_service: Arc<SessionCommandService>,
+        auth: AuthState,
+    ) -> Self {
         Self {
             capability_service,
+            command_service,
             auth,
         }
     }
@@ -53,6 +59,10 @@ pub fn routes(state: AppState) -> Router {
             "/v1/sessions/{session_id}/commands",
             get(list_session_commands),
         )
+        .route(
+            "/v1/sessions/{session_id}/commands/execute",
+            post(execute_session_command),
+        )
         .with_state(state)
 }
 
@@ -65,27 +75,37 @@ async fn list_session_commands(
     org: ResolvedOrg,
     Path(session_id): Path<SessionId>,
 ) -> ApiResult<CommandsResponse> {
-    let _ = session_id; // Reserved for session-scoped command filtering
-
-    // Collect system commands from all capabilities
-    let mut commands = Vec::new();
-    let system_commands = state.capability_service.list_system_commands();
-    commands.extend(system_commands);
+    let mut commands = state
+        .command_service
+        .list_system_commands(org.org_id, session_id)
+        .await
+        .map_policy_or_internal("list session system commands")?;
 
     // Collect invocable skill commands from the org's skills
     let skill_commands = state
         .capability_service
         .list_skill_commands(org.org_id)
         .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: format!("Failed to list skill commands: {e}"),
-                }),
-            )
-        })?;
+        .map_policy_or_internal("list skill commands")?;
     commands.extend(skill_commands);
 
     Ok(Json(CommandsResponse { commands }))
+}
+
+/// POST /v1/sessions/{session_id}/commands/execute
+///
+/// Execute a system command against the current session without persisting a
+/// chat message. Skill commands are not handled here.
+async fn execute_session_command(
+    State(state): State<AppState>,
+    org: ResolvedOrg,
+    Path(session_id): Path<SessionId>,
+    Json(req): Json<ExecuteCommandRequest>,
+) -> ApiResult<CommandResult> {
+    let result = state
+        .command_service
+        .execute(org.org_id, session_id, req)
+        .await
+        .map_policy_or_internal("execute session command")?;
+    Ok(Json(result))
 }
