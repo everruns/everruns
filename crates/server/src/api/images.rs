@@ -24,7 +24,6 @@ use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::sync::Arc;
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 // ============================================
 // Constants
@@ -46,7 +45,8 @@ const ALLOWED_CONTENT_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif",
 /// Image metadata (without binary data)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImageInfo {
-    pub id: Uuid,
+    #[schema(value_type = String, example = "img_01933b5a00007000800000000000001")]
+    pub id: ImageId,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,
@@ -57,7 +57,8 @@ pub struct ImageInfo {
 /// Image upload response
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImageUploadResponse {
-    pub id: Uuid,
+    #[schema(value_type = String, example = "img_01933b5a00007000800000000000001")]
+    pub id: ImageId,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,
@@ -280,7 +281,7 @@ pub async fn upload_image(
     Ok((
         StatusCode::CREATED,
         Json(ImageUploadResponse {
-            id: row.id.uuid(),
+            id: row.id,
             filename: row.filename,
             content_type: row.content_type,
             size_bytes: row.size_bytes,
@@ -320,7 +321,7 @@ pub async fn list_images(
     let images: Vec<ImageInfo> = rows
         .into_iter()
         .map(|row| ImageInfo {
-            id: row.id.uuid(),
+            id: row.id,
             filename: row.filename,
             content_type: row.content_type,
             size_bytes: row.size_bytes,
@@ -486,6 +487,7 @@ pub async fn delete_image(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_is_valid_content_type() {
@@ -538,5 +540,38 @@ mod tests {
             Some(ImageFormat::WebP)
         ));
         assert!(format_from_content_type("image/svg+xml").is_none());
+    }
+
+    #[test]
+    fn test_image_info_serializes_prefixed_id() {
+        let image_id = ImageId::from_seed(1);
+        let info = ImageInfo {
+            id: image_id,
+            filename: "upload.png".to_string(),
+            content_type: "image/png".to_string(),
+            size_bytes: 42,
+            metadata: json!({"session_id": "session_123"}),
+            created_at: Utc::now(),
+        };
+
+        let value = serde_json::to_value(info).expect("image info should serialize");
+
+        assert_eq!(value["id"], json!(image_id.to_string()));
+    }
+
+    #[test]
+    fn test_image_upload_response_serializes_prefixed_id() {
+        let image_id = ImageId::from_seed(2);
+        let response = ImageUploadResponse {
+            id: image_id,
+            filename: "upload.png".to_string(),
+            content_type: "image/png".to_string(),
+            size_bytes: 42,
+            created_at: Utc::now(),
+        };
+
+        let value = serde_json::to_value(response).expect("upload response should serialize");
+
+        assert_eq!(value["id"], json!(image_id.to_string()));
     }
 }

@@ -3342,6 +3342,24 @@ mod tests {
     }
 
     #[test]
+    fn test_proto_stored_image_info_to_schema_roundtrips_image_id_uuid_transport() {
+        let image_id = everruns_core::ImageId::new();
+        let info = proto_stored_image_info_to_schema(proto::StoredImageInfo {
+            id: Some(proto::Uuid {
+                value: image_id.uuid().to_string(),
+            }),
+            filename: "generated-image.png".into(),
+            content_type: "image/png".into(),
+            size_bytes: 128,
+            metadata: None,
+            created_at: None,
+        })
+        .expect("stored image info should convert");
+
+        assert_eq!(info.id, image_id);
+    }
+
+    #[test]
     fn test_grpc_command_error_to_error_not_found() {
         let err = grpc_command_error_to_error(proto::CommandError {
             kind: 3,

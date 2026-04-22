@@ -24,6 +24,28 @@ async fn test_worker_service() -> WorkerServiceImpl {
 }
 
 #[test]
+fn test_image_info_row_to_proto_uses_raw_uuid_transport_value() {
+    let image_id = everruns_core::ImageId::new();
+    let proto = WorkerServiceImpl::image_info_row_to_proto(crate::storage::models::ImageInfoRow {
+        id: image_id,
+        org_id: everruns_core::DEFAULT_ORG_ID,
+        filename: "generated-image.png".to_string(),
+        content_type: "image/png".to_string(),
+        size_bytes: 128,
+        metadata: serde_json::json!({ "provider": "openai" }),
+        created_at: chrono::Utc::now(),
+    });
+
+    let serialized_id = proto
+        .id
+        .expect("stored image info should include an id")
+        .value;
+
+    assert_eq!(serialized_id, image_id.uuid().to_string());
+    assert_ne!(serialized_id, image_id.to_string());
+}
+
+#[test]
 fn test_interceptor_allows_when_no_token_configured() {
     let mut interceptor = GrpcAuthInterceptor::new(None);
     let request = Request::new(());

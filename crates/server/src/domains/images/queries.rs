@@ -11,7 +11,7 @@ pub fn parse_image_id(input: &str) -> Result<ImageId, CommandError> {
 
 pub fn row_to_image_info(row: ImageInfoRow) -> ImageInfo {
     ImageInfo {
-        id: row.id.uuid(),
+        id: row.id,
         filename: row.filename,
         content_type: row.content_type,
         size_bytes: row.size_bytes,

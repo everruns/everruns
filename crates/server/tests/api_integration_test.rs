@@ -3295,3 +3295,52 @@ async fn test_delete_user_account() {
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn test_image_ids_round_trip_across_upload_list_and_get() {
+    let server = TestServer::in_memory().await;
+    let boundary = "----everruns-image-upload";
+    let content_type = format!("multipart/form-data; boundary={boundary}");
+    let image_bytes = vec![0x89, 0x50, 0x4E, 0x47];
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\n\
+Content-Disposition: form-data; name=\"file\"; filename=\"upload.png\"\r\n\
+Content-Type: image/png\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(&image_bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+
+    let upload: Value = server
+        .request_raw(
+            axum::http::Method::POST,
+            "/v1/images",
+            vec![("content-type", content_type.as_str())],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let image_id = upload["id"].as_str().expect("upload image id");
+    assert!(
+        image_id.starts_with("img_"),
+        "upload should return public image id, got {image_id}"
+    );
+
+    let listed: Vec<Value> = server
+        .get("/v1/images")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(listed.len(), 1, "expected uploaded image to be listed");
+    assert_eq!(listed[0]["id"], upload["id"]);
+
+    server
+        .get(&format!("/v1/images/{image_id}"))
+        .await
+        .assert_status(StatusCode::OK);
+}

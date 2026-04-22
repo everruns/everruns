@@ -645,7 +645,7 @@ impl WorkerServiceImpl {
     ) -> proto::StoredImageInfo {
         proto::StoredImageInfo {
             id: Some(proto::Uuid {
-                value: row.id.to_string(),
+                value: row.id.uuid().to_string(),
             }),
             filename: row.filename,
             content_type: row.content_type,
