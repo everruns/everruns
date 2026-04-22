@@ -815,6 +815,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-009 | Valkey unauthenticated access | Medium | Valkey listens on localhost:6379 by default; no AUTH configured in local/example compose | **CALLER RISK** |
 | TM-DOS-010 | AG-UI SSE connection exhaustion | Medium | AG-UI app streams reuse the shared `SseConnectionTracker`, enforcing the same global/per-org/per-session limits as other SSE endpoints | MITIGATED |
 | TM-DOS-010 | Rate limit bypass via Valkey failure | Low | Fail-open design: if Valkey is down, requests are allowed without rate limiting | **ACCEPTED** |
+| TM-DOS-011 | Authenticated API key sprawl | Low | No server-side per-user API key quota; API key creation requires an authenticated user session and keys remain user-owned/revocable. Operators must monitor and clean up excessive key creation if they need stricter controls. | **ACCEPTED** |
 
 ### Mitigation Details
 
