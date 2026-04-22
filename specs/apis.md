@@ -520,7 +520,6 @@ Configurable limits on resource creation. See `crates/server/src/server.rs` for 
 |----------|---------|---------|
 | Orgs per user | 5 | `RESOURCE_LIMIT_MAX_ORGS_PER_USER` |
 | Members per org | 50 | `RESOURCE_LIMIT_MAX_MEMBERS_PER_ORG` |
-| API keys per user per org | 10 | `RESOURCE_LIMIT_MAX_API_KEYS_PER_USER_PER_ORG` |
 
 Returns `409 Conflict` when a limit is exceeded.
 

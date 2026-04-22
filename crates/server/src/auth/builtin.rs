@@ -35,7 +35,6 @@ pub struct BuiltinAuthBackend {
     pub jwt_service: Arc<JwtService>,
     pub db: Arc<StorageBackend>,
     pub rate_limiter: AuthRateLimiter,
-    pub resource_limits: crate::server::ResourceLimitsConfig,
     /// In-process cache: key_hash -> AuthUser. Avoids 4 sequential DB queries per API-key request.
     api_key_cache: Cache<String, AuthUser>,
 }
@@ -71,7 +70,6 @@ impl BuiltinAuthBackend {
             jwt_service,
             db,
             rate_limiter: AuthRateLimiter::new(),
-            resource_limits: crate::server::ResourceLimitsConfig::from_env(),
             api_key_cache: build_api_key_cache(),
         }
     }
@@ -84,7 +82,6 @@ impl BuiltinAuthBackend {
             jwt_service,
             db,
             rate_limiter: AuthRateLimiter::with_valkey(valkey),
-            resource_limits: crate::server::ResourceLimitsConfig::from_env(),
             api_key_cache: build_api_key_cache(),
         }
     }
