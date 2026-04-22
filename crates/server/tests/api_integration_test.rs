@@ -3278,8 +3278,32 @@ async fn test_create_app_schedule_and_webhook_channels_persist_in_postgres() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    assert_eq!(schedule_app["channel_type"], "schedule");
-    assert_eq!(schedule_app["channels"][0]["type"], "schedule");
+    let stored_schedule_app: Value = server
+        .get(&format!(
+            "/v1/apps/{}",
+            schedule_app["id"].as_str().unwrap()
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(stored_schedule_app["channels"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        stored_schedule_app["channels"][0]["channel_type"],
+        "schedule"
+    );
+    assert_eq!(
+        stored_schedule_app["channels"][0]["channel_config"]["cron_expression"],
+        "0 15 * * * * *"
+    );
+    assert_eq!(
+        stored_schedule_app["channels"][0]["channel_config"]["session_mode"],
+        "shared_session"
+    );
+    assert_eq!(
+        stored_schedule_app["channels"][0]["channel_config"]["message"],
+        "check repo"
+    );
 
     let webhook_app: Value = server
         .post(
@@ -3300,8 +3324,22 @@ async fn test_create_app_schedule_and_webhook_channels_persist_in_postgres() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    assert_eq!(webhook_app["channel_type"], "webhook");
-    assert_eq!(webhook_app["channels"][0]["type"], "webhook");
+    let stored_webhook_app: Value = server
+        .get(&format!("/v1/apps/{}", webhook_app["id"].as_str().unwrap()))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(stored_webhook_app["channels"].as_array().unwrap().len(), 1);
+    assert_eq!(stored_webhook_app["channels"][0]["channel_type"], "webhook");
+    assert_eq!(
+        stored_webhook_app["channels"][0]["channel_config"]["session_mode"],
+        "session_per_invocation"
+    );
+    assert_eq!(
+        stored_webhook_app["channels"][0]["channel_config"]["message"],
+        "check webhook"
+    );
 }
 
 #[tokio::test]
