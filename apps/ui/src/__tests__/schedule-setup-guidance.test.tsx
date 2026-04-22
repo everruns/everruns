@@ -16,6 +16,8 @@ describe("ScheduleSetupGuidance", () => {
     expect(screen.getByText("0 * * * * * *")).toBeInTheDocument();
     expect(screen.getByText("America/Chicago")).toBeInTheDocument();
     expect(screen.getByText("Shared Session")).toBeInTheDocument();
-    expect(screen.getByText("This is app-level automation, not the in-session scheduler.")).toBeInTheDocument();
+    expect(
+      screen.getByText("This is app-level automation, not the in-session scheduler."),
+    ).toBeInTheDocument();
   });
 });

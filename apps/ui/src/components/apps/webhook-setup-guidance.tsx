@@ -29,7 +29,9 @@ export function WebhookSetupGuidance({
           {tokenConfigured ? "Token Configured" : "Token Missing"}
         </Badge>
         <span className="text-sm text-muted-foreground">
-          {isPublished ? "Ready to accept authenticated webhook requests." : "Publish the app to accept webhook requests."}
+          {isPublished
+            ? "Ready to accept authenticated webhook requests."
+            : "Publish the app to accept webhook requests."}
         </span>
       </div>
 
