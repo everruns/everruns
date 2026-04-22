@@ -9,6 +9,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.18] - 2026-04-22
+
+### Highlights
+
+- **App invocation channels** - Apps can now be invoked via schedules and webhooks, expanding deployment options beyond agents and chat channels ([#1431](https://github.com/everruns/everruns/pull/1431))
+- **Draft apps** - Apps can be created and saved without committing to an agent or channel, enabling staged authoring ([#1415](https://github.com/everruns/everruns/pull/1415))
+- **Budget usage journal & ledger** - New extensible budgeting backbone tracks LLM and tool usage with a journal and ledger for fine-grained cost accounting ([#1434](https://github.com/everruns/everruns/pull/1434))
+- **MCP read-only query tool & metadata** - Standardized MCP server tool metadata and added a read-only query tool for safe data access ([#1435](https://github.com/everruns/everruns/pull/1435), [#1418](https://github.com/everruns/everruns/pull/1418))
+- **Claude Code MCP plugin** - New Everruns MCP plugin and marketplace entry for direct integration with Claude Code ([#1406](https://github.com/everruns/everruns/pull/1406))
+- **SWE-bench Lite eval harness** - Added evaluation harness for benchmarking against SWE-bench Lite ([#1394](https://github.com/everruns/everruns/pull/1394))
+- **Prompt cache request metadata** - LLM driver now propagates prompt cache metadata for improved observability and tuning ([#1398](https://github.com/everruns/everruns/pull/1398))
+
+### What's Changed
+
+- feat(daytona): standardize exec output contract ([#1390](https://github.com/everruns/everruns/pull/1390)) by [@chaliy](https://github.com/chaliy)
+- fix(daytona): suffix sandbox names on create ([#1396](https://github.com/everruns/everruns/pull/1396)) by [@chaliy](https://github.com/chaliy)
+- fix(integrations): scope sandbox resources to sessions ([#1397](https://github.com/everruns/everruns/pull/1397)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): unify overlay capability execution path by [@chaliy](https://github.com/chaliy)
+- chore(ci): codify integration live-test policy ([#1399](https://github.com/everruns/everruns/pull/1399)) by [@chaliy](https://github.com/chaliy)
+- feat(evals): add SWE-bench Lite evaluation harness ([#1394](https://github.com/everruns/everruns/pull/1394)) by [@chaliy](https://github.com/chaliy)
+- feat(llm): add prompt cache request metadata ([#1398](https://github.com/everruns/everruns/pull/1398)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): stop doc-only pushes from triggering paid live tests ([#1405](https://github.com/everruns/everruns/pull/1405)) by [@chaliy](https://github.com/chaliy)
+- feat(embedding): add vendor-neutral error-reporting hooks for wrappers by [@chaliy](https://github.com/chaliy)
+- fix(core): redesign Braintrust REST delivery ([#1403](https://github.com/everruns/everruns/pull/1403)) by [@chaliy](https://github.com/chaliy)
+- fix(core): unify exec presentation contract ([#1402](https://github.com/everruns/everruns/pull/1402)) by [@chaliy](https://github.com/chaliy)
+- test(integrations): add Gemini and Daytona regression coverage ([#1400](https://github.com/everruns/everruns/pull/1400)) by [@chaliy](https://github.com/chaliy)
+- test(mcp): add argument and notification contract matrix by [@chaliy](https://github.com/chaliy)
+- fix(ci): scope live jobs to real integration changes ([#1407](https://github.com/everruns/everruns/pull/1407)) by [@chaliy](https://github.com/chaliy)
+- fix(browserless): attach page target for CDP v2 ([#1410](https://github.com/everruns/everruns/pull/1410)) by [@chaliy](https://github.com/chaliy)
+- feat(claude-code-plugin): add Everruns MCP plugin and marketplace ([#1406](https://github.com/everruns/everruns/pull/1406)) by [@chaliy](https://github.com/chaliy)
+- test(scripts): formalize shell helper CI coverage ([#1409](https://github.com/everruns/everruns/pull/1409)) by [@chaliy](https://github.com/chaliy)
+- fix(deno): resolve sandbox A records explicitly by [@chaliy](https://github.com/chaliy)
+- chore(maintenance): require Claude Code plugin freshness review by [@chaliy](https://github.com/chaliy)
+- refactor(errors): use structured runtime error metadata ([#1414](https://github.com/everruns/everruns/pull/1414)) by [@chaliy](https://github.com/chaliy)
+- feat(apps): allow draft apps without agent or channel ([#1415](https://github.com/everruns/everruns/pull/1415)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): standardize server tool metadata ([#1418](https://github.com/everruns/everruns/pull/1418)) by [@chaliy](https://github.com/chaliy)
+- fix(server): enable bashkit jq feature for MCP execute tool ([#1419](https://github.com/everruns/everruns/pull/1419)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): move request types from api/ to domains/*/types.rs ([#1416](https://github.com/everruns/everruns/pull/1416)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): use bashkit async_tool for MCP catalog callbacks ([#1420](https://github.com/everruns/everruns/pull/1420)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add observational bashkit hooks for virtual_bash ([#1421](https://github.com/everruns/everruns/pull/1421)) by [@chaliy](https://github.com/chaliy)
+- feat(core): unify reading-tool truncation envelope ([#1422](https://github.com/everruns/everruns/pull/1422)) by [@chaliy](https://github.com/chaliy)
+- chore(release): remove migration squash requirement ([#1423](https://github.com/everruns/everruns/pull/1423)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): pin deno live tests to ams ([#1417](https://github.com/everruns/everruns/pull/1417)) by [@chaliy](https://github.com/chaliy)
+- fix(plugins): share everruns plugin root ([#1424](https://github.com/everruns/everruns/pull/1424)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): migrate remaining API domains to commands by [@chaliy](https://github.com/chaliy)
+- fix(sprites): align live API and CI token checks ([#1426](https://github.com/everruns/everruns/pull/1426)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump astro from 6.1.3 to 6.1.8 in /apps/docs in the npm_and_yarn group across 1 directory ([#1427](https://github.com/everruns/everruns/pull/1427)) by [@dependabot](https://github.com/dependabot)
+- fix(session-sandbox): harden managed sandbox e2e ([#1428](https://github.com/everruns/everruns/pull/1428)) by [@chaliy](https://github.com/chaliy)
+- refactor(mcp): remove static catalog and handlers ([#1430](https://github.com/everruns/everruns/pull/1430)) by [@chaliy](https://github.com/chaliy)
+- fix(api-keys): use expiry presets and drop key quota ([#1432](https://github.com/everruns/everruns/pull/1432)) by [@chaliy](https://github.com/chaliy)
+- feat(server): add budget usage journal and ledger ([#1434](https://github.com/everruns/everruns/pull/1434)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): add read-only query tool ([#1435](https://github.com/everruns/everruns/pull/1435)) by [@chaliy](https://github.com/chaliy)
+- fix(media): preserve image IDs across RPC and API ([#1438](https://github.com/everruns/everruns/pull/1438)) by [@chaliy](https://github.com/chaliy)
+- fix(server): gate coding-container behind container sandbox flag by [@chaliy](https://github.com/chaliy)
+- test(agents): add image generation artifact case ([#1439](https://github.com/everruns/everruns/pull/1439)) by [@chaliy](https://github.com/chaliy)
+- feat(commands): add btw capability ([#1437](https://github.com/everruns/everruns/pull/1437)) by [@chaliy](https://github.com/chaliy)
+- feat(apps): add schedule and webhook invocation channels ([#1431](https://github.com/everruns/everruns/pull/1431)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.17] - 2026-04-19
 
 ### Highlights
