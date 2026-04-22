@@ -880,6 +880,10 @@ impl ServerAppBuilder {
         );
 
         // MCP endpoint: derive API base URL from addr config or MCP_API_BASE_URL env var
+        let mcp_resource_metadata_url = format!(
+            "{}/.well-known/oauth-protected-resource",
+            auth::root_url_from_api_base(&auth_config.base_url).trim_end_matches('/')
+        );
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
             runner.clone(),
@@ -892,7 +896,8 @@ impl ServerAppBuilder {
             capability_service.clone(),
             Some(sqldb_store.clone()),
         )
-        .with_virtual_registry(virtual_registry.clone());
+        .with_virtual_registry(virtual_registry.clone())
+        .with_resource_metadata_url(mcp_resource_metadata_url);
         let mcp_endpoint_state = if let Some(service) = &session_sandbox_service {
             mcp_endpoint_state.with_session_sandbox_service(service.clone())
         } else {
