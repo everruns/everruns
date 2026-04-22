@@ -33,9 +33,13 @@ use crate::org_init;
 use crate::services::scoped_mcp::{
     build_scoped_mcp_tool_definitions, resolve_scoped_mcp_server, validate_scoped_mcp_servers,
 };
-use crate::services::{BudgetService, EventService, LlmResolverService, PrincipalService};
-use crate::storage::StorageBackend;
+use crate::services::{
+    BudgetService, EventService, LlmResolverService, MessageService, PrincipalService,
+    SessionService,
+};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
+use crate::storage::{EncryptionService, StorageBackend};
+use everruns_durable::WorkflowEventStore;
 
 // Helper to create store errors
 fn store_error(msg: impl Into<String>) -> AgentLoopError {
@@ -259,6 +263,8 @@ pub struct DirectWorkerAdapters {
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    encryption: Option<Arc<EncryptionService>>,
+    workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     virtual_registry: Option<Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>>,
 }
 
@@ -285,6 +291,8 @@ impl DirectWorkerAdapters {
             storage_store: None,
             connection_resolver: None,
             runner: None,
+            encryption: None,
+            workflow_store: None,
             virtual_registry: None,
         }
     }
@@ -325,6 +333,19 @@ impl DirectWorkerAdapters {
         resolver: Arc<dyn everruns_core::traits::UserConnectionResolver>,
     ) -> Self {
         self.connection_resolver = Some(resolver);
+        self
+    }
+
+    pub fn with_encryption(mut self, encryption: Option<Arc<EncryptionService>>) -> Self {
+        self.encryption = encryption;
+        self
+    }
+
+    pub fn with_workflow_store(
+        mut self,
+        workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+    ) -> Self {
+        self.workflow_store = workflow_store;
         self
     }
 
@@ -1345,12 +1366,55 @@ impl WorkerAdapters for DirectWorkerAdapters {
         })
     }
 
+    async fn invoke_scheduled_app_channel(
+        &self,
+        org_id: i64,
+        app_id: &str,
+        channel_id: &str,
+    ) -> Result<serde_json::Value> {
+        let runner = self
+            .runner
+            .clone()
+            .ok_or_else(|| store_error("Agent runner not configured"))?;
+        let session_service = if let Some(registry) = self.virtual_registry.clone() {
+            SessionService::with_registry(self.db.clone(), self.capability_registry.clone())
+                .with_virtual_registry(registry)
+        } else {
+            SessionService::with_registry(self.db.clone(), self.capability_registry.clone())
+        };
+        let message_service = MessageService::new(
+            self.db.clone(),
+            runner,
+            false,
+            self.event_service.event_delivery().clone(),
+        );
+
+        let result = crate::domains::apps::invoke_scheduled_app_channel(
+            &self.db,
+            self.encryption.as_ref(),
+            &session_service,
+            &message_service,
+            org_id,
+            app_id,
+            channel_id,
+        )
+        .await
+        .map_err(|error| store_error(format!("Failed to invoke scheduled app channel: {error}")))?;
+
+        Ok(serde_json::json!({
+            "session_id": result.session_id.to_string(),
+            "created_session": result.created_session,
+        }))
+    }
+
     fn platform_store(&self, org_id: i64) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
         Arc::new(DirectPlatformStore::new(
             org_id,
             self.db.clone(),
             self.event_service.clone(),
             self.runner.clone(),
+            self.encryption.clone(),
+            self.workflow_store.clone(),
         ))
     }
 
@@ -1661,7 +1725,9 @@ pub struct DirectPlatformStore {
     db: Arc<StorageBackend>,
     event_service: Arc<EventService>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
-    capability_service: crate::services::CapabilityService,
+    capability_service: Arc<crate::services::CapabilityService>,
+    encryption: Option<Arc<EncryptionService>>,
+    workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
 }
 
 impl DirectPlatformStore {
@@ -1670,14 +1736,19 @@ impl DirectPlatformStore {
         db: Arc<StorageBackend>,
         event_service: Arc<EventService>,
         runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+        encryption: Option<Arc<EncryptionService>>,
+        workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     ) -> Self {
-        let capability_service = crate::services::CapabilityService::new(db.clone(), None);
+        let capability_service =
+            Arc::new(crate::services::CapabilityService::new(db.clone(), None));
         Self {
             org_id,
             db,
             event_service,
             runner,
             capability_service,
+            encryption,
+            workflow_store,
         }
     }
 
@@ -1685,6 +1756,48 @@ impl DirectPlatformStore {
         std::env::var("PUBLIC_APP_URL")
             .or_else(|_| std::env::var("APP_URL"))
             .unwrap_or_else(|_| "http://localhost:9300".to_string())
+    }
+
+    fn command_ctx(&self) -> crate::domains::common::Ctx {
+        crate::domains::common::Ctx::new(
+            Caller::internal(self.org_id),
+            self.db.clone(),
+            self.capability_service.clone(),
+            self.encryption.clone(),
+        )
+        .with_workflow_store(self.workflow_store.clone())
+    }
+
+    async fn execute_domain_command<T>(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+    ) -> everruns_core::error::Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        let json = crate::domains::common::dispatch(name, params, &self.command_ctx())
+            .await
+            .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
+        serde_json::from_str(&json)
+            .map_err(|e| store_error(format!("Failed to decode {name} response: {e}")))
+    }
+
+    async fn execute_domain_lookup<T>(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+    ) -> everruns_core::error::Result<Option<T>>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match crate::domains::common::dispatch(name, params, &self.command_ctx()).await {
+            Ok(json) => serde_json::from_str(&json)
+                .map(Some)
+                .map_err(|e| store_error(format!("Failed to decode {name} response: {e}"))),
+            Err(crate::domains::common::CommandError::NotFound(_)) => Ok(None),
+            Err(error) => Err(store_error(format!("Command {name} failed: {error}"))),
+        }
     }
 
     fn row_to_harness(
@@ -2131,6 +2244,252 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             .delete_agent(self.org_id, id)
             .await
             .map_err(|e| store_error(format!("Failed to delete agent: {e}")))?;
+        Ok(())
+    }
+
+    // =========================================================================
+    // App Operations
+    // =========================================================================
+
+    async fn list_apps(
+        &self,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> everruns_core::error::Result<Vec<everruns_core::App>> {
+        let mut params = serde_json::Map::new();
+        if let Some(search) = search {
+            params.insert(
+                "search".to_string(),
+                serde_json::Value::String(search.to_string()),
+            );
+        }
+        if include_archived {
+            params.insert(
+                "include_archived".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
+        self.execute_domain_command("list_apps", serde_json::Value::Object(params))
+            .await
+    }
+
+    async fn get_app(
+        &self,
+        id: everruns_core::AppId,
+    ) -> everruns_core::error::Result<Option<everruns_core::App>> {
+        self.execute_domain_lookup("get_app", serde_json::json!({ "id": id.to_string() }))
+            .await
+    }
+
+    async fn create_app(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        harness_id: HarnessId,
+        agent_id: Option<AgentId>,
+        agent_identity_id: Option<everruns_core::AgentIdentityId>,
+        channel_type: Option<everruns_core::ChannelType>,
+        channel_config: Option<&serde_json::Value>,
+    ) -> everruns_core::error::Result<everruns_core::App> {
+        let mut params = serde_json::Map::from_iter([
+            (
+                "name".to_string(),
+                serde_json::Value::String(name.to_string()),
+            ),
+            (
+                "harness_id".to_string(),
+                serde_json::Value::String(harness_id.to_string()),
+            ),
+        ]);
+        if let Some(description) = description {
+            params.insert(
+                "description".to_string(),
+                serde_json::Value::String(description.to_string()),
+            );
+        }
+        if let Some(agent_id) = agent_id {
+            params.insert(
+                "agent_id".to_string(),
+                serde_json::Value::String(agent_id.to_string()),
+            );
+        }
+        if let Some(agent_identity_id) = agent_identity_id {
+            params.insert(
+                "agent_identity_id".to_string(),
+                serde_json::Value::String(agent_identity_id.to_string()),
+            );
+        }
+        if let Some(channel_type) = channel_type {
+            params.insert(
+                "channel_type".to_string(),
+                serde_json::Value::String(channel_type.to_string()),
+            );
+        }
+        if let Some(channel_config) = channel_config {
+            params.insert("channel_config".to_string(), channel_config.clone());
+        }
+        self.execute_domain_command("create_app", serde_json::Value::Object(params))
+            .await
+    }
+
+    async fn update_app(
+        &self,
+        id: everruns_core::AppId,
+        name: Option<&str>,
+        description: Option<&str>,
+        harness_id: Option<HarnessId>,
+        agent_id: Option<AgentId>,
+        agent_identity_id: Option<Option<everruns_core::AgentIdentityId>>,
+    ) -> everruns_core::error::Result<everruns_core::App> {
+        let mut params = serde_json::Map::from_iter([(
+            "id".to_string(),
+            serde_json::Value::String(id.to_string()),
+        )]);
+        if let Some(name) = name {
+            params.insert(
+                "name".to_string(),
+                serde_json::Value::String(name.to_string()),
+            );
+        }
+        if let Some(description) = description {
+            params.insert(
+                "description".to_string(),
+                serde_json::Value::String(description.to_string()),
+            );
+        }
+        if let Some(harness_id) = harness_id {
+            params.insert(
+                "harness_id".to_string(),
+                serde_json::Value::String(harness_id.to_string()),
+            );
+        }
+        if let Some(agent_id) = agent_id {
+            params.insert(
+                "agent_id".to_string(),
+                serde_json::Value::String(agent_id.to_string()),
+            );
+        }
+        match agent_identity_id {
+            Some(Some(agent_identity_id)) => {
+                params.insert(
+                    "agent_identity_id".to_string(),
+                    serde_json::Value::String(agent_identity_id.to_string()),
+                );
+            }
+            Some(None) => {
+                params.insert("agent_identity_id".to_string(), serde_json::Value::Null);
+            }
+            None => {}
+        }
+        self.execute_domain_command("update_app", serde_json::Value::Object(params))
+            .await
+    }
+
+    async fn delete_app(&self, id: everruns_core::AppId) -> everruns_core::error::Result<()> {
+        let _: serde_json::Value = self
+            .execute_domain_command("delete_app", serde_json::json!({ "id": id.to_string() }))
+            .await?;
+        Ok(())
+    }
+
+    async fn destroy_app(&self, id: everruns_core::AppId) -> everruns_core::error::Result<()> {
+        let _: serde_json::Value = self
+            .execute_domain_command("destroy_app", serde_json::json!({ "id": id.to_string() }))
+            .await?;
+        Ok(())
+    }
+
+    async fn publish_app(
+        &self,
+        id: everruns_core::AppId,
+    ) -> everruns_core::error::Result<everruns_core::App> {
+        self.execute_domain_command("publish_app", serde_json::json!({ "id": id.to_string() }))
+            .await
+    }
+
+    async fn unpublish_app(
+        &self,
+        id: everruns_core::AppId,
+    ) -> everruns_core::error::Result<everruns_core::App> {
+        self.execute_domain_command("unpublish_app", serde_json::json!({ "id": id.to_string() }))
+            .await
+    }
+
+    async fn add_app_channel(
+        &self,
+        app_id: everruns_core::AppId,
+        channel_type: everruns_core::ChannelType,
+        channel_config: Option<&serde_json::Value>,
+        enabled: Option<bool>,
+    ) -> everruns_core::error::Result<everruns_core::AppChannel> {
+        let mut params = serde_json::Map::from_iter([
+            (
+                "app_id".to_string(),
+                serde_json::Value::String(app_id.to_string()),
+            ),
+            (
+                "channel_type".to_string(),
+                serde_json::Value::String(channel_type.to_string()),
+            ),
+        ]);
+        if let Some(channel_config) = channel_config {
+            params.insert("channel_config".to_string(), channel_config.clone());
+        }
+        if let Some(enabled) = enabled {
+            params.insert("enabled".to_string(), serde_json::Value::Bool(enabled));
+        }
+        self.execute_domain_command("add_app_channel", serde_json::Value::Object(params))
+            .await
+    }
+
+    async fn update_app_channel(
+        &self,
+        app_id: everruns_core::AppId,
+        channel_id: everruns_core::AppChannelId,
+        channel_type: Option<everruns_core::ChannelType>,
+        channel_config: Option<&serde_json::Value>,
+        enabled: Option<bool>,
+    ) -> everruns_core::error::Result<everruns_core::AppChannel> {
+        let mut params = serde_json::Map::from_iter([
+            (
+                "app_id".to_string(),
+                serde_json::Value::String(app_id.to_string()),
+            ),
+            (
+                "channel_id".to_string(),
+                serde_json::Value::String(channel_id.to_string()),
+            ),
+        ]);
+        if let Some(channel_type) = channel_type {
+            params.insert(
+                "channel_type".to_string(),
+                serde_json::Value::String(channel_type.to_string()),
+            );
+        }
+        if let Some(channel_config) = channel_config {
+            params.insert("channel_config".to_string(), channel_config.clone());
+        }
+        if let Some(enabled) = enabled {
+            params.insert("enabled".to_string(), serde_json::Value::Bool(enabled));
+        }
+        self.execute_domain_command("update_app_channel", serde_json::Value::Object(params))
+            .await
+    }
+
+    async fn delete_app_channel(
+        &self,
+        app_id: everruns_core::AppId,
+        channel_id: everruns_core::AppChannelId,
+    ) -> everruns_core::error::Result<()> {
+        let _: serde_json::Value = self
+            .execute_domain_command(
+                "delete_app_channel",
+                serde_json::json!({
+                    "app_id": app_id.to_string(),
+                    "channel_id": channel_id.to_string(),
+                }),
+            )
+            .await?;
         Ok(())
     }
 

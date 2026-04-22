@@ -17,9 +17,9 @@ impl Database {
     ) -> Result<AppChannelRow> {
         let row = sqlx::query_as::<_, AppChannelRow>(
             r#"
-            INSERT INTO app_channels (app_id, public_id, channel_type, channel_config, channel_config_encrypted, enabled)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, enabled, created_at, updated_at
+            INSERT INTO app_channels (app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, created_at, updated_at
             "#,
         )
         .bind(app_id)
@@ -27,6 +27,7 @@ impl Database {
         .bind(&input.channel_type)
         .bind(&input.channel_config)
         .bind(&input.channel_config_encrypted)
+        .bind(input.durable_schedule_id)
         .bind(input.enabled)
         .fetch_one(&self.pool)
         .await?;
@@ -37,7 +38,7 @@ impl Database {
     pub async fn list_app_channels(&self, app_id: Uuid) -> Result<Vec<AppChannelRow>> {
         let rows = sqlx::query_as::<_, AppChannelRow>(
             r#"
-            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, enabled, created_at, updated_at
+            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, created_at, updated_at
             FROM app_channels
             WHERE app_id = $1
             ORDER BY created_at ASC
@@ -56,7 +57,7 @@ impl Database {
     ) -> Result<Option<AppChannelRow>> {
         let row = sqlx::query_as::<_, AppChannelRow>(
             r#"
-            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, enabled, created_at, updated_at
+            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, created_at, updated_at
             FROM app_channels
             WHERE public_id = $1
             "#,
@@ -80,16 +81,19 @@ impl Database {
                 channel_type = COALESCE($2, channel_type),
                 channel_config = COALESCE($3, channel_config),
                 channel_config_encrypted = COALESCE($4, channel_config_encrypted),
-                enabled = COALESCE($5, enabled),
+                durable_schedule_id = CASE WHEN $5 THEN $6 ELSE durable_schedule_id END,
+                enabled = COALESCE($7, enabled),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, enabled, created_at, updated_at
+            RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, created_at, updated_at
             "#,
         )
         .bind(id)
         .bind(&input.channel_type)
         .bind(&input.channel_config)
         .bind(&input.channel_config_encrypted)
+        .bind(input.durable_schedule_id.is_changed())
+        .bind(input.durable_schedule_id.into_value())
         .bind(input.enabled)
         .fetch_optional(&self.pool)
         .await?;

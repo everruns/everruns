@@ -6,11 +6,12 @@
 // Decision: PlatformMessage is a simplified view (role + text + timestamp)
 
 use crate::agent::Agent;
+use crate::app::{App, AppChannel, ChannelType};
 use crate::capability_dto::CapabilityInfo;
 use crate::error::Result;
 use crate::harness::Harness;
 use crate::session::Session;
-use crate::typed_id::{AgentId, HarnessId, SessionId};
+use crate::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -102,6 +103,75 @@ pub trait PlatformStore: Send + Sync {
     async fn delete_agent(&self, id: AgentId) -> Result<()>;
 
     // =========================================================================
+    // App Operations
+    // =========================================================================
+
+    /// List all apps in the organization.
+    async fn list_apps(&self, search: Option<&str>, include_archived: bool) -> Result<Vec<App>>;
+
+    /// Get an app by ID.
+    async fn get_app(&self, id: AppId) -> Result<Option<App>>;
+
+    /// Create a new app.
+    #[allow(clippy::too_many_arguments)]
+    async fn create_app(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        harness_id: HarnessId,
+        agent_id: Option<AgentId>,
+        agent_identity_id: Option<AgentIdentityId>,
+        channel_type: Option<ChannelType>,
+        channel_config: Option<&serde_json::Value>,
+    ) -> Result<App>;
+
+    /// Update an app (only provided fields are changed).
+    #[allow(clippy::too_many_arguments)]
+    async fn update_app(
+        &self,
+        id: AppId,
+        name: Option<&str>,
+        description: Option<&str>,
+        harness_id: Option<HarnessId>,
+        agent_id: Option<AgentId>,
+        agent_identity_id: Option<Option<AgentIdentityId>>,
+    ) -> Result<App>;
+
+    /// Archive an app.
+    async fn delete_app(&self, id: AppId) -> Result<()>;
+
+    /// Permanently destroy an archived app.
+    async fn destroy_app(&self, id: AppId) -> Result<()>;
+
+    /// Publish an app.
+    async fn publish_app(&self, id: AppId) -> Result<App>;
+
+    /// Unpublish an app back to draft.
+    async fn unpublish_app(&self, id: AppId) -> Result<App>;
+
+    /// Add a channel to an app.
+    async fn add_app_channel(
+        &self,
+        app_id: AppId,
+        channel_type: ChannelType,
+        channel_config: Option<&serde_json::Value>,
+        enabled: Option<bool>,
+    ) -> Result<AppChannel>;
+
+    /// Update a channel on an app.
+    async fn update_app_channel(
+        &self,
+        app_id: AppId,
+        channel_id: AppChannelId,
+        channel_type: Option<ChannelType>,
+        channel_config: Option<&serde_json::Value>,
+        enabled: Option<bool>,
+    ) -> Result<AppChannel>;
+
+    /// Delete a channel from an app.
+    async fn delete_app_channel(&self, app_id: AppId, channel_id: AppChannelId) -> Result<()>;
+
+    // =========================================================================
     // Session Operations
     // =========================================================================
 
@@ -185,6 +255,7 @@ pub mod tests {
     use super::*;
     use crate::AgentCapabilityConfig;
     use crate::agent::{Agent, AgentStatus};
+    use crate::app::{App, AppChannel, AppStatus, ChannelType};
     use crate::harness::{Harness, HarnessStatus};
     use crate::session::{Session, SessionStatus};
 
@@ -197,6 +268,8 @@ pub mod tests {
     pub struct MockPlatformStore {
         pub harness: Harness,
         pub agent: Agent,
+        pub app: App,
+        pub app_channel: AppChannel,
         pub session: Session,
     }
 
@@ -250,6 +323,40 @@ pub mod tests {
                     archived_at: None,
                     deleted_at: None,
                     usage: None,
+                },
+                app_channel: AppChannel {
+                    public_id: AppChannelId::new(),
+                    internal_id: uuid::Uuid::now_v7(),
+                    channel_type: ChannelType::Webhook,
+                    channel_config: serde_json::json!({
+                        "token": "secret-1",
+                        "session_mode": "shared_session",
+                        "message": "Run checks for {{payload.repo.name}}"
+                    }),
+                    enabled: true,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+                app: App {
+                    public_id: AppId::new(),
+                    internal_id: uuid::Uuid::now_v7(),
+                    org_id: 1,
+                    name: "test-app".to_string(),
+                    description: Some("test app".to_string()),
+                    harness_id: HarnessId::new(),
+                    agent_id: Some(crate::typed_id::AgentId::new()),
+                    agent_identity_id: Some(crate::typed_id::AgentIdentityId::new()),
+                    owner_principal_id: crate::PrincipalId::from_seed(1),
+                    resolved_owner_user_id: None,
+                    owner: None,
+                    effective_owner: None,
+                    channels: vec![],
+                    status: AppStatus::Draft,
+                    published_at: None,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    archived_at: None,
+                    deleted_at: None,
                 },
                 session: Session {
                     id: SessionId::new(),
@@ -385,6 +492,140 @@ pub mod tests {
             Ok(a)
         }
         async fn delete_agent(&self, _id: crate::typed_id::AgentId) -> Result<()> {
+            Ok(())
+        }
+        async fn list_apps(
+            &self,
+            _search: Option<&str>,
+            _include_archived: bool,
+        ) -> Result<Vec<App>> {
+            let mut app = self.app.clone();
+            app.channels = vec![self.app_channel.clone()];
+            Ok(vec![app])
+        }
+        async fn get_app(&self, _id: AppId) -> Result<Option<App>> {
+            let mut app = self.app.clone();
+            app.channels = vec![self.app_channel.clone()];
+            Ok(Some(app))
+        }
+        async fn create_app(
+            &self,
+            name: &str,
+            description: Option<&str>,
+            harness_id: HarnessId,
+            agent_id: Option<AgentId>,
+            agent_identity_id: Option<AgentIdentityId>,
+            channel_type: Option<ChannelType>,
+            channel_config: Option<&serde_json::Value>,
+        ) -> Result<App> {
+            let mut app = self.app.clone();
+            app.name = name.to_string();
+            app.description = description.map(|value| value.to_string());
+            app.harness_id = harness_id;
+            app.agent_id = agent_id;
+            app.agent_identity_id = agent_identity_id;
+            app.channels = channel_type
+                .map(|channel_type| {
+                    let mut channel = self.app_channel.clone();
+                    channel.channel_type = channel_type;
+                    if let Some(channel_config) = channel_config {
+                        channel.channel_config = channel_config.clone();
+                    }
+                    vec![channel]
+                })
+                .unwrap_or_default();
+            Ok(app)
+        }
+        async fn update_app(
+            &self,
+            _id: AppId,
+            name: Option<&str>,
+            description: Option<&str>,
+            harness_id: Option<HarnessId>,
+            agent_id: Option<AgentId>,
+            agent_identity_id: Option<Option<AgentIdentityId>>,
+        ) -> Result<App> {
+            let mut app = self.app.clone();
+            app.channels = vec![self.app_channel.clone()];
+            if let Some(name) = name {
+                app.name = name.to_string();
+            }
+            if let Some(description) = description {
+                app.description = Some(description.to_string());
+            }
+            if let Some(harness_id) = harness_id {
+                app.harness_id = harness_id;
+            }
+            if let Some(agent_id) = agent_id {
+                app.agent_id = Some(agent_id);
+            }
+            if let Some(agent_identity_id) = agent_identity_id {
+                app.agent_identity_id = agent_identity_id;
+            }
+            Ok(app)
+        }
+        async fn delete_app(&self, _id: AppId) -> Result<()> {
+            Ok(())
+        }
+        async fn destroy_app(&self, _id: AppId) -> Result<()> {
+            Ok(())
+        }
+        async fn publish_app(&self, _id: AppId) -> Result<App> {
+            let mut app = self.app.clone();
+            app.channels = vec![self.app_channel.clone()];
+            app.status = AppStatus::Published;
+            app.published_at = Some(chrono::Utc::now());
+            Ok(app)
+        }
+        async fn unpublish_app(&self, _id: AppId) -> Result<App> {
+            let mut app = self.app.clone();
+            app.channels = vec![self.app_channel.clone()];
+            app.status = AppStatus::Draft;
+            app.published_at = None;
+            Ok(app)
+        }
+        async fn add_app_channel(
+            &self,
+            _app_id: AppId,
+            channel_type: ChannelType,
+            channel_config: Option<&serde_json::Value>,
+            enabled: Option<bool>,
+        ) -> Result<AppChannel> {
+            let mut channel = self.app_channel.clone();
+            channel.channel_type = channel_type;
+            if let Some(channel_config) = channel_config {
+                channel.channel_config = channel_config.clone();
+            }
+            if let Some(enabled) = enabled {
+                channel.enabled = enabled;
+            }
+            Ok(channel)
+        }
+        async fn update_app_channel(
+            &self,
+            _app_id: AppId,
+            _channel_id: AppChannelId,
+            channel_type: Option<ChannelType>,
+            channel_config: Option<&serde_json::Value>,
+            enabled: Option<bool>,
+        ) -> Result<AppChannel> {
+            let mut channel = self.app_channel.clone();
+            if let Some(channel_type) = channel_type {
+                channel.channel_type = channel_type;
+            }
+            if let Some(channel_config) = channel_config {
+                channel.channel_config = channel_config.clone();
+            }
+            if let Some(enabled) = enabled {
+                channel.enabled = enabled;
+            }
+            Ok(channel)
+        }
+        async fn delete_app_channel(
+            &self,
+            _app_id: AppId,
+            _channel_id: AppChannelId,
+        ) -> Result<()> {
             Ok(())
         }
         async fn list_sessions(

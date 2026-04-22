@@ -1251,6 +1251,86 @@ async fn test_mcp_execute_list_capabilities() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_execute_app_commands_support_schedule_and_webhook_channels() {
+    let server = TestServer::in_memory().await;
+    let app_name = format!("repo-checker-{}", unique_suffix());
+
+    let create_resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({
+            "commands": format!(
+                "create_app --name '{app_name}' --description 'repo checks' --harness_id {}",
+                server.seed_generic_harness_id
+            )
+        }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&create_resp),
+        "create_app failed: {}",
+        tool_text(&create_resp)
+    );
+    let app = tool_json(&create_resp);
+    let app_id = app["id"].as_str().expect("app id");
+
+    let add_schedule_resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({
+            "commands": format!(
+                "add_schedule_app_channel --app_id {app_id} --cron_expression '0 * * * * * *' --timezone UTC --session_mode shared_session --message 'run checks'"
+            )
+        }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&add_schedule_resp),
+        "add_app_channel schedule failed: {}",
+        tool_text(&add_schedule_resp)
+    );
+    assert_eq!(tool_json(&add_schedule_resp)["channel_type"], "schedule");
+
+    let add_webhook_resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({
+            "commands": format!(
+                "add_webhook_app_channel --app_id {app_id} --token 'secret-1' --session_mode session_per_invocation --message 'process payload'"
+            )
+        }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&add_webhook_resp),
+        "add_app_channel webhook failed: {}",
+        tool_text(&add_webhook_resp)
+    );
+    assert_eq!(tool_json(&add_webhook_resp)["channel_type"], "webhook");
+
+    let get_resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({ "commands": format!("get_app {app_id}") }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&get_resp),
+        "get_app failed: {}",
+        tool_text(&get_resp)
+    );
+    let fetched_app = tool_json(&get_resp);
+    let channel_types = fetched_app["channels"]
+        .as_array()
+        .expect("channels array")
+        .iter()
+        .filter_map(|channel| channel["channel_type"].as_str())
+        .collect::<Vec<_>>();
+    assert!(channel_types.contains(&"schedule"));
+    assert!(channel_types.contains(&"webhook"));
+}
+
 // Contract matrix for recent MCP execute regressions:
 // - EVE-323: positional path args must work on execute commands
 // - EVE-324: stringly flags must coerce into typed command params

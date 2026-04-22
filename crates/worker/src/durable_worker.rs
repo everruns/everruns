@@ -19,7 +19,8 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::activities::{
-    ActInput, InputAtomInput, ReasonInput, act_activity, input_activity, reason_activity,
+    ActInput, InputAtomInput, ReasonInput, ScheduledAppChannelInput, act_activity, input_activity,
+    reason_activity,
 };
 use crate::durable_runner::DurableTurnInput;
 use crate::grpc_adapters::{GrpcClient, GrpcEventEmitter, load_turn_context};
@@ -28,6 +29,7 @@ use crate::grpc_durable_store::{
 };
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_error::{summarize_task_failure, user_facing_failure};
+use crate::worker_adapters::WorkerAdapters;
 use serde::{Deserialize, Serialize};
 
 // =============================================================================
@@ -220,6 +222,7 @@ impl Default for DurableWorkerConfig {
                 "reason".to_string(),
                 "act".to_string(),
                 "leased_resource_cleanup".to_string(),
+                "invoke_scheduled_app_channel".to_string(),
             ],
             max_concurrent_tasks: 1000, // High default for massive workflow parallelism
             poll_interval: Duration::from_millis(100), // Fallback when push notifications unavailable
@@ -961,6 +964,19 @@ impl DurableWorker {
                     &cleanup_input,
                 )
                 .await;
+                (res, None)
+            }
+            "invoke_scheduled_app_channel" => {
+                let input: ScheduledAppChannelInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse scheduled app input: {}", e))?;
+                let adapters = crate::grpc_worker_adapters::GrpcWorkerAdapters::from_client_with_platform_definition(
+                    grpc_client.clone(),
+                    self.platform_definition.as_ref().clone(),
+                );
+                let res = adapters
+                    .invoke_scheduled_app_channel(input.org_id, &input.app_id, &input.channel_id)
+                    .await
+                    .map_err(anyhow::Error::from);
                 (res, None)
             }
             _ => (

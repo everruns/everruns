@@ -216,6 +216,7 @@ ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 | TM-AUTHZ-003 | Policy error reveals permission names | Low | 403 response includes policy ID and required permission; acceptable for debugging, no internal state leaked | **ACCEPTED** |
 | TM-AUTHZ-004 | Missing policy on service method | Medium | Compile-time enforcement via `#[policy]` macro; code review required to ensure coverage | MITIGATED |
 | TM-AUTHZ-005 | Anonymous app channel reaches draft or disabled app config | High | Public AG-UI ingress requires `AppStatus::Published`, an enabled `ag_ui` channel, and `anonymous=true`; otherwise returns 403/400 before session creation | MITIGATED |
+| TM-AUTHZ-006 | Anonymous webhook reaches draft or disabled app channel | High | Public webhook ingress requires `AppStatus::Published`, a `webhook` channel, `enabled=true`, and the per-channel token before creating or reusing a session | MITIGATED |
 
 ### Mitigation Details
 

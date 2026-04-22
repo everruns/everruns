@@ -450,6 +450,29 @@ impl GrpcClient {
 
         Ok(response.into_inner().updated)
     }
+
+    pub async fn invoke_scheduled_app_channel(
+        &self,
+        org_id: i64,
+        app_id: &str,
+        channel_id: &str,
+    ) -> Result<serde_json::Value> {
+        let mut client = self.inner.lock().await;
+        let response = client
+            .invoke_scheduled_app_channel(proto::InvokeScheduledAppChannelRequest {
+                org_id,
+                app_id: app_id.to_string(),
+                channel_id: channel_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        let response = response.into_inner();
+        Ok(serde_json::json!({
+            "session_id": response.session_id,
+            "created_session": response.created_session,
+        }))
+    }
 }
 
 // ============================================================================
@@ -2588,6 +2611,243 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
     async fn delete_agent(&self, id: AgentId) -> Result<()> {
         let _: serde_json::Value = self
             .execute_platform_command("delete_agent", serde_json::json!({ "id": id.to_string() }))
+            .await?;
+        Ok(())
+    }
+
+    // =========================================================================
+    // App Operations
+    // =========================================================================
+
+    async fn list_apps(
+        &self,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<everruns_core::App>> {
+        let mut params = serde_json::Map::new();
+        if let Some(search) = search {
+            params.insert(
+                "search".to_string(),
+                serde_json::Value::String(search.to_string()),
+            );
+        }
+        if include_archived {
+            params.insert(
+                "include_archived".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
+        self.execute_platform_command("list_apps", serde_json::Value::Object(params))
+            .await
+    }
+
+    async fn get_app(&self, id: everruns_core::AppId) -> Result<Option<everruns_core::App>> {
+        self.execute_platform_lookup("get_app", serde_json::json!({ "id": id.to_string() }))
+            .await
+    }
+
+    async fn create_app(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        harness_id: everruns_core::HarnessId,
+        agent_id: Option<everruns_core::AgentId>,
+        agent_identity_id: Option<everruns_core::AgentIdentityId>,
+        channel_type: Option<everruns_core::ChannelType>,
+        channel_config: Option<&serde_json::Value>,
+    ) -> Result<everruns_core::App> {
+        let mut params = serde_json::Map::from_iter([
+            (
+                "name".to_string(),
+                serde_json::Value::String(name.to_string()),
+            ),
+            (
+                "harness_id".to_string(),
+                serde_json::Value::String(harness_id.to_string()),
+            ),
+        ]);
+        if let Some(description) = description {
+            params.insert(
+                "description".to_string(),
+                serde_json::Value::String(description.to_string()),
+            );
+        }
+        if let Some(agent_id) = agent_id {
+            params.insert(
+                "agent_id".to_string(),
+                serde_json::Value::String(agent_id.to_string()),
+            );
+        }
+        if let Some(agent_identity_id) = agent_identity_id {
+            params.insert(
+                "agent_identity_id".to_string(),
+                serde_json::Value::String(agent_identity_id.to_string()),
+            );
+        }
+        if let Some(channel_type) = channel_type {
+            params.insert(
+                "channel_type".to_string(),
+                serde_json::Value::String(channel_type.to_string()),
+            );
+        }
+        if let Some(channel_config) = channel_config {
+            params.insert("channel_config".to_string(), channel_config.clone());
+        }
+        self.execute_platform_command("create_app", serde_json::Value::Object(params))
+            .await
+    }
+
+    async fn update_app(
+        &self,
+        id: everruns_core::AppId,
+        name: Option<&str>,
+        description: Option<&str>,
+        harness_id: Option<everruns_core::HarnessId>,
+        agent_id: Option<everruns_core::AgentId>,
+        agent_identity_id: Option<Option<everruns_core::AgentIdentityId>>,
+    ) -> Result<everruns_core::App> {
+        let mut params = serde_json::Map::from_iter([(
+            "id".to_string(),
+            serde_json::Value::String(id.to_string()),
+        )]);
+        if let Some(name) = name {
+            params.insert(
+                "name".to_string(),
+                serde_json::Value::String(name.to_string()),
+            );
+        }
+        if let Some(description) = description {
+            params.insert(
+                "description".to_string(),
+                serde_json::Value::String(description.to_string()),
+            );
+        }
+        if let Some(harness_id) = harness_id {
+            params.insert(
+                "harness_id".to_string(),
+                serde_json::Value::String(harness_id.to_string()),
+            );
+        }
+        if let Some(agent_id) = agent_id {
+            params.insert(
+                "agent_id".to_string(),
+                serde_json::Value::String(agent_id.to_string()),
+            );
+        }
+        match agent_identity_id {
+            Some(Some(agent_identity_id)) => {
+                params.insert(
+                    "agent_identity_id".to_string(),
+                    serde_json::Value::String(agent_identity_id.to_string()),
+                );
+            }
+            Some(None) => {
+                params.insert("agent_identity_id".to_string(), serde_json::Value::Null);
+            }
+            None => {}
+        }
+        self.execute_platform_command("update_app", serde_json::Value::Object(params))
+            .await
+    }
+
+    async fn delete_app(&self, id: everruns_core::AppId) -> Result<()> {
+        let _: serde_json::Value = self
+            .execute_platform_command("delete_app", serde_json::json!({ "id": id.to_string() }))
+            .await?;
+        Ok(())
+    }
+
+    async fn destroy_app(&self, id: everruns_core::AppId) -> Result<()> {
+        let _: serde_json::Value = self
+            .execute_platform_command("destroy_app", serde_json::json!({ "id": id.to_string() }))
+            .await?;
+        Ok(())
+    }
+
+    async fn publish_app(&self, id: everruns_core::AppId) -> Result<everruns_core::App> {
+        self.execute_platform_command("publish_app", serde_json::json!({ "id": id.to_string() }))
+            .await
+    }
+
+    async fn unpublish_app(&self, id: everruns_core::AppId) -> Result<everruns_core::App> {
+        self.execute_platform_command("unpublish_app", serde_json::json!({ "id": id.to_string() }))
+            .await
+    }
+
+    async fn add_app_channel(
+        &self,
+        app_id: everruns_core::AppId,
+        channel_type: everruns_core::ChannelType,
+        channel_config: Option<&serde_json::Value>,
+        enabled: Option<bool>,
+    ) -> Result<everruns_core::AppChannel> {
+        let mut params = serde_json::Map::from_iter([
+            (
+                "app_id".to_string(),
+                serde_json::Value::String(app_id.to_string()),
+            ),
+            (
+                "channel_type".to_string(),
+                serde_json::Value::String(channel_type.to_string()),
+            ),
+        ]);
+        if let Some(channel_config) = channel_config {
+            params.insert("channel_config".to_string(), channel_config.clone());
+        }
+        if let Some(enabled) = enabled {
+            params.insert("enabled".to_string(), serde_json::Value::Bool(enabled));
+        }
+        self.execute_platform_command("add_app_channel", serde_json::Value::Object(params))
+            .await
+    }
+
+    async fn update_app_channel(
+        &self,
+        app_id: everruns_core::AppId,
+        channel_id: everruns_core::AppChannelId,
+        channel_type: Option<everruns_core::ChannelType>,
+        channel_config: Option<&serde_json::Value>,
+        enabled: Option<bool>,
+    ) -> Result<everruns_core::AppChannel> {
+        let mut params = serde_json::Map::from_iter([
+            (
+                "app_id".to_string(),
+                serde_json::Value::String(app_id.to_string()),
+            ),
+            (
+                "channel_id".to_string(),
+                serde_json::Value::String(channel_id.to_string()),
+            ),
+        ]);
+        if let Some(channel_type) = channel_type {
+            params.insert(
+                "channel_type".to_string(),
+                serde_json::Value::String(channel_type.to_string()),
+            );
+        }
+        if let Some(channel_config) = channel_config {
+            params.insert("channel_config".to_string(), channel_config.clone());
+        }
+        if let Some(enabled) = enabled {
+            params.insert("enabled".to_string(), serde_json::Value::Bool(enabled));
+        }
+        self.execute_platform_command("update_app_channel", serde_json::Value::Object(params))
+            .await
+    }
+
+    async fn delete_app_channel(
+        &self,
+        app_id: everruns_core::AppId,
+        channel_id: everruns_core::AppChannelId,
+    ) -> Result<()> {
+        let _: serde_json::Value = self
+            .execute_platform_command(
+                "delete_app_channel",
+                serde_json::json!({
+                    "app_id": app_id.to_string(),
+                    "channel_id": channel_id.to_string(),
+                }),
+            )
             .await?;
         Ok(())
     }

@@ -16,6 +16,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::{App, AppChannel, Caller, ResourceConfigResponse, evaluate_policies_with};
+use everruns_durable::WorkflowEventStore;
 
 use super::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
@@ -28,6 +29,7 @@ use std::sync::Arc;
 pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub encryption: Option<Arc<EncryptionService>>,
+    pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
 }
@@ -36,12 +38,14 @@ impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
+        workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
         capability_service: Arc<CapabilityService>,
         auth: AuthState,
     ) -> Self {
         Self {
             db,
             encryption,
+            workflow_store,
             capability_service,
             auth,
         }
@@ -55,6 +59,7 @@ impl AppState {
             self.capability_service.clone(),
             self.encryption.clone(),
         )
+        .with_workflow_store(self.workflow_store.clone())
     }
 }
 

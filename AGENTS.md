@@ -125,6 +125,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/compaction.md` - Context compaction capability, strategy selection, events, and UI
 - `specs/load-testing.md` - End-to-end load testing framework and benchmarking process
 - `specs/apps.md` - Apps system (agent deployment to distribution channels)
+- `specs/app-invocation-channels.md` - App schedule/webhook invocation channels
 - `specs/coding-session-sandbox-harness.md` - Built-in coding harness using the managed session sandbox
 - `specs/network-access.md` - Network access list (URL allowlist/blocklist per harness/agent/session)
 - `specs/notifications.md` - Generic user notifications (bell, toast, future channels)

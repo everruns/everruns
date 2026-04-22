@@ -251,6 +251,7 @@ service WorkerService {
     // Messaging operations
     rpc PlatformSendMessage(PlatformSendMessageRequest) returns (PlatformSendMessageResponse);
     rpc PlatformGetMessages(PlatformGetMessagesRequest) returns (PlatformGetMessagesResponse);
+    rpc InvokeScheduledAppChannel(InvokeScheduledAppChannelRequest) returns (InvokeScheduledAppChannelResponse);
 
     // Turn management
     rpc PlatformWaitForIdle(PlatformWaitForIdleRequest) returns (PlatformWaitForIdleResponse);
@@ -1728,6 +1729,17 @@ message PlatformGetMessagesRequest {
 
 message PlatformGetMessagesResponse {
     repeated PlatformMessage messages = 1;
+}
+
+message InvokeScheduledAppChannelRequest {
+    int64 org_id = 1;
+    string app_id = 2;
+    string channel_id = 3;
+}
+
+message InvokeScheduledAppChannelResponse {
+    string session_id = 1;
+    bool created_session = 2;
 }
 
 // === Turn management ===

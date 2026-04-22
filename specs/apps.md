@@ -2,7 +2,9 @@
 
 ## Abstract
 
-An App is a deployable unit that binds a Harness and optional Agent to one or more distribution channels (Slack, AG-UI, WhatsApp, web widget, etc.). It provides a publish/unpublish lifecycle that controls whether the app actively accepts incoming requests from its configured channels.
+An App is a deployable unit that binds a Harness and optional Agent to one or more invocation channels. Interactive channels such as Slack and AG-UI accept user traffic directly. Invocation channels such as `schedule` and `webhook` inject a configured message into an app-owned session when an external trigger fires. The publish/unpublish lifecycle controls whether those channels actively accept or emit new invocations.
+
+See [app-invocation-channels.md](app-invocation-channels.md) for the dedicated spec covering schedule/webhook behavior, session routing, templates, and durable bindings.
 
 ## Concepts
 
@@ -25,10 +27,11 @@ A distribution channel attached to an App. Each channel has its own type, config
 - Uses dual-ID pattern: `appchan_` prefix
 - `channel_type` is optional at create time; when present it creates the first channel automatically
 - Channels can be added, updated, or removed via `/v1/apps/{app_id}/channels`
+- Schedule channels additionally own an internal durable schedule binding (`app_channels.durable_schedule_id`) used to synchronize app lifecycle with the durable scheduler
 
 ### Channel Types
 
-Current: `slack`, `ag_ui`. Future: `whatsapp`, `web_widget`, `api_endpoint`, `discord`, etc.
+Current: `slack`, `ag_ui`, `schedule`, `webhook`. Future: `whatsapp`, `web_widget`, `api_endpoint`, `discord`, etc.
 
 Channel config is stored as JSONB and validated at the application layer per channel type.
 
@@ -58,6 +61,15 @@ AG-UI uses an app-scoped anonymous ingress for the initial rollout:
 - Anonymous access is currently required when the channel is enabled
 - Session routing is per `threadId`, with sessions tagged by app and thread
 
+`schedule` and `webhook` are app invocation channels, not interactive messaging adapters:
+
+- `schedule` owns a managed durable schedule binding
+- `webhook` exposes a token-authenticated app-scoped HTTP endpoint
+- both inject a configured user message into an app-owned session
+- both support `shared_session` and `session_per_invocation`
+
+Examples and detailed behavior live in [app-invocation-channels.md](app-invocation-channels.md).
+
 ### Session Strategy
 
 Controls how incoming messages map to sessions:
@@ -80,7 +92,7 @@ draft → published → draft → archived → deleted
 ```
 
 - `draft`: App is configured but not accepting requests
-- `published`: App is live, incoming messages create/continue sessions
+- `published`: App is live, interactive channels accept traffic and automation channels may create/continue sessions
 - Unpublishing stops new message processing; existing sessions remain
 - `archived`: Read-only, hidden from lists by default, not assignable, not executable
 - `deleted`: Tombstone state for historical references only; normal detail API returns `404`
@@ -106,6 +118,7 @@ All endpoints under `/v1/apps`. See `crates/server/src/api/apps.rs`.
 | POST | `/v1/apps/{app_id}/channels` | Add a channel |
 | PATCH | `/v1/apps/{app_id}/channels/{channel_id}` | Update a channel |
 | DELETE | `/v1/apps/{app_id}/channels/{channel_id}` | Remove a channel |
+| POST | `/v1/apps/{app_id}/webhooks/{channel_id}` | Trigger a webhook channel |
 
 ## ID Schema
 

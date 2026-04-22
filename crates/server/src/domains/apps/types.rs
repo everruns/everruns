@@ -4,6 +4,7 @@
 // has a single import path.
 
 use crate::api::common::deserialize_nullable_update_field;
+use crate::domains::common::deserialize_opt_json_value_lenient;
 use everruns_core::typed_id::{AgentId, AgentIdentityId, HarnessId};
 use everruns_core::{AppStatus, ChannelType};
 use everruns_durable::UpdateField;
@@ -39,7 +40,7 @@ pub struct CreateAppRequest {
     #[serde(default)]
     pub channel_type: Option<ChannelType>,
     /// Initial channel configuration.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_opt_json_value_lenient")]
     pub channel_config: Option<serde_json::Value>,
 }
 
@@ -75,7 +76,7 @@ pub struct AddChannelRequest {
     /// Channel type.
     pub channel_type: ChannelType,
     /// Channel-specific configuration.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_opt_json_value_lenient")]
     pub channel_config: Option<serde_json::Value>,
     /// Whether the channel is enabled (default: true).
     #[serde(default)]
@@ -89,7 +90,11 @@ pub struct UpdateChannelRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_type: Option<ChannelType>,
     /// Channel-specific configuration.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_opt_json_value_lenient"
+    )]
     pub channel_config: Option<serde_json::Value>,
     /// Whether the channel is enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -127,6 +132,21 @@ mod tests {
     }
 
     #[test]
+    fn create_app_request_accepts_stringified_channel_config() {
+        let req: CreateAppRequest = serde_json::from_str(&format!(
+            r#"{{"name":"Draft App","harness_id":"{}","channel_type":"webhook","channel_config":"{{\"token\":\"secret\",\"message\":\"run\"}}"}}"#,
+            TEST_HARNESS_ID
+        ))
+        .unwrap();
+
+        assert_eq!(req.channel_type, Some(ChannelType::Webhook));
+        assert_eq!(
+            req.channel_config,
+            Some(serde_json::json!({"token": "secret", "message": "run"}))
+        );
+    }
+
+    #[test]
     fn update_app_request_leaves_agent_identity_unchanged_when_omitted() {
         let req: UpdateAppRequest = serde_json::from_str("{}").unwrap();
         assert_eq!(req.agent_identity_id, UpdateField::Unchanged);
@@ -147,5 +167,19 @@ mod tests {
         .unwrap();
         let expected: AgentIdentityId = TEST_AGENT_IDENTITY_ID.parse().unwrap();
         assert_eq!(req.agent_identity_id, UpdateField::Set(expected));
+    }
+
+    #[test]
+    fn add_channel_request_accepts_stringified_channel_config() {
+        let req: AddChannelRequest = serde_json::from_str(
+            r#"{"channel_type":"schedule","channel_config":"{\"cron_expression\":\"0 * * * * * *\",\"message\":\"run\"}"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(req.channel_type, ChannelType::Schedule);
+        assert_eq!(
+            req.channel_config,
+            Some(serde_json::json!({"cron_expression": "0 * * * * * *", "message": "run"}))
+        );
     }
 }

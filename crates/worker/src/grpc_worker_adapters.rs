@@ -432,6 +432,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    async fn invoke_scheduled_app_channel(
+        &self,
+        org_id: i64,
+        app_id: &str,
+        channel_id: &str,
+    ) -> Result<serde_json::Value> {
+        self.client
+            .invoke_scheduled_app_channel(org_id, app_id, channel_id)
+            .await
+    }
+
     async fn claim_due_leased_resources(
         &self,
         limit: u32,

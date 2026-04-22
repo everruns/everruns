@@ -1568,6 +1568,7 @@ pub struct AppChannelRow {
     pub channel_type: String,
     pub channel_config: serde_json::Value,
     pub channel_config_encrypted: Option<Vec<u8>>,
+    pub durable_schedule_id: Option<Uuid>,
     pub enabled: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -1620,6 +1621,7 @@ pub struct CreateAppChannelRow {
     pub channel_type: String,
     pub channel_config: serde_json::Value,
     pub channel_config_encrypted: Option<Vec<u8>>,
+    pub durable_schedule_id: Option<Uuid>,
     pub enabled: bool,
 }
 
@@ -1629,6 +1631,7 @@ pub struct UpdateAppChannel {
     pub channel_type: Option<String>,
     pub channel_config: Option<serde_json::Value>,
     pub channel_config_encrypted: Option<Vec<u8>>,
+    pub durable_schedule_id: UpdateField<Uuid>,
     pub enabled: Option<bool>,
 }
 

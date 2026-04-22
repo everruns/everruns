@@ -1,8 +1,10 @@
 // MCP scripting catalog — inventory is the only source of truth.
 
 use bashkit::{ScriptingToolSet, ToolArgs, ToolDef};
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::LazyLock;
 
 /// Shared context for inventory-registered domain commands.
 #[derive(Clone)]
@@ -16,6 +18,20 @@ pub enum ToolsetMode {
     Full,
     ReadOnly,
 }
+
+static INVENTORY_TOOL_DEFS: LazyLock<HashMap<&'static str, ToolDef>> = LazyLock::new(|| {
+    inventory::iter::<crate::domains::common::CommandDescriptor>
+        .into_iter()
+        .map(|desc| {
+            let meta = (desc.meta)();
+            let schema = bashkit_inventory_schema((desc.param_schema)());
+            let def = ToolDef::new(meta.name, meta.description)
+                .with_schema(schema)
+                .with_category(meta.category);
+            (meta.name, def)
+        })
+        .collect()
+});
 
 impl CatalogContext {
     /// Convert to a domain Ctx for inventory-registered command dispatch.
@@ -40,10 +56,7 @@ impl CatalogContext {
         if let Some(store) = &self.state.sqldb_store {
             ctx = ctx.with_sqldb_store(store.clone());
         }
-        if let Some(store) = &self.state.workflow_store {
-            ctx = ctx.with_workflow_store(store.clone());
-        }
-        ctx
+        ctx.with_workflow_store(self.state.workflow_store.clone())
     }
 }
 
@@ -78,9 +91,47 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptingToolSet
 
 fn command_descriptor_to_def(desc: &crate::domains::common::CommandDescriptor) -> ToolDef {
     let meta = (desc.meta)();
-    ToolDef::new(meta.name, meta.description)
-        .with_schema((desc.param_schema)())
-        .with_category(meta.category)
+    INVENTORY_TOOL_DEFS
+        .get(meta.name)
+        .cloned()
+        .unwrap_or_else(|| {
+            ToolDef::new(meta.name, meta.description)
+                .with_schema(bashkit_inventory_schema((desc.param_schema)()))
+                .with_category(meta.category)
+        })
+}
+
+fn bashkit_inventory_schema(mut schema: serde_json::Value) -> serde_json::Value {
+    let Some(properties) = schema
+        .get_mut("properties")
+        .and_then(|value| value.as_object_mut())
+    else {
+        return schema;
+    };
+
+    for (name, property) in properties.iter_mut() {
+        if name != "channel_config" {
+            continue;
+        }
+        let Some(object) = property.as_object_mut() else {
+            continue;
+        };
+        object.insert(
+            "type".to_string(),
+            serde_json::Value::String("string".to_string()),
+        );
+        let description = object
+            .get("description")
+            .and_then(|value| value.as_str())
+            .map(|value| format!("{value} Pass JSON text in bash mode."))
+            .unwrap_or_else(|| "Pass JSON text in bash mode.".to_string());
+        object.insert(
+            "description".to_string(),
+            serde_json::Value::String(description),
+        );
+    }
+
+    schema
 }
 
 fn make_inventory_callback(

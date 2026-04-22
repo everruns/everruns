@@ -740,12 +740,6 @@ impl ServerAppBuilder {
             auth_state.clone(),
             platform_definition.connection_providers().clone(),
         );
-        let apps_state = api::apps::AppState::new(
-            db.clone(),
-            encryption.clone(),
-            capability_service.clone(),
-            auth_state.clone(),
-        );
         let eval_run_ctx = Arc::new(services::eval_runner::EvalRunContext {
             db: db.clone(),
             session_service: Arc::new(
@@ -766,6 +760,13 @@ impl ServerAppBuilder {
             encryption.clone(),
             runner.clone(),
             slack_dispatcher.clone(),
+            notifications_enabled,
+            event_delivery.clone(),
+        );
+        let app_webhooks_state = api::app_webhooks::AppWebhookState::new(
+            db.clone(),
+            encryption.clone(),
+            runner.clone(),
             notifications_enabled,
             event_delivery.clone(),
         );
@@ -831,6 +832,13 @@ impl ServerAppBuilder {
             api::prometheus::spawn_gauge_bridge(durable_state.metrics_collector().clone());
         }
         let scheduler_store = durable_store.clone();
+        let apps_state = api::apps::AppState::new(
+            db.clone(),
+            encryption.clone(),
+            scheduler_store.clone(),
+            capability_service.clone(),
+            auth_state.clone(),
+        );
         let schedules_state = api::schedules::routes(api::schedules::ScheduleAppState::new(
             db.clone(),
             durable_store.clone(),
@@ -880,9 +888,9 @@ impl ServerAppBuilder {
             notifications_enabled,
             event_delivery.clone(),
             encryption.clone(),
+            scheduler_store.clone(),
             capability_service.clone(),
             Some(sqldb_store.clone()),
-            durable_store.clone(),
         )
         .with_virtual_registry(virtual_registry.clone());
         let mcp_endpoint_state = if let Some(service) = &session_sandbox_service {
@@ -969,6 +977,7 @@ impl ServerAppBuilder {
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))
             .merge(api::slack_events::routes(slack_state))
+            .merge(api::app_webhooks::routes(app_webhooks_state))
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::budgets::routes(api::budgets::AppState::new(
@@ -1428,6 +1437,8 @@ impl ServerAppBuilder {
                     sqldb_store.clone(),
                 )
                 .with_budget_service(budget_service.clone())
+                .with_encryption(encryption.clone())
+                .with_workflow_store(durable_store.clone())
                 .with_virtual_registry(virtual_registry.clone())
                 .with_storage_store(session_storage_store)
                 .with_runner(runner.clone());

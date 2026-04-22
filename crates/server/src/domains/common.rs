@@ -7,6 +7,7 @@ use crate::storage::StorageBackend;
 use axum::Json;
 use axum::http::StatusCode;
 use everruns_core::{Caller, Policy, PolicyError};
+use everruns_durable::WorkflowEventStore;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::future::Future;
@@ -167,7 +168,7 @@ pub struct Ctx {
     pub model_sync_service: Option<Arc<crate::services::ModelSyncService>>,
     pub eval_service: Option<Arc<crate::services::EvalService>>,
     pub sqldb_store: Option<Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>>,
-    pub workflow_store: Option<Arc<dyn everruns_durable::WorkflowEventStore + Send + Sync>>,
+    pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     pub fallback_harness_name: Option<String>,
     pub chat_harness_name: Option<String>,
@@ -320,9 +321,9 @@ impl Ctx {
 
     pub fn with_workflow_store(
         mut self,
-        store: Arc<dyn everruns_durable::WorkflowEventStore + Send + Sync>,
+        workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     ) -> Self {
-        self.workflow_store = Some(store);
+        self.workflow_store = workflow_store;
         self
     }
 
@@ -652,6 +653,35 @@ where
             }
             trimmed
                 .parse::<u32>()
+                .map(Some)
+                .map_err(serde::de::Error::custom)
+        }
+    }
+}
+
+/// Accept `Option<serde_json::Value>` as a native JSON value, `null`, or a JSON string.
+pub fn deserialize_opt_json_value_lenient<'de, D>(d: D) -> Result<Option<Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Either {
+        Value(Value),
+        Str(String),
+    }
+
+    match Option::<Either>::deserialize(d)? {
+        None => Ok(None),
+        Some(Either::Value(value)) => Ok(Some(value)),
+        Some(Either::Str(raw)) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            serde_json::from_str::<Value>(trimmed)
                 .map(Some)
                 .map_err(serde::de::Error::custom)
         }
