@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
+    body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     routing::post,
@@ -21,6 +22,14 @@ use crate::domains::common::CommandError;
 use crate::middleware::RequestId;
 use crate::services::{MessageService, SessionService};
 use crate::storage::{EncryptionService, StorageBackend};
+
+const REDACTED_HEADER_VALUE: &str = "[REDACTED]";
+const SENSITIVE_WEBHOOK_HEADERS: &[&str] = &[
+    "authorization",
+    "cookie",
+    "proxy-authorization",
+    "x-everruns-webhook-token",
+];
 
 #[derive(Clone)]
 pub struct AppWebhookState {
@@ -76,6 +85,7 @@ pub fn routes(state: AppWebhookState) -> Router {
         ("app_id" = String, Path, description = "App ID"),
         ("channel_id" = String, Path, description = "Webhook channel ID")
     ),
+    request_body(content = String, content_type = "application/octet-stream"),
     responses(
         (status = 202, description = "Webhook accepted", body = WebhookInvocationResponse),
         (status = 401, description = "Invalid or missing webhook token", body = ErrorResponse),
@@ -90,7 +100,7 @@ pub async fn invoke_webhook(
     Path((app_id, channel_id)): Path<(String, String)>,
     req_id: Option<axum::Extension<RequestId>>,
     headers: HeaderMap,
-    body: String,
+    body: Bytes,
 ) -> Result<(StatusCode, Json<WebhookInvocationResponse>), (StatusCode, Json<ErrorResponse>)> {
     let app = crate::domains::apps::queries::get_by_public_id_unscoped(
         &state.db,
@@ -133,7 +143,8 @@ pub async fn invoke_webhook(
         return Err(unauthorized());
     }
 
-    let json_payload = serde_json::from_str(&body).ok();
+    let json_payload = serde_json::from_slice(&body).ok();
+    let body = String::from_utf8_lossy(&body).into_owned();
     let request_headers = flatten_headers(&headers);
     let request_id = req_id.map(|axum::Extension(id)| id.0);
 
@@ -180,10 +191,14 @@ fn flatten_headers(headers: &HeaderMap) -> HashMap<String, String> {
     headers
         .iter()
         .filter_map(|(name, value)| {
+            let normalized_name = name.as_str().to_ascii_lowercase();
+            if SENSITIVE_WEBHOOK_HEADERS.contains(&normalized_name.as_str()) {
+                return Some((normalized_name, REDACTED_HEADER_VALUE.to_string()));
+            }
             value
                 .to_str()
                 .ok()
-                .map(|value| (name.as_str().to_ascii_lowercase(), value.to_string()))
+                .map(|value| (normalized_name, value.to_string()))
         })
         .collect()
 }

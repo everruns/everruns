@@ -618,7 +618,7 @@ mod tests {
     #[test]
     fn test_schedule_channel_config_defaults() {
         let config: ScheduleChannelConfig =
-            serde_json::from_str(r#"{"cron_expression":"0 * * * *","message":"Run checks"}"#)
+            serde_json::from_str(r#"{"cron_expression":"0 * * * * * *","message":"Run checks"}"#)
                 .unwrap();
         assert_eq!(config.timezone, "UTC");
         assert_eq!(config.session_mode, InvocationSessionMode::SharedSession);
@@ -719,7 +719,7 @@ mod tests {
         let ch = test_channel(
             ChannelType::Schedule,
             serde_json::json!({
-                "cron_expression": "0 * * * *",
+                "cron_expression": "0 * * * * * *",
                 "message": "Run checks"
             }),
         );
@@ -732,7 +732,7 @@ mod tests {
         let ch = test_channel(
             ChannelType::Schedule,
             serde_json::json!({
-                "cron_expression": "0 * * * *",
+                "cron_expression": "0 * * * * * *",
                 "message": "Run checks"
             }),
         );

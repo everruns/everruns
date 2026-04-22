@@ -669,8 +669,8 @@ where
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum Either {
-        Value(Value),
         Str(String),
+        Value(Value),
     }
 
     match Option::<Either>::deserialize(d)? {

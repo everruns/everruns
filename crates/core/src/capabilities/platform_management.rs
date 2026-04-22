@@ -2770,7 +2770,7 @@ mod tests {
                     "harness_id": HarnessId::new().to_string(),
                     "channel_type": "schedule",
                     "channel_config": {
-                        "cron_expression": "0 * * * *",
+                        "cron_expression": "0 * * * * * *",
                         "timezone": "UTC",
                         "message": "run checks"
                     }

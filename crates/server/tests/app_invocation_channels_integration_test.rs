@@ -475,7 +475,7 @@ async fn webhook_channel_enforces_publish_and_enable_and_supports_raw_body_templ
         json!({
             "token": "secret-raw",
             "session_mode": "shared_session",
-            "message": "body={{payload}} raw={{webhook.body}} kind={{webhook.headers.x-kind}}",
+            "message": "body={{payload}} raw={{webhook.body}} kind={{webhook.headers.x-kind}} auth={{webhook.headers.authorization}} token={{webhook.headers.x-everruns-webhook-token}}",
         }),
     )
     .await;
@@ -535,6 +535,7 @@ async fn webhook_channel_enforces_publish_and_enable_and_supports_raw_body_templ
                 ("content-type", "text/plain"),
                 ("x-everruns-webhook-token", "secret-raw"),
                 ("x-kind", "raw"),
+                ("authorization", "Bearer super-secret"),
             ],
             b"plain body".to_vec(),
         )
@@ -543,9 +544,30 @@ async fn webhook_channel_enforces_publish_and_enable_and_supports_raw_body_templ
         .json();
 
     let texts = list_user_message_texts(&server, response["session_id"].as_str().unwrap()).await;
+    assert!(texts.iter().any(|text| {
+        text == "body=plain body raw=plain body kind=raw auth=[REDACTED] token=[REDACTED]"
+    }));
+
+    let invalid_utf8: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/webhooks/{channel_id}"),
+            vec![
+                ("content-type", "application/octet-stream"),
+                ("x-everruns-webhook-token", "secret-raw"),
+                ("x-kind", "binary"),
+            ],
+            vec![0x66, 0x6f, 0x80],
+        )
+        .await
+        .assert_status(StatusCode::ACCEPTED)
+        .json();
+
+    let texts =
+        list_user_message_texts(&server, invalid_utf8["session_id"].as_str().unwrap()).await;
     assert!(
         texts
             .iter()
-            .any(|text| text == "body=plain body raw=plain body kind=raw")
+            .any(|text| text == "body=fo� raw=fo� kind=binary auth= token=[REDACTED]")
     );
 }

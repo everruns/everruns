@@ -466,7 +466,6 @@ async fn find_or_create_invocation_session(
             .find_session_by_tags(app.org_id, &shared_tags)
             .await
             .map_err(classify_anyhow)?
-        && existing.status != "deleted"
     {
         return Ok((existing.id, false));
     }
